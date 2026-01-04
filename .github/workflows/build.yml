@@ -1,0 +1,75 @@
+name: Build Windows Exe
+
+on:
+  push:
+    branches: [ "*" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    # Also checkout pymsg since it's a dependency
+    - name: Checkout pymsg
+      uses: actions/checkout@v4
+      with:
+        repository: xtorker/pymsg
+        path: pymsg
+
+    # 1. Setup Node & Build Frontend
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run build
+
+    # 2. Setup Python
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    # 3. Install Python Deps - EXPLICITLY to ensure they're all there
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        
+        # Install pymsg from the checked out repo
+        pip install ./pymsg
+        
+        # Install all runtime dependencies explicitly
+        pip install fastapi uvicorn[standard] python-multipart aiofiles keyring
+        pip install pyinstaller pywebview
+        pip install playwright
+        
+        # Verify installations
+        pip list
+        python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
+        python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
+        python -c "import pymsg; print('pymsg OK:', pymsg.__file__)"
+        python -c "import keyring; print('Keyring OK:', keyring.__file__)"
+
+    # 4. Setup Inno Setup
+    - name: Install Inno Setup
+      run: choco install innosetup
+
+    # 5. Build EXE & Installer
+    - name: Build with PyInstaller & Inno Setup
+      run: |
+        python tooling/windows/build_windows.py
+
+
+    # 6. Upload Installer
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: pymsg-gui-setup
+        path: dist/pymsg-gui-setup.exe
