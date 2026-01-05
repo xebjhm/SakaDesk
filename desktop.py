@@ -14,7 +14,10 @@ from backend.main import app
 from backend.services.platform import get_logs_dir
 
 # Setup logging
-logger = logging.getLogger(__name__)
+import structlog
+
+# Setup logging (structlog configured in backend.main, but we need a logger here)
+logger = structlog.get_logger()
 
 # Constants
 HOST = "127.0.0.1"
@@ -63,7 +66,10 @@ def show_error_dialog(error_msg: str, tb: str):
         dialog.mainloop()
     except:
         # If tkinter fails, just print to console
-        print(f"FATAL ERROR: {error_msg}\n{tb}")
+        if 'logger' in globals():
+            logger.error("FATAL ERROR", error=error_msg, traceback=tb)
+        else:
+             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 def main():
     try:

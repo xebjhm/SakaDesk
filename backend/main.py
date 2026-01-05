@@ -37,7 +37,7 @@ stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(leveln
 root_logger.addHandler(stream_handler)
 
 
-app = FastAPI(title="HakoDesk")
+app = FastAPI(title="pymsg-gui")
 
 # CORS for frontend dev
 app.add_middleware(

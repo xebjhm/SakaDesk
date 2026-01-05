@@ -18,7 +18,7 @@ from backend.services.platform import is_windows, is_dev_mode, get_credentials_d
 logger = logging.getLogger(__name__)
 
 # Service name for keyring
-KEYRING_SERVICE = "hakodesk"
+KEYRING_SERVICE = "pymsg"
 
 
 class CredentialStore(ABC):
@@ -157,7 +157,7 @@ class FileCredentialStore(CredentialStore):
     Development-only credential storage using plaintext JSON.
     
     ⚠️  WARNING: This is NOT secure and should only be used for development.
-    Credentials are stored in plaintext in ~/.hakodesk/credentials/tokens.json
+    Credentials are stored in plaintext in ~/.pymsg/credentials/tokens.json
     """
     
     def __init__(self):

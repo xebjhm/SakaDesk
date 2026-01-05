@@ -7,13 +7,15 @@ import aiofiles
 import traceback
 from pathlib import Path
 from datetime import datetime
-from pyhako import HinatazakaClient, sanitize_name, SyncManager
-from pyhako.utils import get_media_extension
-from backend.api.progress import progress
+from pyhako import Client, Group, sanitize_name, SyncManager
 from pyhako.utils import get_media_extension
 from backend.api.progress import progress
 from backend.services.credential_store import get_credential_store
 import logging
+
+# Backward compatibility alias for old code that used HinatazakaClient
+def HinatazakaClient(**kwargs):
+    return Client(group=Group.HINATAZAKA46, **kwargs)
 
 logger = logging.getLogger(__name__)
 

@@ -42,4 +42,16 @@ export interface Group {
     is_active: boolean;
     thumbnail?: string;
     members: MemberInfo[];
+    service?: string;
+    last_message_id?: number;
+    total_messages?: number;
 }
+
+export interface GroupAuthStatus {
+    is_authenticated: boolean;
+    group_name: string;
+    username?: string;
+    error?: string;
+}
+
+export type MultiGroupAuthStatus = Record<string, GroupAuthStatus>;
