@@ -33,7 +33,6 @@ def find_iscc():
             
     return None
 
-def build_exe():
     print("--- Building Executable with PyInstaller ---")
     
     # Ensure frontend is built first? 
@@ -43,66 +42,13 @@ def build_exe():
     if not frontend_dist.exists():
         print("WARNING: frontend/dist not found. The GUI will be empty.")
     
-    # PyInstaller arguments matching the original build.yml
+    spec_file = PROJECT_ROOT / "tooling" / "build_windows.spec"
+    
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--onedir",
-        "--windowed",
-        "--name", "HakoDesk",
-        "--paths", str(PROJECT_ROOT),
-        "--add-data", f"frontend/dist{os.pathsep}frontend/dist",
-        
-        # Hidden imports
-        "--hidden-import", "pyhako",
-        "--hidden-import", "pyhako.auth",
-        "--hidden-import", "pyhako.client",
-        "--hidden-import", "pyhako.utils",
-        "--hidden-import", "keyring",
-        "--hidden-import", "keyring.backends",
-        "--hidden-import", "keyring.backends.Windows",
-        "--hidden-import", "win32ctypes",
-        "--hidden-import", "win32ctypes.core",
-        "--hidden-import", "uvicorn",
-        "--hidden-import", "uvicorn.logging",
-        "--hidden-import", "uvicorn.protocols",
-        "--hidden-import", "uvicorn.protocols.http",
-        "--hidden-import", "uvicorn.protocols.http.auto",
-        "--hidden-import", "uvicorn.protocols.websockets",
-        "--hidden-import", "uvicorn.protocols.websockets.auto",
-        "--hidden-import", "uvicorn.lifespan",
-        "--hidden-import", "uvicorn.lifespan.on",
-        "--hidden-import", "fastapi",
-        "--hidden-import", "starlette",
-        "--hidden-import", "starlette.responses",
-        "--hidden-import", "starlette.routing",
-        "--hidden-import", "starlette.middleware",
-        "--hidden-import", "starlette.staticfiles",
-        "--hidden-import", "pydantic",
-        "--hidden-import", "multipart",
-        "--hidden-import", "backend",
-        "--hidden-import", "backend.main",
-        "--hidden-import", "backend.api",
-        "--hidden-import", "backend.api.auth",
-        "--hidden-import", "backend.api.content",
-        "--hidden-import", "backend.api.sync",
-        "--hidden-import", "backend.services",
-        "--hidden-import", "backend.services.auth_service",
-        "--hidden-import", "backend.services.sync_service",
-        
-        # Collect all
-        "--collect-all", "fastapi",
-        "--collect-all", "starlette",
-        "--collect-all", "uvicorn",
-        "--collect-all", "pydantic",
-        "--collect-all", "pydantic_core",
-        "--collect-all", "pyhako",
-        "--collect-all", "playwright",
-        "--collect-all", "aiofiles",
-        "--collect-all", "keyring",
-        "--collect-all", "backend",
-        
-        str(PROJECT_ROOT / "desktop.py")
+        "--clean",
+        str(spec_file)
     ]
     
     run_command(cmd, cwd=PROJECT_ROOT)

@@ -75,6 +75,7 @@ class AuthService:
             logger.info(f"Starting browser login, session dir: {self._session_dir}")
             
             creds = await BrowserAuth.login(
+                group="hinatazaka46",
                 headless=False,
                 user_data_dir=str(self._session_dir),
                 channel="chrome"

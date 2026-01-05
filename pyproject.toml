@@ -11,10 +11,19 @@ dependencies = [
     "aiofiles",
     "keyring",
     "tk>=0.1.0",
+    "structlog>=25.5.0",
+    "keyrings-alt>=5.0.2",
 ]
 
 [tool.uv.sources]
-pyhako = { git = "https://github.com/xtorker/PyHako.git", tag = "v0.1.0" }
+pyhako = { path = "../PyHako", editable = true }
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+]
 
 # Development server configuration
 # Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*"
