@@ -31,6 +31,59 @@ const SHELTER_ICONS = {
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
+// Media container constraints
+const MAX_MEDIA_WIDTH = 320;
+const MAX_MEDIA_HEIGHT = 500;
+const DEFAULT_MEDIA_HEIGHT = 200;
+
+interface MediaContainerProps {
+    message: Message;
+    isVideo?: boolean;
+    children: React.ReactNode;
+}
+
+/**
+ * Container for media that uses pre-calculated dimensions to prevent layout jitter.
+ * Falls back to default dimensions if width/height not available.
+ */
+const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, children }) => {
+    let containerStyle: React.CSSProperties = {
+        minHeight: DEFAULT_MEDIA_HEIGHT,
+    };
+
+    // If dimensions are available, calculate exact display size
+    if (message.width && message.height) {
+        const aspectRatio = message.width / message.height;
+
+        // Fit within max constraints while preserving aspect ratio
+        let displayWidth = Math.min(MAX_MEDIA_WIDTH, message.width);
+        let displayHeight = displayWidth / aspectRatio;
+
+        // If height exceeds max, constrain by height instead
+        if (displayHeight > MAX_MEDIA_HEIGHT) {
+            displayHeight = MAX_MEDIA_HEIGHT;
+            displayWidth = displayHeight * aspectRatio;
+        }
+
+        containerStyle = {
+            width: displayWidth,
+            height: displayHeight,
+        };
+    }
+
+    return (
+        <div
+            className={cn(
+                "rounded-lg overflow-hidden mb-2 flex items-center justify-center",
+                isVideo ? "bg-black" : "bg-gray-50"
+            )}
+            style={containerStyle}
+        >
+            {children}
+        </div>
+    );
+};
+
 // Component to render text with clickable URLs
 const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(URL_REGEX);
@@ -72,14 +125,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 
-    // Fix media URL: simple concatenation might break with special chars, but typically
-    // we assume media_file is a safe path from backend. Using encodeURIComponent on components
-    // might be safer if the path is not already URL-safe.
-    // However, backend stores relative paths like "Group/Member/file".
-    // We should encode message.media_file content if it contains characters like spaces or kanji.
-    // But typically browser's fetch/img src handles raw utf-8 path just fine if server supports it.
-    // The issue "cannot shown properly" might be due to spaces in path not being encoded?
-    // Let's safe encode the path.
+    // Encode path segments for special chars (spaces, CJK characters)
     const mediaUrl = message.media_file
         ? `${api_base}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
         : null;
@@ -149,26 +195,26 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-2 min-h-[200px] bg-gray-50 flex items-center justify-center">
+                            <MediaContainer message={message}>
                                 <img
                                     src={mediaUrl}
                                     alt="Attachment"
-                                    className="w-full h-auto object-contain max-h-[500px]"
+                                    className="w-full h-full object-contain"
                                 />
-                            </div>
+                            </MediaContainer>
                         )}
 
                         {/* Video */}
                         {message.type === 'video' && mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-2 bg-black min-h-[200px]">
+                            <MediaContainer message={message} isVideo>
                                 <video
                                     src={mediaUrl}
-                                    className="w-full max-h-[500px] object-contain"
+                                    className="w-full h-full object-contain"
                                     controls
                                     playsInline
                                     preload="metadata"
                                 />
-                            </div>
+                            </MediaContainer>
                         )}
 
                         {/* Voice */}
