@@ -1,12 +1,13 @@
 export interface MemberInfo {
-    id: number;
+    id: number | string;
     name: string;
-    group_id: number;
+    group_id?: number;
     portrait?: string;
     thumbnail?: string;
     phone_image?: string;
     group_thumbnail?: string;
     dir_name?: string;
+    path?: string;  // Full path to member directory from output_dir
 }
 
 export interface Member {
@@ -37,6 +38,7 @@ export interface Group {
     id: string;
     name: string;
     dir_name: string;
+    group_path: string;  // Full path to group directory from output_dir
     member_count: number;
     is_group_chat: boolean;
     is_active: boolean;

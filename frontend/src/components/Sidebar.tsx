@@ -6,7 +6,9 @@ import { MemberInfo } from '../types';
 interface GroupInfo {
     id: string;
     name: string;
+    service?: string;
     dir_name: string;
+    group_path: string;  // Full path to group directory
     member_count: number;
     is_group_chat: boolean;
     is_active?: boolean;
@@ -121,7 +123,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
             return {
                 displayName: formatName(group.name),
                 shortName: getShortName(group.name),
-                path: group.dir_name,
+                path: group.group_path,  // Use full group path from API
                 isGroupChat: true,
                 avatar: group.thumbnail || null, // Use group thumbnail from metadata
                 isActive: group.is_active ?? true
@@ -131,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
             return {
                 displayName: formatName(member?.name || group.name),
                 shortName: getShortName(member?.name || group.name),
-                path: `${group.dir_name}/${member?.dir_name || ''}`,
+                path: member?.path || group.group_path,  // Use member's full path from API
                 isGroupChat: false,
                 // Priority: Group Thumbnail (from messages.json member meta) > Thumbnail > Portrait > Phone
                 avatar: member?.group_thumbnail || member?.thumbnail || member?.portrait || member?.phone_image || null,
