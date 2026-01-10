@@ -3,7 +3,8 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 import json
 import logging
-from typing import List, Optional
+import os
+from typing import Optional
 
 from backend.services.platform import get_settings_path
 
@@ -12,6 +13,55 @@ logger = logging.getLogger(__name__)
 
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = Path("output")
+
+
+def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
+    """
+    Validate that a user-provided path stays within the base directory.
+
+    Security checks:
+    1. Resolve the full path to handle ../ and symlinks
+    2. Use commonpath for reliable containment check (not string prefix)
+    3. Verify the base is actually a prefix of the resolved path
+    4. Check for null bytes and other path injection attempts
+
+    Args:
+        base_dir: The directory that should contain the path
+        user_path: User-provided relative path
+
+    Returns:
+        Resolved safe Path
+
+    Raises:
+        HTTPException 403 if path escapes base directory
+        HTTPException 400 if path contains invalid characters
+    """
+    # Check for null bytes and other path injection characters
+    if '\x00' in user_path or '\n' in user_path or '\r' in user_path:
+        raise HTTPException(status_code=400, detail="Invalid path characters")
+
+    # Normalize the base directory
+    base_resolved = base_dir.resolve()
+
+    # Construct and resolve the target path
+    target_path = (base_dir / user_path).resolve()
+
+    # Use os.path.commonpath for reliable containment check
+    # This handles edge cases like /output vs /output2
+    try:
+        common = os.path.commonpath([str(base_resolved), str(target_path)])
+        if common != str(base_resolved):
+            logger.warning(f"Path traversal attempt: {user_path} -> {target_path}")
+            raise HTTPException(status_code=403, detail="Access denied")
+    except ValueError:
+        # commonpath raises ValueError if paths are on different drives (Windows)
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Double-check with string comparison (belt and suspenders)
+    if not str(target_path).startswith(str(base_resolved) + os.sep) and target_path != base_resolved:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return target_path
 
 
 def get_output_dir() -> Path:
@@ -157,10 +207,8 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
     last_read_id: If provided, calculates unread_count (messages with id > last_read_id).
     """
     output_dir = get_output_dir()
-    safe_path = (output_dir / path).resolve()
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    safe_path = validate_path_within_dir(output_dir, path)
+
     msg_file = safe_path / "messages.json"
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -214,10 +262,8 @@ async def get_group_messages(group_dir: str, limit: int = 200, offset: int = 0, 
     last_read_id: If provided, calculates unread_count (messages with id > last_read_id).
     """
     output_dir = get_output_dir()
-    safe_path = (output_dir / group_dir).resolve()
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    safe_path = validate_path_within_dir(output_dir, group_dir)
+
     if not safe_path.is_dir():
         raise HTTPException(status_code=404, detail="Group not found")
     
@@ -289,12 +335,10 @@ async def get_group_messages(group_dir: str, limit: int = 200, offset: int = 0, 
 async def get_media(file_path: str):
     """Serve media files."""
     output_dir = get_output_dir()
-    safe_path = (output_dir / file_path).resolve()
+    safe_path = validate_path_within_dir(output_dir, file_path)
     logger.debug(f"Media request: {file_path} -> {safe_path}, exists={safe_path.exists()}")
-    
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
+
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     return FileResponse(safe_path)

@@ -16,8 +16,6 @@ if sys.stderr:
     sys.stderr.reconfigure(encoding='utf-8')
 
 # Configure logging
-
-# Configure logging
 log_dir = get_logs_dir()
 log_file = log_dir / "app.log"
 
@@ -37,14 +35,25 @@ stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(leveln
 root_logger.addHandler(stream_handler)
 
 
-app = FastAPI(title="pymsg-gui")
+app = FastAPI(title="HakoDesk")
 
-# CORS for frontend dev
+# CORS configuration
+# In production, frontend is served from same origin (no CORS needed).
+# These origins are for development mode when Vite runs on a separate port.
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",      # Vite dev server default
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",      # Common alternative
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -78,4 +87,4 @@ if frontend_dist.exists():
             return FileResponse(path)
         return FileResponse(frontend_dist / "index.html")
 else:
-    logger.warning("Frontend build not found. Run 'npm run build' in frontend directory.")
+    logging.warning("Frontend build not found. Run 'npm run build' in frontend directory.")
