@@ -93,28 +93,9 @@ class SyncService:
             return False
             
         self.running = True
-        
+
         try:
-            # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
-            if force_resync:
-                logger.info("Force Resync requested. Clearing state...")
-                if self.metadata_file.exists():
-                    self.metadata_file.unlink()
-                
-                # We can't easily find 'sync_state.json' without knowing group/member structure 
-                # if it's inside subfolders. But usually SyncManager keeps it in root output?
-                # Checked manager.py: self.output_dir / "sync_state.json"
-                # Wait, manager.py says: 
-                # state_file = self.output_dir / "sync_state.json" ?
-                # No, manager.py Step 91 line 125: group_dir / member_dir / "messages.json".
-                # But Step 91 line 31: self.state_file = output_dir / "sync_state.json".
-                # So it IS in root of output_dir.
-                state_file = self.output_dir / "sync_state.json"
-                if state_file.exists():
-                     state_file.unlink()
-            
-            
-            # Check Configuration First
+            # Load Configuration FIRST - needed for force_resync and all subsequent operations
             app_settings = await self.load_app_settings()
             if not app_settings.get("is_configured"):
                 logger.warning("Skipping sync: Output folder not configured.")
@@ -123,6 +104,17 @@ class SyncService:
 
             self.output_dir = Path(app_settings.get("output_dir", "output"))
             self.metadata_file = self.output_dir / "sync_metadata.json"
+
+            # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
+            if force_resync:
+                logger.info("Force Resync requested. Clearing state...")
+                if self.metadata_file.exists():
+                    self.metadata_file.unlink()
+
+                # SyncManager stores state in: output_dir / "sync_state.json"
+                state_file = self.output_dir / "sync_state.json"
+                if state_file.exists():
+                    state_file.unlink()
 
             config = await self.load_config()
             token = config.get('access_token')

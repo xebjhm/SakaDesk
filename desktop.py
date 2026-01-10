@@ -6,6 +6,7 @@ import os
 import socket
 import logging
 import traceback
+import time
 # Explicit imports to ensure PyInstaller finds them
 import fastapi
 import starlette.responses
@@ -21,18 +22,36 @@ logger = structlog.get_logger()
 
 # Constants
 HOST = "127.0.0.1"
+SERVER_STARTUP_TIMEOUT = 10  # seconds
 
-def get_free_port():
+
+def get_free_port() -> int:
     """Find a free port on localhost."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.bind((HOST, 0)) # Bind to port 0 to let OS choose
+    sock.bind((HOST, 0))  # Bind to port 0 to let OS choose
     port = sock.getsockname()[1]
     sock.close()
     return port
 
-def start_server(port):
+
+def wait_for_server(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT) -> bool:
+    """Wait for the server to become available."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex((host, port))
+            sock.close()
+            if result == 0:
+                return True
+        except OSError:
+            pass
+        time.sleep(0.1)
+    return False
+
+
+def start_server(port: int) -> None:
     """Start the uvicorn server in a separate thread."""
-    # We must run on the exact port we found
     uvicorn.run(app, host=HOST, port=port, log_level="error")
 
 def show_error_dialog(error_msg: str, tb: str):
@@ -64,26 +83,30 @@ def show_error_dialog(error_msg: str, tb: str):
         tk.Button(dialog, text="Close", command=root.destroy).pack(pady=5)
         
         dialog.mainloop()
-    except:
+    except Exception:
         # If tkinter fails, just print to console
         if 'logger' in globals():
             logger.error("FATAL ERROR", error=error_msg, traceback=tb)
         else:
-             print(f"FATAL ERROR: {error_msg}\n{tb}")
+            print(f"FATAL ERROR: {error_msg}\n{tb}")
 
-def main():
+def main() -> None:
     try:
         # Find a free port
         port = get_free_port()
-        
+
         # Start API server
         t = threading.Thread(target=start_server, args=(port,))
         t.daemon = True
         t.start()
 
+        # Wait for server to be ready before creating window
+        if not wait_for_server(HOST, port):
+            raise RuntimeError(f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s")
+
         # Create window
         webview.create_window(
-            title='HakoDesk', 
+            title='HakoDesk',
             url=f'http://{HOST}:{port}',
             width=1200,
             height=800,
@@ -103,8 +126,8 @@ def main():
             with open(log_file, 'w', encoding='utf-8') as f:
                 f.write(f"Error: {error_msg}\n\n{tb}")
             logger.error(f"Crash log saved to {log_file}")
-        except:
-            pass
+        except Exception:
+            pass  # Logging failure shouldn't prevent error dialog
         
         # Show dialog
         show_error_dialog(error_msg, tb)
