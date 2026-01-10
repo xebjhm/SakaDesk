@@ -148,14 +148,21 @@ async def select_folder():
     # We'll try running it directly first? No, that blocks.
     # We'll run in a thread.
     
+    # Timeout after 5 minutes (user should have selected a folder by then)
+    DIALOG_TIMEOUT_SECONDS = 300
+
     try:
         thread = threading.Thread(target=open_dialog)
         thread.start()
-        thread.join()
+        thread.join(timeout=DIALOG_TIMEOUT_SECONDS)
+
+        if thread.is_alive():
+            logger.warning("Folder dialog timed out after 5 minutes")
+            return {"path": None, "error": "Dialog timed out"}
     except Exception as e:
-         logger.error(f"Thread error: {e}")
-         return {"path": None, "error": str(e)}
-    
+        logger.error(f"Thread error: {e}")
+        return {"path": None, "error": str(e)}
+
     if selected_path[0]:
         return {"path": selected_path[0]}
     return {"path": None}
