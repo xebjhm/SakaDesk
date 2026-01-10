@@ -59,15 +59,15 @@ begin
     begin
       // 1. Delete credentials from Windows Credential Manager
       // Use cmdkey to remove stored credentials
-      Exec('cmdkey.exe', '/delete:pymsg:access_token', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      Exec('cmdkey.exe', '/delete:pymsg:app_id', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('cmdkey.exe', '/delete:hakodesk:access_token', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('cmdkey.exe', '/delete:hakodesk:app_id', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       // Legacy/chunk keys (in case they exist from older versions)
-      Exec('cmdkey.exe', '/delete:pymsg:config_json', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-      Exec('cmdkey.exe', '/delete:pymsg:config_chunks', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('cmdkey.exe', '/delete:hakodesk:config_json', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Exec('cmdkey.exe', '/delete:hakodesk:config_chunks', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
       Log('Removed credentials from Windows Credential Manager.');
 
       // 2. Delete the data directory
-      DataDir := ExpandConstant('{localappdata}\pymsg');
+      DataDir := ExpandConstant('{localappdata}\hakodesk');
 
       if DirExists(DataDir) then
       begin

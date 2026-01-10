@@ -1,5 +1,5 @@
 """
-Secure Credential Storage for pymsg-gui
+Secure Credential Storage for hakodesk-gui
 
 Windows: Uses keyring (Windows Credential Manager)
 Linux/Mac: Uses plaintext JSON (development mode only)
@@ -18,7 +18,7 @@ from backend.services.platform import is_windows, is_dev_mode, get_credentials_d
 logger = logging.getLogger(__name__)
 
 # Service name for keyring
-KEYRING_SERVICE = "pymsg"
+KEYRING_SERVICE = "hakodesk"
 
 
 class CredentialStore(ABC):
@@ -144,7 +144,7 @@ class KeyringCredentialStore(CredentialStore):
         return config
     
     def clear_all(self) -> None:
-        """Clear all pymsg credentials."""
+        """Clear all hakodesk credentials."""
         self.delete(self._access_token_key)
         self.delete(self._app_id_key)
         # Legacy keys
@@ -157,7 +157,7 @@ class FileCredentialStore(CredentialStore):
     Development-only credential storage using plaintext JSON.
     
     ⚠️  WARNING: This is NOT secure and should only be used for development.
-    Credentials are stored in plaintext in ~/.pymsg/credentials/tokens.json
+    Credentials are stored in plaintext in ~/.hakodesk/credentials/tokens.json
     """
     
     def __init__(self):

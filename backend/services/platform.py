@@ -1,5 +1,5 @@
 """
-Platform Abstraction Layer for pymsg-gui
+Platform Abstraction Layer for HakoDesk
 Handles cross-platform differences for Windows deployment with Linux development.
 """
 import os
@@ -11,7 +11,7 @@ from typing import Literal
 logger = logging.getLogger(__name__)
 
 # Environment variable to force dev mode
-DEV_MODE = os.environ.get("PYMSG_DEV_MODE", "false").lower() == "true"
+DEV_MODE = os.environ.get("HAKODESK_DEV_MODE", "false").lower() == "true"
 
 
 def get_system() -> Literal["Windows", "Linux", "Darwin"]:
@@ -33,19 +33,19 @@ def get_app_data_dir() -> Path:
     """
     Get the application data directory.
     
-    Windows: %LOCALAPPDATA%\\pymsg (e.g., C:\\Users\\Name\\AppData\\Local\\pymsg)
-    Linux/Mac: ~/.pymsg (development fallback)
+    Windows: %LOCALAPPDATA%\\hakodesk (e.g., C:\\Users\\Name\\AppData\\Local\\hakodesk)
+    Linux/Mac: ~/.hakodesk (development fallback)
     """
     if is_windows():
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            app_dir = Path(base) / "pymsg"
+            app_dir = Path(base) / "hakodesk"
         else:
             # Fallback if LOCALAPPDATA not set
-            app_dir = Path.home() / "AppData" / "Local" / "pymsg"
+            app_dir = Path.home() / "AppData" / "Local" / "hakodesk"
     else:
         # Development mode on Linux/Mac
-        app_dir = Path.home() / ".pymsg"
+        app_dir = Path.home() / ".hakodesk"
     
     # Ensure directory exists
     app_dir.mkdir(parents=True, exist_ok=True)

@@ -814,7 +814,7 @@ function App() {
                             <div className="flex items-center gap-3">
                                 <FolderOpen className="w-8 h-8 text-white" />
                                 <div>
-                                    <h3 className="text-xl font-bold text-white">Welcome to pymsg</h3>
+                                    <h3 className="text-xl font-bold text-white">Welcome to HakoDesk</h3>
                                     <p className="text-sm text-white/80">Let's set up your data folder</p>
                                 </div>
                             </div>
@@ -829,7 +829,7 @@ function App() {
                                         type="text"
                                         value={outputDirInput}
                                         onChange={(e) => setOutputDirInput(e.target.value)}
-                                        placeholder="C:\Users\YourName\pymsg-data"
+                                        placeholder="C:\Users\YourName\HakoDesk-data"
                                         className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                     />
                                     <button
@@ -857,7 +857,7 @@ function App() {
                                 disabled={!outputDirInput.trim()}
                                 className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                Start Using pymsg
+                                Start Using HakoDesk
                             </button>
                         </div>
                     </div>
@@ -1007,7 +1007,7 @@ function App() {
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                             <div className="text-center">
-                                <p className="text-lg mb-2">👋 Welcome to pymsg</p>
+                                <p className="text-lg mb-2">👋 Welcome to HakoDesk</p>
                                 <p className="text-sm">Select a conversation from the sidebar to start.</p>
                             </div>
                         </div>
