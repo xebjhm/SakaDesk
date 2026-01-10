@@ -1,5 +1,5 @@
 """
-Settings API for pymsg-gui
+Settings API for HakoDesk
 Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """

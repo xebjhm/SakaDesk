@@ -1,5 +1,5 @@
 """
-Authentication Service for pymsg-gui
+Authentication Service for HakoDesk
 Uses secure credential storage via the credential_store abstraction.
 """
 import json

@@ -151,8 +151,8 @@ HakoDesk/
 ## Configuration
 
 Application data is stored in:
-- **Windows:** `%LOCALAPPDATA%\pymsg\`
-- **Linux/macOS:** `~/.config/pymsg/`
+- **Windows:** `%LOCALAPPDATA%\hakodesk\`
+- **Linux/macOS:** `~/.hakodesk/`
 
 Settings include:
 - Output folder for synchronized messages
