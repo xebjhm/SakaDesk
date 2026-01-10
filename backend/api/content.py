@@ -228,6 +228,10 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
     Path should point to the member directory containing messages.json.
 
     Example path: "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
     """
     output_dir = get_output_dir()
     safe_path = validate_path_within_dir(output_dir, path)
@@ -246,7 +250,7 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
 
             total = len(messages)
 
-            # Calculate unread count
+            # Calculate unread count and max_message_id
             unread_count = 0
             max_message_id = 0
             if last_read_id > 0:
@@ -261,9 +265,9 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
                 if messages:
                     max_message_id = max(m.get('id', 0) for m in messages)
 
+            # Simple pagination: return latest messages
             if limit > 0:
-                start = max(0, total - limit)
-                messages = messages[start:]
+                messages = messages[-limit:]
 
             data['messages'] = messages
             data['total_count'] = total
@@ -280,6 +284,10 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
     Get merged messages from all members in a group (for group chats).
 
     Example group_path: "日向坂46/messages/43 日向坂46"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
     """
     output_dir = get_output_dir()
     safe_path = validate_path_within_dir(output_dir, group_path)
@@ -340,10 +348,9 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
         if all_messages:
             max_message_id = max(m.get('id', 0) for m in all_messages)
 
-    # Return latest 'limit' messages
+    # Simple pagination: return latest messages
     if limit > 0:
-        start = max(0, total - limit)
-        paginated = all_messages[start:]
+        paginated = all_messages[-limit:]
     else:
         paginated = all_messages
 
