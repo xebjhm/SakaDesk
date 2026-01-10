@@ -51,8 +51,9 @@ output/
 config.json
 sync_state.json
 
-# PyInstaller
+# PyInstaller (except our build spec)
 *.spec
+!tooling/build_windows.spec
 
 # IDEs
 .vscode/
