@@ -24,52 +24,56 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        
+
     - name: Build Frontend
       working-directory: ./frontend
       run: |
         npm ci
         npm run build
 
-    # 2. Setup Python
+    # 2. Setup Python and uv
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    # 3. Install Python Deps - EXPLICITLY to ensure they're all there
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    # 3. Install Python Deps with uv
     - name: Install Dependencies
       run: |
-        python -m pip install --upgrade pip
-        
-        # Install pyhako from the checked out repo
-        pip install ./PyHako
-        
-        # Install all runtime dependencies explicitly
-        pip install fastapi uvicorn[standard] python-multipart aiofiles keyring
-        pip install pyinstaller pywebview
-        pip install playwright
-        
-        # Verify installations
-        pip list
-        python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
-        python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
-        python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
-        python -c "import keyring; print('Keyring OK:', keyring.__file__)"
+        # Sync project dependencies
+        uv sync
 
-    # 4. Setup Inno Setup
+        # Install build tools
+        uv add --dev pyinstaller pywebview playwright
+
+        # Verify installations
+        uv run python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
+        uv run python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
+        uv run python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
+        uv run python -c "import keyring; print('Keyring OK:', keyring.__file__)"
+
+    # 4. Run Tests
+    - name: Run Tests
+      run: |
+        uv run pytest -v --tb=short
+
+    # 5. Setup Inno Setup
     - name: Install Inno Setup
       run: choco install innosetup
 
-    # 5. Build EXE & Installer
+    # 6. Build EXE & Installer
     - name: Build with PyInstaller & Inno Setup
       run: |
-        python tooling/windows/build_windows.py
+        uv run python tooling/windows/build_windows.py
 
-
-    # 6. Upload Installer
+    # 7. Upload Installer
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: pymsg-gui-setup
-        path: dist/pymsg-gui-setup.exe
+        name: hakodesk-setup
+        path: dist/hakodesk-setup.exe
