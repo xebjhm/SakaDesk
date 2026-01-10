@@ -33,6 +33,8 @@ def find_iscc():
             
     return None
 
+def build_exe():
+    """Build the executable with PyInstaller."""
     print("--- Building Executable with PyInstaller ---")
     
     # Ensure frontend is built first? 
@@ -67,8 +69,8 @@ def build_installer():
 def main():
     build_exe()
     build_installer()
-    print(f"--- SUCCESS ---")
-    print(f"Installer created at: {DIST_DIR / 'HakoDesk-Setup.exe'}")
+    print("--- SUCCESS ---")
+    print(f"Installer created at: {DIST_DIR / 'hakodesk-setup.exe'}")
 
 if __name__ == "__main__":
     main()
