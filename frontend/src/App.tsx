@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Message, MemberInfo } from './types'
-import { MessageBubble } from './components/MessageBubble'
 import { Sidebar } from './components/Sidebar'
+import { ChatList } from './components/ChatList'
 import { LoginPage } from './pages/LoginPage'
 import { Menu, Loader2, ChevronUp, ChevronDown, Download, FolderOpen } from 'lucide-react'
 import { DiagnosticsModal } from './components/DiagnosticsModal'
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
+import { VirtuosoHandle } from 'react-virtuoso'
 
 interface GroupMessage extends Message {
     member_id?: string;
@@ -81,10 +81,8 @@ function App() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const messagesPathRef = useRef<string | null>(null); // Track which chat messages belong to
 
-    // Pagination - simple limit-based
-    const [msgLimit, setMsgLimit] = useState(50);
+    // Message count tracking
     const [totalMessages, setTotalMessages] = useState(0);
-    const [isLoadingMore, setIsLoadingMore] = useState(false);
 
     // Unread state
     const [readState, setReadState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
@@ -100,11 +98,7 @@ function App() {
     const [showSyncModal, setShowSyncModal] = useState(false);
     const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const isPollingRef = useRef(false);
-    const isInitialLoadRef = useRef(false); // Track initial load for scrolling
-    const previousGroupDirRef = useRef<string | undefined>();
     const visibleRangeRef = useRef<{ startIndex: number; endIndex: number }>({ startIndex: 0, endIndex: 0 });
-    const pendingScrollTopRef = useRef(false); // Flag for Home key scroll after load
-    const pendingScrollToUnreadRef = useRef(false); // Flag for arrow button scroll after load
 
     // Nav button state
     const [hasUnreadAbove, setHasUnreadAbove] = useState(false);
@@ -229,7 +223,7 @@ function App() {
                     if (blocking) setShowSyncModal(false);
                     // Refresh current chat if open
                     if (selectedGroupDir) {
-                        fetchMessages(selectedGroupDir, isGroupChat, msgLimit);
+                        fetchMessages(selectedGroupDir, isGroupChat);
                     }
                 } else if (data.state === 'complete') {
                     // Show completion state, keep modal open briefly
@@ -250,7 +244,7 @@ function App() {
                     isPollingRef.current = false; // Stop polling
                     // Refresh current chat
                     if (selectedGroupDir) {
-                        fetchMessages(selectedGroupDir, isGroupChat, msgLimit);
+                        fetchMessages(selectedGroupDir, isGroupChat);
                     }
                     // Auto-close after 2 seconds
                     if (blocking) {
@@ -291,20 +285,21 @@ function App() {
         check();
     };
 
-    // === FETCH MESSAGES ===
-    const fetchMessages = async (path: string, groupChat: boolean, limit: number, lastReadId: number = 0) => {
+    // === FETCH MESSAGES (Load All) ===
+    const fetchMessages = async (path: string, groupChat: boolean, lastReadId: number = 0) => {
         setLoading(true);
         setError(null);
         try {
             let data;
+            // limit=0 means load all messages
+            const params = new URLSearchParams({
+                limit: '0',
+                last_read_id: String(lastReadId),
+            });
+
             if (groupChat) {
-                // Ensure we handle URL encoding correctly for paths
-                // If path is absolute (C:\...), encodeURIComponent handles it, 
-                // but backend needs to handle it safely.
-                const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?limit=${limit}&last_read_id=${lastReadId}`);
+                const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?${params}`);
                 if (!res.ok) {
-                    // Check if it's a "Failed to load" due to path issues (e.g. Windows)
-                    // We can show a more specific error or hint to check diagnostics
                     const text = await res.text();
                     try {
                         const errJson = JSON.parse(text);
@@ -323,7 +318,7 @@ function App() {
                 setMaxMessageId(data.max_message_id || 0);
                 messagesPathRef.current = path;
             } else {
-                const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&limit=${limit}&last_read_id=${lastReadId}`);
+                const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
                 if (!res.ok) throw new Error("Failed to load");
                 data = await res.json();
                 const memberInfo = data.member as MemberInfo;
@@ -343,165 +338,19 @@ function App() {
         }
     };
 
-    // === LOAD MORE (scroll to top) - Virtuoso handles scroll position ===
-    const loadMore = useCallback(() => {
-        if (!selectedGroupDir || isLoadingMore || loading) return;
-        if (messages.length >= totalMessages) return; // Already have all
-
-        setIsLoadingMore(true);
-        const newLimit = msgLimit + 50;
-        setMsgLimit(newLimit);
-
-        fetchMessages(selectedGroupDir, isGroupChat, newLimit).then(() => {
-            setIsLoadingMore(false);
-        });
-    }, [selectedGroupDir, isGroupChat, msgLimit, messages.length, totalMessages, isLoadingMore, loading]);
-
-    // Note: Auto-load on scroll is handled by Virtuoso's startReached callback
-
-    // View state save/restore (using message ID from Virtuoso visible range)
-    interface ViewState {
-        anchorMessageId: number | null;  // ID of first visible message
-        loadedCount: number;
-        atBottom: boolean;  // Was user at the bottom?
-    }
-
-    const saveViewState = (path: string, loadedCount: number) => {
-        // Convert virtual indices to array indices
-        // Virtuoso uses firstItemIndex = totalMessages - messages.length
-        const firstItemIndex = Math.max(0, totalMessages - messages.length);
-        const virtualStart = visibleRangeRef.current.startIndex;
-        const virtualEnd = visibleRangeRef.current.endIndex;
-
-        // Convert to array indices
-        const startIndex = virtualStart - firstItemIndex;
-        const endIndex = virtualEnd - firstItemIndex;
-
-        const anchorMessageId = messages[startIndex]?.id || null;
-        // More strict atBottom check: must be within last 3 items
-        const atBottom = endIndex >= messages.length - 3 && messages.length > 0;
-
-        const state: ViewState = {
-            anchorMessageId,
-            loadedCount,
-            atBottom
-        };
-        localStorage.setItem(`view_state_${path}`, JSON.stringify(state));
-    };
-
-    const loadViewState = (path: string): ViewState | null => {
-        try {
-            const saved = localStorage.getItem(`view_state_${path}`);
-            return saved ? JSON.parse(saved) : null;
-        } catch {
-            return null;
-        }
-    };
-
     // === CHAT SELECTION ===
     useEffect(() => {
         if (selectedGroupDir) {
-            // Save previous group's view state before switching
-            if (previousGroupDirRef.current && previousGroupDirRef.current !== selectedGroupDir) {
-                saveViewState(previousGroupDirRef.current, msgLimit);
-            }
-            previousGroupDirRef.current = selectedGroupDir;
-
-            // Load saved view state or use defaults
-            const savedState = loadViewState(selectedGroupDir);
-            const restoredLimit = savedState?.loadedCount || 50;
-
             // Load read state first to get lastReadId for API
             const storedReadState = loadReadState(selectedGroupDir);
             setReadState(storedReadState);
 
-            setMsgLimit(restoredLimit);
             setMessages([]);
-            isInitialLoadRef.current = true;
-            fetchMessages(selectedGroupDir, isGroupChat, restoredLimit, storedReadState.lastReadId);
 
+            fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
         }
     }, [selectedGroupDir, isGroupChat]);
-
-    // Scroll restoration using Virtuoso - triggers after messages load
-    useEffect(() => {
-        if (loading) return;
-        if (messages.length === 0) return;
-        if (!isInitialLoadRef.current) return;
-        if (!selectedGroupDir) return;
-
-        // Verify messages belong to current chat (prevents race condition)
-        if (messagesPathRef.current !== selectedGroupDir) {
-            return; // Don't clear flag - wait for correct messages
-        }
-
-        // Only clear flag after verification passes
-        isInitialLoadRef.current = false;
-
-        const savedState = loadViewState(selectedGroupDir);
-
-        // Use setTimeout to ensure Virtuoso is rendered
-        setTimeout(() => {
-            if (!virtuosoRef.current) {
-                return;
-            }
-
-            if (savedState?.atBottom || !savedState) {
-                virtuosoRef.current.scrollToIndex({
-                    index: messages.length - 1,
-                    behavior: 'auto'
-                });
-            } else if (savedState.anchorMessageId) {
-                const anchorIndex = messages.findIndex(m => m.id === savedState.anchorMessageId);
-                if (anchorIndex !== -1) {
-                    virtuosoRef.current.scrollToIndex({
-                        index: anchorIndex,
-                        behavior: 'auto'
-                    });
-                } else {
-                    virtuosoRef.current.scrollToIndex({
-                        index: messages.length - 1,
-                        behavior: 'auto'
-                    });
-                }
-            } else {
-                virtuosoRef.current.scrollToIndex({
-                    index: messages.length - 1,
-                    behavior: 'auto'
-                });
-            }
-        }, 50);
-
-    }, [loading, selectedGroupDir, messages.length]);
-
-    // Handle pending scroll to top (Home key)
-    useEffect(() => {
-        if (loading) return;
-        if (!pendingScrollTopRef.current) return;
-        if (messages.length < totalMessages) return; // Still loading
-
-        pendingScrollTopRef.current = false;
-        setTimeout(() => {
-            virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
-        }, 50);
-    }, [loading, messages.length, totalMessages]);
-
-    // Handle pending scroll to first unread (arrow button)
-    useEffect(() => {
-        if (loading) return;
-        if (!pendingScrollToUnreadRef.current) return;
-        if (messages.length < totalMessages) return; // Still loading
-
-        pendingScrollToUnreadRef.current = false;
-        // Find first message with id > lastReadId and not in revealedIds
-        const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
-        if (index !== -1) {
-            setTimeout(() => {
-                virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
-            }, 50);
-        }
-    }, [loading, messages, totalMessages, readState]);
 
     // Unread navigation state logic
     const updateUnreadNavState = useCallback((range?: { startIndex: number; endIndex: number }) => {
@@ -529,16 +378,8 @@ function App() {
         if (e.key === 'Home') {
             e.preventDefault();
             e.stopPropagation();
-            // If already have all messages, scroll immediately
-            if (messages.length >= totalMessages) {
-                virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
-            } else if (selectedGroupDir) {
-                // Need to load all messages first, then scroll to top
-                pendingScrollTopRef.current = true;
-                setMsgLimit(totalMessages);
-                // Directly fetch - don't rely on useEffect
-                fetchMessages(selectedGroupDir, isGroupChat, totalMessages, readState.lastReadId);
-            }
+            // All messages are already loaded, scroll to top
+            virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
         } else if (e.key === 'End') {
             e.preventDefault();
             e.stopPropagation();
@@ -588,10 +429,7 @@ function App() {
 
     const handleSelectGroup = (groupDir: string, groupChat: boolean, displayName: string) => {
         if (selectedGroupDir !== groupDir) {
-            // Save current view state before switching
-            if (selectedGroupDir) {
-                saveViewState(selectedGroupDir, msgLimit);
-            }
+            // Scroll position is automatically saved via rangeChanged (debounced)
             setSelectedGroupDir(groupDir);
             setIsGroupChat(groupChat);
             setSelectedName(displayName);
@@ -607,21 +445,12 @@ function App() {
     };
 
     const scrollToFirstUnread = useCallback(() => {
-        // If we don't have all messages loaded, first unread might be in older messages
-        // Load all messages first, then scroll
-        if (messages.length < totalMessages && selectedGroupDir) {
-            // Set a pending flag and load all messages
-            pendingScrollToUnreadRef.current = true;
-            setMsgLimit(totalMessages);
-            fetchMessages(selectedGroupDir, isGroupChat, totalMessages, readState.lastReadId);
-        } else {
-            // All messages loaded - scroll to first unread directly (inline check to avoid stale closure)
-            const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
-            if (index !== -1) {
-                virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
-            }
+        // All messages are loaded - scroll to first unread directly
+        const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
+        if (index !== -1) {
+            virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
         }
-    }, [messages, totalMessages, selectedGroupDir, isGroupChat, readState]);
+    }, [messages, readState]);
 
     const saveSettings = async (updates: Partial<AppSettings>): Promise<boolean> => {
         try {
@@ -1017,53 +846,15 @@ function App() {
                     {error && <div className="p-10 text-center text-red-500">Error: {error}</div>}
 
                     {selectedGroupDir && messages.length > 0 && (
-                        <Virtuoso
-                            ref={virtuosoRef}
-                            style={{ height: '100%' }}
-                            data={messages}
-                            firstItemIndex={Math.max(0, totalMessages - messages.length)}
-                            initialTopMostItemIndex={messages.length - 1}
-                            followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
-                            startReached={() => {
-                                if (!isLoadingMore && messages.length < totalMessages) {
-                                    loadMore();
-                                }
-                            }}
-                            rangeChanged={(range) => {
-                                updateUnreadNavState(range);
-                            }}
-                            components={{
-                                Header: () => (
-                                    messages.length < totalMessages ? (
-                                        <div className="text-center py-4">
-                                            <span className="text-xs text-gray-400 bg-white/50 px-3 py-1 rounded-full shadow-sm">
-                                                {isLoadingMore ? (
-                                                    <><Loader2 className="w-3 h-3 animate-spin inline mr-1" /> Loading older messages...</>
-                                                ) : (
-                                                    `Scroll up to load more (${messages.length} / ${totalMessages})`
-                                                )}
-                                            </span>
-                                        </div>
-                                    ) : null
-                                ),
-                            }}
-                            itemContent={(_index, msg) => {
-                                const senderInfo = getSenderInfo(msg);
-                                const isMsgUnread = isUnread(msg.id);
-
-                                return (
-                                    <div className="px-4 py-1" id={`msg-${msg.id}`}>
-                                        <MessageBubble
-                                            message={msg}
-                                            member_name={senderInfo.name}
-                                            member_avatar={senderInfo.avatar}
-                                            isUnread={isMsgUnread}
-                                            onReveal={() => revealMessage(msg.id)}
-                                            onLongPress={() => setShowRevealConfirm(true)}
-                                        />
-                                    </div>
-                                );
-                            }}
+                        <ChatList
+                            memberId={selectedGroupDir}
+                            messages={messages}
+                            getSenderInfo={getSenderInfo}
+                            isUnread={isUnread}
+                            onReveal={revealMessage}
+                            onLongPress={() => setShowRevealConfirm(true)}
+                            onRangeChanged={updateUnreadNavState}
+                            virtuosoRef={virtuosoRef}
                         />
                     )}
                 </div>
