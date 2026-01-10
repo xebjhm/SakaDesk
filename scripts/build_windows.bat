@@ -89,6 +89,16 @@ REM Unset inherited environment variables from parent 'uv run'
 set VIRTUAL_ENV=
 set UV_PROJECT_ENVIRONMENT=
 
+REM Install build dependencies (not in pyproject.toml)
+uv add --dev pyinstaller pywebview
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Failed to install build dependencies!
+    popd
+    popd
+    pause
+    exit /b 1
+)
+
 uv run python tooling/windows/build_windows.py
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Build failed!
