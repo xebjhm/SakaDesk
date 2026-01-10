@@ -23,6 +23,8 @@ export interface Message {
     is_favorite: boolean;
     content: string | null;
     media_file?: string;
+    width?: number;  // Media dimensions (for picture/video)
+    height?: number;
     _raw_type?: string;
 }
 
