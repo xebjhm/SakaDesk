@@ -242,18 +242,21 @@ class SyncService:
                 
                 if media_queue:
                     logger.info(f"Downloading {media_count} media files...")
-                    
+
                     # Track accumulation manually to ensure we report honest numbers
                     total_successed = 0
-                    
+
+                    # Collect all dimensions for batch update
+                    all_dimensions_by_dir = {}
+
                     # CLI-style: Process in chunks of 50
                     chunk_size = 50
                     for i in range(0, media_count, chunk_size):
                         chunk = media_queue[i:i+chunk_size]
-                        
+
                         # Use list to capture successes from callback scope
-                        chunk_stats = [0] 
-                        
+                        chunk_stats = [0]
+
                         async def chunk_cb(c, t):
                             chunk_stats[0] = c
                             # Show accumulated specific success count
@@ -262,11 +265,22 @@ class SyncService:
                             current_total = total_successed + c
                             progress.set_completed(current_total, detail=f"{current_total:,} files")
 
-                        await manager.process_media_queue(session, chunk, concurrency=5, progress_callback=chunk_cb)
-                        
+                        chunk_dimensions = await manager.process_media_queue(session, chunk, concurrency=5, progress_callback=chunk_cb)
+
+                        # Merge chunk dimensions into all_dimensions_by_dir
+                        for member_dir, dims in chunk_dimensions.items():
+                            if member_dir not in all_dimensions_by_dir:
+                                all_dimensions_by_dir[member_dir] = {}
+                            all_dimensions_by_dir[member_dir].update(dims)
+
                         # Add chunk's actual successes to total
                         total_successed += chunk_stats[0]
-                        
+
+                    # Update messages.json files with extracted dimensions
+                    for member_dir, dims in all_dimensions_by_dir.items():
+                        messages_file = member_dir / "messages.json"
+                        await manager.update_message_dimensions(messages_file, dims)
+
                 else:
                     logger.info("No new media to download.")
                 
