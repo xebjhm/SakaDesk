@@ -21,6 +21,10 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
+REM Ensure Python 3.12 is available (pythonnet doesn't support 3.14 yet)
+echo Ensuring Python 3.12 is available...
+uv python install 3.12 >nul 2>&1
+
 echo [1/5] Navigating to project...
 pushd "%PROJECT_DIR%"
 if %ERRORLEVEL% neq 0 (
@@ -88,6 +92,16 @@ pushd "%WORKSPACE_APP%"
 REM Unset inherited environment variables from parent 'uv run'
 set VIRTUAL_ENV=
 set UV_PROJECT_ENVIRONMENT=
+
+REM Pin to Python 3.12 (pythonnet doesn't support 3.14 yet)
+uv python pin 3.12
+if %ERRORLEVEL% neq 0 (
+    echo ERROR: Failed to pin Python 3.12!
+    popd
+    popd
+    pause
+    exit /b 1
+)
 
 REM Install build dependencies (not in pyproject.toml)
 uv add --dev pyinstaller pywebview
