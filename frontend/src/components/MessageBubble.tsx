@@ -149,19 +149,18 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-2">
+                            <div className="rounded-lg overflow-hidden mb-2 min-h-[200px] bg-gray-50 flex items-center justify-center">
                                 <img
                                     src={mediaUrl}
                                     alt="Attachment"
                                     className="w-full h-auto object-contain max-h-[500px]"
-                                    loading="lazy"
                                 />
                             </div>
                         )}
 
                         {/* Video */}
                         {message.type === 'video' && mediaUrl && (
-                            <div className="rounded-lg overflow-hidden mb-2 bg-black">
+                            <div className="rounded-lg overflow-hidden mb-2 bg-black min-h-[200px]">
                                 <video
                                     src={mediaUrl}
                                     className="w-full max-h-[500px] object-contain"
