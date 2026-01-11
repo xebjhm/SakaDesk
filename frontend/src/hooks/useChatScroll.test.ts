@@ -10,9 +10,9 @@ const createMessage = (id: number): Message => ({
   type: 'text',
   is_favorite: false,
   content: `Message ${id}`,
-  media_file: null,
-  width: null,
-  height: null,
+  media_file: undefined,
+  width: undefined,
+  height: undefined,
 })
 
 describe('useChatScroll hook', () => {
