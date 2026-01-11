@@ -57,21 +57,26 @@ jobs:
         uv run python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
         uv run python -c "import keyring; print('Keyring OK:', keyring.__file__)"
 
-    # 4. Run Tests
-    - name: Run Tests
+    # 4. Run Tests with Coverage
+    - name: Run Tests with Coverage
       run: |
-        uv run pytest -v --tb=short
+        uv run pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=50
 
-    # 5. Setup Inno Setup
+    # 5. Type Check with mypy
+    - name: Type Check with mypy
+      run: |
+        uv run mypy backend/
+
+    # 6. Setup Inno Setup
     - name: Install Inno Setup
       run: choco install innosetup
 
-    # 6. Build EXE & Installer
+    # 7. Build EXE & Installer
     - name: Build with PyInstaller & Inno Setup
       run: |
         uv run python tooling/windows/build_windows.py
 
-    # 7. Upload Installer
+    # 8. Upload Installer
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
