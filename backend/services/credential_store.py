@@ -170,9 +170,10 @@ class FileCredentialStore(CredentialStore):
     def _load_file(self) -> Dict[str, Any]:
         if self._file_path.exists():
             try:
-                with open(self._file_path, 'r') as f:
-                    return json.load(f)
-            except:
+                with open(self._file_path, 'r', encoding='utf-8') as f:
+                    result: Dict[str, Any] = json.load(f)
+                    return result
+            except Exception:
                 return {}
         return {}
     

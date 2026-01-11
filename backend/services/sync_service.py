@@ -7,6 +7,7 @@ import aiofiles
 import traceback
 from pathlib import Path
 from datetime import datetime
+from typing import Any
 from pyhako import Client, Group, sanitize_name, SyncManager
 from pyhako.utils import get_media_extension
 from backend.api.progress import progress
@@ -197,7 +198,7 @@ class SyncService:
                 self.output_dir.mkdir(parents=True, exist_ok=True)
                 
                 # Global Media Queue
-                media_queue = []
+                media_queue: list[dict[str, Any]] = []
                 
                 # Phase 2: Sync Members (Parallel)
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
@@ -247,7 +248,7 @@ class SyncService:
                     total_successed = 0
 
                     # Collect all dimensions for batch update
-                    all_dimensions_by_dir = {}
+                    all_dimensions_by_dir: dict[Path, dict[str, Any]] = {}
 
                     # CLI-style: Process in chunks of 50
                     chunk_size = 50

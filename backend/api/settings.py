@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
 
 from backend.services.platform import get_settings_path, get_app_data_dir
 
@@ -23,13 +23,14 @@ def get_default_output_dir() -> str:
     """Returns the default output directory path."""
     return str(Path.cwd() / "output")
 
-def load_config() -> dict:
+def load_config() -> dict[str, Any]:
     """Load configuration from file."""
     if SETTINGS_FILE.exists():
         try:
-            with open(SETTINGS_FILE, 'r') as f:
-                return json.load(f)
-        except:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                result: dict[str, Any] = json.load(f)
+                return result
+        except Exception:
             pass
     return {}
 
@@ -126,14 +127,14 @@ async def select_folder():
     # On linux this might be tricky if no X11/Wayland context in this specific process,
     # but for a GUI app it should be fine.
     
-    selected_path = [None]
-    
-    def open_dialog():
+    selected_path: list[Optional[str]] = [None]
+
+    def open_dialog() -> None:
         try:
             root = tk.Tk()
             root.withdraw() # Hide the main window
             root.attributes('-topmost', True) # Bring to front
-            
+
             folder = filedialog.askdirectory(title="Select Output Folder")
             if folder:
                 selected_path[0] = folder

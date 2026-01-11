@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 DEV_MODE = os.environ.get("HAKODESK_DEV_MODE", "false").lower() == "true"
 
 
-def get_system() -> Literal["Windows", "Linux", "Darwin"]:
+def get_system() -> str:
     """Get the current operating system."""
     return platform.system()
 
