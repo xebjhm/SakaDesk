@@ -50,6 +50,16 @@ class TestOSDetection:
         assert is_windows() is False
 
 
+class TestTestModeDetection:
+    """Test test mode detection."""
+
+    def test_is_test_mode_returns_bool(self):
+        """is_test_mode() should return a boolean."""
+        from backend.services.platform import is_test_mode
+        result = is_test_mode()
+        assert isinstance(result, bool)
+
+
 class TestDevModeDetection:
     """Test development mode detection."""
 
