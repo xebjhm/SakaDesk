@@ -266,8 +266,19 @@ function App() {
                         detail_extra: data.detail_extra
                     });
                     setTimeout(check, 1000);
+                } else if (data.state === 'error') {
+                    // Check for session expired error - redirect to login
+                    if (data.detail === 'SESSION_EXPIRED') {
+                        setIsAuthenticated(false);
+                        setAuthError("Session expired. Please login again.");
+                        hasStartedSyncRef.current = false;  // Allow sync after re-login
+                    } else {
+                        setSyncProgress({ state: 'error', detail: data.detail || 'Sync error' });
+                    }
+                    isPollingRef.current = false;
+                    if (blocking) setShowSyncModal(false);
                 } else {
-                    setSyncProgress({ state: 'error', detail: data.detail || 'Sync error' });
+                    setSyncProgress({ state: 'error', detail: data.detail || 'Unknown error' });
                     isPollingRef.current = false;
                     if (blocking) setShowSyncModal(false);
                 }

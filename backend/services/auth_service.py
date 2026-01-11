@@ -1,35 +1,41 @@
 """
 Authentication Service for HakoDesk
-Uses secure credential storage via the credential_store abstraction.
+
+Uses pyhako's TokenManager for credential storage (same as CLI).
+This ensures consistent behavior across CLI and GUI:
+- Windows: Windows Credential Manager (WCM)
+- Linux: Plaintext fallback (development only)
 """
 import json
 import base64
 import logging
 from pathlib import Path
 from datetime import datetime
-from pyhako import BrowserAuth
+from pyhako import BrowserAuth, Group
+from pyhako.credentials import TokenManager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
-from backend.services.credential_store import get_credential_store, LegacyFileCredentialStore
 
 logger = logging.getLogger(__name__)
 
 
 class AuthService:
     def __init__(self):
-        self._store = get_credential_store()
         self._session_dir = get_session_dir()
-        
-        # Check for legacy config.json and migrate if needed
-        self._migrate_legacy_config()
-    
-    def _migrate_legacy_config(self):
-        """Migrate from old config.json if exists."""
-        legacy_path = Path("config.json")
-        if legacy_path.exists():
-            legacy_store = LegacyFileCredentialStore(legacy_path)
-            if legacy_store.migrate_if_exists():
-                logger.info("Successfully migrated credentials from legacy config.json")
+        self._group = Group.HINATAZAKA46  # Default group
+
+        # Use pyhako's TokenManager (same as CLI) - handles WCM on Windows
+        try:
+            self._token_manager = TokenManager()
+        except Exception as e:
+            logger.warning(f"TokenManager init failed: {e}")
+            self._token_manager = None
+
+    def _get_token_manager(self) -> TokenManager:
+        """Get or create TokenManager."""
+        if self._token_manager is None:
+            self._token_manager = TokenManager()
+        return self._token_manager
     
     def _is_token_expired(self, token: str) -> bool:
         """Check if JWT token is expired."""
@@ -59,70 +65,86 @@ class AuthService:
                 "storage_type": "test_mode"
             }
 
-        config = self._store.load_config()
-        
-        if config:
-            token = config.get('access_token')
-            if token:
-                if self._is_token_expired(token):
+        try:
+            tm = self._get_token_manager()
+            token_data = tm.load_session(self._group.value)
+
+            if token_data:
+                token = token_data.get('access_token')
+                if token:
+                    if self._is_token_expired(token):
+                        return {
+                            "is_authenticated": False,
+                            "token_expired": True,
+                            "message": "Token expired. Please re-login."
+                        }
                     return {
-                        "is_authenticated": False,
-                        "token_expired": True,
-                        "message": "Token expired. Please re-login."
+                        "is_authenticated": True,
+                        "app_id": token_data.get('x-talk-app-id'),
+                        "storage_type": "secure" if not is_dev_mode() else "development"
                     }
-                return {
-                    "is_authenticated": True,
-                    "app_id": config.get('x-talk-app-id'),
-                    "storage_type": "secure" if not is_dev_mode() else "development"
-                }
-        
+        except Exception as e:
+            logger.error(f"Failed to check auth status: {e}")
+
         return {"is_authenticated": False}
     
     async def login_with_browser(self):
         """Launch browser for OAuth login."""
         try:
             logger.info(f"Starting browser login, session dir: {self._session_dir}")
-            
+
             creds = await BrowserAuth.login(
-                group="hinatazaka46",
+                group=self._group,
                 headless=False,
                 user_data_dir=str(self._session_dir),
                 channel="chrome"
             )
-            
+
             if creds:
                 self._save_credentials(creds)
-                logger.info("Login successful, credentials saved securely")
+                logger.info("Login successful, credentials saved to TokenManager")
                 return True
-                
+
         except Exception as e:
             logger.error(f"Login error: {e}")
             return False
-        
+
         return False
-    
+
     def _save_credentials(self, creds: dict):
-        """Save credentials to secure storage."""
-        # Load existing config to preserve settings
-        config = self._store.load_config()
-        
-        # Update with new credentials
-        config.update(creds)
-        config['session_dir'] = str(self._session_dir)
-        
-        # Save to secure storage
-        self._store.save_config(config)
-        
-        logger.info("Credentials saved to secure storage")
-    
+        """Save credentials to pyhako's TokenManager (CLI pattern)."""
+        try:
+            tm = self._get_token_manager()
+            tm.save_session(
+                self._group.value,
+                creds.get('access_token'),
+                creds.get('refresh_token'),
+                creds.get('cookies')
+            )
+            logger.info(f"Credentials saved to TokenManager for {self._group.value}")
+        except Exception as e:
+            logger.error(f"Failed to save credentials: {e}")
+            raise
+
     def logout(self):
         """Clear all credentials."""
-        self._store.clear_all()
-        logger.info("Credentials cleared")
-    
+        try:
+            tm = self._get_token_manager()
+            tm.delete_session(self._group.value)
+            logger.info("Credentials cleared from TokenManager")
+        except Exception as e:
+            logger.error(f"Failed to clear credentials: {e}")
+
     def get_config(self) -> dict:
         """Get the current config (for sync service)."""
         if is_test_mode():
             from backend.fixtures.test_data import TEST_AUTH_CONFIG
             return TEST_AUTH_CONFIG
-        return self._store.load_config()
+
+        try:
+            tm = self._get_token_manager()
+            token_data = tm.load_session(self._group.value)
+            return token_data or {}
+        except Exception as e:
+            logger.error(f"Failed to load config: {e}")
+            return {}
