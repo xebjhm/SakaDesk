@@ -13,6 +13,14 @@ logger = logging.getLogger(__name__)
 # Environment variable to force dev mode
 DEV_MODE = os.environ.get("HAKODESK_DEV_MODE", "false").lower() == "true"
 
+# Environment variable to enable test mode (bypasses real auth)
+TEST_MODE = os.environ.get("HAKODESK_TEST_MODE", "false").lower() == "true"
+
+
+def is_test_mode() -> bool:
+    """Check if running in test mode (for E2E testing)."""
+    return TEST_MODE
+
 
 def get_system() -> str:
     """Get the current operating system."""

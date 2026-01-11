@@ -24,7 +24,7 @@ import os
 import re
 from typing import Optional, List, Dict, Any
 
-from backend.services.platform import get_settings_path
+from backend.services.platform import get_settings_path, is_test_mode
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -103,6 +103,10 @@ async def get_groups():
     PyHako structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
     """
+    if is_test_mode():
+        from backend.fixtures.test_data import TEST_GROUPS
+        return TEST_GROUPS
+
     output_dir = get_output_dir()
     if not output_dir.exists():
         logger.warning(f"Output directory does not exist: {output_dir}")
@@ -233,6 +237,10 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
     - limit: Maximum number of messages to return (returns latest messages)
     - last_read_id: For calculating unread count
     """
+    if is_test_mode():
+        from backend.fixtures.test_data import get_test_messages_response
+        return get_test_messages_response(path, last_read_id)
+
     output_dir = get_output_dir()
     safe_path = validate_path_within_dir(output_dir, path)
 

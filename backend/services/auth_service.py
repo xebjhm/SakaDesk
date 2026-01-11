@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 from pyhako import BrowserAuth
 
-from backend.services.platform import get_session_dir, is_dev_mode
+from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.credential_store import get_credential_store, LegacyFileCredentialStore
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,15 @@ class AuthService:
     
     async def get_status(self):
         """Check authentication status."""
+        # Test mode: always return authenticated with test config
+        if is_test_mode():
+            from backend.fixtures.test_data import TEST_AUTH_CONFIG
+            return {
+                "is_authenticated": True,
+                "app_id": TEST_AUTH_CONFIG.get("x-talk-app-id"),
+                "storage_type": "test_mode"
+            }
+
         config = self._store.load_config()
         
         if config:
@@ -113,4 +122,7 @@ class AuthService:
     
     def get_config(self) -> dict:
         """Get the current config (for sync service)."""
+        if is_test_mode():
+            from backend.fixtures.test_data import TEST_AUTH_CONFIG
+            return TEST_AUTH_CONFIG
         return self._store.load_config()
