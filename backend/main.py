@@ -10,10 +10,10 @@ import sys
 
 # Force UTF-8 for stdout/stderr to prevent encoding errors on Windows
 # This keeps 'print()' calls in dependencies (like pymsg) safe even if console is hidden/CP1252
-if sys.stdout:
-    sys.stdout.reconfigure(encoding='utf-8')
-if sys.stderr:
-    sys.stderr.reconfigure(encoding='utf-8')
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
 
 # Configure logging
 log_dir = get_logs_dir()

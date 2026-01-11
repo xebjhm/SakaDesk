@@ -217,7 +217,7 @@ async def get_groups():
             })
 
     # Sort: active first, then by group ID
-    groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(g['id'])))
+    groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(str(g['id']))))
     return groups
 
 
