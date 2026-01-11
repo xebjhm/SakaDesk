@@ -31,6 +31,11 @@ jobs:
         npm ci
         npm run build
 
+    - name: Run Frontend Tests
+      working-directory: ./frontend
+      run: |
+        npm run test:run
+
     # 2. Setup Python and uv
     - name: Set up Python
       uses: actions/setup-python@v5
