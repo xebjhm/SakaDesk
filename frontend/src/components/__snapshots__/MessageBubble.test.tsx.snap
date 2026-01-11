@@ -1,0 +1,191 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MessageBubble component > Snapshots > should match snapshot for picture message 1`] = `
+<div
+  class="flex gap-3 mb-6 relative"
+>
+  <div
+    class="flex-shrink-0"
+  >
+    <div
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden"
+    >
+      <img
+        alt="Test User"
+        class="w-full h-full object-cover"
+        src="/avatar.jpg"
+      />
+    </div>
+  </div>
+  <div
+    class="flex flex-col max-w-[80%]"
+  >
+    <div
+      class="flex items-center gap-2 mb-1"
+    >
+      <span
+        class="text-sm text-gray-700 font-medium"
+      >
+        Test User
+      </span>
+      <span
+        class="text-xs text-gray-400"
+      >
+        2024/01/15 18:30
+      </span>
+    </div>
+    <div
+      class="relative"
+    >
+      <div
+        class="bg-white rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 p-3 overflow-hidden"
+      >
+        <div
+          class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
+          style="width: 320px; height: 240px;"
+        >
+          <img
+            alt="Attachment"
+            class="w-full h-full object-contain"
+            src="/api/content/media/path/to/photo.jpg"
+          />
+        </div>
+        <div
+          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+        >
+          <span>
+            Hello world
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`MessageBubble component > Snapshots > should match snapshot for text message 1`] = `
+<div
+  class="flex gap-3 mb-6 relative"
+>
+  <div
+    class="flex-shrink-0"
+  >
+    <div
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden"
+    >
+      <img
+        alt="Test User"
+        class="w-full h-full object-cover"
+        src="/avatar.jpg"
+      />
+    </div>
+  </div>
+  <div
+    class="flex flex-col max-w-[80%]"
+  >
+    <div
+      class="flex items-center gap-2 mb-1"
+    >
+      <span
+        class="text-sm text-gray-700 font-medium"
+      >
+        Test User
+      </span>
+      <span
+        class="text-xs text-gray-400"
+      >
+        2024/01/15 18:30
+      </span>
+    </div>
+    <div
+      class="relative"
+    >
+      <div
+        class="bg-white rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 p-3 overflow-hidden"
+      >
+        <div
+          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+        >
+          <span>
+            Hello world
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`MessageBubble component > Snapshots > should match snapshot for unread message with overlay 1`] = `
+<div
+  class="flex gap-3 mb-6 relative"
+>
+  <div
+    class="flex-shrink-0"
+  >
+    <div
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden"
+    >
+      <img
+        alt="Test User"
+        class="w-full h-full object-cover"
+        src="/avatar.jpg"
+      />
+    </div>
+  </div>
+  <div
+    class="flex flex-col max-w-[80%]"
+  >
+    <div
+      class="flex items-center gap-2 mb-1"
+    >
+      <span
+        class="text-sm text-gray-700 font-medium"
+      >
+        Test User
+      </span>
+      <span
+        class="text-xs text-gray-400"
+      >
+        2024/01/15 18:30
+      </span>
+    </div>
+    <div
+      class="relative"
+    >
+      <div
+        class="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
+        style="background-color: rgb(139, 184, 214);"
+      >
+        <svg
+          class="w-8 h-8 text-white/90"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+          />
+        </svg>
+      </div>
+      <div
+        class="bg-white rounded-2xl shadow-sm border border-gray-100 transition-all duration-300 p-3 overflow-hidden opacity-0 pointer-events-none"
+      >
+        <div
+          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+        >
+          <span>
+            Hello world
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
