@@ -59,3 +59,51 @@ sync_state.json
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Testing / Coverage
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+frontend/coverage/
+frontend/test-results/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Logs
+*.log
+logs/
+
+# Local development
+.env.local
+*.local
+
+# Playwright
+frontend/playwright-report/
+frontend/playwright/.cache/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
