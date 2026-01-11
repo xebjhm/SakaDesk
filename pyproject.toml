@@ -6,7 +6,7 @@ requires-python = ">=3.9"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pyhako",
+    "pyhako>=0.1.1",
     "python-multipart",
     "aiofiles",
     "keyring",
