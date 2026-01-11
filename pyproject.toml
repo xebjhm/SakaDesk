@@ -23,7 +23,44 @@ dev = [
     "httpx>=0.28.1",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
+    "pytest-cov>=6.0.0",
+    "mypy>=1.14.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "strict"
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["backend/__pycache__/*", "tests/*"]
+
+[tool.coverage.report]
+fail_under = 50
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+explicit_package_bases = true
+disable_error_code = ["import-untyped"]
+exclude = [
+    "tests/",
+    ".venv/",
+]
+
+[[tool.mypy.overrides]]
+module = "backend.*"
+disallow_untyped_defs = false
+check_untyped_defs = true
 
 # Development server configuration
 # Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*"
