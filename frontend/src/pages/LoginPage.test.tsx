@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse, delay } from 'msw'
+import { server } from '../__tests__/mocks/server'
 import { LoginPage } from './LoginPage'
 
 describe('LoginPage component', () => {
@@ -10,7 +12,6 @@ describe('LoginPage component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(global.fetch).mockReset()
   })
 
   it('should render login button', () => {
@@ -25,10 +26,11 @@ describe('LoginPage component', () => {
   })
 
   it('should call onLoginSuccess when login succeeds', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ success: true }),
-    } as Response)
+    server.use(
+      http.post('/api/auth/login', () => {
+        return HttpResponse.json({ success: true })
+      })
+    )
 
     render(<LoginPage {...defaultProps} />)
 
@@ -41,8 +43,12 @@ describe('LoginPage component', () => {
   })
 
   it('should show loading state while logging in', async () => {
-    // Make fetch hang indefinitely
-    vi.mocked(global.fetch).mockImplementation(() => new Promise(() => {}))
+    server.use(
+      http.post('/api/auth/login', async () => {
+        await delay('infinite')
+        return HttpResponse.json({ success: true })
+      })
+    )
 
     render(<LoginPage {...defaultProps} />)
 
@@ -53,7 +59,11 @@ describe('LoginPage component', () => {
   })
 
   it('should display error message on login failure', async () => {
-    vi.mocked(global.fetch).mockRejectedValueOnce(new Error('Network error'))
+    server.use(
+      http.post('/api/auth/login', () => {
+        return HttpResponse.error()
+      })
+    )
 
     render(<LoginPage {...defaultProps} />)
 
@@ -61,14 +71,16 @@ describe('LoginPage component', () => {
     await userEvent.click(loginButton)
 
     await waitFor(() => {
-      expect(screen.getByText(/Network error/i)).toBeInTheDocument()
+      expect(screen.getByText(/Failed to fetch/i)).toBeInTheDocument()
     })
   })
 
   it('should display error when response is not ok', async () => {
-    vi.mocked(global.fetch).mockResolvedValueOnce({
-      ok: false,
-    } as Response)
+    server.use(
+      http.post('/api/auth/login', () => {
+        return new HttpResponse(null, { status: 401 })
+      })
+    )
 
     render(<LoginPage {...defaultProps} />)
 
@@ -86,7 +98,12 @@ describe('LoginPage component', () => {
   })
 
   it('should disable button while loading', async () => {
-    vi.mocked(global.fetch).mockImplementation(() => new Promise(() => {}))
+    server.use(
+      http.post('/api/auth/login', async () => {
+        await delay('infinite')
+        return HttpResponse.json({ success: true })
+      })
+    )
 
     render(<LoginPage {...defaultProps} />)
 
