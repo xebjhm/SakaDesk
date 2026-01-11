@@ -10,9 +10,9 @@ const createMessage = (overrides: Partial<Message> = {}): Message => ({
   timestamp: '2024-01-15T10:30:00Z',
   type: 'text',
   is_favorite: false,
-  media_file: null,
-  width: null,
-  height: null,
+  media_file: undefined,
+  width: undefined,
+  height: undefined,
   ...overrides,
 })
 
@@ -116,8 +116,8 @@ describe('MessageBubble component', () => {
 
   it('should render fallback when no content or media', () => {
     const emptyMessage = createMessage({
-      content: null,
-      media_file: null,
+      content: undefined,
+      media_file: undefined,
     })
     render(<MessageBubble {...defaultProps} message={emptyMessage} />)
 
