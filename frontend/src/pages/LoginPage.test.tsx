@@ -118,4 +118,16 @@ describe('LoginPage component', () => {
     render(<LoginPage {...defaultProps} />)
     expect(screen.getByText(/Your credentials are saved locally/i)).toBeInTheDocument()
   })
+
+  describe('Snapshots', () => {
+    it('should match snapshot for default state', () => {
+      const { container } = render(<LoginPage {...defaultProps} />)
+      expect(container.firstChild).toMatchSnapshot()
+    })
+
+    it('should match snapshot with error state', () => {
+      const { container } = render(<LoginPage {...defaultProps} initialError="Session expired" />)
+      expect(container.firstChild).toMatchSnapshot()
+    })
+  })
 })

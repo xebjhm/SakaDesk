@@ -149,4 +149,27 @@ describe('MessageBubble component', () => {
     const mediaImage = images.find(img => img.getAttribute('src')?.includes('my%20photo.jpg'))
     expect(mediaImage).toBeInTheDocument()
   })
+
+  describe('Snapshots', () => {
+    it('should match snapshot for text message', () => {
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(container.firstChild).toMatchSnapshot()
+    })
+
+    it('should match snapshot for picture message', () => {
+      const pictureMessage = createMessage({
+        type: 'picture',
+        media_file: 'path/to/photo.jpg',
+        width: 800,
+        height: 600,
+      })
+      const { container } = render(<MessageBubble {...defaultProps} message={pictureMessage} />)
+      expect(container.firstChild).toMatchSnapshot()
+    })
+
+    it('should match snapshot for unread message with overlay', () => {
+      const { container } = render(<MessageBubble {...defaultProps} isUnread={true} />)
+      expect(container.firstChild).toMatchSnapshot()
+    })
+  })
 })
