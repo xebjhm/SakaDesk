@@ -2,7 +2,9 @@ name: Build Windows Exe
 
 on:
   push:
-    branches: [ "*" ]
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -11,13 +13,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-
-    # Also checkout pyhako since it's a dependency
-    - name: Checkout pyhako
-      uses: actions/checkout@v4
-      with:
-        repository: xtorker/PyHako
-        path: PyHako
 
     # 1. Setup Node & Build Frontend
     - name: Use Node.js
@@ -57,30 +52,30 @@ jobs:
       with:
         version: "latest"
 
-    # 3. Install Python Deps with uv
+    # 3. Install Python Deps with uv (using PyPI pyhako)
     - name: Install Dependencies
       run: |
-        # Sync project dependencies
-        uv sync
+        # Sync project dependencies (ignore local sources, use PyPI)
+        uv sync --no-sources
 
         # Install build tools
         uv add --dev pyinstaller pywebview playwright
 
         # Verify installations
-        uv run python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
-        uv run python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
-        uv run python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
-        uv run python -c "import keyring; print('Keyring OK:', keyring.__file__)"
+        uv run --no-sources python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
+        uv run --no-sources python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
+        uv run --no-sources python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
+        uv run --no-sources python -c "import keyring; print('Keyring OK:', keyring.__file__)"
 
     # 4. Run Tests with Coverage
     - name: Run Tests with Coverage
       run: |
-        uv run pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=50
+        uv run --no-sources pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=50
 
     # 5. Type Check with mypy
     - name: Type Check with mypy
       run: |
-        uv run mypy backend/
+        uv run --no-sources mypy backend/
 
     # 6. Setup Inno Setup
     - name: Install Inno Setup
@@ -89,7 +84,7 @@ jobs:
     # 7. Build EXE & Installer
     - name: Build with PyInstaller & Inno Setup
       run: |
-        uv run python tooling/windows/build_windows.py
+        uv run --no-sources python tooling/windows/build_windows.py
 
     # 8. Upload Installer
     - name: Upload Build Artifact
