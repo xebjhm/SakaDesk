@@ -10,7 +10,10 @@
         "preview": "vite preview",
         "test": "vitest",
         "test:run": "vitest run",
-        "test:coverage": "vitest run --coverage"
+        "test:coverage": "vitest run --coverage",
+        "test:e2e": "playwright test",
+        "test:e2e:ui": "playwright test --ui",
+        "test:e2e:headed": "playwright test --headed"
     },
     "dependencies": {
         "clsx": "^2.1.0",
@@ -23,6 +26,7 @@
         "tailwind-merge": "^2.2.1"
     },
     "devDependencies": {
+        "@playwright/test": "^1.57.0",
         "@testing-library/jest-dom": "^6.9.1",
         "@testing-library/react": "^16.3.1",
         "@testing-library/user-event": "^14.6.1",
