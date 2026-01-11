@@ -3,6 +3,7 @@ Sync API endpoints using thread-safe SyncProgress tracker.
 """
 import logging
 from fastapi import APIRouter, HTTPException
+from pyhako import SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.api.progress import progress
 import asyncio
@@ -17,6 +18,10 @@ async def run_sync_task(include_inactive: bool, force_resync: bool):
     """Wrapper to run sync in background properly."""
     try:
         await sync_service.start_sync(include_inactive, force_resync)
+    except SessionExpiredError:
+        # Session expired - set specific error for frontend to detect
+        logger.warning("Sync failed: Session expired")
+        progress.error("SESSION_EXPIRED")
     except Exception as e:
         logger.error(f"Background sync error: {e}")
         progress.error(str(e))
