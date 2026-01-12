@@ -6,13 +6,22 @@ interface SystemInfo {
     os: string;
     os_release: string;
     python_version: string;
+    app_version: string;
     app_data_dir: string;
     settings_path: string;
     is_windows: boolean;
 }
 
+interface AuthStatus {
+    has_token: boolean;
+    token_expires_in?: string;
+    token_expiry_seconds?: number;
+    groups_configured: string[];
+}
+
 interface DiagnosticsData {
     system: SystemInfo;
+    auth_status: AuthStatus;
     config_state: Record<string, any>;
     logs: string[];
 }
@@ -97,6 +106,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                     <div className="space-y-1">
                                         <p className="text-sm font-medium text-gray-900">{data.system.os} {data.system.os_release}</p>
                                         <p className="text-xs text-gray-500">Python {data.system.python_version}</p>
+                                        <p className="text-xs text-gray-500">HakoDesk v{data.system.app_version}</p>
                                         <p className="text-xs text-gray-500 font-mono mt-1 break-all">{data.system.app_data_dir}</p>
                                     </div>
                                 </div>
@@ -116,6 +126,37 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                 {data.config_state.output_dir_configured ? 'Set' : 'Missing'}
                                             </span>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Auth Status */}
+                            <div className="bg-gray-50 p-4 rounded-lg">
+                                <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Authentication</h4>
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-gray-600">Token</span>
+                                        {data.auth_status.has_token ?
+                                            <CheckCircle2 className="w-4 h-4 text-green-500" /> :
+                                            <AlertCircle className="w-4 h-4 text-red-500" />
+                                        }
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-gray-600">Expires in: </span>
+                                        <span className={`text-sm font-mono ${
+                                            data.auth_status.token_expiry_seconds && data.auth_status.token_expiry_seconds < 300
+                                                ? 'text-amber-600' : 'text-gray-900'
+                                        }`}>
+                                            {data.auth_status.token_expires_in || 'N/A'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-sm text-gray-600">Groups: </span>
+                                        <span className="text-xs font-mono bg-gray-200 px-2 py-0.5 rounded">
+                                            {data.auth_status.groups_configured.length > 0
+                                                ? data.auth_status.groups_configured.join(', ')
+                                                : 'None'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
