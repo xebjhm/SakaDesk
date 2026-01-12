@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
-from backend.api import auth, content, sync, settings, diagnostics, profile
+from backend.api import auth, content, sync, settings, diagnostics, profile, report
 from backend.services.platform import get_logs_dir
 import logging
 import sys
@@ -15,23 +15,27 @@ if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
 if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
 
-# Configure logging
+# Configure logging - single debug.log captures everything, filtered at report time
 log_dir = get_logs_dir()
-log_file = log_dir / "app.log"
+log_file = log_dir / "debug.log"
 
 # Clear existing handlers to avoid duplicates
 root_logger = logging.getLogger()
-root_logger.setLevel(logging.INFO)
+root_logger.setLevel(logging.DEBUG)
 root_logger.handlers = []
 
-# File Handler (for diagnostics)
+log_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+# File Handler - DEBUG level (captures everything for bug reports)
 file_handler = logging.FileHandler(log_file, encoding="utf-8")
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(log_format)
 root_logger.addHandler(file_handler)
 
-# Stream Handler (for console)
+# Stream Handler (for console) - INFO level
 stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+stream_handler.setLevel(logging.INFO)
+stream_handler.setFormatter(log_format)
 root_logger.addHandler(stream_handler)
 
 
@@ -63,6 +67,7 @@ app.include_router(content.router, prefix="/api/content", tags=["content"])
 app.include_router(settings.router)
 app.include_router(diagnostics.router)
 app.include_router(profile.router)
+app.include_router(report.router)
 
 
 @app.get("/health")
