@@ -164,9 +164,10 @@ class SyncService:
                     auth_dir=auth_dir  # Enable headless refresh
                 )
 
-                # Check auth - catch SessionExpiredError (CLI pattern)
+                # Lazy refresh - only refresh if token expires within 5 minutes
+                # This reduces API calls and makes usage less detectable
                 try:
-                    await client.refresh_access_token(session)
+                    await client.refresh_if_needed(session, min_seconds_remaining=300)
                 except SessionExpiredError:
                     # Session invalidated - signal frontend to redirect to login
                     logger.warning("Session expired - user needs to re-login")
@@ -365,6 +366,9 @@ class SyncService:
             
             new_messages = []
             
+            # auth_dir for fallback headless refresh if needed
+            auth_dir = str(get_session_dir())
+
             connector = aiohttp.TCPConnector(limit=10)
             async with aiohttp.ClientSession(connector=connector) as session:
                 client = HinatazakaClient(
@@ -372,7 +376,8 @@ class SyncService:
                     refresh_token=config.get('refresh_token'),
                     cookies=config.get('cookies'),
                     app_id=config.get('x-talk-app-id'),
-                    user_agent=config.get('user-agent')
+                    user_agent=config.get('user-agent'),
+                    auth_dir=auth_dir  # Enable headless refresh fallback
                 )
                 
                 # Just check active groups for now
