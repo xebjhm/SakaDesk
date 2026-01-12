@@ -44,9 +44,21 @@ class TestDiagnosticsEndpoint:
         assert "os" in system
         assert "os_release" in system
         assert "python_version" in system
+        assert "app_version" in system
         assert "app_data_dir" in system
         assert "settings_path" in system
         assert "is_windows" in system
+
+    def test_returns_auth_status(self, client):
+        """Endpoint should return auth_status."""
+        response = client.get("/api/diagnostics")
+        data = response.json()
+
+        assert "auth_status" in data
+        auth = data["auth_status"]
+        assert "has_token" in auth
+        assert "groups_configured" in auth
+        assert isinstance(auth["groups_configured"], list)
 
     def test_system_info_values_are_correct(self, client):
         """System info values should match actual system."""
@@ -194,17 +206,23 @@ class TestDiagnosticsResponseModel:
 
         # All required fields should be present
         assert "system" in data
+        assert "auth_status" in data
         assert "config_state" in data
         assert "logs" in data
 
         # System should have all SystemInfo fields
         system = data["system"]
         required_system_fields = [
-            "os", "os_release", "python_version",
+            "os", "os_release", "python_version", "app_version",
             "app_data_dir", "settings_path", "is_windows"
         ]
         for field in required_system_fields:
             assert field in system, f"Missing field: {field}"
+
+        # AuthStatus should have required fields
+        auth = data["auth_status"]
+        assert "has_token" in auth
+        assert "groups_configured" in auth
 
     def test_system_is_windows_is_boolean(self, client):
         """is_windows field should be a boolean."""
