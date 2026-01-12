@@ -21,79 +21,60 @@ This document tracks planned features, improvements, and technical debt for Hako
 ## P0: Critical Bugs
 
 ### 1. Unread Indicator Not Working Properly
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Bug Fix
 **Complexity:** Medium
 
 **Problem:** Unread indicator does not display correctly.
 
-**Investigation needed:**
-- [ ] Trace how unread state is tracked (frontend state vs backend)
-- [ ] Check if `last_read_id` is being saved/loaded correctly
-- [ ] Verify unread count calculation logic
-- [ ] Test across app restarts
+**Solution implemented:**
+- [x] Backend now calculates accurate unread count
+- [x] `last_read_id` properly saved/loaded per member
+- [x] Unread count persists across app restarts
 
-**Files likely involved:**
-- `frontend/src/App.tsx` - state management
-- `backend/api/content.py` - `last_read_id` handling
-- `backend/services/settings_service.py` - persistence
+**Files modified:**
+- `backend/api/content.py` - Added accurate unread count calculation
+- `backend/services/settings_service.py` - Persistence improvements
 
 ---
 
 ## P1: High Priority Features
 
 ### 2. User Nickname Resolution (%%% Placeholder)
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Enhancement
 **Complexity:** Medium
 
 **Goal:** Replace `%%%` placeholder in messages with actual user nickname.
 
-**Approach:**
-- [ ] Investigate HAR files for nickname endpoint
-- [ ] Check if pyhako core already supports this
-- [ ] Add nickname fetching to auth/sync flow
-- [ ] Store nickname in settings or credentials
-- [ ] Replace `%%%` in message rendering (frontend)
+**Solution implemented:**
+- [x] Fetch nickname via pyhako core API
+- [x] Store nickname in settings (cached)
+- [x] Replace `%%%` in message rendering (frontend)
+- [x] Graceful fallback when nickname unavailable
 
-**Notes:**
-- `%%%` is the official app's placeholder for user nickname
-- Need to handle case where nickname is not available (show `%%%` or generic text)
+**Files modified:**
+- `backend/api/profile.py` - New profile API for nickname
+- `frontend/src/App.tsx` - Nickname replacement in message rendering
 
 ---
 
 ### 3. Smart Token Refresh & Health Check
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Architecture
 **Complexity:** High
 
-**Current Problem:** Token refreshed on every auth check, wasteful and detectable.
+**Problem:** Token refreshed on every auth check, wasteful and detectable.
 
-**Proposed Architecture:**
+**Solution implemented:** Option A (Lazy Refresh)
+- [x] Only refresh when token expires in < 5 minutes
+- [x] Check JWT expiry before API calls
+- [x] Minimal server contact
+- [x] Token expiry shown in diagnostics panel
 
-```
-Option A: Lazy Refresh (Recommended)
-─────────────────────────────────────
-- Only refresh when token is about to expire (e.g., < 5 min remaining)
-- Check expiry before each API call
-- Minimal server contact
-
-Option B: Separate Health Check Thread
-──────────────────────────────────────
-- Background thread with heartbeat
-- Periodic health checks (randomized interval)
-- Token refresh only when needed
-- Pros: Proactive detection of session issues
-- Cons: More complexity, more server contact
-```
-
-**Decision needed:** Which option to implement?
-
-**Tasks:**
-- [ ] Analyze token structure (JWT? expiry field?)
-- [ ] Check pyhako core for expiry handling
-- [ ] Implement chosen approach
-- [ ] Add token expiry to diagnostics
+**Files modified:**
+- `backend/services/auth_service.py` - Lazy refresh logic
+- `backend/api/diagnostics.py` - Token expiry display
 
 ---
 
@@ -331,23 +312,25 @@ Option D: External update service
 ---
 
 ### 10. Diagnostic System Review
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Technical Debt
 **Complexity:** Low-Medium
 
 **Goal:** Review and improve current diagnostics for debugging.
 
-**Review checklist:**
-- [ ] Is all relevant system info captured?
-- [ ] Are logs sufficient for debugging?
-- [ ] Is sensitive data properly redacted?
-- [ ] Can diagnostics be exported for support?
+**Implemented:**
+- [x] System info: OS, Python version, app version, PyHako version
+- [x] Auth status: token validity, expiry time, configured groups
+- [x] Config state: output dir, auto-sync settings
+- [x] Sync state: disk usage, file count, last sync time
+- [x] Logs: recent, errors, warnings tabs with filtering
+- [x] Token expiry status (shown as time remaining)
+- [x] Copy JSON to clipboard for support
+- [x] Hidden developer panel (5-click easter egg on About version)
 
-**Potential improvements:**
-- [ ] Add token expiry status (redacted)
-- [ ] Add sync history summary
-- [ ] Add performance metrics
-- [ ] Add "copy to clipboard" for support
+**Files:**
+- `backend/api/diagnostics.py` - Comprehensive diagnostics endpoint
+- `frontend/src/components/DiagnosticsModal.tsx` - Developer panel UI
 
 ---
 
@@ -612,32 +595,33 @@ Phase 4: Post-processing (NEW)
 
 Based on dependencies and value:
 
-### Phase 1: Stability & Core Fixes
-1. P0.1: Unread indicator fix
-2. P1.3: Smart token refresh
-3. P2.9: Diagnostic review
+### Phase 1: Stability & Core Fixes ✅ COMPLETE
+1. ~~P0.1: Unread indicator fix~~ ✅
+2. ~~P1.3: Smart token refresh~~ ✅
+3. ~~P2.10: Diagnostic review~~ ✅
 
-### Phase 2: User Experience
-4. P1.2: Nickname resolution
-5. P2.10: Voice UI improvements
-6. P2.12: Desktop notifications
+### Phase 2: User Experience ✅ COMPLETE
+4. ~~P1.2: Nickname resolution~~ ✅
+5. ~~P2.11: Voice UI improvements~~ ✅
+6. ~~Bug report system~~ ✅ (bonus)
+7. P2.13: Desktop notifications
 
 ### Phase 3: Growth & Security
-7. P1.6: Randomized sync
-8. P2.7: Version update check
-9. P2.8: In-place upgrade
+8. P1.6: Randomized sync
+9. P2.7: Version update check
+10. P2.8: In-place upgrade
 
 ### Phase 4: Major Features
-10. P1.4: Multi-service support
-11. P1.5: Anonymous analytics & community statistics
-12. P3.14: Blog support
-13. P2.12: i18n
+11. P1.4: Multi-service support
+12. P1.5: Anonymous analytics & community statistics
+13. P3.14: Blog support
+14. P2.12: i18n
 
 ### Phase 5: Advanced Features
-14. P3.17: Fuzzy search
-15. P3.15: Transcription
-16. P4.19: Post-processing phase
-17. P4.18: Vector DB
+15. P3.17: Fuzzy search
+16. P3.15: Transcription
+17. P4.19: Post-processing phase
+18. P4.18: Vector DB
 
 ### Deferred
 - P2.9: Staged rollout (when user base grows)
@@ -658,5 +642,6 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Marked Phase 1 & 2 complete: P0.1, P1.2, P1.3, P2.10, P2.11 all done |
 | 2026-01-13 | Added P1.5: Anonymous Analytics & Community Statistics (19 items total) |
 | 2026-01-11 | Initial roadmap created with 18 items |
