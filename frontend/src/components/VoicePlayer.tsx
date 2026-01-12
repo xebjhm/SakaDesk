@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Volume2, Play, Pause, MoreVertical, Download } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Volume2, VolumeX, Play, Pause, MoreVertical, Download } from 'lucide-react';
 import { AudioManager } from '../utils/AudioManager';
 
 interface VoicePlayerProps {
@@ -14,6 +14,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src }) => {
     const [showVolume, setShowVolume] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [playbackRate, setPlaybackRateState] = useState(AudioManager.getPlaybackRate());
+    const containerRef = useRef<HTMLDivElement>(null);
+    const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Sync state with AudioManager on mount and when src plays
     useEffect(() => {
@@ -48,6 +50,54 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src }) => {
         return () => clearInterval(interval);
     }, [src]);
 
+    // Keyboard shortcuts - only when this player is focused or is the active one
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Only handle if this player is playing or focused
+            const isThisActive = AudioManager.getCurrentSrc() === src;
+            const isFocused = containerRef.current?.contains(document.activeElement);
+
+            if (!isThisActive && !isFocused) return;
+
+            switch (e.key) {
+                case ' ': // Space to toggle play/pause
+                    e.preventDefault();
+                    if (isThisActive) {
+                        const playing = AudioManager.togglePlayPause();
+                        setIsPlaying(playing);
+                    } else {
+                        togglePlay();
+                    }
+                    break;
+                case 'ArrowLeft': // Seek backward 5 seconds
+                    e.preventDefault();
+                    if (isThisActive) {
+                        AudioManager.seekRelative(-5);
+                        setCurrentTime(AudioManager.getCurrentTime());
+                    }
+                    break;
+                case 'ArrowRight': // Seek forward 5 seconds
+                    e.preventDefault();
+                    if (isThisActive) {
+                        AudioManager.seekRelative(5);
+                        setCurrentTime(AudioManager.getCurrentTime());
+                    }
+                    break;
+                case 'm': // Toggle mute
+                case 'M':
+                    e.preventDefault();
+                    if (isThisActive) {
+                        const newVol = AudioManager.toggleMute();
+                        setVolume(newVol);
+                    }
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [src]);
+
     const togglePlay = useCallback(() => {
         if (AudioManager.getCurrentSrc() === src && AudioManager.isPlaying()) {
             AudioManager.pause();
@@ -62,6 +112,27 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src }) => {
             setIsPlaying(true);
         }
     }, [src]);
+
+    const handleMuteToggle = useCallback(() => {
+        const newVol = AudioManager.toggleMute();
+        setVolume(newVol);
+    }, []);
+
+    // Volume hover handlers
+    const handleVolumeMouseEnter = useCallback(() => {
+        if (volumeHideTimeout.current) {
+            clearTimeout(volumeHideTimeout.current);
+            volumeHideTimeout.current = null;
+        }
+        setShowVolume(true);
+        setShowMenu(false);
+    }, []);
+
+    const handleVolumeMouseLeave = useCallback(() => {
+        volumeHideTimeout.current = setTimeout(() => {
+            setShowVolume(false);
+        }, 300); // Small delay before hiding
+    }, []);
 
     const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTime = parseFloat(e.target.value);
@@ -102,8 +173,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src }) => {
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
     const isThisPlaying = isPlaying && AudioManager.getCurrentSrc() === src;
 
+    const isMuted = volume === 0;
+
     return (
-        <div className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px]">
+        <div
+            ref={containerRef}
+            tabIndex={0}
+            className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2 focus:ring-[#6da0d4]/50"
+        >
             {/* Row 1: Progress Slider */}
             <div className="mb-3">
                 <input
@@ -133,16 +210,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src }) => {
                         {formatTime(currentTime)}
                     </div>
 
-                    <div className="relative">
+                    <div
+                        className="relative"
+                        onMouseEnter={handleVolumeMouseEnter}
+                        onMouseLeave={handleVolumeMouseLeave}
+                    >
                         <button
-                            onClick={() => { setShowVolume(!showVolume); setShowMenu(false); }}
+                            onClick={handleMuteToggle}
                             className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                            title={isMuted ? "Unmute (M)" : "Mute (M)"}
                         >
-                            <Volume2 className="w-4 h-4 text-gray-500" />
+                            {isMuted ? (
+                                <VolumeX className="w-4 h-4 text-gray-500" />
+                            ) : (
+                                <Volume2 className="w-4 h-4 text-gray-500" />
+                            )}
                         </button>
 
                         {showVolume && (
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-2 bg-white rounded-lg shadow-lg border z-50">
+                            <div
+                                className="absolute top-full left-1/2 -translate-x-1/2 mt-2 p-2 bg-white rounded-lg shadow-lg border z-50"
+                                onMouseEnter={handleVolumeMouseEnter}
+                                onMouseLeave={handleVolumeMouseLeave}
+                            >
                                 <input
                                     type="range"
                                     min={0}
