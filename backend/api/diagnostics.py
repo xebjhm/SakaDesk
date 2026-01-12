@@ -18,14 +18,23 @@ router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 # App version - ideally from pyproject.toml or __version__
 APP_VERSION = "0.1.0"
 
+# PyHako version - try importlib.metadata first (works with installed packages)
+try:
+    from importlib.metadata import version
+    PYHAKO_VERSION = version("pyhako")
+except Exception:
+    PYHAKO_VERSION = "unknown"
+
 
 class SystemInfo(BaseModel):
     os: str
     os_release: str
     python_version: str
     app_version: str
+    pyhako_version: str
     app_data_dir: str
     settings_path: str
+    logs_dir: str
     is_windows: bool
 
 
@@ -36,11 +45,25 @@ class AuthStatus(BaseModel):
     groups_configured: list[str] = []
 
 
+class SyncState(BaseModel):
+    last_sync: Optional[str] = None
+    last_error: Optional[str] = None
+    disk_usage_mb: float = 0.0
+    file_count: int = 0
+
+
+class LogsSummary(BaseModel):
+    recent: list[str]  # Last 50 lines
+    errors: list[str]  # All ERROR lines (max 50)
+    warnings: list[str]  # All WARNING lines (max 50)
+
+
 class DiagnosticsResponse(BaseModel):
     system: SystemInfo
     auth_status: AuthStatus
     config_state: dict
-    logs: list[str]
+    sync_state: SyncState
+    logs: LogsSummary
 
 
 def _format_duration(seconds: int) -> str:
@@ -77,9 +100,34 @@ def _get_token_expiry_seconds(token: str) -> Optional[int]:
     return None
 
 
+def _get_disk_usage(output_dir: str) -> tuple[float, int]:
+    """Get disk usage statistics for output directory.
+    Returns: (size_mb, file_count)
+    """
+    total_size = 0
+    file_count = 0
+
+    try:
+        output_path = Path(output_dir)
+        if not output_path.exists():
+            return 0.0, 0
+
+        # Recursively sum all file sizes
+        for file_path in output_path.rglob("*"):
+            if file_path.is_file():
+                file_count += 1
+                total_size += file_path.stat().st_size
+
+        size_mb = total_size / (1024 * 1024)
+    except Exception:
+        pass
+
+    return round(size_mb, 2), file_count
+
+
 @router.get("", response_model=DiagnosticsResponse)
 async def get_diagnostics():
-    """Collect system diagnostics and recent logs."""
+    """Collect comprehensive system diagnostics for debugging."""
 
     # System Info
     sys_info = SystemInfo(
@@ -87,8 +135,10 @@ async def get_diagnostics():
         os_release=platform.release(),
         python_version=sys.version.split()[0],
         app_version=APP_VERSION,
+        pyhako_version=PYHAKO_VERSION,
         app_data_dir=str(get_app_data_dir()),
         settings_path=str(get_settings_path()),
+        logs_dir=str(get_logs_dir()),
         is_windows=(platform.system() == "Windows")
     )
 
@@ -114,6 +164,7 @@ async def get_diagnostics():
 
     # Config State (Safe subset)
     config_state = {}
+    output_dir = None
     try:
         if get_settings_path().exists():
             with open(get_settings_path(), 'r') as f:
@@ -121,11 +172,32 @@ async def get_diagnostics():
                 config_state['is_configured'] = data.get('is_configured')
                 config_state['output_dir_configured'] = 'output_dir' in data
                 config_state['auto_sync'] = data.get('auto_sync_enabled')
+                config_state['sync_interval'] = data.get('sync_interval_minutes')
+                output_dir = data.get('output_dir')
     except Exception as e:
         config_state['error'] = str(e)
 
-    # Logs (Last 50 lines of latest log)
-    logs = []
+    # Sync State
+    sync_state = SyncState()
+    try:
+        if output_dir:
+            # Check for sync metadata
+            metadata_path = Path(output_dir) / "sync_metadata.json"
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    sync_state.last_sync = metadata.get('last_sync')
+                    sync_state.last_error = metadata.get('last_error')
+
+            # Get disk usage stats
+            size_mb, file_count = _get_disk_usage(output_dir)
+            sync_state.disk_usage_mb = size_mb
+            sync_state.file_count = file_count
+    except Exception:
+        pass
+
+    # Logs with categorization
+    logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
     try:
         log_dir = get_logs_dir()
         if log_dir.exists():
@@ -133,14 +205,25 @@ async def get_diagnostics():
             if log_files:
                 latest_log = log_files[0]
                 with open(latest_log, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = f.readlines()
-                    logs = [l.strip() for l in lines[-50:]]
+                    all_lines = f.readlines()
+
+                    # Recent logs (last 50)
+                    logs_summary.recent = [l.strip() for l in all_lines[-50:]]
+
+                    # Errors (all ERROR lines, max 50)
+                    errors = [l.strip() for l in all_lines if ' - ERROR - ' in l]
+                    logs_summary.errors = errors[-50:]
+
+                    # Warnings (all WARNING lines, max 50)
+                    warnings = [l.strip() for l in all_lines if ' - WARNING - ' in l]
+                    logs_summary.warnings = warnings[-50:]
     except Exception as e:
-        logs.append(f"Error reading logs: {e}")
+        logs_summary.recent.append(f"Error reading logs: {e}")
 
     return DiagnosticsResponse(
         system=sys_info,
         auth_status=auth_status,
         config_state=config_state,
-        logs=logs
+        sync_state=sync_state,
+        logs=logs_summary
     )
