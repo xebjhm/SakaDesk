@@ -146,7 +146,45 @@ Layer 3: Chat view (current right panel)
 
 ---
 
-### 5. Randomized Background Sync
+### 5. Anonymous Analytics & Community Statistics
+**Status:** Not Started
+**Category:** Major Feature
+**Complexity:** Very High
+
+**Goal:** Privacy-first analytics system with community rankings, personal summaries, and yearly wrapped.
+
+**Design Document:** [docs/plans/2026-01-13-anonymous-analytics-design.md](plans/2026-01-13-anonymous-analytics-design.md)
+
+**Key Features:**
+- De-identified (去識別化) data collection with user opt-in
+- Server-side user linking (survives reinstalls/device changes)
+- Public dashboard with member rankings, trends, awards
+- Personal local summaries (monthly/yearly message stats)
+- Yearly Wrapped with shareable cards (like Spotify Wrapped)
+- Project website with app intro, download, and stats
+
+**Community Statistics:**
+- Member popularity rankings
+- Group distribution
+- Loyalty/retention rankings
+- Trending members
+- Cross-group insights
+- Awards: Rising Star, Hidden Gem, The Dedicated
+
+**Tech Stack:**
+- Supabase (free tier) for backend
+- Public website on Vercel/Netlify
+
+**Implementation Phases:**
+- [ ] Phase 1: Supabase backend setup & schema
+- [ ] Phase 2: Desktop app integration (consent, upload)
+- [ ] Phase 3: Public website with stats dashboard
+- [ ] Phase 4: Personal analytics (local summaries)
+- [ ] Phase 5: Yearly Wrapped with shareable cards
+
+---
+
+### 6. Randomized Background Sync
 **Status:** Not Started
 **Category:** Security/Anti-Detection
 **Complexity:** Medium
@@ -184,7 +222,7 @@ Example:
 
 ## P2: Medium Priority
 
-### 6. Built-in Version Update Check
+### 7. Built-in Version Update Check
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** Medium
@@ -205,7 +243,7 @@ Example:
 
 ---
 
-### 7. In-Place Software Upgrade
+### 8. In-Place Software Upgrade
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** High
@@ -240,7 +278,7 @@ Alternative: NSIS upgrade-aware installer
 
 ---
 
-### 8. Staged Rollout System
+### 9. Staged Rollout System
 **Status:** Research Required
 **Category:** Infrastructure
 **Complexity:** Very High
@@ -292,7 +330,7 @@ Option D: External update service
 
 ---
 
-### 9. Diagnostic System Review
+### 10. Diagnostic System Review
 **Status:** Not Started
 **Category:** Technical Debt
 **Complexity:** Low-Medium
@@ -313,25 +351,25 @@ Option D: External update service
 
 ---
 
-### 10. Voice Item UI/UX Improvements
-**Status:** Not Started
+### 11. Voice Item UI/UX Improvements
+**Status:** ✅ Complete
 **Category:** UI/UX
 **Complexity:** Low-Medium
 
-**Current:** Basic audio player
+**Current:** Enhanced audio player with full controls
 
 **Improvements:**
-- [ ] Volume slider on hover (appears near volume icon)
-- [ ] Click volume icon to mute/unmute
-- [ ] Visual waveform display (optional, nice-to-have)
-- [ ] Keyboard shortcuts (space to pause, arrow keys to seek)
-- [ ] Remember volume preference
+- [x] Volume slider on hover (appears near volume icon)
+- [x] Click volume icon to mute/unmute
+- [ ] Visual waveform display (optional, nice-to-have) - deferred
+- [x] Keyboard shortcuts (space to pause, arrow keys to seek, M to mute)
+- [x] Remember volume preference (persisted to localStorage)
 
-**Component:** `frontend/src/components/AudioPlayer.tsx` (or similar)
+**Component:** `frontend/src/components/VoicePlayer.tsx`
 
 ---
 
-### 11. Multi-Language Support (i18n)
+### 12. Multi-Language Support (i18n)
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** Medium-High
@@ -361,7 +399,7 @@ Frontend: react-i18next or similar
 
 ---
 
-### 12. Windows Desktop Notifications
+### 13. Windows Desktop Notifications
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** Medium
@@ -399,7 +437,7 @@ Option C: pywebview notification API
 
 ## P3: Nice-to-Have
 
-### 13. Official Blogs Support
+### 14. Official Blogs Support
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** Medium
@@ -421,7 +459,7 @@ Option C: pywebview notification API
 
 ---
 
-### 14. Audio/Video Transcription (Whisper)
+### 15. Audio/Video Transcription (Whisper)
 **Status:** Research Required
 **Category:** Feature
 **Complexity:** Very High
@@ -462,7 +500,7 @@ Option C: Hybrid
 
 ---
 
-### 15. Fan Club Contents Support
+### 16. Fan Club Contents Support
 **Status:** Blocked (Core Library)
 **Category:** Feature
 **Complexity:** High
@@ -477,7 +515,7 @@ Option C: Hybrid
 
 ---
 
-### 16. Fuzzy Search (Multi-Language)
+### 17. Fuzzy Search (Multi-Language)
 **Status:** Not Started
 **Category:** Feature
 **Complexity:** Medium-High
@@ -505,7 +543,7 @@ Option C: Hybrid
 
 ## P4: Future Vision
 
-### 17. Vector Database per Chat Room
+### 18. Vector Database per Chat Room
 **Status:** Research Required
 **Category:** Future Feature
 **Complexity:** Very High
@@ -536,7 +574,7 @@ Option C: Hybrid
 
 ---
 
-### 18. Sync Phase 4: Post-Processing
+### 19. Sync Phase 4: Post-Processing
 **Status:** Not Started
 **Category:** Architecture
 **Complexity:** Medium
@@ -585,24 +623,25 @@ Based on dependencies and value:
 6. P2.12: Desktop notifications
 
 ### Phase 3: Growth & Security
-7. P1.5: Randomized sync
-8. P2.6: Version update check
-9. P2.7: In-place upgrade
+7. P1.6: Randomized sync
+8. P2.7: Version update check
+9. P2.8: In-place upgrade
 
 ### Phase 4: Major Features
 10. P1.4: Multi-service support
-11. P3.13: Blog support
-12. P2.11: i18n
+11. P1.5: Anonymous analytics & community statistics
+12. P3.14: Blog support
+13. P2.12: i18n
 
 ### Phase 5: Advanced Features
-13. P3.16: Fuzzy search
-14. P3.14: Transcription
-15. P4.18: Post-processing phase
-16. P4.17: Vector DB
+14. P3.17: Fuzzy search
+15. P3.15: Transcription
+16. P4.19: Post-processing phase
+17. P4.18: Vector DB
 
 ### Deferred
-- P2.8: Staged rollout (when user base grows)
-- P3.15: Fan club (blocked on core)
+- P2.9: Staged rollout (when user base grows)
+- P3.16: Fan club (blocked on core)
 
 ---
 
@@ -619,4 +658,5 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Added P1.5: Anonymous Analytics & Community Statistics (19 items total) |
 | 2026-01-11 | Initial roadmap created with 18 items |
