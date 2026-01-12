@@ -45,6 +45,7 @@ class SettingsResponse(BaseModel):
     auto_sync_enabled: bool
     sync_interval_minutes: int
     is_configured: bool  # True if user has set up the app
+    user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
 
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
@@ -60,19 +61,20 @@ async def get_settings():
     """Get current settings."""
     config = load_config()
     output_dir = config.get("output_dir", get_default_output_dir())
-    
+
     return SettingsResponse(
         output_dir=output_dir,
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
-        is_configured=config.get("is_configured", False)
+        is_configured=config.get("is_configured", False),
+        user_nickname=config.get("user_nickname")
     )
 
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
     config = load_config()
-    
+
     if update.output_dir is not None:
         config["output_dir"] = update.output_dir
         config["is_configured"] = True
@@ -80,14 +82,15 @@ async def update_settings(update: SettingsUpdate):
         config["auto_sync_enabled"] = update.auto_sync_enabled
     if update.sync_interval_minutes is not None:
         config["sync_interval_minutes"] = update.sync_interval_minutes
-    
+
     save_config(config)
-    
+
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
-        is_configured=config.get("is_configured", False)
+        is_configured=config.get("is_configured", False),
+        user_nickname=config.get("user_nickname")
     )
 
 @router.get("/fresh", response_model=FreshCheckResponse)

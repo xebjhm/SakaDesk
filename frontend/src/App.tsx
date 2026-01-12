@@ -46,6 +46,7 @@ interface AppSettings {
     auto_sync_enabled: boolean;
     sync_interval_minutes: number;
     is_configured: boolean;
+    user_nickname?: string;
 }
 
 const formatTime = (seconds: number | undefined): string => {
@@ -186,10 +187,35 @@ function App() {
                     if (!data.is_configured) {
                         setShowSetupWizard(true);
                     }
+                    // If no cached nickname, fetch from profile API
+                    if (!data.user_nickname) {
+                        fetch('/api/profile')
+                            .then(res => res.json())
+                            .then(profileData => {
+                                if (profileData.nickname) {
+                                    // Update local state with the fetched nickname
+                                    setAppSettings(prev => prev ? { ...prev, user_nickname: profileData.nickname } : prev);
+                                }
+                            })
+                            .catch(console.error);
+                    }
                 })
                 .catch(console.error);
         }
     }, [isAuthenticated]);
+
+    // Refresh user profile (nickname) from server - called after sync completes
+    const refreshUserProfile = async () => {
+        try {
+            const res = await fetch('/api/profile/refresh', { method: 'POST' });
+            const data = await res.json();
+            if (data.nickname) {
+                setAppSettings(prev => prev ? { ...prev, user_nickname: data.nickname } : prev);
+            }
+        } catch (e) {
+            console.error('Failed to refresh profile:', e);
+        }
+    };
 
     const startSync = async (blocking: boolean) => {
         if (blocking) setShowSyncModal(true);
@@ -230,6 +256,8 @@ function App() {
                     if (selectedGroupDir) {
                         fetchMessages(selectedGroupDir, isGroupChat);
                     }
+                    // Refresh user profile (nickname may have changed)
+                    refreshUserProfile();
                 } else if (data.state === 'complete') {
                     // Show completion state, keep modal open briefly
                     setSyncProgress({
@@ -251,6 +279,8 @@ function App() {
                     if (selectedGroupDir) {
                         fetchMessages(selectedGroupDir, isGroupChat);
                     }
+                    // Refresh user profile (nickname may have changed)
+                    refreshUserProfile();
                     // Auto-close after 2 seconds
                     if (blocking) {
                         setTimeout(() => setShowSyncModal(false), 2000);
@@ -905,6 +935,7 @@ function App() {
                             onLongPress={() => setShowRevealConfirm(true)}
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
+                            userNickname={appSettings?.user_nickname}
                         />
                     )}
                 </div>

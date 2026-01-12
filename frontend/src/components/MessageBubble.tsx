@@ -12,6 +12,7 @@ interface MessageBubbleProps {
     isUnread?: boolean;
     onReveal?: () => void;
     onLongPress?: () => void;
+    userNickname?: string;
 }
 
 const SHELTER_COLORS = {
@@ -84,9 +85,11 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
     );
 };
 
-// Component to render text with clickable URLs
-const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
-    const parts = text.split(URL_REGEX);
+// Component to render text with clickable URLs and nickname replacement
+const LinkifiedText: React.FC<{ text: string; userNickname?: string }> = ({ text, userNickname }) => {
+    // Replace %%% placeholder with user's nickname
+    const processedText = userNickname ? text.replace(/%%%/g, userNickname) : text;
+    const parts = processedText.split(URL_REGEX);
 
     return (
         <>
@@ -120,7 +123,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     api_base = "/api/content/media",
     isUnread = false,
     onReveal,
-    onLongPress
+    onLongPress,
+    userNickname
 }) => {
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -228,7 +232,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 "text-gray-900 whitespace-pre-wrap leading-relaxed text-[15px]",
                                 message.type === 'voice' && "p-3 pt-2"
                             )}>
-                                <LinkifiedText text={message.content} />
+                                <LinkifiedText text={message.content} userNickname={userNickname} />
                             </div>
                         )}
 
