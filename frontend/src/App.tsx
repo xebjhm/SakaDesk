@@ -5,6 +5,9 @@ import { ChatList } from './components/ChatList'
 import { LoginPage } from './pages/LoginPage'
 import { Menu, Loader2, ChevronUp, ChevronDown, Download, FolderOpen } from 'lucide-react'
 import { DiagnosticsModal } from './components/DiagnosticsModal'
+import { ReportIssueModal } from './components/ReportIssueModal'
+import { AboutModal } from './components/AboutModal'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { VirtuosoHandle } from 'react-virtuoso'
 
 interface GroupMessage extends Message {
@@ -120,6 +123,13 @@ function App() {
     const [showSetupWizard, setShowSetupWizard] = useState(false);
     const [outputDirInput, setOutputDirInput] = useState('');
     const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+    // Bug report state
+    const [showReportModal, setShowReportModal] = useState(false);
+    const [crashError, setCrashError] = useState<string | undefined>();
+
+    // About modal state
+    const [showAboutModal, setShowAboutModal] = useState(false);
 
     // === AUTH ===
     useEffect(() => {
@@ -778,6 +788,23 @@ function App() {
                 onClose={() => setShowDiagnostics(false)}
             />
 
+            <AboutModal
+                isOpen={showAboutModal}
+                onClose={() => setShowAboutModal(false)}
+                onOpenDiagnostics={() => setShowDiagnostics(true)}
+            />
+
+            <ReportIssueModal
+                isOpen={showReportModal}
+                onClose={() => {
+                    setShowReportModal(false);
+                    setCrashError(undefined);
+                }}
+                currentMemberPath={selectedGroupDir}
+                currentScreen={selectedName || 'Home'}
+                crashError={crashError}
+            />
+
             {/* ERROR TOAST */}
             {
                 error && (
@@ -882,7 +909,8 @@ function App() {
                     selectedGroupDir={selectedGroupDir}
                     isSyncing={syncProgress.state === 'running'}
                     onOpenSettings={() => setShowSettingsModal(true)}
-                    onOpenDiagnostics={() => setShowDiagnostics(true)}
+                    onReportIssue={() => setShowReportModal(true)}
+                    onOpenAbout={() => setShowAboutModal(true)}
                     readStateVersion={readStateVersion}
                 />
             </div>
@@ -999,4 +1027,32 @@ function App() {
     )
 }
 
-export default App
+function AppWithErrorBoundary() {
+    const [crashError, setCrashError] = useState<string | undefined>();
+    const [showReportAfterCrash, setShowReportAfterCrash] = useState(false);
+
+    const handleReportIssue = (error: string) => {
+        setCrashError(error);
+        setShowReportAfterCrash(true);
+    };
+
+    return (
+        <>
+            <ErrorBoundary onReportIssue={handleReportIssue}>
+                <App />
+            </ErrorBoundary>
+            {showReportAfterCrash && (
+                <ReportIssueModal
+                    isOpen={showReportAfterCrash}
+                    onClose={() => {
+                        setShowReportAfterCrash(false);
+                        setCrashError(undefined);
+                    }}
+                    crashError={crashError}
+                />
+            )}
+        </>
+    );
+}
+
+export default AppWithErrorBoundary

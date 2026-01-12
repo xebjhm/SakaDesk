@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '../lib/utils';
-import { Settings, Users, RefreshCw } from 'lucide-react';
+import { Settings, Users, RefreshCw, Bug, Info } from 'lucide-react';
 import { MemberInfo } from '../types';
 
 interface GroupInfo {
@@ -23,28 +23,19 @@ interface SidebarProps {
     selectedGroupDir?: string;
     isSyncing?: boolean;
     onOpenSettings?: () => void;
-    onOpenDiagnostics?: () => void;
+    onReportIssue?: () => void;
+    onOpenAbout?: () => void;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
 }
 
 // Group IDs that should always be treated as group chat
 const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
-export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onOpenDiagnostics, readStateVersion }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onReportIssue, onOpenAbout, readStateVersion }) => {
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [showSettings, setShowSettings] = useState(false);
     const [loading, setLoading] = useState(true);
-
-    const handleResetRead = () => {
-        if (confirm('Reset all read status? This will mark all messages as unread locally.')) {
-            Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('read_state_')) localStorage.removeItem(key);
-            });
-            window.location.reload();
-        }
-        setShowSettings(false);
-    };
 
     const loadGroups = () => {
         fetch('/api/content/groups')
@@ -271,23 +262,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
                                             App Settings
                                         </button>
                                     )}
-                                    {onOpenDiagnostics && (
+                                    {onReportIssue && (
                                         <button
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
                                             onClick={() => {
                                                 setShowSettings(false);
-                                                onOpenDiagnostics();
+                                                onReportIssue();
                                             }}
                                         >
-                                            System Diagnostics
+                                            <Bug className="w-4 h-4" />
+                                            Report an Issue
                                         </button>
                                     )}
-                                    <button
-                                        className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
-                                        onClick={handleResetRead}
-                                    >
-                                        Reset Read Status
-                                    </button>
+                                    <div className="border-t border-gray-100 mt-1 pt-1">
+                                        {onOpenAbout && (
+                                            <button
+                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
+                                                onClick={() => {
+                                                    setShowSettings(false);
+                                                    onOpenAbout();
+                                                }}
+                                            >
+                                                <Info className="w-4 h-4" />
+                                                About
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             </>
                         )}
