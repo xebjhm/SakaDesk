@@ -12,6 +12,7 @@ from pyhako.credentials import TokenManager
 from pyhako.utils import get_media_extension
 from backend.api.progress import progress
 from backend.services.platform import get_session_dir, is_test_mode
+from backend.services.notification_service import notify_sync_complete
 import logging
 
 # Backward compatibility alias for old code that used HinatazakaClient
@@ -275,14 +276,22 @@ class SyncService:
                 # Run parallel sync
                 results = await asyncio.gather(*[sync_worker(t) for t in tasks])
                 
-                # Update Metadata from results
+                # Update Metadata from results and track new message counts
+                total_new_messages = 0
+                members_with_new = 0
                 for task, count in results:
                     if count > 0:
+                        total_new_messages += count
+                        members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(task['group']['id'], task['member']['id'])
                         if last_id:
                             if key in metadata['groups']:
                                 metadata['groups'][key]['last_message_id'] = last_id
+
+                # Send notification for new messages (after Phase 2, before media download)
+                if total_new_messages > 0:
+                    notify_sync_complete(total_new_messages, members_with_new)
 
                 # Phase 3: Media Download (Queued)
                 media_count = len(media_queue)

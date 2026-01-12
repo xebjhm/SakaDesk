@@ -13,6 +13,7 @@ dependencies = [
     "tk>=0.1.0",
     "structlog>=25.5.0",
     "keyrings-alt>=5.0.2",
+    "plyer>=2.1.0",
 ]
 
 [tool.uv.sources]

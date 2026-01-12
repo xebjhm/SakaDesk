@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
-from backend.api import auth, content, sync, settings, diagnostics, profile, report
+from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications
 from backend.services.platform import get_logs_dir
 import logging
 import sys
@@ -68,6 +68,8 @@ app.include_router(settings.router)
 app.include_router(diagnostics.router)
 app.include_router(profile.router)
 app.include_router(report.router)
+app.include_router(version.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")

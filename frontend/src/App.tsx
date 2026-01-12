@@ -8,6 +8,7 @@ import { DiagnosticsModal } from './components/DiagnosticsModal'
 import { ReportIssueModal } from './components/ReportIssueModal'
 import { AboutModal } from './components/AboutModal'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { UpdateBanner } from './components/UpdateBanner'
 import { VirtuosoHandle } from 'react-virtuoso'
 
 interface GroupMessage extends Message {
@@ -50,6 +51,7 @@ interface AppSettings {
     sync_interval_minutes: number;
     is_configured: boolean;
     user_nickname?: string;
+    notifications_enabled?: boolean;
 }
 
 const formatTime = (seconds: number | undefined): string => {
@@ -596,7 +598,11 @@ function App() {
     };
 
     return (
-        <div className="flex h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+        <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+            {/* Update Banner */}
+            <UpdateBanner />
+
+            <div className="flex flex-1 overflow-hidden">
             {/* Sync Modal - CLI Style */}
             {showSyncModal && (
                 <div className="fixed inset-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 z-50 flex items-center justify-center p-4">
@@ -892,6 +898,22 @@ function App() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Desktop Notifications */}
+                                <div>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-sm font-medium text-gray-700">Desktop Notifications</label>
+                                        <button
+                                            onClick={() => saveSettings({ notifications_enabled: !appSettings.notifications_enabled })}
+                                            className={`relative w-12 h-6 rounded-full transition-colors ${appSettings.notifications_enabled ? 'bg-blue-500' : 'bg-gray-300'
+                                                }`}
+                                        >
+                                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${appSettings.notifications_enabled ? 'translate-x-7' : 'translate-x-1'
+                                                }`} />
+                                        </button>
+                                    </div>
+                                    <p className="text-xs text-gray-500 mt-1">Show notification when new messages arrive</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1023,7 +1045,8 @@ function App() {
                     </div>
                 )}
             </div>
-        </div >
+            </div>
+        </div>
     )
 }
 
