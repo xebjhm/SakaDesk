@@ -21,6 +21,8 @@ interface ChatListProps {
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
     /** Ref to expose Virtuoso handle for external scroll control */
     virtuosoRef?: React.RefObject<VirtuosoHandle>;
+    /** User's nickname for %%% placeholder replacement */
+    userNickname?: string;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -34,6 +36,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     onLongPress,
     onRangeChanged,
     virtuosoRef: externalRef,
+    userNickname,
 }) => {
     const internalRef = useRef<VirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
@@ -80,6 +83,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                             isUnread={isMsgUnread}
                             onReveal={() => onReveal(msg.id)}
                             onLongPress={onLongPress}
+                            userNickname={userNickname}
                         />
                     </div>
                 );
