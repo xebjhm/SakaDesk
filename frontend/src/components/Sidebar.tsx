@@ -24,12 +24,13 @@ interface SidebarProps {
     isSyncing?: boolean;
     onOpenSettings?: () => void;
     onOpenDiagnostics?: () => void;
+    readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
 }
 
 // Group IDs that should always be treated as group chat
 const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
-export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onOpenDiagnostics }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onOpenDiagnostics, readStateVersion }) => {
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [showSettings, setShowSettings] = useState(false);
@@ -56,36 +57,57 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
             .finally(() => setLoading(false));
     };
 
-    const checkUnread = (groupList: GroupInfo[]) => {
-        const counts: Record<string, number> = {};
+    const checkUnread = async (groupList: GroupInfo[]) => {
+        // Build a map of path -> full read state from localStorage
+        // Read state includes both lastReadId AND revealedIds for accurate counting
+        const readStates: Record<string, { lastReadId: number; revealedIds: number[] }> = {};
+
         groupList.forEach(g => {
-            if (!g.last_message_id) return;
             try {
-                // Determine path for Key
                 const info = getGroupDisplayInfo(g);
                 const key = `read_state_${info.path}`;
                 const saved = localStorage.getItem(key);
-
                 if (saved) {
-                    const state = JSON.parse(saved);
-                    // Compare IDs to see if any unread
-                    if (g.last_message_id > (state.lastReadId || 0)) {
-                        // Estimate count: total - readCount
-                        // If readCount is missing (legacy), simple > check
-                        const readCount = state.readCount || 0;
-                        const total = g.total_messages || 0;
-                        const unread = Math.max(0, total - readCount);
-                        // If unread is 0 but ID is newer? (Shouldn't happen if counts are accurate)
-                        // Fallback to 1 if we know it's unread but calculation says 0
-                        counts[g.id] = unread > 0 ? unread : 1;
-                    }
+                    const parsed = JSON.parse(saved);
+                    readStates[info.path] = {
+                        lastReadId: parsed.lastReadId || 0,
+                        revealedIds: parsed.revealedIds || []
+                    };
                 } else {
-                    // New user / no state: All unread
-                    counts[g.id] = g.total_messages || 1;
+                    readStates[info.path] = { lastReadId: 0, revealedIds: [] };
                 }
             } catch { }
         });
-        setUnreadCounts(counts);
+
+        // Fetch accurate unread counts from backend (single source of truth)
+        // Backend calculates: unread = messages where (id > lastReadId AND id NOT IN revealedIds)
+        try {
+            const res = await fetch('/api/content/unread_counts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(readStates)
+            });
+
+            if (!res.ok) throw new Error('Failed to fetch unread counts');
+
+            const backendCounts: Record<string, number> = await res.json();
+
+            // Map path-based counts back to group IDs for the UI
+            const counts: Record<string, number> = {};
+            groupList.forEach(g => {
+                const info = getGroupDisplayInfo(g);
+                const unread = backendCounts[info.path] || 0;
+                if (unread > 0) {
+                    counts[g.id] = unread;
+                }
+            });
+
+            setUnreadCounts(counts);
+        } catch (err) {
+            console.error('Failed to fetch unread counts:', err);
+            // Fallback: don't show any unread counts rather than showing wrong ones
+            setUnreadCounts({});
+        }
     };
 
     useEffect(() => {
@@ -102,7 +124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
 
     useEffect(() => {
         if (groups.length > 0) checkUnread(groups);
-    }, [selectedGroupDir]);
+    }, [selectedGroupDir, readStateVersion]);
 
     const formatName = (name: string) => name.replace(/_/g, ' ');
 

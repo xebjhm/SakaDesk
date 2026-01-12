@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Message, MemberInfo } from './types'
 import { Sidebar } from './components/Sidebar'
 import { ChatList } from './components/ChatList'
@@ -15,7 +15,6 @@ interface GroupMessage extends Message {
 interface GroupMessagesResponse {
     group_dir: string;
     total_messages: number;
-    unread_count: number;
     max_message_id: number;
     members: MemberInfo[];
     messages: GroupMessage[];
@@ -86,9 +85,15 @@ function App() {
 
     // Unread state
     const [readState, setReadState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
+    const [readStateVersion, setReadStateVersion] = useState(0); // Increments on read state change to trigger sidebar refresh
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
-    const [realUnreadCount, setRealUnreadCount] = useState(0); // From backend (all messages)
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
+
+    // Compute unread count from messages and readState (single source of truth)
+    // This ensures header and sidebar use the same logic
+    const displayUnreadCount = useMemo(() => {
+        return messages.filter(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id)).length;
+    }, [messages, readState.lastReadId, readState.revealedIds]);
 
     // Scroll ref
     const virtuosoRef = useRef<VirtuosoHandle>(null);
@@ -325,7 +330,6 @@ function App() {
                 setMembersMap(map);
                 setMessages(data.messages || []);
                 setTotalMessages(data.total_messages || 0);
-                setRealUnreadCount(data.unread_count || 0);
                 setMaxMessageId(data.max_message_id || 0);
                 messagesPathRef.current = path;
             } else {
@@ -336,7 +340,6 @@ function App() {
                 if (memberInfo) setMembersMap({ [memberInfo.id]: memberInfo });
                 setMessages(data.messages || []);
                 setTotalMessages(data.total_count || 0);
-                setRealUnreadCount(data.unread_count || 0);
                 setMaxMessageId(data.max_message_id || 0);
                 messagesPathRef.current = path;
             }
@@ -408,7 +411,11 @@ function App() {
     };
 
     const saveReadState = (path: string, state: ReadState) => {
-        try { localStorage.setItem(`read_state_${path}`, JSON.stringify(state)); } catch { }
+        try {
+            localStorage.setItem(`read_state_${path}`, JSON.stringify(state));
+            // Increment version to trigger sidebar refresh
+            setReadStateVersion(v => v + 1);
+        } catch { }
     };
 
     const isUnread = (msgId: number) => msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
@@ -416,23 +423,56 @@ function App() {
     const revealMessage = useCallback((msgId: number) => {
         setReadState(prev => {
             if (prev.revealedIds.includes(msgId)) return prev;
-            const next = {
-                ...prev,
-                revealedIds: [...prev.revealedIds, msgId],
+
+            // Add the new revealed ID
+            const newRevealedIds = [...prev.revealedIds, msgId];
+
+            // Consolidate: If all messages from lastReadId+1 up to some point are now revealed,
+            // advance lastReadId and remove those IDs from revealedIds.
+            // This keeps revealedIds small and lastReadId accurate.
+
+            // Get all message IDs above lastReadId, sorted
+            const unreadMsgIds = messages
+                .map(m => m.id)
+                .filter(id => id > prev.lastReadId)
+                .sort((a, b) => a - b);
+
+            // Find where the contiguous "all read" sequence ends
+            let newLastReadId = prev.lastReadId;
+
+            for (const id of unreadMsgIds) {
+                if (newRevealedIds.includes(id)) {
+                    // Check if all previous IDs are also read
+                    const allPreviousRead = unreadMsgIds
+                        .filter(uid => uid <= id && uid > newLastReadId)
+                        .every(uid => newRevealedIds.includes(uid));
+
+                    if (allPreviousRead) {
+                        newLastReadId = id;
+                    }
+                }
+            }
+
+            // Remove IDs that are now covered by newLastReadId
+            const consolidatedRevealedIds = newRevealedIds.filter(id => id > newLastReadId);
+
+            const next: ReadState = {
+                lastReadId: newLastReadId,
+                revealedIds: consolidatedRevealedIds,
                 readCount: (prev.readCount || 0) + 1
             };
+
             if (selectedGroupDir) saveReadState(selectedGroupDir, next);
             return next;
         });
-    }, [selectedGroupDir]);
+    }, [selectedGroupDir, messages]);
 
     const revealAllMessages = useCallback(() => {
-        // Use maxMessageId from backend to mark ALL unread messages as read (not just loaded)
+        // Use maxMessageId to mark ALL messages as read
         if (maxMessageId === 0) return;
-        const next = { lastReadId: maxMessageId, readCount: totalMessages, revealedIds: [] as number[] };
+        const next: ReadState = { lastReadId: maxMessageId, readCount: totalMessages, revealedIds: [] };
         if (selectedGroupDir) saveReadState(selectedGroupDir, next);
         setReadState(next);
-        setRealUnreadCount(0); // All are now read
     }, [selectedGroupDir, maxMessageId, totalMessages]);
 
     // === HELPERS ===
@@ -499,8 +539,6 @@ function App() {
         }
     };
 
-    // Use realUnreadCount from backend (all messages) instead of loaded messages only
-    const displayUnreadCount = realUnreadCount;
 
     // === RENDER ===
     if (isAuthenticated === null) {
@@ -815,6 +853,7 @@ function App() {
                     isSyncing={syncProgress.state === 'running'}
                     onOpenSettings={() => setShowSettingsModal(true)}
                     onOpenDiagnostics={() => setShowDiagnostics(true)}
+                    readStateVersion={readStateVersion}
                 />
             </div>
 
