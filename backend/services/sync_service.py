@@ -247,9 +247,11 @@ class SyncService:
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
                 sem = asyncio.Semaphore(limit) # Use same limit for semaphore
                 
+                assert self.manager is not None  # Set at line 191
+
                 async def sync_worker(task):
                     m_name = task['member']['name']
-                    
+
                     # Granular progress callback
                     async def sub_progress(date_str, count):
                         # Update detail immediately to show activity
@@ -258,6 +260,7 @@ class SyncService:
 
                     async with sem:
                         # Pass sub_progress to manager
+                        assert self.manager is not None
                         count = await self.manager.sync_member(
                             session, 
                             task['group'], 

@@ -84,13 +84,14 @@ TEST_MESSAGES = [
 ]
 
 # Response for messages endpoint
-def get_test_messages_response(path: str, last_read_id: int = 0):
+def get_test_messages_response(path: str, last_read_id: int = 0) -> dict:
     """Generate test messages response matching API format."""
-    unread_count = sum(1 for m in TEST_MESSAGES if m["id"] > last_read_id)
+    message_ids = [int(m["id"]) for m in TEST_MESSAGES]  # type: ignore[call-overload]
+    unread_count = sum(1 for mid in message_ids if mid > last_read_id)
     return {
         "member": TEST_MEMBER,
         "messages": TEST_MESSAGES,
         "total_count": len(TEST_MESSAGES),
         "unread_count": unread_count,
-        "max_message_id": max(m["id"] for m in TEST_MESSAGES) if TEST_MESSAGES else 0,
+        "max_message_id": max(message_ids) if message_ids else 0,
     }
