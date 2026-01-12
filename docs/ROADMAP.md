@@ -204,23 +204,23 @@ Example:
 ## P2: Medium Priority
 
 ### 7. Built-in Version Update Check
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Feature
 **Complexity:** Medium
 
 **Goal:** Check GitHub releases for updates and notify user.
 
-**Implementation:**
-- [ ] GitHub API: `GET /repos/{owner}/{repo}/releases/latest`
-- [ ] Compare current version vs latest release
-- [ ] Show notification in UI (non-intrusive)
-- [ ] Download button links to release page or auto-downloads
-- [ ] Check on startup + periodic (daily)
+**Solution implemented:**
+- [x] GitHub API: `GET /repos/{owner}/{repo}/releases/latest`
+- [x] Compare current version vs latest release (semantic versioning)
+- [x] Show notification in UI (gradient banner at top)
+- [x] Download button links to release page
+- [x] Check on startup with 1-hour cache to respect rate limits
+- [x] Dismiss per-version persists to localStorage
 
-**Considerations:**
-- Rate limiting (GitHub API: 60 req/hour unauthenticated)
-- Cache check result for session
-- User preference to disable
+**Files:**
+- `backend/api/version.py` - Version check endpoint with caching
+- `frontend/src/components/UpdateBanner.tsx` - Update notification banner
 
 ---
 
@@ -383,38 +383,23 @@ Frontend: react-i18next or similar
 ---
 
 ### 13. Windows Desktop Notifications
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Feature
 **Complexity:** Medium
 
-**Goal:** Native Windows notifications for new messages.
+**Goal:** Native desktop notifications for new messages.
 
-**Implementation options:**
-```
-Option A: win10toast / win11toast
-─────────────────────────────────
-- Python library for Windows notifications
-- Simple, works with PyInstaller
-- Limited customization
+**Solution implemented:** Option B (plyer - cross-platform)
+- [x] plyer library for cross-platform notifications
+- [x] Notification service in backend with enable/disable
+- [x] Trigger on new message detection during sync
+- [x] Add notification toggle in settings UI
+- [x] /api/notifications endpoint for status and testing
 
-Option B: plyer
-───────────────
-- Cross-platform notifications
-- Works on Windows, Mac, Linux
-- Good for future multi-platform support
-
-Option C: pywebview notification API
-────────────────────────────────────
-- If pywebview supports it
-- Native integration
-```
-
-**Tasks:**
-- [ ] Choose notification library
-- [ ] Implement notification service in backend
-- [ ] Trigger on new message detection during sync
-- [ ] Add notification preferences (enable/disable, sound)
-- [ ] Handle click-to-open behavior
+**Files:**
+- `backend/services/notification_service.py` - Notification service
+- `backend/api/notifications.py` - Notification API endpoint
+- `backend/api/settings.py` - Added notifications_enabled setting
 
 ---
 
@@ -604,11 +589,11 @@ Based on dependencies and value:
 4. ~~P1.2: Nickname resolution~~ ✅
 5. ~~P2.11: Voice UI improvements~~ ✅
 6. ~~Bug report system~~ ✅ (bonus)
-7. P2.13: Desktop notifications
+7. ~~P2.13: Desktop notifications~~ ✅
+8. ~~P2.7: Version update check~~ ✅
 
 ### Phase 3: Growth & Security
-8. P1.6: Randomized sync
-9. P2.7: Version update check
+9. P1.6: Randomized sync
 10. P2.8: In-place upgrade
 
 ### Phase 4: Major Features
@@ -642,6 +627,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Completed P2.7: Version update check, P2.13: Desktop notifications |
 | 2026-01-13 | Marked Phase 1 & 2 complete: P0.1, P1.2, P1.3, P2.10, P2.11 all done |
 | 2026-01-13 | Added P1.5: Anonymous Analytics & Community Statistics (19 items total) |
 | 2026-01-11 | Initial roadmap created with 18 items |
