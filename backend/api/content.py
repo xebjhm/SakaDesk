@@ -17,6 +17,7 @@ PyHako directory structure:
 """
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from pathlib import Path
 import json
 import logging
@@ -370,6 +371,93 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
         "members": list(members_map.values()),
         "messages": paginated
     }
+
+
+class ReadStateInput(BaseModel):
+    """Read state for a single conversation."""
+    lastReadId: int = 0
+    revealedIds: List[int] = []
+
+
+@router.post("/unread_counts")
+async def get_unread_counts(read_states: Dict[str, Any]):
+    """
+    Calculate accurate unread counts for multiple paths.
+
+    This is the single source of truth for unread counts.
+    The frontend should use this instead of estimating based on message IDs.
+
+    A message is considered UNREAD if:
+    - Its ID is greater than lastReadId (not sequentially read), AND
+    - Its ID is NOT in revealedIds (not individually revealed)
+
+    Args:
+        read_states: Dictionary mapping path -> {lastReadId: int, revealedIds: int[]}
+                     e.g., {"path/to/member": {"lastReadId": 100, "revealedIds": [150, 200]}}
+
+    Returns:
+        Dictionary mapping path -> unread_count
+    """
+    output_dir = get_output_dir()
+    if not output_dir.exists():
+        return {}
+
+    result: Dict[str, int] = {}
+
+    for path, state in read_states.items():
+        try:
+            # Parse the read state - support both old format (int) and new format (dict)
+            if isinstance(state, dict):
+                last_read_id = state.get('lastReadId', 0)
+                revealed_ids = set(state.get('revealedIds', []))
+            else:
+                # Legacy format: just lastReadId as int
+                last_read_id = int(state) if state else 0
+                revealed_ids = set()
+
+            safe_path = validate_path_within_dir(output_dir, path)
+
+            # Check if it's a group chat (has subdirectories with messages.json)
+            # or individual member (has messages.json directly)
+            msg_file = safe_path / "messages.json"
+
+            if msg_file.exists():
+                # Individual member path
+                with open(msg_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    messages = data.get('messages', [])
+                    # A message is unread if: ID > lastReadId AND ID not in revealedIds
+                    unread = sum(
+                        1 for m in messages
+                        if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                    )
+                    result[path] = unread
+            elif safe_path.is_dir():
+                # Group chat path - count messages from all member subdirs
+                total_unread = 0
+                for member_dir in safe_path.iterdir():
+                    if not member_dir.is_dir():
+                        continue
+                    member_msg_file = member_dir / "messages.json"
+                    if member_msg_file.exists():
+                        try:
+                            with open(member_msg_file, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                messages = data.get('messages', [])
+                                total_unread += sum(
+                                    1 for m in messages
+                                    if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                                )
+                        except Exception:
+                            pass
+                result[path] = total_unread
+            else:
+                result[path] = 0
+        except Exception as e:
+            logger.debug(f"Error calculating unread for {path}: {e}")
+            result[path] = 0
+
+    return result
 
 
 @router.get("/media/{file_path:path}")
