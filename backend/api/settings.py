@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Any, Optional
 
 from backend.services.platform import get_settings_path, get_app_data_dir
+from backend.services.notification_service import set_notifications_enabled, get_notifications_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +47,13 @@ class SettingsResponse(BaseModel):
     sync_interval_minutes: int
     is_configured: bool  # True if user has set up the app
     user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
+    notifications_enabled: bool = True  # Desktop notifications for new messages
 
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
     auto_sync_enabled: Optional[bool] = None
     sync_interval_minutes: Optional[int] = None
+    notifications_enabled: Optional[bool] = None
 
 class FreshCheckResponse(BaseModel):
     is_fresh: bool  # True if output folder is empty or doesn't exist
@@ -62,12 +65,17 @@ async def get_settings():
     config = load_config()
     output_dir = config.get("output_dir", get_default_output_dir())
 
+    # Sync notification service state with persisted setting
+    notifications_enabled = config.get("notifications_enabled", True)
+    set_notifications_enabled(notifications_enabled)
+
     return SettingsResponse(
         output_dir=output_dir,
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
         is_configured=config.get("is_configured", False),
-        user_nickname=config.get("user_nickname")
+        user_nickname=config.get("user_nickname"),
+        notifications_enabled=notifications_enabled,
     )
 
 @router.post("", response_model=SettingsResponse)
@@ -82,6 +90,9 @@ async def update_settings(update: SettingsUpdate):
         config["auto_sync_enabled"] = update.auto_sync_enabled
     if update.sync_interval_minutes is not None:
         config["sync_interval_minutes"] = update.sync_interval_minutes
+    if update.notifications_enabled is not None:
+        config["notifications_enabled"] = update.notifications_enabled
+        set_notifications_enabled(update.notifications_enabled)
 
     save_config(config)
 
@@ -90,7 +101,8 @@ async def update_settings(update: SettingsUpdate):
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
         is_configured=config.get("is_configured", False),
-        user_nickname=config.get("user_nickname")
+        user_nickname=config.get("user_nickname"),
+        notifications_enabled=config.get("notifications_enabled", True),
     )
 
 @router.get("/fresh", response_model=FreshCheckResponse)
