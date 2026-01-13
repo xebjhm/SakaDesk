@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Message } from '../types';
 import { cn } from '../lib/utils';
 import { VoicePlayer } from './VoicePlayer';
@@ -168,9 +168,19 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         ? `${api_base}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
         : null;
 
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    const handleTouchStart = () => { if (isUnread && onLongPress) longPressTimer = setTimeout(onLongPress, 600); };
-    const handleTouchEnd = () => { if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; } };
+    // Long press timer for shelter overlay - use ref to persist across renders
+    const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const handleTouchStart = useCallback(() => {
+        if (isUnread && onLongPress) {
+            longPressTimerRef.current = setTimeout(onLongPress, 600);
+        }
+    }, [isUnread, onLongPress]);
+    const handleTouchEnd = useCallback(() => {
+        if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+        }
+    }, []);
 
     const ShelterOverlay = () => {
         const type = message.type;

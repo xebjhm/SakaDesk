@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { Image, Film, Volume2, Calendar, VolumeX } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn, formatDateTime, formatDuration } from '../lib/utils';
 import type { Message } from '../types';
 import { VoicePlayer } from './VoicePlayer';
 import { LazyVideo } from './LazyVideo';
@@ -15,6 +15,13 @@ interface MediaGalleryModalProps extends BaseModalProps {
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
+
+// Tab configuration - module level constant to avoid recreation on each render
+const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; label: string }[] = [
+    { id: 'photos', icon: Image, label: 'Photos' },
+    { id: 'videos', icon: Film, label: 'Videos' },
+    { id: 'voice', icon: Volume2, label: 'Voice messages' },
+];
 
 // Group items by month
 interface MonthGroup {
@@ -82,31 +89,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         return result;
     }, [activeTab, mediaItems]);
 
-    const tabs: { id: MediaTab; icon: React.ElementType }[] = [
-        { id: 'photos', icon: Image },
-        { id: 'videos', icon: Film },
-        { id: 'voice', icon: Volume2 },
-    ];
-
     const getMediaUrl = (mediaFile: string) => {
         return `/api/content/media/${mediaFile.split('/').map(encodeURIComponent).join('/')}`;
-    };
-
-    const formatDateTime = (timestamp: string) => {
-        const date = new Date(timestamp);
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const hour = date.getHours().toString().padStart(2, '0');
-        const min = date.getMinutes().toString().padStart(2, '0');
-        return `${year}/${month}/${day} ${hour}:${min}`;
-    };
-
-    const formatDuration = (seconds?: number) => {
-        if (!seconds) return '--:--';
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     // Format date to YYYY-MM-DD for item refs
@@ -190,10 +174,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     // Render icon-only tabs (like official app) - sticky at top of scroll container
     const renderTabs = () => (
-        <div className="flex bg-white border-b border-gray-200 shrink-0 sticky top-0 z-20">
-            {tabs.map((tab) => (
+        <div
+            role="tablist"
+            aria-label="Media type tabs"
+            className="flex bg-white border-b border-gray-200 shrink-0 sticky top-0 z-20"
+        >
+            {MEDIA_TABS.map((tab) => (
                 <button
                     key={tab.id}
+                    role="tab"
+                    aria-selected={activeTab === tab.id}
+                    aria-label={tab.label}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
                         "flex-1 flex items-center justify-center py-3 transition-colors relative",
