@@ -4,7 +4,7 @@ Checks GitHub releases for updates with caching to respect rate limits.
 Also provides in-place upgrade functionality for Windows.
 """
 import httpx
-import logging
+import structlog
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks
@@ -19,7 +19,7 @@ from backend.services.upgrade_service import (
     is_upgrade_supported,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 

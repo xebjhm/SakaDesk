@@ -9,7 +9,7 @@ The upgrade flow:
 4. Upgrade script takes over, runs installer, cleans up
 """
 
-import logging
+import structlog
 import tempfile
 import subprocess
 import sys
@@ -19,7 +19,7 @@ import httpx
 
 from backend.services.platform import is_windows, get_app_data_dir
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # GitHub release asset pattern
 GITHUB_REPO = "xtorker/HakoDesk"
