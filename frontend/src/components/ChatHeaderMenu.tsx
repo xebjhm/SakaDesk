@@ -3,11 +3,12 @@ import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react
 import { cn } from '../lib/utils';
 import type { Message } from '../types';
 import { SentLettersModal } from './SentLettersModal';
+import { MediaGalleryModal } from './MediaGalleryModal';
 
 interface ChatHeaderMenuProps {
     conversationPath: string;
     isGroupChat: boolean;
-    messages: Message[];  // Will be used for media gallery
+    messages: Message[];
     memberName: string;
     groupId?: string;
 }
@@ -17,7 +18,7 @@ type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' |
 export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
     conversationPath,
     isGroupChat,
-    messages: _messages,  // Will be used for media gallery
+    messages,
     memberName,
     groupId,
 }) => {
@@ -89,7 +90,14 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 groupId={groupId}
             />
 
-            {/* TODO: Other modals will be added here */}
+            <MediaGalleryModal
+                isOpen={activeModal === 'media'}
+                onClose={() => setActiveModal(null)}
+                messages={messages}
+                memberName={memberName}
+            />
+
+            {/* TODO: Calendar, Background, Favorites modals */}
         </>
     );
 };
