@@ -74,6 +74,7 @@ async def _get_client_and_session():
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Not available in test mode")
 
+    session = None
     try:
         tm = TokenManager()
         token_data = tm.load_session(Group.HINATAZAKA46.value)
@@ -96,8 +97,12 @@ async def _get_client_and_session():
         return client, session
 
     except HTTPException:
+        if session:
+            await session.close()
         raise
     except Exception as e:
+        if session:
+            await session.close()
         logger.error(f"Failed to create client: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, RefreshCw, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -29,7 +29,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     // Fetch message dates
-    const fetchDates = async () => {
+    const fetchDates = useCallback(async () => {
         if (!conversationPath) return;
 
         setLoading(true);
@@ -48,13 +48,13 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, [conversationPath]);
 
     useEffect(() => {
         if (isOpen) {
             fetchDates();
         }
-    }, [isOpen, conversationPath]);
+    }, [isOpen, fetchDates]);
 
     // Create a set of dates with messages for quick lookup
     const datesWithMessages = useMemo(() => {

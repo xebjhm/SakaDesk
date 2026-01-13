@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, Calendar } from 'lucide-react';
 
 interface StreakData {
@@ -26,7 +26,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const fetchStreak = async () => {
+    const fetchStreak = useCallback(async () => {
         if (!groupId) return;
 
         setLoading(true);
@@ -45,13 +45,13 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, [groupId]);
 
     useEffect(() => {
         if (isOpen && groupId) {
             fetchStreak();
         }
-    }, [isOpen, groupId]);
+    }, [isOpen, groupId, fetchStreak]);
 
     // Reset when closed
     useEffect(() => {
@@ -86,7 +86,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                 </div>
 
                 {/* Header with gradient */}
-                <div className="bg-gradient-to-b from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] pt-8 pb-12 px-6 relative">
+                <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] pt-8 pb-12 px-6 relative">
                     {/* Avatar */}
                     <div className="flex justify-center">
                         <div className="w-24 h-24 rounded-full bg-white shadow-lg overflow-hidden border-4 border-white">
