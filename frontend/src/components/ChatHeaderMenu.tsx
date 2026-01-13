@@ -6,6 +6,7 @@ import { SentLettersModal } from './SentLettersModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
 import { CalendarModal } from './CalendarModal';
 import { BackgroundModal } from './BackgroundModal';
+import { FavoritesModal } from './FavoritesModal';
 
 export interface BackgroundSettings {
     type: 'default' | 'color' | 'image';
@@ -39,11 +40,11 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
     const [activeModal, setActiveModal] = useState<ModalType>(null);
 
     const menuItems = [
-        { id: 'calendar' as ModalType, icon: Calendar, label: '日期搜索', enabled: true },
-        { id: 'favorites' as ModalType, icon: Star, label: '収藏夾', enabled: true },
-        { id: 'media' as ModalType, icon: Image, label: '媒体', enabled: true },
-        { id: 'background' as ModalType, icon: Palette, label: '背景図案', enabled: true },
-        { id: 'letters' as ModalType, icon: Mail, label: '已发送信件', enabled: !isGroupChat },
+        { id: 'calendar' as ModalType, icon: Calendar, label: 'Date Search', enabled: true },
+        { id: 'favorites' as ModalType, icon: Star, label: 'Favorites', enabled: true },
+        { id: 'media' as ModalType, icon: Image, label: 'Media', enabled: true },
+        { id: 'background' as ModalType, icon: Palette, label: 'Background', enabled: true },
+        { id: 'letters' as ModalType, icon: Mail, label: 'Sent Letters', enabled: !isGroupChat },
     ];
 
     const handleMenuItemClick = (modalType: ModalType) => {
@@ -129,7 +130,12 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 }}
             />
 
-            {/* TODO: Favorites modal */}
+            <FavoritesModal
+                isOpen={activeModal === 'favorites'}
+                onClose={() => setActiveModal(null)}
+                messages={messages}
+                memberName={memberName}
+            />
         </>
     );
 };

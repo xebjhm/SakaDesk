@@ -119,14 +119,22 @@ async def get_letters(group_id: int, count: int = 200):
     try:
         letters_data = await client.get_letters(session, group_id, count=count)
 
+        # Debug: Log first letter to see actual field names
+        if letters_data:
+            logger.info(f"Letter API response sample: {letters_data[0]}")
+
         letters = []
         for letter in letters_data:
+            # API uses 'text' for content and 'file' for image
+            content = letter.get('text') or letter.get('content') or ''
+            image = letter.get('file') or letter.get('image')
+
             letters.append(Letter(
                 id=letter.get('id', 0),
-                content=letter.get('content', ''),
+                content=content,
                 created_at=letter.get('created_at', ''),
                 updated_at=letter.get('updated_at', ''),
-                image=letter.get('image'),
+                image=image,
                 thumbnail=letter.get('thumbnail'),
             ))
 
@@ -153,13 +161,22 @@ async def get_streak(group_id: int):
     try:
         streak_data = await client.get_subscription_streak(session, group_id)
 
+        # Debug: Log actual response to see field names
+        logger.info(f"Streak API response: {streak_data}")
+
         if not streak_data:
             return StreakResponse(days=0, is_active=False)
 
+        # API uses 'current' for consecutive days and 'current_start_at_date' for start date
+        days = streak_data.get('current') or streak_data.get('consecutive_day') or 0
+
+        # If current > 0, user is actively subscribed
+        is_active = days > 0
+
         return StreakResponse(
-            days=streak_data.get('consecutive_day', 0),
-            is_active=streak_data.get('is_active', False),
-            start_date=streak_data.get('start_date'),
+            days=days,
+            is_active=is_active,
+            start_date=streak_data.get('current_start_at_date') or streak_data.get('start_date'),
         )
 
     except HTTPException:

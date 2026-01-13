@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { X, ChevronLeft, ChevronRight, RefreshCw, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { BaseModal, ModalLoadingState, ModalErrorState } from './common';
+import type { BaseModalProps } from '../types/modal';
 
 interface DateCount {
     date: string;
     count: number;
 }
 
-interface CalendarModalProps {
-    isOpen: boolean;
-    onClose: () => void;
+interface CalendarModalProps extends BaseModalProps {
     conversationPath: string;
     onSelectDate: (date: string) => void;
 }
 
-const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
-const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({
     isOpen,
@@ -142,131 +142,110 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
         return dateStr === new Date().toISOString().slice(0, 10);
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl max-w-md w-full shadow-2xl overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Calendar className="w-5 h-5 text-white" />
-                        <h3 className="text-lg font-bold text-white">日期搜索</h3>
-                    </div>
-                    <button onClick={onClose} className="text-white/80 hover:text-white transition-colors">
-                        <X className="w-6 h-6" />
-                    </button>
-                </div>
-
-                {/* Month Navigation */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                    <button
-                        onClick={goToPrevMonth}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <ChevronLeft className="w-5 h-5 text-gray-600" />
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <span className="text-lg font-bold text-gray-800">
-                            {currentDate.getFullYear()}年 {MONTHS[currentDate.getMonth()]}
-                        </span>
-                        <button
-                            onClick={goToToday}
-                            className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                        >
-                            今日
-                        </button>
-                    </div>
-                    <button
-                        onClick={goToNextMonth}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <ChevronRight className="w-5 h-5 text-gray-600" />
-                    </button>
-                </div>
-
-                {/* Calendar Grid */}
-                <div className="p-4">
-                    {loading ? (
-                        <div className="flex items-center justify-center py-12">
-                            <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
-                        </div>
-                    ) : error ? (
-                        <div className="text-center py-8 text-red-600">
-                            {error}
-                            <button
-                                onClick={fetchDates}
-                                className="block mx-auto mt-2 text-blue-600 hover:underline"
-                            >
-                                Retry
-                            </button>
-                        </div>
-                    ) : (
-                        <>
-                            {/* Weekday headers */}
-                            <div className="grid grid-cols-7 mb-2">
-                                {WEEKDAYS.map((day, i) => (
-                                    <div
-                                        key={day}
-                                        className={cn(
-                                            "text-center text-xs font-medium py-2",
-                                            i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-gray-500"
-                                        )}
-                                    >
-                                        {day}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Days grid */}
-                            <div className="grid grid-cols-7 gap-1">
-                                {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
-                                    const hasMessages = datesWithMessages.has(dateStr);
-                                    const dayOfWeek = date.getDay();
-                                    const today = isToday(dateStr);
-
-                                    return (
-                                        <button
-                                            key={index}
-                                            onClick={() => handleDateClick(dateStr)}
-                                            disabled={!hasMessages}
-                                            title={hasMessages ? `${getMessageCount(dateStr)} messages` : undefined}
-                                            className={cn(
-                                                "aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all relative",
-                                                !isCurrentMonth && "opacity-30",
-                                                isCurrentMonth && !hasMessages && "text-gray-400",
-                                                hasMessages && "text-gray-900 hover:bg-blue-50 cursor-pointer",
-                                                today && "ring-2 ring-blue-500 ring-offset-1",
-                                                dayOfWeek === 0 && isCurrentMonth && "text-red-500",
-                                                dayOfWeek === 6 && isCurrentMonth && "text-blue-500",
-                                            )}
-                                        >
-                                            <span className="font-medium">{date.getDate()}</span>
-                                            {/* Message indicator dot */}
-                                            {hasMessages && (
-                                                <div className="absolute bottom-1 flex items-center justify-center">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                                </div>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Footer with stats */}
+        <BaseModal
+            isOpen={isOpen}
+            onClose={onClose}
+            title="Date Search"
+            icon={Calendar}
+            maxWidth="max-w-md"
+            footer={
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-center text-sm text-gray-500">
                     {messageDates.length > 0 ? (
-                        <span>
-                            {messageDates.length} 日間にメッセージがあります
-                        </span>
+                        <span>Messages available on {messageDates.length} days</span>
                     ) : (
-                        <span>日付をタップしてジャンプ</span>
+                        <span>Tap a date to jump</span>
                     )}
                 </div>
+            }
+        >
+            {/* Month Navigation */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                <button
+                    onClick={goToPrevMonth}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                    <ChevronLeft className="w-5 h-5 text-gray-600" />
+                </button>
+                <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-gray-800">
+                        {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
+                    </span>
+                    <button
+                        onClick={goToToday}
+                        className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                    >
+                        Today
+                    </button>
+                </div>
+                <button
+                    onClick={goToNextMonth}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                    <ChevronRight className="w-5 h-5 text-gray-600" />
+                </button>
             </div>
-        </div>
+
+            {/* Calendar Grid */}
+            <div className="p-4">
+                {loading ? (
+                    <ModalLoadingState />
+                ) : error ? (
+                    <ModalErrorState error={error} onRetry={fetchDates} />
+                ) : (
+                    <>
+                        {/* Weekday headers */}
+                        <div className="grid grid-cols-7 mb-2">
+                            {WEEKDAYS.map((day, i) => (
+                                <div
+                                    key={day}
+                                    className={cn(
+                                        "text-center text-xs font-medium py-2",
+                                        i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-gray-500"
+                                    )}
+                                >
+                                    {day}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Days grid */}
+                        <div className="grid grid-cols-7 gap-1">
+                            {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
+                                const hasMessages = datesWithMessages.has(dateStr);
+                                const dayOfWeek = date.getDay();
+                                const today = isToday(dateStr);
+
+                                return (
+                                    <button
+                                        key={index}
+                                        onClick={() => handleDateClick(dateStr)}
+                                        disabled={!hasMessages}
+                                        title={hasMessages ? `${getMessageCount(dateStr)} messages` : undefined}
+                                        className={cn(
+                                            "aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all relative",
+                                            !isCurrentMonth && "opacity-30",
+                                            isCurrentMonth && !hasMessages && "text-gray-400",
+                                            hasMessages && "text-gray-900 hover:bg-blue-50 cursor-pointer",
+                                            today && "ring-2 ring-blue-500 ring-offset-1",
+                                            dayOfWeek === 0 && isCurrentMonth && "text-red-500",
+                                            dayOfWeek === 6 && isCurrentMonth && "text-blue-500",
+                                        )}
+                                    >
+                                        <span className="font-medium">{date.getDate()}</span>
+                                        {/* Message indicator dot */}
+                                        {hasMessages && (
+                                            <div className="absolute bottom-1 flex items-center justify-center">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+        </BaseModal>
     );
 };
