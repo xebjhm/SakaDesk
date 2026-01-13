@@ -333,10 +333,10 @@ class SyncService:
                         # Add chunk's actual successes to total
                         total_successed += chunk_stats[0]
 
-                    # Update messages.json files with extracted dimensions
-                    for member_dir, dims in all_dimensions_by_dir.items():
+                    # Update messages.json files with extracted metadata (dimensions, duration, is_muted)
+                    for member_dir, meta in all_dimensions_by_dir.items():
                         messages_file = member_dir / "messages.json"
-                        await self.manager.update_message_dimensions(messages_file, dims)
+                        await self.manager.update_message_metadata(messages_file, meta)
 
                 else:
                     logger.info("No new media to download.")
