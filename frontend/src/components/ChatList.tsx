@@ -23,6 +23,8 @@ interface ChatListProps {
     virtuosoRef?: React.RefObject<VirtuosoHandle>;
     /** User's nickname for %%% placeholder replacement */
     userNickname?: string;
+    /** Callback to toggle favorite status of a message */
+    onToggleFavorite?: (messageId: number, currentState: boolean) => void;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -37,6 +39,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     onRangeChanged,
     virtuosoRef: externalRef,
     userNickname,
+    onToggleFavorite,
 }) => {
     const internalRef = useRef<VirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
@@ -84,6 +87,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                             onReveal={() => onReveal(msg.id)}
                             onLongPress={onLongPress}
                             userNickname={userNickname}
+                            onToggleFavorite={onToggleFavorite}
                         />
                     </div>
                 );
