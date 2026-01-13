@@ -25,6 +25,8 @@ export interface Message {
     media_file?: string;
     width?: number;  // Media dimensions (for picture/video)
     height?: number;
+    media_duration?: number;  // Duration in seconds (for video/voice)
+    is_muted?: boolean;  // Whether video has no audio
     _raw_type?: string;
 }
 

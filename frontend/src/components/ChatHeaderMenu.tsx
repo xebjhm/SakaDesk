@@ -20,6 +20,7 @@ interface ChatHeaderMenuProps {
     isGroupChat: boolean;
     messages: Message[];
     memberName: string;
+    memberAvatar?: string;
     groupId?: string;
     onSelectDate?: (date: string) => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
@@ -32,6 +33,7 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
     isGroupChat,
     messages,
     memberName,
+    memberAvatar,
     groupId,
     onSelectDate,
     onBackgroundChange,
@@ -109,6 +111,8 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
+                memberAvatar={memberAvatar}
+                onOpenCalendar={() => setActiveModal('calendar')}
             />
 
             <CalendarModal
@@ -135,6 +139,8 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
+                memberAvatar={memberAvatar}
+                onOpenCalendar={() => setActiveModal('calendar')}
             />
         </>
     );
