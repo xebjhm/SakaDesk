@@ -13,7 +13,6 @@ interface MessageBubbleProps {
     isUnread?: boolean;
     onReveal?: () => void;
     onLongPress?: () => void;
-    userNickname?: string;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
 }
@@ -88,11 +87,9 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
     );
 };
 
-// Component to render text with clickable URLs and nickname replacement
-const LinkifiedText: React.FC<{ text: string; userNickname?: string }> = ({ text, userNickname }) => {
-    // Replace %%% placeholder with user's nickname
-    const processedText = userNickname ? text.replace(/%%%/g, userNickname) : text;
-    const parts = processedText.split(URL_REGEX);
+// Component to render text with clickable URLs
+const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
+    const parts = text.split(URL_REGEX);
 
     return (
         <>
@@ -127,7 +124,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     isUnread = false,
     onReveal,
     onLongPress,
-    userNickname,
     onToggleFavorite,
     onAvatarClick,
 }) => {
@@ -296,7 +292,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 "text-gray-900 whitespace-pre-wrap leading-relaxed text-[15px]",
                                 message.type === 'voice' && "p-3 pt-2"
                             )}>
-                                <LinkifiedText text={message.content} userNickname={userNickname} />
+                                <LinkifiedText text={message.content} />
                             </div>
                         )}
 

@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../types';
 import { useChatScroll } from '../hooks/useChatScroll';
@@ -44,13 +44,33 @@ export const ChatList: React.FC<ChatListProps> = ({
     onToggleFavorite,
     onAvatarClick,
 }) => {
+    const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
+
+    // Pre-process messages: replace %%% with nickname at data level
+    // This ensures Virtuoso sees different data when nickname changes
+    const processedMessages = useMemo(() => {
+        if (!userNickname) return messages;
+        // Match both ASCII %%% (U+0025) and fullwidth ％％％ (U+FF05)
+        const placeholderRegex = /%%%|％％％/g;
+        return messages.map(msg => {
+            if (msg.content && placeholderRegex.test(msg.content)) {
+                // Reset lastIndex since we're reusing the regex
+                placeholderRegex.lastIndex = 0;
+                return {
+                    ...msg,
+                    content: msg.content.replace(placeholderRegex, userNickname)
+                };
+            }
+            return msg;
+        });
+    }, [messages, userNickname]);
 
     const {
         initialTopMostItemIndex,
         handleRangeChanged,
-    } = useChatScroll(memberId, messages);
+    } = useChatScroll(memberId, processedMessages);
 
     // Combined range change handler
     const onRangeChange = useCallback((range: { startIndex: number; endIndex: number }) => {
@@ -58,7 +78,7 @@ export const ChatList: React.FC<ChatListProps> = ({
         onRangeChanged?.(range);
     }, [handleRangeChanged, onRangeChanged]);
 
-    if (!messages || messages.length === 0) {
+    if (!processedMessages || processedMessages.length === 0) {
         return (
             <div className="flex-1 flex items-center justify-center text-gray-400">
                 <p>No messages</p>
@@ -68,10 +88,10 @@ export const ChatList: React.FC<ChatListProps> = ({
 
     return (
         <Virtuoso
-            key={`virtuoso-${memberId}`}
+            key={virtuosoKey}
             ref={virtuosoRef}
             style={{ height: '100%' }}
-            data={messages}
+            data={processedMessages}
             initialTopMostItemIndex={initialTopMostItemIndex}
             defaultItemHeight={DEFAULT_ITEM_HEIGHT}
             followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
@@ -89,7 +109,6 @@ export const ChatList: React.FC<ChatListProps> = ({
                             isUnread={isMsgUnread}
                             onReveal={() => onReveal(msg.id)}
                             onLongPress={onLongPress}
-                            userNickname={userNickname}
                             onToggleFavorite={onToggleFavorite}
                             onAvatarClick={onAvatarClick}
                         />
