@@ -546,6 +546,28 @@ function App() {
         }
     }, [messages, readState]);
 
+    // Toggle favorite status (optimistic update + API call)
+    const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
+        // Optimistically update UI
+        setMessages(msgs => msgs.map(m =>
+            m.id === messageId ? { ...m, is_favorite: !currentState } : m
+        ));
+
+        try {
+            const method = currentState ? 'DELETE' : 'POST';
+            const res = await fetch(`/api/favorites/${messageId}`, { method });
+            if (!res.ok) {
+                throw new Error('Failed to update favorite');
+            }
+        } catch (err) {
+            // Revert on failure
+            setMessages(msgs => msgs.map(m =>
+                m.id === messageId ? { ...m, is_favorite: currentState } : m
+            ));
+            console.error('Failed to toggle favorite:', err);
+        }
+    }, []);
+
     const saveSettings = async (updates: Partial<AppSettings>): Promise<boolean> => {
         try {
             const res = await fetch('/api/settings', {
@@ -1005,6 +1027,7 @@ function App() {
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
                             userNickname={appSettings?.user_nickname}
+                            onToggleFavorite={handleToggleFavorite}
                         />
                     )}
                 </div>

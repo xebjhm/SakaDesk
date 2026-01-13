@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import { Message } from '../types';
 import { cn } from '../lib/utils';
 import { VoicePlayer } from './VoicePlayer';
-import { Video, MessageSquare, Volume2, Image as ImageIcon } from 'lucide-react';
+import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
+import { MessageContextMenu } from './MessageContextMenu';
 
 interface MessageBubbleProps {
     message: Message;
@@ -13,6 +14,7 @@ interface MessageBubbleProps {
     onReveal?: () => void;
     onLongPress?: () => void;
     userNickname?: string;
+    onToggleFavorite?: (messageId: number, currentState: boolean) => void;
 }
 
 const SHELTER_COLORS = {
@@ -124,10 +126,44 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     isUnread = false,
     onReveal,
     onLongPress,
-    userNickname
+    userNickname,
+    onToggleFavorite
 }) => {
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+
+    // Context menu state
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+
+    // Handle right-click to show context menu
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        setContextMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
+    // Handle long press for touch devices (favorites context menu)
+    const [longPressTimerFavorite, setLongPressTimerFavorite] = useState<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleTouchStartFavorite = useCallback((e: React.TouchEvent) => {
+        const touch = e.touches[0];
+        const timer = setTimeout(() => {
+            setContextMenu({ x: touch.clientX, y: touch.clientY });
+        }, 600);
+        setLongPressTimerFavorite(timer);
+    }, []);
+
+    const handleTouchEndFavorite = useCallback(() => {
+        if (longPressTimerFavorite) {
+            clearTimeout(longPressTimerFavorite);
+            setLongPressTimerFavorite(null);
+        }
+    }, [longPressTimerFavorite]);
+
+    const handleToggleFavorite = useCallback(() => {
+        if (onToggleFavorite) {
+            onToggleFavorite(message.id, message.is_favorite);
+        }
+    }, [onToggleFavorite, message.id, message.is_favorite]);
 
     // Encode path segments for special chars (spaces, CJK characters)
     const mediaUrl = message.media_file
@@ -162,7 +198,24 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     };
 
     return (
-        <div className="flex gap-3 mb-6 relative">
+        <div
+            className="flex gap-3 mb-6 relative"
+            onContextMenu={handleContextMenu}
+            onTouchStart={handleTouchStartFavorite}
+            onTouchEnd={handleTouchEndFavorite}
+            onTouchCancel={handleTouchEndFavorite}
+        >
+            {/* Context Menu */}
+            {contextMenu && (
+                <MessageContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    isFavorite={message.is_favorite}
+                    onToggleFavorite={handleToggleFavorite}
+                    onClose={() => setContextMenu(null)}
+                />
+            )}
+
             {/* Avatar */}
             <div className="flex-shrink-0">
                 <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
@@ -185,6 +238,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm text-gray-700 font-medium">{member_name}</span>
                     <span className="text-xs text-gray-400">{dateStr}</span>
+                    {message.is_favorite && (
+                        <Star className="w-3.5 h-3.5 text-blue-500 fill-blue-500" />
+                    )}
                 </div>
 
                 {/* Bubble Container */}
