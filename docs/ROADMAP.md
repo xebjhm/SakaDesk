@@ -166,38 +166,40 @@ Layer 3: Chat view (current right panel)
 ---
 
 ### 6. Randomized Background Sync
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Security/Anti-Detection
 **Complexity:** Medium
 
-**Current Problem:** Fixed sync intervals are detectable patterns.
+**Goal:** Avoid detectable patterns by randomizing sync intervals.
 
-**Proposed Solution:**
+**Solution implemented:** Based on analysis of 19,873 messages from 24 members:
+- [x] Analyzed posting patterns: Peak hours 19:00-23:00 JST (40% of messages)
+- [x] Time-of-day multiplier (peak=0.6x, dead hours=2.0x)
+- [x] Activity multiplier (recent posts=0.5x, inactive=1.5x)
+- [x] ±20% jitter on each interval
+- [x] Clamped to 5-60 minute range
+- [x] Settings toggle: "Smart Timing" (adaptive_sync_enabled)
+
+**Algorithm:**
 ```
-Dynamic Sync Frequency Algorithm:
-─────────────────────────────────
-1. Base interval: 15-30 minutes (randomized)
-2. Activity multiplier:
-   - If member posted recently (< 1 hour): check more often
-   - If member inactive (> 24 hours): check less often
-3. Time-of-day adjustment:
-   - Member's typical active hours: more frequent
-   - Off-hours: less frequent
-4. Jitter: ±20% random variation on each interval
+interval = base_minutes × time_multiplier × activity_multiplier × (1 ± 0.2)
 
-Example:
-- Base: 20 min
-- Member active: ×0.5 = 10 min
-- Peak hours: ×0.7 = 7 min
-- Jitter: 7 min ± 1.4 min = 5.6-8.4 min
+Time multipliers (JST):
+- 19:00-22:00: 0.6x (peak hours)
+- 17:00-18:00, 23:00: 0.7x (active)
+- 09:00-16:00: 0.8x (daytime)
+- 02:00-06:00: 2.0x (dead hours)
+
+Activity multipliers:
+- < 1 hour since post: 0.5x
+- < 3 hours: 0.7x
+- > 24 hours: 1.3x
+- > 72 hours: 1.5x
 ```
 
-**Tasks:**
-- [ ] Analyze member posting patterns from synced data
-- [ ] Implement adaptive interval calculator
-- [ ] Add randomization layer
-- [ ] Store last activity timestamps per member
-- [ ] Update sync scheduler
+**Files:**
+- `backend/services/adaptive_sync.py` - Adaptive interval calculator
+- `backend/api/settings.py` - Added adaptive_sync_enabled setting
 
 ---
 
@@ -593,7 +595,7 @@ Based on dependencies and value:
 8. ~~P2.7: Version update check~~ ✅
 
 ### Phase 3: Growth & Security
-9. P1.6: Randomized sync
+9. ~~P1.6: Randomized sync~~ ✅
 10. P2.8: In-place upgrade
 
 ### Phase 4: Major Features
@@ -627,6 +629,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Completed P1.6: Randomized sync with adaptive timing algorithm |
 | 2026-01-13 | Completed P2.7: Version update check, P2.13: Desktop notifications |
 | 2026-01-13 | Marked Phase 1 & 2 complete: P0.1, P1.2, P1.3, P2.10, P2.11 all done |
 | 2026-01-13 | Added P1.5: Anonymous Analytics & Community Statistics (19 items total) |

@@ -49,6 +49,7 @@ interface AppSettings {
     output_dir: string;
     auto_sync_enabled: boolean;
     sync_interval_minutes: number;
+    adaptive_sync_enabled?: boolean;
     is_configured: boolean;
     user_nickname?: string;
     notifications_enabled?: boolean;
@@ -898,6 +899,24 @@ function App() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Adaptive Sync */}
+                                {appSettings.auto_sync_enabled && (
+                                    <div>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-sm font-medium text-gray-700">Smart Timing</label>
+                                            <button
+                                                onClick={() => saveSettings({ adaptive_sync_enabled: !appSettings.adaptive_sync_enabled })}
+                                                className={`relative w-12 h-6 rounded-full transition-colors ${appSettings.adaptive_sync_enabled ? 'bg-blue-500' : 'bg-gray-300'
+                                                    }`}
+                                            >
+                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${appSettings.adaptive_sync_enabled ? 'translate-x-7' : 'translate-x-1'
+                                                    }`} />
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">Randomize intervals based on posting patterns</p>
+                                    </div>
+                                )}
 
                                 {/* Desktop Notifications */}
                                 <div>
