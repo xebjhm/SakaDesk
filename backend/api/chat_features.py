@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict
 
 from pyhako import Client, Group
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 from backend.services.platform import is_test_mode, get_settings_path
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -76,7 +76,7 @@ async def _get_client_and_session():
 
     session = None
     try:
-        tm = TokenManager()
+        tm = get_token_manager()
         token_data = tm.load_session(Group.HINATAZAKA46.value)
 
         if not token_data or not token_data.get('access_token'):

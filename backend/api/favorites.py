@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from pyhako import Client, Group
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 from backend.services.platform import get_settings_path, is_test_mode
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
@@ -106,7 +106,7 @@ async def _get_client_and_session():
         raise HTTPException(status_code=503, detail="Favorites not available in test mode")
 
     try:
-        tm = TokenManager()
+        tm = get_token_manager()
         token_data = tm.load_session(Group.HINATAZAKA46.value)
 
         if not token_data or not token_data.get('access_token'):

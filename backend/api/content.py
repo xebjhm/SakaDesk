@@ -69,8 +69,8 @@ def get_output_dir() -> Path:
                 path_str = settings.get("output_dir")
                 if path_str:
                     return Path(path_str)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load output_dir from settings", error=str(e))
     return DEFAULT_OUTPUT_DIR
 
 
@@ -123,8 +123,8 @@ async def get_groups():
             with open(meta_file, 'r', encoding='utf-8') as f:
                 meta = json.load(f)
                 metadata_map = meta.get('groups', {})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load sync metadata for groups", error=str(e))
 
     # Iterate over service directories (e.g., 日向坂46)
     for service_dir in output_dir.iterdir():
@@ -197,7 +197,7 @@ async def get_groups():
                             if 'is_active' in m_data:
                                 is_active = m_data.get('is_active', True)
                     except Exception as e:
-                        logger.debug(f"Error reading {msg_file}: {e}")
+                        logger.warning("Failed to read messages file", file_path=str(msg_file), error=str(e))
 
                 members_info.append(member_meta)
 
@@ -244,9 +244,11 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
 
     output_dir = get_output_dir()
     safe_path = validate_path_within_dir(output_dir, path)
+    logger.debug("Loading messages", path=path, limit=limit, last_read_id=last_read_id)
 
     msg_file = safe_path / "messages.json"
     if not msg_file.exists():
+        logger.debug("Messages file not found", file_path=str(msg_file))
         raise HTTPException(status_code=404, detail="No messages found")
 
     try:
@@ -336,8 +338,8 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
                     msg['member_id'] = member_id
                     msg['member_name'] = member_name
                     all_messages.append(msg)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load member messages in group chat", member_dir=str(member_dir), error=str(e))
 
     all_messages.sort(key=lambda m: m.get('timestamp', ''))
     total = len(all_messages)
@@ -448,8 +450,8 @@ async def get_unread_counts(read_states: Dict[str, Any]):
                                     1 for m in messages
                                     if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
                                 )
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning("Failed to calculate unread count for member", member_dir=str(member_dir), error=str(e))
                 result[path] = total_unread
             else:
                 result[path] = 0

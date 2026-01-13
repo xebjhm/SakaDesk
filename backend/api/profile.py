@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from pyhako import Client, Group
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 
 from backend.services.platform import get_settings_path, get_session_dir
 
@@ -61,7 +61,7 @@ async def get_profile():
 
     # Fetch from API
     try:
-        tm = TokenManager()
+        tm = get_token_manager()
         group = Group.HINATAZAKA46  # Default group
         session_data = tm.load_session(group.value)
 

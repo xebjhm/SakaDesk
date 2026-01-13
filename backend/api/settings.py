@@ -30,9 +30,10 @@ def load_config() -> dict[str, Any]:
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 result: dict[str, Any] = json.load(f)
+                logger.debug("Settings loaded", settings_file=str(SETTINGS_FILE), keys=list(result.keys()), is_configured=result.get("is_configured"))
                 return result
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to load settings", settings_file=str(SETTINGS_FILE), error=str(e))
     return {}
 
 def save_config(config: dict):
@@ -40,6 +41,7 @@ def save_config(config: dict):
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(SETTINGS_FILE, 'w') as f:
         json.dump(config, f, indent=2)
+    logger.debug("Settings saved", settings_file=str(SETTINGS_FILE), keys=list(config.keys()), is_configured=config.get("is_configured"))
 
 class SettingsResponse(BaseModel):
     output_dir: str

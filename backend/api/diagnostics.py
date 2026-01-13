@@ -10,7 +10,7 @@ import base64
 from datetime import datetime, timezone
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 from pyhako import Group
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
@@ -145,7 +145,7 @@ async def get_diagnostics():
     # Auth Status (token expiry without exposing the token)
     auth_status = AuthStatus(has_token=False)
     try:
-        tm = TokenManager()
+        tm = get_token_manager()
         groups_configured = []
         for group in Group:
             session_data = tm.load_session(group.value)
@@ -186,7 +186,19 @@ async def get_diagnostics():
             if metadata_path.exists():
                 with open(metadata_path, 'r') as f:
                     metadata = json.load(f)
-                    sync_state.last_sync = metadata.get('last_sync')
+                    # Convert UTC timestamp to local time for display
+                    utc_sync = metadata.get('last_sync')
+                    if utc_sync:
+                        try:
+                            # Parse ISO format with Z suffix (UTC)
+                            utc_dt = datetime.fromisoformat(utc_sync.replace('Z', '+00:00'))
+                            # Convert to local time
+                            local_dt = utc_dt.astimezone()
+                            # Format as human-readable local time
+                            sync_state.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')
+                        except Exception:
+                            # Fallback: show as-is if parsing fails
+                            sync_state.last_sync = utc_sync
                     sync_state.last_error = metadata.get('last_error')
 
             # Get disk usage stats
