@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, RefreshCw, Mail, ChevronLeft } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -31,7 +31,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
 
-    const fetchLetters = async () => {
+    const fetchLetters = useCallback(async () => {
         if (!groupId) {
             setError('No group ID available');
             return;
@@ -53,13 +53,13 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, [groupId]);
 
     useEffect(() => {
         if (isOpen && groupId) {
             fetchLetters();
         }
-    }, [isOpen, groupId]);
+    }, [isOpen, groupId, fetchLetters]);
 
     // Reset selection when modal closes
     useEffect(() => {
