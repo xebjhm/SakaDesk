@@ -3,32 +3,90 @@ import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BaseModal, ModalLoadingState, ModalErrorState } from './common';
 import type { BaseModalProps } from '../types/modal';
+import type { Message } from '../types';
 
 interface DateCount {
     date: string;
     count: number;
 }
 
-interface CalendarModalProps extends BaseModalProps {
-    conversationPath: string;
-    onSelectDate: (date: string) => void;
+/**
+ * CalendarModal supports two modes:
+ * 1. API mode: Pass `conversationPath` to fetch dates from the server
+ * 2. Messages mode: Pass `messages` array to compute dates locally (for media gallery)
+ *
+ * The onSelectDate callback receives either:
+ * - A date string "YYYY-MM-DD" (API mode)
+ * - A Date object (Messages mode) - more useful for scrolling to month
+ */
+interface CalendarModalPropsBase extends BaseModalProps {
+    /** Title for the modal (default: "Date Search") */
+    title?: string;
 }
+
+interface CalendarModalPropsAPI extends CalendarModalPropsBase {
+    /** Conversation path for fetching dates from API */
+    conversationPath: string;
+    /** Callback when a date is selected (receives date string "YYYY-MM-DD") */
+    onSelectDate: (date: string) => void;
+    messages?: never;
+}
+
+interface CalendarModalPropsMessages extends CalendarModalPropsBase {
+    /** Messages array to compute dates from (for media gallery) */
+    messages: Message[];
+    /** Callback when a date is selected (receives Date object) */
+    onSelectDate: (date: Date) => void;
+    conversationPath?: never;
+}
+
+type CalendarModalProps = CalendarModalPropsAPI | CalendarModalPropsMessages;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export const CalendarModal: React.FC<CalendarModalProps> = ({
-    isOpen,
-    onClose,
-    conversationPath,
-    onSelectDate,
-}) => {
+// Format date to YYYY-MM-DD using LOCAL timezone (not UTC)
+const formatLocalDate = (d: Date): string => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
+    const {
+        isOpen,
+        onClose,
+        title = 'Date Search',
+    } = props;
+
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [messageDates, setMessageDates] = useState<DateCount[]>([]);
+    const [apiDates, setApiDates] = useState<DateCount[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch message dates
+    // Determine mode
+    const isMessagesMode = 'messages' in props && props.messages !== undefined;
+    const conversationPath = !isMessagesMode ? (props as CalendarModalPropsAPI).conversationPath : undefined;
+    const messages = isMessagesMode ? (props as CalendarModalPropsMessages).messages : undefined;
+
+    // Compute dates from messages (Messages mode)
+    const messageDates = useMemo(() => {
+        if (!messages) return [];
+
+        const dateCounts = new Map<string, number>();
+        messages.forEach(msg => {
+            if (msg.media_file) {
+                const date = new Date(msg.timestamp);
+                const dateStr = formatLocalDate(date);
+                dateCounts.set(dateStr, (dateCounts.get(dateStr) || 0) + 1);
+            }
+        });
+
+        return Array.from(dateCounts.entries()).map(([date, count]) => ({ date, count }));
+    }, [messages]);
+
+    // Use either API dates or computed message dates
+    const activeDates = isMessagesMode ? messageDates : apiDates;
+
+    // Fetch message dates (API mode only)
     const fetchDates = useCallback(async () => {
         if (!conversationPath) return;
 
@@ -42,7 +100,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 throw new Error(errData.detail || 'Failed to fetch dates');
             }
             const data = await res.json();
-            setMessageDates(data.dates || []);
+            setApiDates(data.dates || []);
         } catch (err: any) {
             setError(err.message || 'Failed to load dates');
         } finally {
@@ -51,19 +109,19 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     }, [conversationPath]);
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && !isMessagesMode) {
             fetchDates();
         }
-    }, [isOpen, fetchDates]);
+    }, [isOpen, isMessagesMode, fetchDates]);
 
     // Create a set of dates with messages for quick lookup
     const datesWithMessages = useMemo(() => {
-        return new Set(messageDates.map(d => d.date));
-    }, [messageDates]);
+        return new Set(activeDates.map(d => d.date));
+    }, [activeDates]);
 
     // Get message count for a date
     const getMessageCount = (dateStr: string): number => {
-        const item = messageDates.find(d => d.date === dateStr);
+        const item = activeDates.find(d => d.date === dateStr);
         return item?.count || 0;
     };
 
@@ -91,7 +149,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             days.push({
                 date: d,
                 isCurrentMonth: false,
-                dateStr: d.toISOString().slice(0, 10),
+                dateStr: formatLocalDate(d),
             });
         }
 
@@ -101,7 +159,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             days.push({
                 date: d,
                 isCurrentMonth: true,
-                dateStr: d.toISOString().slice(0, 10),
+                dateStr: formatLocalDate(d),
             });
         }
 
@@ -112,7 +170,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             days.push({
                 date: d,
                 isCurrentMonth: false,
-                dateStr: d.toISOString().slice(0, 10),
+                dateStr: formatLocalDate(d),
             });
         }
 
@@ -131,28 +189,32 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
         setCurrentDate(new Date());
     };
 
-    const handleDateClick = (dateStr: string) => {
+    const handleDateClick = (dateStr: string, date: Date) => {
         if (datesWithMessages.has(dateStr)) {
-            onSelectDate(dateStr);
+            if (isMessagesMode) {
+                (props as CalendarModalPropsMessages).onSelectDate(date);
+            } else {
+                (props as CalendarModalPropsAPI).onSelectDate(dateStr);
+            }
             onClose();
         }
     };
 
     const isToday = (dateStr: string) => {
-        return dateStr === new Date().toISOString().slice(0, 10);
+        return dateStr === formatLocalDate(new Date());
     };
 
     return (
         <BaseModal
             isOpen={isOpen}
             onClose={onClose}
-            title="Date Search"
+            title={title}
             icon={Calendar}
             maxWidth="max-w-md"
             footer={
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-center text-sm text-gray-500">
-                    {messageDates.length > 0 ? (
-                        <span>Messages available on {messageDates.length} days</span>
+                    {activeDates.length > 0 ? (
+                        <span>Available on {activeDates.length} days</span>
                     ) : (
                         <span>Tap a date to jump</span>
                     )}
@@ -219,9 +281,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                                 return (
                                     <button
                                         key={index}
-                                        onClick={() => handleDateClick(dateStr)}
+                                        onClick={() => handleDateClick(dateStr, date)}
                                         disabled={!hasMessages}
-                                        title={hasMessages ? `${getMessageCount(dateStr)} messages` : undefined}
+                                        title={hasMessages ? `${getMessageCount(dateStr)} items` : undefined}
                                         className={cn(
                                             "aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all relative",
                                             !isCurrentMonth && "opacity-30",
