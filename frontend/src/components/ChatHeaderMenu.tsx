@@ -112,7 +112,6 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 messages={messages}
                 memberName={memberName}
                 memberAvatar={memberAvatar}
-                onOpenCalendar={() => setActiveModal('calendar')}
             />
 
             <CalendarModal
@@ -140,7 +139,6 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 messages={messages}
                 memberName={memberName}
                 memberAvatar={memberAvatar}
-                onOpenCalendar={() => setActiveModal('calendar')}
             />
         </>
     );

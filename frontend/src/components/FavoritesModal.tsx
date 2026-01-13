@@ -1,18 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Star, Play, MoreHorizontal, ChevronLeft, Calendar } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { Star, Play, MoreHorizontal } from 'lucide-react';
 import type { Message } from '../types';
 import { VoicePlayer } from './VoicePlayer';
-import { Portal } from './Portal';
-import { DetailModal, SafeImage, ModalEmptyState } from './common';
-import { Z_CLASS } from '../constants/zIndex';
+import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from './common';
 import type { BaseModalProps } from '../types/modal';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
     memberName: string;
     memberAvatar?: string;
-    onOpenCalendar?: () => void;
 }
 
 export const FavoritesModal: React.FC<FavoritesModalProps> = ({
@@ -21,7 +17,6 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     messages,
     memberName,
     memberAvatar,
-    onOpenCalendar,
 }) => {
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
 
@@ -45,25 +40,6 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
         const min = date.getMinutes().toString().padStart(2, '0');
         return `${year}/${month}/${day} ${hour}:${min}`;
     };
-
-    // Handle ESC key and body scroll
-    React.useEffect(() => {
-        if (!isOpen) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = 'hidden';
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = '';
-        };
-    }, [isOpen, onClose]);
-
-    if (!isOpen) return null;
 
     // Detail view for media (photos/videos)
     const renderDetailView = () => {
@@ -108,7 +84,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
         return (
             <div key={message.id} className="bg-white">
-                {/* Header row: avatar, name, time, star, menu */}
+                {/* Header row: avatar, name, solid star + timestamp, menu */}
                 <div className="flex items-center gap-3 px-4 py-3">
                     {/* Avatar */}
                     <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 shrink-0">
@@ -121,14 +97,16 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                         )}
                     </div>
 
-                    {/* Name and time */}
+                    {/* Name */}
                     <div className="flex-1 min-w-0">
                         <span className="text-sm font-medium text-gray-900">{memberName}</span>
-                        <span className="text-sm text-gray-500 ml-3">{formatDateTime(message.timestamp)}</span>
                     </div>
 
-                    {/* Star icon */}
-                    <Star className="w-5 h-5 text-blue-400 shrink-0" />
+                    {/* Solid star followed by timestamp */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <Star className="w-4 h-4 text-blue-400 fill-blue-400" />
+                        <span className="text-sm text-gray-500">{formatDateTime(message.timestamp)}</span>
+                    </div>
 
                     {/* Menu icon */}
                     <button className="p-1 text-gray-400 hover:text-gray-600">
@@ -194,7 +172,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     const renderContent = () => {
         if (favoriteMessages.length === 0) {
             return (
-                <div className="flex-1 flex items-center justify-center">
+                <div className="flex-1 flex items-center justify-center py-12">
                     <ModalEmptyState
                         icon={Star}
                         message="No favorites yet"
@@ -215,39 +193,23 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
     return (
         <>
-            <Portal>
-                <div
-                    className={cn("fixed inset-0 bg-black/60 flex flex-col", Z_CLASS.MODAL)}
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="favorites-title"
-                >
-                    {/* Full-screen modal layout like official app */}
-                    <div className="flex flex-col h-full max-w-3xl mx-auto w-full bg-gray-50">
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-4 py-4 flex items-center justify-between shrink-0">
-                            <button
-                                onClick={onClose}
-                                className="text-white/90 hover:text-white transition-colors p-1"
-                            >
-                                <ChevronLeft className="w-6 h-6" />
-                            </button>
-                            <h3 id="favorites-title" className="text-lg font-bold text-white">
-                                Favorites
-                            </h3>
-                            <button
-                                onClick={onOpenCalendar}
-                                className="text-white/90 hover:text-white transition-colors p-1"
-                            >
-                                <Calendar className="w-6 h-6" />
-                            </button>
-                        </div>
-
-                        {/* Content */}
-                        {renderContent()}
+            <BaseModal
+                isOpen={isOpen}
+                onClose={onClose}
+                title="Favorites"
+                icon={Star}
+                maxWidth="max-w-3xl"
+                className="h-[80vh]"
+                footer={
+                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
+                        <span className="text-sm text-gray-500">
+                            {favoriteMessages.length} favorite{favoriteMessages.length !== 1 ? 's' : ''}
+                        </span>
                     </div>
-                </div>
-            </Portal>
+                }
+            >
+                {renderContent()}
+            </BaseModal>
 
             {renderDetailView()}
         </>
