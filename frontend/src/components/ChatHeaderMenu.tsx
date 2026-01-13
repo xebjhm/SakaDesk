@@ -4,6 +4,7 @@ import { cn } from '../lib/utils';
 import type { Message } from '../types';
 import { SentLettersModal } from './SentLettersModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
+import { CalendarModal } from './CalendarModal';
 
 interface ChatHeaderMenuProps {
     conversationPath: string;
@@ -11,6 +12,7 @@ interface ChatHeaderMenuProps {
     messages: Message[];
     memberName: string;
     groupId?: string;
+    onSelectDate?: (date: string) => void;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -21,6 +23,7 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
     messages,
     memberName,
     groupId,
+    onSelectDate,
 }) => {
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -97,7 +100,17 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 memberName={memberName}
             />
 
-            {/* TODO: Calendar, Background, Favorites modals */}
+            <CalendarModal
+                isOpen={activeModal === 'calendar'}
+                onClose={() => setActiveModal(null)}
+                conversationPath={conversationPath}
+                onSelectDate={(date) => {
+                    onSelectDate?.(date);
+                    setActiveModal(null);
+                }}
+            />
+
+            {/* TODO: Background, Favorites modals */}
         </>
     );
 };

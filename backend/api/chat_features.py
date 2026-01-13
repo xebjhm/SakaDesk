@@ -4,18 +4,21 @@ Chat Features API for HakoDesk.
 Provides endpoints for:
 - Sent letters
 - Subscription streak
-- (Future: media gallery metadata, calendar dates)
+- Message dates for calendar
 """
 
+import json
 import logging
 import aiohttp
+from collections import defaultdict
+from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Dict
 
 from pyhako import Client, Group
 from pyhako.credentials import TokenManager
-from backend.services.platform import is_test_mode
+from backend.services.platform import is_test_mode, get_settings_path
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -39,6 +42,31 @@ class StreakResponse(BaseModel):
     days: int
     is_active: bool
     start_date: Optional[str] = None
+
+
+class DateCount(BaseModel):
+    date: str
+    count: int
+
+
+class MessageDatesResponse(BaseModel):
+    dates: List[DateCount]
+    total_dates: int
+
+
+def _get_output_dir() -> Path:
+    """Get configured output directory."""
+    settings_path = get_settings_path()
+    if settings_path.exists():
+        try:
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+                path_str = settings.get("output_dir")
+                if path_str:
+                    return Path(path_str)
+        except Exception:
+            pass
+    return Path("output")
 
 
 async def _get_client_and_session():
@@ -136,3 +164,60 @@ async def get_streak(group_id: int):
         raise HTTPException(status_code=500, detail=f"Failed to fetch streak: {str(e)}")
     finally:
         await session.close()
+
+
+@router.get("/message_dates/{member_path:path}", response_model=MessageDatesResponse)
+async def get_message_dates(member_path: str):
+    """
+    Get dates that have messages for calendar highlighting.
+
+    Returns a list of dates with message counts for the given member path.
+    """
+    output_dir = _get_output_dir()
+    full_path = output_dir / member_path
+
+    if not full_path.exists():
+        raise HTTPException(status_code=404, detail="Path not found")
+
+    date_counts: Dict[str, int] = defaultdict(int)
+
+    # Check if this is a group path (has subdirectories with messages.json)
+    # or a member path (has messages.json directly)
+    msg_file = full_path / "messages.json"
+
+    if msg_file.exists():
+        # Single member path
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                for msg in data.get('messages', []):
+                    timestamp = msg.get('timestamp', '')
+                    if timestamp:
+                        # Extract date (YYYY-MM-DD) from ISO timestamp
+                        date_str = timestamp[:10]
+                        date_counts[date_str] += 1
+        except Exception as e:
+            logger.error(f"Error reading messages: {e}")
+    else:
+        # Group path - iterate over member directories
+        for member_dir in full_path.iterdir():
+            if not member_dir.is_dir():
+                continue
+            member_msg_file = member_dir / "messages.json"
+            if not member_msg_file.exists():
+                continue
+            try:
+                with open(member_msg_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    for msg in data.get('messages', []):
+                        timestamp = msg.get('timestamp', '')
+                        if timestamp:
+                            date_str = timestamp[:10]
+                            date_counts[date_str] += 1
+            except Exception as e:
+                logger.warning(f"Error reading {member_msg_file}: {e}")
+
+    # Convert to sorted list
+    dates = [DateCount(date=d, count=c) for d, c in sorted(date_counts.items())]
+
+    return MessageDatesResponse(dates=dates, total_dates=len(dates))
