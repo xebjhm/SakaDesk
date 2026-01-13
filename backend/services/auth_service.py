@@ -11,7 +11,8 @@ import base64
 import structlog
 from pathlib import Path
 from datetime import datetime
-from pyhako import BrowserAuth, Group
+import aiohttp
+from pyhako import BrowserAuth, Group, Client
 from pyhako.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
@@ -211,28 +212,46 @@ class AuthService:
             # Token is expired or within threshold - attempt refresh
             logger.info(f"Token expires in {remaining_seconds:.0f}s, attempting refresh...")
 
-            # Use headless browser refresh (Plan C - most reliable)
-            creds = await BrowserAuth.refresh_token_headless(
+            # Use proper API-based refresh via Client.refresh_access_token()
+            # This calls /update_token endpoint with cookies - much more reliable
+            # than headless browser scraping
+            client = Client(
                 group=self._group,
+                access_token=token,
+                cookies=token_data.get('cookies'),
                 auth_dir=self._session_dir
             )
 
-            if creds and creds.get('access_token'):
-                self._save_credentials(creds)
-                new_remaining = self._get_token_remaining_seconds(creds['access_token'])
-                logger.info(f"Token refreshed successfully, new expiry in {new_remaining:.0f}s")
-                return {
-                    "refreshed": True,
-                    "remaining_seconds": new_remaining,
-                    "status": "refreshed"
-                }
-            else:
-                logger.warning("Headless refresh failed, session may require re-login")
-                return {
-                    "refreshed": False,
-                    "remaining_seconds": remaining_seconds,
-                    "status": "refresh_failed"
-                }
+            async with aiohttp.ClientSession() as session:
+                refresh_success = await client.refresh_access_token(session)
+
+                if refresh_success:
+                    # Client.refresh_access_token() updates client.access_token and client.cookies
+                    # Save the refreshed credentials
+                    new_token = client.access_token
+                    new_cookies = client.cookies
+
+                    tm.save_session(
+                        self._group.value,
+                        new_token,
+                        None,  # refresh_token (web flow doesn't use this)
+                        new_cookies
+                    )
+
+                    new_remaining = self._get_token_remaining_seconds(new_token)
+                    logger.info(f"Token refreshed successfully via API, new expiry in {new_remaining:.0f}s")
+                    return {
+                        "refreshed": True,
+                        "remaining_seconds": new_remaining,
+                        "status": "refreshed"
+                    }
+                else:
+                    logger.warning("API-based refresh failed, session may require re-login")
+                    return {
+                        "refreshed": False,
+                        "remaining_seconds": remaining_seconds,
+                        "status": "refresh_failed"
+                    }
 
         except Exception as e:
             logger.error(f"refresh_if_needed error: {e}", exc_info=True)

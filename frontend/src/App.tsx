@@ -148,6 +148,9 @@ function App() {
     const [showMemberProfile, setShowMemberProfile] = useState(false);
 
     // === AUTH ===
+    // Token refresh timer ref - reset after login or successful refresh
+    const tokenRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     useEffect(() => {
         checkAuth();
     }, []);
@@ -164,6 +167,67 @@ function App() {
             setIsAuthenticated(false);
         }
     };
+
+    // Proactive token refresh polling (50-55 min with jitter)
+    // Timer resets after login or successful refresh to align with token lifetime
+    const getJitteredRefreshInterval = () => {
+        // 50 minutes base + 0-5 minutes random jitter = 50-55 minutes
+        const baseMs = 50 * 60 * 1000; // 50 minutes
+        const jitterMs = Math.random() * 5 * 60 * 1000; // 0-5 minutes
+        return baseMs + jitterMs;
+    };
+
+    const scheduleTokenRefresh = useCallback(() => {
+        // Clear any existing timer
+        if (tokenRefreshTimeoutRef.current) {
+            clearTimeout(tokenRefreshTimeoutRef.current);
+        }
+
+        const intervalMs = getJitteredRefreshInterval();
+        console.log(`[Auth] Scheduling token refresh in ${Math.round(intervalMs / 60000)} minutes`);
+
+        tokenRefreshTimeoutRef.current = setTimeout(async () => {
+            try {
+                console.log('[Auth] Proactive token refresh triggered');
+                const res = await fetch('/api/auth/refresh-if-needed', { method: 'POST' });
+                const data = await res.json();
+
+                console.log(`[Auth] Refresh result: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
+
+                if (data.status === 'refreshed' || data.status === 'valid') {
+                    // Token is good - schedule next refresh
+                    scheduleTokenRefresh();
+                } else if (data.status === 'refresh_failed' || data.status === 'no_token') {
+                    // Token refresh failed - user needs to re-login
+                    console.warn('[Auth] Token refresh failed, session may be invalid');
+                    setIsAuthenticated(false);
+                    setAuthError("Session expired. Please login again.");
+                } else {
+                    // Unknown status - schedule retry anyway
+                    scheduleTokenRefresh();
+                }
+            } catch (e) {
+                console.error('[Auth] Token refresh error:', e);
+                // Network error - schedule retry
+                scheduleTokenRefresh();
+            }
+        }, intervalMs);
+    }, []);
+
+    // Start/stop token refresh polling based on auth state
+    useEffect(() => {
+        if (isAuthenticated) {
+            // Start the refresh timer when authenticated
+            scheduleTokenRefresh();
+        }
+
+        return () => {
+            // Cleanup timer on unmount or auth state change
+            if (tokenRefreshTimeoutRef.current) {
+                clearTimeout(tokenRefreshTimeoutRef.current);
+            }
+        };
+    }, [isAuthenticated, scheduleTokenRefresh]);
 
     // === STARTUP SYNC ===
     const hasStartedSyncRef = useRef(false);
