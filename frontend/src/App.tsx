@@ -9,6 +9,7 @@ import { ReportIssueModal } from './components/ReportIssueModal'
 import { AboutModal } from './components/AboutModal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
+import { ChatHeaderMenu } from './components/ChatHeaderMenu'
 import { VirtuosoHandle } from 'react-virtuoso'
 
 interface GroupMessage extends Message {
@@ -995,6 +996,15 @@ function App() {
                             <Loader2 className="w-3 h-3 animate-spin mr-2" />
                             <span>{syncProgress.detail || "Syncing..."}</span>
                         </div>
+                    )}
+                    {selectedGroupDir && (
+                        <ChatHeaderMenu
+                            conversationPath={selectedGroupDir}
+                            isGroupChat={isGroupChat}
+                            messages={messages}
+                            memberName={selectedName || ''}
+                            groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                        />
                     )}
                 </header>
 
