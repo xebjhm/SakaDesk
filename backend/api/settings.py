@@ -45,6 +45,7 @@ class SettingsResponse(BaseModel):
     output_dir: str
     auto_sync_enabled: bool
     sync_interval_minutes: int
+    adaptive_sync_enabled: bool = True  # Randomize intervals based on activity patterns
     is_configured: bool  # True if user has set up the app
     user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
     notifications_enabled: bool = True  # Desktop notifications for new messages
@@ -53,6 +54,7 @@ class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
     auto_sync_enabled: Optional[bool] = None
     sync_interval_minutes: Optional[int] = None
+    adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
 
 class FreshCheckResponse(BaseModel):
@@ -73,6 +75,7 @@ async def get_settings():
         output_dir=output_dir,
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
+        adaptive_sync_enabled=config.get("adaptive_sync_enabled", True),
         is_configured=config.get("is_configured", False),
         user_nickname=config.get("user_nickname"),
         notifications_enabled=notifications_enabled,
@@ -90,6 +93,8 @@ async def update_settings(update: SettingsUpdate):
         config["auto_sync_enabled"] = update.auto_sync_enabled
     if update.sync_interval_minutes is not None:
         config["sync_interval_minutes"] = update.sync_interval_minutes
+    if update.adaptive_sync_enabled is not None:
+        config["adaptive_sync_enabled"] = update.adaptive_sync_enabled
     if update.notifications_enabled is not None:
         config["notifications_enabled"] = update.notifications_enabled
         set_notifications_enabled(update.notifications_enabled)
@@ -100,6 +105,7 @@ async def update_settings(update: SettingsUpdate):
         output_dir=config.get("output_dir", get_default_output_dir()),
         auto_sync_enabled=config.get("auto_sync_enabled", True),
         sync_interval_minutes=config.get("sync_interval_minutes", 1),
+        adaptive_sync_enabled=config.get("adaptive_sync_enabled", True),
         is_configured=config.get("is_configured", False),
         user_nickname=config.get("user_nickname"),
         notifications_enabled=config.get("notifications_enabled", True),
