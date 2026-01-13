@@ -1,14 +1,14 @@
 """
 Sync API endpoints using thread-safe SyncProgress tracker.
 """
-import logging
+import structlog
 from fastapi import APIRouter, HTTPException
 from pyhako import SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.api.progress import progress
 import asyncio
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 sync_service = SyncService()

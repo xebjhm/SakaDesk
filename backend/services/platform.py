@@ -4,11 +4,11 @@ Handles cross-platform differences for Windows deployment with Linux development
 """
 import os
 import platform
-import logging
+import structlog
 from pathlib import Path
 from typing import Literal
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Environment variable to force dev mode
 DEV_MODE = os.environ.get("HAKODESK_DEV_MODE", "false").lower() == "true"

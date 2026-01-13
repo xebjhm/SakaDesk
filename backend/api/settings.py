@@ -4,7 +4,7 @@ Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """
 import json
-import logging
+import structlog
 from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ from typing import Any, Optional
 from backend.services.platform import get_settings_path, get_app_data_dir
 from backend.services.notification_service import set_notifications_enabled, get_notifications_enabled
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 

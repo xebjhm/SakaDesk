@@ -12,11 +12,11 @@ Based on analysis of 19,873 messages from 24 members:
 """
 
 import random
-import logging
+import structlog
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # JST offset from UTC
 JST_OFFSET = timedelta(hours=9)

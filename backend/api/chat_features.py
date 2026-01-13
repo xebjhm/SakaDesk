@@ -8,7 +8,7 @@ Provides endpoints for:
 """
 
 import json
-import logging
+import structlog
 import aiohttp
 from collections import defaultdict
 from pathlib import Path
@@ -21,7 +21,7 @@ from pyhako.credentials import TokenManager
 from backend.services.platform import is_test_mode, get_settings_path
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class Letter(BaseModel):

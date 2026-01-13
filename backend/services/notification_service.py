@@ -5,10 +5,10 @@ Provides cross-platform desktop notifications using plyer.
 Notifications are triggered when new messages arrive during sync.
 """
 
-import logging
+import structlog
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Track notification state
 _notifications_enabled = True

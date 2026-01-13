@@ -13,13 +13,13 @@ from pyhako.utils import get_media_extension
 from backend.api.progress import progress
 from backend.services.platform import get_session_dir, is_test_mode
 from backend.services.notification_service import notify_sync_complete
-import logging
+import structlog
 
 # Backward compatibility alias for old code that used HinatazakaClient
 def HinatazakaClient(**kwargs):
     return Client(group=Group.HINATAZAKA46, **kwargs)
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Default to only sync latest messages on initial sync
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
@@ -177,7 +177,14 @@ class SyncService:
 
                 # Save refreshed tokens if they changed (CLI pattern)
                 if client.access_token != token:
-                    logger.info("Tokens refreshed during auth check - saving to storage")
+                    logger.info(
+                        "Tokens refreshed during auth check - saving to storage",
+                        extra={
+                            "has_new_cookies": bool(client.cookies),
+                            "cookie_count": len(client.cookies) if client.cookies else 0,
+                            "cookie_keys": list(client.cookies.keys()) if client.cookies else []
+                        }
+                    )
                     try:
                         tm = self._get_token_manager()
                         tm.save_session(
@@ -186,8 +193,11 @@ class SyncService:
                             client.refresh_token,
                             client.cookies
                         )
+                        logger.info("Refreshed tokens saved successfully to TokenManager")
                     except Exception as e:
-                        logger.warning(f"Failed to save refreshed tokens: {e}")
+                        logger.error(f"Failed to save refreshed tokens: {e}", exc_info=True)
+                else:
+                    logger.debug("Token unchanged after refresh check, no save needed")
 
                 # Create fresh SyncManager each sync (don't cache stale client)
                 self.manager = SyncManager(client, self.output_dir)

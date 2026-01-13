@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 import json
-import logging
+import structlog
 import os
 import re
 from typing import Optional, List, Dict, Any
@@ -28,7 +28,7 @@ from typing import Optional, List, Dict, Any
 from backend.services.platform import get_settings_path, is_test_mode
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = Path("output")

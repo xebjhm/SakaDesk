@@ -3,7 +3,7 @@ Profile API for HakoDesk
 Handles user profile information like nickname.
 """
 import json
-import logging
+import structlog
 import aiohttp
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -14,7 +14,7 @@ from pyhako.credentials import TokenManager
 
 from backend.services.platform import get_settings_path, get_session_dir
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 

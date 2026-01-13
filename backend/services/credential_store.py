@@ -8,14 +8,14 @@ This abstraction allows development on Linux while ensuring
 production security on Windows.
 """
 import json
-import logging
+import structlog
 from pathlib import Path
 from typing import Optional, Dict, Any
 from abc import ABC, abstractmethod
 
 from backend.services.platform import is_windows, is_dev_mode, get_credentials_dir
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Service name for keyring
 KEYRING_SERVICE = "hakodesk"

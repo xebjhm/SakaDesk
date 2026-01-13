@@ -6,7 +6,7 @@ Also updates local messages.json for instant feedback.
 """
 
 import json
-import logging
+import structlog
 import aiohttp
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -18,7 +18,7 @@ from pyhako.credentials import TokenManager
 from backend.services.platform import get_settings_path, is_test_mode
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class FavoriteResponse(BaseModel):
