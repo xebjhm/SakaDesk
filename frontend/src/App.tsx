@@ -97,6 +97,14 @@ function App() {
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
 
+    // Background customization state
+    const [backgroundSettings, setBackgroundSettings] = useState<{
+        type: 'default' | 'color' | 'image';
+        imageData?: string;
+        color: string;
+        opacity: number;
+    }>({ type: 'default', color: '#E2E6EB', opacity: 100 });
+
     // Compute unread count from messages and readState (single source of truth)
     // This ensures header and sidebar use the same logic
     const displayUnreadCount = useMemo(() => {
@@ -528,6 +536,19 @@ function App() {
             setSelectedGroupDir(groupDir);
             setIsGroupChat(groupChat);
             setSelectedName(displayName);
+
+            // Load background settings for new conversation
+            const key = `bg_settings_${groupDir}`;
+            const saved = localStorage.getItem(key);
+            if (saved) {
+                try {
+                    setBackgroundSettings(JSON.parse(saved));
+                } catch {
+                    setBackgroundSettings({ type: 'default', color: '#E2E6EB', opacity: 100 });
+                }
+            } else {
+                setBackgroundSettings({ type: 'default', color: '#E2E6EB', opacity: 100 });
+            }
         }
     };
 
@@ -1014,15 +1035,25 @@ function App() {
                             memberName={selectedName || ''}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
                             onSelectDate={scrollToDate}
+                            onBackgroundChange={setBackgroundSettings}
                         />
                     )}
                 </header>
 
                 {/* Virtualized Timeline */}
                 <div
-                    className="flex-1 overflow-hidden bg-[#E2E6EB] relative"
+                    className="flex-1 overflow-hidden relative"
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
+                    style={{
+                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : '#E2E6EB',
+                        backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
+                            ? `url(${backgroundSettings.imageData})`
+                            : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        opacity: backgroundSettings.opacity / 100,
+                    }}
                 >
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">

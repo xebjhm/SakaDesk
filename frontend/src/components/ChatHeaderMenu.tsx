@@ -5,6 +5,14 @@ import type { Message } from '../types';
 import { SentLettersModal } from './SentLettersModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
 import { CalendarModal } from './CalendarModal';
+import { BackgroundModal } from './BackgroundModal';
+
+export interface BackgroundSettings {
+    type: 'default' | 'color' | 'image';
+    imageData?: string;
+    color: string;
+    opacity: number;
+}
 
 interface ChatHeaderMenuProps {
     conversationPath: string;
@@ -13,6 +21,7 @@ interface ChatHeaderMenuProps {
     memberName: string;
     groupId?: string;
     onSelectDate?: (date: string) => void;
+    onBackgroundChange?: (settings: BackgroundSettings) => void;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -24,6 +33,7 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
     memberName,
     groupId,
     onSelectDate,
+    onBackgroundChange,
 }) => {
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -110,7 +120,16 @@ export const ChatHeaderMenu: React.FC<ChatHeaderMenuProps> = ({
                 }}
             />
 
-            {/* TODO: Background, Favorites modals */}
+            <BackgroundModal
+                isOpen={activeModal === 'background'}
+                onClose={() => setActiveModal(null)}
+                conversationPath={conversationPath}
+                onSettingsChange={(settings) => {
+                    onBackgroundChange?.(settings);
+                }}
+            />
+
+            {/* TODO: Favorites modal */}
         </>
     );
 };
