@@ -113,7 +113,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             audio.removeEventListener('ended', handleEnded);
             audio.removeEventListener('play', handlePlay);
             audio.removeEventListener('pause', handlePause);
-            // Audio will automatically stop when component unmounts (audio element destroyed)
+            // Clear any pending timeouts
+            if (volumeHideTimeout.current) {
+                clearTimeout(volumeHideTimeout.current);
+            }
         };
     }, []);
 
@@ -163,40 +166,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         };
     }, [currentTime, duration, isPlaying, playbackRate]);
 
-    // Keyboard shortcuts
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            const isFocused = containerRef.current?.contains(document.activeElement);
-            if (!isFocused) return;
-
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') return;
-
-            switch (e.key) {
-                case ' ':
-                    e.preventDefault();
-                    togglePlay();
-                    break;
-                case 'ArrowLeft':
-                    e.preventDefault();
-                    handleSkipBack();
-                    break;
-                case 'ArrowRight':
-                    e.preventDefault();
-                    handleSkipForward();
-                    break;
-                case 'm':
-                case 'M':
-                    e.preventDefault();
-                    handleMuteToggle();
-                    break;
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
-
     const togglePlay = useCallback(() => {
         const audio = audioRef.current;
         if (!audio) return;
@@ -231,6 +200,40 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             localStorage.setItem(VOLUME_STORAGE_KEY, restored.toString());
         }
     }, [volume, savedVolume]);
+
+    // Keyboard shortcuts - must be after handler definitions
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const isFocused = containerRef.current?.contains(document.activeElement);
+            if (!isFocused) return;
+
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') return;
+
+            switch (e.key) {
+                case ' ':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    handleSkipBack();
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    handleSkipForward();
+                    break;
+                case 'm':
+                case 'M':
+                    e.preventDefault();
+                    handleMuteToggle();
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle]);
 
     const handleVolumeMouseEnter = useCallback(() => {
         if (volumeHideTimeout.current) {

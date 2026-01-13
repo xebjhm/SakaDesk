@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Star, Play, MoreHorizontal } from 'lucide-react';
 import type { Message } from '../types';
+import { formatDateTime } from '../lib/utils';
 import { VoicePlayer } from './VoicePlayer';
 import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from './common';
 import type { BaseModalProps } from '../types/modal';
@@ -29,16 +30,6 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
     const getMediaUrl = (mediaFile: string) => {
         return `/api/content/media/${mediaFile.split('/').map(encodeURIComponent).join('/')}`;
-    };
-
-    const formatDateTime = (timestamp: string) => {
-        const date = new Date(timestamp);
-        const year = date.getFullYear();
-        const month = (date.getMonth() + 1).toString().padStart(2, '0');
-        const day = date.getDate().toString().padStart(2, '0');
-        const hour = date.getHours().toString().padStart(2, '0');
-        const min = date.getMinutes().toString().padStart(2, '0');
-        return `${year}/${month}/${day} ${hour}:${min}`;
     };
 
     // Detail view for media (photos/videos)

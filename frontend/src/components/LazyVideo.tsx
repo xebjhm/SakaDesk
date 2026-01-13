@@ -23,7 +23,6 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
     const [isVisible, setIsVisible] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const containerRef = useRef<HTMLButtonElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
 
     // Intersection Observer to detect when component enters viewport
     useEffect(() => {
@@ -78,7 +77,6 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
             {/* Video - only render when visible, fade in when loaded */}
             {isVisible && (
                 <video
-                    ref={videoRef}
                     src={src}
                     className={cn(
                         "w-full h-full object-cover transition-opacity duration-400 ease-out",
