@@ -16,7 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.platform import get_app_data_dir, get_logs_dir, get_settings_path
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 from pyhako import Group
 
 router = APIRouter(prefix="/api/report", tags=["report"])
@@ -128,7 +128,7 @@ def _get_token_expiry() -> dict:
     """Get token expiry info without exposing the token."""
     try:
         import base64
-        tm = TokenManager()
+        tm = get_token_manager()
 
         for group in Group:
             session_data = tm.load_session(group.value)

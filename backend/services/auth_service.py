@@ -12,7 +12,7 @@ import structlog
 from pathlib import Path
 from datetime import datetime
 from pyhako import BrowserAuth, Group
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 
@@ -23,19 +23,6 @@ class AuthService:
     def __init__(self):
         self._session_dir = get_session_dir()
         self._group = Group.HINATAZAKA46  # Default group
-
-        # Use pyhako's TokenManager (same as CLI) - handles WCM on Windows
-        try:
-            self._token_manager = TokenManager()
-        except Exception as e:
-            logger.warning(f"TokenManager init failed: {e}")
-            self._token_manager = None
-
-    def _get_token_manager(self) -> TokenManager:
-        """Get or create TokenManager."""
-        if self._token_manager is None:
-            self._token_manager = TokenManager()
-        return self._token_manager
     
     def _is_token_expired(self, token: str) -> bool:
         """Check if JWT token is expired."""
@@ -78,7 +65,7 @@ class AuthService:
             }
 
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             token_data = tm.load_session(self._group.value)
 
             if token_data:
@@ -141,7 +128,7 @@ class AuthService:
     def _save_credentials(self, creds: dict):
         """Save credentials to pyhako's TokenManager (CLI pattern)."""
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             tm.save_session(
                 self._group.value,
                 creds.get('access_token'),
@@ -156,7 +143,7 @@ class AuthService:
     def logout(self):
         """Clear all credentials."""
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             tm.delete_session(self._group.value)
             logger.info("Credentials cleared from TokenManager")
         except Exception as e:
@@ -196,7 +183,7 @@ class AuthService:
             return {"refreshed": False, "remaining_seconds": 3600, "status": "test_mode"}
 
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             token_data = tm.load_session(self._group.value)
 
             if not token_data or not token_data.get('access_token'):
@@ -258,7 +245,7 @@ class AuthService:
             return TEST_AUTH_CONFIG
 
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             token_data = tm.load_session(self._group.value)
             return token_data or {}
         except Exception as e:

@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any
 from pyhako import Client, Group, sanitize_name, SyncManager, SessionExpiredError
-from pyhako.credentials import TokenManager
+from pyhako.credentials import get_token_manager
 from pyhako.utils import get_media_extension
 from backend.api.progress import progress
 from backend.services.platform import get_session_dir, is_test_mode
@@ -33,19 +33,6 @@ class SyncService:
         self.manager = None
         self._group = Group.HINATAZAKA46  # Default group
 
-        # Use pyhako's TokenManager (same as CLI) - handles WCM on Windows
-        try:
-            self._token_manager = TokenManager()
-        except Exception as e:
-            logger.warning(f"TokenManager init failed (will retry on sync): {e}")
-            self._token_manager = None
-
-    def _get_token_manager(self) -> TokenManager:
-        """Get or create TokenManager."""
-        if self._token_manager is None:
-            self._token_manager = TokenManager()
-        return self._token_manager
-
     async def load_config(self):
         """Load config from pyhako's TokenManager (WCM on Windows)."""
         # Test mode uses fixtures
@@ -54,7 +41,7 @@ class SyncService:
             return TEST_AUTH_CONFIG
 
         try:
-            tm = self._get_token_manager()
+            tm = get_token_manager()
             token_data = tm.load_session(self._group.value)
             if token_data:
                 return token_data
@@ -69,9 +56,11 @@ class SyncService:
         if settings_path.exists():
             try:
                 async with aiofiles.open(settings_path, 'r') as f:
-                    return json.loads(await f.read())
-            except:
-                pass
+                    data = json.loads(await f.read())
+                    logger.debug("App settings loaded", settings_keys=list(data.keys()), is_configured=data.get("is_configured"))
+                    return data
+            except Exception as e:
+                logger.error("Failed to load app settings", error=str(e), settings_path=str(settings_path))
         return {}
 
     async def get_output_dir(self):
@@ -86,13 +75,15 @@ class SyncService:
         """Load sync metadata for quick checks."""
         output_dir = await self.get_output_dir()
         metadata_file = output_dir / "sync_metadata.json"
-        
+
         if metadata_file.exists():
             try:
                 async with aiofiles.open(metadata_file, 'r', encoding='utf-8') as f:
-                    return json.loads(await f.read())
-            except:
-                pass
+                    data = json.loads(await f.read())
+                    logger.debug("Sync metadata loaded", last_sync=data.get("last_sync"), group_count=len(data.get("groups", {})))
+                    return data
+            except Exception as e:
+                logger.error("Failed to load sync metadata", error=str(e), metadata_file=str(metadata_file))
         return {"groups": {}, "last_sync": None}
     
     async def save_metadata(self, metadata):
@@ -116,7 +107,7 @@ class SyncService:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
             app_settings = await self.load_app_settings()
             if not app_settings.get("is_configured"):
-                logger.warning("Skipping sync: Output folder not configured.")
+                logger.warning("Sync skipped - configuration incomplete", is_configured=app_settings.get("is_configured", False), has_output_dir=bool(app_settings.get("output_dir")))
                 progress.error("Output folder not configured")
                 return
 
@@ -186,7 +177,7 @@ class SyncService:
                         }
                     )
                     try:
-                        tm = self._get_token_manager()
+                        tm = get_token_manager()
                         tm.save_session(
                             self._group.value,
                             client.access_token,
