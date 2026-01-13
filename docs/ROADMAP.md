@@ -1,6 +1,6 @@
 # HakoDesk Feature Roadmap
 
-> **Last Updated:** 2026-01-11
+> **Last Updated:** 2026-01-13
 
 This document tracks planned features, improvements, and technical debt for HakoDesk.
 
@@ -564,6 +564,123 @@ Phase 4: Post-processing (NEW)
 
 ---
 
+### 20. Official App Feature Parity
+**Status:** Not Started
+**Category:** Major Feature
+**Complexity:** Very High
+
+**Goal:** Match official 46 Message app features discovered via HAR analysis.
+
+**Plan Document:** [../../../.claude/plans/modular-bubbling-blum.md](../../../.claude/plans/modular-bubbling-blum.md)
+
+**New API Endpoints (to add to pyhako core):**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/v2/groups/{id}/letters` | GET | User's sent letters/cards |
+| `/v2/groups/{id}/past_messages` | GET | Historical messages (before subscription) |
+| `/v2/groups/{id}/consecutive-subscription-day` | GET | Subscription streak |
+| `/v2/members/{id}` | GET | Individual member details |
+| `/v2/messages/{id}/favorite` | POST/DELETE | Add/remove favorites |
+| `/v2/account` | GET | User account info |
+
+**Sub-features:**
+- [ ] Sent letters view (已發送信件)
+- [ ] Favorites/starred messages (收藏夾) - server-side sync
+- [ ] Media gallery view (媒體) - photos/videos/voice tabs
+- [ ] Calendar/date search (日期搜索)
+- [ ] Background customization (背景圖案) - user-uploaded images
+- [ ] Subscription streak display
+
+**Core library updates needed:**
+- [ ] Add `get_letters()` method
+- [ ] Add `get_past_messages()` method
+- [ ] Add `add_favorite()` / `remove_favorite()` methods
+- [ ] Add `get_subscription_streak()` method
+- [ ] Add `get_member()` method
+- [ ] Add `get_account()` method
+
+**Frontend components needed:**
+- [ ] MediaGallery.tsx - Grid view with photo/video/voice tabs
+- [ ] FavoritesList.tsx - Starred messages list
+- [ ] LettersList.tsx - Grid view of sent letters
+- [ ] CalendarPicker.tsx - Date navigation with message highlights
+- [ ] BackgroundSettings.tsx - Chat background customization
+
+---
+
+### 21. Terms of Service Acknowledgment
+**Status:** Not Started
+**Category:** Legal/Compliance
+**Complexity:** Low
+
+**Goal:** Show ToS acknowledgment on first launch, similar to CLI version.
+
+**Implementation:**
+- [ ] Create ToS dialog component
+- [ ] Show on first launch (check localStorage/settings)
+- [ ] Block app usage until accepted
+- [ ] Store acceptance timestamp in settings
+- [ ] Include disclaimer about unofficial app nature
+
+---
+
+### 22. Privacy Policy & Data Upload Agreement
+**Status:** Not Started
+**Category:** Legal/Compliance
+**Complexity:** Medium
+
+**Goal:** Inform users about data collection for anonymous analytics dashboard.
+
+**Dependencies:** P1.5 Anonymous Analytics
+
+**Implementation:**
+- [ ] Create Privacy Policy page/dialog
+- [ ] Explain what data is collected (去識別化 only)
+- [ ] Show opt-in dialog when enabling analytics
+- [ ] Link to full privacy policy from settings
+- [ ] Allow users to view/delete their anonymous data
+
+---
+
+### 23. Version in Installer Filename
+**Status:** Not Started
+**Category:** Build/CI
+**Complexity:** Low
+
+**Goal:** Include version number in installer filename (e.g., `HakoDesk-1.2.3-Setup.exe`).
+
+**Implementation:**
+- [ ] Update Inno Setup script to use version variable
+- [ ] Modify GitHub Actions to pass version to build
+- [ ] Output format: `HakoDesk-{version}-Setup.exe`
+
+**Files:**
+- `installer/hakodesk.iss` - Inno Setup script
+- `.github/workflows/build.yml` - CI workflow
+
+---
+
+### 24. Feature Request Button (許願池)
+**Status:** Not Started
+**Category:** User Engagement
+**Complexity:** Medium
+
+**Goal:** One-click feature request submission via GitHub Issues.
+
+**Implementation:**
+- [ ] Add "許願池" button in Settings menu
+- [ ] Open GitHub issue URL with pre-filled template
+- [ ] Template includes: version, OS, feature description placeholder
+- [ ] Use GitHub issue template URL parameters
+- [ ] No authentication required (uses user's GitHub login)
+
+**URL Format:**
+```
+https://github.com/{owner}/{repo}/issues/new?template=feature_request.md&title=Feature+Request:+&labels=enhancement
+```
+
+---
+
 ## Implementation Order Suggestion
 
 Based on dependencies and value:
@@ -587,14 +704,15 @@ Based on dependencies and value:
 ### Phase 4: Major Features
 11. P1.4: Multi-service support
 12. P1.5: Anonymous analytics & community statistics
-13. P3.14: Blog support
-14. P2.12: i18n
+13. **P1.20: Official app feature parity** ← NEW
+14. P3.14: Blog support
+15. P2.12: i18n
 
 ### Phase 5: Advanced Features
-15. P3.17: Fuzzy search
-16. P3.15: Transcription
-17. P4.19: Post-processing phase
-18. P4.18: Vector DB
+16. P3.17: Fuzzy search
+17. P3.15: Transcription
+18. P4.19: Post-processing phase
+19. P4.18: Vector DB
 
 ### Deferred
 - P2.9: Staged rollout (when user base grows)
@@ -619,5 +737,7 @@ Based on dependencies and value:
 | 2026-01-13 | Completed P1.6: Randomized sync with adaptive timing algorithm |
 | 2026-01-13 | Completed P2.7: Version update check, P2.13: Desktop notifications |
 | 2026-01-13 | Marked Phase 1 & 2 complete: P0.1, P1.2, P1.3, P2.10, P2.11 all done |
+| 2026-01-13 | Added P2.21-24: ToS acknowledgment, Privacy policy, Version in filename, Feature request button (24 items total) |
+| 2026-01-13 | Added P1.20: Official App Feature Parity - HAR analysis revealed 6+ new API endpoints |
 | 2026-01-13 | Added P1.5: Anonymous Analytics & Community Statistics (19 items total) |
 | 2026-01-11 | Initial roadmap created with 18 items |
