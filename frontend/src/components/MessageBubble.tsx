@@ -15,6 +15,7 @@ interface MessageBubbleProps {
     onLongPress?: () => void;
     userNickname?: string;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    onAvatarClick?: () => void;
 }
 
 const SHELTER_COLORS = {
@@ -127,7 +128,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onReveal,
     onLongPress,
     userNickname,
-    onToggleFavorite
+    onToggleFavorite,
+    onAvatarClick,
 }) => {
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -218,7 +220,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
             {/* Avatar */}
             <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden">
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onAvatarClick?.();
+                    }}
+                    className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+                >
                     {member_avatar ? (
                         <img
                             src={member_avatar}
@@ -230,7 +238,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             {member_name.substring(0, 2)}
                         </div>
                     )}
-                </div>
+                </button>
             </div>
 
             <div className="flex flex-col max-w-[80%]">

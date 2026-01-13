@@ -10,6 +10,7 @@ import { AboutModal } from './components/AboutModal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
 import { ChatHeaderMenu } from './components/ChatHeaderMenu'
+import { MemberProfilePopup } from './components/MemberProfilePopup'
 import { VirtuosoHandle } from 'react-virtuoso'
 
 interface GroupMessage extends Message {
@@ -142,6 +143,9 @@ function App() {
 
     // About modal state
     const [showAboutModal, setShowAboutModal] = useState(false);
+
+    // Member profile popup state (for subscription streak)
+    const [showMemberProfile, setShowMemberProfile] = useState(false);
 
     // === AUTH ===
     useEffect(() => {
@@ -854,6 +858,14 @@ function App() {
                 onOpenDiagnostics={() => setShowDiagnostics(true)}
             />
 
+            <MemberProfilePopup
+                isOpen={showMemberProfile}
+                onClose={() => setShowMemberProfile(false)}
+                memberName={selectedName || ''}
+                memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
+                groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
+            />
+
             <ReportIssueModal
                 isOpen={showReportModal}
                 onClose={() => {
@@ -1079,6 +1091,7 @@ function App() {
                             virtuosoRef={virtuosoRef}
                             userNickname={appSettings?.user_nickname}
                             onToggleFavorite={handleToggleFavorite}
+                            onAvatarClick={() => setShowMemberProfile(true)}
                         />
                     )}
                 </div>

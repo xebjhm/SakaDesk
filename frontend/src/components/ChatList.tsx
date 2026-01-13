@@ -25,6 +25,8 @@ interface ChatListProps {
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    /** Callback when avatar is clicked (for member profile popup) */
+    onAvatarClick?: () => void;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -40,6 +42,7 @@ export const ChatList: React.FC<ChatListProps> = ({
     virtuosoRef: externalRef,
     userNickname,
     onToggleFavorite,
+    onAvatarClick,
 }) => {
     const internalRef = useRef<VirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
@@ -88,6 +91,7 @@ export const ChatList: React.FC<ChatListProps> = ({
                             onLongPress={onLongPress}
                             userNickname={userNickname}
                             onToggleFavorite={onToggleFavorite}
+                            onAvatarClick={onAvatarClick}
                         />
                     </div>
                 );
