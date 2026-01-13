@@ -1045,6 +1045,7 @@ function App() {
                             isGroupChat={isGroupChat}
                             messages={messages}
                             memberName={selectedName || ''}
+                            memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
                             onSelectDate={scrollToDate}
                             onBackgroundChange={setBackgroundSettings}
