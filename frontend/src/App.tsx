@@ -547,6 +547,15 @@ function App() {
         }
     }, [messages, readState]);
 
+    // Scroll to first message of a given date (for calendar navigation)
+    const scrollToDate = useCallback((dateStr: string) => {
+        // Find first message on the given date
+        const index = messages.findIndex(m => m.timestamp.startsWith(dateStr));
+        if (index !== -1) {
+            virtuosoRef.current?.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
+        }
+    }, [messages]);
+
     // Toggle favorite status (optimistic update + API call)
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
         // Optimistically update UI
@@ -1004,6 +1013,7 @@ function App() {
                             messages={messages}
                             memberName={selectedName || ''}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                            onSelectDate={scrollToDate}
                         />
                     )}
                 </header>
