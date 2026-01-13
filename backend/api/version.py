@@ -1,12 +1,25 @@
 """
 Version Check API for HakoDesk.
 Checks GitHub releases for updates with caching to respect rate limits.
+Also provides in-place upgrade functionality for Windows.
 """
 import httpx
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
+
+from backend.services.upgrade_service import (
+    get_installer_download_url,
+    download_installer,
+    generate_upgrade_script,
+    launch_upgrade,
+    cleanup_upgrade_files,
+    is_upgrade_supported,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
@@ -42,6 +55,26 @@ class VersionInfo(BaseModel):
     release_notes: Optional[str] = None
     last_checked: Optional[str] = None
     error: Optional[str] = None
+    upgrade_supported: bool = False
+
+
+class UpgradeStatus(BaseModel):
+    """Status of an ongoing upgrade operation."""
+    state: str  # idle, downloading, ready, launching, error
+    progress: float = 0.0  # 0-100 for download progress
+    error: Optional[str] = None
+    version: Optional[str] = None
+
+
+# Upgrade state tracking
+_upgrade_state: dict = {
+    "state": "idle",
+    "progress": 0.0,
+    "error": None,
+    "version": None,
+    "installer_path": None,
+    "script_path": None,
+}
 
 
 def _parse_version(version_str: str) -> tuple:
@@ -118,6 +151,7 @@ async def check_version():
             release_notes="This is a fake update for testing the UI flow.\n\n- New feature 1\n- Bug fix 2\n- Improvement 3",
             last_checked=datetime.now(timezone.utc).isoformat(),
             error=None,
+            upgrade_supported=is_upgrade_supported(),
         )
 
     cache = await _fetch_latest_release()
@@ -134,6 +168,7 @@ async def check_version():
         release_notes=cache["release_notes"],
         last_checked=cache["last_check"].isoformat() if cache["last_check"] else None,
         error=cache["error"],
+        upgrade_supported=is_upgrade_supported(),
     )
 
 
@@ -141,3 +176,154 @@ async def check_version():
 async def get_current_version():
     """Get current app version without checking for updates."""
     return {"version": APP_VERSION}
+
+
+@router.get("/upgrade/status", response_model=UpgradeStatus)
+async def get_upgrade_status():
+    """Get the current status of an ongoing upgrade operation."""
+    return UpgradeStatus(
+        state=_upgrade_state["state"],
+        progress=_upgrade_state["progress"],
+        error=_upgrade_state["error"],
+        version=_upgrade_state["version"],
+    )
+
+
+@router.post("/upgrade/start")
+async def start_upgrade(background_tasks: BackgroundTasks):
+    """
+    Start the upgrade process.
+
+    This will:
+    1. Fetch the download URL for the latest version
+    2. Download the installer in the background
+    3. Return immediately with status "downloading"
+
+    Poll /upgrade/status to check progress.
+    """
+    global _upgrade_state
+
+    if not is_upgrade_supported():
+        return {"success": False, "error": "Upgrade not supported on this platform"}
+
+    if _upgrade_state["state"] == "downloading":
+        return {"success": False, "error": "Upgrade already in progress"}
+
+    # Get the latest version
+    cache = await _fetch_latest_release()
+    if cache["error"] or not cache["latest_version"]:
+        return {"success": False, "error": cache["error"] or "No version available"}
+
+    version = cache["latest_version"]
+
+    # Reset state
+    _upgrade_state = {
+        "state": "downloading",
+        "progress": 0.0,
+        "error": None,
+        "version": version,
+        "installer_path": None,
+        "script_path": None,
+    }
+
+    # Start download in background
+    background_tasks.add_task(_download_and_prepare_upgrade, version)
+
+    return {"success": True, "message": "Upgrade started", "version": version}
+
+
+async def _download_and_prepare_upgrade(version: str):
+    """Background task to download installer and prepare upgrade."""
+    global _upgrade_state
+
+    try:
+        # Get download URL
+        url = await get_installer_download_url(version)
+        if not url:
+            _upgrade_state["state"] = "error"
+            _upgrade_state["error"] = "Could not find installer for this version"
+            return
+
+        # Download with progress tracking
+        def progress_callback(downloaded: int, total: int):
+            if total > 0:
+                _upgrade_state["progress"] = (downloaded / total) * 100
+
+        installer_path = await download_installer(url, progress_callback)
+
+        if not installer_path:
+            _upgrade_state["state"] = "error"
+            _upgrade_state["error"] = "Failed to download installer"
+            return
+
+        # Generate upgrade script
+        script_path = generate_upgrade_script(installer_path)
+
+        _upgrade_state["installer_path"] = installer_path
+        _upgrade_state["script_path"] = script_path
+        _upgrade_state["state"] = "ready"
+        _upgrade_state["progress"] = 100.0
+
+        logger.info(f"Upgrade ready: {installer_path}")
+
+    except Exception as e:
+        logger.error(f"Upgrade preparation failed: {e}")
+        _upgrade_state["state"] = "error"
+        _upgrade_state["error"] = str(e)
+
+
+@router.post("/upgrade/launch")
+async def launch_upgrade_process():
+    """
+    Launch the upgrade process.
+
+    This will:
+    1. Launch the upgrade script
+    2. Return success - the app should then exit
+    3. The upgrade script will wait for app to close, then run installer
+
+    Call this only after /upgrade/status shows state="ready".
+    """
+    global _upgrade_state
+
+    if _upgrade_state["state"] != "ready":
+        return {
+            "success": False,
+            "error": f"Cannot launch upgrade in state: {_upgrade_state['state']}",
+        }
+
+    script_path = _upgrade_state.get("script_path")
+    if not script_path or not script_path.exists():
+        return {"success": False, "error": "Upgrade script not found"}
+
+    success = launch_upgrade(script_path)
+
+    if success:
+        _upgrade_state["state"] = "launching"
+        return {
+            "success": True,
+            "message": "Upgrade launched. Please close the application to complete the upgrade.",
+        }
+    else:
+        _upgrade_state["state"] = "error"
+        _upgrade_state["error"] = "Failed to launch upgrade script"
+        return {"success": False, "error": "Failed to launch upgrade script"}
+
+
+@router.post("/upgrade/cancel")
+async def cancel_upgrade():
+    """Cancel an ongoing upgrade and clean up files."""
+    global _upgrade_state
+
+    cleanup_upgrade_files()
+
+    _upgrade_state = {
+        "state": "idle",
+        "progress": 0.0,
+        "error": None,
+        "version": None,
+        "installer_path": None,
+        "script_path": None,
+    }
+
+    return {"success": True, "message": "Upgrade cancelled"}

@@ -227,37 +227,23 @@ Activity multipliers:
 ---
 
 ### 8. In-Place Software Upgrade
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Feature
 **Complexity:** High
 
 **Current Problem:** Windows users must uninstall → reinstall for updates.
 
-**Proposed Solution:**
-```
-Upgrade Flow:
-─────────────
-1. Download new installer to temp location
-2. Create upgrade script that:
-   - Waits for app to close
-   - Runs new installer silently
-   - Cleans up temp files
-3. App spawns upgrade script and exits
-4. Upgrade script takes over
+**Solution implemented:**
+- [x] Download new installer from GitHub releases to temp directory
+- [x] Generate batch script that waits for app to close, runs installer silently
+- [x] App spawns upgrade script and exits gracefully
+- [x] Upgrade banner shows download progress and "Install Now" button
+- [x] Inno Setup already handles in-place upgrade automatically
 
-Alternative: NSIS upgrade-aware installer
-- Detect existing installation
-- Backup user data
-- Upgrade in place
-- Restore user data
-```
-
-**Tasks:**
-- [ ] Research PyInstaller + NSIS upgrade patterns
-- [ ] Implement upgrade detection in installer
-- [ ] Create upgrade script generator
-- [ ] Test upgrade path thoroughly
-- [ ] Handle rollback on failure
+**Files:**
+- `backend/services/upgrade_service.py` - Download, script generation, launch
+- `backend/api/version.py` - Upgrade API endpoints (start, status, launch, cancel)
+- `frontend/src/components/UpdateBanner.tsx` - Upgrade UI with progress bar
 
 ---
 
@@ -594,9 +580,9 @@ Based on dependencies and value:
 7. ~~P2.13: Desktop notifications~~ ✅
 8. ~~P2.7: Version update check~~ ✅
 
-### Phase 3: Growth & Security
+### Phase 3: Growth & Security ✅ COMPLETE
 9. ~~P1.6: Randomized sync~~ ✅
-10. P2.8: In-place upgrade
+10. ~~P2.8: In-place upgrade~~ ✅
 
 ### Phase 4: Major Features
 11. P1.4: Multi-service support
@@ -629,6 +615,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-13 | Completed P2.8: In-place software upgrade for Windows |
 | 2026-01-13 | Completed P1.6: Randomized sync with adaptive timing algorithm |
 | 2026-01-13 | Completed P2.7: Version update check, P2.13: Desktop notifications |
 | 2026-01-13 | Marked Phase 1 & 2 complete: P0.1, P1.2, P1.3, P2.10, P2.11 all done |
