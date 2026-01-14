@@ -33,12 +33,16 @@ const TEST_MESSAGES = [
 ]
 
 export const handlers = [
-  // Auth status - always authenticated for integration tests
+  // Auth status - always authenticated for integration tests (multi-service format)
   http.get('/api/auth/status', () => {
     return HttpResponse.json({
-      is_authenticated: true,
-      app_id: 'test_app_id',
-      storage_type: 'test',
+      services: {
+        'hinatazaka46': {
+          authenticated: true,
+          app_id: 'test_app_id',
+          storage_type: 'test',
+        }
+      }
     })
   }),
 
@@ -48,6 +52,7 @@ export const handlers = [
       {
         id: 'test_member_001',
         name: 'Test Member',
+        service: 'hinatazaka46',
         dir_name: 'test_member_001',
         group_path: 'individual/test_member_001',
         member_count: 1,
@@ -106,5 +111,10 @@ export const handlers = [
   // Start sync (noop for tests)
   http.post('/api/sync/start', () => {
     return HttpResponse.json({ success: true })
+  }),
+
+  // Unread counts - returns empty for tests
+  http.post('/api/content/unread_counts', () => {
+    return HttpResponse.json({})
   }),
 ]

@@ -7,6 +7,7 @@ import { LoginPage } from './LoginPage'
 
 describe('LoginPage component', () => {
   const defaultProps = {
+    service: 'Hinatazaka46',
     onLoginSuccess: vi.fn(),
   }
 
