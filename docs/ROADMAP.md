@@ -1,6 +1,6 @@
 # HakoDesk Feature Roadmap
 
-> **Last Updated:** 2026-01-13
+> **Last Updated:** 2026-01-14
 
 This document tracks planned features, improvements, and technical debt for HakoDesk.
 
@@ -79,47 +79,50 @@ This document tracks planned features, improvements, and technical debt for Hako
 ---
 
 ### 4. Multi-Service Support (Nogizaka, Sakurazaka)
-**Status:** Not Started
+**Status:** ✅ Complete (Frontend Architecture)
 **Category:** Major Feature
 **Complexity:** Very High
 
-**Goal:** Support all three groups with a modern 3-layer UI.
+**Goal:** Support all three groups with a modern 3-zone Discord-style UI.
 
-**UI Design:**
+**Plan Document:** [docs/plans/2026-01-14-multi-service-ui.md](plans/2026-01-14-multi-service-ui.md)
+
+**Frontend Architecture (Completed):**
 ```
 ┌─────────────────────────────────────────────────────┐
-│  [≡]  HakoDesk                              [─][□][×]│
-├────────┬────────────────────────────────────────────┤
-│        │                                            │
-│  🌸    │  Member List        │  Chat View           │
-│  Hina  │  ───────────────    │  ─────────────────   │
-│        │  [Avatar] Name      │  [Messages...]       │
-│  🌸    │  [Avatar] Name      │                      │
-│  Nogi  │  [Avatar] Name      │                      │
-│        │                     │                      │
-│  🌸    │                     │                      │
-│  Saku  │                     │                      │
-│        │                     │                      │
-├────────┴────────────────────────────────────────────┤
-│  Status Bar                                         │
-└─────────────────────────────────────────────────────┘
+│ Zone A │ Zone B   │ Zone C (Content Area)           │
+│ 56px   │ 48px     │ flex-1                          │
+├────────┼──────────┼─────────────────────────────────┤
+│        │          │                                 │
+│ [Hina] │ Messages │ [Sidebar] [Chat View]           │
+│ [Nogi] │ Blogs    │                                 │
+│ [Saku] │ News     │                                 │
+│        │ FanClub  │                                 │
+│        │ AI       │                                 │
+│        │          │                                 │
+└────────┴──────────┴─────────────────────────────────┘
 
-Layer 1: Service selector (left nav bar)
-Layer 2: Member list (current left panel)
-Layer 3: Chat view (current right panel)
+Zone A: ServiceRail - Service icons (Discord-style)
+Zone B: FeatureRail - Feature navigation per service
+Zone C: ContentArea - Feature-specific content
 ```
 
-**Backend changes:**
+**Frontend Implementation (Complete):**
+- [x] Zustand store for service/feature selection with persistence
+- [x] ServiceRail component (Zone A) - Discord-style service icons
+- [x] FeatureRail component (Zone B) - Feature navigation
+- [x] ContentArea component (Zone C) - Feature rendering
+- [x] Layout component refactored to 3-zone architecture
+- [x] MessagesFeature extracted from App.tsx
+- [x] Sidebar filtering by active service
+- [x] Service/feature configuration system
+- [x] Index exports for stores, config, features
+
+**Backend changes (Remaining):**
 - [ ] Update pyhako Group enum usage throughout
 - [ ] Separate credential storage per group
 - [ ] Separate sync state per group
 - [ ] Update settings structure
-
-**Frontend changes:**
-- [ ] Add left navigation bar component
-- [ ] Refactor state to support multiple services
-- [ ] Add service switching logic
-- [ ] Update routing/navigation
 
 **Core library dependency:**
 - Verify pyhako supports all three groups
@@ -689,7 +692,7 @@ Based on dependencies and value:
 
 ### Phase 4: Major Features
 11. ~~P1.20: Official app feature parity~~ ✅
-12. P1.4: Multi-service support
+12. ~~P1.4: Multi-service support (frontend architecture)~~ ✅
 13. P1.5: Anonymous analytics & community statistics
 14. P3.14: Blog support ← NEXT
 15. P2.12: i18n
@@ -719,6 +722,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | Completed P1.4: Multi-Service UI Architecture - 3-zone Discord-style layout with Zustand, ServiceRail, FeatureRail, ContentArea, MessagesFeature extraction |
 | 2026-01-14 | Completed P1.20: Official App Feature Parity (MediaGallery, Favorites, SentLetters, Calendar, Background) |
 | 2026-01-13 | Completed P2.8: In-place software upgrade for Windows |
 | 2026-01-13 | Completed P1.6: Randomized sync with adaptive timing algorithm |
