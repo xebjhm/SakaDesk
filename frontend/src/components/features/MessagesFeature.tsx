@@ -384,7 +384,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, []);
 
     return (
-        <div className="flex h-full overflow-hidden">
+        <div className="flex h-full w-full overflow-hidden">
             {/* Sidebar */}
             <div className={`
                 fixed inset-y-0 left-0 z-30 w-80 transform transition-transform duration-300 ease-in-out
