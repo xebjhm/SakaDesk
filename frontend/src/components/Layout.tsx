@@ -9,11 +9,19 @@ import { MultiGroupAuthStatus } from '../types';
 interface LayoutProps {
     authStatus: MultiGroupAuthStatus | null;
     messagesContent: React.ReactNode;
+    onAddService: () => void;
+    onOpenSettings: () => void;
+    onReportIssue: () => void;
+    onOpenAbout: () => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
     authStatus,
     messagesContent,
+    onAddService,
+    onOpenSettings,
+    onReportIssue,
+    onOpenAbout,
 }) => {
     const { activeService, setActiveService } = useAppStore();
 
@@ -34,7 +42,13 @@ export const Layout: React.FC<LayoutProps> = ({
     return (
         <div className="flex flex-1 h-full overflow-hidden">
             {/* Zone A: Service Rail */}
-            <ServiceRail services={services} />
+            <ServiceRail
+                services={services}
+                onAddService={onAddService}
+                onOpenSettings={onOpenSettings}
+                onReportIssue={onReportIssue}
+                onOpenAbout={onOpenAbout}
+            />
 
             {/* Zone B: Feature Rail (only show when service selected) */}
             {activeService && (

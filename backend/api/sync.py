@@ -70,6 +70,30 @@ async def get_progress():
     return progress.get_status()
 
 
+@router.post("/cancel")
+async def cancel_sync(service: str = Query(..., description="Service to cancel sync for")):
+    """Cancel a running sync by resetting the running flag.
+
+    Note: This is a force-cancel that resets state. The actual background task
+    may still be running but will be ignored. Use sparingly for stuck syncs.
+    """
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    sync_service = get_sync_service(service)
+    if not sync_service.running:
+        return {"status": "not_running", "service": service}
+
+    # Force reset the running flag
+    sync_service.running = False
+    progress.reset()
+    logger.warning(f"Sync cancelled for {service} by user request")
+
+    return {"status": "cancelled", "service": service}
+
+
 @router.get("/check")
 async def check_new(service: str = Query(..., description="Service to check")):
     """Lightweight check for new messages."""

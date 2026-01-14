@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '../lib/utils';
-import { Settings, Users, RefreshCw, Bug, Info } from 'lucide-react';
+import { Users, RefreshCw } from 'lucide-react';
 import { MemberInfo } from '../types';
 
 interface GroupInfo {
@@ -23,19 +23,15 @@ interface SidebarProps {
     selectedGroupDir?: string;
     activeService?: string; // Filter groups by service
     isSyncing?: boolean;
-    onOpenSettings?: () => void;
-    onReportIssue?: () => void;
-    onOpenAbout?: () => void;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
 }
 
 // Group IDs that should always be treated as group chat
 const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
-export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, onOpenSettings, onReportIssue, onOpenAbout, readStateVersion }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion }) => {
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-    const [showSettings, setShowSettings] = useState(false);
     const [loading, setLoading] = useState(true);
 
     const loadGroups = () => {
@@ -254,56 +250,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
                     {isSyncing && (
                         <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
                     )}
-                    <div className="relative">
-                        <Settings
-                            className="w-5 h-5 text-gray-500 hover:text-gray-700 cursor-pointer"
-                            onClick={() => setShowSettings(!showSettings)}
-                        />
-                        {showSettings && (
-                            <>
-                                <div className="fixed inset-0 z-40" onClick={() => setShowSettings(false)} />
-                                <div className="absolute right-0 top-6 bg-white shadow-xl rounded-lg border border-gray-100 py-1 w-48 z-50">
-                                    {onOpenSettings && (
-                                        <button
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
-                                            onClick={() => {
-                                                setShowSettings(false);
-                                                onOpenSettings();
-                                            }}
-                                        >
-                                            App Settings
-                                        </button>
-                                    )}
-                                    {onReportIssue && (
-                                        <button
-                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
-                                            onClick={() => {
-                                                setShowSettings(false);
-                                                onReportIssue();
-                                            }}
-                                        >
-                                            <Bug className="w-4 h-4" />
-                                            Report an Issue
-                                        </button>
-                                    )}
-                                    <div className="border-t border-gray-100 mt-1 pt-1">
-                                        {onOpenAbout && (
-                                            <button
-                                                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
-                                                onClick={() => {
-                                                    setShowSettings(false);
-                                                    onOpenAbout();
-                                                }}
-                                            >
-                                                <Info className="w-4 h-4" />
-                                                About
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
                 </div>
             </div>
 

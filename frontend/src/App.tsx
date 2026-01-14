@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { MultiGroupAuthStatus } from './types'
 import { Layout } from './components/Layout'
-import { LoginPage } from './pages/LoginPage'
+import { AddServicePage } from './pages/AddServicePage'
 import { Loader2, Download, FolderOpen } from 'lucide-react'
 import { DiagnosticsModal } from './components/DiagnosticsModal'
 import { ReportIssueModal } from './components/ReportIssueModal'
@@ -33,7 +33,7 @@ function App() {
 
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-    const [authError, setAuthError] = useState<string | null>(null);
+    const [, setAuthError] = useState<string | null>(null); // Error message for display (used for session expiry)
     const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
 
     // Sync state
@@ -60,6 +60,9 @@ function App() {
 
     // About modal state
     const [showAboutModal, setShowAboutModal] = useState(false);
+
+    // Add service page state
+    const [showAddServicePage, setShowAddServicePage] = useState(false);
 
     // Error state for settings save
     const [settingsError, setSettingsError] = useState<string | null>(null);
@@ -160,6 +163,7 @@ function App() {
     }, [authStatus]);
 
     // Start/stop token refresh polling based on auth state
+    // Only trigger on isAuthenticated change, not on scheduleTokenRefresh identity change
     useEffect(() => {
         if (isAuthenticated) {
             // Start the refresh timer when authenticated
@@ -172,7 +176,8 @@ function App() {
                 clearTimeout(tokenRefreshTimeoutRef.current);
             }
         };
-    }, [isAuthenticated, scheduleTokenRefresh]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAuthenticated]);
 
     // === STARTUP SYNC ===
     const hasStartedSyncRef = useRef(false);
@@ -403,10 +408,28 @@ function App() {
     if (isAuthenticated === null) {
         return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
-    if (isAuthenticated === false) {
-        // Default to hinatazaka46 for login - multi-service selection can be added later
-        const loginService = activeService || 'hinatazaka46';
-        return <LoginPage service={loginService} onLoginSuccess={() => setIsAuthenticated(true)} initialError={authError || undefined} />;
+
+    // Get list of connected services
+    const connectedServices = authStatus
+        ? Object.entries(authStatus)
+            .filter(([_, s]) => s.authenticated === true)
+            .map(([name]) => name)
+        : [];
+
+    // Show AddServicePage if:
+    // 1. No services connected (first install / fresh state)
+    // 2. User explicitly wants to add a service (clicked + button)
+    if (isAuthenticated === false || connectedServices.length === 0 || showAddServicePage) {
+        return (
+            <AddServicePage
+                onLoginSuccess={() => {
+                    setShowAddServicePage(false);
+                    checkAuth();
+                }}
+                onBack={connectedServices.length > 0 ? () => setShowAddServicePage(false) : undefined}
+                connectedServices={connectedServices}
+            />
+        );
     }
 
     // Dynamic Unit Label
@@ -759,14 +782,15 @@ function App() {
             {/* Main 3-zone layout */}
             <Layout
                 authStatus={authStatus}
+                onAddService={() => setShowAddServicePage(true)}
+                onOpenSettings={() => setShowSettingsModal(true)}
+                onReportIssue={() => setShowReportModal(true)}
+                onOpenAbout={() => setShowAboutModal(true)}
                 messagesContent={
                     <MessagesFeature
                         appSettings={appSettings}
                         syncProgress={syncProgress}
                         syncVersion={syncVersion}
-                        onOpenSettings={() => setShowSettingsModal(true)}
-                        onReportIssue={() => setShowReportModal(true)}
-                        onOpenAbout={() => setShowAboutModal(true)}
                     />
                 }
             />
