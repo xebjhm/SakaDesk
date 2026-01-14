@@ -9,6 +9,7 @@ import { AboutModal } from './components/AboutModal'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { UpdateBanner } from './components/UpdateBanner'
 import { MessagesFeature, SyncProgress, AppSettings } from './components/features/MessagesFeature'
+import { useAppStore } from './stores/appStore'
 
 const formatTime = (seconds: number | undefined): string => {
     if (!seconds || seconds <= 0) return '00:00';
@@ -27,6 +28,9 @@ const formatSpeed = (speed: number | null | undefined, unit: string): string => 
 };
 
 function App() {
+    // Get active service from store
+    const { activeService, setActiveService } = useAppStore();
+
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authError, setAuthError] = useState<string | null>(null);
@@ -72,24 +76,40 @@ function App() {
         try {
             const res = await fetch('/api/auth/status');
             const data = await res.json();
-            setIsAuthenticated(data.is_authenticated);
-            if (data.token_expired) {
-                setAuthError("Session expired. Please login again.");
+            // Multi-service: check if any service is authenticated
+            if (data.services) {
+                const authenticatedServices = Object.entries(data.services)
+                    .filter(([_, s]) => (s as any).authenticated === true)
+                    .map(([name]) => name);
+                const anyAuthenticated = authenticatedServices.length > 0;
+                setIsAuthenticated(anyAuthenticated);
+                // Store the full multi-service status
+                setAuthStatus(data.services);
+                // Auto-select first authenticated service if none selected
+                if (anyAuthenticated && !activeService) {
+                    setActiveService(authenticatedServices[0]);
+                }
+                // Check for any expired tokens
+                const anyExpired = Object.values(data.services).some(
+                    (s: any) => s.token_expired === true
+                );
+                if (anyExpired) {
+                    setAuthError("Session expired. Please login again.");
+                }
+            } else {
+                // Legacy single-service format
+                setIsAuthenticated(data.authenticated || data.is_authenticated || false);
+                if (data.token_expired) {
+                    setAuthError("Session expired. Please login again.");
+                }
             }
         } catch {
             setIsAuthenticated(false);
         }
     };
 
-    // Fetch multi-group auth status for Layout component
-    useEffect(() => {
-        if (isAuthenticated) {
-            fetch('/api/auth/multi-status')
-                .then(res => res.json())
-                .then(data => setAuthStatus(data))
-                .catch(console.error);
-        }
-    }, [isAuthenticated]);
+    // Auth status is already fetched in checkAuth and stored in authStatus
+    // No separate fetch needed for multi-group status
 
     // Proactive token refresh polling (50-55 min with jitter)
     // Timer resets after login or successful refresh to align with token lifetime
@@ -112,22 +132,30 @@ function App() {
         tokenRefreshTimeoutRef.current = setTimeout(async () => {
             try {
                 console.log('[Auth] Proactive token refresh triggered');
-                const res = await fetch('/api/auth/refresh-if-needed', { method: 'POST' });
-                const data = await res.json();
+                // Refresh all authenticated services
+                const services = authStatus ? Object.entries(authStatus)
+                    .filter(([_, s]) => (s as any).authenticated === true)
+                    .map(([name]) => name) : [];
 
-                console.log(`[Auth] Refresh result: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
+                let allValid = true;
+                for (const service of services) {
+                    const res = await fetch(`/api/auth/refresh-if-needed?service=${encodeURIComponent(service)}`, { method: 'POST' });
+                    const data = await res.json();
+                    console.log(`[Auth] Refresh result for ${service}: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
 
-                if (data.status === 'refreshed' || data.status === 'valid') {
-                    // Token is good - schedule next refresh
+                    if (data.status === 'refresh_failed' || data.status === 'no_token') {
+                        allValid = false;
+                    }
+                }
+
+                if (allValid || services.length === 0) {
+                    // All tokens are good - schedule next refresh
                     scheduleTokenRefresh();
-                } else if (data.status === 'refresh_failed' || data.status === 'no_token') {
-                    // Token refresh failed - user needs to re-login
-                    console.warn('[Auth] Token refresh failed, session may be invalid');
+                } else {
+                    // At least one token refresh failed - user needs to re-login
+                    console.warn('[Auth] Token refresh failed for at least one service');
                     setIsAuthenticated(false);
                     setAuthError("Session expired. Please login again.");
-                } else {
-                    // Unknown status - schedule retry anyway
-                    scheduleTokenRefresh();
                 }
             } catch (e) {
                 console.error('[Auth] Token refresh error:', e);
@@ -135,7 +163,7 @@ function App() {
                 scheduleTokenRefresh();
             }
         }, intervalMs);
-    }, []);
+    }, [authStatus]);
 
     // Start/stop token refresh polling based on auth state
     useEffect(() => {
@@ -230,7 +258,10 @@ function App() {
         }
     };
 
-    const startSync = async (blocking: boolean) => {
+    const startSync = async (blocking: boolean, service?: string) => {
+        // Use provided service or fall back to activeService or default
+        const targetService = service || activeService || 'hinatazaka46';
+
         if (blocking) setShowSyncModal(true);
 
         // Fix Jumping Bug: Don't reset state if already running
@@ -240,7 +271,7 @@ function App() {
         }
 
         try {
-            await fetch('/api/sync/start', { method: 'POST' });
+            await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
             // If 400, it's already running.
             pollSyncProgress(blocking);
         } catch {
