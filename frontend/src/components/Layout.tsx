@@ -1,85 +1,60 @@
-import React, { useState, useEffect } from 'react';
+// frontend/src/components/Layout.tsx
+import React, { useEffect } from 'react';
 import { ServiceRail } from './ServiceRail';
-import { GroupSidebar } from './GroupSidebar';
-import { MultiGroupAuthStatus } from '../types';
+import { FeatureRail } from './FeatureRail';
+import { ContentArea } from './ContentArea';
 import { useAppStore } from '../stores/appStore';
+import { MultiGroupAuthStatus } from '../types';
 
 interface LayoutProps {
     authStatus: MultiGroupAuthStatus | null;
-    children: React.ReactNode;
-    onSelectGroup: (groupDir: string, isGroupChat: boolean, displayName: string) => void;
-    selectedGroupDir?: string;
-    isSyncing?: boolean;
-    onOpenSettings: () => void;
-    onOpenDiagnostics: () => void;
-    isMobileSidebarOpen?: boolean;
-    onCloseMobileSidebar?: () => void;
+    messagesContent: React.ReactNode;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
     authStatus,
-    children,
-    onSelectGroup,
-    selectedGroupDir,
-    isSyncing,
-    onOpenSettings,
-    onOpenDiagnostics,
-    isMobileSidebarOpen,
-    onCloseMobileSidebar
+    messagesContent,
 }) => {
-    const [services, setServices] = useState<string[]>([]);
     const { activeService, setActiveService } = useAppStore();
 
+    // Get authenticated services
+    const services = authStatus
+        ? Object.entries(authStatus)
+            .filter(([_, status]) => status.is_authenticated)
+            .map(([name]) => name)
+        : [];
+
+    // Auto-select first service if none selected
     useEffect(() => {
-        if (authStatus) {
-            const authenticatedServices = Object.entries(authStatus)
-                .filter(([_, status]) => status.is_authenticated)
-                .map(([name]) => name);
-
-            setServices(authenticatedServices);
-
-            if (authenticatedServices.length > 0 && !activeService) {
-                setActiveService(authenticatedServices[0]);
-            }
+        if (services.length > 0 && !activeService) {
+            setActiveService(services[0]);
         }
-    }, [authStatus, activeService, setActiveService]);
+    }, [services, activeService, setActiveService]);
 
     return (
-        <div className="flex h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+        <div className="flex h-full overflow-hidden">
             {/* Zone A: Service Rail */}
             <ServiceRail services={services} />
 
-            {/* Zone B: Group Sidebar - SINGLE instance, CSS handles responsive */}
-            <div className={`
-                w-80 shrink-0 bg-white border-r border-gray-200
-                fixed inset-y-0 left-16 md:left-20 z-30
-                md:relative md:left-0
-                transform transition-transform duration-300 ease-in-out
-                ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-            `}>
-                <GroupSidebar
-                    activeService={activeService ?? undefined}
-                    onSelectGroup={onSelectGroup}
-                    selectedGroupDir={selectedGroupDir}
-                    isSyncing={isSyncing}
-                    onOpenSettings={onOpenSettings}
-                    onOpenDiagnostics={onOpenDiagnostics}
-                />
-            </div>
-
-            {/* Mobile Overlay */}
-            {isMobileSidebarOpen && (
-                <div
-                    className="md:hidden fixed inset-0 z-20 bg-black/50"
-                    style={{ left: '64px' }}
-                    onClick={onCloseMobileSidebar}
-                />
+            {/* Zone B: Feature Rail (only show when service selected) */}
+            {activeService && (
+                <FeatureRail service={activeService} />
             )}
 
-            {/* Zone C: Main Content */}
-            <div className="flex-1 flex flex-col h-full relative overflow-hidden">
-                {children}
-            </div>
+            {/* Zone C: Content Area */}
+            {activeService ? (
+                <ContentArea
+                    service={activeService}
+                    messagesContent={messagesContent}
+                />
+            ) : (
+                <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">
+                    <div className="text-center">
+                        <p className="text-lg mb-2">Welcome to HakoDesk</p>
+                        <p className="text-sm">Select a service to get started</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
