@@ -7,8 +7,9 @@ from pyhako.client import GROUP_CONFIG
 
 
 def get_all_services() -> list[str]:
-    """Get list of all supported service identifiers."""
-    return [g.value for g in Group]
+    """Get list of all supported service identifiers (capitalized for UI display)."""
+    # Return capitalized names: 'hinatazaka46' -> 'Hinatazaka46'
+    return [g.value.capitalize() for g in Group]
 
 
 def get_service_display_name(service: str) -> str:
@@ -19,20 +20,30 @@ def get_service_display_name(service: str) -> str:
 
 def get_service_identifier(display_name: str) -> str | None:
     """
-    Reverse lookup: Get service identifier from display name.
-    E.g., '日向坂46' -> 'hinatazaka46'
+    Reverse lookup: Get service identifier from display name or romanized name.
+    E.g., '日向坂46' -> 'Hinatazaka46'
+    E.g., 'hinatazaka46' -> 'Hinatazaka46'
+    E.g., 'Hinatazaka46' -> 'Hinatazaka46'
     Returns None if not found.
     """
+    # First try Japanese display name lookup
     for group in Group:
         if GROUP_CONFIG[group]["display_name"] == display_name:
-            return group.value
+            return group.value.capitalize()
+
+    # Then try romanized name lookup (case-insensitive)
+    lower_name = display_name.lower()
+    for group in Group:
+        if group.value == lower_name:
+            return group.value.capitalize()
+
     return None
 
 
 def get_service_enum(service: str) -> Group:
-    """Convert service string to Group enum."""
+    """Convert service string to Group enum (case-insensitive)."""
     try:
-        return Group(service)
+        return Group(service.lower())
     except ValueError:
         raise ValueError(f"Unknown service: {service}")
 

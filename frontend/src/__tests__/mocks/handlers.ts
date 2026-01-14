@@ -37,7 +37,7 @@ export const handlers = [
   http.get('/api/auth/status', () => {
     return HttpResponse.json({
       services: {
-        'hinatazaka46': {
+        'Hinatazaka46': {
           authenticated: true,
           app_id: 'test_app_id',
           storage_type: 'test',
@@ -52,7 +52,7 @@ export const handlers = [
       {
         id: 'test_member_001',
         name: 'Test Member',
-        service: 'hinatazaka46',
+        service: 'Hinatazaka46',
         dir_name: 'test_member_001',
         group_path: 'individual/test_member_001',
         member_count: 1,
