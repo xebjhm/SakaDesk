@@ -47,7 +47,7 @@ class TestProfileEndpoint:
 
         try:
             with patch("backend.api.profile.get_settings_path", return_value=temp_path):
-                with patch("backend.api.profile.TokenManager", return_value=mock_tm):
+                with patch("backend.api.profile.get_token_manager", return_value=mock_tm):
                     response = client.get("/api/profile")
 
             assert response.status_code == 200
@@ -72,7 +72,7 @@ class TestProfileRefresh:
 
         try:
             with patch("backend.api.profile.get_settings_path", return_value=temp_path):
-                with patch("backend.api.profile.TokenManager", return_value=mock_tm):
+                with patch("backend.api.profile.get_token_manager", return_value=mock_tm):
                     response = client.post("/api/profile/refresh")
 
             assert response.status_code == 200

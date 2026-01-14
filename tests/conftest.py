@@ -13,9 +13,23 @@ sys.modules["webview"] = MagicMock()
 
 # MOCK PYHAKO CREDENTIALS BEFORE IMPORTING
 # This prevents Keyring access during test collection
-sys.modules["pyhako.credentials"] = MagicMock()
-# We need to make sure TokenManager is a class we can instantiate
-sys.modules["pyhako.credentials"].TokenManager = MagicMock()
+mock_pyhako_credentials = MagicMock()
+mock_pyhako_credentials.TokenManager = MagicMock()
+mock_pyhako_credentials.get_token_manager = MagicMock(return_value=MagicMock())
+sys.modules["pyhako.credentials"] = mock_pyhako_credentials
+
+# Mock pyhako module with get_auth_dir that returns a real Path
+# Note: pyhako is a real installed package, we just mock specific parts
+# We need to mock pyhako.logging to prevent actual logging configuration
+sys.modules["pyhako.logging"] = MagicMock()
+
+# Set up get_auth_dir for shared browser session tests
+_test_auth_dir = Path.home() / ".local" / "share" / "pyhako" / "auth_data"
+_test_auth_dir.mkdir(parents=True, exist_ok=True)
+
+# Patch pyhako.get_auth_dir at import time
+import pyhako as real_pyhako
+real_pyhako.get_auth_dir = lambda: _test_auth_dir
 
 from backend.main import app
 

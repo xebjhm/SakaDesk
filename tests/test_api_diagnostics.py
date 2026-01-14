@@ -79,13 +79,17 @@ class TestDiagnosticsEndpoint:
         assert "config_state" in data
         assert isinstance(data["config_state"], dict)
 
-    def test_returns_logs_list(self, client):
-        """Endpoint should return logs as a list."""
+    def test_returns_logs_dict(self, client):
+        """Endpoint should return logs as a dict with errors, recent, warnings."""
         response = client.get("/api/diagnostics")
         data = response.json()
 
         assert "logs" in data
-        assert isinstance(data["logs"], list)
+        logs = data["logs"]
+        assert isinstance(logs, dict)
+        assert "errors" in logs
+        assert "recent" in logs
+        assert "warnings" in logs
 
     def test_config_state_when_no_settings_file(self, client):
         """Config state should be empty when settings file doesn't exist."""
@@ -150,7 +154,7 @@ class TestDiagnosticsWithMockedFiles:
         """Should read log lines from log file when it exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
             log_dir = Path(temp_dir)
-            log_file = log_dir / "app.log"
+            log_file = log_dir / "debug.log"  # Match actual log file name
 
             # Write 100 lines to log
             with open(log_file, "w", encoding="utf-8") as f:
@@ -163,11 +167,10 @@ class TestDiagnosticsWithMockedFiles:
 
                 assert "logs" in data
                 logs = data["logs"]
-                # Should return last 50 lines
-                assert len(logs) <= 50
-                # Should contain the last lines
-                if logs:
-                    assert "Log line" in logs[-1]
+                assert isinstance(logs, dict)
+                # Recent logs should contain log lines
+                if logs.get("recent"):
+                    assert any("Log line" in line for line in logs["recent"])
 
     def test_handles_missing_logs_dir(self, client):
         """Should handle missing logs directory gracefully."""
@@ -193,7 +196,11 @@ class TestDiagnosticsWithMockedFiles:
 
                 assert response.status_code == 200
                 assert "logs" in data
-                assert data["logs"] == []
+                logs = data["logs"]
+                assert isinstance(logs, dict)
+                # Empty logs should have empty lists
+                assert logs.get("errors") == []
+                assert logs.get("recent") == []
 
 
 class TestDiagnosticsResponseModel:
