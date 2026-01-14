@@ -17,10 +17,10 @@ export const Layout: React.FC<LayoutProps> = ({
 }) => {
     const { activeService, setActiveService } = useAppStore();
 
-    // Get authenticated services
+    // Get authenticated services (supports both 'authenticated' and 'is_authenticated' fields)
     const services = authStatus
         ? Object.entries(authStatus)
-            .filter(([_, status]) => status.is_authenticated)
+            .filter(([_, status]) => (status as any).authenticated === true || status.is_authenticated === true)
             .map(([name]) => name)
         : [];
 
