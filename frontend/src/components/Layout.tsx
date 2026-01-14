@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ServiceRail } from './ServiceRail';
 import { GroupSidebar } from './GroupSidebar';
 import { MultiGroupAuthStatus } from '../types';
+import { useAppStore } from '../stores/appStore';
 
 interface LayoutProps {
     authStatus: MultiGroupAuthStatus | null;
@@ -27,7 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({
     onCloseMobileSidebar
 }) => {
     const [services, setServices] = useState<string[]>([]);
-    const [activeService, setActiveService] = useState<string | undefined>();
+    const { activeService, setActiveService } = useAppStore();
 
     useEffect(() => {
         if (authStatus) {
@@ -41,16 +42,12 @@ export const Layout: React.FC<LayoutProps> = ({
                 setActiveService(authenticatedServices[0]);
             }
         }
-    }, [authStatus]);
+    }, [authStatus, activeService, setActiveService]);
 
     return (
         <div className="flex h-screen bg-[#F0F2F5] font-sans overflow-hidden">
             {/* Zone A: Service Rail */}
-            <ServiceRail
-                services={services}
-                activeService={activeService}
-                onSelectService={setActiveService}
-            />
+            <ServiceRail services={services} />
 
             {/* Zone B: Group Sidebar - SINGLE instance, CSS handles responsive */}
             <div className={`
@@ -61,7 +58,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
             `}>
                 <GroupSidebar
-                    activeService={activeService}
+                    activeService={activeService ?? undefined}
                     onSelectGroup={onSelectGroup}
                     selectedGroupDir={selectedGroupDir}
                     isSyncing={isSyncing}
