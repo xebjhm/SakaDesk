@@ -344,7 +344,21 @@ class SyncService:
 
                 else:
                     logger.info("No new media to download.")
-                
+
+                # Phase 4: Blog Metadata Sync (lightweight)
+                progress.start_phase("blogs", "Syncing Blog Metadata", 4, 0, "")
+                try:
+                    from backend.services.blog_service import BlogService
+                    blog_service = BlogService()
+
+                    async def blog_progress(msg):
+                        progress.set_detail(msg)
+
+                    await blog_service.sync_blog_metadata(self._service, progress_callback=blog_progress)
+                    logger.info(f"Blog metadata synced for {self._service}")
+                except Exception as e:
+                    logger.warning(f"Blog metadata sync failed (non-fatal): {e}")
+
                 metadata['last_sync'] = datetime.utcnow().isoformat() + "Z"
                 await self.save_metadata(metadata)
 
