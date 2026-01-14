@@ -26,7 +26,7 @@ async def test_get_groups(client):
 
         # Service directory (e.g., 日向坂46)
         service_dir = MagicMock()
-        service_dir.name = "Hinatazaka46"
+        service_dir.name = "hinatazaka46"
         service_dir.is_dir.return_value = True
 
         root_path.iterdir.return_value = [service_dir]
@@ -70,10 +70,10 @@ async def test_get_groups(client):
         group2.iterdir.return_value = [member2]
 
         # relative_to mock
-        member1.relative_to.return_value = Path("Hinatazaka46/messages/34 MemberA/58 MemberA")
-        member2.relative_to.return_value = Path("Hinatazaka46/messages/40 MemberB/64 MemberB")
-        group1.relative_to.return_value = Path("Hinatazaka46/messages/34 MemberA")
-        group2.relative_to.return_value = Path("Hinatazaka46/messages/40 MemberB")
+        member1.relative_to.return_value = Path("hinatazaka46/messages/34 MemberA/58 MemberA")
+        member2.relative_to.return_value = Path("hinatazaka46/messages/40 MemberB/64 MemberB")
+        group1.relative_to.return_value = Path("hinatazaka46/messages/34 MemberA")
+        group2.relative_to.return_value = Path("hinatazaka46/messages/40 MemberB")
 
         mock_get_out.return_value = root_path
 
@@ -94,7 +94,7 @@ async def test_get_groups(client):
             assert len(data) == 2
             assert data[0]["id"] == "34"
             assert data[0]["name"] == "MemberA"
-            assert data[0]["service"] == "Hinatazaka46"
+            assert data[0]["service"] == "hinatazaka46"
             assert data[0]["member_count"] == 1
             assert data[0]["members"][0]["id"] == "58"
             assert data[0]["members"][0]["name"] == "MemberA"
@@ -113,7 +113,7 @@ async def test_get_group_messages(client):
         mock_get_out.return_value = root_path
 
         # Valid Path requested: service/messages/group
-        req_path = "Hinatazaka46/messages/43 Hinatazaka46"
+        req_path = "hinatazaka46/messages/43 hinatazaka46"
 
         # Setup Target Mock (Result of root / path)
         target_path = MagicMock()
@@ -128,7 +128,7 @@ async def test_get_group_messages(client):
 
         # Mock Members inside the group directory
         m1 = MagicMock()
-        m1.name = "79 Hinatazaka46"
+        m1.name = "79 hinatazaka46"
         m1.is_dir.return_value = True
 
         m2 = MagicMock()
@@ -149,7 +149,7 @@ async def test_get_group_messages(client):
 
         # Mock File Open with different data for each call
         mock_json1 = json.dumps({
-            "member": {"name": "Hinatazaka46"},
+            "member": {"name": "hinatazaka46"},
             "messages": [
                 {"id": 1, "text": "Hi", "timestamp": "2023-01-01T10:00:00Z"},
             ]
@@ -189,7 +189,7 @@ async def test_get_messages_by_path(client):
         mock_get_out.return_value = root_path
 
         # Path to member directory
-        req_path = "Hinatazaka46/messages/34 MemberA/58 MemberA"
+        req_path = "hinatazaka46/messages/34 MemberA/58 MemberA"
 
         target_path = MagicMock()
         root_path.__truediv__.return_value = target_path

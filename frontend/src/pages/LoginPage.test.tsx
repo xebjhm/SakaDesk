@@ -7,7 +7,7 @@ import { LoginPage } from './LoginPage'
 
 describe('LoginPage component', () => {
   const defaultProps = {
-    service: 'Hinatazaka46',
+    service: 'hinatazaka46',
     onLoginSuccess: vi.fn(),
   }
 
@@ -23,7 +23,7 @@ describe('LoginPage component', () => {
   it('should render title and description', () => {
     render(<LoginPage {...defaultProps} />)
     expect(screen.getByRole('heading', { name: /Connect Account/i })).toBeInTheDocument()
-    expect(screen.getByText(/Please log in to your Hinatazaka46/i)).toBeInTheDocument()
+    expect(screen.getByText(/Please log in to your hinatazaka46/i)).toBeInTheDocument()
   })
 
   it('should call onLoginSuccess when login succeeds', async () => {

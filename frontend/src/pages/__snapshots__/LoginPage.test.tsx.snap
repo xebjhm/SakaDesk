@@ -45,7 +45,7 @@ exports[`LoginPage component > Snapshots > should match snapshot for default sta
       class="text-gray-500"
     >
       Please log in to your 
-      Hinatazaka46
+      hinatazaka46
        Message account. A browser window will open for you to enter your credentials.
     </p>
     <button
@@ -107,7 +107,7 @@ exports[`LoginPage component > Snapshots > should match snapshot with error stat
       class="text-gray-500"
     >
       Please log in to your 
-      Hinatazaka46
+      hinatazaka46
        Message account. A browser window will open for you to enter your credentials.
     </p>
     <div
