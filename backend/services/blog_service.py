@@ -106,52 +106,70 @@ class BlogService:
         await self.save_blog_index(service, index)
         return index
 
-    async def get_blog_list(self, service: str, member_id: str, limit: int = 20) -> dict:
-        """Get blog list for a member - fetches LIVE from scraper."""
-        validate_service(service)
-        group = get_service_enum(service)
+    async def get_blog_list(self, service: str, member_id: str) -> dict:
+        """Get blog list for a member from index."""
+        index = await self.load_blog_index(service)
+        member_data = index.get("members", {}).get(member_id, {})
 
-        blogs = []
-        member_name = ""
+        blogs = member_data.get("blogs", [])
 
-        async with aiohttp.ClientSession() as session:
-            scraper = get_scraper(group, session)
-
-            async for entry in scraper.get_blogs(member_id):
-                member_name = entry.member_name  # Get name from first entry
-                blogs.append({
-                    "id": entry.id,
-                    "title": entry.title,
-                    "published_at": entry.published_at.isoformat(),
-                    "url": entry.url,
-                    "thumbnail": entry.images[0] if entry.images else None,
-                    "cached": False,  # Live fetch, not cached
-                })
-                if len(blogs) >= limit:
-                    break
+        # Check which blogs are cached
+        for blog in blogs:
+            date = blog["published_at"][:10].replace("-", "")
+            cache_path = self.get_blog_cache_path(service, member_data.get("name", ""), blog["id"], date)
+            blog["cached"] = (cache_path / "blog.json").exists()
 
         return {
             "member_id": member_id,
-            "member_name": member_name,
-            "blogs": blogs  # Already sorted by date from scraper
+            "member_name": member_data.get("name", ""),
+            "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True)
         }
 
     async def get_blog_content(self, service: str, blog_id: str) -> dict:
         """
-        Get full blog content - fetches LIVE from scraper.
+        Get full blog content. Fetches on-demand if not cached.
         """
         validate_service(service)
         group = get_service_enum(service)
 
-        # Fetch directly from scraper
+        # Find blog in index to get member info
+        index = await self.load_blog_index(service)
+        blog_meta = None
+        member_name = None
+
+        for member_id, member_data in index.get("members", {}).items():
+            for blog in member_data.get("blogs", []):
+                if blog["id"] == blog_id:
+                    blog_meta = blog
+                    member_name = member_data.get("name", "")
+                    break
+            if blog_meta:
+                break
+
+        if not blog_meta:
+            raise ValueError(f"Blog {blog_id} not found in index")
+
+        # Check cache
+        date = blog_meta["published_at"][:10].replace("-", "")
+        cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
+        cache_file = cache_path / "blog.json"
+
+        if cache_file.exists():
+            async with aiofiles.open(cache_file, 'r', encoding='utf-8') as f:
+                return json.loads(await f.read())
+
+        # Fetch on-demand
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
             entry = await scraper.get_blog_detail(blog_id)
 
-            return {
+            # Save to cache
+            cache_path.mkdir(parents=True, exist_ok=True)
+
+            content = {
                 "meta": {
                     "id": entry.id,
-                    "member_name": entry.member_name,
+                    "member_name": member_name,
                     "title": entry.title,
                     "published_at": entry.published_at.isoformat(),
                     "url": entry.url,
@@ -161,6 +179,11 @@ class BlogService:
                 },
                 "images": [{"original_url": img, "local_path": None} for img in entry.images]
             }
+
+            async with aiofiles.open(cache_file, 'w', encoding='utf-8') as f:
+                await f.write(json.dumps(content, ensure_ascii=False, indent=2))
+
+            return content
 
     async def get_cache_size(self, service: str) -> int:
         """Get total cache size in bytes for a service."""
