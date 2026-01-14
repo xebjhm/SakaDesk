@@ -38,7 +38,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features
+from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs
 
 logger = structlog.get_logger(__name__)
 
@@ -75,6 +75,7 @@ app.include_router(version.router)
 app.include_router(notifications.router)
 app.include_router(favorites.router)
 app.include_router(chat_features.router)
+app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 
 
 @app.get("/health")
