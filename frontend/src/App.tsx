@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Message, MemberInfo } from './types'
+import { Message, MemberInfo, MultiGroupAuthStatus } from './types'
 import { Sidebar } from './components/Sidebar'
+import { Layout } from './components/Layout'
 import { ChatList } from './components/ChatList'
 import { LoginPage } from './pages/LoginPage'
 import { Menu, Loader2, ChevronUp, ChevronDown, Download, FolderOpen } from 'lucide-react'
@@ -77,6 +78,7 @@ function App() {
     // Auth state
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authError, setAuthError] = useState<string | null>(null);
+    const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
 
     // Chat state
     const [selectedGroupDir, setSelectedGroupDir] = useState<string | undefined>();
@@ -167,6 +169,16 @@ function App() {
             setIsAuthenticated(false);
         }
     };
+
+    // Fetch multi-group auth status for Layout component
+    useEffect(() => {
+        if (isAuthenticated) {
+            fetch('/api/auth/multi-status')
+                .then(res => res.json())
+                .then(data => setAuthStatus(data))
+                .catch(console.error);
+        }
+    }, [isAuthenticated]);
 
     // Proactive token refresh polling (50-55 min with jitter)
     // Timer resets after login or successful refresh to align with token lifetime
@@ -1068,154 +1080,162 @@ function App() {
                 )
             }
 
-            {/* Sidebar */}
-            <div className={`
-                fixed inset-y-0 left-0 z-30 w-80 transform transition-transform duration-300 ease-in-out
-                md:relative md:translate-x-0 bg-white
-                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-            `}>
-                <Sidebar
-                    onSelectGroup={handleSelectGroup}
-                    selectedGroupDir={selectedGroupDir}
-                    isSyncing={syncProgress.state === 'running'}
-                    onOpenSettings={() => setShowSettingsModal(true)}
-                    onReportIssue={() => setShowReportModal(true)}
-                    onOpenAbout={() => setShowAboutModal(true)}
-                    readStateVersion={readStateVersion}
-                />
-            </div>
-
-            {isSidebarOpen && (<div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setIsSidebarOpen(false)} />)}
-
-            {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col h-full relative w-full">
-                {/* Header */}
-                <header className="h-16 bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] flex items-center px-4 shadow-sm z-10 shrink-0">
-                    <button className="md:hidden mr-3 text-white" onClick={() => setIsSidebarOpen(true)}> <Menu /> </button>
-                    <div className="text-white flex-1">
-                        <h2 className="text-lg font-bold">{selectedName || "Select a Conversation"}</h2>
-                        {isGroupChat && <span className="text-xs opacity-80">Group Chat</span>}
-                    </div>
-                    {displayUnreadCount > 0 && <span className="bg-white/20 text-white text-xs px-2 py-1 rounded-full">{displayUnreadCount} unread</span>}
-                    {syncProgress.state === 'running' && (
-                        <div className="flex items-center ml-4 text-xs text-white/90 bg-black/20 px-3 py-1 rounded-full">
-                            <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                            <span>{syncProgress.detail || "Syncing..."}</span>
+            {/* Main 3-zone layout */}
+            <Layout
+                authStatus={authStatus}
+                messagesContent={
+                    <div className="flex h-full overflow-hidden">
+                        {/* Sidebar */}
+                        <div className={`
+                            fixed inset-y-0 left-0 z-30 w-80 transform transition-transform duration-300 ease-in-out
+                            md:relative md:translate-x-0 bg-white
+                            ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                        `}>
+                            <Sidebar
+                                onSelectGroup={handleSelectGroup}
+                                selectedGroupDir={selectedGroupDir}
+                                isSyncing={syncProgress.state === 'running'}
+                                onOpenSettings={() => setShowSettingsModal(true)}
+                                onReportIssue={() => setShowReportModal(true)}
+                                onOpenAbout={() => setShowAboutModal(true)}
+                                readStateVersion={readStateVersion}
+                            />
                         </div>
-                    )}
-                    {selectedGroupDir && (
-                        <ChatHeaderMenu
-                            conversationPath={selectedGroupDir}
-                            isGroupChat={isGroupChat}
-                            messages={messages}
-                            memberName={selectedName || ''}
-                            memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
-                            groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
-                            onSelectDate={scrollToDate}
-                            onBackgroundChange={setBackgroundSettings}
-                        />
-                    )}
-                </header>
 
-                {/* Virtualized Timeline */}
-                <div
-                    className="flex-1 overflow-hidden relative"
-                    tabIndex={0}
-                    onKeyDown={handleKeyDown}
-                    style={{
-                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : '#E2E6EB',
-                        backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
-                            ? `url(${backgroundSettings.imageData})`
-                            : 'none',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: backgroundSettings.opacity / 100,
-                    }}
-                >
-                    {!selectedGroupDir && (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                                <p className="text-lg mb-2">👋 Welcome to HakoDesk</p>
-                                <p className="text-sm">Select a conversation from the sidebar to start.</p>
+                        {isSidebarOpen && (<div className="fixed inset-0 z-20 bg-black/50 md:hidden" onClick={() => setIsSidebarOpen(false)} />)}
+
+                        {/* Main Chat Area */}
+                        <div className="flex-1 flex flex-col h-full relative w-full">
+                            {/* Header */}
+                            <header className="h-16 bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] flex items-center px-4 shadow-sm z-10 shrink-0">
+                                <button className="md:hidden mr-3 text-white" onClick={() => setIsSidebarOpen(true)}> <Menu /> </button>
+                                <div className="text-white flex-1">
+                                    <h2 className="text-lg font-bold">{selectedName || "Select a Conversation"}</h2>
+                                    {isGroupChat && <span className="text-xs opacity-80">Group Chat</span>}
+                                </div>
+                                {displayUnreadCount > 0 && <span className="bg-white/20 text-white text-xs px-2 py-1 rounded-full">{displayUnreadCount} unread</span>}
+                                {syncProgress.state === 'running' && (
+                                    <div className="flex items-center ml-4 text-xs text-white/90 bg-black/20 px-3 py-1 rounded-full">
+                                        <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                                        <span>{syncProgress.detail || "Syncing..."}</span>
+                                    </div>
+                                )}
+                                {selectedGroupDir && (
+                                    <ChatHeaderMenu
+                                        conversationPath={selectedGroupDir}
+                                        isGroupChat={isGroupChat}
+                                        messages={messages}
+                                        memberName={selectedName || ''}
+                                        memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
+                                        groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                                        onSelectDate={scrollToDate}
+                                        onBackgroundChange={setBackgroundSettings}
+                                    />
+                                )}
+                            </header>
+
+                            {/* Virtualized Timeline */}
+                            <div
+                                className="flex-1 overflow-hidden relative"
+                                tabIndex={0}
+                                onKeyDown={handleKeyDown}
+                                style={{
+                                    backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : '#E2E6EB',
+                                    backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
+                                        ? `url(${backgroundSettings.imageData})`
+                                        : 'none',
+                                    backgroundSize: 'cover',
+                                    backgroundPosition: 'center',
+                                    opacity: backgroundSettings.opacity / 100,
+                                }}
+                            >
+                                {!selectedGroupDir && (
+                                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                                        <div className="text-center">
+                                            <p className="text-lg mb-2">Welcome to HakoDesk</p>
+                                            <p className="text-sm">Select a conversation from the sidebar to start.</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {loading && messages.length === 0 && <div className="p-10 text-center text-gray-500">Loading messages...</div>}
+                                {error && <div className="p-10 text-center text-red-500">Error: {error}</div>}
+
+                                {selectedGroupDir && messages.length > 0 && (
+                                    <ChatList
+                                        memberId={selectedGroupDir}
+                                        messages={messages}
+                                        getSenderInfo={getSenderInfo}
+                                        isUnread={isUnread}
+                                        onReveal={revealMessage}
+                                        onLongPress={() => setShowRevealConfirm(true)}
+                                        onRangeChanged={updateUnreadNavState}
+                                        virtuosoRef={virtuosoRef}
+                                        userNickname={appSettings?.user_nickname}
+                                        onToggleFavorite={handleToggleFavorite}
+                                        onAvatarClick={() => setShowMemberProfile(true)}
+                                    />
+                                )}
                             </div>
-                        </div>
-                    )}
 
-                    {loading && messages.length === 0 && <div className="p-10 text-center text-gray-500">Loading messages...</div>}
-                    {error && <div className="p-10 text-center text-red-500">Error: {error}</div>}
+                            {/* Navigation Buttons */}
+                            {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
+                            {selectedGroupDir && hasUnreadAbove && (
+                                <div className="absolute right-4 bottom-4 z-20">
+                                    <button
+                                        onClick={scrollToFirstUnread}
+                                        className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
+                                        title="Jump to oldest unread"
+                                    >
+                                        <ChevronUp className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            )}
+                            {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
+                            {selectedGroupDir && hasUnreadBelow && (
+                                <div className="absolute right-4 top-20 z-20">
+                                    <button
+                                        onClick={scrollToFirstUnread}
+                                        className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
+                                        title="Jump to oldest unread"
+                                    >
+                                        <ChevronDown className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            )}
 
-                    {selectedGroupDir && messages.length > 0 && (
-                        <ChatList
-                            memberId={selectedGroupDir}
-                            messages={messages}
-                            getSenderInfo={getSenderInfo}
-                            isUnread={isUnread}
-                            onReveal={revealMessage}
-                            onLongPress={() => setShowRevealConfirm(true)}
-                            onRangeChanged={updateUnreadNavState}
-                            virtuosoRef={virtuosoRef}
-                            userNickname={appSettings?.user_nickname}
-                            onToggleFavorite={handleToggleFavorite}
-                            onAvatarClick={() => setShowMemberProfile(true)}
-                        />
-                    )}
-                </div>
-
-                {/* Navigation Buttons */}
-                {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
-                {selectedGroupDir && hasUnreadAbove && (
-                    <div className="absolute right-4 bottom-4 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
-                            title="Jump to oldest unread"
-                        >
-                            <ChevronUp className="w-5 h-5" />
-                        </button>
-                    </div>
-                )}
-                {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
-                {selectedGroupDir && hasUnreadBelow && (
-                    <div className="absolute right-4 top-20 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
-                            title="Jump to oldest unread"
-                        >
-                            <ChevronDown className="w-5 h-5" />
-                        </button>
-                    </div>
-                )}
-
-                {/* Reveal All Confirmation Modal */}
-                {showRevealConfirm && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">Reveal All Messages?</h3>
-                            <p className="text-gray-600 mb-6">
-                                This will mark all {displayUnreadCount} unread messages as revealed.
-                            </p>
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    onClick={() => setShowRevealConfirm(false)}
-                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        revealAllMessages();
-                                        setShowRevealConfirm(false);
-                                    }}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
-                                >
-                                    Confirm
-                                </button>
-                            </div>
+                            {/* Reveal All Confirmation Modal */}
+                            {showRevealConfirm && (
+                                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
+                                        <h3 className="text-lg font-bold text-gray-900 mb-2">Reveal All Messages?</h3>
+                                        <p className="text-gray-600 mb-6">
+                                            This will mark all {displayUnreadCount} unread messages as revealed.
+                                        </p>
+                                        <div className="flex justify-end gap-3">
+                                            <button
+                                                onClick={() => setShowRevealConfirm(false)}
+                                                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    revealAllMessages();
+                                                    setShowRevealConfirm(false);
+                                                }}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                                            >
+                                                Confirm
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )}
-            </div>
+                }
+            />
             </div>
         </div>
     )
