@@ -15,7 +15,7 @@ PyHako directory structure:
       blogs/
         ...
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
@@ -26,6 +26,14 @@ import re
 from typing import Optional, List, Dict, Any
 
 from backend.services.platform import get_settings_path, is_test_mode
+from backend.services.path_resolver import (
+    resolve_service_path,
+    resolve_talk_room_path,
+    resolve_member_path,
+    resolve_messages_file,
+    resolve_media_path,
+)
+from backend.services.service_utils import validate_service
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -473,3 +481,242 @@ async def get_media(file_path: str):
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(safe_path)
+
+
+# =============================================================================
+# Param-based Content Endpoints (New API)
+# These use query parameters instead of path parameters for cleaner URLs
+# =============================================================================
+
+
+@router.get("/talk_rooms")
+async def get_talk_rooms(service: str = Query(..., description="Service identifier")):
+    """List all talk rooms for a service (param-based)."""
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    service_path = resolve_service_path(service)
+    messages_path = service_path / "messages"
+
+    if not messages_path.exists():
+        return {"service": service, "talk_rooms": []}
+
+    talk_rooms = []
+    for talk_room_dir in messages_path.iterdir():
+        if not talk_room_dir.is_dir():
+            continue
+
+        talk_room_id, talk_room_name = parse_id_name(talk_room_dir.name)
+        if not talk_room_id:
+            continue
+
+        member_dirs = [d for d in talk_room_dir.iterdir() if d.is_dir() and (d / "messages.json").exists()]
+        member_count = len(member_dirs)
+        room_type = "group_event" if member_count > 1 or talk_room_id in GROUP_CHAT_IDS else "individual"
+
+        talk_rooms.append({
+            "id": int(talk_room_id),
+            "name": talk_room_name,
+            "type": room_type,
+            "member_count": member_count,
+        })
+
+    talk_rooms.sort(key=lambda r: r["id"])
+    return {"service": service, "talk_rooms": talk_rooms}
+
+
+@router.get("/members")
+async def get_members(
+    service: str = Query(...),
+    talk_room_id: int = Query(...)
+):
+    """List members in a talk room (param-based)."""
+    try:
+        validate_service(service)
+        talk_room_path = resolve_talk_room_path(service, talk_room_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    members = []
+    for member_dir in talk_room_path.iterdir():
+        if not member_dir.is_dir():
+            continue
+
+        member_id, member_name = parse_id_name(member_dir.name)
+        if not member_id:
+            continue
+
+        msg_file = member_dir / "messages.json"
+        if not msg_file.exists():
+            continue
+
+        member_info = {"id": int(member_id), "name": member_name}
+
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                m_data = data.get('member', {})
+                member_info['thumbnail'] = m_data.get('thumbnail')
+                member_info['portrait'] = m_data.get('portrait')
+        except Exception:
+            pass
+
+        members.append(member_info)
+
+    return {"service": service, "talk_room_id": talk_room_id, "members": members}
+
+
+@router.get("/messages")
+async def get_messages_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    member_id: int = Query(...),
+    limit: int = 0,
+    last_read_id: int = 0
+):
+    """Get messages for a member (param-based)."""
+    try:
+        validate_service(service)
+        msg_file = resolve_messages_file(service, talk_room_id, member_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not msg_file.exists():
+        raise HTTPException(status_code=404, detail="No messages found")
+
+    try:
+        with open(msg_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            messages = data.get('messages', [])
+            messages.sort(key=lambda x: x.get('timestamp', ''))
+
+            total = len(messages)
+            unread_count = 0
+            max_message_id = 0
+
+            for m in messages:
+                msg_id = m.get('id', 0)
+                if msg_id > max_message_id:
+                    max_message_id = msg_id
+                if last_read_id > 0 and msg_id > last_read_id:
+                    unread_count += 1
+
+            if last_read_id == 0:
+                unread_count = total
+
+            if limit > 0:
+                messages = messages[-limit:]
+
+            data['messages'] = messages
+            data['total_count'] = total
+            data['unread_count'] = unread_count
+            data['max_message_id'] = max_message_id
+            return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/talk_room_messages")
+async def get_talk_room_messages_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    limit: int = 200,
+    last_read_id: int = 0
+):
+    """Get merged messages from all members in a talk room (param-based)."""
+    try:
+        validate_service(service)
+        talk_room_path = resolve_talk_room_path(service, talk_room_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    all_messages = []
+    members_map = {}
+
+    for member_dir in talk_room_path.iterdir():
+        if not member_dir.is_dir():
+            continue
+
+        member_id, member_name = parse_id_name(member_dir.name)
+        if not member_id:
+            continue
+
+        msg_file = member_dir / "messages.json"
+        if not msg_file.exists():
+            continue
+
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                member_info = data.get('member', {})
+                members_map[member_id] = {
+                    "id": int(member_id),
+                    "name": member_name,
+                    "thumbnail": member_info.get('thumbnail'),
+                }
+
+                for msg in data.get('messages', []):
+                    msg['member_id'] = member_id
+                    msg['member_name'] = member_name
+                    all_messages.append(msg)
+        except Exception as e:
+            logger.warning(f"Failed to load messages: {e}")
+
+    all_messages.sort(key=lambda m: m.get('timestamp', ''))
+    total = len(all_messages)
+
+    unread_count = sum(1 for m in all_messages if m.get('id', 0) > last_read_id) if last_read_id else total
+    max_message_id = max((m.get('id', 0) for m in all_messages), default=0)
+
+    if limit > 0:
+        all_messages = all_messages[-limit:]
+
+    return {
+        "service": service,
+        "talk_room_id": talk_room_id,
+        "total_messages": total,
+        "unread_count": unread_count,
+        "max_message_id": max_message_id,
+        "members": list(members_map.values()),
+        "messages": all_messages,
+    }
+
+
+@router.get("/media_file")
+async def get_media_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    member_id: int = Query(...),
+    type: str = Query(..., description="Media type: picture, video, voice"),
+    file: str = Query(..., description="Filename")
+):
+    """Serve media files (param-based)."""
+    # Validate media type
+    ALLOWED_MEDIA_TYPES = {"picture", "video", "voice"}
+    if type not in ALLOWED_MEDIA_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}")
+
+    # Validate filename (no path traversal)
+    if '/' in file or '\\' in file or '..' in file or '\x00' in file:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    try:
+        validate_service(service)
+        media_path = resolve_media_path(service, talk_room_id, member_id, type, file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not media_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(media_path)
