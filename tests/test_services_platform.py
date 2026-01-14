@@ -170,12 +170,14 @@ class TestSessionDir:
         assert result.exists()
         assert result.is_dir()
 
-    def test_session_dir_in_credentials(self):
-        """get_session_dir() should be inside credentials dir."""
+    def test_session_dir_uses_pyhako_auth_dir(self):
+        """get_session_dir() should use pyhako.get_auth_dir() for shared browser session."""
+        from pyhako import get_auth_dir
         session = get_session_dir()
-        creds = get_credentials_dir()
-        assert session.parent == creds
-        assert session.name == "session"
+        pyhako_auth = get_auth_dir()
+        assert session == pyhako_auth
+        assert "pyhako" in str(session)
+        assert "auth_data" in str(session)
 
 
 class TestLogsDir:

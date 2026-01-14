@@ -73,10 +73,17 @@ def get_credentials_dir() -> Path:
 
 
 def get_session_dir() -> Path:
-    """Get directory for browser session data (auth_data)."""
-    session_dir = get_credentials_dir() / "session"
-    session_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir
+    """
+    Get directory for browser session data (auth_data).
+
+    Uses pyhako.get_auth_dir() to share browser session with CLI.
+    This enables:
+    - Shared Google OAuth cookies between CLI and HakoDesk
+    - Auto-OAuth when re-logging in (no password re-entry)
+    - Consistent session state across both apps
+    """
+    from pyhako import get_auth_dir
+    return get_auth_dir()
 
 
 def get_logs_dir() -> Path:
