@@ -62,3 +62,46 @@ export interface ServiceAuthStatus {
 }
 
 export type MultiGroupAuthStatus = Record<string, ServiceAuthStatus>;
+
+// Blog types - matching backend/api/blogs.py responses
+export interface BlogMember {
+    id: string;
+    name: string;
+}
+
+export interface BlogMembersResponse {
+    service: string;
+    members: BlogMember[];
+}
+
+export interface BlogMeta {
+    id: string;
+    title: string;
+    published_at: string;  // ISO datetime
+    url: string;
+    thumbnail: string | null;
+    cached: boolean;
+}
+
+export interface BlogListResponse {
+    member_id: string;
+    member_name: string;
+    blogs: BlogMeta[];
+}
+
+export interface BlogContentResponse {
+    meta: {
+        id: string;
+        member_name: string;
+        title: string;
+        published_at: string;
+        url: string;
+    };
+    content: {
+        html: string;
+    };
+    images: Array<{
+        original_url: string;
+        local_path: string | null;
+    }>;
+}
