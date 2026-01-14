@@ -415,8 +415,8 @@ class SyncService:
                                     'count': len(member_msgs),
                                     'thumbnail': info.get('thumbnail')
                                 })
-                        except:
-                            pass
+                        except Exception as e:
+                            logger.debug(f"Failed to check messages for {info.get('member_name', 'unknown')}: {e}")
             
             return new_messages
             
