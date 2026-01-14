@@ -75,33 +75,25 @@ function App() {
     const checkAuth = async () => {
         try {
             const res = await fetch('/api/auth/status');
-            const data = await res.json();
-            // Multi-service: check if any service is authenticated
-            if (data.services) {
-                const authenticatedServices = Object.entries(data.services)
-                    .filter(([_, s]) => (s as any).authenticated === true)
-                    .map(([name]) => name);
-                const anyAuthenticated = authenticatedServices.length > 0;
-                setIsAuthenticated(anyAuthenticated);
-                // Store the full multi-service status
-                setAuthStatus(data.services);
-                // Auto-select first authenticated service if none selected
-                if (anyAuthenticated && !activeService) {
-                    setActiveService(authenticatedServices[0]);
-                }
-                // Check for any expired tokens
-                const anyExpired = Object.values(data.services).some(
-                    (s: any) => s.token_expired === true
-                );
-                if (anyExpired) {
-                    setAuthError("Session expired. Please login again.");
-                }
-            } else {
-                // Legacy single-service format
-                setIsAuthenticated(data.authenticated || data.is_authenticated || false);
-                if (data.token_expired) {
-                    setAuthError("Session expired. Please login again.");
-                }
+            const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean }> } = await res.json();
+
+            const authenticatedServices = Object.entries(data.services)
+                .filter(([_, s]) => s.authenticated === true)
+                .map(([name]) => name);
+
+            const anyAuthenticated = authenticatedServices.length > 0;
+            setIsAuthenticated(anyAuthenticated);
+            setAuthStatus(data.services);
+
+            // Auto-select first authenticated service if none selected
+            if (anyAuthenticated && !activeService) {
+                setActiveService(authenticatedServices[0]);
+            }
+
+            // Check for any expired tokens
+            const anyExpired = Object.values(data.services).some(s => s.token_expired === true);
+            if (anyExpired) {
+                setAuthError("Session expired. Please login again.");
             }
         } catch {
             setIsAuthenticated(false);
@@ -133,9 +125,11 @@ function App() {
             try {
                 console.log('[Auth] Proactive token refresh triggered');
                 // Refresh all authenticated services
-                const services = authStatus ? Object.entries(authStatus)
-                    .filter(([_, s]) => (s as any).authenticated === true)
-                    .map(([name]) => name) : [];
+                const services = authStatus
+                    ? Object.entries(authStatus)
+                        .filter(([_, s]) => s.authenticated === true)
+                        .map(([name]) => name)
+                    : [];
 
                 let allValid = true;
                 for (const service of services) {

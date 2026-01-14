@@ -53,11 +53,12 @@ export interface Group {
     total_messages?: number;
 }
 
-export interface GroupAuthStatus {
-    is_authenticated: boolean;
-    group_name: string;
-    username?: string;
-    error?: string;
+export interface ServiceAuthStatus {
+    authenticated: boolean;
+    token_expired?: boolean;
+    app_id?: string;
+    storage_type?: string;
+    message?: string;
 }
 
-export type MultiGroupAuthStatus = Record<string, GroupAuthStatus>;
+export type MultiGroupAuthStatus = Record<string, ServiceAuthStatus>;
