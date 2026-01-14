@@ -1,6 +1,7 @@
 // frontend/src/components/ContentArea.tsx
 import React from 'react';
 import { useAppStore } from '../stores/appStore';
+import { BlogsFeature } from './features/BlogsFeature';
 
 interface ContentAreaProps {
     service: string;
@@ -20,14 +21,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
             case 'messages':
                 return messagesContent;
             case 'blogs':
-                return (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">Blogs Feature</p>
-                            <p className="text-sm">Coming soon...</p>
-                        </div>
-                    </div>
-                );
+                return <BlogsFeature />;
             case 'news':
                 return (
                     <div className="flex-1 flex items-center justify-center text-gray-500">
