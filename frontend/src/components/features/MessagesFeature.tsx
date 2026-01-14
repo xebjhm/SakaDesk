@@ -58,18 +58,12 @@ interface MessagesFeatureProps {
     appSettings: AppSettings | null;
     syncProgress: SyncProgress;
     syncVersion: number; // Increments when sync completes - triggers refresh
-    onOpenSettings: () => void;
-    onReportIssue: () => void;
-    onOpenAbout: () => void;
 }
 
 export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     appSettings,
     syncProgress,
     syncVersion,
-    onOpenSettings,
-    onReportIssue,
-    onOpenAbout,
 }) => {
     // Get active service from Zustand store
     const { activeService } = useAppStore();
@@ -396,9 +390,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     selectedGroupDir={selectedGroupDir}
                     activeService={activeService || undefined}
                     isSyncing={syncProgress.state === 'running'}
-                    onOpenSettings={onOpenSettings}
-                    onReportIssue={onReportIssue}
-                    onOpenAbout={onOpenAbout}
                     readStateVersion={readStateVersion}
                 />
             </div>
