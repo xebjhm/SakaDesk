@@ -33,7 +33,7 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
-from backend.services.service_utils import validate_service
+from backend.services.service_utils import validate_service, get_service_identifier
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -143,7 +143,12 @@ async def get_groups():
         if not messages_dir.exists() or not messages_dir.is_dir():
             continue
 
-        service_name = service_dir.name
+        service_display_name = service_dir.name
+        # Convert display name to service identifier (e.g., "日向坂46" -> "hinatazaka46")
+        service_id = get_service_identifier(service_display_name)
+        if not service_id:
+            # Skip unknown service directories
+            continue
 
         # Iterate over group directories (e.g., "34 金村 美玖")
         for group_dir in messages_dir.iterdir():
@@ -216,7 +221,7 @@ async def get_groups():
             groups.append({
                 "id": group_id,
                 "name": group_name,
-                "service": service_name,
+                "service": service_id,
                 "dir_name": group_dir.name,
                 # Path to group directory relative to output_dir
                 "group_path": str(group_dir.relative_to(output_dir)).replace("\\", "/"),

@@ -17,6 +17,18 @@ def get_service_display_name(service: str) -> str:
     return GROUP_CONFIG[group]["display_name"]
 
 
+def get_service_identifier(display_name: str) -> str | None:
+    """
+    Reverse lookup: Get service identifier from display name.
+    E.g., '日向坂46' -> 'hinatazaka46'
+    Returns None if not found.
+    """
+    for group in Group:
+        if GROUP_CONFIG[group]["display_name"] == display_name:
+            return group.value
+    return None
+
+
 def get_service_enum(service: str) -> Group:
     """Convert service string to Group enum."""
     try:
