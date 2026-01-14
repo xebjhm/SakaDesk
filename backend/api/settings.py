@@ -40,7 +40,7 @@ def load_config() -> dict[str, Any]:
 def save_config(config: dict):
     """Save configuration to file."""
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, 'w') as f:
+    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
     logger.debug("Settings saved", settings_file=str(SETTINGS_FILE), keys=list(config.keys()), is_configured=config.get("is_configured"))
 
