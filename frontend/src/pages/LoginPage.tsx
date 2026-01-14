@@ -3,11 +3,12 @@ import { LogIn, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 interface LoginPageProps {
+    service: string;
     onLoginSuccess: () => void;
     initialError?: string;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, initialError }) => {
+export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, initialError }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(initialError || null);
 
@@ -15,7 +16,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, initialErr
         setIsLoading(true);
         setError(null);
         try {
-            const res = await fetch('/api/auth/login', { method: 'POST' });
+            const res = await fetch(`/api/auth/login?service=${encodeURIComponent(service)}`, { method: 'POST' });
             if (!res.ok) throw new Error("Login failed or cancelled");
             onLoginSuccess();
         } catch (err: any) {
@@ -34,7 +35,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, initialErr
 
                 <h1 className="text-2xl font-bold text-gray-900">Connect Account</h1>
                 <p className="text-gray-500">
-                    Please log in to your Hinatazaka46 Message account.
+                    Please log in to your {service} Message account.
                     A browser window will open for you to enter your credentials.
                 </p>
 

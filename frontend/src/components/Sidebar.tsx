@@ -39,7 +39,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
     const [loading, setLoading] = useState(true);
 
     const loadGroups = () => {
-        fetch('/api/content/groups')
+        const url = activeService
+            ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
+            : '/api/content/groups';
+        fetch(url)
             .then(res => res.json())
             .then(data => {
                 setGroups(data);
@@ -74,7 +77,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
         // Fetch accurate unread counts from backend (single source of truth)
         // Backend calculates: unread = messages where (id > lastReadId AND id NOT IN revealedIds)
         try {
-            const res = await fetch('/api/content/unread_counts', {
+            const url = activeService
+                ? `/api/content/unread_counts?service=${encodeURIComponent(activeService)}`
+                : '/api/content/unread_counts';
+            const res = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(readStates)
@@ -106,7 +112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
         loadGroups();
         const interval = setInterval(loadGroups, 2000); // Faster update for UI responsiveness
         return () => clearInterval(interval);
-    }, []);
+    }, [activeService]);
 
     useEffect(() => {
         if (isSyncing === false) {

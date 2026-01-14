@@ -148,6 +148,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 limit: '0',
                 last_read_id: String(lastReadId),
             });
+            // Add service parameter if available
+            if (activeService) {
+                params.set('service', activeService);
+            }
 
             if (groupChat) {
                 const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?${params}`);
