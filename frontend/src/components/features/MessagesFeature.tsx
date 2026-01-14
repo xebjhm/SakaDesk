@@ -127,10 +127,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [activeService]);
 
     // Refresh messages when sync completes
+    // Only depends on syncVersion - we capture the current values at time of sync completion
+    // This intentionally uses stale closure values to avoid infinite loops
     useEffect(() => {
         if (syncVersion > 0 && selectedGroupDir) {
+            // Use the current state values at the time syncVersion changes
             fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [syncVersion]);
 
     // === FETCH MESSAGES (Load All) ===
