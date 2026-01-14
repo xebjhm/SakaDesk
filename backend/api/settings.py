@@ -6,11 +6,12 @@ Uses platform-appropriate paths for Windows deployment.
 import json
 import structlog
 from pathlib import Path
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Optional
 
 from backend.services.platform import get_settings_path, get_app_data_dir
+from backend.services.service_utils import validate_service
 from backend.services.notification_service import set_notifications_enabled, get_notifications_enabled
 
 logger = structlog.get_logger(__name__)
@@ -62,6 +63,14 @@ class SettingsUpdate(BaseModel):
 class FreshCheckResponse(BaseModel):
     is_fresh: bool  # True if output folder is empty or doesn't exist
     output_dir: str
+
+
+class ServiceSettings(BaseModel):
+    """Per-service settings model."""
+    sync_enabled: bool = True
+    adaptive_sync_enabled: bool = True
+    last_sync: Optional[str] = None
+    blogs_full_backup: bool = False
 
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
@@ -190,3 +199,46 @@ async def select_folder():
     if selected_path[0]:
         return {"path": selected_path[0]}
     return {"path": None}
+
+
+@router.get("/service/{service}", response_model=ServiceSettings)
+async def get_service_settings(service: str):
+    """Get settings for a specific service."""
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    config = load_config()
+    services = config.get("services", {})
+    service_config = services.get(service, {})
+
+    return ServiceSettings(
+        sync_enabled=service_config.get("sync_enabled", True),
+        adaptive_sync_enabled=service_config.get("adaptive_sync_enabled", True),
+        last_sync=service_config.get("last_sync"),
+        blogs_full_backup=service_config.get("blogs_full_backup", False),
+    )
+
+
+@router.post("/service/{service}", response_model=ServiceSettings)
+async def update_service_settings(service: str, update: ServiceSettings):
+    """Update settings for a specific service."""
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    config = load_config()
+    if "services" not in config:
+        config["services"] = {}
+
+    config["services"][service] = {
+        "sync_enabled": update.sync_enabled,
+        "adaptive_sync_enabled": update.adaptive_sync_enabled,
+        "last_sync": update.last_sync,
+        "blogs_full_backup": update.blogs_full_backup,
+    }
+
+    save_config(config)
+    return update
