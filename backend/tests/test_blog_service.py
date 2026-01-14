@@ -76,3 +76,34 @@ def test_get_cache_size_with_files(blog_service, tmp_path):
     with patch.object(blog_service, 'get_blogs_base_path', return_value=tmp_path):
         result = asyncio.run(blog_service.get_cache_size("hinatazaka46"))
         assert result == 12
+
+
+def test_clear_cache_preserves_index(blog_service, tmp_path):
+    """clear_cache removes cache files but preserves index.json."""
+    # Set up test directory structure
+    blogs_dir = tmp_path / "blogs"
+    blogs_dir.mkdir()
+    index_path = blogs_dir / "index.json"
+
+    # Create index file
+    index_content = '{"members": {}, "last_sync": "2024-01-01T00:00:00Z"}'
+    index_path.write_text(index_content, encoding='utf-8')
+
+    # Create cache files
+    cache_dir = blogs_dir / "member1" / "20240101_12345"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "blog.json").write_text('{"test": true}', encoding='utf-8')
+
+    # Verify files exist
+    assert index_path.exists()
+    assert cache_dir.exists()
+
+    # Mock paths to use tmp_path
+    with patch.object(blog_service, 'get_blogs_base_path', return_value=blogs_dir):
+        with patch.object(blog_service, 'get_blog_index_path', return_value=index_path):
+            asyncio.run(blog_service.clear_cache("hinatazaka46"))
+
+    # Verify cache is cleared but index is preserved
+    assert index_path.exists()
+    assert index_path.read_text(encoding='utf-8') == index_content
+    assert not cache_dir.exists()  # Cache should be deleted
