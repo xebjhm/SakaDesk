@@ -32,7 +32,7 @@ export const Layout: React.FC<LayoutProps> = ({
     }, [services, activeService, setActiveService]);
 
     return (
-        <div className="flex h-full overflow-hidden">
+        <div className="flex flex-1 h-full overflow-hidden">
             {/* Zone A: Service Rail */}
             <ServiceRail services={services} />
 
