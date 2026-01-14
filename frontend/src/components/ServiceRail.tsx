@@ -8,18 +8,16 @@ export interface ServiceRailProps {
 }
 
 const getInitials = (name: string) => {
-    const lowerName = name.toLowerCase();
-    if (lowerName === 'hinatazaka46') return 'HI';
-    if (lowerName === 'sakurazaka46') return 'SA';
-    if (lowerName === 'nogizaka46') return 'NO';
+    if (name === 'Hinatazaka46') return 'HI';
+    if (name === 'Sakurazaka46') return 'SA';
+    if (name === 'Nogizaka46') return 'NO';
     return name.substring(0, 2).toUpperCase();
 };
 
 const getServiceColor = (name: string) => {
-    const lowerName = name.toLowerCase();
-    if (lowerName === 'hinatazaka46') return 'bg-[#7cc7e8]'; // Sky Blue
-    if (lowerName === 'sakurazaka46') return 'bg-[#f19db5]'; // Sakura Pink
-    if (lowerName === 'nogizaka46') return 'bg-[#7e1083]';   // Purple
+    if (name === 'Hinatazaka46') return 'bg-[#7cc7e8]'; // Sky Blue
+    if (name === 'Sakurazaka46') return 'bg-[#f19db5]'; // Sakura Pink
+    if (name === 'Nogizaka46') return 'bg-[#7e1083]';   // Purple
     return 'bg-gray-500';
 };
 
