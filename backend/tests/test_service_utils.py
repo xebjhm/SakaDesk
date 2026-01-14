@@ -2,6 +2,7 @@
 import pytest
 from backend.services.service_utils import (
     get_all_services,
+    get_service_config,
     get_service_display_name,
     get_service_enum,
     validate_service,
@@ -36,3 +37,23 @@ def test_validate_service_valid():
 def test_validate_service_invalid():
     with pytest.raises(ValueError):
         validate_service("invalid_service")
+
+
+def test_get_service_config():
+    """Test get_service_config returns correct config dict for valid service."""
+    config = get_service_config("hinatazaka46")
+    assert isinstance(config, dict)
+    assert "display_name" in config
+    assert config["display_name"] == "日向坂46"
+
+
+def test_get_service_config_invalid():
+    """Test get_service_config raises ValueError for invalid service."""
+    with pytest.raises(ValueError, match="Unknown service"):
+        get_service_config("invalid_service")
+
+
+def test_get_service_display_name_invalid():
+    """Test get_service_display_name raises ValueError for invalid service."""
+    with pytest.raises(ValueError, match="Unknown service"):
+        get_service_display_name("invalid_service")
