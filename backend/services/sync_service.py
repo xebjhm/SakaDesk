@@ -13,11 +13,8 @@ from pyhako.utils import get_media_extension
 from backend.api.progress import progress
 from backend.services.platform import get_session_dir, is_test_mode
 from backend.services.notification_service import notify_sync_complete
+from backend.services.service_utils import get_service_enum, validate_service
 import structlog
-
-# Backward compatibility alias for old code that used HinatazakaClient
-def HinatazakaClient(**kwargs):
-    return Client(group=Group.HINATAZAKA46, **kwargs)
 
 logger = structlog.get_logger(__name__)
 
@@ -25,13 +22,18 @@ logger = structlog.get_logger(__name__)
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 class SyncService:
-    def __init__(self):
+    def __init__(self, service: str = "hinatazaka46"):
+        validate_service(service)
+        self._service = service
         self.output_dir = Path("output")
         self.config_dir = Path(".")
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
         self.manager = None
-        self._group = Group.HINATAZAKA46  # Default group
+
+    def _get_group(self) -> Group:
+        """Get Group enum for this service."""
+        return get_service_enum(self._service)
 
     async def load_config(self):
         """Load config from pyhako's TokenManager (WCM on Windows)."""
@@ -42,7 +44,7 @@ class SyncService:
 
         try:
             tm = get_token_manager()
-            token_data = tm.load_session(self._group.value)
+            token_data = tm.load_session(self._service)
             if token_data:
                 return token_data
         except Exception as e:
@@ -147,7 +149,8 @@ class SyncService:
             connector = aiohttp.TCPConnector(limit=limit)
             async with aiohttp.ClientSession(connector=connector) as session:
                 # Create client with auth_dir for headless refresh (CLI pattern)
-                client = HinatazakaClient(
+                client = Client(
+                    group=self._get_group(),
                     access_token=token,
                     refresh_token=config.get('refresh_token'),
                     cookies=config.get('cookies'),
@@ -179,7 +182,7 @@ class SyncService:
                     try:
                         tm = get_token_manager()
                         tm.save_session(
-                            self._group.value,
+                            self._service,
                             client.access_token,
                             client.refresh_token,
                             client.cookies
@@ -381,7 +384,8 @@ class SyncService:
 
             connector = aiohttp.TCPConnector(limit=10)
             async with aiohttp.ClientSession(connector=connector) as session:
-                client = HinatazakaClient(
+                client = Client(
+                    group=self._get_group(),
                     access_token=token,
                     refresh_token=config.get('refresh_token'),
                     cookies=config.get('cookies'),
