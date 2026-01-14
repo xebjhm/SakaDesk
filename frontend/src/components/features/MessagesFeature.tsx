@@ -390,6 +390,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 <Sidebar
                     onSelectGroup={handleSelectGroup}
                     selectedGroupDir={selectedGroupDir}
+                    activeService={activeService || undefined}
                     isSyncing={syncProgress.state === 'running'}
                     onOpenSettings={onOpenSettings}
                     onReportIssue={onReportIssue}

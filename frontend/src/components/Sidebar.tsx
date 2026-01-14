@@ -21,6 +21,7 @@ interface GroupInfo {
 interface SidebarProps {
     onSelectGroup: (groupDir: string, isGroupChat: boolean, displayName: string) => void;
     selectedGroupDir?: string;
+    activeService?: string; // Filter groups by service
     isSyncing?: boolean;
     onOpenSettings?: () => void;
     onReportIssue?: () => void;
@@ -31,7 +32,7 @@ interface SidebarProps {
 // Group IDs that should always be treated as group chat
 const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
-export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onReportIssue, onOpenAbout, readStateVersion }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, onOpenSettings, onReportIssue, onOpenAbout, readStateVersion }) => {
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [showSettings, setShowSettings] = useState(false);
@@ -166,8 +167,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
         });
     };
 
-    const onlineGroups = sortGroups(groups.filter(g => g.is_active !== false));
-    const offlineGroups = sortGroups(groups.filter(g => g.is_active === false));
+    // Filter groups by activeService if provided
+    const filteredGroups = activeService
+        ? groups.filter(g => !g.service || g.service === activeService)
+        : groups;
+
+    const onlineGroups = sortGroups(filteredGroups.filter(g => g.is_active !== false));
+    const offlineGroups = sortGroups(filteredGroups.filter(g => g.is_active === false));
 
     const renderGroupGrid = (groupList: GroupInfo[]) => (
         <div className="grid grid-cols-3 gap-x-2 gap-y-4">
