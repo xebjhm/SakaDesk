@@ -223,8 +223,8 @@ function App() {
                         setShowSetupWizard(true);
                     }
                     // If no cached nickname, fetch from profile API
-                    if (!data.user_nickname) {
-                        fetch('/api/profile')
+                    if (!data.user_nickname && activeService) {
+                        fetch(`/api/profile?service=${encodeURIComponent(activeService)}`)
                             .then(res => res.json())
                             .then(profileData => {
                                 if (profileData.nickname) {
@@ -241,8 +241,9 @@ function App() {
 
     // Refresh user profile (nickname) from server - called after sync completes
     const refreshUserProfile = async () => {
+        const targetService = activeService || 'hinatazaka46';
         try {
-            const res = await fetch('/api/profile/refresh', { method: 'POST' });
+            const res = await fetch(`/api/profile/refresh?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
             const data = await res.json();
             if (data.nickname) {
                 setAppSettings(prev => prev ? { ...prev, user_nickname: data.nickname } : prev);
@@ -403,7 +404,9 @@ function App() {
         return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
     if (isAuthenticated === false) {
-        return <LoginPage onLoginSuccess={() => setIsAuthenticated(true)} initialError={authError || undefined} />;
+        // Default to hinatazaka46 for login - multi-service selection can be added later
+        const loginService = activeService || 'hinatazaka46';
+        return <LoginPage service={loginService} onLoginSuccess={() => setIsAuthenticated(true)} initialError={authError || undefined} />;
     }
 
     // Dynamic Unit Label

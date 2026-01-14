@@ -35,7 +35,10 @@ export const GroupSidebar: React.FC<GroupSidebarProps> = ({ onSelectGroup, selec
     };
 
     const loadGroups = () => {
-        fetch('/api/content/groups')
+        const url = activeService
+            ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
+            : '/api/content/groups';
+        fetch(url)
             .then(res => res.json())
             .then(data => {
                 setGroups(data);
@@ -81,7 +84,7 @@ export const GroupSidebar: React.FC<GroupSidebarProps> = ({ onSelectGroup, selec
         loadGroups();
         const interval = setInterval(loadGroups, 2000); // Faster update for UI responsiveness
         return () => clearInterval(interval);
-    }, []);
+    }, [activeService]);
 
     useEffect(() => {
         if (isSyncing === false) {
