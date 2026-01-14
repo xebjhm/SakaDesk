@@ -411,7 +411,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             )}
 
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col h-full relative w-full">
+            <div className="flex-1 flex flex-col h-full relative min-w-0">
                 {/* Header */}
                 <header className="h-16 bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] flex items-center px-4 shadow-sm z-10 shrink-0">
                     <button
