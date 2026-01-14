@@ -565,7 +565,7 @@ Phase 4: Post-processing (NEW)
 ---
 
 ### 20. Official App Feature Parity
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Major Feature
 **Complexity:** Very High
 
@@ -573,38 +573,24 @@ Phase 4: Post-processing (NEW)
 
 **Plan Document:** [../../../.claude/plans/modular-bubbling-blum.md](../../../.claude/plans/modular-bubbling-blum.md)
 
-**New API Endpoints (to add to pyhako core):**
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/v2/groups/{id}/letters` | GET | User's sent letters/cards |
-| `/v2/groups/{id}/past_messages` | GET | Historical messages (before subscription) |
-| `/v2/groups/{id}/consecutive-subscription-day` | GET | Subscription streak |
-| `/v2/members/{id}` | GET | Individual member details |
-| `/v2/messages/{id}/favorite` | POST/DELETE | Add/remove favorites |
-| `/v2/account` | GET | User account info |
+**Core library updates (pyhako):**
+- [x] Add `get_letters()` method
+- [x] Add `get_past_messages()` method
+- [x] Add `add_favorite()` / `remove_favorite()` methods
+- [x] Add `get_subscription_streak()` method
+- [x] Add `get_member()` method
+- [x] Add `get_account()` method
 
-**Sub-features:**
-- [ ] Sent letters view (已發送信件)
-- [ ] Favorites/starred messages (收藏夾) - server-side sync
-- [ ] Media gallery view (媒體) - photos/videos/voice tabs
-- [ ] Calendar/date search (日期搜索)
-- [ ] Background customization (背景圖案) - user-uploaded images
-- [ ] Subscription streak display
+**Frontend components:**
+- [x] MediaGalleryModal.tsx - Grid view with photo/video/voice tabs
+- [x] FavoritesModal.tsx - Starred messages list
+- [x] SentLettersModal.tsx - Grid view of sent letters
+- [x] CalendarModal.tsx - Date navigation with message highlights
+- [x] BackgroundModal.tsx - Chat background customization
 
-**Core library updates needed:**
-- [ ] Add `get_letters()` method
-- [ ] Add `get_past_messages()` method
-- [ ] Add `add_favorite()` / `remove_favorite()` methods
-- [ ] Add `get_subscription_streak()` method
-- [ ] Add `get_member()` method
-- [ ] Add `get_account()` method
-
-**Frontend components needed:**
-- [ ] MediaGallery.tsx - Grid view with photo/video/voice tabs
-- [ ] FavoritesList.tsx - Starred messages list
-- [ ] LettersList.tsx - Grid view of sent letters
-- [ ] CalendarPicker.tsx - Date navigation with message highlights
-- [ ] BackgroundSettings.tsx - Chat background customization
+**Backend API:**
+- [x] `/api/favorites` - Favorites management
+- [x] `/api/chat_features` - Letters, calendar, backgrounds
 
 ---
 
@@ -702,10 +688,10 @@ Based on dependencies and value:
 10. ~~P2.8: In-place upgrade~~ ✅
 
 ### Phase 4: Major Features
-11. P1.4: Multi-service support
-12. P1.5: Anonymous analytics & community statistics
-13. **P1.20: Official app feature parity** ← NEW
-14. P3.14: Blog support
+11. ~~P1.20: Official app feature parity~~ ✅
+12. P1.4: Multi-service support
+13. P1.5: Anonymous analytics & community statistics
+14. P3.14: Blog support ← NEXT
 15. P2.12: i18n
 
 ### Phase 5: Advanced Features
@@ -733,6 +719,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-01-14 | Completed P1.20: Official App Feature Parity (MediaGallery, Favorites, SentLetters, Calendar, Background) |
 | 2026-01-13 | Completed P2.8: In-place software upgrade for Windows |
 | 2026-01-13 | Completed P1.6: Randomized sync with adaptive timing algorithm |
 | 2026-01-13 | Completed P2.7: Version update check, P2.13: Desktop notifications |
