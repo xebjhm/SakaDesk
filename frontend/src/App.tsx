@@ -64,8 +64,20 @@ function App() {
     // Add service page state
     const [showAddServicePage, setShowAddServicePage] = useState(false);
 
+    // First sync option for blog full backup
+    const [setupBlogFullBackup, setSetupBlogFullBackup] = useState(false);
+
     // Error state for settings save
     const [settingsError, setSettingsError] = useState<string | null>(null);
+
+    // Per-service settings (blog mode, etc.)
+    interface ServiceSettings {
+        sync_enabled: boolean;
+        adaptive_sync_enabled: boolean;
+        last_sync: string | null;
+        blogs_full_backup: boolean;
+    }
+    const [serviceSettings, setServiceSettings] = useState<ServiceSettings | null>(null);
 
     // === AUTH ===
     // Token refresh timer ref - reset after login or successful refresh
@@ -404,6 +416,46 @@ function App() {
         }
     };
 
+    // Load per-service settings
+    const loadServiceSettings = async (service: string) => {
+        try {
+            const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`);
+            if (res.ok) {
+                const data = await res.json();
+                setServiceSettings(data);
+            }
+        } catch (e) {
+            console.error('Failed to load service settings:', e);
+        }
+    };
+
+    // Save per-service settings
+    const saveServiceSettings = async (service: string, updates: Partial<ServiceSettings>) => {
+        if (!serviceSettings) return;
+        const merged = { ...serviceSettings, ...updates };
+        try {
+            const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(merged)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setServiceSettings(data);
+            }
+        } catch (e) {
+            console.error('Failed to save service settings:', e);
+        }
+    };
+
+    // Open settings modal - loads service settings for active service
+    const openSettingsModal = () => {
+        if (activeService) {
+            loadServiceSettings(activeService);
+        }
+        setShowSettingsModal(true);
+    };
+
     // === RENDER ===
     if (isAuthenticated === null) {
         return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-500" /></div>;
@@ -609,11 +661,43 @@ function App() {
                                     Enter the full path where messages will be stored. You can copy this from Windows Explorer.
                                 </p>
                             </div>
+
+                            {/* Blog Sync Mode Option */}
+                            <div className="bg-gray-50 rounded-xl p-4">
+                                <label className="flex items-start gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={setupBlogFullBackup}
+                                        onChange={(e) => setSetupBlogFullBackup(e.target.checked)}
+                                        className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                    />
+                                    <div>
+                                        <span className="text-sm font-medium text-gray-700">Download blogs for offline reading</span>
+                                        <p className="text-xs text-gray-500 mt-1">
+                                            Downloads all blog content and images during sync. Uses more disk space but allows offline viewing.
+                                        </p>
+                                    </div>
+                                </label>
+                            </div>
+
                             <button
                                 onClick={async () => {
                                     if (outputDirInput.trim()) {
                                         const success = await saveSettings({ output_dir: outputDirInput.trim() });
                                         if (success) {
+                                            // Save blog backup preference for active service
+                                            if (activeService) {
+                                                await fetch(`/api/settings/service/${encodeURIComponent(activeService)}`, {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        sync_enabled: true,
+                                                        adaptive_sync_enabled: true,
+                                                        last_sync: null,
+                                                        blogs_full_backup: setupBlogFullBackup
+                                                    })
+                                                });
+                                            }
                                             setShowSetupWizard(false);
                                             // Start initial sync immediately
                                             startSync(true);
@@ -773,6 +857,37 @@ function App() {
                                     </div>
                                     <p className="text-xs text-gray-500 mt-1">Show notification when new messages arrive</p>
                                 </div>
+
+                                {/* Per-Service Settings Section */}
+                                {activeService && serviceSettings && (
+                                    <>
+                                        <div className="border-t border-gray-200 pt-4 mt-4">
+                                            <h4 className="text-sm font-semibold text-gray-800 mb-3">
+                                                {activeService.replace('46', ' 46')} Settings
+                                            </h4>
+                                        </div>
+
+                                        {/* Blog Sync Mode */}
+                                        <div>
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-sm font-medium text-gray-700">Blog Full Backup</label>
+                                                <button
+                                                    onClick={() => saveServiceSettings(activeService, { blogs_full_backup: !serviceSettings.blogs_full_backup })}
+                                                    className={`relative w-12 h-6 rounded-full transition-colors ${serviceSettings.blogs_full_backup ? 'bg-blue-500' : 'bg-gray-300'
+                                                        }`}
+                                                >
+                                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${serviceSettings.blogs_full_backup ? 'translate-x-7' : 'translate-x-1'
+                                                        }`} />
+                                                </button>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                {serviceSettings.blogs_full_backup
+                                                    ? 'Download all blog content and images for offline reading'
+                                                    : 'Fetch blog content on-demand (saves disk space)'}
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -783,7 +898,7 @@ function App() {
             <Layout
                 authStatus={authStatus}
                 onAddService={() => setShowAddServicePage(true)}
-                onOpenSettings={() => setShowSettingsModal(true)}
+                onOpenSettings={openSettingsModal}
                 onReportIssue={() => setShowReportModal(true)}
                 onOpenAbout={() => setShowAboutModal(true)}
                 messagesContent={
