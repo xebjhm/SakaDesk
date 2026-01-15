@@ -1,27 +1,61 @@
 """
 Blog service for HakoDesk.
 Handles blog metadata sync, on-demand content fetching, and caching.
+
+Two-stage sync design (similar to message sync):
+- Stage 1: sync_blog_metadata() - Fast metadata indexing
+- Stage 2: download_blog_content() - Content + image download with queue
 """
+import asyncio
 import json
-import aiohttp
-import aiofiles
-import structlog
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
 
-from pyhako.blog import get_scraper
+import aiofiles
+import aiohttp
+import structlog
+
 from pyhako import Group
+from pyhako.blog import (
+    DOWNLOAD_CONCURRENCY_INCREMENTAL,
+    DOWNLOAD_CONCURRENCY_INITIAL,
+    IMAGE_DOWNLOAD_CONCURRENCY,
+    MAX_PAGES_SAFETY_CAP,
+    SYNC_CONCURRENCY_INCREMENTAL,
+    SYNC_CONCURRENCY_INITIAL,
+    get_scraper,
+)
 
-from backend.services.service_utils import get_service_enum, get_service_display_name, validate_service
 from backend.services.path_resolver import get_output_dir
+from backend.services.service_utils import (
+    get_service_display_name,
+    get_service_enum,
+    validate_service,
+)
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass
+class BlogDownloadItem:
+    """Item in the blog content download queue."""
+
+    blog_id: str
+    member_id: str
+    member_name: str
+    published_at: str
+    url: str
+    cache_path: Path
 
 
 class BlogService:
     def __init__(self):
         pass
+
+    # =========================================================================
+    # Path helpers
+    # =========================================================================
 
     def get_blogs_base_path(self, service: str) -> Path:
         """Get base path for blogs storage."""
@@ -33,28 +67,34 @@ class BlogService:
         """Get path to blog index file."""
         return self.get_blogs_base_path(service) / "index.json"
 
-    def get_blog_cache_path(self, service: str, member_name: str, blog_id: str, date: str) -> Path:
+    def get_blog_cache_path(
+        self, service: str, member_name: str, blog_id: str, date: str
+    ) -> Path:
         """Get path to cached blog content."""
         base = self.get_blogs_base_path(service)
         folder_name = f"{date}_{blog_id}"
         return base / member_name / folder_name
+
+    # =========================================================================
+    # Index operations
+    # =========================================================================
 
     async def load_blog_index(self, service: str) -> dict:
         """Load blog index from disk."""
         index_path = self.get_blog_index_path(service)
         if index_path.exists():
             try:
-                async with aiofiles.open(index_path, 'r', encoding='utf-8') as f:
+                async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
                     return json.loads(await f.read())
             except Exception as e:
                 logger.error(f"Failed to load blog index: {e}")
-        return {"members": {}, "last_sync": None}
+        return {"members": {}, "last_sync": None, "last_download": None}
 
     async def save_blog_index(self, service: str, index: dict):
         """Save blog index to disk."""
         index_path = self.get_blog_index_path(service)
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(index_path, 'w', encoding='utf-8') as f:
+        async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(index, ensure_ascii=False, indent=2))
 
     async def get_blog_members(self, service: str) -> dict[str, str]:
@@ -66,45 +106,384 @@ class BlogService:
             scraper = get_scraper(group, session)
             return await scraper.get_members()
 
-    async def sync_blog_metadata(self, service: str, progress_callback=None):
+    # =========================================================================
+    # Stage 1: Metadata sync (fast)
+    # =========================================================================
+
+    async def sync_blog_metadata(self, service: str, progress_callback=None) -> dict:
         """
-        Sync blog metadata (titles, dates, URLs) for all members.
-        This is lightweight - just metadata, not full content.
+        Stage 1: Sync blog metadata (titles, dates, URLs) for all members.
+
+        FAST: Uses get_blogs_metadata() which parses list pages only.
+        No individual blog detail fetches needed.
+
+        Uses concurrent fetching:
+        - First sync (no existing data): SYNC_CONCURRENCY_INITIAL concurrent members
+        - Incremental sync: SYNC_CONCURRENCY_INCREMENTAL concurrent members
+
+        Returns:
+            Updated index dict with metadata for all members.
         """
         validate_service(service)
         group = get_service_enum(service)
 
         index = await self.load_blog_index(service)
 
+        # Determine if this is first sync or incremental
+        is_first_sync = not index.get("members")
+        concurrency = (
+            SYNC_CONCURRENCY_INITIAL if is_first_sync else SYNC_CONCURRENCY_INCREMENTAL
+        )
+        # First sync: fetch all pages to build complete index
+        # Incremental: only fetch recent pages (3) to catch new posts
+        max_pages = MAX_PAGES_SAFETY_CAP if is_first_sync else 3
+
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
             members = await scraper.get_members()
 
-            for member_id, member_name in members.items():
-                if progress_callback:
-                    await progress_callback(f"Scanning {member_name}")
+            # Semaphore for concurrency control
+            sem = asyncio.Semaphore(concurrency)
+            completed = 0
+            total = len(members)
 
-                if member_id not in index["members"]:
-                    index["members"][member_id] = {
-                        "name": member_name,
-                        "blogs": []
+            async def sync_member(member_id: str, member_name: str):
+                nonlocal completed
+                async with sem:
+                    if progress_callback:
+                        await progress_callback(
+                            f"Scanning {member_name} ({completed + 1}/{total})"
+                        )
+
+                    if member_id not in index["members"]:
+                        index["members"][member_id] = {"name": member_name, "blogs": []}
+
+                    existing_ids = {
+                        b["id"] for b in index["members"][member_id]["blogs"]
                     }
 
-                existing_ids = {b["id"] for b in index["members"][member_id]["blogs"]}
+                    # For incremental sync, use since_date to stop early when hitting old blogs
+                    # This avoids paginating through entire history just to find no new posts
+                    since_date = None
+                    if not is_first_sync and index["members"][member_id]["blogs"]:
+                        # Find the newest blog date for this member
+                        from datetime import datetime
 
-                async for entry in scraper.get_blogs(member_id):
-                    if entry.id not in existing_ids:
-                        index["members"][member_id]["blogs"].append({
-                            "id": entry.id,
-                            "title": entry.title,
-                            "published_at": entry.published_at.isoformat(),
-                            "url": entry.url,
-                            "thumbnail": entry.images[0] if entry.images else None,
-                        })
+                        newest_date_str = max(
+                            b["published_at"]
+                            for b in index["members"][member_id]["blogs"]
+                        )
+                        since_date = datetime.fromisoformat(newest_date_str)
 
-        index["last_sync"] = datetime.utcnow().isoformat() + "Z"
+                    # Use fast metadata method - parses list pages only
+                    async for entry in scraper.get_blogs_metadata(
+                        member_id, since_date=since_date, max_pages=max_pages
+                    ):
+                        if entry.id not in existing_ids:
+                            index["members"][member_id]["blogs"].append(
+                                {
+                                    "id": entry.id,
+                                    "title": entry.title,
+                                    "published_at": entry.published_at.isoformat(),
+                                    "url": entry.url,
+                                    "thumbnail": entry.images[0]
+                                    if entry.images
+                                    else None,
+                                }
+                            )
+
+                    completed += 1
+
+            # Run all member syncs concurrently with semaphore limit
+            await asyncio.gather(
+                *[
+                    sync_member(member_id, member_name)
+                    for member_id, member_name in members.items()
+                ]
+            )
+
+        from datetime import datetime, timezone
+
+        index["last_sync"] = datetime.now(timezone.utc).isoformat()
         await self.save_blog_index(service, index)
         return index
+
+    # =========================================================================
+    # Stage 2: Content download (with queue)
+    # =========================================================================
+
+    def build_download_queue(
+        self, service: str, index: dict, skip_cached: bool = True
+    ) -> list[BlogDownloadItem]:
+        """
+        Build a queue of blogs to download based on index.
+
+        Args:
+            service: Service name.
+            index: Blog index dict.
+            skip_cached: If True, skip blogs that are already cached.
+
+        Returns:
+            List of BlogDownloadItem for blogs that need downloading.
+        """
+        queue: list[BlogDownloadItem] = []
+
+        for member_id, member_data in index.get("members", {}).items():
+            member_name = member_data.get("name", "")
+
+            for blog in member_data.get("blogs", []):
+                blog_id = blog["id"]
+                date = blog["published_at"][:10].replace("-", "")
+                cache_path = self.get_blog_cache_path(
+                    service, member_name, blog_id, date
+                )
+
+                # Skip if already cached
+                if skip_cached and (cache_path / "blog.json").exists():
+                    continue
+
+                queue.append(
+                    BlogDownloadItem(
+                        blog_id=blog_id,
+                        member_id=member_id,
+                        member_name=member_name,
+                        published_at=blog["published_at"],
+                        url=blog["url"],
+                        cache_path=cache_path,
+                    )
+                )
+
+        return queue
+
+    async def download_blog_content(
+        self,
+        service: str,
+        download_images: bool = True,
+        progress_callback=None,
+    ) -> dict:
+        """
+        Stage 2: Download full blog content and optionally images.
+
+        Uses a queue-based approach with concurrent downloads:
+        - First download: DOWNLOAD_CONCURRENCY_INITIAL concurrent blogs
+        - Incremental: DOWNLOAD_CONCURRENCY_INCREMENTAL concurrent blogs
+
+        Args:
+            service: Service name.
+            download_images: If True, also download images for each blog.
+            progress_callback: Optional callback for progress updates.
+
+        Returns:
+            Stats dict with download results.
+        """
+        validate_service(service)
+        group = get_service_enum(service)
+
+        index = await self.load_blog_index(service)
+
+        # Build download queue
+        queue = self.build_download_queue(service, index, skip_cached=True)
+
+        if not queue:
+            if progress_callback:
+                await progress_callback("All blogs already cached")
+            return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0}
+
+        # Determine concurrency based on how many are already cached
+        total_blogs = sum(
+            len(m.get("blogs", [])) for m in index.get("members", {}).values()
+        )
+        cached_count = total_blogs - len(queue)
+        is_first_download = cached_count == 0
+        concurrency = (
+            DOWNLOAD_CONCURRENCY_INITIAL
+            if is_first_download
+            else DOWNLOAD_CONCURRENCY_INCREMENTAL
+        )
+
+        stats = {"total": len(queue), "downloaded": 0, "skipped": 0, "failed": 0}
+        completed = 0
+
+        async with aiohttp.ClientSession() as session:
+            scraper = get_scraper(group, session)
+            sem = asyncio.Semaphore(concurrency)
+
+            async def download_item(item: BlogDownloadItem):
+                nonlocal completed
+                async with sem:
+                    completed += 1
+                    if progress_callback:
+                        await progress_callback(
+                            f"Downloading {item.member_name} ({completed}/{len(queue)})"
+                        )
+
+                    try:
+                        await self._download_single_blog(
+                            session, scraper, item, download_images
+                        )
+                        stats["downloaded"] += 1
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to download blog {item.blog_id}: {e}"
+                        )
+                        stats["failed"] += 1
+
+            await asyncio.gather(*[download_item(item) for item in queue])
+
+        from datetime import datetime, timezone
+
+        index["last_download"] = datetime.now(timezone.utc).isoformat()
+        await self.save_blog_index(service, index)
+
+        logger.info(
+            "Blog content download complete",
+            total=stats["total"],
+            downloaded=stats["downloaded"],
+            failed=stats["failed"],
+        )
+        return stats
+
+    async def _download_single_blog(
+        self,
+        session: aiohttp.ClientSession,
+        scraper,
+        item: BlogDownloadItem,
+        download_images: bool,
+    ):
+        """Download a single blog's content and optionally images."""
+        entry = await scraper.get_blog_detail(item.blog_id)
+
+        item.cache_path.mkdir(parents=True, exist_ok=True)
+        cache_file = item.cache_path / "blog.json"
+
+        # Download images if requested
+        images_result = []
+        if download_images and entry.images:
+            images_result = await self._download_images(
+                session, entry.images, item.cache_path / "images"
+            )
+        else:
+            images_result = [
+                {"original_url": img, "local_path": None} for img in entry.images
+            ]
+
+        # Save blog content
+        content = {
+            "meta": {
+                "id": entry.id,
+                "member_name": item.member_name,
+                "title": entry.title,
+                "published_at": entry.published_at.isoformat(),
+                "url": entry.url,
+            },
+            "content": {
+                "html": entry.content,
+            },
+            "images": images_result,
+        }
+
+        async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(content, ensure_ascii=False, indent=2))
+
+    async def _download_images(
+        self,
+        session: aiohttp.ClientSession,
+        image_urls: list[str],
+        images_dir: Path,
+    ) -> list[dict]:
+        """Download images concurrently."""
+        sem = asyncio.Semaphore(IMAGE_DOWNLOAD_CONCURRENCY)
+        results: list[dict] = [None] * len(image_urls)  # type: ignore
+
+        async def download_image(idx: int, img_url: str):
+            async with sem:
+                try:
+                    ext = Path(img_url).suffix or ".jpg"
+                    # Clean extension (remove query params)
+                    if "?" in ext:
+                        ext = ext.split("?")[0]
+                    local_name = f"img_{idx}{ext}"
+                    local_path = images_dir / local_name
+
+                    async with session.get(img_url) as resp:
+                        if resp.status == 200:
+                            images_dir.mkdir(parents=True, exist_ok=True)
+                            content = await resp.read()
+                            async with aiofiles.open(local_path, "wb") as f:
+                                await f.write(content)
+                            results[idx] = {
+                                "original_url": img_url,
+                                "local_path": f"./images/{local_name}",
+                            }
+                        else:
+                            results[idx] = {"original_url": img_url, "local_path": None}
+                except Exception as e:
+                    logger.warning(f"Failed to download image {img_url}: {e}")
+                    results[idx] = {"original_url": img_url, "local_path": None}
+
+        await asyncio.gather(
+            *[download_image(i, url) for i, url in enumerate(image_urls)]
+        )
+        return results
+
+    # =========================================================================
+    # Combined sync (for convenience)
+    # =========================================================================
+
+    async def sync_full_backup(self, service: str, progress_callback=None):
+        """
+        Full backup mode: Stage 1 + Stage 2.
+        Sync metadata then download all content + images.
+        """
+        # Stage 1: Metadata sync
+        if progress_callback:
+            await progress_callback("Stage 1: Syncing blog metadata...")
+        await self.sync_blog_metadata(service, progress_callback)
+
+        # Stage 2: Content download
+        if progress_callback:
+            await progress_callback("Stage 2: Downloading blog content...")
+        stats = await self.download_blog_content(
+            service, download_images=True, progress_callback=progress_callback
+        )
+
+        logger.info(f"Full blog backup complete: {stats}")
+        return stats
+
+    # =========================================================================
+    # Query operations
+    # =========================================================================
+
+    async def get_recent_posts(self, service: str, limit: int = 20) -> list[dict]:
+        """
+        Get recent posts across all members, sorted by date descending.
+
+        Args:
+            service: Service name.
+            limit: Maximum number of posts to return (default 20, max 100).
+
+        Returns:
+            List of recent posts with member info attached.
+        """
+        index = await self.load_blog_index(service)
+        all_posts = []
+
+        for member_id, member_data in index.get("members", {}).items():
+            member_name = member_data.get("name", "")
+            for blog in member_data.get("blogs", []):
+                all_posts.append({
+                    "id": blog["id"],
+                    "title": blog["title"],
+                    "published_at": blog["published_at"],
+                    "url": blog["url"],
+                    "thumbnail": blog.get("thumbnail"),
+                    "member_id": member_id,
+                    "member_name": member_name,
+                })
+
+        # Sort by date descending, take limit
+        all_posts.sort(key=lambda x: x["published_at"], reverse=True)
+        return all_posts[:limit]
 
     async def get_blog_list(self, service: str, member_id: str) -> dict:
         """Get blog list for a member from index."""
@@ -116,13 +495,15 @@ class BlogService:
         # Check which blogs are cached
         for blog in blogs:
             date = blog["published_at"][:10].replace("-", "")
-            cache_path = self.get_blog_cache_path(service, member_data.get("name", ""), blog["id"], date)
+            cache_path = self.get_blog_cache_path(
+                service, member_data.get("name", ""), blog["id"], date
+            )
             blog["cached"] = (cache_path / "blog.json").exists()
 
         return {
             "member_id": member_id,
             "member_name": member_data.get("name", ""),
-            "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True)
+            "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True),
         }
 
     async def get_blog_content(self, service: str, blog_id: str) -> dict:
@@ -155,10 +536,10 @@ class BlogService:
         cache_file = cache_path / "blog.json"
 
         if cache_file.exists():
-            async with aiofiles.open(cache_file, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
                 return json.loads(await f.read())
 
-        # Fetch on-demand
+        # Fetch on-demand (single blog, no concurrency needed)
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
             entry = await scraper.get_blog_detail(blog_id)
@@ -177,13 +558,19 @@ class BlogService:
                 "content": {
                     "html": entry.content,
                 },
-                "images": [{"original_url": img, "local_path": None} for img in entry.images]
+                "images": [
+                    {"original_url": img, "local_path": None} for img in entry.images
+                ],
             }
 
-            async with aiofiles.open(cache_file, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(content, ensure_ascii=False, indent=2))
 
             return content
+
+    # =========================================================================
+    # Cache management
+    # =========================================================================
 
     async def get_cache_size(self, service: str) -> int:
         """Get total cache size in bytes for a service."""
@@ -197,9 +584,39 @@ class BlogService:
                 total += file.stat().st_size
         return total
 
+    async def get_cache_stats(self, service: str) -> dict:
+        """Get detailed cache statistics."""
+        index = await self.load_blog_index(service)
+
+        total_blogs = sum(
+            len(m.get("blogs", [])) for m in index.get("members", {}).values()
+        )
+
+        # Count cached blogs
+        cached_count = 0
+        for member_id, member_data in index.get("members", {}).items():
+            member_name = member_data.get("name", "")
+            for blog in member_data.get("blogs", []):
+                date = blog["published_at"][:10].replace("-", "")
+                cache_path = self.get_blog_cache_path(
+                    service, member_name, blog["id"], date
+                )
+                if (cache_path / "blog.json").exists():
+                    cached_count += 1
+
+        return {
+            "total_blogs": total_blogs,
+            "cached_blogs": cached_count,
+            "pending_download": total_blogs - cached_count,
+            "cache_size_bytes": await self.get_cache_size(service),
+            "last_sync": index.get("last_sync"),
+            "last_download": index.get("last_download"),
+        }
+
     async def clear_cache(self, service: str):
         """Clear all cached blog content for a service."""
         import shutil
+
         base_path = self.get_blogs_base_path(service)
 
         # Keep index.json, delete everything else
@@ -207,7 +624,7 @@ class BlogService:
         index_backup = None
 
         if index_path.exists():
-            async with aiofiles.open(index_path, 'r', encoding='utf-8') as f:
+            async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
                 index_backup = await f.read()
 
         if base_path.exists():
@@ -216,5 +633,5 @@ class BlogService:
         # Restore index
         if index_backup:
             base_path.mkdir(parents=True, exist_ok=True)
-            async with aiofiles.open(index_path, 'w', encoding='utf-8') as f:
+            async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
                 await f.write(index_backup)

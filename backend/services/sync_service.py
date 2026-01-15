@@ -8,6 +8,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Any
 from pyhako import Client, Group, sanitize_name, SyncManager, SessionExpiredError
+from pyhako.config import (
+    MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL,
+    MEDIA_DOWNLOAD_CONCURRENCY_INITIAL,
+)
 from pyhako.credentials import get_token_manager
 from pyhako.utils import get_media_extension
 from backend.api.progress import progress
@@ -144,7 +148,8 @@ class SyncService:
             is_fresh = len(existing_content) == 0
 
             limit = 20 if is_fresh else 5
-            logger.info(f"Smart Concurrency: limit={limit} (Fresh={is_fresh})")
+            media_concurrency = MEDIA_DOWNLOAD_CONCURRENCY_INITIAL if is_fresh else MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL
+            logger.info(f"Smart Concurrency: limit={limit}, media_concurrency={media_concurrency} (Fresh={is_fresh})")
 
             connector = aiohttp.TCPConnector(limit=limit)
             async with aiohttp.ClientSession(connector=connector) as session:
@@ -326,7 +331,7 @@ class SyncService:
                             current_total = total_successed + c
                             progress.set_completed(current_total, detail=f"{current_total:,} files")
 
-                        chunk_dimensions = await self.manager.process_media_queue(session, chunk, concurrency=5, progress_callback=chunk_cb)
+                        chunk_dimensions = await self.manager.process_media_queue(session, chunk, concurrency=media_concurrency, progress_callback=chunk_cb)
 
                         # Merge chunk dimensions into all_dimensions_by_dir
                         for member_dir, dims in chunk_dimensions.items():
@@ -345,10 +350,18 @@ class SyncService:
                 else:
                     logger.info("No new media to download.")
 
-                # Phase 5: Blog Metadata Sync
-                # Syncs blog titles/dates/thumbnails to index file.
-                # Full blog content is fetched on-demand when user views a blog.
-                progress.start_phase("blogs", "Syncing blog metadata", 5, 0, "")
+                # Phase 5: Blog Sync
+                # Mode depends on per-service setting: blogs_full_backup
+                # - False (default): Sync metadata only, content fetched on-demand
+                # - True: Full backup - download all content + images for offline reading
+                service_settings = app_settings.get("services", {}).get(self._service, {})
+                blogs_full_backup = service_settings.get("blogs_full_backup", False)
+
+                if blogs_full_backup:
+                    progress.start_phase("blogs", "Backing up blogs (full)", 5, 0, "")
+                else:
+                    progress.start_phase("blogs", "Syncing blog metadata", 5, 0, "")
+
                 try:
                     from backend.services.blog_service import BlogService
                     blog_service = BlogService()
@@ -356,10 +369,14 @@ class SyncService:
                     async def blog_progress(msg):
                         progress.set_detail(msg)
 
-                    await blog_service.sync_blog_metadata(self._service, progress_callback=blog_progress)
-                    logger.info(f"Blog metadata synced for {self._service}")
+                    if blogs_full_backup:
+                        await blog_service.sync_full_backup(self._service, progress_callback=blog_progress)
+                        logger.info(f"Full blog backup complete for {self._service}")
+                    else:
+                        await blog_service.sync_blog_metadata(self._service, progress_callback=blog_progress)
+                        logger.info(f"Blog metadata synced for {self._service}")
                 except Exception as e:
-                    logger.warning(f"Blog metadata sync failed (non-fatal): {e}")
+                    logger.warning(f"Blog sync failed (non-fatal): {e}")
 
                 metadata['last_sync'] = datetime.utcnow().isoformat() + "Z"
                 await self.save_metadata(metadata)

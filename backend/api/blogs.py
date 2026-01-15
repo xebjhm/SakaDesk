@@ -40,6 +40,37 @@ class CacheSizeResponse(BaseModel):
     size_mb: float
 
 
+class RecentPost(BaseModel):
+    id: str
+    title: str
+    published_at: str
+    url: str
+    thumbnail: Optional[str] = None
+    member_id: str
+    member_name: str
+
+
+class RecentPostsResponse(BaseModel):
+    service: str
+    posts: List[RecentPost]
+
+
+@router.get("/recent", response_model=RecentPostsResponse)
+async def get_recent_posts(
+    service: str = Query(...),
+    limit: int = Query(default=20, ge=1, le=100)
+):
+    """Get recent blog posts across all members, sorted by date."""
+    try:
+        validate_service(service)
+        posts = await blog_service.get_recent_posts(service, limit)
+        return RecentPostsResponse(service=service, posts=posts)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/members")
 async def get_blog_members(service: str = Query(...)):
     """Get members who have blogs for a service."""
