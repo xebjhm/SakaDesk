@@ -105,3 +105,18 @@ export interface BlogContentResponse {
         local_path: string | null;
     }>;
 }
+
+export interface RecentPost {
+    id: string;
+    title: string;
+    published_at: string;
+    url: string;
+    thumbnail: string | null;
+    member_id: string;
+    member_name: string;
+}
+
+export interface RecentPostsResponse {
+    service: string;
+    posts: RecentPost[];
+}

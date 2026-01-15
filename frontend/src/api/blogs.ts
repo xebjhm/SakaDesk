@@ -1,7 +1,19 @@
 // frontend/src/api/blogs.ts
-import { BlogMembersResponse, BlogListResponse, BlogContentResponse } from '../types';
+import { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse } from '../types';
 
 const API_BASE = '/api/blogs';
+
+export async function getRecentPosts(service: string, limit: number = 20): Promise<RecentPostsResponse> {
+    const params = new URLSearchParams({
+        service,
+        limit: limit.toString(),
+    });
+    const res = await fetch(`${API_BASE}/recent?${params}`);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch recent posts: ${res.status}`);
+    }
+    return res.json();
+}
 
 export async function getBlogMembers(service: string): Promise<BlogMembersResponse> {
     const res = await fetch(`${API_BASE}/members?service=${encodeURIComponent(service)}`);
