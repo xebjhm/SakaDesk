@@ -1,5 +1,5 @@
 // frontend/src/api/blogs.ts
-import { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse } from '../types';
+import { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse, BlogMembersWithThumbnailsResponse } from '../types';
 
 const API_BASE = '/api/blogs';
 
@@ -28,6 +28,18 @@ export async function getBlogMembers(service: string): Promise<BlogMembersRespon
         throw new Error(`Failed to fetch blog members: ${res.status}`);
     }
     return res.json();
+}
+
+export async function getBlogMembersWithThumbnails(service: string): Promise<BlogMembersWithThumbnailsResponse> {
+    const res = await fetch(`${API_BASE}/members-with-thumbnails?service=${encodeURIComponent(service)}`);
+    if (!res.ok) {
+        throw new Error(`Failed to fetch blog members with thumbnails: ${res.status}`);
+    }
+    return res.json();
+}
+
+export function getMemberThumbnailUrl(service: string, memberId: string): string {
+    return `${API_BASE}/member-thumbnail/${encodeURIComponent(service)}/${encodeURIComponent(memberId)}`;
 }
 
 export async function getBlogList(
