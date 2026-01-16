@@ -4,8 +4,8 @@ import React, { useMemo } from 'react';
 import { RecentPost } from '../../../types';
 import { BlogCard } from './BlogCard';
 import { DynamicBackground } from '../../ui/DynamicBackground';
-import { getThemeForService } from '../../../config/groupThemes';
 import { useAppStore, BlogSelectionMode } from '../../../stores/appStore';
+import { useBlogTheme } from '../../../hooks';
 
 interface RecentPostsFeedProps {
     posts: RecentPost[];
@@ -44,7 +44,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
     // Posts are already filtered by the API based on selectionMode - use directly
     const heroIndices = useMemo(() => getHeroIndices(posts.length), [posts.length]);
-    const theme = useMemo(() => getThemeForService(serviceId), [serviceId]);
+    const theme = useBlogTheme();
 
     const handleModeChange = (mode: BlogSelectionMode) => {
         setBlogSelectionMode(effectiveServiceId, mode);
@@ -244,7 +244,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     font-family: "Noto Serif JP", "Yu Mincho", serif;
                     font-size: 1.4rem;
                     font-weight: 600;
-                    color: #5d95ae;
+                    color: ${theme.headerTitleColor};
                     letter-spacing: 0.02em;
                     margin: 0;
                 }
