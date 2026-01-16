@@ -107,3 +107,4 @@ frontend/playwright/.cache/
 *.tmp
 *.temp
 .cache/
+.worktrees/
