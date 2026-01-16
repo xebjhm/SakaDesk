@@ -5,6 +5,7 @@ import { RecentPost } from '../../../types';
 import { BlogCard } from './BlogCard';
 import { DynamicBackground } from '../../ui/DynamicBackground';
 import { getThemeForService } from '../../../config/groupThemes';
+import { useAppStore, BlogSelectionMode } from '../../../stores/appStore';
 
 interface RecentPostsFeedProps {
     posts: RecentPost[];
@@ -34,8 +35,20 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
     onRetry,
     serviceId = null,
 }) => {
+    // Get selection mode from store for toggle UI state
+    // Use serviceId even if empty string - the store handles it gracefully
+    const effectiveServiceId = serviceId || 'default';
+    // Direct property access for proper Zustand reactivity (don't use method call)
+    const selectionMode = useAppStore((state) => state.blogSelectionModes[effectiveServiceId] ?? 'all');
+    const setBlogSelectionMode = useAppStore((state) => state.setBlogSelectionMode);
+
+    // Posts are already filtered by the API based on selectionMode - use directly
     const heroIndices = useMemo(() => getHeroIndices(posts.length), [posts.length]);
     const theme = useMemo(() => getThemeForService(serviceId), [serviceId]);
+
+    const handleModeChange = (mode: BlogSelectionMode) => {
+        setBlogSelectionMode(effectiveServiceId, mode);
+    };
 
     return (
         <div className="feed-container" style={{ background: theme.surface.background }}>
@@ -46,29 +59,50 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
             <header className="feed-header">
                 <div className="feed-header__inner">
                     <div className="feed-header__titles">
-                        <h2 className="feed-header__main">Recent Posts</h2>
-                        <span className="feed-header__sub">Latest Updates</span>
+                        <h2 className="feed-header__main">Latest Blogs</h2>
                     </div>
 
-                    <button
-                        onClick={onMemberSelect}
-                        className="feed-header__btn"
-                        style={{
-                            background: `linear-gradient(135deg, ${theme.primaryColor}15 0%, ${theme.secondaryColor}10 100%)`,
-                            borderColor: `${theme.primaryColor}30`,
-                        }}
-                    >
-                        <div
-                            className="feed-header__btn-bg"
-                            style={{ background: theme.interaction.buttonGradient }}
-                        />
-                        <span className="feed-header__btn-text">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                            Select Member
-                        </span>
-                    </button>
+                    <div className="feed-header__actions">
+                        {/* All/Favorite Toggle */}
+                        <div className="feed-mode-toggle">
+                            <button
+                                onClick={() => handleModeChange('all')}
+                                className={`feed-mode-toggle__btn ${selectionMode === 'all' ? 'feed-mode-toggle__btn--active' : ''}`}
+                            >
+                                All
+                            </button>
+                            <button
+                                onClick={() => handleModeChange('favorite')}
+                                className={`feed-mode-toggle__btn ${selectionMode === 'favorite' ? 'feed-mode-toggle__btn--active' : ''}`}
+                            >
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                                Favorite
+                            </button>
+                        </div>
+
+                        {/* Member Select Button */}
+                        <button
+                            onClick={onMemberSelect}
+                            className="feed-header__btn"
+                            style={{
+                                background: `linear-gradient(135deg, ${theme.primaryColor}15 0%, ${theme.secondaryColor}10 100%)`,
+                                borderColor: `${theme.primaryColor}30`,
+                            }}
+                        >
+                            <div
+                                className="feed-header__btn-bg"
+                                style={{ background: theme.interaction.buttonGradient }}
+                            />
+                            <span className="feed-header__btn-text">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                                </svg>
+                                Select Member
+                            </span>
+                        </button>
+                    </div>
                 </div>
             </header>
 
@@ -141,12 +175,26 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                                 borderColor: `${theme.primaryColor}20`,
                             }}
                         >
-                            <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
-                            </svg>
+                            {selectionMode === 'favorite' ? (
+                                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                            ) : (
+                                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                                </svg>
+                            )}
                         </div>
-                        <p className="feed-state__text">No blog posts found</p>
-                        <p className="feed-state__hint">Select a service and sync to load blogs</p>
+                        <p className="feed-state__text">
+                            {selectionMode === 'favorite'
+                                ? 'No posts from favorite members'
+                                : 'No blog posts found'}
+                        </p>
+                        <p className="feed-state__hint">
+                            {selectionMode === 'favorite'
+                                ? 'Add members to favorites to see their posts here'
+                                : 'Select a service and sync to load blogs'}
+                        </p>
                     </div>
                 )}
             </main>
@@ -196,7 +244,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     font-family: "Noto Serif JP", "Yu Mincho", serif;
                     font-size: 1.4rem;
                     font-weight: 600;
-                    color: ${theme.text.primary};
+                    color: #5d95ae;
                     letter-spacing: 0.02em;
                     margin: 0;
                 }
@@ -248,6 +296,53 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
                 .feed-header__btn:hover .feed-header__btn-text {
                     color: white;
+                }
+
+                .feed-header__actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                }
+
+                /* ========================================
+                   MODE TOGGLE - All/Favorite
+                   ======================================== */
+                .feed-mode-toggle {
+                    display: flex;
+                    align-items: center;
+                    gap: 2px;
+                    padding: 3px;
+                    background: rgba(0, 0, 0, 0.05);
+                    border-radius: 9999px;
+                }
+
+                .feed-mode-toggle__btn {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    padding: 6px 14px;
+                    border-radius: 9999px;
+                    font-size: 0.75rem;
+                    font-weight: 500;
+                    color: ${theme.text.muted};
+                    background: transparent;
+                    border: none;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+
+                .feed-mode-toggle__btn:hover {
+                    color: ${theme.text.secondary};
+                }
+
+                .feed-mode-toggle__btn--active {
+                    background: white;
+                    color: #ff69b4;
+                    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+                }
+
+                .feed-mode-toggle__btn--active:hover {
+                    color: #ff69b4;
                 }
 
                 /* ========================================
