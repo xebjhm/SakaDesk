@@ -1,41 +1,55 @@
 // frontend/src/components/features/BlogsFeature.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
-import { BlogMember, BlogMeta, BlogContentResponse, RecentPost } from '../../types';
-import { getBlogMembers, getBlogList, getBlogContent, getRecentPosts } from '../../api/blogs';
+import { BlogMember, BlogMeta, BlogContentResponse, RecentPost, BlogMemberWithThumbnail } from '../../types';
+import { getBlogMembersWithThumbnails, getBlogList, getBlogContent, getRecentPosts } from '../../api/blogs';
 import { useAppStore } from '../../stores/appStore';
-import { RecentPostsFeed, MemberSelectGrid, MemberTimeline, BlogNavFooter, TimelineRail } from './blogs';
-import { getMemberColors } from '../../data/memberColors';
-import { DynamicBackground } from '../ui/DynamicBackground';
-import { getThemeForService } from '../../config/groupThemes';
+import { RecentPostsFeed, BlogNavFooter, TimelineRail, MemberTimelineModal } from './blogs';
+import { MemberSelectModal } from './blogs/MemberSelectModal';
+import { getMemberColors, getMemberNameJp } from '../../data/memberColors';
 
 type ViewState =
     | { view: 'recent' }
-    | { view: 'members' }
-    | { view: 'timeline'; member: BlogMember }
     | { view: 'reader'; blog: BlogMeta; member: BlogMember; content: BlogContentResponse | null; fromView: 'recent' | 'timeline' };
 
+// Stable empty array to avoid creating new references
+const EMPTY_FAVORITES: string[] = [];
+
+// Hardcoded mascot member (ポカ) - backend may not return this
+const POKA_MEMBER: BlogMemberWithThumbnail = {
+    id: '000',
+    name: 'ポカ',
+    thumbnail: null, // Will use fallback/placeholder
+};
+
 export const BlogsFeature: React.FC = () => {
-    const { activeService } = useAppStore();
-    const favorites = useAppStore((state) => state.favorites[activeService ?? ''] ?? []);
-    const toggleFavorite = useAppStore((state) => state.toggleFavorite);
+    const activeService = useAppStore((state) => state.activeService);
+    const favorites = useAppStore((state) => state.favorites[activeService ?? ''] || EMPTY_FAVORITES);
+    // Get selection mode for API fetching - when 'favorite', fetch only from favorited members
+    const selectionMode = useAppStore((state) => state.blogSelectionModes[activeService ?? ''] ?? 'all');
+    // Watch for blog view reset trigger (when user clicks blog icon in feature rail)
+    const blogViewResetCounter = useAppStore((state) => state.blogViewResetCounter);
 
     // Stable key for favorites to prevent unnecessary re-fetches
     const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
 
-    // Memoized toggle handler to prevent MemberSelectGrid re-renders
-    const handleToggleFavorite = useCallback((memberId: string) => {
-        if (activeService) {
-            toggleFavorite(activeService, memberId);
-        }
-    }, [activeService, toggleFavorite]);
-
     const [viewState, setViewState] = useState<ViewState>({ view: 'recent' });
+
+    // Modal state for member selection
+    const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+    const [membersWithThumbnails, setMembersWithThumbnails] = useState<BlogMemberWithThumbnail[]>([]);
+    const [membersLoading, setMembersLoading] = useState(false);
+    const [membersError, setMembersError] = useState<string | null>(null);
+
+    // Modal state for member timeline
+    const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+    const [timelineMember, setTimelineMember] = useState<BlogMember | null>(null);
+    const [timelineBlogs, setTimelineBlogs] = useState<BlogMeta[]>([]);
+    const [timelineLoading, setTimelineLoading] = useState(false);
+    const [timelineError, setTimelineError] = useState<string | null>(null);
 
     // Data states
     const [recentPosts, setRecentPosts] = useState<RecentPost[]>([]);
-    const [members, setMembers] = useState<BlogMember[]>([]);
-    const [blogs, setBlogs] = useState<BlogMeta[]>([]);
 
     // Cache states for navigation
     const [memberBlogsCache, setMemberBlogsCache] = useState<Map<string, BlogMeta[]>>(new Map());
@@ -49,19 +63,37 @@ export const BlogsFeature: React.FC = () => {
     useEffect(() => {
         setViewState({ view: 'recent' });
         setRecentPosts([]);
-        setMembers([]);
-        setBlogs([]);
         setMemberBlogsCache(new Map());
         setContentCache(new Map());
         setError(null);
+        setMembersWithThumbnails([]);
+        setMembersError(null);
+        // Reset timeline modal state
+        setIsTimelineModalOpen(false);
+        setTimelineMember(null);
+        setTimelineBlogs([]);
+        setTimelineError(null);
     }, [activeService]);
 
+    // Reset to recent view when blog icon is clicked in feature rail
+    useEffect(() => {
+        if (blogViewResetCounter > 0) {
+            setViewState({ view: 'recent' });
+            setIsTimelineModalOpen(false);
+            setIsMemberModalOpen(false);
+        }
+    }, [blogViewResetCounter]);
+
     // Load recent posts when in recent view
+    // When selectionMode is 'favorite', fetch 20 latest posts from favorited members only
+    // When selectionMode is 'all', fetch 20 latest posts from all members
     useEffect(() => {
         if (viewState.view !== 'recent' || !activeService) return;
 
-        // Parse favoritesKey back to array for API call
-        const memberIds = favoritesKey ? favoritesKey.split(',') : undefined;
+        // Determine member IDs to fetch - use favorites when in favorite mode
+        const memberIds = selectionMode === 'favorite' && favorites.length > 0
+            ? favorites
+            : undefined;
 
         setLoading(true);
         setError(null);
@@ -69,53 +101,84 @@ export const BlogsFeature: React.FC = () => {
             .then(res => setRecentPosts(res.posts))
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
-    }, [viewState.view, activeService, favoritesKey]);
+    }, [viewState.view, activeService, selectionMode, favoritesKey]);
 
-    // Load members when in members view
+    // Load members when modal opens
     useEffect(() => {
-        if (viewState.view !== 'members' || !activeService) return;
+        if (!isMemberModalOpen || !activeService) return;
+        // Skip if we already have members loaded
+        if (membersWithThumbnails.length > 0) return;
 
-        setLoading(true);
-        setError(null);
-        getBlogMembers(activeService)
-            .then(res => setMembers(res.members))
-            .catch(e => setError(e.message))
-            .finally(() => setLoading(false));
-    }, [viewState.view, activeService]);
+        setMembersLoading(true);
+        setMembersError(null);
+        getBlogMembersWithThumbnails(activeService)
+            .then(res => {
+                let members = res.members;
+                // Add ポカ (mascot) if not already in the list - only for hinatazaka
+                if (activeService.toLowerCase().includes('hinata')) {
+                    const hasPokaId = members.some(m => m.id === '000');
+                    const hasPokaName = members.some(m => m.name === 'ポカ');
+                    if (!hasPokaId && !hasPokaName) {
+                        members = [...members, POKA_MEMBER];
+                    }
+                }
+                setMembersWithThumbnails(members);
+            })
+            .catch(e => setMembersError(e.message))
+            .finally(() => setMembersLoading(false));
+    }, [isMemberModalOpen, activeService, membersWithThumbnails.length]);
 
-    // Load blog list when in timeline view
+    // Load blog list when timeline modal opens
     useEffect(() => {
-        if (viewState.view !== 'timeline' || !activeService) return;
+        if (!isTimelineModalOpen || !timelineMember || !activeService) return;
 
-        setLoading(true);
-        setError(null);
-        getBlogList(activeService, viewState.member.id)
-            .then(res => setBlogs(res.blogs))
-            .catch(e => setError(e.message))
-            .finally(() => setLoading(false));
-    }, [viewState, activeService]);
+        setTimelineLoading(true);
+        setTimelineError(null);
+        getBlogList(activeService, timelineMember.id)
+            .then(res => setTimelineBlogs(res.blogs))
+            .catch(e => setTimelineError(e.message))
+            .finally(() => setTimelineLoading(false));
+    }, [isTimelineModalOpen, timelineMember, activeService]);
+
+    // Refs to access caches without adding them to effect dependencies
+    const memberBlogsCacheRef = React.useRef(memberBlogsCache);
+    memberBlogsCacheRef.current = memberBlogsCache;
+    const contentCacheRef = React.useRef(contentCache);
+    contentCacheRef.current = contentCache;
+
+    // Track which blog IDs we've already started fetching to prevent duplicate requests
+    const fetchingMemberBlogsRef = React.useRef<Set<string>>(new Set());
+    const fetchingContentRef = React.useRef<Set<string>>(new Set());
 
     // Load member's blog list when entering reader view (for navigation)
     useEffect(() => {
         if (viewState.view !== 'reader' || !activeService) return;
 
         const memberId = viewState.member.id;
-        // Check cache first
-        if (memberBlogsCache.has(memberId)) return;
+
+        // Check cache first (via ref)
+        if (memberBlogsCacheRef.current.has(memberId)) return;
+
+        // Check if already fetching
+        if (fetchingMemberBlogsRef.current.has(memberId)) return;
+        fetchingMemberBlogsRef.current.add(memberId);
 
         // Fetch and cache
         getBlogList(activeService, memberId)
             .then(res => {
-                setMemberBlogsCache(prev => {
-                    const newCache = new Map(prev);
+                setMemberBlogsCache(cache => {
+                    const newCache = new Map(cache);
                     newCache.set(memberId, res.blogs);
                     return newCache;
                 });
             })
             .catch(() => {
                 // Silent fail - navigation just won't be available
+            })
+            .finally(() => {
+                fetchingMemberBlogsRef.current.delete(memberId);
             });
-    }, [viewState, activeService, memberBlogsCache]);
+    }, [viewState, activeService]);
 
     // Load content when entering reader view (with caching)
     useEffect(() => {
@@ -123,14 +186,18 @@ export const BlogsFeature: React.FC = () => {
 
         const blogId = viewState.blog.id;
 
-        // Check content cache first
-        const cachedContent = contentCache.get(blogId);
+        // Check content cache first (via ref)
+        const cachedContent = contentCacheRef.current.get(blogId);
         if (cachedContent) {
             setViewState(prev =>
-                prev.view === 'reader' ? { ...prev, content: cachedContent } : prev
+                prev.view === 'reader' && !prev.content ? { ...prev, content: cachedContent } : prev
             );
             return;
         }
+
+        // Check if already fetching
+        if (fetchingContentRef.current.has(blogId)) return;
+        fetchingContentRef.current.add(blogId);
 
         setLoading(true);
         setError(null);
@@ -147,12 +214,15 @@ export const BlogsFeature: React.FC = () => {
                     return newCache;
                 });
                 setViewState(prev =>
-                    prev.view === 'reader' ? { ...prev, content } : prev
+                    prev.view === 'reader' && !prev.content ? { ...prev, content } : prev
                 );
             })
             .catch(e => setError(e.message))
-            .finally(() => setLoading(false));
-    }, [viewState, activeService, contentCache]);
+            .finally(() => {
+                setLoading(false);
+                fetchingContentRef.current.delete(blogId);
+            });
+    }, [viewState, activeService]);
 
     if (!activeService) {
         return (
@@ -180,10 +250,11 @@ export const BlogsFeature: React.FC = () => {
         setViewState({ view: 'reader', blog: blogMeta, member, content: null, fromView: 'recent' });
     };
 
-    // Handle navigation from timeline to reader
-    const handleSelectBlog = (blog: BlogMeta) => {
-        if (viewState.view === 'timeline') {
-            setViewState({ view: 'reader', blog, member: viewState.member, content: null, fromView: 'timeline' });
+    // Handle navigation from timeline modal to reader
+    const handleSelectBlogFromTimeline = (blog: BlogMeta) => {
+        if (timelineMember) {
+            setIsTimelineModalOpen(false);
+            setViewState({ view: 'reader', blog, member: timelineMember, content: null, fromView: 'timeline' });
         }
     };
 
@@ -192,32 +263,41 @@ export const BlogsFeature: React.FC = () => {
         if (viewState.view === 'reader') {
             // Go back to where we came from
             if (viewState.fromView === 'timeline') {
-                setViewState({ view: 'timeline', member: viewState.member });
-            } else {
-                setViewState({ view: 'recent' });
+                // Re-open the timeline modal for the same member
+                setTimelineMember(viewState.member);
+                setIsTimelineModalOpen(true);
             }
-        } else if (viewState.view === 'timeline') {
-            setViewState({ view: 'members' });
-        } else if (viewState.view === 'members') {
             setViewState({ view: 'recent' });
         }
     };
 
-    // Retry handler
+    // Handle member selection from modal - opens timeline modal
+    const handleMemberSelect = (member: BlogMemberWithThumbnail) => {
+        setIsMemberModalOpen(false);
+        setTimelineMember({ id: member.id, name: member.name });
+        setTimelineBlogs([]); // Reset blogs for new member
+        setIsTimelineModalOpen(true);
+    };
+
+    // Handle members retry
+    const handleMembersRetry = () => {
+        setMembersError(null);
+        setMembersWithThumbnails([]);
+        // Will trigger re-fetch via effect
+    };
+
+    // Handle timeline retry
+    const handleTimelineRetry = () => {
+        setTimelineError(null);
+        setTimelineBlogs([]);
+        // Will trigger re-fetch via effect
+    };
+
+    // Retry handler for main content
     const handleRetry = () => {
         setError(null);
         // Re-trigger the current view's data fetch by toggling loading
-        const currentView = viewState.view;
         setViewState({ view: 'recent' });
-        setTimeout(() => {
-            if (currentView === 'recent') {
-                setViewState({ view: 'recent' });
-            } else if (currentView === 'members') {
-                setViewState({ view: 'members' });
-            } else if (currentView === 'timeline' && viewState.view === 'timeline') {
-                setViewState({ view: 'timeline', member: viewState.member });
-            }
-        }, 0);
     };
 
     // Handle navigation within reader (prev/next/jump)
@@ -242,6 +322,32 @@ export const BlogsFeature: React.FC = () => {
 
     return (
         <div className="flex-1 flex flex-col h-full bg-white overflow-hidden">
+            {/* Member Select Modal */}
+            <MemberSelectModal
+                isOpen={isMemberModalOpen}
+                onClose={() => setIsMemberModalOpen(false)}
+                members={membersWithThumbnails}
+                loading={membersLoading}
+                error={membersError}
+                onSelectMember={handleMemberSelect}
+                onRetry={handleMembersRetry}
+                serviceId={activeService ?? ''}
+            />
+
+            {/* Member Timeline Modal */}
+            {timelineMember && (
+                <MemberTimelineModal
+                    isOpen={isTimelineModalOpen}
+                    onClose={() => setIsTimelineModalOpen(false)}
+                    member={timelineMember}
+                    blogs={timelineBlogs}
+                    loading={timelineLoading}
+                    error={timelineError}
+                    onSelectBlog={handleSelectBlogFromTimeline}
+                    onRetry={handleTimelineRetry}
+                />
+            )}
+
             {/* Recent Posts Feed */}
             {viewState.view === 'recent' && (
                 <RecentPostsFeed
@@ -249,43 +355,21 @@ export const BlogsFeature: React.FC = () => {
                     loading={loading}
                     error={error}
                     onSelectPost={handleSelectRecentPost}
-                    onMemberSelect={() => setViewState({ view: 'members' })}
-                    onRetry={handleRetry}
-                    serviceId={activeService}
-                />
-            )}
-
-            {/* Member Select Grid */}
-            {viewState.view === 'members' && (
-                <MemberSelectGrid
-                    members={members}
-                    loading={loading}
-                    error={error}
-                    onBack={() => setViewState({ view: 'recent' })}
-                    onSelectMember={(member) => setViewState({ view: 'timeline', member })}
+                    onMemberSelect={() => setIsMemberModalOpen(true)}
                     onRetry={handleRetry}
                     serviceId={activeService ?? ''}
-                    favorites={favorites}
-                    onToggleFavorite={handleToggleFavorite}
-                />
-            )}
-
-            {/* Member Timeline */}
-            {viewState.view === 'timeline' && (
-                <MemberTimeline
-                    member={viewState.member}
-                    blogs={blogs}
-                    loading={loading}
-                    error={error}
-                    onBack={handleBack}
-                    onSelectBlog={handleSelectBlog}
-                    onRetry={handleRetry}
                 />
             )}
 
             {/* Blog Reader */}
             {viewState.view === 'reader' && (() => {
                 const { memberBlogs, currentIndex } = getMemberBlogsNavigation();
+                const handleMemberClick = () => {
+                    // Open timeline modal for the current member
+                    setTimelineMember(viewState.member);
+                    setTimelineBlogs([]);
+                    setIsTimelineModalOpen(true);
+                };
                 return (
                     <BlogReader
                         content={viewState.content}
@@ -298,7 +382,7 @@ export const BlogsFeature: React.FC = () => {
                         onBack={handleBack}
                         onRetry={handleRetry}
                         onNavigate={handleNavigateBlog}
-                        serviceId={activeService}
+                        onMemberClick={handleMemberClick}
                     />
                 );
             })()}
@@ -318,7 +402,7 @@ interface BlogReaderProps {
     onBack: () => void;
     onRetry: () => void;
     onNavigate: (blog: BlogMeta) => void;
-    serviceId: string | null;
+    onMemberClick: () => void;
 }
 
 const BlogReader: React.FC<BlogReaderProps> = ({
@@ -332,14 +416,15 @@ const BlogReader: React.FC<BlogReaderProps> = ({
     onBack,
     onRetry,
     onNavigate,
-    serviceId,
+    onMemberClick,
 }) => {
     // Get member colors for oshi theming
-    const memberColors = getMemberColors(member.name);
-    const oshiColor = memberColors?.[0] ?? '#5bbbb5';
-
-    // Get group theme for ambient background
-    const theme = getThemeForService(serviceId);
+    // Try with original name, then without spaces (API returns names with spaces like "藤嶌 果歩")
+    // ポカ (mascot) should have white background - no oshi colors
+    const isMascot = member.id === '000' || member.name === 'ポカ';
+    const memberColors = isMascot ? null : (getMemberColors(member.name) ?? getMemberColors(member.name.replace(/\s+/g, '')));
+    const oshiColor1 = memberColors?.[0] ?? '#ffffff';
+    const oshiColor2 = memberColors?.[1] ?? '#ffffff';
 
     // Navigation helpers (index 0 = newest, higher index = older)
     // "Prev" goes to older posts (higher index), "Next" goes to newer posts (lower index)
@@ -361,9 +446,17 @@ const BlogReader: React.FC<BlogReaderProps> = ({
         : '';
 
     return (
-        <div className="flex flex-col h-full relative" style={{ background: theme.surface.background }}>
-            {/* Ambient Dynamic Background */}
-            <DynamicBackground theme={theme} />
+        <div className="flex flex-col h-full relative bg-white">
+            {/* Two-color oshi background - top-left and bottom-right corners */}
+            <div
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                    background: `
+                        radial-gradient(ellipse 80% 50% at 0% 0%, ${oshiColor1}1a 0%, transparent 50%),
+                        radial-gradient(ellipse 60% 40% at 100% 100%, ${oshiColor2}1a 0%, transparent 50%)
+                    `,
+                }}
+            />
 
             {/* Breadcrumb */}
             <div className="px-4 py-2 border-b border-gray-200/60 backdrop-blur-sm bg-white/70 flex items-center gap-2 text-sm shrink-0 relative z-10">
@@ -385,7 +478,13 @@ const BlogReader: React.FC<BlogReaderProps> = ({
                         />
                     </svg>
                 </button>
-                <span style={{ color: oshiColor }}>{member.name}</span>
+                <button
+                    onClick={onMemberClick}
+                    className="font-medium transition-all duration-200 hover:opacity-70"
+                    style={{ color: '#5d95ae' }}
+                >
+                    {getMemberNameJp(member.name)}
+                </button>
                 <span className="text-gray-400">/</span>
                 <span className="text-gray-700 truncate max-w-xs">{blog.title}</span>
             </div>
@@ -393,13 +492,13 @@ const BlogReader: React.FC<BlogReaderProps> = ({
             {/* Main content area with timeline rail */}
             <div className="flex-1 flex relative overflow-hidden z-10">
                 {/* Content */}
-                <div className="flex-1 overflow-y-auto pb-20 bg-white/75 backdrop-blur-sm">
+                <div className="flex-1 overflow-y-auto pb-20">
                     {/* Loading */}
                     {loading && (
                         <div className="flex items-center justify-center h-32">
                             <div
                                 className="animate-spin rounded-full h-8 w-8 border-b-2"
-                                style={{ borderColor: oshiColor }}
+                                style={{ borderColor: oshiColor1 }}
                             />
                         </div>
                     )}
@@ -411,7 +510,7 @@ const BlogReader: React.FC<BlogReaderProps> = ({
                             <button
                                 onClick={onRetry}
                                 className="px-4 py-2 text-white rounded-lg"
-                                style={{ backgroundColor: oshiColor }}
+                                style={{ backgroundColor: oshiColor1 }}
                             >
                                 Retry
                             </button>
@@ -429,9 +528,13 @@ const BlogReader: React.FC<BlogReaderProps> = ({
                                     {content.meta.title}
                                 </h1>
                                 <div className="flex items-center gap-3 text-sm text-gray-500">
-                                    <span style={{ color: oshiColor }}>
-                                        {content.meta.member_name}
-                                    </span>
+                                    <button
+                                        onClick={onMemberClick}
+                                        className="font-medium transition-all duration-200 hover:opacity-70"
+                                        style={{ color: '#5d95ae' }}
+                                    >
+                                        {getMemberNameJp(content.meta.member_name)}
+                                    </button>
                                     <span>-</span>
                                     <time>
                                         {new Date(content.meta.published_at).toLocaleDateString('ja-JP', {
@@ -445,24 +548,25 @@ const BlogReader: React.FC<BlogReaderProps> = ({
                                 </div>
                             </header>
 
-                            {/* Blog content - sanitized HTML rendered safely */}
+                            {/* Blog content - sanitized HTML rendered safely with DOMPurify */}
                             <div
-                                className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto"
+                                className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto blog-content"
                                 dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
                             />
 
-                            {/* External link */}
-                            <footer className="mt-8 pt-4 border-t border-gray-200">
-                                <a
-                                    href={content.meta.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="hover:underline text-sm"
-                                    style={{ color: oshiColor }}
-                                >
-                                    View original post →
-                                </a>
-                            </footer>
+                            {/* Blog content link styles */}
+                            <style>{`
+                                .blog-content a {
+                                    color: #5d95ae;
+                                    text-decoration: none;
+                                    border-bottom: 1px solid #5d95ae40;
+                                    transition: border-color 0.2s ease;
+                                }
+                                .blog-content a:hover {
+                                    border-bottom-color: #5d95ae;
+                                }
+                            `}</style>
+
                         </article>
                     )}
                 </div>
@@ -472,7 +576,6 @@ const BlogReader: React.FC<BlogReaderProps> = ({
                     <TimelineRail
                         blogs={memberBlogs}
                         currentIndex={currentIndex}
-                        oshiColor={oshiColor}
                         onSelect={handleRailSelect}
                     />
                 )}
