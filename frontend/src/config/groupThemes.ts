@@ -44,6 +44,15 @@ export interface GroupTheme {
 
     // Visual vibe keywords
     vibe: string[];
+
+    // Blog feature colors
+    blog: {
+        memberNameColor: string;      // Member name in cards/headers
+        linkColor: string;            // Links in blog content
+        linkUnderlineColor: string;   // Subtle underline (40% opacity)
+        headerTitleColor: string;     // "Latest Blogs" header
+        timelineIndicator: string;    // Timeline dot/line color
+    };
 }
 
 export const groupThemes: Record<GroupId, GroupTheme> = {
@@ -101,6 +110,14 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
         },
 
         vibe: ['airy', 'bright', 'komorebi', 'summer sky', 'gentle warmth'],
+
+        blog: {
+            memberNameColor: '#5d95ae',
+            linkColor: '#5d95ae',
+            linkUnderlineColor: '#5d95ae40',
+            headerTitleColor: '#5d95ae',
+            timelineIndicator: '#5d95ae',
+        },
     },
 
     // ========================================
@@ -157,6 +174,14 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
         },
 
         vibe: ['artistic', 'ephemeral', 'clean canvas', 'cherry blossom', 'cool elegance'],
+
+        blog: {
+            memberNameColor: '#d4729c',
+            linkColor: '#d4729c',
+            linkUnderlineColor: '#d4729c40',
+            headerTitleColor: '#d4729c',
+            timelineIndicator: '#d4729c',
+        },
     },
 
     // ========================================
@@ -213,6 +238,14 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
         },
 
         vibe: ['sophisticated', 'french', 'mature', 'noble', 'elegant'],
+
+        blog: {
+            memberNameColor: '#7e5c91',
+            linkColor: '#7e5c91',
+            linkUnderlineColor: '#7e5c9140',
+            headerTitleColor: '#7e5c91',
+            timelineIndicator: '#7e5c91',
+        },
     },
 
     // ========================================
@@ -268,6 +301,14 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
         },
 
         vibe: ['neutral', 'minimal', 'professional'],
+
+        blog: {
+            memberNameColor: '#6B7280',
+            linkColor: '#6B7280',
+            linkUnderlineColor: '#6B728040',
+            headerTitleColor: '#6B7280',
+            timelineIndicator: '#6B7280',
+        },
     },
 };
 
