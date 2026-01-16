@@ -69,9 +69,20 @@ export interface BlogMember {
     name: string;
 }
 
+export interface BlogMemberWithThumbnail {
+    id: string;
+    name: string;
+    thumbnail: string | null;  // Local filename or null
+}
+
 export interface BlogMembersResponse {
     service: string;
     members: BlogMember[];
+}
+
+export interface BlogMembersWithThumbnailsResponse {
+    service: string;
+    members: BlogMemberWithThumbnail[];
 }
 
 export interface BlogMeta {
