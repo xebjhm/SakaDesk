@@ -223,10 +223,18 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                         : null;
 
                                                 return (
-                                                    <button
+                                                    <div
                                                         key={member.id}
+                                                        role="button"
+                                                        tabIndex={0}
                                                         onClick={() => onSelectMember(member)}
-                                                        className="group flex flex-col items-center gap-3"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                e.preventDefault();
+                                                                onSelectMember(member);
+                                                            }
+                                                        }}
+                                                        className="group flex flex-col items-center gap-3 cursor-pointer"
                                                     >
                                                         {/* Avatar - Official site style: clean circle, face centered */}
                                                         <div className="relative group/avatar">
@@ -295,7 +303,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                         >
                                                             {formatName(member.nameJp)}
                                                         </p>
-                                                    </button>
+                                                    </div>
                                                 );
                                             })}
                                         </div>
