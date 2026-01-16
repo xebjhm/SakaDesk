@@ -3,11 +3,18 @@ import { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPosts
 
 const API_BASE = '/api/blogs';
 
-export async function getRecentPosts(service: string, limit: number = 20): Promise<RecentPostsResponse> {
+export async function getRecentPosts(
+    service: string,
+    limit: number = 20,
+    memberIds?: string[]
+): Promise<RecentPostsResponse> {
     const params = new URLSearchParams({
         service,
         limit: limit.toString(),
     });
+    if (memberIds && memberIds.length > 0) {
+        params.set('member_ids', memberIds.join(','));
+    }
     const res = await fetch(`${API_BASE}/recent?${params}`);
     if (!res.ok) {
         throw new Error(`Failed to fetch recent posts: ${res.status}`);
