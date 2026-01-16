@@ -9,7 +9,7 @@ export interface FeatureRailProps {
 }
 
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
-    const { getActiveFeature, setActiveFeature, getFeatureOrder } = useAppStore();
+    const { getActiveFeature, setActiveFeature, getFeatureOrder, triggerBlogViewReset } = useAppStore();
 
     const activeFeature = getActiveFeature(service);
     const featureOrder = getFeatureOrder(service);
@@ -25,6 +25,14 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
         return aIndex - bIndex;
     });
 
+    const handleFeatureClick = (featureId: string) => {
+        // If clicking on blogs, trigger a reset to go back to recent posts
+        if (featureId === 'blogs') {
+            triggerBlogViewReset();
+        }
+        setActiveFeature(service, featureId as import('../stores/appStore').FeatureId);
+    };
+
     return (
         <div className="w-12 bg-[#2b2d31] h-full flex flex-col items-center py-3 gap-1 shrink-0 border-r border-[#1e1f22]">
             {sortedFeatures.map(feature => {
@@ -34,7 +42,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
                 return (
                     <button
                         key={feature.id}
-                        onClick={() => setActiveFeature(service, feature.id)}
+                        onClick={() => handleFeatureClick(feature.id)}
                         className={cn(
                             "group relative w-10 h-10 rounded-lg flex items-center justify-center transition-all",
                             isActive
