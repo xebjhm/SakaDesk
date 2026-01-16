@@ -29,12 +29,10 @@ export const MemberSelectGrid: React.FC<MemberSelectGridProps> = ({
     onRetry,
     serviceId: _serviceId,
     favorites = [],
-    onToggleFavorite: _onToggleFavorite,
+    onToggleFavorite,
 }) => {
-    // Suppress unused variable warnings - these will be used in Task 5
+    // Suppress unused variable warning - serviceId will be used in future tasks
     void _serviceId;
-    void _onToggleFavorite;
-    void favorites;
     const [activeGen, setActiveGen] = useState<Generation>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredMember, setHoveredMember] = useState<string | null>(null);
@@ -266,6 +264,7 @@ export const MemberSelectGrid: React.FC<MemberSelectGridProps> = ({
                         {filteredMembers.map((member, index) => {
                             const isHovered = hoveredMember === member.id;
                             const colors = member.penlightHex;
+                            const isFavorited = favorites.includes(member.id);
 
                             return (
                                 <button
@@ -336,18 +335,58 @@ export const MemberSelectGrid: React.FC<MemberSelectGridProps> = ({
                                             </p>
                                         </div>
 
-                                        {/* Generation Badge */}
-                                        <div
-                                            className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase transition-all duration-300"
-                                            style={{
-                                                background: isHovered
-                                                    ? `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`
-                                                    : 'rgba(0, 0, 0, 0.05)',
-                                                color: isHovered ? 'white' : '#999',
-                                            }}
-                                        >
-                                            {member.generation}
-                                        </div>
+                                        {/* Generation Badge - Only in Everyone mode */}
+                                        {selectionMode === 'everyone' && (
+                                            <div
+                                                className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider uppercase transition-all duration-300"
+                                                style={{
+                                                    background: isHovered
+                                                        ? `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`
+                                                        : 'rgba(0, 0, 0, 0.05)',
+                                                    color: isHovered ? 'white' : '#999',
+                                                }}
+                                            >
+                                                {member.generation}
+                                            </div>
+                                        )}
+
+                                        {/* Favorite Heart - Only visible in Following mode */}
+                                        {selectionMode === 'following' && (
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onToggleFavorite?.(member.id);
+                                                }}
+                                                aria-label={isFavorited
+                                                    ? `Remove ${member.nameEn} from favorites`
+                                                    : `Add ${member.nameEn} to favorites`}
+                                                aria-pressed={isFavorited}
+                                                className="absolute top-3 right-3 p-1 rounded-full transition-all duration-200 hover:scale-110 z-10"
+                                                style={{
+                                                    background: isFavorited
+                                                        ? `linear-gradient(135deg, ${colors[0]}, ${colors[1]})`
+                                                        : 'rgba(255, 255, 255, 0.9)',
+                                                    boxShadow: isFavorited
+                                                        ? `0 2px 8px ${colors[0]}40`
+                                                        : '0 2px 6px rgba(0, 0, 0, 0.1)',
+                                                }}
+                                            >
+                                                <svg
+                                                    className="w-4 h-4"
+                                                    fill={isFavorited ? 'white' : 'none'}
+                                                    stroke={isFavorited ? 'white' : colors[0]}
+                                                    strokeWidth={2}
+                                                    viewBox="0 0 24 24"
+                                                >
+                                                    <path
+                                                        strokeLinecap="round"
+                                                        strokeLinejoin="round"
+                                                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+                                                    />
+                                                </svg>
+                                            </button>
+                                        )}
 
                                         {/* Penlight Color Indicators */}
                                         <div className="absolute top-3 left-3 flex gap-1">
