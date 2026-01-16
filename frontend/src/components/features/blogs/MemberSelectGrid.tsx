@@ -10,7 +10,13 @@ interface MemberSelectGridProps {
     onBack: () => void;
     onSelectMember: (member: BlogMember) => void;
     onRetry: () => void;
+    // New props for favorites (optional until integration complete)
+    serviceId?: string;
+    favorites?: string[];
+    onToggleFavorite?: (memberId: string) => void;
 }
+
+type SelectionMode = 'everyone' | 'following';
 
 type Generation = 'all' | '2nd' | '3rd' | '4th' | '5th';
 
@@ -21,10 +27,18 @@ export const MemberSelectGrid: React.FC<MemberSelectGridProps> = ({
     onBack,
     onSelectMember,
     onRetry,
+    serviceId: _serviceId,
+    favorites = [],
+    onToggleFavorite: _onToggleFavorite,
 }) => {
+    // Suppress unused variable warnings - these will be used in Task 5
+    void _serviceId;
+    void _onToggleFavorite;
+    void favorites;
     const [activeGen, setActiveGen] = useState<Generation>('all');
     const [searchQuery, setSearchQuery] = useState('');
     const [hoveredMember, setHoveredMember] = useState<string | null>(null);
+    const [selectionMode, setSelectionMode] = useState<SelectionMode>('everyone');
 
     // Enrich members with generation and color data
     const enrichedMembers = useMemo(() => {
@@ -118,6 +132,30 @@ export const MemberSelectGrid: React.FC<MemberSelectGridProps> = ({
                         <p className="text-xs text-gray-400 tracking-wider mt-0.5">
                             {filteredMembers.length} members
                         </p>
+                    </div>
+
+                    {/* Mode Toggle */}
+                    <div className="flex items-center gap-1 bg-gray-100/80 rounded-full p-1">
+                        <button
+                            onClick={() => setSelectionMode('everyone')}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                selectionMode === 'everyone'
+                                    ? 'bg-white text-gray-800 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            Everyone
+                        </button>
+                        <button
+                            onClick={() => setSelectionMode('following')}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 ${
+                                selectionMode === 'following'
+                                    ? 'bg-white text-gray-800 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            Following
+                        </button>
                     </div>
 
                     {/* Search Input */}
