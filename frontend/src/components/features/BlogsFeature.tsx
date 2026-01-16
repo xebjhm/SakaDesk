@@ -1,5 +1,5 @@
 // frontend/src/components/features/BlogsFeature.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { BlogMember, BlogMeta, BlogContentResponse, RecentPost } from '../../types';
 import { getBlogMembers, getBlogList, getBlogContent, getRecentPosts } from '../../api/blogs';
@@ -17,6 +17,19 @@ type ViewState =
 
 export const BlogsFeature: React.FC = () => {
     const { activeService } = useAppStore();
+    const favorites = useAppStore((state) => state.favorites[activeService ?? ''] ?? []);
+    const toggleFavorite = useAppStore((state) => state.toggleFavorite);
+
+    // Stable key for favorites to prevent unnecessary re-fetches
+    const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
+
+    // Memoized toggle handler to prevent MemberSelectGrid re-renders
+    const handleToggleFavorite = useCallback((memberId: string) => {
+        if (activeService) {
+            toggleFavorite(activeService, memberId);
+        }
+    }, [activeService, toggleFavorite]);
+
     const [viewState, setViewState] = useState<ViewState>({ view: 'recent' });
 
     // Data states
@@ -47,13 +60,16 @@ export const BlogsFeature: React.FC = () => {
     useEffect(() => {
         if (viewState.view !== 'recent' || !activeService) return;
 
+        // Parse favoritesKey back to array for API call
+        const memberIds = favoritesKey ? favoritesKey.split(',') : undefined;
+
         setLoading(true);
         setError(null);
-        getRecentPosts(activeService, 20)
+        getRecentPosts(activeService, 20, memberIds)
             .then(res => setRecentPosts(res.posts))
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
-    }, [viewState.view, activeService]);
+    }, [viewState.view, activeService, favoritesKey]);
 
     // Load members when in members view
     useEffect(() => {
@@ -248,6 +264,9 @@ export const BlogsFeature: React.FC = () => {
                     onBack={() => setViewState({ view: 'recent' })}
                     onSelectMember={(member) => setViewState({ view: 'timeline', member })}
                     onRetry={handleRetry}
+                    serviceId={activeService ?? ''}
+                    favorites={favorites}
+                    onToggleFavorite={handleToggleFavorite}
                 />
             )}
 
