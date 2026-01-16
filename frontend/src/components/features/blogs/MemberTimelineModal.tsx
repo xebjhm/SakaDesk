@@ -2,6 +2,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { BlogMember, BlogMeta } from '../../../types';
 import { getMemberNameJp } from '../../../data/memberColors';
+import { useBlogTheme, BlogTheme } from '../../../hooks';
 
 interface MemberTimelineModalProps {
     isOpen: boolean;
@@ -20,11 +21,6 @@ interface MonthGroup {
     blogs: BlogMeta[];
 }
 
-// Member name color - consistent teal
-const MEMBER_NAME_COLOR = '#5d95ae';
-// Theme color for accents
-const THEME_COLOR = '#7cc7e8';
-
 export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     isOpen,
     onClose,
@@ -35,6 +31,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     onSelectBlog,
     onRetry,
 }) => {
+    const theme = useBlogTheme();
     // Get kanji-only name using centralized helper
     const memberNameJp = getMemberNameJp(member.name);
 
@@ -126,7 +123,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                     <div className="flex items-center justify-between">
                         <h2
                             className="text-xl font-bold"
-                            style={{ color: MEMBER_NAME_COLOR }}
+                            style={{ color: theme.memberNameColor }}
                         >
                             {memberNameJp}
                         </h2>
@@ -147,7 +144,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                                 <div
                                     className="w-10 h-10 rounded-full animate-spin"
                                     style={{
-                                        background: `conic-gradient(from 0deg, transparent, ${THEME_COLOR})`,
+                                        background: `conic-gradient(from 0deg, transparent, ${theme.primaryColor})`,
                                     }}
                                 />
                                 <div className="absolute inset-1 rounded-full bg-white" />
@@ -175,7 +172,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                                 onClick={onRetry}
                                 className="px-4 py-2 rounded-full text-white text-sm font-medium transition-all duration-300 hover:scale-105"
                                 style={{
-                                    background: `linear-gradient(135deg, ${THEME_COLOR} 0%, #5dc2b5 100%)`,
+                                    background: theme.interaction.buttonGradient,
                                 }}
                             >
                                 Retry
@@ -195,6 +192,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                                     defaultExpanded={expandedMonths.has(`${group.year}-${group.month}`)}
                                     onSelectBlog={onSelectBlog}
                                     animationDelay={index * 50}
+                                    theme={theme}
                                 />
                             ))}
                         </div>
@@ -266,6 +264,7 @@ interface TimelineMonthSectionProps {
     defaultExpanded: boolean;
     onSelectBlog: (blog: BlogMeta) => void;
     animationDelay: number;
+    theme: BlogTheme;
 }
 
 const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
@@ -275,6 +274,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
     defaultExpanded,
     onSelectBlog,
     animationDelay,
+    theme,
 }) => {
     const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -304,7 +304,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                     <div
                         className="w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300"
                         style={{
-                            background: expanded ? THEME_COLOR : 'rgba(0, 0, 0, 0.05)',
+                            background: expanded ? theme.primaryColor : 'rgba(0, 0, 0, 0.05)',
                         }}
                     >
                         <svg
@@ -326,7 +326,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                     {/* Month label */}
                     <span
                         className="text-base font-bold tracking-tight transition-colors duration-300"
-                        style={{ color: expanded ? THEME_COLOR : '#666' }}
+                        style={{ color: expanded ? theme.primaryColor : '#666' }}
                     >
                         {monthLabel}
                     </span>
@@ -336,8 +336,8 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                 <span
                     className="text-sm font-medium px-3 py-1 rounded-full transition-all duration-300"
                     style={{
-                        background: expanded ? `${THEME_COLOR}15` : 'rgba(0, 0, 0, 0.05)',
-                        color: expanded ? THEME_COLOR : '#999',
+                        background: expanded ? `${theme.primaryColor}15` : 'rgba(0, 0, 0, 0.05)',
+                        color: expanded ? theme.primaryColor : '#999',
                     }}
                 >
                     {postCount} {postCount === 1 ? 'post' : 'posts'}
@@ -353,6 +353,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                             blog={blog}
                             onClick={() => onSelectBlog(blog)}
                             index={index}
+                            theme={theme}
                         />
                     ))}
                 </div>
@@ -366,9 +367,10 @@ interface TimelineBlogItemProps {
     blog: BlogMeta;
     onClick: () => void;
     index: number;
+    theme: BlogTheme;
 }
 
-const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, index }) => {
+const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, index, theme }) => {
     const [isHovered, setIsHovered] = useState(false);
     const date = new Date(blog.published_at);
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -389,7 +391,7 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, inde
             onMouseLeave={() => setIsHovered(false)}
             className="w-full p-3 flex items-start gap-4 text-left transition-all duration-300 rounded-xl group"
             style={{
-                background: isHovered ? `${THEME_COLOR}10` : 'transparent',
+                background: isHovered ? `${theme.primaryColor}10` : 'transparent',
                 animationDelay: `${index * 30}ms`,
             }}
         >
@@ -398,7 +400,7 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, inde
                 className="w-[100px] h-[75px] shrink-0 rounded-xl overflow-hidden transition-all duration-300"
                 style={{
                     boxShadow: isHovered
-                        ? `0 8px 25px -5px ${THEME_COLOR}40`
+                        ? `0 8px 25px -5px ${theme.primaryColor}40`
                         : '0 4px 15px -5px rgba(0, 0, 0, 0.1)',
                 }}
             >
@@ -440,7 +442,7 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, inde
                     className="font-medium leading-snug line-clamp-2 transition-colors duration-300"
                     style={{
                         fontFamily: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
-                        color: isHovered ? THEME_COLOR : '#333',
+                        color: isHovered ? theme.primaryColor : '#333',
                     }}
                 >
                     {blog.title}
@@ -457,13 +459,13 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, inde
                 {isRecent && (
                     <div
                         className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: THEME_COLOR }}
+                        style={{ backgroundColor: theme.primaryColor }}
                         title="Published within 24 hours"
                     />
                 )}
                 <svg
                     className={`w-4 h-4 transition-all duration-300 ${isHovered ? 'translate-x-1 opacity-100' : 'opacity-0'}`}
-                    style={{ color: THEME_COLOR }}
+                    style={{ color: theme.primaryColor }}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

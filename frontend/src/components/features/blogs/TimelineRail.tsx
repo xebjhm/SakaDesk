@@ -1,6 +1,7 @@
 // frontend/src/components/features/blogs/TimelineRail.tsx
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { BlogMeta } from '../../../types';
+import { useBlogTheme } from '../../../hooks';
 
 interface TimelineRailProps {
     blogs: BlogMeta[];
@@ -24,14 +25,13 @@ const ZOOM_CONFIG = {
     transitionMs: 300, // Slightly longer for smoother feel
 };
 
-// Hinatazaka theme color for timeline indicator
-const THEME_COLOR = '#7cc7e8';
-
 export const TimelineRail: React.FC<TimelineRailProps> = ({
     blogs,
     currentIndex,
     onSelect,
 }) => {
+    const theme = useBlogTheme();
+    const themeColor = theme.timelineIndicator;
     const railRef = useRef<HTMLDivElement>(null);
     const [hoverInfo, setHoverInfo] = useState<{
         y: number;
@@ -258,7 +258,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                         width: '20px',
                         background: `radial-gradient(ellipse 100% 30% at 50% ${
                             ((zoomCenter / Math.max(blogs.length - 1, 1)) * 100)
-                        }%, ${THEME_COLOR}15 0%, transparent 70%)`,
+                        }%, ${themeColor}15 0%, transparent 70%)`,
                         opacity: 1,
                         transition: `opacity ${ZOOM_CONFIG.transitionMs}ms ease-out`,
                     }}
@@ -316,8 +316,8 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                     width: '10px',
                     height: '10px',
                     transform: 'translate(-50%, -50%)',
-                    backgroundColor: THEME_COLOR,
-                    boxShadow: `0 0 12px ${THEME_COLOR}60, 0 0 4px ${THEME_COLOR}40`,
+                    backgroundColor: themeColor,
+                    boxShadow: `0 0 12px ${themeColor}60, 0 0 4px ${themeColor}40`,
                     transition: `top ${ZOOM_CONFIG.transitionMs}ms cubic-bezier(0.4, 0, 0.2, 1)`,
                 }}
             />
@@ -333,7 +333,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                             width: '14px',
                             height: '14px',
                             transform: 'translate(-50%, -50%)',
-                            border: `2px solid ${isZoomed ? THEME_COLOR : '#9ca3af'}`,
+                            border: `2px solid ${isZoomed ? themeColor : '#9ca3af'}`,
                             backgroundColor: 'transparent',
                             opacity: isZoomed ? 0.9 : 0.6,
                             transition: `border-color ${ZOOM_CONFIG.transitionMs}ms ease, opacity ${ZOOM_CONFIG.transitionMs}ms ease`,
@@ -352,7 +352,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                             minWidth: '180px',
                             maxWidth: '240px',
                             boxShadow: `
-                                0 4px 24px -4px ${THEME_COLOR}25,
+                                0 4px 24px -4px ${themeColor}25,
                                 0 8px 32px -8px rgba(0, 0, 0, 0.12),
                                 0 0 0 1px rgba(0, 0, 0, 0.03)
                             `,

@@ -4,6 +4,7 @@
 import React, { useState } from 'react';
 import { RecentPost } from '../../../types';
 import { getMemberNameJp } from '../../../data/memberColors';
+import { useBlogTheme } from '../../../hooks';
 
 interface BlogCardProps {
     post: RecentPost;
@@ -11,20 +12,15 @@ interface BlogCardProps {
     size?: 'normal' | 'featured';
 }
 
-// Hinatazaka theme colors used for card effects
-const THEME_PRIMARY = '#7cc7e8';
-const THEME_SECONDARY = '#5dc2b5';
-// Consistent member name color (brighter teal)
-const MEMBER_NAME_COLOR = '#5d95ae';
-
 export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'normal' }) => {
+    const theme = useBlogTheme();
     const [isHovered, setIsHovered] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
-    // Use consistent theme colors for card effects
-    const oshiPrimary = THEME_PRIMARY;
-    const oshiSecondary = THEME_SECONDARY;
+    // Use theme colors for card effects
+    const oshiPrimary = theme.primaryColor;
+    const oshiSecondary = theme.secondaryColor;
 
     // Format date elegantly
     const date = new Date(post.published_at);
@@ -169,12 +165,12 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                     {post.title}
                 </h3>
 
-                {/* Member name - Consistent teal color, kanji only */}
+                {/* Member name - Theme color, kanji only */}
                 <span
                     className="block font-semibold"
                     style={{
                         fontSize: isFeatured ? '0.7rem' : '0.6rem',
-                        color: MEMBER_NAME_COLOR,
+                        color: theme.memberNameColor,
                         marginTop: isFeatured ? '6px' : '4px',
                         letterSpacing: '0.02em',
                     }}
