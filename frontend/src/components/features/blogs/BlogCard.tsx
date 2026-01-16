@@ -1,9 +1,9 @@
 // frontend/src/components/features/blogs/BlogCard.tsx
 // Portrait Gallery Card - Clean Modern Minimalist Design
-// Horizontal labels, glass morphism, oshi-colored member names
+// Horizontal labels, glass morphism, consistent member name color
 import React, { useState } from 'react';
 import { RecentPost } from '../../../types';
-import { getMemberColors } from '../../../data/memberColors';
+import { getMemberNameJp } from '../../../data/memberColors';
 
 interface BlogCardProps {
     post: RecentPost;
@@ -11,35 +11,20 @@ interface BlogCardProps {
     size?: 'normal' | 'featured';
 }
 
+// Hinatazaka theme colors used for card effects
+const THEME_PRIMARY = '#7cc7e8';
+const THEME_SECONDARY = '#5dc2b5';
+// Consistent member name color (brighter teal)
+const MEMBER_NAME_COLOR = '#5d95ae';
+
 export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'normal' }) => {
     const [isHovered, setIsHovered] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
-    // Get member's oshi colors
-    const memberColors = getMemberColors(post.member_name);
-    const oshiPrimary = memberColors?.[0] ?? '#7cc7e8';
-    const oshiSecondary = memberColors?.[1] ?? oshiPrimary;
-
-    // Ensure readable oshi color (darken if too light)
-    const getReadableColor = (hex: string): string => {
-        const r = parseInt(hex.slice(1, 3), 16);
-        const g = parseInt(hex.slice(3, 5), 16);
-        const b = parseInt(hex.slice(5, 7), 16);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-
-        if (luminance > 0.65) {
-            // Darken the color
-            const factor = 0.6;
-            const newR = Math.round(r * factor);
-            const newG = Math.round(g * factor);
-            const newB = Math.round(b * factor);
-            return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
-        }
-        return hex;
-    };
-
-    const memberNameColor = getReadableColor(oshiPrimary);
+    // Use consistent theme colors for card effects
+    const oshiPrimary = THEME_PRIMARY;
+    const oshiSecondary = THEME_SECONDARY;
 
     // Format date elegantly
     const date = new Date(post.published_at);
@@ -184,17 +169,17 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                     {post.title}
                 </h3>
 
-                {/* Member name - Oshi colored */}
+                {/* Member name - Consistent teal color, kanji only */}
                 <span
                     className="block font-semibold"
                     style={{
                         fontSize: isFeatured ? '0.7rem' : '0.6rem',
-                        color: memberNameColor,
+                        color: MEMBER_NAME_COLOR,
                         marginTop: isFeatured ? '6px' : '4px',
                         letterSpacing: '0.02em',
                     }}
                 >
-                    {post.member_name}
+                    {getMemberNameJp(post.member_name)}
                 </span>
             </div>
         </button>

@@ -44,7 +44,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
 
     return (
         <div
-            className="absolute bottom-0 left-0 right-12 flex items-center justify-between px-4 py-3 z-10"
+            className="absolute bottom-0 left-0 right-12 flex items-center justify-between px-3 py-1.5 z-10"
             style={{
                 background: 'linear-gradient(to top, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.8) 100%)',
                 backdropFilter: 'blur(8px)',
@@ -55,7 +55,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
             {prevBlog ? (
                 <button
                     onClick={onPrev}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/80 transition-colors group text-left"
+                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100/80 transition-colors group text-left"
                 >
                     <svg
                         className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors flex-shrink-0"
@@ -90,7 +90,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
             {nextBlog ? (
                 <button
                     onClick={onNext}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100/80 transition-colors group text-right"
+                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100/80 transition-colors group text-right"
                 >
                     <div className="min-w-0">
                         <div
