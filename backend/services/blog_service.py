@@ -7,6 +7,7 @@ Two-stage sync design (similar to message sync):
 - Stage 2: download_blog_content() - Content + image download with queue
 """
 import asyncio
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,9 +23,11 @@ from pyhako.blog import (
     DOWNLOAD_CONCURRENCY_INITIAL,
     IMAGE_DOWNLOAD_CONCURRENCY,
     MAX_PAGES_SAFETY_CAP,
+    MemberInfo,
     SYNC_CONCURRENCY_INCREMENTAL,
     SYNC_CONCURRENCY_INITIAL,
     get_scraper,
+    HinatazakaBlogScraper,
 )
 
 from backend.services.path_resolver import get_output_dir
@@ -75,6 +78,14 @@ class BlogService:
         folder_name = f"{date}_{blog_id}"
         return base / member_name / folder_name
 
+    def get_member_thumbnails_path(self, service: str) -> Path:
+        """Get path to member thumbnails directory."""
+        return self.get_blogs_base_path(service) / "member_thumbnails"
+
+    def get_members_cache_path(self, service: str) -> Path:
+        """Get path to members cache file."""
+        return self.get_member_thumbnails_path(service) / "members_cache.json"
+
     # =========================================================================
     # Index operations
     # =========================================================================
@@ -105,6 +116,212 @@ class BlogService:
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
             return await scraper.get_members()
+
+    # =========================================================================
+    # Member thumbnails with caching
+    # =========================================================================
+
+    def _compute_members_hash(self, members: list[dict]) -> str:
+        """Compute content hash for member data to detect changes.
+
+        Since member images change together as a group (except ポカ),
+        we hash the entire member list to detect any changes.
+        """
+        # Sort by ID for consistent hashing
+        sorted_members = sorted(members, key=lambda m: m["id"])
+        content = json.dumps(sorted_members, sort_keys=True)
+        return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+    async def _load_members_cache(self, service: str) -> dict | None:
+        """Load members cache from disk."""
+        cache_path = self.get_members_cache_path(service)
+        if cache_path.exists():
+            try:
+                async with aiofiles.open(cache_path, "r", encoding="utf-8") as f:
+                    return json.loads(await f.read())
+            except Exception as e:
+                logger.warning(f"Failed to load members cache: {e}")
+        return None
+
+    async def _save_members_cache(self, service: str, cache: dict):
+        """Save members cache to disk."""
+        cache_path = self.get_members_cache_path(service)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(cache_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(cache, ensure_ascii=False, indent=2))
+
+    async def _download_member_thumbnail(
+        self,
+        session: aiohttp.ClientSession,
+        member_id: str,
+        thumbnail_url: str,
+        thumbnails_dir: Path,
+    ) -> str | None:
+        """Download a single member thumbnail and return local filename."""
+        try:
+            async with session.get(thumbnail_url) as resp:
+                if resp.status != 200:
+                    logger.warning(
+                        "thumbnail_download_failed",
+                        member_id=member_id,
+                        status=resp.status,
+                    )
+                    return None
+
+                # Determine extension from URL or content-type
+                content_type = resp.headers.get("Content-Type", "")
+                if "jpeg" in content_type or "jpg" in content_type:
+                    ext = ".jpg"
+                elif "png" in content_type:
+                    ext = ".png"
+                elif "webp" in content_type:
+                    ext = ".webp"
+                else:
+                    # Try from URL
+                    url_path = thumbnail_url.split("?")[0]
+                    ext = Path(url_path).suffix or ".jpg"
+
+                local_filename = f"{member_id}{ext}"
+                local_path = thumbnails_dir / local_filename
+
+                content = await resp.read()
+                async with aiofiles.open(local_path, "wb") as f:
+                    await f.write(content)
+
+                return local_filename
+
+        except Exception as e:
+            logger.warning(
+                "thumbnail_download_error",
+                member_id=member_id,
+                error=str(e),
+            )
+            return None
+
+    async def get_members_with_thumbnails(self, service: str) -> list[dict]:
+        """Get blog members with locally cached thumbnails.
+
+        Uses content hash caching: fetches member data from official site,
+        compares hash with cached data, and re-downloads thumbnails only
+        if data has changed. Images are cached locally.
+
+        Args:
+            service: Service name.
+
+        Returns:
+            List of member dicts with id, name, and local thumbnail filename.
+        """
+        validate_service(service)
+        group = get_service_enum(service)
+
+        # Only Hinatazaka currently supports thumbnails
+        if group != Group.HINATAZAKA46:
+            # Fall back to basic members for other groups
+            members = await self.get_blog_members(service)
+            return [
+                {"id": mid, "name": name, "thumbnail": None}
+                for mid, name in members.items()
+            ]
+
+        thumbnails_dir = self.get_member_thumbnails_path(service)
+
+        async with aiohttp.ClientSession() as session:
+            scraper = HinatazakaBlogScraper(session)
+            fresh_members = await scraper.get_members_with_thumbnails()
+
+            if not fresh_members:
+                logger.warning("no_members_fetched", service=service)
+                # Return cached data if available
+                cache = await self._load_members_cache(service)
+                if cache:
+                    return cache.get("members", [])
+                return []
+
+            # Convert to dict format for hashing
+            fresh_data = [
+                {"id": m.id, "name": m.name, "thumbnail_url": m.thumbnail_url}
+                for m in fresh_members
+            ]
+            fresh_hash = self._compute_members_hash(fresh_data)
+
+            # Load existing cache
+            cache = await self._load_members_cache(service)
+
+            # Check if we need to re-download thumbnails
+            if cache and cache.get("hash") == fresh_hash:
+                # Content unchanged, return cached members
+                logger.debug("members_cache_hit", service=service)
+                return cache.get("members", [])
+
+            logger.info(
+                "members_cache_miss_downloading",
+                service=service,
+                fresh_hash=fresh_hash,
+                cached_hash=cache.get("hash") if cache else None,
+            )
+
+            # Download all thumbnails (they change together)
+            thumbnails_dir.mkdir(parents=True, exist_ok=True)
+
+            # Use semaphore for concurrent downloads
+            sem = asyncio.Semaphore(5)
+            result_members: list[dict] = []
+
+            async def download_and_add(member: MemberInfo):
+                async with sem:
+                    thumbnail_filename = await self._download_member_thumbnail(
+                        session,
+                        member.id,
+                        member.thumbnail_url,
+                        thumbnails_dir,
+                    )
+                    result_members.append({
+                        "id": member.id,
+                        "name": member.name,
+                        "thumbnail": thumbnail_filename,
+                    })
+
+            await asyncio.gather(*[download_and_add(m) for m in fresh_members])
+
+            # Sort by ID for consistency
+            result_members.sort(key=lambda m: m["id"])
+
+            # Save cache
+            new_cache = {
+                "hash": fresh_hash,
+                "members": result_members,
+            }
+            await self._save_members_cache(service, new_cache)
+
+            logger.info(
+                "members_thumbnails_cached",
+                service=service,
+                count=len(result_members),
+            )
+
+            return result_members
+
+    def get_member_thumbnail_path(self, service: str, member_id: str) -> Path | None:
+        """Get path to a member's cached thumbnail image.
+
+        Args:
+            service: Service name.
+            member_id: Member ID.
+
+        Returns:
+            Path to the thumbnail file, or None if not found.
+        """
+        thumbnails_dir = self.get_member_thumbnails_path(service)
+        if not thumbnails_dir.exists():
+            return None
+
+        # Check for common extensions
+        for ext in [".jpg", ".png", ".webp"]:
+            path = thumbnails_dir / f"{member_id}{ext}"
+            if path.exists():
+                return path
+
+        return None
 
     # =========================================================================
     # Stage 1: Metadata sync (fast)
