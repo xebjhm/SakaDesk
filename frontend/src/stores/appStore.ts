@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
+export type BlogSelectionMode = 'all' | 'favorite';
 
 interface AppState {
     // Service selection
@@ -14,6 +15,10 @@ interface AppState {
     setActiveFeature: (service: string, feature: FeatureId) => void;
     getActiveFeature: (service: string) => FeatureId;
 
+    // Blog view reset trigger (increments when blog icon clicked to reset view)
+    blogViewResetCounter: number;
+    triggerBlogViewReset: () => void;
+
     // Feature order preference (per service) - for drag reordering
     featureOrders: Record<string, FeatureId[]>;
     setFeatureOrder: (service: string, order: FeatureId[]) => void;
@@ -24,6 +29,11 @@ interface AppState {
     toggleFavorite: (serviceId: string, memberId: string) => void;
     getFavorites: (serviceId: string) => string[];
     isFavorite: (serviceId: string, memberId: string) => boolean;
+
+    // Blog selection mode (per service) - All or Favorite
+    blogSelectionModes: Record<string, BlogSelectionMode>;
+    setBlogSelectionMode: (serviceId: string, mode: BlogSelectionMode) => void;
+    getBlogSelectionMode: (serviceId: string) => BlogSelectionMode;
 }
 
 const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclub', 'ai'];
@@ -40,6 +50,10 @@ export const useAppStore = create<AppState>()(
                     activeFeatures: { ...state.activeFeatures, [service]: feature },
                 })),
             getActiveFeature: (service) => get().activeFeatures[service] || 'messages',
+
+            blogViewResetCounter: 0,
+            triggerBlogViewReset: () =>
+                set((state) => ({ blogViewResetCounter: state.blogViewResetCounter + 1 })),
 
             featureOrders: {},
             setFeatureOrder: (service, order) =>
@@ -62,6 +76,13 @@ export const useAppStore = create<AppState>()(
             getFavorites: (serviceId) => get().favorites[serviceId] || [],
             isFavorite: (serviceId, memberId) =>
                 (get().favorites[serviceId] || []).includes(memberId),
+
+            blogSelectionModes: {},
+            setBlogSelectionMode: (serviceId, mode) =>
+                set((state) => ({
+                    blogSelectionModes: { ...state.blogSelectionModes, [serviceId]: mode },
+                })),
+            getBlogSelectionMode: (serviceId) => get().blogSelectionModes[serviceId] || 'all',
         }),
         {
             name: 'hakodesk-app-state',
@@ -70,6 +91,7 @@ export const useAppStore = create<AppState>()(
                 activeFeatures: state.activeFeatures,
                 featureOrders: state.featureOrders,
                 favorites: state.favorites,
+                blogSelectionModes: state.blogSelectionModes,
             }),
         }
     )
