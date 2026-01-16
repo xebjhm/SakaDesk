@@ -1,23 +1,36 @@
 // frontend/src/data/memberColors.ts
-// Hinatazaka46 Member Penlight Colors for HakoDesk
-// IDs are the ct parameter values from the official website (verified 2026-01-16)
+// Multi-Group Member Penlight Colors for HakoDesk
+// Supports Hinatazaka46, Sakurazaka46, and Nogizaka46
+
+import type { GroupId } from '../config/groupThemes';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export type MemberGroupId = Exclude<GroupId, 'default'>;
 
 export interface MemberColor {
     id: string;
     nameJp: string;
     nameEn: string;
-    generation: '2nd' | '3rd' | '4th' | '5th';
+    generation: string;
     penlightHex: [string, string];
 }
 
 export const GENERATION_LABELS: Record<string, string> = {
+    '1st': '1st Gen',
     '2nd': '2nd Gen',
     '3rd': '3rd Gen',
     '4th': '4th Gen',
     '5th': '5th Gen',
 };
 
-export const MEMBER_COLORS: MemberColor[] = [
+// ============================================================================
+// Member Data by Group
+// ============================================================================
+
+const HINATAZAKA_MEMBERS: MemberColor[] = [
     // Mascot (ct=000)
     { id: '000', nameJp: 'ポカ', nameEn: 'Poka', generation: '2nd', penlightHex: ['#ffea00', '#ff9ccb'] },
 
@@ -59,6 +72,27 @@ export const MEMBER_COLORS: MemberColor[] = [
     { id: '46', nameJp: '松尾桜', nameEn: 'Matsuo Sakura', generation: '5th', penlightHex: ['#ff9ccb', '#ffffff'] },
 ];
 
+// Placeholder arrays for future groups
+const SAKURAZAKA_MEMBERS: MemberColor[] = [];
+const NOGIZAKA_MEMBERS: MemberColor[] = [];
+
+// ============================================================================
+// Multi-Group Data Structure
+// ============================================================================
+
+const MEMBER_COLORS_BY_GROUP: Record<MemberGroupId, MemberColor[]> = {
+    hinatazaka: HINATAZAKA_MEMBERS,
+    sakurazaka: SAKURAZAKA_MEMBERS,
+    nogizaka: NOGIZAKA_MEMBERS,
+};
+
+// ============================================================================
+// Backward Compatibility Exports
+// ============================================================================
+
+// Maintain backward compatibility - MEMBER_COLORS defaults to Hinatazaka
+export const MEMBER_COLORS: MemberColor[] = HINATAZAKA_MEMBERS;
+
 // Create a lookup map for quick access by member ID, Japanese name, or English name
 export const MEMBER_COLOR_MAP: Map<string, MemberColor> = new Map(
     MEMBER_COLORS.flatMap(m => [
@@ -68,14 +102,71 @@ export const MEMBER_COLOR_MAP: Map<string, MemberColor> = new Map(
     ])
 );
 
-// Get member colors by name (supports ID, Japanese or English name)
-export function getMemberColors(name: string): [string, string] | null {
-    const member = MEMBER_COLOR_MAP.get(name);
+// ============================================================================
+// Multi-Group Helper Functions
+// ============================================================================
+
+/**
+ * Map service ID to member group ID
+ */
+export function getGroupFromService(serviceId: string | null): MemberGroupId {
+    if (!serviceId) return 'hinatazaka';
+
+    const serviceLower = serviceId.toLowerCase();
+
+    if (serviceLower.includes('hinata') || serviceLower.includes('hinatazaka')) {
+        return 'hinatazaka';
+    }
+    if (serviceLower.includes('sakura') || serviceLower.includes('sakurazaka')) {
+        return 'sakurazaka';
+    }
+    if (serviceLower.includes('nogi') || serviceLower.includes('nogizaka')) {
+        return 'nogizaka';
+    }
+
+    return 'hinatazaka';
+}
+
+/**
+ * Get all members for a specific group
+ */
+export function getMembersForGroup(groupId: MemberGroupId): MemberColor[] {
+    return MEMBER_COLORS_BY_GROUP[groupId] ?? [];
+}
+
+/**
+ * Create a lookup map for a specific group
+ */
+export function createGroupMemberMap(groupId: MemberGroupId): Map<string, MemberColor> {
+    const members = getMembersForGroup(groupId);
+    return new Map(
+        members.flatMap(m => [
+            [m.id, m],
+            [m.nameJp, m],
+            [m.nameEn, m],
+        ])
+    );
+}
+
+// ============================================================================
+// Lookup Functions (with optional group parameter for multi-group support)
+// ============================================================================
+
+/**
+ * Get member colors by name (supports ID, Japanese or English name)
+ * @param name - Member ID, Japanese name, or English name
+ * @param groupId - Optional group ID (defaults to hinatazaka for backward compatibility)
+ */
+export function getMemberColors(name: string, groupId?: MemberGroupId): [string, string] | null {
+    const map = groupId ? createGroupMemberMap(groupId) : MEMBER_COLOR_MAP;
+    const member = map.get(name);
     return member?.penlightHex ?? null;
 }
 
-// Extract kanji-only from API name format (e.g., "松田 好花まつだ このか" → "松田好花")
-// API format: "姓 名せい めい" (kanji with space + hiragana reading)
+/**
+ * Extract kanji-only from API name format (e.g., "松田 好花まつだ このか" → "松田好花")
+ * API format: "姓 名せい めい" (kanji with space + hiragana reading)
+ */
 function extractKanjiFromApiName(apiName: string): string {
     // Remove spaces first
     const noSpaces = apiName.replace(/\s+/g, '');
@@ -84,33 +175,47 @@ function extractKanjiFromApiName(apiName: string): string {
     return kanjiOnly;
 }
 
-// Get kanji-only member name from API name format
-// Looks up MEMBER_COLORS to find the proper nameJp, with fallback to extracted kanji
-export function getMemberNameJp(apiName: string): string {
+/**
+ * Get kanji-only member name from API name format
+ * Looks up member data to find the proper nameJp, with fallback to extracted kanji
+ * @param apiName - Name from API (may include hiragana readings)
+ * @param groupId - Optional group ID (defaults to hinatazaka for backward compatibility)
+ */
+export function getMemberNameJp(apiName: string, groupId?: MemberGroupId): string {
+    const map = groupId ? createGroupMemberMap(groupId) : MEMBER_COLOR_MAP;
+
     // First try direct lookup
-    const directMatch = MEMBER_COLOR_MAP.get(apiName);
+    const directMatch = map.get(apiName);
     if (directMatch) return directMatch.nameJp;
 
     // Try without spaces
     const noSpaces = apiName.replace(/\s+/g, '');
-    const noSpacesMatch = MEMBER_COLOR_MAP.get(noSpaces);
+    const noSpacesMatch = map.get(noSpaces);
     if (noSpacesMatch) return noSpacesMatch.nameJp;
 
     // Extract kanji and try lookup
     const kanjiOnly = extractKanjiFromApiName(apiName);
-    const kanjiMatch = MEMBER_COLOR_MAP.get(kanjiOnly);
+    const kanjiMatch = map.get(kanjiOnly);
     if (kanjiMatch) return kanjiMatch.nameJp;
 
     // Fallback: return extracted kanji (or original if extraction fails)
     return kanjiOnly || apiName;
 }
 
-// Generate CSS gradient from penlight colors
+// ============================================================================
+// CSS Helper Functions
+// ============================================================================
+
+/**
+ * Generate CSS gradient from penlight colors
+ */
 export function getPenlightGradient(colors: [string, string], angle: number = 135): string {
     return `linear-gradient(${angle}deg, ${colors[0]}, ${colors[1]})`;
 }
 
-// Generate CSS box-shadow glow effect from penlight colors
+/**
+ * Generate CSS box-shadow glow effect from penlight colors
+ */
 export function getPenlightGlow(colors: [string, string], intensity: number = 0.5): string {
     return `0 0 20px ${colors[0]}${Math.round(intensity * 255).toString(16).padStart(2, '0')}, 0 0 40px ${colors[1]}${Math.round(intensity * 0.5 * 255).toString(16).padStart(2, '0')}`;
 }
