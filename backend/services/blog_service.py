@@ -454,13 +454,14 @@ class BlogService:
     # Query operations
     # =========================================================================
 
-    async def get_recent_posts(self, service: str, limit: int = 20) -> list[dict]:
+    async def get_recent_posts(self, service: str, limit: int = 20, member_ids: list[str] | None = None) -> list[dict]:
         """
         Get recent posts across all members, sorted by date descending.
 
         Args:
             service: Service name.
             limit: Maximum number of posts to return (default 20, max 100).
+            member_ids: If provided, only return posts from these members.
 
         Returns:
             List of recent posts with member info attached.
@@ -469,6 +470,10 @@ class BlogService:
         all_posts = []
 
         for member_id, member_data in index.get("members", {}).items():
+            # Skip if filtering and member not in list
+            if member_ids and member_id not in member_ids:
+                continue
+
             member_name = member_data.get("name", "")
             for blog in member_data.get("blogs", []):
                 all_posts.append({

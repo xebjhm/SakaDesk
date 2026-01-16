@@ -58,12 +58,15 @@ class RecentPostsResponse(BaseModel):
 @router.get("/recent", response_model=RecentPostsResponse)
 async def get_recent_posts(
     service: str = Query(...),
-    limit: int = Query(default=20, ge=1, le=100)
+    limit: int = Query(default=20, ge=1, le=100),
+    member_ids: Optional[str] = Query(default=None, description="Comma-separated member IDs to filter by")
 ):
-    """Get recent blog posts across all members, sorted by date."""
+    """Get recent blog posts across all members (or filtered by member_ids), sorted by date."""
     try:
         validate_service(service)
-        posts = await blog_service.get_recent_posts(service, limit)
+        # Parse comma-separated member_ids if provided
+        member_id_list = [m.strip() for m in member_ids.split(",") if m.strip()] if member_ids else None
+        posts = await blog_service.get_recent_posts(service, limit, member_id_list)
         return RecentPostsResponse(service=service, posts=posts)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
