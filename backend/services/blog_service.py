@@ -393,8 +393,11 @@ class BlogService:
                         since_date = datetime.fromisoformat(newest_date_str)
 
                     # Use fast metadata method - parses list pages only
+                    # Pass member_name to filter out "featured" blogs from other members
+                    # (Sakurazaka list pages sometimes include blogs from other members)
                     async for entry in scraper.get_blogs_metadata(
-                        member_id, since_date=since_date, max_pages=max_pages
+                        member_id, since_date=since_date, max_pages=max_pages,
+                        member_name=member_name
                     ):
                         if entry.id not in existing_ids:
                             index["members"][member_id]["blogs"].append(
@@ -685,6 +688,7 @@ class BlogService:
         """
         index = await self.load_blog_index(service)
         all_posts = []
+        seen_ids: set[str] = set()  # Dedupe by blog ID (handles corrupted indices)
 
         for member_id, member_data in index.get("members", {}).items():
             # Skip if filtering and member not in list
@@ -693,8 +697,14 @@ class BlogService:
 
             member_name = member_data.get("name", "")
             for blog in member_data.get("blogs", []):
+                blog_id = blog["id"]
+                # Skip duplicates (same blog appearing under multiple members)
+                if blog_id in seen_ids:
+                    continue
+                seen_ids.add(blog_id)
+
                 all_posts.append({
-                    "id": blog["id"],
+                    "id": blog_id,
                     "title": blog["title"],
                     "published_at": blog["published_at"],
                     "url": blog["url"],
