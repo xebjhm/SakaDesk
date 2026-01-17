@@ -1,7 +1,8 @@
 // frontend/src/features/blogs/components/MemberSelectModal.tsx
 import React, { useMemo, useEffect } from 'react';
 import type { BlogMemberWithThumbnail } from '../../../types';
-import { MEMBER_COLORS, GENERATION_LABELS } from '../../../data/memberColors';
+import { GENERATION_LABELS } from '../../../data/memberColors';
+import { getMembers, getMemberPenlightHex, toGroupId } from '../../../data/memberData';
 import { getMemberThumbnailUrl } from '../api';
 import { useAppStore } from '../../../store/appStore';
 
@@ -16,12 +17,13 @@ interface MemberSelectModalProps {
     serviceId: string;
 }
 
-type GenerationKey = '2nd' | '3rd' | '4th' | '5th' | 'mascot';
+type GenerationKey = '1st' | '2nd' | '3rd' | '4th' | '5th' | 'mascot';
 
 interface EnrichedMember extends BlogMemberWithThumbnail {
     nameJp: string;
     generation: GenerationKey;
     penlightColors: [string, string] | null;
+    status: 'active' | 'graduated' | 'unknown';
 }
 
 // Stable empty array to avoid creating new reference on each render
@@ -53,29 +55,59 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]); // onClose intentionally excluded - callback identity changes on each render
 
-    // Enrich members with generation and name data
+    // Enrich members with generation and name data using service-specific member data
     const enrichedMembers = useMemo(() => {
+        // Map serviceId to GroupId for member data lookup (single source of truth)
+        const groupId = toGroupId(serviceId);
+        const memberDataList = getMembers(groupId);
+
+        // Build lookup map by blogId and name for efficient matching
+        const memberDataMap = new Map<string, typeof memberDataList[0]>();
+        memberDataList.forEach(m => {
+            memberDataMap.set(m.blogId, m);
+            memberDataMap.set(m.nameKanji, m);
+            // Also try without spaces for name matching
+            memberDataMap.set(m.nameKanji.replace(/\s+/g, ''), m);
+        });
+
         return members.map(member => {
-            const colorData = MEMBER_COLORS.find(
-                m => m.nameJp === member.name || m.nameEn === member.name || m.id === member.id
-            );
+            // Find member data by ID or name
+            const memberData = memberDataMap.get(member.id)
+                || memberDataMap.get(member.name)
+                || memberDataMap.get(member.name.replace(/\s+/g, ''));
+
             // Treat mascot (ポカ, id=000) specially
             const isMascot = member.id === '000' || member.name === 'ポカ';
+
+            // Get penlight colors if member data found
+            let penlightColors: [string, string] | null = null;
+            if (memberData) {
+                penlightColors = getMemberPenlightHex(memberData, groupId);
+            }
+
+            // Map numeric generation to string key
+            const genNumber = memberData?.generation ?? 2;
+            const genKey = `${genNumber}${genNumber === 1 ? 'st' : genNumber === 2 ? 'nd' : genNumber === 3 ? 'rd' : 'th'}` as GenerationKey;
+
             return {
                 ...member,
-                nameJp: colorData?.nameJp ?? member.name,
-                generation: isMascot ? 'mascot' as GenerationKey : (colorData?.generation ?? '2nd') as GenerationKey,
-                penlightColors: colorData?.penlightHex ?? null,
+                nameJp: memberData?.nameKanji ?? member.name,
+                generation: isMascot ? 'mascot' as GenerationKey : genKey,
+                penlightColors,
+                status: memberData?.status ?? 'unknown',
             };
         });
-    }, [members]);
+    }, [members, serviceId]);
 
-    // Use enriched members directly (no filtering)
-    const filteredMembers = enrichedMembers;
+    // Filter out graduated members
+    const filteredMembers = useMemo(() => {
+        return enrichedMembers.filter(member => member.status !== 'graduated');
+    }, [enrichedMembers]);
 
     // Group members by generation
     const membersByGeneration = useMemo(() => {
         const groups: Record<GenerationKey, EnrichedMember[]> = {
+            '1st': [],
             '2nd': [],
             '3rd': [],
             '4th': [],
@@ -89,7 +121,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     }, [filteredMembers]);
 
     // Generation order (mascot at the end)
-    const generationOrder: GenerationKey[] = ['2nd', '3rd', '4th', '5th', 'mascot'];
+    const generationOrder: GenerationKey[] = ['1st', '2nd', '3rd', '4th', '5th', 'mascot'];
 
     // Extended generation labels including mascot
     const extendedLabels: Record<GenerationKey, string> = {
@@ -97,13 +129,34 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
         'mascot': 'Mascot',
     } as Record<GenerationKey, string>;
 
-    // Calculate grid columns for a generation (1-2 rows only)
-    // With larger avatars, we need fewer columns
+    // Calculate max columns needed across all generations for modal sizing
+    // This determines the modal width and the threshold for single-row display
+    const maxCols = useMemo(() => {
+        const counts = Object.values(membersByGeneration).map(m => m.length);
+        // Max columns = ceil(largest_count / 2) to ensure 2 rows max
+        const maxNeeded = Math.max(...counts.map(c => Math.ceil(c / 2)), 4);
+        return maxNeeded;
+    }, [membersByGeneration]);
+
+    // Calculate grid columns for a generation (1-2 rows max)
+    // Small groups show in single row, larger groups expand to 2 rows
+    // Threshold is dynamic based on maxCols (largest gen's 2-row column count)
     const getGridCols = (memberCount: number): number => {
-        if (memberCount <= 4) return memberCount; // Single row
-        if (memberCount <= 10) return Math.ceil(memberCount / 2); // Two rows
-        return 6; // Max 6 columns for larger counts
+        if (memberCount <= maxCols) return memberCount; // Single row
+        // For larger counts, use 2 rows with ceiling division
+        return Math.ceil(memberCount / 2);
     };
+
+    // Calculate modal width based on max columns
+    // Each avatar: 80px (w-20) + gap: 24px (gap-6) = 104px per column
+    // Plus padding: 48px (p-6 * 2)
+    const modalWidth = useMemo(() => {
+        const colWidth = 100; // minmax(0, 100px)
+        const gap = 24; // gap-6
+        const padding = 48; // p-6 * 2
+        const width = maxCols * colWidth + (maxCols - 1) * gap + padding;
+        return Math.min(Math.max(width, 400), 1200); // Clamp between 400-1200px
+    }, [maxCols]);
 
     // Format name with space between family and given name (Japanese style)
     const formatName = (name: string): string => {
@@ -132,8 +185,9 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
 
             {/* Modal */}
             <div
-                className="relative w-full max-w-3xl max-h-[85vh] mx-4 rounded-3xl overflow-hidden flex flex-col animate-modal-in"
+                className="relative w-full max-h-[85vh] mx-4 rounded-3xl overflow-hidden flex flex-col animate-modal-in"
                 style={{
+                    maxWidth: `${modalWidth}px`,
                     background: 'rgba(255, 255, 255, 0.95)',
                     backdropFilter: 'blur(20px)',
                     WebkitBackdropFilter: 'blur(20px)',

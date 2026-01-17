@@ -4,7 +4,7 @@
 import React from 'react';
 import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
-import { getMemberColors, getMemberNameJp } from '../../../data/memberColors';
+import { getMemberColors, getMemberNameJp, getGroupFromService } from '../../../data/memberColors';
 import { useBlogTheme } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
@@ -21,6 +21,7 @@ export interface BlogReaderProps {
     onRetry: () => void;
     onNavigate: (blog: BlogMeta) => void;
     onMemberClick: () => void;
+    serviceId: string;
 }
 
 export const BlogReader: React.FC<BlogReaderProps> = ({
@@ -35,14 +36,22 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     onRetry,
     onNavigate,
     onMemberClick,
+    serviceId,
 }) => {
     const theme = useBlogTheme();
+
+    // Get group ID for correct member data lookup
+    const groupId = getGroupFromService(serviceId);
 
     // Get member colors for oshi theming
     // Try with original name, then without spaces (API returns names with spaces like "藤嶌 果歩")
     // ポカ (mascot) should have white background - no oshi colors
     const isMascot = member.id === '000' || member.name === 'ポカ';
-    const memberColors = isMascot ? null : (getMemberColors(member.name) ?? getMemberColors(member.name.replace(/\s+/g, '')));
+    const memberColors = isMascot ? null : (
+        getMemberColors(member.name, groupId) ??
+        getMemberColors(member.name.replace(/\s+/g, ''), groupId) ??
+        getMemberColors(member.id, groupId)
+    );
     const oshiColor1 = memberColors?.[0] ?? '#ffffff';
     const oshiColor2 = memberColors?.[1] ?? '#ffffff';
 
@@ -57,10 +66,37 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         if (memberBlogs[index]) onNavigate(memberBlogs[index]);
     };
 
+    // Get base URL for normalizing relative URLs in blog content
+    const getBaseUrl = (svcId: string): string => {
+        const svc = svcId.toLowerCase();
+        if (svc.includes('hinata')) return 'https://www.hinatazaka46.com';
+        if (svc.includes('sakura')) return 'https://sakurazaka46.com';
+        if (svc.includes('nogi')) return 'https://www.nogizaka46.com';
+        return '';
+    };
+
+    // Normalize relative URLs in HTML content to absolute URLs
+    const normalizeHtmlUrls = (html: string, baseUrl: string): string => {
+        if (!baseUrl) return html;
+        return html.replace(
+            /(src|href)=(["'])([^"']+)\2/g,
+            (match, attr, quote, url) => {
+                if (!url) return match;
+                if (url.startsWith('//')) return `${attr}=${quote}https:${url}${quote}`;
+                if (url.startsWith('/')) return `${attr}=${quote}${baseUrl}${url}${quote}`;
+                if (!url.startsWith('http')) return `${attr}=${quote}${baseUrl}/${url}${quote}`;
+                return match;
+            }
+        );
+    };
+
     // Sanitize HTML content using DOMPurify (XSS protection)
     // DOMPurify is a well-established sanitization library that removes malicious content
-    const sanitizedHtml = content
-        ? DOMPurify.sanitize(content.content.html, {
+    // First normalize URLs to handle cached content with relative URLs
+    const baseUrl = getBaseUrl(serviceId);
+    const normalizedHtml = content ? normalizeHtmlUrls(content.content.html, baseUrl) : '';
+    const sanitizedHtml = normalizedHtml
+        ? DOMPurify.sanitize(normalizedHtml, {
             ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'img', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li'],
             ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
         })
@@ -104,7 +140,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     className="font-medium transition-all duration-200 hover:opacity-70"
                     style={{ color: theme.memberNameColor }}
                 >
-                    {getMemberNameJp(member.name)}
+                    {getMemberNameJp(member.name, groupId)}
                 </button>
                 <span className="text-gray-400">/</span>
                 <span className="text-gray-700 truncate max-w-xs">{blog.title}</span>
@@ -154,7 +190,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                         className="font-medium transition-all duration-200 hover:opacity-70"
                                         style={{ color: theme.memberNameColor }}
                                     >
-                                        {getMemberNameJp(content.meta.member_name)}
+                                        {getMemberNameJp(content.meta.member_name, groupId)}
                                     </button>
                                     <span>-</span>
                                     <time>

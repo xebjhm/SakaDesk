@@ -407,6 +407,7 @@ export const BlogsFeature: React.FC = () => {
                         onRetry={handleRetry}
                         onNavigate={handleNavigateBlog}
                         onMemberClick={handleMemberClick}
+                        serviceId={activeService ?? ''}
                     />
                 );
             })()}

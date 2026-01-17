@@ -207,6 +207,32 @@ export function getPenlightGlow(colors: [string, string], intensity: number = 0.
 }
 
 // ============================================================================
+// Service ID to Group ID Conversion
+// ============================================================================
+
+/**
+ * Convert a service ID (e.g., "sakurazaka46", "hinatazaka46-blogs") to a GroupId.
+ * This is the single source of truth for service-to-group mapping.
+ */
+export function toGroupId(serviceId: string | null): GroupId {
+    if (!serviceId) return 'hinatazaka'; // Default fallback
+
+    const serviceLower = serviceId.toLowerCase();
+
+    if (serviceLower.includes('hinata')) {
+        return 'hinatazaka';
+    }
+    if (serviceLower.includes('sakura')) {
+        return 'sakurazaka';
+    }
+    if (serviceLower.includes('nogi')) {
+        return 'nogizaka';
+    }
+
+    return 'hinatazaka'; // Default fallback
+}
+
+// ============================================================================
 // Generation Labels
 // ============================================================================
 
