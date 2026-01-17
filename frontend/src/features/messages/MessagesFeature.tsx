@@ -9,6 +9,7 @@ import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
+import { useMessagesTheme } from './hooks/useMessagesTheme';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -68,6 +69,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 }) => {
     // Get active service from Zustand store
     const { activeService } = useAppStore();
+
+    // Get theme for current service
+    const theme = useMessagesTheme();
 
     // Chat state
     const [selectedGroupDir, setSelectedGroupDir] = useState<string | undefined>();
@@ -390,7 +394,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             {/* Main Chat Area */}
             <div className="flex-1 flex flex-col h-full relative min-w-0">
                 {/* Header */}
-                <header className="h-16 bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] flex items-center px-4 shadow-sm z-10 shrink-0">
+                <header
+                    className="h-16 flex items-center px-4 shadow-sm z-10 shrink-0"
+                    style={{
+                        background: `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
+                    }}
+                >
                     <button
                         className="md:hidden mr-3 text-white"
                         onClick={() => setIsSidebarOpen(true)}
