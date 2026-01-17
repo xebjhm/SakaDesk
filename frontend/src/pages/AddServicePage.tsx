@@ -36,7 +36,7 @@ const SERVICES: ServiceCardInfo[] = [
 ];
 
 interface AddServicePageProps {
-    onLoginSuccess: () => void;
+    onLoginSuccess: (serviceId: string) => void;
     onBack?: () => void;
     connectedServices?: string[];
 }
@@ -55,7 +55,7 @@ export const AddServicePage: React.FC<AddServicePageProps> = ({
         try {
             const res = await fetch(`/api/auth/login?service=${encodeURIComponent(serviceId)}`, { method: 'POST' });
             if (!res.ok) throw new Error("Login failed or cancelled");
-            onLoginSuccess();
+            onLoginSuccess(serviceId);
         } catch (err: any) {
             setError(err.message);
         } finally {

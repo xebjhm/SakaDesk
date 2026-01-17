@@ -13,7 +13,7 @@ import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal } from './components'
 
 function App() {
-    const { activeService } = useAppStore();
+    const { activeService, setActiveService } = useAppStore();
 
     // Auth hook
     const {
@@ -93,8 +93,9 @@ function App() {
     if (isAuthenticated === false || connectedServices.length === 0 || showAddServicePage) {
         return (
             <AddServicePage
-                onLoginSuccess={() => {
+                onLoginSuccess={(serviceId: string) => {
                     setShowAddServicePage(false);
+                    setActiveService(serviceId);
                     checkAuth();
                 }}
                 onBack={connectedServices.length > 0 ? () => setShowAddServicePage(false) : undefined}
