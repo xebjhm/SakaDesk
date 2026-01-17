@@ -5,6 +5,11 @@ import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
 
+interface MessageBubbleTheme {
+    bubbleBorder: string;
+    voicePlayerAccent: string;
+}
+
 interface MessageBubbleProps {
     message: Message;
     member_name: string;
@@ -15,6 +20,7 @@ interface MessageBubbleProps {
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
+    theme?: MessageBubbleTheme;
 }
 
 const SHELTER_COLORS = {
@@ -126,6 +132,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onLongPress,
     onToggleFavorite,
     onAvatarClick,
+    theme,
 }) => {
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -261,11 +268,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 <div className="relative">
                     {isUnread && <ShelterOverlay />}
 
-                    <div className={cn(
-                        "bg-white rounded-2xl shadow-sm border border-gray-100 transition-all duration-300",
-                        message.type === 'voice' ? "p-0 overflow-visible" : "p-3 overflow-hidden",
-                        isUnread && "opacity-0 pointer-events-none" // Hide content but keep layout
-                    )}>
+                    <div
+                        className={cn(
+                            "bg-white rounded-2xl shadow-sm border transition-all duration-300",
+                            message.type === 'voice' ? "p-0 overflow-visible" : "p-3 overflow-hidden",
+                            isUnread && "opacity-0 pointer-events-none" // Hide content but keep layout
+                        )}
+                        style={{
+                            borderColor: theme?.bubbleBorder || '#E5E7EB',
+                        }}
+                    >
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
@@ -293,7 +305,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Voice */}
                         {message.type === 'voice' && mediaUrl && (
-                            <VoicePlayer src={mediaUrl} />
+                            <VoicePlayer src={mediaUrl} accentColor={theme?.voicePlayerAccent} />
                         )}
 
                         {/* Text */}
