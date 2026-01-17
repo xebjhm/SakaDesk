@@ -44,7 +44,7 @@ function App() {
         openSettingsModal,
     } = useSettings(isAuthenticated);
 
-    // Sync hook
+    // Sync hook - now syncs ALL connected services independently
     const {
         syncProgress,
         showSyncModal,
@@ -54,6 +54,7 @@ function App() {
     } = useSync({
         isAuthenticated,
         appSettings,
+        connectedServices,
         setAuthError,
         setIsAuthenticated: (auth: boolean) => {
             if (!auth) {
@@ -93,10 +94,12 @@ function App() {
     if (isAuthenticated === false || connectedServices.length === 0 || showAddServicePage) {
         return (
             <AddServicePage
-                onLoginSuccess={(serviceId: string) => {
+                onLoginSuccess={async (serviceId: string) => {
                     setShowAddServicePage(false);
                     setActiveService(serviceId);
-                    checkAuth();
+                    await checkAuth();
+                    // Start sync for the newly connected service with blocking modal
+                    startSync(true, serviceId);
                 }}
                 onBack={connectedServices.length > 0 ? () => setShowAddServicePage(false) : undefined}
                 connectedServices={connectedServices}

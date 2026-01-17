@@ -55,6 +55,10 @@ export const AddServicePage: React.FC<AddServicePageProps> = ({
         try {
             const res = await fetch(`/api/auth/login?service=${encodeURIComponent(serviceId)}`, { method: 'POST' });
             if (!res.ok) throw new Error("Login failed or cancelled");
+
+            // Initialize service settings entry (ensures service is in settings.json)
+            await fetch(`/api/settings/service/${encodeURIComponent(serviceId)}/init`, { method: 'POST' });
+
             onLoginSuccess(serviceId);
         } catch (err: any) {
             setError(err.message);
