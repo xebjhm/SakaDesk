@@ -123,17 +123,6 @@ async def get_groups():
 
     groups = []
 
-    # Load metadata for enrichment
-    metadata_map = {}
-    meta_file = output_dir / "sync_metadata.json"
-    if meta_file.exists():
-        try:
-            with open(meta_file, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-                metadata_map = meta.get('groups', {})
-        except Exception as e:
-            logger.warning("Failed to load sync metadata for groups", error=str(e))
-
     # Iterate over service directories (e.g., 日向坂46)
     for service_dir in output_dir.iterdir():
         if not service_dir.is_dir():
