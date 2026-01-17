@@ -41,7 +41,7 @@ def test_load_blog_index_default_when_missing(blog_service, tmp_path):
     """load_blog_index returns default dict when index doesn't exist."""
     with patch.object(blog_service, 'get_blog_index_path', return_value=tmp_path / "nonexistent" / "index.json"):
         result = asyncio.run(blog_service.load_blog_index("hinatazaka46"))
-        assert result == {"members": {}, "last_sync": None}
+        assert result == {"members": {}, "last_sync": None, "last_download": None}
 
 
 def test_save_and_load_blog_index(blog_service, tmp_path):

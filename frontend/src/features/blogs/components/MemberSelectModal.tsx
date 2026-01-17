@@ -17,7 +17,7 @@ interface MemberSelectModalProps {
     serviceId: string;
 }
 
-type GenerationKey = '1st' | '2nd' | '3rd' | '4th' | '5th' | 'mascot';
+type GenerationKey = '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | 'mascot';
 
 interface EnrichedMember extends BlogMemberWithThumbnail {
     nameJp: string;
@@ -112,16 +112,21 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             '3rd': [],
             '4th': [],
             '5th': [],
+            '6th': [],
+            '7th': [],
             'mascot': [],
         };
         filteredMembers.forEach(member => {
-            groups[member.generation].push(member);
+            // Only push if generation key exists in groups
+            if (member.generation in groups) {
+                groups[member.generation].push(member);
+            }
         });
         return groups;
     }, [filteredMembers]);
 
     // Generation order (mascot at the end)
-    const generationOrder: GenerationKey[] = ['1st', '2nd', '3rd', '4th', '5th', 'mascot'];
+    const generationOrder: GenerationKey[] = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', 'mascot'];
 
     // Extended generation labels including mascot
     const extendedLabels: Record<GenerationKey, string> = {

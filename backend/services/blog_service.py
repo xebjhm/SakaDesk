@@ -214,8 +214,8 @@ class BlogService:
         validate_service(service)
         group = get_service_enum(service)
 
-        # Only Hinatazaka and Sakurazaka currently support thumbnails
-        if group not in (Group.HINATAZAKA46, Group.SAKURAZAKA46):
+        # All three groups now support thumbnails
+        if group not in (Group.HINATAZAKA46, Group.SAKURAZAKA46, Group.NOGIZAKA46):
             # Fall back to basic members for other groups
             members = await self.get_blog_members(service)
             return [
