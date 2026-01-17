@@ -6,7 +6,13 @@ export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
 export type BlogSelectionMode = 'all' | 'favorite';
 
 interface AppState {
-    // Service selection
+    // Selected services (user's interest, persisted locally)
+    selectedServices: string[];
+    addSelectedService: (serviceId: string) => void;
+    removeSelectedService: (serviceId: string) => void;
+    setSelectedServices: (services: string[]) => void;
+
+    // Active service (currently viewing)
     activeService: string | null;
     setActiveService: (service: string) => void;
 
@@ -41,6 +47,29 @@ const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclu
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({
+            // Selected services
+            selectedServices: [],
+            addSelectedService: (serviceId) =>
+                set((state) => ({
+                    selectedServices: state.selectedServices.includes(serviceId)
+                        ? state.selectedServices
+                        : [...state.selectedServices, serviceId],
+                })),
+            removeSelectedService: (serviceId) =>
+                set((state) => {
+                    const newSelected = state.selectedServices.filter((id) => id !== serviceId);
+                    // If removing the active service, switch to first remaining or null
+                    const newActiveService =
+                        state.activeService === serviceId
+                            ? newSelected[0] || null
+                            : state.activeService;
+                    return {
+                        selectedServices: newSelected,
+                        activeService: newActiveService,
+                    };
+                }),
+            setSelectedServices: (services) => set({ selectedServices: services }),
+
             activeService: null,
             setActiveService: (service) => set({ activeService: service }),
 
@@ -86,7 +115,17 @@ export const useAppStore = create<AppState>()(
         }),
         {
             name: 'hakodesk-app-state',
+            version: 2,
+            migrate: (persistedState: unknown, version: number) => {
+                const state = persistedState as Partial<AppState>;
+                if (version < 2) {
+                    // v1 → v2: Add selectedServices (empty, will be populated by App.tsx migration)
+                    return { ...state, selectedServices: [] };
+                }
+                return state;
+            },
             partialize: (state) => ({
+                selectedServices: state.selectedServices,
                 activeService: state.activeService,
                 activeFeatures: state.activeFeatures,
                 featureOrders: state.featureOrders,
