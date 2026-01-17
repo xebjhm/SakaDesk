@@ -1,0 +1,103 @@
+import { describe, it, expect } from 'vitest'
+import { cn, formatDateTime, formatDuration } from './classnames'
+
+describe('cn utility function', () => {
+  it('should merge class names', () => {
+    expect(cn('foo', 'bar')).toBe('foo bar')
+  })
+
+  it('should handle conditional classes', () => {
+    expect(cn('foo', false && 'bar', 'baz')).toBe('foo baz')
+  })
+
+  it('should handle undefined and null', () => {
+    expect(cn('foo', undefined, null, 'bar')).toBe('foo bar')
+  })
+
+  it('should merge Tailwind classes correctly', () => {
+    // tailwind-merge should dedupe conflicting classes
+    expect(cn('px-2', 'px-4')).toBe('px-4')
+    expect(cn('text-red-500', 'text-blue-500')).toBe('text-blue-500')
+  })
+
+  it('should handle arrays of classes', () => {
+    expect(cn(['foo', 'bar'], 'baz')).toBe('foo bar baz')
+  })
+
+  it('should return empty string for no inputs', () => {
+    expect(cn()).toBe('')
+  })
+})
+
+describe('formatDateTime', () => {
+  it('should format Date object to YYYY/MM/DD HH:mm', () => {
+    const date = new Date(2024, 5, 15, 14, 30) // June 15, 2024, 14:30
+    expect(formatDateTime(date)).toBe('2024/06/15 14:30')
+  })
+
+  it('should format ISO string to YYYY/MM/DD HH:mm', () => {
+    // Create a date in local timezone to avoid timezone issues in tests
+    const date = new Date(2024, 0, 1, 9, 5) // Jan 1, 2024, 09:05
+    expect(formatDateTime(date.toISOString())).toBe('2024/01/01 09:05')
+  })
+
+  it('should pad single-digit months and days', () => {
+    const date = new Date(2024, 0, 5, 8, 3) // Jan 5, 2024, 08:03
+    expect(formatDateTime(date)).toBe('2024/01/05 08:03')
+  })
+
+  it('should pad single-digit hours and minutes', () => {
+    const date = new Date(2024, 11, 31, 1, 2) // Dec 31, 2024, 01:02
+    expect(formatDateTime(date)).toBe('2024/12/31 01:02')
+  })
+
+  it('should handle midnight correctly', () => {
+    const date = new Date(2024, 6, 20, 0, 0) // July 20, 2024, 00:00
+    expect(formatDateTime(date)).toBe('2024/07/20 00:00')
+  })
+
+  it('should handle end of day correctly', () => {
+    const date = new Date(2024, 6, 20, 23, 59) // July 20, 2024, 23:59
+    expect(formatDateTime(date)).toBe('2024/07/20 23:59')
+  })
+})
+
+describe('formatDuration', () => {
+  it('should format seconds to MM:SS', () => {
+    expect(formatDuration(65)).toBe('01:05')
+    expect(formatDuration(125)).toBe('02:05')
+  })
+
+  it('should handle zero seconds', () => {
+    expect(formatDuration(0)).toBe('00:00')
+  })
+
+  it('should handle exactly one minute', () => {
+    expect(formatDuration(60)).toBe('01:00')
+  })
+
+  it('should handle large durations', () => {
+    expect(formatDuration(3661)).toBe('61:01') // 61 minutes, 1 second
+    expect(formatDuration(7200)).toBe('120:00') // 2 hours
+  })
+
+  it('should floor fractional seconds', () => {
+    expect(formatDuration(65.7)).toBe('01:05')
+    expect(formatDuration(59.9)).toBe('00:59')
+  })
+
+  it('should return "--:--" for undefined', () => {
+    expect(formatDuration(undefined)).toBe('--:--')
+  })
+
+  it('should return "--:--" for null', () => {
+    // @ts-expect-error Testing null input
+    expect(formatDuration(null)).toBe('--:--')
+  })
+
+  it('should pad single-digit minutes and seconds', () => {
+    expect(formatDuration(5)).toBe('00:05')
+    expect(formatDuration(9)).toBe('00:09')
+    expect(formatDuration(61)).toBe('01:01')
+  })
+})

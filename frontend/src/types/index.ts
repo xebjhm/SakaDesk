@@ -69,9 +69,20 @@ export interface BlogMember {
     name: string;
 }
 
+export interface BlogMemberWithThumbnail {
+    id: string;
+    name: string;
+    thumbnail: string | null;  // Local filename or null
+}
+
 export interface BlogMembersResponse {
     service: string;
     members: BlogMember[];
+}
+
+export interface BlogMembersWithThumbnailsResponse {
+    service: string;
+    members: BlogMemberWithThumbnail[];
 }
 
 export interface BlogMeta {
@@ -119,4 +130,12 @@ export interface RecentPost {
 export interface RecentPostsResponse {
     service: string;
     posts: RecentPost[];
+}
+
+// Chat background customization types
+export interface BackgroundSettings {
+    type: 'default' | 'color' | 'image';
+    imageData?: string;  // Base64 encoded image
+    color: string;
+    opacity: number;
 }

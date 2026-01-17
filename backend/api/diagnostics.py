@@ -181,25 +181,41 @@ async def get_diagnostics():
     sync_state = SyncState()
     try:
         if output_dir:
-            # Check for sync metadata
-            metadata_path = Path(output_dir) / "sync_metadata.json"
-            if metadata_path.exists():
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    # Convert UTC timestamp to local time for display
-                    utc_sync = metadata.get('last_sync')
-                    if utc_sync:
-                        try:
-                            # Parse ISO format with Z suffix (UTC)
-                            utc_dt = datetime.fromisoformat(utc_sync.replace('Z', '+00:00'))
-                            # Convert to local time
-                            local_dt = utc_dt.astimezone()
-                            # Format as human-readable local time
-                            sync_state.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')
-                        except Exception:
-                            # Fallback: show as-is if parsing fails
-                            sync_state.last_sync = utc_sync
-                    sync_state.last_error = metadata.get('last_error')
+            # Check for per-service sync metadata files
+            # Find the most recent last_sync across all services
+            latest_sync = None
+            last_error = None
+            output_path = Path(output_dir)
+
+            for service_dir in output_path.iterdir():
+                if not service_dir.is_dir():
+                    continue
+                metadata_path = service_dir / "sync_metadata.json"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, 'r') as f:
+                            metadata = json.load(f)
+                            utc_sync = metadata.get('last_sync')
+                            if utc_sync:
+                                if latest_sync is None or utc_sync > latest_sync:
+                                    latest_sync = utc_sync
+                            if metadata.get('last_error'):
+                                last_error = metadata.get('last_error')
+                    except Exception:
+                        pass
+
+            if latest_sync:
+                try:
+                    # Parse ISO format with Z suffix (UTC)
+                    utc_dt = datetime.fromisoformat(latest_sync.replace('Z', '+00:00'))
+                    # Convert to local time
+                    local_dt = utc_dt.astimezone()
+                    # Format as human-readable local time
+                    sync_state.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')
+                except Exception:
+                    # Fallback: show as-is if parsing fails
+                    sync_state.last_sync = latest_sync
+            sync_state.last_error = last_error
 
             # Get disk usage stats
             size_mb, file_count = _get_disk_usage(output_dir)

@@ -1,12 +1,13 @@
 """
 Sync API endpoints using thread-safe SyncProgress tracker.
+Supports per-service progress tracking for multi-service sync.
 """
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pyhako import SessionExpiredError
 from backend.services.sync_service import SyncService
-from backend.services.service_utils import validate_service
-from backend.api.progress import progress
+from backend.services.service_utils import validate_service, get_all_services
+from backend.api.progress import progress_manager
 import asyncio
 
 logger = structlog.get_logger(__name__)
@@ -27,10 +28,10 @@ def get_sync_service(service: str) -> SyncService:
 async def run_sync_task(service: str, include_inactive: bool, force_resync: bool):
     """Wrapper to run sync in background properly."""
     sync_service = get_sync_service(service)
+    progress = progress_manager.get(service)
     try:
         await sync_service.start_sync(include_inactive, force_resync)
     except SessionExpiredError:
-        # Session expired - set specific error for frontend to detect
         logger.warning(f"Sync failed for {service}: Session expired")
         progress.error("SESSION_EXPIRED")
     except Exception as e:
@@ -53,21 +54,30 @@ async def start_sync(
     if sync_service.running:
         raise HTTPException(status_code=400, detail=f"Sync already running for {service}")
 
-    # Reset progress tracker
+    # Get per-service progress tracker
+    progress = progress_manager.get(service)
     progress.reset()
     progress.start_phase("starting", "Starting", 0, 0, "")
     progress.set_detail("Initializing..." + (" (Resyncing)" if force_resync else ""))
 
-    # Create async task properly
     asyncio.create_task(run_sync_task(service, include_inactive, force_resync))
 
     return {"status": "started", "service": service}
 
 
 @router.get("/progress")
-async def get_progress():
-    """Get current sync progress (thread-safe)"""
-    return progress.get_status()
+async def get_progress(service: str = Query(None, description="Service to get progress for")):
+    """Get sync progress. If service is provided, returns that service's progress.
+    Otherwise returns progress for all services."""
+    if service:
+        try:
+            validate_service(service)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+        return progress_manager.get(service).get_status()
+
+    # Return all services' progress
+    return {"services": progress_manager.get_all_status()}
 
 
 @router.post("/cancel")
@@ -86,9 +96,9 @@ async def cancel_sync(service: str = Query(..., description="Service to cancel s
     if not sync_service.running:
         return {"status": "not_running", "service": service}
 
-    # Force reset the running flag
+    # Force reset the running flag and progress
     sync_service.running = False
-    progress.reset()
+    progress_manager.get(service).reset()
     logger.warning(f"Sync cancelled for {service} by user request")
 
     return {"status": "cancelled", "service": service}

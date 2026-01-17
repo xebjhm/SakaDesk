@@ -242,3 +242,33 @@ async def update_service_settings(service: str, update: ServiceSettings):
 
     save_config(config)
     return update
+
+
+@router.post("/service/{service}/init", response_model=ServiceSettings)
+async def init_service_settings(service: str):
+    """Initialize settings for a newly connected service.
+
+    Called after successful login to ensure the service has an entry in settings.
+    Uses default values if not already configured.
+    """
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    config = load_config()
+    if "services" not in config:
+        config["services"] = {}
+
+    # Only initialize if not already configured
+    if service not in config["services"]:
+        config["services"][service] = {
+            "sync_enabled": True,
+            "adaptive_sync_enabled": True,
+            "last_sync": None,
+            "blogs_full_backup": False,
+        }
+        save_config(config)
+        logger.info(f"Initialized settings for newly connected service: {service}")
+
+    return ServiceSettings(**config["services"][service])
