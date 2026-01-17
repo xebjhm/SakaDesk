@@ -4,10 +4,8 @@ import { ServiceRail } from './ServiceRail';
 import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { useAppStore } from '../../store/appStore';
-import type { MultiGroupAuthStatus } from '../../types';
 
 interface LayoutProps {
-    authStatus: MultiGroupAuthStatus | null;
     messagesContent: React.ReactNode;
     onAddService: () => void;
     onOpenSettings: () => void;
@@ -16,21 +14,16 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({
-    authStatus,
     messagesContent,
     onAddService,
     onOpenSettings,
     onReportIssue,
     onOpenAbout,
 }) => {
-    const { activeService, setActiveService } = useAppStore();
+    const { activeService, setActiveService, selectedServices } = useAppStore();
 
-    // Get authenticated services
-    const services = authStatus
-        ? Object.entries(authStatus)
-            .filter(([_, status]) => status.authenticated === true)
-            .map(([name]) => name)
-        : [];
+    // Use selectedServices (user's selections) for display
+    const services = selectedServices;
 
     // Auto-select first service if none selected
     useEffect(() => {

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Layout } from '../core/layout'
-import { AddServicePage } from '../pages/AddServicePage'
+import { LandingPage } from '../pages/LandingPage'
 import { Loader2 } from 'lucide-react'
 import { DiagnosticsModal, ReportIssueModal, AboutModal, UpdateBanner } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
@@ -13,16 +13,33 @@ import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal } from './components'
 
 function App() {
-    const { activeService, setActiveService } = useAppStore();
+    const {
+        activeService,
+        setActiveService,
+        selectedServices,
+        setSelectedServices,
+    } = useAppStore();
 
     // Auth hook
     const {
         isAuthenticated,
+        authCheckComplete,
         authStatus,
         setAuthError,
         checkAuth,
         connectedServices,
     } = useAuth();
+
+    // Migration: Auto-populate selectedServices from connectedServices for existing users
+    useEffect(() => {
+        if (authCheckComplete && connectedServices.length > 0 && selectedServices.length === 0) {
+            setSelectedServices(connectedServices);
+            // Also set activeService if not set
+            if (!activeService) {
+                setActiveService(connectedServices[0]);
+            }
+        }
+    }, [authCheckComplete, connectedServices, selectedServices, setSelectedServices, activeService, setActiveService]);
 
     // Settings hook
     const {
@@ -81,28 +98,22 @@ function App() {
     const [showReportModal, setShowReportModal] = useState(false);
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
-    const [showAddServicePage, setShowAddServicePage] = useState(false);
 
     // === RENDER ===
-    if (isAuthenticated === null) {
+
+    // Show loading while auth check is in progress
+    if (!authCheckComplete) {
         return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
 
-    // Show AddServicePage if:
-    // 1. No services connected (first install / fresh state)
-    // 2. User explicitly wants to add a service (clicked + button)
-    if (isAuthenticated === false || connectedServices.length === 0 || showAddServicePage) {
+    // Show LandingPage if no services selected (new user or all services removed)
+    if (selectedServices.length === 0) {
         return (
-            <AddServicePage
-                onLoginSuccess={async (serviceId: string) => {
-                    setShowAddServicePage(false);
-                    setActiveService(serviceId);
-                    await checkAuth();
-                    // Start sync for the newly connected service with blocking modal
-                    startSync(true, serviceId);
+            <LandingPage
+                onComplete={(services) => {
+                    setSelectedServices(services);
+                    setActiveService(services[0]);
                 }}
-                onBack={connectedServices.length > 0 ? () => setShowAddServicePage(false) : undefined}
-                connectedServices={connectedServices}
             />
         );
     }
@@ -208,8 +219,7 @@ function App() {
 
                 {/* Main 3-zone layout */}
                 <Layout
-                    authStatus={authStatus}
-                    onAddService={() => setShowAddServicePage(true)}
+                    onAddService={() => {/* AddServiceModal will be triggered from ServiceRail */}}
                     onOpenSettings={openSettingsModal}
                     onReportIssue={() => setShowReportModal(true)}
                     onOpenAbout={() => setShowAboutModal(true)}
