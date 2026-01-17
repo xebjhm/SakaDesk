@@ -19,6 +19,8 @@ interface VoicePlayerProps {
     timestamp?: string;
     /** Duration string for premium variant */
     durationText?: string;
+    /** Theme accent color for buttons and progress bar */
+    accentColor?: string;
 }
 
 /**
@@ -51,6 +53,8 @@ const SkipButton: React.FC<{
     );
 };
 
+const DEFAULT_ACCENT_COLOR = '#6da0d4';
+
 export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     src,
     variant = 'compact',
@@ -58,6 +62,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     memberName,
     timestamp,
     durationText,
+    accentColor = DEFAULT_ACCENT_COLOR,
 }) => {
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -484,7 +489,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2 focus:ring-[#6da0d4]/50"
+            className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
+            style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
         >
             {/* Hidden audio element */}
             <audio ref={audioRef} src={src} preload="metadata" />
@@ -493,8 +499,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             <div className="mb-3">
                 <div className="relative h-1 bg-gray-300 rounded-full overflow-hidden">
                     <div
-                        className="absolute inset-y-0 left-0 bg-[#6da0d4] rounded-full"
-                        style={{ width: `${animatedProgress}%` }}
+                        className="absolute inset-y-0 left-0 rounded-full"
+                        style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
                     />
                     <input
                         type="range"
@@ -543,9 +549,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                 step={0.01}
                                 value={volume}
                                 onChange={handleVolumeChange}
-                                className="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+                                className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                 style={{
-                                    background: `linear-gradient(to right, #6da0d4 ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                    accentColor: accentColor,
+                                    background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
                                 }}
                             />
                         </div>
@@ -555,7 +562,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 {/* Center: Play Button */}
                 <button
                     onClick={togglePlay}
-                    className="w-10 h-10 rounded-full bg-[#6da0d4] shadow-md flex items-center justify-center hover:bg-[#5a8fc3] transition-colors shrink-0"
+                    className="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
+                    style={{ backgroundColor: accentColor }}
                     type="button"
                 >
                     {isPlaying ? (
@@ -594,10 +602,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     <button
                                         key={rate}
                                         onClick={() => handlePlaybackRateChange(rate)}
-                                        className={cn(
-                                            "w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100",
-                                            playbackRate === rate ? 'text-[#6da0d4] font-medium' : 'text-gray-700'
-                                        )}
+                                        className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
+                                        style={{ color: playbackRate === rate ? accentColor : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
                                         type="button"
                                     >
                                         {rate}x

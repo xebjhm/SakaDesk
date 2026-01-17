@@ -61,6 +61,12 @@ export interface GroupTheme {
             via: string;
             to: string;
         };
+        headerTextColor: string;      // Header member name color
+        headerBarGradient: string;    // Thin gradient bar below header
+        bubbleBorder: string;         // Message bubble border color
+        voicePlayerAccent: string;    // Voice player button/progress color
+        scrollButtonColor: string;    // Scroll-to-bottom button color
+        unreadShadow: string;         // Shadow glow for unread messages
         defaultBackground: string;    // Chat area background
         unreadBadge: string;         // Unread count badge
         sidebarGradient: string[];   // Sidebar selected item gradient
@@ -137,6 +143,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 via: '#a0a9d8',
                 to: '#9181c4',
             },
+            headerTextColor: '#5d95ae',
+            headerBarGradient: 'linear-gradient(to right, #a8c4e8, #9181c4)',
+            bubbleBorder: '#7cc7e8',
+            voicePlayerAccent: '#6da0d4',
+            scrollButtonColor: '#7cc7e8',
+            unreadShadow: '0 0 12px rgba(124, 199, 232, 0.4)',
             defaultBackground: '#E2E6EB',
             unreadBadge: '#7cc7e8',
             sidebarGradient: ['#c8d8ec', '#dde6f0', '#f0f4f8'],
@@ -208,12 +220,18 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
 
         messages: {
             headerGradient: {
-                from: '#f7c6d9',
-                via: '#e8b4c8',
-                to: '#d4729c',
+                from: '#E85298',
+                via: '#c44e8a',
+                to: '#9B7BB8',
             },
-            defaultBackground: '#FDF2F6',
-            unreadBadge: '#f7a6c9',
+            headerTextColor: '#E85298',           // Pink header text (from screenshot)
+            headerBarGradient: 'linear-gradient(to right, #E85298, #9B7BB8)',  // Pink to purple bar
+            bubbleBorder: '#E85298',              // Pink message bubble border
+            voicePlayerAccent: '#9B7BB8',         // Purple/violet voice player
+            scrollButtonColor: '#D4879B',         // Dusty rose scroll button
+            unreadShadow: '0 0 12px rgba(232, 82, 152, 0.35)',
+            defaultBackground: '#FFFFFF',         // Clean white background
+            unreadBadge: '#E85298',
             sidebarGradient: ['#fce7f3', '#fdf2f8', '#fff5f7'],
         },
     },
@@ -287,6 +305,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 via: '#c4a8d8',
                 to: '#9B59B6',
             },
+            headerTextColor: '#7e1083',
+            headerBarGradient: 'linear-gradient(to right, #9B59B6, #7e1083)',
+            bubbleBorder: '#9B59B6',
+            voicePlayerAccent: '#9B59B6',
+            scrollButtonColor: '#9B59B6',
+            unreadShadow: '0 0 12px rgba(155, 89, 182, 0.35)',
             defaultBackground: '#F8F5FA',
             unreadBadge: '#9B59B6',
             sidebarGradient: ['#ede4f2', '#f3eef6', '#f8f5fa'],
@@ -361,6 +385,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 via: '#a0a9d8',
                 to: '#9181c4',
             },
+            headerTextColor: '#4B5563',
+            headerBarGradient: 'linear-gradient(to right, #a8c4e8, #9181c4)',
+            bubbleBorder: '#E5E7EB',
+            voicePlayerAccent: '#6da0d4',
+            scrollButtonColor: '#6B7280',
+            unreadShadow: '0 0 12px rgba(107, 114, 128, 0.25)',
             defaultBackground: '#E2E6EB',
             unreadBadge: '#6B7280',
             sidebarGradient: ['#e5e7eb', '#f3f4f6', '#f9fafb'],

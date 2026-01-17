@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useMemo } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
+import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
 
 interface ChatListProps {
@@ -47,6 +48,13 @@ export const MessageList: React.FC<ChatListProps> = ({
     const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
+
+    // Get theme colors for message bubbles
+    const theme = useMessagesTheme();
+    const bubbleTheme = useMemo(() => ({
+        bubbleBorder: theme.bubbleBorder,
+        voicePlayerAccent: theme.voicePlayerAccent,
+    }), [theme.bubbleBorder, theme.voicePlayerAccent]);
 
     // Pre-process messages: replace %%% with nickname at data level
     // This ensures Virtuoso sees different data when nickname changes
@@ -111,6 +119,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             onLongPress={onLongPress}
                             onToggleFavorite={onToggleFavorite}
                             onAvatarClick={onAvatarClick}
+                            theme={bubbleTheme}
                         />
                     </div>
                 );
