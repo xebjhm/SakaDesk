@@ -5,6 +5,18 @@
     },
     "members": [
         {
+            "blogId": "06",
+            "nameKanji": "小池 美波",
+            "nameHiragana": "こいけ みなみ",
+            "nameRomaji": "Koike Minami",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "sakura_pink"
+            ],
+            "status": "graduated"
+        },
+        {
             "blogId": "43",
             "nameKanji": "井上 梨名",
             "nameHiragana": "いのうえ りな",

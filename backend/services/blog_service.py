@@ -214,8 +214,8 @@ class BlogService:
         validate_service(service)
         group = get_service_enum(service)
 
-        # Only Hinatazaka currently supports thumbnails
-        if group != Group.HINATAZAKA46:
+        # Only Hinatazaka and Sakurazaka currently support thumbnails
+        if group not in (Group.HINATAZAKA46, Group.SAKURAZAKA46):
             # Fall back to basic members for other groups
             members = await self.get_blog_members(service)
             return [
@@ -226,7 +226,7 @@ class BlogService:
         thumbnails_dir = self.get_member_thumbnails_path(service)
 
         async with aiohttp.ClientSession() as session:
-            scraper = HinatazakaBlogScraper(session)
+            scraper = get_scraper(group, session)
             fresh_members = await scraper.get_members_with_thumbnails()
 
             if not fresh_members:
@@ -400,15 +400,28 @@ class BlogService:
                         member_name=member_name
                     ):
                         if entry.id not in existing_ids:
+                            # Get thumbnail - prefer from metadata, fallback to fetching from detail
+                            # Sakurazaka list pages show member profile images, not blog thumbnails,
+                            # so we need to fetch the actual thumbnail from the detail page
+                            thumbnail = entry.images[0] if entry.images else None
+                            if not thumbnail and hasattr(scraper, 'get_blog_thumbnail'):
+                                # Fetch thumbnail from detail page (og:image)
+                                try:
+                                    thumbnail = await scraper.get_blog_thumbnail(entry.id)
+                                except Exception as e:
+                                    logger.debug(
+                                        "thumbnail_fetch_failed",
+                                        blog_id=entry.id,
+                                        error=str(e)
+                                    )
+
                             index["members"][member_id]["blogs"].append(
                                 {
                                     "id": entry.id,
                                     "title": entry.title,
                                     "published_at": entry.published_at.isoformat(),
                                     "url": entry.url,
-                                    "thumbnail": entry.images[0]
-                                    if entry.images
-                                    else None,
+                                    "thumbnail": thumbnail,
                                 }
                             )
 
