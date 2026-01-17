@@ -24,9 +24,7 @@ function App() {
     const {
         isAuthenticated,
         authCheckComplete,
-        authStatus,
         setAuthError,
-        checkAuth,
         connectedServices,
     } = useAuth();
 
