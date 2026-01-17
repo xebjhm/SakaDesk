@@ -4,16 +4,19 @@ import { useAppStore } from '../../store/appStore';
 
 export interface UseSyncReturn {
     syncProgress: SyncProgress;
+    syncProgressByService: Record<string, SyncProgress>;
     showSyncModal: boolean;
     setShowSyncModal: (show: boolean) => void;
     syncVersion: number;
     startSync: (blocking: boolean, service?: string) => Promise<void>;
+    startSyncAllServices: (blocking: boolean) => Promise<void>;
     hasStartedSyncRef: React.MutableRefObject<boolean>;
 }
 
 interface UseSyncOptions {
     isAuthenticated: boolean | null;
     appSettings: AppSettings | null;
+    connectedServices: string[];
     setAuthError: (error: string | null) => void;
     setIsAuthenticated: (auth: boolean) => void;
     onSyncComplete?: () => void;
@@ -22,22 +25,34 @@ interface UseSyncOptions {
 export function useSync({
     isAuthenticated,
     appSettings,
+    connectedServices,
     setAuthError,
     setIsAuthenticated,
     onSyncComplete,
 }: UseSyncOptions): UseSyncReturn {
     const { activeService } = useAppStore();
 
+    // Per-service sync progress
+    const [syncProgressByService, setSyncProgressByService] = useState<Record<string, SyncProgress>>({});
+
+    // Legacy: single progress for active service (for backwards compat with UI)
     const [syncProgress, setSyncProgress] = useState<SyncProgress>({ state: 'idle' });
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [syncVersion, setSyncVersion] = useState(0);
 
-    const syncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const isPollingRef = useRef(false);
+    const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+    const isPollingRef = useRef<Record<string, boolean>>({});
     const hasStartedSyncRef = useRef(false);
     const syncProgressRef = useRef(syncProgress);
 
     useEffect(() => { syncProgressRef.current = syncProgress; }, [syncProgress]);
+
+    // Update legacy syncProgress when activeService changes
+    useEffect(() => {
+        if (activeService && syncProgressByService[activeService]) {
+            setSyncProgress(syncProgressByService[activeService]);
+        }
+    }, [activeService, syncProgressByService]);
 
     const refreshUserProfile = useCallback(async () => {
         const targetService = activeService || 'hinatazaka46';
@@ -52,23 +67,31 @@ export function useSync({
         }
     }, [activeService, onSyncComplete]);
 
-    const pollSyncProgress = useCallback(async (blocking: boolean) => {
-        if (isPollingRef.current) return;
-        isPollingRef.current = true;
+    const pollSyncProgress = useCallback(async (service: string, blocking: boolean) => {
+        if (isPollingRef.current[service]) return;
+        isPollingRef.current[service] = true;
 
         const check = async () => {
             try {
-                const res = await fetch('/api/sync/progress');
+                const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
                 const data = await res.json();
 
+                const updateProgress = (progress: SyncProgress) => {
+                    setSyncProgressByService(prev => ({ ...prev, [service]: progress }));
+                    // Also update legacy if this is the active service
+                    if (service === activeService) {
+                        setSyncProgress(progress);
+                    }
+                };
+
                 if (data.state === 'idle') {
-                    setSyncProgress({ state: 'idle' });
-                    isPollingRef.current = false;
-                    if (blocking) setShowSyncModal(false);
+                    updateProgress({ state: 'idle' });
+                    isPollingRef.current[service] = false;
+                    if (blocking && service === activeService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
-                    refreshUserProfile();
+                    if (service === activeService) refreshUserProfile();
                 } else if (data.state === 'complete') {
-                    setSyncProgress({
+                    updateProgress({
                         state: 'idle',
                         phase: 'complete',
                         phase_name: 'Complete',
@@ -82,14 +105,14 @@ export function useSync({
                         detail: 'Sync complete!',
                         detail_extra: ''
                     });
-                    isPollingRef.current = false;
+                    isPollingRef.current[service] = false;
                     setSyncVersion(v => v + 1);
-                    refreshUserProfile();
-                    if (blocking) {
+                    if (service === activeService) refreshUserProfile();
+                    if (blocking && service === activeService) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
                 } else if (data.state === 'running') {
-                    setSyncProgress({
+                    updateProgress({
                         state: 'running',
                         phase: data.phase,
                         phase_name: data.phase_name,
@@ -106,88 +129,145 @@ export function useSync({
                     setTimeout(check, 1000);
                 } else if (data.state === 'error') {
                     if (data.detail === 'SESSION_EXPIRED') {
-                        setIsAuthenticated(false);
-                        setAuthError("Session expired. Please login again.");
+                        // Only reset auth if it's an active service
+                        if (service === activeService) {
+                            setIsAuthenticated(false);
+                            setAuthError("Session expired. Please login again.");
+                        }
                         hasStartedSyncRef.current = false;
                     } else {
-                        setSyncProgress({ state: 'error', detail: data.detail || 'Sync error' });
+                        updateProgress({ state: 'error', detail: data.detail || 'Sync error' });
                     }
-                    isPollingRef.current = false;
-                    if (blocking) setShowSyncModal(false);
+                    isPollingRef.current[service] = false;
+                    if (blocking && service === activeService) setShowSyncModal(false);
                 } else {
-                    setSyncProgress({ state: 'error', detail: data.detail || 'Unknown error' });
-                    isPollingRef.current = false;
-                    if (blocking) setShowSyncModal(false);
+                    updateProgress({ state: 'error', detail: data.detail || 'Unknown error' });
+                    isPollingRef.current[service] = false;
+                    if (blocking && service === activeService) setShowSyncModal(false);
                 }
             } catch {
-                if (syncProgressRef.current.state === 'running') {
+                const currentServiceProgress = syncProgressByService[service];
+                if (currentServiceProgress?.state === 'running') {
                     setTimeout(check, 1000);
                 } else {
-                    setSyncProgress({ state: 'error', detail: 'Lost connection' });
-                    isPollingRef.current = false;
-                    if (blocking) setShowSyncModal(false);
+                    setSyncProgressByService(prev => ({
+                        ...prev,
+                        [service]: { state: 'error', detail: 'Lost connection' }
+                    }));
+                    if (service === activeService) {
+                        setSyncProgress({ state: 'error', detail: 'Lost connection' });
+                    }
+                    isPollingRef.current[service] = false;
+                    if (blocking && service === activeService) setShowSyncModal(false);
                 }
             }
         };
         check();
-    }, [refreshUserProfile, setAuthError, setIsAuthenticated]);
+    }, [activeService, refreshUserProfile, setAuthError, setIsAuthenticated, syncProgressByService]);
 
     const startSync = useCallback(async (blocking: boolean, service?: string) => {
         const targetService = service || activeService || 'hinatazaka46';
 
-        if (blocking) setShowSyncModal(true);
+        if (blocking && targetService === activeService) setShowSyncModal(true);
 
-        if (syncProgressRef.current.state !== 'running') {
-            setSyncProgress({ state: 'running', phase: 'starting', phase_name: 'Starting', detail: 'Initializing...' });
+        const currentProgress = syncProgressByService[targetService];
+        if (currentProgress?.state !== 'running') {
+            const initialProgress: SyncProgress = {
+                state: 'running',
+                phase: 'starting',
+                phase_name: 'Starting',
+                detail: 'Initializing...'
+            };
+            setSyncProgressByService(prev => ({ ...prev, [targetService]: initialProgress }));
+            if (targetService === activeService) {
+                setSyncProgress(initialProgress);
+            }
         }
 
         try {
             await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
-            pollSyncProgress(blocking);
+            pollSyncProgress(targetService, blocking);
         } catch {
-            if (syncProgressRef.current.state !== 'running') {
-                setSyncProgress({ state: 'error', detail: 'Failed to start sync' });
+            if (currentProgress?.state !== 'running') {
+                const errorProgress: SyncProgress = { state: 'error', detail: 'Failed to start sync' };
+                setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+                if (targetService === activeService) {
+                    setSyncProgress(errorProgress);
+                }
             }
         }
-    }, [activeService, pollSyncProgress]);
+    }, [activeService, pollSyncProgress, syncProgressByService]);
 
-    // Startup sync
+    const startSyncAllServices = useCallback(async (blocking: boolean) => {
+        if (connectedServices.length === 0) return;
+
+        // Show modal for active service if blocking
+        if (blocking) setShowSyncModal(true);
+
+        // Start sync for all connected services concurrently
+        await Promise.all(
+            connectedServices.map(service => startSync(false, service))
+        );
+    }, [connectedServices, startSync]);
+
+    // Startup sync: sync ALL connected services
     useEffect(() => {
-        if (isAuthenticated && appSettings && !hasStartedSyncRef.current) {
+        if (isAuthenticated && appSettings && !hasStartedSyncRef.current && connectedServices.length > 0) {
             hasStartedSyncRef.current = true;
 
             fetch('/api/settings/fresh')
                 .then(res => res.json())
                 .then(data => {
-                    if (data.is_fresh) {
-                        startSync(true);
-                    } else {
-                        startSync(false);
-                    }
-                })
-                .catch(() => startSync(false));
+                    const isFresh = data.is_fresh;
 
+                    // Sync ALL connected services, not just the active one
+                    connectedServices.forEach(service => {
+                        // Fresh install: show modal for active service only
+                        const showModal = isFresh && service === activeService;
+                        startSync(showModal, service);
+                    });
+                })
+                .catch(() => {
+                    // On error, still sync all services without blocking modal
+                    connectedServices.forEach(service => {
+                        startSync(false, service);
+                    });
+                });
+
+            // Setup auto-sync for each connected service if enabled
             if (appSettings.auto_sync_enabled) {
                 const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
-                syncIntervalRef.current = setInterval(() => {
-                    startSync(false);
-                }, intervalMs);
+
+                connectedServices.forEach(service => {
+                    // Clear existing interval for this service if any
+                    if (syncIntervalRefs.current[service]) {
+                        clearInterval(syncIntervalRefs.current[service]);
+                    }
+
+                    syncIntervalRefs.current[service] = setInterval(() => {
+                        startSync(false, service);
+                    }, intervalMs);
+                });
             }
 
             return () => {
-                if (syncIntervalRef.current) {
-                    clearInterval(syncIntervalRef.current);
-                }
+                // Cleanup all intervals
+                Object.values(syncIntervalRefs.current).forEach(interval => {
+                    clearInterval(interval);
+                });
+                syncIntervalRefs.current = {};
             };
         }
-    }, [isAuthenticated, appSettings, startSync]);
+    }, [isAuthenticated, appSettings, connectedServices, activeService, startSync]);
 
     return {
         syncProgress,
+        syncProgressByService,
         showSyncModal,
         setShowSyncModal,
         syncVersion,
         startSync,
+        startSyncAllServices,
         hasStartedSyncRef,
     };
 }
