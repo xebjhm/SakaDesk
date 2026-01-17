@@ -1,7 +1,7 @@
 // frontend/src/pages/AddServicePage.tsx
 import React, { useState } from 'react';
 import { Loader2, ArrowLeft } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../utils/classnames';
 
 interface ServiceCardInfo {
     id: string;
@@ -36,7 +36,7 @@ const SERVICES: ServiceCardInfo[] = [
 ];
 
 interface AddServicePageProps {
-    onLoginSuccess: () => void;
+    onLoginSuccess: (serviceId: string) => void;
     onBack?: () => void;
     connectedServices?: string[];
 }
@@ -55,7 +55,11 @@ export const AddServicePage: React.FC<AddServicePageProps> = ({
         try {
             const res = await fetch(`/api/auth/login?service=${encodeURIComponent(serviceId)}`, { method: 'POST' });
             if (!res.ok) throw new Error("Login failed or cancelled");
-            onLoginSuccess();
+
+            // Initialize service settings entry (ensures service is in settings.json)
+            await fetch(`/api/settings/service/${encodeURIComponent(serviceId)}/init`, { method: 'POST' });
+
+            onLoginSuccess(serviceId);
         } catch (err: any) {
             setError(err.message);
         } finally {

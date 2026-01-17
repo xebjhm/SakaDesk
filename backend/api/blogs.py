@@ -3,6 +3,7 @@ Blogs API for HakoDesk.
 Provides endpoints for blog browsing, content fetching, and cache management.
 """
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -55,15 +56,29 @@ class RecentPostsResponse(BaseModel):
     posts: List[RecentPost]
 
 
+class MemberWithThumbnail(BaseModel):
+    id: str
+    name: str
+    thumbnail: Optional[str] = None
+
+
+class MembersWithThumbnailsResponse(BaseModel):
+    service: str
+    members: List[MemberWithThumbnail]
+
+
 @router.get("/recent", response_model=RecentPostsResponse)
 async def get_recent_posts(
     service: str = Query(...),
-    limit: int = Query(default=20, ge=1, le=100)
+    limit: int = Query(default=20, ge=1, le=100),
+    member_ids: Optional[str] = Query(default=None, description="Comma-separated member IDs to filter by")
 ):
-    """Get recent blog posts across all members, sorted by date."""
+    """Get recent blog posts across all members (or filtered by member_ids), sorted by date."""
     try:
         validate_service(service)
-        posts = await blog_service.get_recent_posts(service, limit)
+        # Parse comma-separated member_ids if provided
+        member_id_list = [m.strip() for m in member_ids.split(",") if m.strip()] if member_ids else None
+        posts = await blog_service.get_recent_posts(service, limit, member_id_list)
         return RecentPostsResponse(service=service, posts=posts)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -80,6 +95,66 @@ async def get_blog_members(service: str = Query(...)):
         return {"service": service, "members": [{"id": k, "name": v} for k, v in members.items()]}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/members-with-thumbnails", response_model=MembersWithThumbnailsResponse)
+async def get_members_with_thumbnails(service: str = Query(...)):
+    """Get members with locally cached thumbnail images.
+
+    Fetches member data from official site, uses content hash caching
+    to detect changes, and serves locally cached thumbnail images.
+    """
+    try:
+        validate_service(service)
+        members = await blog_service.get_members_with_thumbnails(service)
+        return MembersWithThumbnailsResponse(service=service, members=members)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/member-thumbnail/{service}/{member_id}")
+async def get_member_thumbnail(service: str, member_id: str):
+    """Serve a member's cached thumbnail image.
+
+    Args:
+        service: Service name (e.g., 'hinatazaka46').
+        member_id: Member ID.
+
+    Returns:
+        The thumbnail image file.
+    """
+    try:
+        validate_service(service)
+        thumbnail_path = blog_service.get_member_thumbnail_path(service, member_id)
+
+        if not thumbnail_path or not thumbnail_path.exists():
+            raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+        # Determine media type from extension
+        ext = thumbnail_path.suffix.lower()
+        media_types = {
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+        }
+        media_type = media_types.get(ext, "image/jpeg")
+
+        return FileResponse(
+            thumbnail_path,
+            media_type=media_type,
+            headers={
+                "Cache-Control": "public, max-age=86400",  # Cache for 1 day
+            }
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
