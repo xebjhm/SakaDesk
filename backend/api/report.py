@@ -160,7 +160,7 @@ def _get_token_expiry() -> dict:
 
 
 def _get_sync_state() -> dict:
-    """Get current sync state from metadata files."""
+    """Get current sync state from per-service metadata files."""
     try:
         settings_path = get_settings_path()
         if settings_path.exists():
@@ -168,14 +168,32 @@ def _get_sync_state() -> dict:
                 settings = json.load(f)
                 output_dir = settings.get("output_dir")
                 if output_dir:
-                    metadata_path = Path(output_dir) / "sync_metadata.json"
-                    if metadata_path.exists():
-                        with open(metadata_path, "r") as mf:
-                            metadata = json.load(mf)
-                            return {
-                                "last_sync": metadata.get("last_sync"),
-                                "last_error": metadata.get("last_error"),
-                            }
+                    # Check per-service metadata files
+                    latest_sync = None
+                    last_error = None
+                    output_path = Path(output_dir)
+
+                    for service_dir in output_path.iterdir():
+                        if not service_dir.is_dir():
+                            continue
+                        metadata_path = service_dir / "sync_metadata.json"
+                        if metadata_path.exists():
+                            try:
+                                with open(metadata_path, "r") as mf:
+                                    metadata = json.load(mf)
+                                    utc_sync = metadata.get("last_sync")
+                                    if utc_sync:
+                                        if latest_sync is None or utc_sync > latest_sync:
+                                            latest_sync = utc_sync
+                                    if metadata.get("last_error"):
+                                        last_error = metadata.get("last_error")
+                            except Exception:
+                                pass
+
+                    return {
+                        "last_sync": latest_sync,
+                        "last_error": last_error,
+                    }
     except Exception:
         pass
     return {"last_sync": None, "last_error": None}
