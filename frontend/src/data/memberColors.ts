@@ -55,6 +55,8 @@ export const GENERATION_LABELS: Record<string, string> = {
     '3rd': '3rd Gen',
     '4th': '4th Gen',
     '5th': '5th Gen',
+    '6th': '6th Gen',
+    '7th': '7th Gen',
 };
 
 // ============================================================================
