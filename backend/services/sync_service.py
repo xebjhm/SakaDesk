@@ -14,13 +14,89 @@ from pyhako.config import (
 )
 from pyhako.credentials import get_token_manager
 from pyhako.utils import get_media_extension
-from backend.api.progress import progress
+from backend.api.progress import progress_manager
 from backend.services.platform import get_session_dir, is_test_mode
 from backend.services.notification_service import notify_sync_complete
-from backend.services.service_utils import get_service_enum, validate_service
+from backend.services.service_utils import get_service_enum, get_service_display_name, validate_service
 import structlog
 
 logger = structlog.get_logger(__name__)
+
+
+def migrate_legacy_state(output_dir: Path, service: str) -> bool:
+    """Migrate shared state files to per-service location.
+
+    Returns True if migration was performed, False if already migrated or nothing to migrate.
+    """
+    service_display = get_service_display_name(service)
+    service_dir = output_dir / service_display
+
+    # Skip if already migrated (per-service state file exists)
+    if (service_dir / "sync_state.json").exists():
+        return False
+
+    legacy_state = output_dir / "sync_state.json"
+    legacy_meta = output_dir / "sync_metadata.json"
+
+    if not legacy_state.exists() and not legacy_meta.exists():
+        return False  # Fresh install, nothing to migrate
+
+    # Find group_ids belonging to this service by checking existing directories
+    messages_dir = service_dir / "messages"
+    if not messages_dir.exists():
+        return False
+
+    existing_groups: set[int] = set()
+    for d in messages_dir.iterdir():
+        if d.is_dir():
+            try:
+                # Directory names like "87 MemberName" - extract group_id
+                group_id = int(d.name.split()[0])
+                existing_groups.add(group_id)
+            except (ValueError, IndexError):
+                pass
+
+    if not existing_groups:
+        return False  # No data for this service
+
+    logger.info(f"Migrating legacy state for {service}", groups=list(existing_groups))
+
+    # Filter and write sync_state.json
+    if legacy_state.exists():
+        with open(legacy_state, encoding='utf-8') as f:
+            all_state = json.load(f)
+        service_state = {
+            k: v for k, v in all_state.items()
+            if int(k.split("_")[0]) in existing_groups
+        }
+        if service_state:
+            service_dir.mkdir(parents=True, exist_ok=True)
+            with open(service_dir / "sync_state.json", 'w', encoding='utf-8') as f:
+                json.dump(service_state, f, indent=2)
+            logger.info(f"Migrated sync_state.json for {service}", entries=len(service_state))
+
+    # Filter and write sync_metadata.json
+    if legacy_meta.exists():
+        with open(legacy_meta, encoding='utf-8') as f:
+            all_meta = json.load(f)
+
+        groups_data = all_meta.get("groups", {})
+        service_groups = {
+            k: v for k, v in groups_data.items()
+            if v.get("group_id") in existing_groups
+        }
+
+        if service_groups:
+            service_meta = {
+                "groups": service_groups,
+                "last_sync": all_meta.get("last_sync")
+            }
+            service_dir.mkdir(parents=True, exist_ok=True)
+            with open(service_dir / "sync_metadata.json", 'w', encoding='utf-8') as f:
+                json.dump(service_meta, f, ensure_ascii=False, indent=2)
+            logger.info(f"Migrated sync_metadata.json for {service}", entries=len(service_groups))
+
+    return True
 
 # Default to only sync latest messages on initial sync
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
@@ -30,6 +106,7 @@ class SyncService:
         validate_service(service)
         self._service = service
         self.output_dir = Path("output")
+        self.service_data_dir = Path("output")  # Will be updated in start_sync
         self.config_dir = Path(".")
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
@@ -78,9 +155,10 @@ class SyncService:
         return Path("output")
 
     async def load_metadata(self):
-        """Load sync metadata for quick checks."""
+        """Load sync metadata for quick checks (per-service location)."""
         output_dir = await self.get_output_dir()
-        metadata_file = output_dir / "sync_metadata.json"
+        service_display = get_service_display_name(self._service)
+        metadata_file = output_dir / service_display / "sync_metadata.json"
 
         if metadata_file.exists():
             try:
@@ -93,7 +171,8 @@ class SyncService:
         return {"groups": {}, "last_sync": None}
     
     async def save_metadata(self, metadata):
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure service_data_dir exists (metadata_file is inside it)
+        self.service_data_dir.mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(self.metadata_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
 
@@ -106,8 +185,9 @@ class SyncService:
         """
         if self.running:
             return False
-            
+
         self.running = True
+        progress = progress_manager.get(self._service)
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -118,7 +198,18 @@ class SyncService:
                 return
 
             self.output_dir = Path(app_settings.get("output_dir", "output"))
-            self.metadata_file = self.output_dir / "sync_metadata.json"
+
+            # Per-service data directory for state files
+            service_display = get_service_display_name(self._service)
+            self.service_data_dir = self.output_dir / service_display
+            self.metadata_file = self.service_data_dir / "sync_metadata.json"
+
+            # Migrate legacy shared state files to per-service location
+            try:
+                if migrate_legacy_state(self.output_dir, self._service):
+                    logger.info(f"Legacy state migrated for {self._service}")
+            except Exception as e:
+                logger.warning(f"Migration failed (non-fatal): {e}")
 
             # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
             if force_resync:
@@ -126,8 +217,8 @@ class SyncService:
                 if self.metadata_file.exists():
                     self.metadata_file.unlink()
 
-                # SyncManager stores state in: output_dir / "sync_state.json"
-                state_file = self.output_dir / "sync_state.json"
+                # SyncManager stores state in: service_data_dir / "sync_state.json"
+                state_file = self.service_data_dir / "sync_state.json"
                 if state_file.exists():
                     state_file.unlink()
 
@@ -140,9 +231,9 @@ class SyncService:
             # Get auth_dir for headless refresh (from platform settings)
             auth_dir = str(get_session_dir())
 
-            # Detect if fresh sync (empty output or just metadata)
+            # Detect if fresh sync for THIS service (empty service dir or just metadata)
             # Smart Concurrency: 20 for fresh, 5 for update
-            existing_files = list(self.output_dir.iterdir()) if self.output_dir.exists() else []
+            existing_files = list(self.service_data_dir.iterdir()) if self.service_data_dir.exists() else []
             # Filter out metadata files
             existing_content = [f for f in existing_files if f.name not in ["sync_metadata.json", "sync_state.json"]]
             is_fresh = len(existing_content) == 0
@@ -199,7 +290,8 @@ class SyncService:
                     logger.debug("Token unchanged after refresh check, no save needed")
 
                 # Create fresh SyncManager each sync (don't cache stale client)
-                self.manager = SyncManager(client, self.output_dir)
+                # Use service_data_dir so sync_state.json is per-service
+                self.manager = SyncManager(client, self.service_data_dir)
 
                 progress.start_phase("scanning", "Scanning Groups", 1, 0, "group")
                 # Always include_inactive=True to get both online and offline members
