@@ -22,7 +22,7 @@ const getInitials = (name: string) => {
 
 const getServiceColor = (name: string) => {
     if (name === 'hinatazaka46') return 'bg-[#7cc7e8]'; // Sky Blue
-    if (name === 'sakurazaka46') return 'bg-[#f19db5]'; // Sakura Pink
+    if (name === 'sakurazaka46') return 'bg-[#E85298]'; // Sakura Pink (official app)
     if (name === 'nogizaka46') return 'bg-[#7e1083]';   // Purple
     return 'bg-gray-500';
 };
