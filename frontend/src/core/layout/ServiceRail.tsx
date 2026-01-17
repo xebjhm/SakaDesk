@@ -1,9 +1,11 @@
 // frontend/src/core/layout/ServiceRail.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
+import { getServiceShortCode } from '../../data/services';
+import { AddServiceModal } from './AddServiceModal';
 
 export interface ServiceRailProps {
     services: string[];
@@ -12,13 +14,6 @@ export interface ServiceRailProps {
     onReportIssue: () => void;
     onOpenAbout: () => void;
 }
-
-const getInitials = (name: string) => {
-    if (name === 'hinatazaka46') return 'HI';
-    if (name === 'sakurazaka46') return 'SA';
-    if (name === 'nogizaka46') return 'NO';
-    return name.substring(0, 2).toUpperCase();
-};
 
 const getServiceColor = (name: string) => {
     if (name === 'hinatazaka46') return 'bg-[#7cc7e8]'; // Sky Blue
@@ -29,18 +24,31 @@ const getServiceColor = (name: string) => {
 
 export const ServiceRail: React.FC<ServiceRailProps> = ({
     services,
-    onAddService,
     onOpenSettings,
     onReportIssue,
     onOpenAbout,
 }) => {
-    const { activeService, setActiveService } = useAppStore();
+    const { activeService, setActiveService, removeSelectedService } = useAppStore();
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
 
-    // Check if all services are already connected
-    const allServicesConnected = services.length >= 3;
+    // Check if all services are already selected
+    const allServicesSelected = services.length >= 3;
+
+    const handleContextMenu = (e: React.MouseEvent, serviceId: string) => {
+        e.preventDefault();
+        setContextMenu({ serviceId, x: e.clientX, y: e.clientY });
+    };
+
+    const handleRemoveService = () => {
+        if (contextMenu) {
+            removeSelectedService(contextMenu.serviceId);
+            setContextMenu(null);
+        }
+    };
 
     return (
-        <div className="w-14 bg-[#1e1f22] h-full flex flex-col items-center py-3 shrink-0">
+        <div className="w-14 bg-[#1e1f22] h-full flex flex-col items-center py-3 shrink-0" onClick={() => setContextMenu(null)}>
             {/* Service buttons */}
             <div className="flex flex-col items-center gap-2 flex-1">
                 {services.map(service => {
@@ -51,6 +59,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                         <button
                             key={service}
                             onClick={() => setActiveService(service)}
+                            onContextMenu={(e) => handleContextMenu(e, service)}
                             className={cn(
                                 "group relative w-12 h-12 rounded-[24px] flex items-center justify-center transition-all duration-200",
                                 isActive ? "rounded-[16px]" : "hover:rounded-[16px]"
@@ -69,22 +78,38 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 colorClass,
                                 isActive ? "rounded-[16px]" : "group-hover:rounded-[16px]"
                             )}>
-                                {getInitials(service)}
+                                {getServiceShortCode(service)}
                             </div>
                         </button>
                     );
                 })}
             </div>
 
+            {/* Context Menu for removing service */}
+            {contextMenu && (
+                <div
+                    className="fixed bg-[#2b2d31] rounded-lg shadow-xl py-1 z-50 min-w-[140px]"
+                    style={{ left: contextMenu.x, top: contextMenu.y }}
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <button
+                        onClick={handleRemoveService}
+                        className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                    >
+                        Remove Service
+                    </button>
+                </div>
+            )}
+
             {/* Separator line */}
             <div className="w-8 h-px bg-gray-600 my-2" />
 
             {/* Bottom actions: Add Service + Settings */}
             <div className="flex flex-col items-center gap-2">
-                {/* Add Service Button - only show if not all services connected */}
-                {!allServicesConnected && (
+                {/* Add Service Button - only show if not all services selected */}
+                {!allServicesSelected && (
                     <button
-                        onClick={onAddService}
+                        onClick={() => setShowAddModal(true)}
                         className="group relative w-12 h-12 rounded-[24px] flex items-center justify-center transition-all duration-200 hover:rounded-[16px]"
                         title="Add Service"
                     >
@@ -101,6 +126,14 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     onOpenAbout={onOpenAbout}
                 />
             </div>
+
+            {/* Add Service Modal */}
+            {showAddModal && (
+                <AddServiceModal
+                    selectedServices={services}
+                    onClose={() => setShowAddModal(false)}
+                />
+            )}
         </div>
     );
 };
