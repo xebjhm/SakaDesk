@@ -1,6 +1,6 @@
 // frontend/src/config/features.ts
 import { MessageSquare, BookOpen, Newspaper, Star, Bot, LucideIcon } from 'lucide-react';
-import { FeatureId } from '../stores/appStore';
+import type { FeatureId } from '../store/appStore';
 
 export interface FeatureDefinition {
     id: FeatureId;

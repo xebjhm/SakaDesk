@@ -1,7 +1,7 @@
 // frontend/src/pages/AddServicePage.tsx
 import React, { useState } from 'react';
 import { Loader2, ArrowLeft } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../utils/classnames';
 
 interface ServiceCardInfo {
     id: string;
