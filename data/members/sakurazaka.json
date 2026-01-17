@@ -1,0 +1,404 @@
+{
+    "meta": {
+        "group": "sakurazaka",
+        "updated": "2026-01-17"
+    },
+    "members": [
+        {
+            "blogId": "43",
+            "nameKanji": "井上 梨名",
+            "nameHiragana": "いのうえ りな",
+            "nameRomaji": "Inoue Rina",
+            "generation": 2,
+            "oshiColors": [
+                "blue",
+                "blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "53",
+            "nameKanji": "遠藤 光莉",
+            "nameHiragana": "えんどう ひかり",
+            "nameRomaji": "Endo Hikari",
+            "generation": 2,
+            "oshiColors": [
+                "purple",
+                "purple"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "54",
+            "nameKanji": "大園 玲",
+            "nameHiragana": "おおぞの れい",
+            "nameRomaji": "Ozono Rei",
+            "generation": 2,
+            "oshiColors": [
+                "violet",
+                "violet"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "55",
+            "nameKanji": "大沼 晶保",
+            "nameHiragana": "おおぬま あきほ",
+            "nameRomaji": "Onuma Akiho",
+            "generation": 2,
+            "oshiColors": [
+                "pastel_blue",
+                "yellow"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "56",
+            "nameKanji": "幸阪 茉里乃",
+            "nameHiragana": "こうさか まりの",
+            "nameRomaji": "Kosaka Marino",
+            "generation": 2,
+            "oshiColors": [
+                "pearl_green",
+                "sakura_pink"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "45",
+            "nameKanji": "武元 唯衣",
+            "nameHiragana": "たけもと ゆい",
+            "nameRomaji": "Takemoto Yui",
+            "generation": 2,
+            "oshiColors": [
+                "passion_pink",
+                "blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "46",
+            "nameKanji": "田村 保乃",
+            "nameHiragana": "たむら ほの",
+            "nameRomaji": "Tamura Hono",
+            "generation": 2,
+            "oshiColors": [
+                "pastel_blue",
+                "pastel_blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "47",
+            "nameKanji": "藤吉 夏鈴",
+            "nameHiragana": "ふじよし かりん",
+            "nameRomaji": "Fujiyoshi Karin",
+            "generation": 2,
+            "oshiColors": [
+                "white",
+                "violet"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "57",
+            "nameKanji": "増本 綺良",
+            "nameHiragana": "ますもと きら",
+            "nameRomaji": "Masumoto Kira",
+            "generation": 2,
+            "oshiColors": [
+                "orange",
+                "orange"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "48",
+            "nameKanji": "松田 里奈",
+            "nameHiragana": "まつだ りな",
+            "nameRomaji": "Matsuda Rina",
+            "generation": 2,
+            "oshiColors": [
+                "green",
+                "yellow"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "50",
+            "nameKanji": "森田 ひかる",
+            "nameHiragana": "もりた ひかる",
+            "nameRomaji": "Morita Hikaru",
+            "generation": 2,
+            "oshiColors": [
+                "red",
+                "blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "58",
+            "nameKanji": "守屋 麗奈",
+            "nameHiragana": "もりや れな",
+            "nameRomaji": "Moriya Rena",
+            "generation": 2,
+            "oshiColors": [
+                "yellow",
+                "pink"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "51",
+            "nameKanji": "山﨑 天",
+            "nameHiragana": "やまさき てん",
+            "nameRomaji": "Yamasaki Ten",
+            "generation": 2,
+            "oshiColors": [
+                "white",
+                "green"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "59",
+            "nameKanji": "石森 璃花",
+            "nameHiragana": "いしもり りか",
+            "nameRomaji": "Ishimori Rika",
+            "generation": 3,
+            "oshiColors": [
+                "pink",
+                "green"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "60",
+            "nameKanji": "遠藤 理子",
+            "nameHiragana": "えんどう りこ",
+            "nameRomaji": "Endo Riko",
+            "generation": 3,
+            "oshiColors": [
+                "sakura_pink",
+                "violet"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "61",
+            "nameKanji": "小田倉 麗奈",
+            "nameHiragana": "おだくら れいな",
+            "nameRomaji": "Odakura Reina",
+            "generation": 3,
+            "oshiColors": [
+                "passion_pink",
+                "white"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "62",
+            "nameKanji": "小島 凪紗",
+            "nameHiragana": "こじま なぎさ",
+            "nameRomaji": "Kojima Nagisa",
+            "generation": 3,
+            "oshiColors": [
+                "pastel_blue",
+                "orange"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "63",
+            "nameKanji": "谷口 愛季",
+            "nameHiragana": "たにぐち あいり",
+            "nameRomaji": "Taniguchi Airi",
+            "generation": 3,
+            "oshiColors": [
+                "purple",
+                "red"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "64",
+            "nameKanji": "中嶋 優月",
+            "nameHiragana": "なかじま ゆづき",
+            "nameRomaji": "Nakajima Yuzuki",
+            "generation": 3,
+            "oshiColors": [
+                "pink",
+                "pink"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "65",
+            "nameKanji": "的野 美青",
+            "nameHiragana": "まとの みお",
+            "nameRomaji": "Matono Mio",
+            "generation": 3,
+            "oshiColors": [
+                "blue",
+                "pastel_blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "66",
+            "nameKanji": "向井 純葉",
+            "nameHiragana": "むかい いとは",
+            "nameRomaji": "Mukai Itoha",
+            "generation": 3,
+            "oshiColors": [
+                "pastel_blue",
+                "emerald_green"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "67",
+            "nameKanji": "村井 優",
+            "nameHiragana": "むらい ゆう",
+            "nameRomaji": "Murai Yu",
+            "generation": 3,
+            "oshiColors": [
+                "purple",
+                "blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "68",
+            "nameKanji": "村山 美羽",
+            "nameHiragana": "むらやま みう",
+            "nameRomaji": "Murayama Miu",
+            "generation": 3,
+            "oshiColors": [
+                "violet",
+                "purple"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "69",
+            "nameKanji": "山下 瞳月",
+            "nameHiragana": "やました しづき",
+            "nameRomaji": "Yamashita Shizuki",
+            "generation": 3,
+            "oshiColors": [
+                "red",
+                "pastel_blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "70",
+            "nameKanji": "浅井 恋乃未",
+            "nameHiragana": "あさい このみ",
+            "nameRomaji": "Asai Konomi",
+            "generation": 4,
+            "oshiColors": [
+                "emerald_green",
+                "red"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "71",
+            "nameKanji": "稲熊 ひな",
+            "nameHiragana": "いなぐま ひな",
+            "nameRomaji": "Inaguma Hina",
+            "generation": 4,
+            "oshiColors": [
+                "orange",
+                "emerald_green"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "72",
+            "nameKanji": "勝又 春",
+            "nameHiragana": "かつまた はる",
+            "nameRomaji": "Katsumata Haru",
+            "generation": 4,
+            "oshiColors": [
+                "sakura_pink",
+                "red"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "73",
+            "nameKanji": "佐藤 愛桜",
+            "nameHiragana": "さとう ねお",
+            "nameRomaji": "Sato Neo",
+            "generation": 4,
+            "oshiColors": [
+                "sakura_pink",
+                "pastel_blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "74",
+            "nameKanji": "中川 智尋",
+            "nameHiragana": "なかがわ ちひろ",
+            "nameRomaji": "Nakagawa Chihiro",
+            "generation": 4,
+            "oshiColors": [
+                "violet",
+                "yellow"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "75",
+            "nameKanji": "松本 和子",
+            "nameHiragana": "まつもと わこ",
+            "nameRomaji": "Matsumoto Wako",
+            "generation": 4,
+            "oshiColors": [
+                "white",
+                "emerald_green"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "76",
+            "nameKanji": "目黒 陽色",
+            "nameHiragana": "めぐろ ひいろ",
+            "nameRomaji": "Meguro Hiiro",
+            "generation": 4,
+            "oshiColors": [
+                "sakura_pink",
+                "passion_pink"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "77",
+            "nameKanji": "山川 宇衣",
+            "nameHiragana": "やまかわ うい",
+            "nameRomaji": "Yamakawa Ui",
+            "generation": 4,
+            "oshiColors": [
+                "white",
+                "pastel_blue"
+            ],
+            "status": "active"
+        },
+        {
+            "blogId": "78",
+            "nameKanji": "山田 桃実",
+            "nameHiragana": "やまだ ももみ",
+            "nameRomaji": "Yamada Momomi",
+            "generation": 4,
+            "oshiColors": [
+                "pastel_blue",
+                "violet"
+            ],
+            "status": "active"
+        }
+    ]
+}
