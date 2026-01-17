@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { cn } from '../lib/utils';
 import { Users, RefreshCw } from 'lucide-react';
 import { MemberInfo } from '../types';
+import { formatName, getShortName } from '../utils';
+import { getGroupChatIds } from '../config/groupConfig';
+import { UI_CONSTANTS } from '../config/uiConstants';
 
 interface GroupInfo {
     id: string;
@@ -25,9 +28,6 @@ interface SidebarProps {
     isSyncing?: boolean;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
 }
-
-// Group IDs that should always be treated as group chat
-const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
 export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion }) => {
     const [groups, setGroups] = useState<GroupInfo[]>([]);
@@ -106,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
 
     useEffect(() => {
         loadGroups();
-        const interval = setInterval(loadGroups, 2000); // Faster update for UI responsiveness
+        const interval = setInterval(loadGroups, UI_CONSTANTS.polling.sidebarMs);
         return () => clearInterval(interval);
     }, [activeService]);
 
@@ -120,20 +120,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
         if (groups.length > 0) checkUnread(groups);
     }, [selectedGroupDir, readStateVersion]);
 
-    const formatName = (name: string) => name.replace(/_/g, ' ');
+    // Get group chat IDs for the current service
+    const groupChatIds = getGroupChatIds(activeService ?? null);
 
-    const getShortName = (name: string) => {
-        const parts = formatName(name).split(' ');
-        return parts[0].substring(0, 2);
-    };
-
-    const isGroupChat = (group: GroupInfo) => {
-        if (GROUP_CHAT_IDS.includes(group.id)) return true;
+    const isGroupChatCheck = (group: GroupInfo) => {
+        if (groupChatIds.includes(group.id)) return true;
         return group.is_group_chat || group.member_count > 1;
     };
 
     const getGroupDisplayInfo = (group: GroupInfo) => {
-        const groupChat = isGroupChat(group);
+        const groupChat = isGroupChatCheck(group);
 
         if (groupChat) {
             return {
@@ -160,8 +156,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDi
 
     const sortGroups = (groups: GroupInfo[]) => {
         return [...groups].sort((a, b) => {
-            const aIsGroupChat = isGroupChat(a);
-            const bIsGroupChat = isGroupChat(b);
+            const aIsGroupChat = isGroupChatCheck(a);
+            const bIsGroupChat = isGroupChatCheck(b);
             if (aIsGroupChat !== bIsGroupChat) {
                 return aIsGroupChat ? 1 : -1;
             }
