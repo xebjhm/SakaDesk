@@ -3,35 +3,14 @@ import { Upload, Trash2, Palette, Image } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { BaseModal } from './common';
 import type { BaseModalProps } from '../types/modal';
-
-interface BackgroundSettings {
-    type: 'default' | 'color' | 'image';
-    imageData?: string;  // Base64 encoded image
-    color: string;
-    opacity: number;
-}
+import type { BackgroundSettings } from '../types';
+import { DEFAULT_BACKGROUND, loadBackgroundSettings, saveBackgroundSettings } from '../utils';
+import { UI_CONSTANTS } from '../config/uiConstants';
 
 interface BackgroundModalProps extends BaseModalProps {
     conversationPath: string;
     onSettingsChange: (settings: BackgroundSettings) => void;
 }
-
-const DEFAULT_SETTINGS: BackgroundSettings = {
-    type: 'default',
-    color: '#E2E6EB',
-    opacity: 100,
-};
-
-const PRESET_COLORS = [
-    '#E2E6EB', // Default gray
-    '#FEE2E2', // Light red
-    '#FEF3C7', // Light yellow
-    '#D1FAE5', // Light green
-    '#DBEAFE', // Light blue
-    '#E9D5FF', // Light purple
-    '#FCE7F3', // Light pink
-    '#F5F5F4', // Light stone
-];
 
 export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     isOpen,
@@ -39,36 +18,22 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     conversationPath,
     onSettingsChange,
 }) => {
-    const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_SETTINGS);
+    const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
     const [preview, setPreview] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Load settings from localStorage on open
     useEffect(() => {
         if (isOpen && conversationPath) {
-            const key = `bg_settings_${conversationPath}`;
-            const saved = localStorage.getItem(key);
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    setSettings(parsed);
-                    if (parsed.imageData) {
-                        setPreview(parsed.imageData);
-                    }
-                } catch {
-                    setSettings(DEFAULT_SETTINGS);
-                }
-            } else {
-                setSettings(DEFAULT_SETTINGS);
-                setPreview(null);
-            }
+            const loaded = loadBackgroundSettings(conversationPath);
+            setSettings(loaded);
+            setPreview(loaded.imageData || null);
         }
     }, [isOpen, conversationPath]);
 
-    const saveSettings = (newSettings: BackgroundSettings) => {
+    const persistSettings = (newSettings: BackgroundSettings) => {
         setSettings(newSettings);
-        const key = `bg_settings_${conversationPath}`;
-        localStorage.setItem(key, JSON.stringify(newSettings));
+        saveBackgroundSettings(conversationPath, newSettings);
         onSettingsChange(newSettings);
     };
 
@@ -76,8 +41,8 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Check file size (max 2MB)
-        if (file.size > 2 * 1024 * 1024) {
+        // Check file size
+        if (file.size > UI_CONSTANTS.limits.maxImageSizeBytes) {
             alert('Image too large. Please choose an image under 2MB.');
             return;
         }
@@ -92,7 +57,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
         reader.onload = () => {
             const base64 = reader.result as string;
             setPreview(base64);
-            saveSettings({
+            persistSettings({
                 ...settings,
                 type: 'image',
                 imageData: base64,
@@ -102,7 +67,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     };
 
     const handleColorSelect = (color: string) => {
-        saveSettings({
+        persistSettings({
             ...settings,
             type: 'color',
             color,
@@ -112,18 +77,17 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     };
 
     const handleOpacityChange = (opacity: number) => {
-        saveSettings({
+        persistSettings({
             ...settings,
             opacity,
         });
     };
 
     const handleReset = () => {
-        setSettings(DEFAULT_SETTINGS);
+        setSettings(DEFAULT_BACKGROUND);
         setPreview(null);
-        const key = `bg_settings_${conversationPath}`;
-        localStorage.removeItem(key);
-        onSettingsChange(DEFAULT_SETTINGS);
+        localStorage.removeItem(`bg_settings_${conversationPath}`);
+        onSettingsChange(DEFAULT_BACKGROUND);
     };
 
     return (
@@ -158,7 +122,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                     <div
                         className="w-full h-32 rounded-lg border border-gray-200 overflow-hidden flex items-center justify-center"
                         style={{
-                            backgroundColor: settings.type === 'color' ? settings.color : '#E2E6EB',
+                            backgroundColor: settings.type === 'color' ? settings.color : DEFAULT_BACKGROUND.color,
                             backgroundImage: preview ? `url(${preview})` : 'none',
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
@@ -201,7 +165,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                         Solid Color
                     </label>
                     <div className="flex flex-wrap gap-2">
-                        {PRESET_COLORS.map((color) => (
+                        {UI_CONSTANTS.backgroundPresets.map((color) => (
                             <button
                                 key={color}
                                 onClick={() => handleColorSelect(color)}

@@ -53,6 +53,18 @@ export interface GroupTheme {
         headerTitleColor: string;     // "Latest Blogs" header
         timelineIndicator: string;    // Timeline dot/line color
     };
+
+    // Messages feature colors
+    messages: {
+        headerGradient: {
+            from: string;
+            via: string;
+            to: string;
+        };
+        defaultBackground: string;    // Chat area background
+        unreadBadge: string;         // Unread count badge
+        sidebarGradient: string[];   // Sidebar selected item gradient
+    };
 }
 
 export const groupThemes: Record<GroupId, GroupTheme> = {
@@ -118,6 +130,17 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             headerTitleColor: '#5d95ae',
             timelineIndicator: '#5d95ae',
         },
+
+        messages: {
+            headerGradient: {
+                from: '#a8c4e8',
+                via: '#a0a9d8',
+                to: '#9181c4',
+            },
+            defaultBackground: '#E2E6EB',
+            unreadBadge: '#7cc7e8',
+            sidebarGradient: ['#c8d8ec', '#dde6f0', '#f0f4f8'],
+        },
     },
 
     // ========================================
@@ -181,6 +204,17 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             linkUnderlineColor: '#d4729c40',
             headerTitleColor: '#d4729c',
             timelineIndicator: '#d4729c',
+        },
+
+        messages: {
+            headerGradient: {
+                from: '#f7c6d9',
+                via: '#e8b4c8',
+                to: '#d4729c',
+            },
+            defaultBackground: '#FDF2F6',
+            unreadBadge: '#f7a6c9',
+            sidebarGradient: ['#fce7f3', '#fdf2f8', '#fff5f7'],
         },
     },
 
@@ -246,6 +280,17 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             headerTitleColor: '#7e5c91',
             timelineIndicator: '#7e5c91',
         },
+
+        messages: {
+            headerGradient: {
+                from: '#d8c8e8',
+                via: '#c4a8d8',
+                to: '#9B59B6',
+            },
+            defaultBackground: '#F8F5FA',
+            unreadBadge: '#9B59B6',
+            sidebarGradient: ['#ede4f2', '#f3eef6', '#f8f5fa'],
+        },
     },
 
     // ========================================
@@ -308,6 +353,17 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             linkUnderlineColor: '#6B728040',
             headerTitleColor: '#6B7280',
             timelineIndicator: '#6B7280',
+        },
+
+        messages: {
+            headerGradient: {
+                from: '#a8c4e8',
+                via: '#a0a9d8',
+                to: '#9181c4',
+            },
+            defaultBackground: '#E2E6EB',
+            unreadBadge: '#6B7280',
+            sidebarGradient: ['#e5e7eb', '#f3f4f6', '#f9fafb'],
         },
     },
 };

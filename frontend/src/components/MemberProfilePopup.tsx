@@ -14,6 +14,7 @@ interface MemberProfilePopupProps extends BaseModalProps {
     memberName: string;
     memberAvatar?: string;
     groupId?: string;
+    activeService?: string; // Service ID for API calls
 }
 
 /**
@@ -26,6 +27,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     memberName,
     memberAvatar,
     groupId,
+    activeService,
 }) => {
     const [streak, setStreak] = useState<StreakData | null>(null);
     const [loading, setLoading] = useState(false);
@@ -38,19 +40,23 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         setError(null);
 
         try {
-            const res = await fetch(`/api/chat/streak/${groupId}`);
+            const url = activeService
+                ? `/api/chat/streak/${groupId}?service=${encodeURIComponent(activeService)}`
+                : `/api/chat/streak/${groupId}`;
+            const res = await fetch(url);
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.detail || 'Failed to fetch streak');
             }
             const data = await res.json();
             setStreak(data);
-        } catch (err: any) {
-            setError(err.message || 'Failed to load streak');
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to load streak';
+            setError(message);
         } finally {
             setLoading(false);
         }
-    }, [groupId]);
+    }, [groupId, activeService]);
 
     useEffect(() => {
         if (isOpen && groupId) {

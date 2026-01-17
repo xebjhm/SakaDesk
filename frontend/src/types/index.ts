@@ -131,3 +131,11 @@ export interface RecentPostsResponse {
     service: string;
     posts: RecentPost[];
 }
+
+// Chat background customization types
+export interface BackgroundSettings {
+    type: 'default' | 'color' | 'image';
+    imageData?: string;  // Base64 encoded image
+    color: string;
+    opacity: number;
+}

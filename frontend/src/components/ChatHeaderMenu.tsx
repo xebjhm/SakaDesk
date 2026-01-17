@@ -1,19 +1,15 @@
 import React, { useState } from 'react';
 import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
 import { cn } from '../lib/utils';
-import type { Message } from '../types';
+import type { Message, BackgroundSettings } from '../types';
 import { SentLettersModal } from './SentLettersModal';
 import { MediaGalleryModal } from './MediaGalleryModal';
 import { CalendarModal } from './CalendarModal';
 import { BackgroundModal } from './BackgroundModal';
 import { FavoritesModal } from './FavoritesModal';
 
-export interface BackgroundSettings {
-    type: 'default' | 'color' | 'image';
-    imageData?: string;
-    color: string;
-    opacity: number;
-}
+// Re-export for backward compatibility
+export type { BackgroundSettings } from '../types';
 
 interface ChatHeaderMenuProps {
     conversationPath: string;

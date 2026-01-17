@@ -1,13 +1,15 @@
 // frontend/src/components/features/MessagesFeature.tsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Message, MemberInfo } from '../../types';
+import { Message, MemberInfo, BackgroundSettings } from '../../types';
 import { Sidebar } from '../Sidebar';
 import { ChatList } from '../ChatList';
-import { ChatHeaderMenu, BackgroundSettings } from '../ChatHeaderMenu';
+import { ChatHeaderMenu } from '../ChatHeaderMenu';
 import { MemberProfilePopup } from '../MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../stores/appStore';
+import { formatName } from '../../utils';
+import { DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -89,11 +91,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
 
     // Background customization state
-    const [backgroundSettings, setBackgroundSettings] = useState<BackgroundSettings>({
-        type: 'default',
-        color: '#E2E6EB',
-        opacity: 100
-    });
+    const [backgroundSettings, setBackgroundSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
 
     // Member profile popup state
     const [showMemberProfile, setShowMemberProfile] = useState(false);
@@ -309,7 +307,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [selectedGroupDir, maxMessageId, totalMessages]);
 
     // === HELPERS ===
-    const formatName = (name: string) => name.replace(/_/g, ' ');
 
     const handleSelectGroup = (groupDir: string, groupChat: boolean, displayName: string) => {
         if (selectedGroupDir !== groupDir) {
@@ -318,17 +315,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             setSelectedName(displayName);
 
             // Load background settings for new conversation
-            const key = `bg_settings_${groupDir}`;
-            const saved = localStorage.getItem(key);
-            if (saved) {
-                try {
-                    setBackgroundSettings(JSON.parse(saved));
-                } catch {
-                    setBackgroundSettings({ type: 'default', color: '#E2E6EB', opacity: 100 });
-                }
-            } else {
-                setBackgroundSettings({ type: 'default', color: '#E2E6EB', opacity: 100 });
-            }
+            setBackgroundSettings(loadBackgroundSettings(groupDir));
         }
     };
 
@@ -446,7 +433,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
                     style={{
-                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : '#E2E6EB',
+                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
                         backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
                             ? `url(${backgroundSettings.imageData})`
                             : 'none',
@@ -551,6 +538,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 memberName={selectedName || ''}
                 memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
                 groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
+                activeService={activeService || undefined}
             />
         </div>
     );
