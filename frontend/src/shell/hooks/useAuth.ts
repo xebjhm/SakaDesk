@@ -4,17 +4,20 @@ import { useAppStore } from '../../store/appStore';
 
 export interface UseAuthReturn {
     isAuthenticated: boolean | null;
+    authCheckComplete: boolean;
     authStatus: MultiGroupAuthStatus | null;
     authError: string | null;
     setAuthError: (error: string | null) => void;
     checkAuth: () => Promise<void>;
     connectedServices: string[];
+    isServiceConnected: (serviceId: string) => boolean;
 }
 
 export function useAuth(): UseAuthReturn {
     const { activeService, setActiveService } = useAppStore();
 
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const [authCheckComplete, setAuthCheckComplete] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
 
@@ -43,6 +46,8 @@ export function useAuth(): UseAuthReturn {
             }
         } catch {
             setIsAuthenticated(false);
+        } finally {
+            setAuthCheckComplete(true);
         }
     }, [activeService, setActiveService]);
 
@@ -117,12 +122,19 @@ export function useAuth(): UseAuthReturn {
             .map(([name]) => name)
         : [];
 
+    const isServiceConnected = useCallback(
+        (serviceId: string) => connectedServices.includes(serviceId),
+        [connectedServices]
+    );
+
     return {
         isAuthenticated,
+        authCheckComplete,
         authStatus,
         authError,
         setAuthError,
         checkAuth,
         connectedServices,
+        isServiceConnected,
     };
 }
