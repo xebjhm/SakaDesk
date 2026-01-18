@@ -67,10 +67,13 @@ export function useSync({
         }
     }, [activeService, syncProgressByService]);
 
-    const refreshUserProfile = useCallback(async () => {
-        const targetService = activeService || 'hinatazaka46';
+    const refreshUserProfile = useCallback(async (service: string) => {
+        if (!service) {
+            console.error('refreshUserProfile: No service specified');
+            return;
+        }
         try {
-            const res = await fetch(`/api/profile/refresh?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
+            const res = await fetch(`/api/profile/refresh?service=${encodeURIComponent(service)}`, { method: 'POST' });
             const data = await res.json();
             if (data.nickname) {
                 onSyncComplete?.();
@@ -78,7 +81,7 @@ export function useSync({
         } catch (e) {
             console.error('Failed to refresh profile:', e);
         }
-    }, [activeService, onSyncComplete]);
+    }, [onSyncComplete]);
 
     const pollSyncProgress = useCallback(async (service: string, blocking: boolean) => {
         if (isPollingRef.current[service]) return;
@@ -102,7 +105,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     if (blocking && service === activeService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
-                    if (service === activeService) refreshUserProfile();
+                    if (service === activeService) refreshUserProfile(service);
                 } else if (data.state === 'complete') {
                     updateProgress({
                         state: 'idle',
@@ -120,7 +123,7 @@ export function useSync({
                     });
                     isPollingRef.current[service] = false;
                     setSyncVersion(v => v + 1);
-                    if (service === activeService) refreshUserProfile();
+                    if (service === activeService) refreshUserProfile(service);
                     if (blocking && service === activeService) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
@@ -179,10 +182,15 @@ export function useSync({
             }
         };
         check();
-    }, [activeService, refreshUserProfile, setAuthError, setIsAuthenticated, syncProgressByService]);
+    }, [activeService, refreshUserProfile, markServiceDisconnected, syncProgressByService]);
 
     const startSync = useCallback(async (blocking: boolean, service?: string) => {
-        const targetService = service || activeService || 'hinatazaka46';
+        const targetService = service || activeService;
+
+        if (!targetService) {
+            console.error('startSync: No service specified and no active service');
+            return;
+        }
 
         if (blocking && targetService === activeService) setShowSyncModal(true);
 
