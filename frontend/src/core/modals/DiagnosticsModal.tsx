@@ -58,7 +58,36 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [logTab, setLogTab] = useState<LogTab>('recent');
 
     // Get live auth status from context
-    const { connectedServices, disconnectedServices, isServiceConnected, isServiceDisconnected } = useAuth();
+    const { connectedServices, disconnectedServices, isServiceConnected, isServiceDisconnected, getServiceExpiresAt, getScheduledRefreshServices } = useAuth();
+
+    // Helper to format remaining time
+    const formatRemainingTime = (expiresAtMs: number | null): string => {
+        if (!expiresAtMs) return 'unknown';
+        const remainingMs = expiresAtMs - Date.now();
+        if (remainingMs <= 0) return 'expired';
+        const minutes = Math.floor(remainingMs / 60000);
+        const hours = Math.floor(minutes / 60);
+        if (hours > 0) {
+            return `${hours}h ${minutes % 60}m`;
+        }
+        return `${minutes}m`;
+    };
+
+    // Helper to format scheduled refresh time
+    const formatScheduledRefresh = (expiresAtMs: number | null): string => {
+        if (!expiresAtMs) return 'not scheduled';
+        // Refresh is scheduled 10 minutes before expiry
+        const refreshAt = expiresAtMs - (10 * 60 * 1000);
+        const now = Date.now();
+        if (refreshAt <= now) return 'imminent';
+        const msUntilRefresh = refreshAt - now;
+        const minutes = Math.floor(msUntilRefresh / 60000);
+        const hours = Math.floor(minutes / 60);
+        if (hours > 0) {
+            return `in ${hours}h ${minutes % 60}m`;
+        }
+        return `in ${minutes}m`;
+    };
 
     const fetchDiagnostics = async () => {
         setLoading(true);
@@ -162,7 +191,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                 {/* Per-Service Auth Status (Live from Context) */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Service Authentication</h4>
-                                    <div className="space-y-2 text-sm">
+                                    <div className="space-y-3 text-sm">
                                         {data.auth_status.groups_configured.length === 0 && connectedServices.length === 0 ? (
                                             <div className="text-gray-400 text-xs">No services configured</div>
                                         ) : (
@@ -172,28 +201,45 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                 const displayName = service?.displayName ?? serviceId;
                                                 const connected = isServiceConnected(serviceId);
                                                 const disconnected = isServiceDisconnected(serviceId);
+                                                const expiresAt = getServiceExpiresAt(serviceId);
+                                                const scheduledServices = getScheduledRefreshServices();
+                                                const hasScheduledRefresh = scheduledServices.includes(serviceId);
 
                                                 return (
-                                                    <div key={serviceId} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
-                                                        <span className="text-gray-700 font-medium">{displayName}</span>
-                                                        <div className="flex items-center gap-2">
-                                                            {connected ? (
-                                                                <span className="flex items-center gap-1 text-green-600 text-xs">
-                                                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                                                    Connected
-                                                                </span>
-                                                            ) : disconnected ? (
-                                                                <span className="flex items-center gap-1 text-orange-500 text-xs">
-                                                                    <Unplug className="w-3.5 h-3.5" />
-                                                                    Disconnected
-                                                                </span>
-                                                            ) : (
-                                                                <span className="flex items-center gap-1 text-gray-400 text-xs">
-                                                                    <AlertCircle className="w-3.5 h-3.5" />
-                                                                    Not logged in
-                                                                </span>
-                                                            )}
+                                                    <div key={serviceId} className="py-2 border-b border-gray-100 last:border-0">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-gray-700 font-medium">{displayName}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                {connected ? (
+                                                                    <span className="flex items-center gap-1 text-green-600 text-xs">
+                                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                        Connected
+                                                                    </span>
+                                                                ) : disconnected ? (
+                                                                    <span className="flex items-center gap-1 text-orange-500 text-xs">
+                                                                        <Unplug className="w-3.5 h-3.5" />
+                                                                        Disconnected
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="flex items-center gap-1 text-gray-400 text-xs">
+                                                                        <AlertCircle className="w-3.5 h-3.5" />
+                                                                        Not logged in
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
+                                                        {connected && (
+                                                            <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
+                                                                <span className="flex items-center gap-1">
+                                                                    <Clock className="w-3 h-3" />
+                                                                    Expires: {formatRemainingTime(expiresAt)}
+                                                                </span>
+                                                                <span className="flex items-center gap-1">
+                                                                    <RefreshCw className="w-3 h-3" />
+                                                                    Refresh: {hasScheduledRefresh ? formatScheduledRefresh(expiresAt) : 'not scheduled'}
+                                                                </span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 );
                                             })
