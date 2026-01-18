@@ -132,7 +132,15 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
                 .then(res => res.json())
                 .then(profileData => {
                     if (profileData.nickname) {
-                        setAppSettings(prev => prev ? { ...prev, user_nickname: profileData.nickname } : prev);
+                        setAppSettings(prev => {
+                            if (!prev) return prev;
+                            const newNicknames = { ...(prev.user_nicknames || {}), [activeService]: profileData.nickname };
+                            return {
+                                ...prev,
+                                user_nickname: profileData.nickname,  // Legacy: keep for compatibility
+                                user_nicknames: newNicknames,
+                            };
+                        });
                     }
                 })
                 .catch(console.error);
