@@ -353,6 +353,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Toggle favorite status (optimistic update + API call)
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
+        if (!activeService) {
+            console.error('No active service for favorite toggle');
+            return;
+        }
+
         // Optimistically update UI
         setMessages(msgs => msgs.map(m =>
             m.id === messageId ? { ...m, is_favorite: !currentState } : m
@@ -360,7 +365,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
         try {
             const method = currentState ? 'DELETE' : 'POST';
-            const res = await fetch(`/api/favorites/${messageId}`, { method });
+            const url = `/api/favorites/${messageId}?service=${encodeURIComponent(activeService)}`;
+            const res = await fetch(url, { method });
             if (!res.ok) {
                 throw new Error('Failed to update favorite');
             }
@@ -371,7 +377,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             ));
             console.error('Failed to toggle favorite:', err);
         }
-    }, []);
+    }, [activeService]);
 
     return (
         <div className="flex h-full w-full overflow-hidden">
