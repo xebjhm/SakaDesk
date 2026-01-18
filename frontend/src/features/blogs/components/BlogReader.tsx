@@ -5,6 +5,7 @@ import React from 'react';
 import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
 import { getMemberColors, getMemberNameJp, getGroupFromService } from '../../../data/memberColors';
+import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTheme } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
@@ -66,15 +67,6 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         if (memberBlogs[index]) onNavigate(memberBlogs[index]);
     };
 
-    // Get base URL for normalizing relative URLs in blog content
-    const getBaseUrl = (svcId: string): string => {
-        const svc = svcId.toLowerCase();
-        if (svc.includes('hinata')) return 'https://www.hinatazaka46.com';
-        if (svc.includes('sakura')) return 'https://sakurazaka46.com';
-        if (svc.includes('nogi')) return 'https://www.nogizaka46.com';
-        return '';
-    };
-
     // Normalize relative URLs in HTML content to absolute URLs
     const normalizeHtmlUrls = (html: string, baseUrl: string): string => {
         if (!baseUrl) return html;
@@ -93,7 +85,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     // Sanitize HTML content using DOMPurify (XSS protection)
     // DOMPurify is a well-established sanitization library that removes malicious content
     // First normalize URLs to handle cached content with relative URLs
-    const baseUrl = getBaseUrl(serviceId);
+    const baseUrl = getServiceBlogBaseUrl(serviceId);
     const normalizedHtml = content ? normalizeHtmlUrls(content.content.html, baseUrl) : '';
     const sanitizedHtml = normalizedHtml
         ? DOMPurify.sanitize(normalizedHtml, {
