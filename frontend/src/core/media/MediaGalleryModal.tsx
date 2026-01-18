@@ -12,6 +12,7 @@ interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
     memberName: string;
     memberAvatar?: string;
+    serviceId?: string;  // Service ID for building correct media URLs
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
@@ -36,6 +37,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     messages,
     memberName,
     memberAvatar,
+    serviceId,
 }) => {
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
@@ -90,7 +92,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [activeTab, mediaItems]);
 
     const getMediaUrl = (mediaFile: string) => {
-        return `/api/content/media/${mediaFile.split('/').map(encodeURIComponent).join('/')}`;
+        // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../picture/123.jpg")
+        // API expects full path from output dir with service prefix
+        const encodedPath = mediaFile.split('/').map(encodeURIComponent).join('/');
+        return serviceId
+            ? `/api/content/media/${encodeURIComponent(serviceId)}/${encodedPath}`
+            : `/api/content/media/${encodedPath}`;
     };
 
     // Format date to YYYY-MM-DD for item refs
