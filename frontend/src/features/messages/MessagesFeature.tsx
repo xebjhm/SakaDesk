@@ -52,7 +52,8 @@ export interface AppSettings {
     sync_interval_minutes: number;
     adaptive_sync_enabled?: boolean;
     is_configured: boolean;
-    user_nickname?: string;
+    user_nickname?: string;  // Legacy: single nickname (kept for compatibility)
+    user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
 }
 
@@ -489,7 +490,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onLongPress={() => setShowRevealConfirm(true)}
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
-                            userNickname={appSettings?.user_nickname}
+                            userNickname={
+                                // Use per-service nickname for the service of the messages being displayed
+                                messagesService && appSettings?.user_nicknames?.[messagesService]
+                                    ? appSettings.user_nicknames[messagesService]
+                                    : appSettings?.user_nickname
+                            }
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
                             service={messagesService}

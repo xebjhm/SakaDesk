@@ -87,7 +87,15 @@ function App() {
                     .then(res => res.json())
                     .then(data => {
                         if (data.nickname) {
-                            setAppSettings(prev => prev ? { ...prev, user_nickname: data.nickname } : prev);
+                            setAppSettings(prev => {
+                                if (!prev) return prev;
+                                const newNicknames = { ...(prev.user_nicknames || {}), [activeService]: data.nickname };
+                                return {
+                                    ...prev,
+                                    user_nickname: data.nickname,  // Legacy: keep for compatibility
+                                    user_nicknames: newNicknames,
+                                };
+                            });
                         }
                     })
                     .catch(console.error);
