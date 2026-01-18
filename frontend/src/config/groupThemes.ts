@@ -236,24 +236,24 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
 
         messages: {
             headerGradient: {
-                from: '#E85298',
-                via: '#c44e8a',
-                to: '#9B7BB8',
+                from: '#fffdfe',      // Near-white
+                via: '#d8b0c8',       // Midpoint pink-purple
+                to: '#9b56a1',        // Purple (member name color)
             },
-            headerTextColor: '#E85298',           // Pink header text (from screenshot)
-            headerBarGradient: 'linear-gradient(to right, #E85298, #9B7BB8)',  // Pink to purple bar
+            headerTextColor: '#9b56a1',           // Purple member name color
+            headerBarGradient: 'linear-gradient(to right, #fffdfe, #9b56a1)',  // White to purple bar
             bubbleBorder: '#E85298',              // Pink message bubble border
-            voicePlayerAccent: '#9B7BB8',         // Purple/violet voice player
+            voicePlayerAccent: '#d695ec',         // Purple/violet voice player
             scrollButtonColor: '#D4879B',         // Dusty rose scroll button
             unreadShadow: '0 0 12px rgba(232, 82, 152, 0.35)',
             defaultBackground: '#FFFFFF',         // Clean white background
             unreadBadge: '#E85298',
             sidebarGradient: ['#fce7f3', '#fdf2f8', '#fff5f7'],
             shelterColors: {
-                picture: '#E85298',   // Sakura pink (matches bubble border)
-                video: '#D49B57',     // Orange/amber (from screenshot)
-                voice: '#9B7BB8',     // Purple/violet (matches voice accent)
-                text: '#D4879B',      // Dusty rose/pink
+                picture: '#ec9595',   // Salmon pink (from official app)
+                video: '#edc094',     // Orange/amber (from official app)
+                voice: '#d695ec',     // Purple/violet (from official app)
+                text: '#eb95ae',      // Pink (from official app)
             },
             shelterStyle: 'light',    // White background with colored icon (Sakura style)
         },
