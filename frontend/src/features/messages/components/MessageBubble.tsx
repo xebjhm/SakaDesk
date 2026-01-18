@@ -17,6 +17,8 @@ type ShelterStyle = 'classic' | 'light';
 interface MessageBubbleTheme {
     bubbleBorder: string;
     voicePlayerAccent: string;
+    favoriteColor?: string;
+    linkColor?: string;
     shelterColors?: ShelterColors;
     shelterStyle?: ShelterStyle;
 }
@@ -107,7 +109,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 };
 
 // Component to render text with clickable URLs
-const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
+const LinkifiedText: React.FC<{ text: string; linkColor?: string }> = ({ text, linkColor }) => {
     const parts = text.split(URL_REGEX);
 
     return (
@@ -122,7 +124,8 @@ const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
                             href={part}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                            className="hover:underline break-all"
+                            style={{ color: linkColor || '#2563eb' }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             {part}
@@ -213,15 +216,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         const Icon = SHELTER_ICONS[type] || MessageSquare;
 
         // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
-        // 'light' = white background with colored icon (Sakurazaka)
+        // 'light' = white background with colored border and icon (Sakurazaka)
         const isLightStyle = shelterStyle === 'light';
         const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
         const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
+        const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
 
         return (
             <div
                 className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-                style={{ backgroundColor: bgColor }}
+                style={{ backgroundColor: bgColor, border: borderStyle }}
                 onClick={(e) => {
                     e.stopPropagation();
                     onReveal?.();
@@ -284,7 +288,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     <span className="text-sm text-gray-700 font-medium">{member_name}</span>
                     <span className="text-xs text-gray-400">{dateStr}</span>
                     {message.is_favorite && (
-                        <Star className="w-3.5 h-3.5 text-blue-500 fill-blue-500" />
+                        <Star
+                            className="w-3.5 h-3.5"
+                            style={{ color: theme?.favoriteColor || '#3b82f6', fill: theme?.favoriteColor || '#3b82f6' }}
+                        />
                     )}
                 </div>
 
@@ -338,7 +345,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 "text-gray-900 whitespace-pre-wrap leading-relaxed text-[15px]",
                                 message.type === 'voice' && "p-3 pt-2"
                             )}>
-                                <LinkifiedText text={message.content} />
+                                <LinkifiedText text={message.content} linkColor={theme?.linkColor} />
                             </div>
                         )}
 

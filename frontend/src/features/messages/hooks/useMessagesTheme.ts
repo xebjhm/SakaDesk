@@ -14,6 +14,8 @@ export interface ShelterColors {
 
 export type ShelterStyle = 'classic' | 'light';
 
+export type HeaderStyle = 'gradient' | 'light';
+
 export interface MessagesTheme extends GroupTheme {
     // Convenience aliases for common message colors
     headerTextColor: string;
@@ -23,8 +25,11 @@ export interface MessagesTheme extends GroupTheme {
     scrollButtonColor: string;
     unreadShadow: string;
     unreadBadge: string;
+    favoriteColor: string;
+    linkColor: string;
     shelterColors: ShelterColors;
     shelterStyle: ShelterStyle;
+    headerStyle: HeaderStyle;
 }
 
 /**
@@ -46,8 +51,11 @@ export function useMessagesTheme(): MessagesTheme {
             scrollButtonColor: theme.messages.scrollButtonColor,
             unreadShadow: theme.messages.unreadShadow,
             unreadBadge: theme.messages.unreadBadge,
+            favoriteColor: theme.modals.accentColor,
+            linkColor: theme.modals.accentColor,
             shelterColors: theme.messages.shelterColors,
             shelterStyle: theme.messages.shelterStyle,
+            headerStyle: theme.messages.headerStyle,
         };
     }, [activeService]);
 }
