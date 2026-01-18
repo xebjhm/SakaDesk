@@ -54,6 +54,13 @@ export interface GroupTheme {
         timelineIndicator: string;    // Timeline dot/line color
     };
 
+    // Modal accent colors (Date Search, Favorites, Media, Background, Sent Letters)
+    modals: {
+        accentColor: string;        // Primary accent for buttons, selected states
+        accentColorLight: string;   // Lighter shade for backgrounds, hover states
+        accentColorMuted: string;   // Muted for borders, subtle elements
+    };
+
     // Messages feature colors
     messages: {
         headerGradient: {
@@ -79,6 +86,8 @@ export interface GroupTheme {
         };
         // Shelter style: 'classic' = colored bg + white icon, 'light' = white bg + colored icon
         shelterStyle: 'classic' | 'light';
+        // Header style: 'gradient' = filled gradient background with white text, 'light' = white/light bg with colored text
+        headerStyle: 'gradient' | 'light';
     };
 }
 
@@ -146,6 +155,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             timelineIndicator: '#5d95ae',
         },
 
+        modals: {
+            accentColor: '#7cc7e8',       // Sky blue - primary accent
+            accentColorLight: '#e0f4fc',  // Light sky blue for backgrounds
+            accentColorMuted: '#b8dff2',  // Muted for borders
+        },
+
         messages: {
             headerGradient: {
                 from: '#a8c4e8',
@@ -168,6 +183,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 text: '#8bb8d6',      // Light blue
             },
             shelterStyle: 'classic',  // Colored background with white icon
+            headerStyle: 'gradient',  // Filled gradient header with white text
         },
     },
 
@@ -234,14 +250,20 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             timelineIndicator: '#d4729c',
         },
 
+        modals: {
+            accentColor: '#d892aa',       // Sakura pink - matches header text
+            accentColorLight: '#fce7f3',  // Light pink for backgrounds
+            accentColorMuted: '#f5d0dc',  // Muted pink for borders
+        },
+
         messages: {
             headerGradient: {
                 from: '#fffdfe',      // Near-white
                 via: '#d8b0c8',       // Midpoint pink-purple
                 to: '#9b56a1',        // Purple (member name color)
             },
-            headerTextColor: '#9b56a1',           // Purple member name color
-            headerBarGradient: 'linear-gradient(to right, #fffdfe, #9b56a1)',  // White to purple bar
+            headerTextColor: '#d892aa',           // Pink member name color
+            headerBarGradient: 'linear-gradient(to right, #ffffff 0%, #ffffff 5%, #fff6f7 10%, #eec8d2 25%, #e39eb1 50%, #bf78a0 75%, #95569c 100%)',  // Official 5-point gradient with pure white start
             bubbleBorder: '#E85298',              // Pink message bubble border
             voicePlayerAccent: '#d695ec',         // Purple/violet voice player
             scrollButtonColor: '#D4879B',         // Dusty rose scroll button
@@ -256,6 +278,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 text: '#eb95ae',      // Pink (from official app)
             },
             shelterStyle: 'light',    // White background with colored icon (Sakura style)
+            headerStyle: 'light',     // White/light background with colored text (Sakura style)
         },
     },
 
@@ -322,6 +345,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             timelineIndicator: '#7e5c91',
         },
 
+        modals: {
+            accentColor: '#9B59B6',       // Noble purple - primary accent
+            accentColorLight: '#f3e8f5',  // Light lavender for backgrounds
+            accentColorMuted: '#d8c8e8',  // Muted purple for borders
+        },
+
         messages: {
             headerGradient: {
                 from: '#d8c8e8',
@@ -344,6 +373,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 text: '#d8c8e8',      // Misty purple
             },
             shelterStyle: 'classic',  // Colored background with white icon
+            headerStyle: 'gradient',  // Filled gradient header with white text
         },
     },
 
@@ -409,6 +439,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             timelineIndicator: '#6B7280',
         },
 
+        modals: {
+            accentColor: '#6B7280',       // Gray - neutral accent
+            accentColorLight: '#f3f4f6',  // Light gray for backgrounds
+            accentColorMuted: '#e5e7eb',  // Muted gray for borders
+        },
+
         messages: {
             headerGradient: {
                 from: '#a8c4e8',
@@ -431,6 +467,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 text: '#8bb8d6',      // Light blue
             },
             shelterStyle: 'classic',  // Colored background with white icon
+            headerStyle: 'gradient',  // Filled gradient header with white text
         },
     },
 };
