@@ -41,24 +41,39 @@ export function useAuth(): UseAuthReturn {
     const checkAuth = useCallback(async () => {
         try {
             const res = await fetch('/api/auth/status');
-            const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean }> } = await res.json();
+            const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean; expires_at?: number }> } = await res.json();
 
-            const authenticatedServices = Object.entries(data.services)
-                .filter(([_, s]) => s.authenticated === true)
-                .map(([name]) => name);
+            const newServiceAuth: ServiceAuthRecord = {};
+            const authenticatedServices: string[] = [];
+
+            for (const [serviceId, status] of Object.entries(data.services)) {
+                const wasEverConnected = status.authenticated || status.token_expired === true;
+                const connected = status.authenticated === true;
+
+                newServiceAuth[serviceId] = {
+                    connected,
+                    tokenExpiresAt: status.expires_at ? status.expires_at * 1000 : null, // Convert to ms
+                    error: status.token_expired ? 'Session expired' : null,
+                    wasEverConnected,
+                };
+
+                if (connected) {
+                    authenticatedServices.push(serviceId);
+                }
+            }
+
+            setServiceAuth(newServiceAuth);
+            setAuthStatus(data.services);
 
             const anyAuthenticated = authenticatedServices.length > 0;
             setIsAuthenticated(anyAuthenticated);
-            setAuthStatus(data.services);
 
             if (anyAuthenticated && !activeService) {
                 setActiveService(authenticatedServices[0]);
             }
 
-            const anyExpired = Object.values(data.services).some(s => s.token_expired === true);
-            if (anyExpired) {
-                setAuthError("Session expired. Please login again.");
-            }
+            // Clear global auth error - errors are now per-service
+            setAuthError(null);
         } catch {
             setIsAuthenticated(false);
         } finally {
