@@ -6,7 +6,8 @@ export interface ServiceDefinition {
     name: string;
     displayName: string;
     shortCode: string;
-    color: string;
+    color: string;          // Gradient classes for UI elements
+    bgColor: string;        // Solid bg class for icons/badges
     description: string;
 }
 
@@ -17,6 +18,7 @@ export const SERVICES: ServiceDefinition[] = [
         displayName: '日向坂46',
         shortCode: 'HI',
         color: 'from-[#7cc7e8] to-[#5eb3d8]',
+        bgColor: 'bg-[#7cc7e8]',
         description: 'Hinatazaka46 Messages & Blogs',
     },
     {
@@ -25,6 +27,7 @@ export const SERVICES: ServiceDefinition[] = [
         displayName: '櫻坂46',
         shortCode: 'SA',
         color: 'from-[#f19db5] to-[#e87a9a]',
+        bgColor: 'bg-[#E85298]',
         description: 'Sakurazaka46 Messages & Blogs',
     },
     {
@@ -33,6 +36,7 @@ export const SERVICES: ServiceDefinition[] = [
         displayName: '乃木坂46',
         shortCode: 'NO',
         color: 'from-[#7e1083] to-[#5a0b5e]',
+        bgColor: 'bg-[#7e1083]',
         description: 'Nogizaka46 Messages & Blogs',
     },
 ];
@@ -55,4 +59,8 @@ export function getServiceDisplayName(id: string): string {
 
 export function getServiceColor(id: string): string {
     return SERVICES_BY_ID[id]?.color ?? 'from-gray-400 to-gray-500';
+}
+
+export function getServiceBgColor(id: string): string {
+    return SERVICES_BY_ID[id]?.bgColor ?? 'bg-gray-500';
 }
