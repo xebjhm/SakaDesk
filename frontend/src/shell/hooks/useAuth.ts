@@ -2,6 +2,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { MultiGroupAuthStatus } from '../../types';
 import { useAppStore } from '../../store/appStore';
 
+export interface ServiceAuthState {
+    connected: boolean;
+    tokenExpiresAt: number | null;
+    error: string | null;
+    wasEverConnected: boolean;
+}
+
+export type ServiceAuthRecord = Record<string, ServiceAuthState>;
+
 export interface UseAuthReturn {
     isAuthenticated: boolean | null;
     authCheckComplete: boolean;
@@ -11,6 +20,11 @@ export interface UseAuthReturn {
     checkAuth: () => Promise<void>;
     connectedServices: string[];
     isServiceConnected: (serviceId: string) => boolean;
+    // New additions
+    isServiceDisconnected: (serviceId: string) => boolean;
+    getServiceError: (serviceId: string) => string | null;
+    clearServiceError: (serviceId: string) => void;
+    disconnectedServices: string[];
 }
 
 export function useAuth(): UseAuthReturn {
