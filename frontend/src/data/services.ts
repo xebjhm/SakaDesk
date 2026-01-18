@@ -8,6 +8,7 @@ export interface ServiceDefinition {
     shortCode: string;
     color: string;          // Gradient classes for UI elements
     bgColor: string;        // Solid bg class for icons/badges
+    blogBaseUrl: string;    // Base URL for blog content normalization
     description: string;
 }
 
@@ -19,6 +20,7 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'HI',
         color: 'from-[#7cc7e8] to-[#5eb3d8]',
         bgColor: 'bg-[#7cc7e8]',
+        blogBaseUrl: 'https://www.hinatazaka46.com',
         description: 'Hinatazaka46 Messages & Blogs',
     },
     {
@@ -28,6 +30,7 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'SA',
         color: 'from-[#f19db5] to-[#e87a9a]',
         bgColor: 'bg-[#E85298]',
+        blogBaseUrl: 'https://sakurazaka46.com',
         description: 'Sakurazaka46 Messages & Blogs',
     },
     {
@@ -37,6 +40,7 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'NO',
         color: 'from-[#7e1083] to-[#5a0b5e]',
         bgColor: 'bg-[#7e1083]',
+        blogBaseUrl: 'https://www.nogizaka46.com',
         description: 'Nogizaka46 Messages & Blogs',
     },
 ];
@@ -63,4 +67,8 @@ export function getServiceColor(id: string): string {
 
 export function getServiceBgColor(id: string): string {
     return SERVICES_BY_ID[id]?.bgColor ?? 'bg-gray-500';
+}
+
+export function getServiceBlogBaseUrl(id: string): string {
+    return SERVICES_BY_ID[id]?.blogBaseUrl ?? '';
 }
