@@ -5,9 +5,17 @@ import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
 
+interface ShelterColors {
+    picture: string;
+    video: string;
+    voice: string;
+    text: string;
+}
+
 interface MessageBubbleTheme {
     bubbleBorder: string;
     voicePlayerAccent: string;
+    shelterColors?: ShelterColors;
 }
 
 interface MessageBubbleProps {
@@ -24,7 +32,8 @@ interface MessageBubbleProps {
     service?: string;
 }
 
-const SHELTER_COLORS = {
+// Default fallback shelter colors (used when theme doesn't provide them)
+const DEFAULT_SHELTER_COLORS: ShelterColors = {
     video: '#c4a8d8',    // lavender/purple
     text: '#8bb8d6',     // light blue
     voice: '#b8a8d8',    // light purple
@@ -195,7 +204,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
     const ShelterOverlay = () => {
         const type = message.type;
-        const color = SHELTER_COLORS[type] || SHELTER_COLORS.text;
+        const shelterColors = theme?.shelterColors || DEFAULT_SHELTER_COLORS;
+        const color = shelterColors[type as keyof ShelterColors] || shelterColors.text;
         const Icon = SHELTER_ICONS[type] || MessageSquare;
 
         return (

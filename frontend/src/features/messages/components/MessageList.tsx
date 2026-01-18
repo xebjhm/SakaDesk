@@ -57,7 +57,8 @@ export const MessageList: React.FC<ChatListProps> = ({
     const bubbleTheme = useMemo(() => ({
         bubbleBorder: theme.bubbleBorder,
         voicePlayerAccent: theme.voicePlayerAccent,
-    }), [theme.bubbleBorder, theme.voicePlayerAccent]);
+        shelterColors: theme.shelterColors,
+    }), [theme.bubbleBorder, theme.voicePlayerAccent, theme.shelterColors]);
 
     // Pre-process messages: replace %%% with nickname at data level
     // This ensures Virtuoso sees different data when nickname changes

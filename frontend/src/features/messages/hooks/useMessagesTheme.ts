@@ -5,6 +5,13 @@ import { useAppStore } from '../../../store/appStore';
 import { getThemeForService } from '../../../config/groupThemes';
 import type { GroupTheme } from '../../../config/groupThemes';
 
+export interface ShelterColors {
+    picture: string;
+    video: string;
+    voice: string;
+    text: string;
+}
+
 export interface MessagesTheme extends GroupTheme {
     // Convenience aliases for common message colors
     headerTextColor: string;
@@ -14,6 +21,7 @@ export interface MessagesTheme extends GroupTheme {
     scrollButtonColor: string;
     unreadShadow: string;
     unreadBadge: string;
+    shelterColors: ShelterColors;
 }
 
 /**
@@ -35,6 +43,7 @@ export function useMessagesTheme(): MessagesTheme {
             scrollButtonColor: theme.messages.scrollButtonColor,
             unreadShadow: theme.messages.unreadShadow,
             unreadBadge: theme.messages.unreadBadge,
+            shelterColors: theme.messages.shelterColors,
         };
     }, [activeService]);
 }

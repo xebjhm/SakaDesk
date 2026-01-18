@@ -70,6 +70,13 @@ export interface GroupTheme {
         defaultBackground: string;    // Chat area background
         unreadBadge: string;         // Unread count badge
         sidebarGradient: string[];   // Sidebar selected item gradient
+        // Per-service shelter overlay colors (unread message covers)
+        shelterColors: {
+            picture: string;
+            video: string;
+            voice: string;
+            text: string;
+        };
     };
 }
 
@@ -152,6 +159,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             defaultBackground: '#E2E6EB',
             unreadBadge: '#7cc7e8',
             sidebarGradient: ['#c8d8ec', '#dde6f0', '#f0f4f8'],
+            shelterColors: {
+                picture: '#a8d0e8',   // Sky blue
+                video: '#c4a8d8',     // Lavender/purple
+                voice: '#b8a8d8',     // Light purple
+                text: '#8bb8d6',      // Light blue
+            },
         },
     },
 
@@ -233,6 +246,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             defaultBackground: '#FFFFFF',         // Clean white background
             unreadBadge: '#E85298',
             sidebarGradient: ['#fce7f3', '#fdf2f8', '#fff5f7'],
+            shelterColors: {
+                picture: '#E85298',   // Sakura pink (matches bubble border)
+                video: '#D49B57',     // Orange/amber (from screenshot)
+                voice: '#9B7BB8',     // Purple/violet (matches voice accent)
+                text: '#D4879B',      // Dusty rose/pink
+            },
         },
     },
 
@@ -314,6 +333,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             defaultBackground: '#F8F5FA',
             unreadBadge: '#9B59B6',
             sidebarGradient: ['#ede4f2', '#f3eef6', '#f8f5fa'],
+            shelterColors: {
+                picture: '#c4a8d8',   // Soft purple
+                video: '#9B59B6',     // Noble purple
+                voice: '#b8a8d8',     // Light lavender
+                text: '#d8c8e8',      // Misty purple
+            },
         },
     },
 
@@ -394,6 +419,12 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
             defaultBackground: '#E2E6EB',
             unreadBadge: '#6B7280',
             sidebarGradient: ['#e5e7eb', '#f3f4f6', '#f9fafb'],
+            shelterColors: {
+                picture: '#a8d0e8',   // Sky blue
+                video: '#c4a8d8',     // Lavender/purple
+                voice: '#b8a8d8',     // Light purple
+                text: '#8bb8d6',      // Light blue
+            },
         },
     },
 };
