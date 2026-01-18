@@ -31,8 +31,8 @@ export function useSync({
     isAuthenticated,
     appSettings,
     connectedServices,
-    setAuthError,
-    setIsAuthenticated,
+    setAuthError: _setAuthError,  // Kept for interface compatibility
+    setIsAuthenticated: _setIsAuthenticated,  // Kept for interface compatibility
     onSyncComplete,
     markServiceDisconnected,
 }: UseSyncOptions): UseSyncReturn {
