@@ -120,15 +120,19 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
                     if (!data.is_configured) {
                         setShowSetupWizard(true);
                     }
-                    if (!data.user_nickname && activeService) {
-                        fetch(`/api/profile?service=${encodeURIComponent(activeService)}`)
-                            .then(res => res.json())
-                            .then(profileData => {
-                                if (profileData.nickname) {
-                                    setAppSettings(prev => prev ? { ...prev, user_nickname: profileData.nickname } : prev);
-                                }
-                            })
-                            .catch(console.error);
+                })
+                .catch(console.error);
+        }
+    }, [isAuthenticated]);
+
+    // Fetch nickname when activeService changes (per-service nicknames)
+    useEffect(() => {
+        if (isAuthenticated && activeService) {
+            fetch(`/api/profile?service=${encodeURIComponent(activeService)}`)
+                .then(res => res.json())
+                .then(profileData => {
+                    if (profileData.nickname) {
+                        setAppSettings(prev => prev ? { ...prev, user_nickname: profileData.nickname } : prev);
                     }
                 })
                 .catch(console.error);
