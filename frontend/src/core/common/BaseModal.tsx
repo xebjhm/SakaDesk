@@ -4,6 +4,8 @@ import { Portal } from './Portal';
 import { cn } from '../../utils/classnames';
 import type { BaseModalComponentProps } from '../../types/modal';
 import { Z_CLASS } from '../../constants/zIndex';
+import { useAppStore } from '../../store/appStore';
+import { getThemeForService } from '../../config/groupThemes';
 
 /**
  * BaseModal component that handles common modal patterns:
@@ -37,6 +39,10 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
     isDetailView = false,
     className,
 }) => {
+    // Get per-service theme colors for modal header
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
+
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
@@ -111,20 +117,48 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-4 flex items-center justify-between shrink-0">
-                        <div className="flex items-center gap-3">
-                            {Icon && <Icon className="w-5 h-5 text-white" />}
-                            <h3 id={titleId} className="text-lg font-bold text-white">
-                                {title}
-                            </h3>
-                        </div>
-                        <button
-                            onClick={onClose}
-                            className="text-white/80 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
-                            aria-label="Close modal"
+                    <div className="shrink-0">
+                        <div
+                            className="px-6 py-4 flex items-center justify-between"
+                            style={{
+                                background: theme.messages.headerStyle === 'light'
+                                    ? '#FFFFFF'
+                                    : `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
+                            }}
                         >
-                            <X className="w-6 h-6" />
-                        </button>
+                            <div className="flex items-center gap-3">
+                                {Icon && (
+                                    <Icon
+                                        className="w-5 h-5"
+                                        style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
+                                    />
+                                )}
+                                <h3
+                                    id={titleId}
+                                    className="text-lg font-bold"
+                                    style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
+                                >
+                                    {title}
+                                </h3>
+                            </div>
+                            <button
+                                onClick={onClose}
+                                className="p-1 rounded-lg transition-colors"
+                                style={{
+                                    color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.8)',
+                                }}
+                                aria-label="Close modal"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+                        {/* Gradient bar below header for light style */}
+                        {theme.messages.headerStyle === 'light' && (
+                            <div
+                                className="h-1"
+                                style={{ background: theme.messages.headerBarGradient }}
+                            />
+                        )}
                     </div>
 
                     {/* Content */}
@@ -181,6 +215,10 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     footer,
     maxWidth = 'max-w-2xl',
 }) => {
+    // Get per-service theme colors for modal header
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
+
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
@@ -236,25 +274,55 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
-                        <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-4 flex items-center justify-between shrink-0">
-                            <div className="flex items-center gap-3">
-                                {backButton}
-                                <div>
-                                    <h3 id={titleId} className="text-lg font-bold text-white">
-                                        {title}
-                                    </h3>
-                                    {subtitle && (
-                                        <p className="text-sm text-white/80">{subtitle}</p>
-                                    )}
-                                </div>
-                            </div>
-                            <button
-                                onClick={onCloseAll || onClose}
-                                className="text-white/80 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10"
-                                aria-label="Close modal"
+                        <div className="shrink-0">
+                            <div
+                                className="px-6 py-4 flex items-center justify-between"
+                                style={{
+                                    background: theme.messages.headerStyle === 'light'
+                                        ? '#FFFFFF'
+                                        : `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
+                                }}
                             >
-                                <X className="w-6 h-6" />
-                            </button>
+                                <div className="flex items-center gap-3">
+                                    {backButton && React.cloneElement(backButton as React.ReactElement, {
+                                        style: { color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.8)' }
+                                    })}
+                                    <div>
+                                        <h3
+                                            id={titleId}
+                                            className="text-lg font-bold"
+                                            style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
+                                        >
+                                            {title}
+                                        </h3>
+                                        {subtitle && (
+                                            <p
+                                                className="text-sm"
+                                                style={{ color: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}cc` : 'rgba(255,255,255,0.8)' }}
+                                            >
+                                                {subtitle}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={onCloseAll || onClose}
+                                    className="p-1 rounded-lg transition-colors"
+                                    style={{
+                                        color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.8)',
+                                    }}
+                                    aria-label="Close modal"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+                            {/* Gradient bar below header for light style */}
+                            {theme.messages.headerStyle === 'light' && (
+                                <div
+                                    className="h-1"
+                                    style={{ background: theme.messages.headerBarGradient }}
+                                />
+                            )}
                         </div>
 
                         {/* Content */}
