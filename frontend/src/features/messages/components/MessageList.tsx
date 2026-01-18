@@ -28,6 +28,8 @@ interface ChatListProps {
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     /** Callback when avatar is clicked (for member profile popup) */
     onAvatarClick?: () => void;
+    /** Active service ID for media URL construction */
+    service?: string;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -44,6 +46,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     userNickname,
     onToggleFavorite,
     onAvatarClick,
+    service,
 }) => {
     const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
@@ -120,6 +123,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             onToggleFavorite={onToggleFavorite}
                             onAvatarClick={onAvatarClick}
                             theme={bubbleTheme}
+                            service={service}
                         />
                     </div>
                 );

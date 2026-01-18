@@ -21,6 +21,7 @@ interface MessageBubbleProps {
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
     theme?: MessageBubbleTheme;
+    service?: string;
 }
 
 const SHELTER_COLORS = {
@@ -133,6 +134,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onToggleFavorite,
     onAvatarClick,
     theme,
+    service,
 }) => {
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -171,8 +173,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, [onToggleFavorite, message.id, message.is_favorite]);
 
     // Encode path segments for special chars (spaces, CJK characters)
-    const mediaUrl = message.media_file
-        ? `${api_base}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
+    // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../voice/346492.m4a")
+    // API expects full path from output dir (e.g., "櫻坂46/messages/62 石森 璃花/.../voice/346492.m4a")
+    const mediaUrl = message.media_file && service
+        ? `${api_base}/${encodeURIComponent(service)}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
         : null;
 
     // Long press timer for shelter overlay - use ref to persist across renders
