@@ -33,7 +33,7 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
-from backend.services.service_utils import validate_service, get_service_identifier
+from backend.services.service_utils import validate_service, get_service_identifier, get_service_display_name
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -466,8 +466,27 @@ async def get_unread_counts(read_states: Dict[str, Any]):
 
 @router.get("/media/{file_path:path}")
 async def get_media(file_path: str):
-    """Serve media files."""
+    """Serve media files.
+
+    Path format: {service_id}/{rest} where service_id is romaji (e.g., 'sakurazaka46')
+    and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
+
+    The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+    """
     output_dir = get_output_dir()
+
+    # Translate service ID to display name if the first segment is a known service
+    parts = file_path.split('/', 1)
+    if len(parts) == 2:
+        service_part, rest = parts
+        try:
+            # Translate romaji ID (e.g., 'sakurazaka46') to display name (e.g., '櫻坂46')
+            display_name = get_service_display_name(service_part)
+            file_path = f"{display_name}/{rest}"
+        except ValueError:
+            # Not a valid service ID, use path as-is (might already be display name)
+            pass
+
     safe_path = validate_path_within_dir(output_dir, file_path)
     logger.debug(f"Media request: {file_path} -> {safe_path}, exists={safe_path.exists()}")
 
