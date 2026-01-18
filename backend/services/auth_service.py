@@ -62,6 +62,21 @@ class AuthService:
             logger.error(f"Failed to parse token expiry: {e}")
         return True  # Assume expired if can't parse
 
+    def _get_token_expiry_timestamp(self, token: str) -> int | None:
+        """Extract expiry timestamp from JWT token. Returns Unix timestamp or None."""
+        try:
+            parts = token.split('.')
+            if len(parts) >= 2:
+                payload = parts[1]
+                payload += '=' * (4 - len(payload) % 4)
+                decoded = base64.b64decode(payload)
+                data = json.loads(decoded)
+                if 'exp' in data:
+                    return int(data['exp'])
+        except Exception as e:
+            logger.error(f"Failed to parse token expiry timestamp: {e}")
+        return None
+
     def _get_service_auth_status(self, service: str) -> dict:
         """Get authentication status for a single service."""
         try:
@@ -82,16 +97,19 @@ class AuthService:
                 )
 
                 if token:
+                    expires_at = self._get_token_expiry_timestamp(token)
                     if self._is_token_expired(token):
                         logger.warning(f"Token is expired for {service}, returning token_expired status")
                         return {
                             "authenticated": False,
                             "token_expired": True,
+                            "expires_at": expires_at,
                             "message": "Token expired. Please re-login."
                         }
-                    logger.info(f"Auth status check for {service}: authenticated and token valid")
+                    logger.info(f"Auth status check for {service}: authenticated and token valid, expires_at={expires_at}")
                     return {
                         "authenticated": True,
+                        "expires_at": expires_at,
                         "app_id": token_data.get('x-talk-app-id'),
                         "storage_type": "secure" if not is_dev_mode() else "development"
                     }
