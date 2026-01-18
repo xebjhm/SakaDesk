@@ -34,8 +34,9 @@ export function useAuth(): UseAuthReturn {
     const [authCheckComplete, setAuthCheckComplete] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
+    const [serviceAuth, setServiceAuth] = useState<ServiceAuthRecord>({});
 
-    const tokenRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const refreshTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
     const checkAuth = useCallback(async () => {
         try {
