@@ -103,11 +103,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             delete refreshTimersRef.current[serviceId];
         }
 
-        const refreshAt = expiresAt - (10 * 60 * 1000);  // 10 min before expiry
-        const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);  // 0-2 min random jitter
-        const delayMs = Math.max(refreshAt - Date.now() - jitterMs, 60_000);  // minimum 1 min
+        const now = Date.now();
+        const timeUntilExpiry = expiresAt - now;
+        const refreshThreshold = 10 * 60 * 1000;  // 10 min before expiry
+        const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);  // 0-2 min random jitter (spread out requests)
 
-        console.log(`[Auth] ${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min (jitter: -${Math.round(jitterMs / 1000)}s)`);
+        // Calculate when to refresh: (expiry - threshold) + jitter
+        // Jitter is ADDED to spread out refresh attempts across time window
+        // e.g., 60 min token → refresh at 50-52 min mark (10 min before, plus 0-2 min jitter)
+        const targetRefreshTime = expiresAt - refreshThreshold + jitterMs;
+        const delayMs = Math.max(targetRefreshTime - now, 60_000);  // minimum 1 min
+
+        console.log(`[Auth] ${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min (expiry in ${Math.round(timeUntilExpiry / 60000)} min, jitter: +${Math.round(jitterMs / 1000)}s)`);
 
         refreshTimersRef.current[serviceId] = setTimeout(() => {
             refreshServiceToken(serviceId);
@@ -150,18 +157,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }));
                 scheduleRefreshForService(serviceId, newExpiresAt);
             } else {
-                // status === 'valid' - token still valid, just reschedule based on current remaining time
-                // Only reschedule if remaining time is significant (> 10 min threshold)
+                // status === 'valid' - token still valid, backend didn't refresh it yet
+                // This means we called too early. Reschedule based on actual remaining time.
                 const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
-                if (data.remaining_seconds > 600) {
-                    console.log(`[Auth] ${serviceId}: token still valid, rescheduling refresh`);
-                    scheduleRefreshForService(serviceId, newExpiresAt);
-                } else {
-                    // Token is within threshold but wasn't refreshed - retry in 1 min
-                    console.log(`[Auth] ${serviceId}: token within threshold but not refreshed, retrying in 1 min`);
-                    const retryAt = Date.now() + (60 * 1000);
-                    scheduleRefreshForService(serviceId, retryAt + (10 * 60 * 1000)); // Add 10 min to get proper scheduling
-                }
+                console.log(`[Auth] ${serviceId}: token still valid (${Math.round(data.remaining_seconds / 60)} min remaining), rescheduling`);
+                scheduleRefreshForService(serviceId, newExpiresAt);
             }
             // Reset retry count on any successful response
             refreshRetryCountRef.current[serviceId] = 0;
