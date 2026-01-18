@@ -15,7 +15,8 @@ from typing import Optional
 
 from pyhako import Client, Group
 from pyhako.credentials import get_token_manager
-from backend.services.platform import get_settings_path, is_test_mode
+from backend.services.platform import get_settings_path, get_session_dir, is_test_mode
+from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
 logger = structlog.get_logger(__name__)
@@ -100,14 +101,22 @@ def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
     return False
 
 
-async def _get_client_and_session():
-    """Get pyhako client and aiohttp session with auth."""
+async def _get_client_and_session(service: str):
+    """Get pyhako client and aiohttp session with auth for given service."""
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Favorites not available in test mode")
 
+    # Validate service
+    try:
+        validate_service(service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    group = get_service_enum(service)
+
     try:
         tm = get_token_manager()
-        token_data = tm.load_session(Group.HINATAZAKA46.value)
+        token_data = tm.load_session(group.value)
 
         if not token_data or not token_data.get('access_token'):
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -116,12 +125,13 @@ async def _get_client_and_session():
         session = aiohttp.ClientSession(connector=connector)
 
         client = Client(
-            group=Group.HINATAZAKA46,
+            group=group,
             access_token=token_data.get('access_token'),
             refresh_token=token_data.get('refresh_token'),
             cookies=token_data.get('cookies'),
             app_id=token_data.get('x-talk-app-id'),
             user_agent=token_data.get('user-agent'),
+            auth_dir=str(get_session_dir())
         )
 
         return client, session
@@ -134,9 +144,15 @@ async def _get_client_and_session():
 
 
 @router.post("/{message_id}", response_model=FavoriteResponse)
-async def add_favorite(message_id: int):
-    """Add a message to favorites (server-side)."""
-    client, session = await _get_client_and_session()
+async def add_favorite(message_id: int, service: str):
+    """
+    Add a message to favorites (server-side).
+
+    Args:
+        message_id: The message ID to favorite.
+        service: The service ID (e.g., 'hinatazaka46').
+    """
+    client, session = await _get_client_and_session(service)
 
     try:
         success = await client.add_favorite(session, message_id)
@@ -170,9 +186,15 @@ async def add_favorite(message_id: int):
 
 
 @router.delete("/{message_id}", response_model=FavoriteResponse)
-async def remove_favorite(message_id: int):
-    """Remove a message from favorites (server-side)."""
-    client, session = await _get_client_and_session()
+async def remove_favorite(message_id: int, service: str):
+    """
+    Remove a message from favorites (server-side).
+
+    Args:
+        message_id: The message ID to unfavorite.
+        service: The service ID (e.g., 'hinatazaka46').
+    """
+    client, session = await _get_client_and_session(service)
 
     try:
         success = await client.remove_favorite(session, message_id)
