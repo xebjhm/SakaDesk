@@ -112,6 +112,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [hasUnreadAbove, setHasUnreadAbove] = useState(false);
     const [hasUnreadBelow, setHasUnreadBelow] = useState(false);
 
+    // Track which service the current messages belong to
+    const [messagesService, setMessagesService] = useState<string | null>(null);
+
     // Reset selection when service changes
     useEffect(() => {
         setSelectedGroupDir(undefined);
@@ -119,6 +122,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setMessages([]);
         setMembersMap({});
         setError(null);
+        setMessagesService(null);
     }, [activeService]);
 
     // Refresh messages when sync completes
@@ -166,6 +170,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessages(data.messages || []);
                 setTotalMessages(data.total_messages || 0);
                 setMaxMessageId(data.max_message_id || 0);
+                setMessagesService(activeService);
                 messagesPathRef.current = path;
             } else {
                 const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
@@ -176,6 +181,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessages(data.messages || []);
                 setTotalMessages(data.total_count || 0);
                 setMaxMessageId(data.max_message_id || 0);
+                setMessagesService(activeService);
                 messagesPathRef.current = path;
             }
         } catch (err: unknown) {
@@ -466,7 +472,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-red-500">Error: {error}</div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && (
                         <MessageList
                             memberId={selectedGroupDir}
                             messages={messages}
@@ -479,6 +485,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             userNickname={appSettings?.user_nickname}
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
+                            service={messagesService}
                         />
                     )}
                 </div>
