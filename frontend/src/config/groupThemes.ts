@@ -77,6 +77,8 @@ export interface GroupTheme {
             voice: string;
             text: string;
         };
+        // Shelter style: 'classic' = colored bg + white icon, 'light' = white bg + colored icon
+        shelterStyle: 'classic' | 'light';
     };
 }
 
@@ -165,6 +167,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 voice: '#b8a8d8',     // Light purple
                 text: '#8bb8d6',      // Light blue
             },
+            shelterStyle: 'classic',  // Colored background with white icon
         },
     },
 
@@ -252,6 +255,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 voice: '#9B7BB8',     // Purple/violet (matches voice accent)
                 text: '#D4879B',      // Dusty rose/pink
             },
+            shelterStyle: 'light',    // White background with colored icon (Sakura style)
         },
     },
 
@@ -339,6 +343,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 voice: '#b8a8d8',     // Light lavender
                 text: '#d8c8e8',      // Misty purple
             },
+            shelterStyle: 'classic',  // Colored background with white icon
         },
     },
 
@@ -425,6 +430,7 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
                 voice: '#b8a8d8',     // Light purple
                 text: '#8bb8d6',      // Light blue
             },
+            shelterStyle: 'classic',  // Colored background with white icon
         },
     },
 };
