@@ -186,6 +186,36 @@ export function useAuth(): UseAuthReturn {
         [connectedServices]
     );
 
+    const isServiceDisconnected = useCallback(
+        (serviceId: string) => {
+            const state = serviceAuth[serviceId];
+            return state?.wasEverConnected === true && state?.connected === false;
+        },
+        [serviceAuth]
+    );
+
+    const getServiceError = useCallback(
+        (serviceId: string) => serviceAuth[serviceId]?.error ?? null,
+        [serviceAuth]
+    );
+
+    const clearServiceError = useCallback(
+        (serviceId: string) => {
+            setServiceAuth(prev => ({
+                ...prev,
+                [serviceId]: {
+                    ...prev[serviceId],
+                    error: null,
+                },
+            }));
+        },
+        []
+    );
+
+    const disconnectedServices = Object.entries(serviceAuth)
+        .filter(([_, state]) => state.wasEverConnected && !state.connected)
+        .map(([serviceId]) => serviceId);
+
     return {
         isAuthenticated,
         authCheckComplete,
@@ -195,5 +225,10 @@ export function useAuth(): UseAuthReturn {
         checkAuth,
         connectedServices,
         isServiceConnected,
+        // New additions
+        isServiceDisconnected,
+        getServiceError,
+        clearServiceError,
+        disconnectedServices,
     };
 }
