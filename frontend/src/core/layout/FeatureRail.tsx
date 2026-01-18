@@ -12,7 +12,7 @@ export interface FeatureRailProps {
 
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const { getActiveFeature, setActiveFeature, getFeatureOrder, triggerBlogViewReset } = useAppStore();
-    const { isServiceConnected, checkAuth } = useAuth();
+    const { isServiceConnected, checkAuth, isServiceDisconnected } = useAuth();
     const [loginModal, setLoginModal] = useState<{ featureId: FeatureId } | null>(null);
 
     const activeFeature = getActiveFeature(service);
@@ -102,6 +102,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
                     featureId={loginModal.featureId}
                     onClose={() => setLoginModal(null)}
                     onSuccess={handleLoginSuccess}
+                    isDisconnected={isServiceDisconnected(service)}
                 />
             )}
         </>
