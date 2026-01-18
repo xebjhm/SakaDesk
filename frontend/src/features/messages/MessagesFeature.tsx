@@ -9,6 +9,7 @@ import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
+import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 
 // Types specific to messages feature
@@ -451,28 +452,46 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             <div className="flex-1 flex flex-col h-full relative min-w-0">
                 {/* Header */}
                 <header
-                    className="h-16 flex items-center px-4 shadow-sm z-10 shrink-0"
+                    className={cn(
+                        "h-16 flex items-center px-4 z-20 shrink-0",
+                        theme.messages.headerStyle !== 'light' && "shadow-sm"
+                    )}
                     style={{
-                        background: `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
+                        background: theme.messages.headerStyle === 'light'
+                            ? '#FFFFFF'
+                            : `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
                     }}
                 >
                     <button
-                        className="md:hidden mr-3 text-white"
+                        className="md:hidden mr-3"
+                        style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
                         onClick={() => setIsSidebarOpen(true)}
                     >
                         <Menu />
                     </button>
-                    <div className="text-white flex-1">
+                    <div className="flex-1" style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}>
                         <h2 className="text-lg font-bold">{selectedName || "Select a Conversation"}</h2>
                         {isGroupChat && <span className="text-xs opacity-80">Group Chat</span>}
                     </div>
                     {displayUnreadCount > 0 && (
-                        <span className="bg-white/20 text-white text-xs px-2 py-1 rounded-full">
+                        <span
+                            className="text-xs px-2 py-1 rounded-full"
+                            style={{
+                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}20` : 'rgba(255,255,255,0.2)',
+                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white',
+                            }}
+                        >
                             {displayUnreadCount} unread
                         </span>
                     )}
                     {syncProgress.state === 'running' && (
-                        <div className="flex items-center ml-4 text-xs text-white/90 bg-black/20 px-3 py-1 rounded-full">
+                        <div
+                            className="flex items-center ml-4 text-xs px-3 py-1 rounded-full"
+                            style={{
+                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}15` : 'rgba(0,0,0,0.2)',
+                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.9)',
+                            }}
+                        >
                             <Loader2 className="w-3 h-3 animate-spin mr-2" />
                             <span>{syncProgress.detail || "Syncing..."}</span>
                         </div>
@@ -488,15 +507,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             activeService={activeService || undefined}
                             onSelectDate={scrollToDate}
                             onBackgroundChange={setBackgroundSettings}
+                            iconColor={theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : undefined}
                         />
                     )}
                 </header>
 
-                {/* Gradient Bar below header */}
-                <div
-                    className="h-1 shrink-0"
-                    style={{ background: theme.messages.headerBarGradient }}
-                />
+                {/* Gradient Bar below header (only for light style) */}
+                {theme.messages.headerStyle === 'light' && (
+                    <div
+                        className="h-1 shrink-0"
+                        style={{ background: theme.messages.headerBarGradient }}
+                    />
+                )}
 
                 {/* Virtualized Timeline */}
                 <div
@@ -558,7 +580,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     <div className="absolute right-4 bottom-4 z-20">
                         <button
                             onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
+                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
+                            style={{ backgroundColor: theme.modals.accentColor }}
                             title="Jump to oldest unread"
                         >
                             <ChevronUp className="w-5 h-5" />
@@ -570,7 +593,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     <div className="absolute right-4 top-20 z-20">
                         <button
                             onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full bg-blue-500 shadow-lg flex items-center justify-center text-white hover:bg-blue-600 transition-all"
+                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
+                            style={{ backgroundColor: theme.modals.accentColor }}
                             title="Jump to oldest unread"
                         >
                             <ChevronDown className="w-5 h-5" />
@@ -598,7 +622,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                                         revealAllMessages();
                                         setShowRevealConfirm(false);
                                     }}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                                    className="px-4 py-2 text-white rounded-lg font-medium"
+                                    style={{ backgroundColor: theme.modals.accentColor }}
                                 >
                                     Confirm
                                 </button>
