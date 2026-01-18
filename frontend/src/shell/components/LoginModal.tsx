@@ -11,6 +11,7 @@ interface LoginModalProps {
     featureId: FeatureId;
     onClose: () => void;
     onSuccess: () => void;
+    isDisconnected?: boolean;  // New: true if session expired (vs never connected)
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -18,6 +19,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     featureId,
     onClose,
     onSuccess,
+    isDisconnected = false,
 }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -62,7 +64,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-white">
-                                    Login Required
+                                    {isDisconnected ? 'Session Expired' : 'Login Required'}
                                 </h3>
                                 <p className="text-sm text-white/80">
                                     {service?.displayName ?? serviceId}
@@ -81,11 +83,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 {/* Content */}
                 <div className="p-6 space-y-4">
                     <p className="text-gray-600">
-                        <span className="font-medium text-gray-900">
-                            {feature?.label ?? featureId}
-                        </span>{' '}
-                        is a premium feature that requires logging in with your{' '}
-                        {service?.name ?? serviceId} account.
+                        {isDisconnected ? (
+                            <>
+                                Your session for{' '}
+                                <span className="font-medium text-gray-900">
+                                    {service?.displayName ?? serviceId}
+                                </span>{' '}
+                                has expired. Please re-login to continue using{' '}
+                                <span className="font-medium text-gray-900">
+                                    {feature?.label ?? featureId}
+                                </span>.
+                            </>
+                        ) : (
+                            <>
+                                <span className="font-medium text-gray-900">
+                                    {feature?.label ?? featureId}
+                                </span>{' '}
+                                is a premium feature that requires logging in with your{' '}
+                                {service?.name ?? serviceId} account.
+                            </>
+                        )}
                     </p>
 
                     {error && (
