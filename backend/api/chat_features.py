@@ -18,7 +18,8 @@ from typing import List, Optional, Dict
 
 from pyhako import Client, Group
 from pyhako.credentials import get_token_manager
-from backend.services.platform import is_test_mode, get_settings_path
+from backend.services.platform import is_test_mode, get_settings_path, get_session_dir
+from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -69,15 +70,22 @@ def _get_output_dir() -> Path:
     return Path("output")
 
 
-async def _get_client_and_session():
-    """Get pyhako client and aiohttp session with auth."""
+async def _get_client_and_session(service: str):
+    """Get pyhako client and aiohttp session with auth for given service."""
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Not available in test mode")
 
+    # Validate service
+    try:
+        validate_service(service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    group = get_service_enum(service)
     session = None
     try:
         tm = get_token_manager()
-        token_data = tm.load_session(Group.HINATAZAKA46.value)
+        token_data = tm.load_session(group.value)
 
         if not token_data or not token_data.get('access_token'):
             raise HTTPException(status_code=401, detail="Not authenticated")
@@ -86,12 +94,13 @@ async def _get_client_and_session():
         session = aiohttp.ClientSession(connector=connector)
 
         client = Client(
-            group=Group.HINATAZAKA46,
+            group=group,
             access_token=token_data.get('access_token'),
             refresh_token=token_data.get('refresh_token'),
             cookies=token_data.get('cookies'),
             app_id=token_data.get('x-talk-app-id'),
             user_agent=token_data.get('user-agent'),
+            auth_dir=str(get_session_dir())
         )
 
         return client, session
@@ -108,13 +117,18 @@ async def _get_client_and_session():
 
 
 @router.get("/letters/{group_id}", response_model=LettersResponse)
-async def get_letters(group_id: int, count: int = 200):
+async def get_letters(group_id: int, service: str, count: int = 200):
     """
     Fetch user's sent letters to a member.
 
     Uses pyhako.Client.get_letters() to fetch from the official API.
+
+    Args:
+        group_id: The member's group ID.
+        service: The service ID (e.g., 'hinatazaka46').
+        count: Maximum number of letters to fetch.
     """
-    client, session = await _get_client_and_session()
+    client, session = await _get_client_and_session(service)
 
     try:
         letters_data = await client.get_letters(session, group_id, count=count)
@@ -150,13 +164,17 @@ async def get_letters(group_id: int, count: int = 200):
 
 
 @router.get("/streak/{group_id}", response_model=StreakResponse)
-async def get_streak(group_id: int):
+async def get_streak(group_id: int, service: str):
     """
     Fetch subscription streak for a member.
 
     Uses pyhako.Client.get_subscription_streak() to fetch consecutive days.
+
+    Args:
+        group_id: The member's group ID.
+        service: The service ID (e.g., 'hinatazaka46').
     """
-    client, session = await _get_client_and_session()
+    client, session = await _get_client_and_session(service)
 
     try:
         streak_data = await client.get_subscription_streak(session, group_id)

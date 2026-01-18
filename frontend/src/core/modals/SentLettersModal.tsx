@@ -17,6 +17,7 @@ interface SentLettersModalProps extends BaseModalProps {
     conversationPath: string;
     memberName: string;
     groupId?: string;
+    activeService?: string; // Service ID for API calls
 }
 
 export const SentLettersModal: React.FC<SentLettersModalProps> = ({
@@ -25,6 +26,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
     conversationPath: _conversationPath,  // Reserved for future use
     memberName,
     groupId,
+    activeService,
 }) => {
     const [letters, setLetters] = useState<Letter[]>([]);
     const [loading, setLoading] = useState(false);
@@ -42,7 +44,10 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
         setError(null);
 
         try {
-            const res = await fetch(`/api/chat/letters/${groupId}`);
+            const url = activeService
+                ? `/api/chat/letters/${groupId}?service=${encodeURIComponent(activeService)}`
+                : `/api/chat/letters/${groupId}`;
+            const res = await fetch(url);
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.detail || 'Failed to fetch letters');
@@ -58,7 +63,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [groupId]);
+    }, [groupId, activeService]);
 
     useEffect(() => {
         if (isOpen && groupId) {

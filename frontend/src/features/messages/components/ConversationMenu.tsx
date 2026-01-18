@@ -18,6 +18,7 @@ interface ChatHeaderMenuProps {
     memberName: string;
     memberAvatar?: string;
     groupId?: string;
+    activeService?: string; // Service ID for API calls
     onSelectDate?: (date: string) => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
 }
@@ -31,6 +32,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     memberName,
     memberAvatar,
     groupId,
+    activeService,
     onSelectDate,
     onBackgroundChange,
 }) => {
@@ -100,6 +102,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 conversationPath={conversationPath}
                 memberName={memberName}
                 groupId={groupId}
+                activeService={activeService}
             />
 
             <MediaGalleryModal
