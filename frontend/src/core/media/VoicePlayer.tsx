@@ -306,21 +306,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         setShowVolume(false);
     }, []);
 
-    // Premium variant - Modern card style with glassmorphism and blue accent
+    // Premium variant - Modern card style with glassmorphism
     if (variant === 'premium') {
         return (
             <div
                 ref={containerRef}
                 tabIndex={0}
-                className="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 focus:ring-[#6da0d4]/50 shadow-[0_4px_24px_rgba(109,160,212,0.15),0_1px_3px_rgba(0,0,0,0.08)] border border-[#6da0d4]/20"
+                className="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+                style={{
+                    '--tw-ring-color': `${accentColor}80`,
+                    borderWidth: '1px',
+                    borderColor: `${accentColor}33`,
+                } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
                 <audio ref={audioRef} src={src} preload="metadata" />
 
                 {/* Row 1: Avatar + Info + Menu */}
                 <div className="flex items-center gap-3 mb-2">
-                    {/* Avatar with gradient ring */}
-                    <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-br from-[#6da0d4] to-[#a78bfa] shrink-0">
+                    {/* Avatar with accent ring */}
+                    <div
+                        className="w-10 h-10 rounded-full p-0.5 shrink-0"
+                        style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${accentColor}cc)` }}
+                    >
                         <div className="w-full h-full rounded-full overflow-hidden bg-white">
                             {avatarUrl ? (
                                 <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
@@ -369,10 +377,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     <button
                                         key={rate}
                                         onClick={() => handlePlaybackRateChange(rate)}
-                                        className={cn(
-                                            "w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80",
-                                            playbackRate === rate ? 'text-[#6da0d4] font-medium' : 'text-gray-700'
-                                        )}
+                                        className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80"
+                                        style={{
+                                            color: playbackRate === rate ? accentColor : '#374151',
+                                            fontWeight: playbackRate === rate ? 500 : 400,
+                                        }}
                                         type="button"
                                     >
                                         {rate}x
@@ -383,12 +392,12 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     </div>
                 </div>
 
-                {/* Row 2: Progress Bar with gradient */}
+                {/* Row 2: Progress Bar */}
                 <div className="mb-2">
                     <div className="relative h-1 bg-gray-200/60 rounded-full overflow-hidden">
                         <div
-                            className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#6da0d4] to-[#a78bfa] rounded-full"
-                            style={{ width: `${animatedProgress}%` }}
+                            className="absolute inset-y-0 left-0 rounded-full"
+                            style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
                         />
                         <input
                             type="range"
@@ -441,9 +450,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     step={0.01}
                                     value={volume}
                                     onChange={handleVolumeChange}
-                                    className="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+                                    className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                     style={{
-                                        background: `linear-gradient(to right, #6da0d4 ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                        accentColor: accentColor,
+                                        background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
                                     }}
                                 />
                             </div>
@@ -460,7 +470,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                         <button
                             onClick={togglePlay}
-                            className="w-12 h-12 rounded-full bg-gradient-to-br from-[#6da0d4] to-[#5a8fc3] shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all"
+                            className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+                            style={{ backgroundColor: accentColor }}
                             type="button"
                         >
                             {isPlaying ? (
