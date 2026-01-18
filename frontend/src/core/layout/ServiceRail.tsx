@@ -4,7 +4,7 @@ import { Plus, Unplug } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
-import { getServiceShortCode } from '../../data/services';
+import { getServiceShortCode, getServiceBgColor } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { useAuth } from '../../shell/hooks/useAuth';
 
@@ -15,13 +15,6 @@ export interface ServiceRailProps {
     onReportIssue: () => void;
     onOpenAbout: () => void;
 }
-
-const getServiceColor = (name: string) => {
-    if (name === 'hinatazaka46') return 'bg-[#7cc7e8]'; // Sky Blue
-    if (name === 'sakurazaka46') return 'bg-[#E85298]'; // Sakura Pink (official app)
-    if (name === 'nogizaka46') return 'bg-[#7e1083]';   // Purple
-    return 'bg-gray-500';
-};
 
 export const ServiceRail: React.FC<ServiceRailProps> = ({
     services,
@@ -55,7 +48,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
             <div className="flex flex-col items-center gap-2 flex-1">
                 {services.map(service => {
                     const isActive = activeService === service;
-                    const colorClass = getServiceColor(service);
+                    const colorClass = getServiceBgColor(service);
 
                     return (
                         <button
