@@ -209,8 +209,26 @@ export function useSync({
         }
 
         try {
-            await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
-            pollSyncProgress(targetService, blocking);
+            const response = await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
+            if (response.ok) {
+                // Sync started successfully
+                pollSyncProgress(targetService, blocking);
+            } else if (response.status === 400) {
+                // Likely "already running" - just poll for existing progress
+                console.log(`[Sync] ${targetService}: sync already running, polling existing progress`);
+                pollSyncProgress(targetService, blocking);
+            } else {
+                // Other error
+                const data = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                console.error(`[Sync] ${targetService}: failed to start`, data.detail);
+                if (currentProgress?.state !== 'running') {
+                    const errorProgress: SyncProgress = { state: 'error', detail: data.detail || 'Failed to start sync' };
+                    setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+                    if (targetService === activeService) {
+                        setSyncProgress(errorProgress);
+                    }
+                }
+            }
         } catch {
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: 'Failed to start sync' };
