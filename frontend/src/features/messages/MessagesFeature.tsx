@@ -435,6 +435,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             memberName={selectedName || ''}
                             memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                            activeService={activeService || undefined}
                             onSelectDate={scrollToDate}
                             onBackgroundChange={setBackgroundSettings}
                         />
