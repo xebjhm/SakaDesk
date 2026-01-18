@@ -12,10 +12,13 @@ interface ShelterColors {
     text: string;
 }
 
+type ShelterStyle = 'classic' | 'light';
+
 interface MessageBubbleTheme {
     bubbleBorder: string;
     voicePlayerAccent: string;
     shelterColors?: ShelterColors;
+    shelterStyle?: ShelterStyle;
 }
 
 interface MessageBubbleProps {
@@ -205,13 +208,20 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const ShelterOverlay = () => {
         const type = message.type;
         const shelterColors = theme?.shelterColors || DEFAULT_SHELTER_COLORS;
-        const color = shelterColors[type as keyof ShelterColors] || shelterColors.text;
+        const shelterStyle = theme?.shelterStyle || 'classic';
+        const themeColor = shelterColors[type as keyof ShelterColors] || shelterColors.text;
         const Icon = SHELTER_ICONS[type] || MessageSquare;
+
+        // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
+        // 'light' = white background with colored icon (Sakurazaka)
+        const isLightStyle = shelterStyle === 'light';
+        const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
+        const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
 
         return (
             <div
                 className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-                style={{ backgroundColor: color }}
+                style={{ backgroundColor: bgColor }}
                 onClick={(e) => {
                     e.stopPropagation();
                     onReveal?.();
@@ -221,7 +231,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <Icon className="w-8 h-8 text-white/90" />
+                <Icon className="w-8 h-8" style={{ color: iconColor }} />
             </div>
         );
     };

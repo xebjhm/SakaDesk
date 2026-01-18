@@ -12,6 +12,8 @@ export interface ShelterColors {
     text: string;
 }
 
+export type ShelterStyle = 'classic' | 'light';
+
 export interface MessagesTheme extends GroupTheme {
     // Convenience aliases for common message colors
     headerTextColor: string;
@@ -22,6 +24,7 @@ export interface MessagesTheme extends GroupTheme {
     unreadShadow: string;
     unreadBadge: string;
     shelterColors: ShelterColors;
+    shelterStyle: ShelterStyle;
 }
 
 /**
@@ -44,6 +47,7 @@ export function useMessagesTheme(): MessagesTheme {
             unreadShadow: theme.messages.unreadShadow,
             unreadBadge: theme.messages.unreadBadge,
             shelterColors: theme.messages.shelterColors,
+            shelterStyle: theme.messages.shelterStyle,
         };
     }, [activeService]);
 }
