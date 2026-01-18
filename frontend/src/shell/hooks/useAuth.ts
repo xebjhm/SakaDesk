@@ -146,18 +146,34 @@ export function useAuth(): UseAuthReturn {
         checkAuth();
     }, []);
 
+    // Schedule refresh timers when serviceAuth changes
     useEffect(() => {
-        if (isAuthenticated) {
-            scheduleTokenRefresh();
-        }
-
-        return () => {
-            if (tokenRefreshTimeoutRef.current) {
-                clearTimeout(tokenRefreshTimeoutRef.current);
+        // Schedule refresh for each connected service with known expiry
+        for (const [serviceId, state] of Object.entries(serviceAuth)) {
+            if (state.connected && state.tokenExpiresAt) {
+                // Only schedule if not already scheduled
+                if (!refreshTimersRef.current[serviceId]) {
+                    scheduleRefreshForService(serviceId, state.tokenExpiresAt);
+                }
+            } else {
+                // Clear timer for disconnected services
+                if (refreshTimersRef.current[serviceId]) {
+                    clearTimeout(refreshTimersRef.current[serviceId]);
+                    delete refreshTimersRef.current[serviceId];
+                }
             }
+        }
+    }, [serviceAuth, scheduleRefreshForService]);
+
+    // Cleanup all timers on unmount
+    useEffect(() => {
+        return () => {
+            for (const timerId of Object.values(refreshTimersRef.current)) {
+                clearTimeout(timerId);
+            }
+            refreshTimersRef.current = {};
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isAuthenticated]);
+    }, []);
 
     const connectedServices = authStatus
         ? Object.entries(authStatus)
