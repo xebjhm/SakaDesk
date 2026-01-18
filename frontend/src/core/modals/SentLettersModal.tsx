@@ -3,6 +3,8 @@ import { RefreshCw, Mail, ChevronLeft } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { BaseModal, DetailModal, SafeImage, ModalLoadingState, ModalErrorState, ModalEmptyState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
+import { useAppStore } from '../../store/appStore';
+import { getThemeForService } from '../../config/groupThemes';
 
 interface Letter {
     id: number;
@@ -28,6 +30,10 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
     groupId,
     activeService,
 }) => {
+    // Get per-service theme colors
+    const currentService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(currentService);
+
     const [letters, setLetters] = useState<Letter[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -169,7 +175,17 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
                     <button
                         key={letter.id}
                         onClick={() => setSelectedLetter(letter)}
-                        className="bg-[#f8f5f0] rounded-lg p-3 text-left hover:shadow-md transition-all border border-transparent hover:border-blue-200 group"
+                        className="bg-[#f8f5f0] rounded-lg p-3 text-left hover:shadow-md transition-all border border-transparent group"
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = theme.modals.accentColorMuted;
+                            const nameEl = e.currentTarget.querySelector('[data-letter-name]') as HTMLElement;
+                            if (nameEl) nameEl.style.color = theme.modals.accentColor;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = 'transparent';
+                            const nameEl = e.currentTarget.querySelector('[data-letter-name]') as HTMLElement;
+                            if (nameEl) nameEl.style.color = '#1f2937';
+                        }}
                     >
                         {/* Thumbnail or preview text - taller aspect ratio to show full letter */}
                         <div className="aspect-[3/4] mb-3 rounded overflow-hidden bg-white flex items-center justify-center">
@@ -188,7 +204,10 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
                         </div>
 
                         {/* Meta info */}
-                        <div className="text-sm font-medium text-gray-800 group-hover:text-blue-600 transition-colors">
+                        <div
+                            data-letter-name
+                            className="text-sm font-medium text-gray-800 transition-colors"
+                        >
                             To. {memberName}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">

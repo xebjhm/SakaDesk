@@ -7,6 +7,8 @@ import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
+import { useAppStore } from '../../../store/appStore';
+import { getThemeForService } from '../../../config/groupThemes';
 
 // Re-export for backward compatibility
 export type { BackgroundSettings } from '../../../types';
@@ -21,6 +23,8 @@ interface ChatHeaderMenuProps {
     activeService?: string; // Service ID for API calls
     onSelectDate?: (date: string) => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
+    /** Icon color for header (used in light header style) */
+    iconColor?: string;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -35,9 +39,14 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     activeService,
     onSelectDate,
     onBackgroundChange,
+    iconColor,
 }) => {
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
+
+    // Get per-service theme colors
+    const currentService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(currentService);
 
     const menuItems = [
         { id: 'calendar' as ModalType, icon: Calendar, label: 'Date Search', enabled: true },
@@ -58,7 +67,11 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <div className="relative">
                 <button
                     onClick={() => setShowMenu(!showMenu)}
-                    className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
+                    className={cn(
+                        "p-2 rounded-lg transition-colors",
+                        iconColor ? "hover:bg-black/5" : "text-white/80 hover:text-white hover:bg-white/10"
+                    )}
+                    style={iconColor ? { color: iconColor } : undefined}
                     title="More options"
                 >
                     <MoreVertical className="w-5 h-5" />
@@ -86,7 +99,10 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                                             : "text-gray-300 cursor-not-allowed"
                                     )}
                                 >
-                                    <item.icon className="w-4 h-4" />
+                                    <item.icon
+                                        className="w-4 h-4"
+                                        style={item.enabled ? { color: theme.modals.accentColor } : undefined}
+                                    />
                                     {item.label}
                                 </button>
                             ))}

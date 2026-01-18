@@ -5,6 +5,8 @@ import { formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
 import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
+import { useAppStore } from '../../store/appStore';
+import { getThemeForService } from '../../config/groupThemes';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -22,6 +24,10 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     serviceId,
 }) => {
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+
+    // Get per-service theme colors
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
 
     // Filter only favorite messages, sorted by timestamp (newest first)
     const favoriteMessages = useMemo(() => {
@@ -102,7 +108,10 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
                     {/* Solid star followed by timestamp */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                        <Star className="w-4 h-4 text-blue-400 fill-blue-400" />
+                        <Star
+                            className="w-4 h-4"
+                            style={{ color: theme.modals.accentColor, fill: theme.modals.accentColor }}
+                        />
                         <span className="text-sm text-gray-500">{formatDateTime(message.timestamp)}</span>
                     </div>
 
@@ -158,7 +167,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                     {/* Voice */}
                     {message.type === 'voice' && mediaUrl && (
                         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm max-w-md">
-                            <VoicePlayer src={mediaUrl} />
+                            <VoicePlayer src={mediaUrl} accentColor={theme.modals.accentColor} />
                         </div>
                     )}
                 </div>

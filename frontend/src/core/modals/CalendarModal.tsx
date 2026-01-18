@@ -4,6 +4,8 @@ import { cn } from '../../utils/classnames';
 import { BaseModal, ModalLoadingState, ModalErrorState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
+import { useAppStore } from '../../store/appStore';
+import { getThemeForService } from '../../config/groupThemes';
 
 interface DateCount {
     date: string;
@@ -56,6 +58,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         onClose,
         title = 'Date Search',
     } = props;
+
+    // Get per-service theme colors
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [apiDates, setApiDates] = useState<DateCount[]>([]);
@@ -235,7 +241,16 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                     </span>
                     <button
                         onClick={goToToday}
-                        className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                        className="text-xs px-2 py-1 rounded transition-colors"
+                        style={{
+                            color: theme.modals.accentColor,
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = theme.modals.accentColorLight;
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                        }}
                     >
                         Today
                     </button>
@@ -263,7 +278,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                     key={day}
                                     className={cn(
                                         "text-center text-xs font-medium py-2",
-                                        i === 0 ? "text-red-500" : i === 6 ? "text-blue-500" : "text-gray-500"
+                                        i === 0 ? "text-red-500" : i === 6 ? "text-gray-600" : "text-gray-500"
                                     )}
                                 >
                                     {day}
@@ -288,17 +303,33 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                             "aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all relative",
                                             !isCurrentMonth && "opacity-30",
                                             isCurrentMonth && !hasMessages && "text-gray-400",
-                                            hasMessages && "text-gray-900 hover:bg-blue-50 cursor-pointer",
-                                            today && "ring-2 ring-blue-500 ring-offset-1",
+                                            hasMessages && "text-gray-900 cursor-pointer",
                                             dayOfWeek === 0 && isCurrentMonth && "text-red-500",
-                                            dayOfWeek === 6 && isCurrentMonth && "text-blue-500",
+                                            dayOfWeek === 6 && isCurrentMonth && !today && "text-gray-600",
                                         )}
+                                        style={{
+                                            ...(today && {
+                                                boxShadow: `0 0 0 2px ${theme.modals.accentColor}`,
+                                                borderRadius: '0.5rem',
+                                            }),
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            if (hasMessages) {
+                                                e.currentTarget.style.backgroundColor = theme.modals.accentColorLight;
+                                            }
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                        }}
                                     >
                                         <span className="font-medium">{date.getDate()}</span>
                                         {/* Message indicator dot */}
                                         {hasMessages && (
                                             <div className="absolute bottom-1 flex items-center justify-center">
-                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                                <div
+                                                    className="w-1.5 h-1.5 rounded-full"
+                                                    style={{ backgroundColor: theme.modals.accentColor }}
+                                                />
                                             </div>
                                         )}
                                     </button>

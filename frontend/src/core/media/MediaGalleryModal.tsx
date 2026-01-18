@@ -7,6 +7,8 @@ import { LazyVideo } from './LazyVideo';
 import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
+import { useAppStore } from '../../store/appStore';
+import { getThemeForService } from '../../config/groupThemes';
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -39,6 +41,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     memberAvatar,
     serviceId,
 }) => {
+    // Get per-service theme colors
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
+
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
@@ -195,15 +201,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
                         "flex-1 flex items-center justify-center py-3 transition-colors relative",
-                        activeTab === tab.id
-                            ? "text-blue-500"
-                            : "text-gray-400 hover:text-gray-600"
+                        activeTab !== tab.id && "text-gray-400 hover:text-gray-600"
                     )}
+                    style={activeTab === tab.id ? { color: theme.modals.accentColor } : undefined}
                 >
                     <tab.icon className="w-6 h-6" />
-                    {/* Active indicator - blue line under */}
+                    {/* Active indicator - colored line under */}
                     {activeTab === tab.id && (
-                        <div className="absolute bottom-0 left-4 right-4 h-1 bg-blue-400 rounded-t" />
+                        <div
+                            className="absolute bottom-0 left-4 right-4 h-1 rounded-t"
+                            style={{ backgroundColor: theme.modals.accentColorMuted }}
+                        />
                     )}
                 </button>
             ))}
@@ -362,8 +370,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                             onClick={() => setSelectedVoice(item)}
                                             className={cn(
                                                 "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
-                                                isSelected ? "bg-blue-50" : "hover:bg-gray-50"
+                                                !isSelected && "hover:bg-gray-50"
                                             )}
+                                            style={isSelected ? { backgroundColor: theme.modals.accentColorLight } : undefined}
                                         >
                                             {/* Avatar */}
                                             <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
@@ -378,19 +387,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
                                             {/* Name */}
                                             <div className="flex-1 min-w-0">
-                                                <p className={cn(
-                                                    "text-sm font-medium",
-                                                    isSelected ? "text-blue-600" : "text-gray-900"
-                                                )}>{memberName}</p>
+                                                <p
+                                                    className="text-sm font-medium"
+                                                    style={{ color: isSelected ? theme.modals.accentColor : '#111827' }}
+                                                >{memberName}</p>
                                             </div>
 
                                             {/* Date and duration */}
                                             <div className="text-right shrink-0">
                                                 <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
-                                                <p className={cn(
-                                                    "text-sm",
-                                                    isSelected ? "text-blue-500" : "text-gray-400"
-                                                )}>{formatDuration(item.media_duration)}</p>
+                                                <p
+                                                    className="text-sm"
+                                                    style={{ color: isSelected ? theme.modals.accentColor : '#9ca3af' }}
+                                                >{formatDuration(item.media_duration)}</p>
                                             </div>
                                         </button>
                                     );
@@ -425,6 +434,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 memberName={memberName}
                                 timestamp={currentVoice ? formatDateTime(currentVoice.timestamp) : undefined}
                                 durationText={currentVoice ? formatDuration(currentVoice.media_duration) : undefined}
+                                accentColor={theme.modals.accentColor}
                             />
                         </div>
                     </div>
