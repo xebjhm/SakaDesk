@@ -27,6 +27,9 @@ export interface AuthContextValue {
     disconnectedServices: string[];
     // New: mark a service as disconnected (called by sync when SESSION_EXPIRED)
     markServiceDisconnected: (serviceId: string, error?: string) => void;
+    // For diagnostics: get expiry time and scheduled refresh time
+    getServiceExpiresAt: (serviceId: string) => number | null;
+    getScheduledRefreshServices: () => string[];
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -41,6 +44,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [serviceAuth, setServiceAuth] = useState<ServiceAuthRecord>({});
 
     const refreshTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+    const refreshRetryCountRef = useRef<Record<string, number>>({});
+    const hasInitializedRef = useRef(false);
 
     const checkAuth = useCallback(async () => {
         console.log('[Auth] Checking auth status for all services...');
@@ -98,10 +103,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             delete refreshTimersRef.current[serviceId];
         }
 
-        const refreshAt = expiresAt - (10 * 60 * 1000);
-        const delayMs = Math.max(refreshAt - Date.now(), 60_000);
+        const refreshAt = expiresAt - (10 * 60 * 1000);  // 10 min before expiry
+        const jitterMs = Math.floor(Math.random() * 2 * 60 * 1000);  // 0-2 min random jitter
+        const delayMs = Math.max(refreshAt - Date.now() - jitterMs, 60_000);  // minimum 1 min
 
-        console.log(`[Auth] ${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min`);
+        console.log(`[Auth] ${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min (jitter: -${Math.round(jitterMs / 1000)}s)`);
 
         refreshTimersRef.current[serviceId] = setTimeout(() => {
             refreshServiceToken(serviceId);
@@ -128,8 +134,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     },
                 }));
                 console.warn(`[Auth] ${serviceId}: token refresh failed`);
-            } else {
+            } else if (data.status === 'refreshed') {
+                // Token was actually refreshed - update expiry and reschedule
+                // Reset retry count on success
+                refreshRetryCountRef.current[serviceId] = 0;
                 const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
+                console.log(`[Auth] ${serviceId}: token refreshed, new expiry in ${Math.round(data.remaining_seconds / 60)} min`);
                 setServiceAuth(prev => ({
                     ...prev,
                     [serviceId]: {
@@ -139,11 +149,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     },
                 }));
                 scheduleRefreshForService(serviceId, newExpiresAt);
+            } else {
+                // status === 'valid' - token still valid, just reschedule based on current remaining time
+                // Only reschedule if remaining time is significant (> 10 min threshold)
+                const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
+                if (data.remaining_seconds > 600) {
+                    console.log(`[Auth] ${serviceId}: token still valid, rescheduling refresh`);
+                    scheduleRefreshForService(serviceId, newExpiresAt);
+                } else {
+                    // Token is within threshold but wasn't refreshed - retry in 1 min
+                    console.log(`[Auth] ${serviceId}: token within threshold but not refreshed, retrying in 1 min`);
+                    const retryAt = Date.now() + (60 * 1000);
+                    scheduleRefreshForService(serviceId, retryAt + (10 * 60 * 1000)); // Add 10 min to get proper scheduling
+                }
             }
+            // Reset retry count on any successful response
+            refreshRetryCountRef.current[serviceId] = 0;
         } catch (e) {
-            console.error(`[Auth] ${serviceId}: token refresh error:`, e);
-            const retryAt = Date.now() + (5 * 60 * 1000);
-            scheduleRefreshForService(serviceId, retryAt);
+            // Network error - retry up to 3 times at 1 min intervals
+            const retryCount = (refreshRetryCountRef.current[serviceId] || 0) + 1;
+            refreshRetryCountRef.current[serviceId] = retryCount;
+
+            if (retryCount >= 3) {
+                console.error(`[Auth] ${serviceId}: network error after ${retryCount} retries, marking disconnected:`, e);
+                refreshRetryCountRef.current[serviceId] = 0;
+                setServiceAuth(prev => ({
+                    ...prev,
+                    [serviceId]: {
+                        ...prev[serviceId],
+                        connected: false,
+                        error: 'Network error. Please check your connection.',
+                    },
+                }));
+            } else {
+                console.warn(`[Auth] ${serviceId}: network error (retry ${retryCount}/3), retrying in 1 min:`, e);
+                const retryAt = Date.now() + (60 * 1000);
+                scheduleRefreshForService(serviceId, retryAt + (10 * 60 * 1000)); // Add 10 min to get proper scheduling
+            }
         }
     }, [scheduleRefreshForService]);
 
@@ -162,6 +204,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     useEffect(() => {
+        // Prevent double execution in React StrictMode
+        if (hasInitializedRef.current) return;
+        hasInitializedRef.current = true;
         checkAuth();
     }, []);
 
@@ -232,6 +277,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         []
     );
 
+    const getServiceExpiresAt = useCallback(
+        (serviceId: string) => serviceAuth[serviceId]?.tokenExpiresAt ?? null,
+        [serviceAuth]
+    );
+
+    const getScheduledRefreshServices = useCallback(
+        () => Object.keys(refreshTimersRef.current),
+        []
+    );
+
     const disconnectedServices = Object.entries(serviceAuth)
         .filter(([_, state]) => state.wasEverConnected && !state.connected)
         .map(([serviceId]) => serviceId);
@@ -250,6 +305,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearServiceError,
         disconnectedServices,
         markServiceDisconnected,
+        getServiceExpiresAt,
+        getScheduledRefreshServices,
     };
 
     return (
