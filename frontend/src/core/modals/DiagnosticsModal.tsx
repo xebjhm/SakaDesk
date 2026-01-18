@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
-import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle } from 'lucide-react';
+import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug } from 'lucide-react';
+import { useAuth } from '../../shell/hooks/useAuth';
+import { getServiceById } from '../../data/services';
 
 interface SystemInfo {
     os: string;
@@ -54,6 +56,9 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [logTab, setLogTab] = useState<LogTab>('recent');
+
+    // Get live auth status from context
+    const { connectedServices, disconnectedServices, isServiceConnected, isServiceDisconnected } = useAuth();
 
     const fetchDiagnostics = async () => {
         setLoading(true);
@@ -154,36 +159,45 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                     </div>
                                 </div>
 
-                                {/* Auth Status */}
+                                {/* Per-Service Auth Status (Live from Context) */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Authentication</h4>
+                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Service Authentication</h4>
                                     <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-gray-500">Token</span>
-                                            {data.auth_status.has_token ?
-                                                <span className="flex items-center gap-1 text-green-600">
-                                                    <CheckCircle2 className="w-4 h-4" /> Valid
-                                                </span> :
-                                                <span className="flex items-center gap-1 text-red-600">
-                                                    <AlertCircle className="w-4 h-4" /> Missing
-                                                </span>
-                                            }
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Expires</span>
-                                            <span className={`font-mono ${
-                                                data.auth_status.token_expiry_seconds && data.auth_status.token_expiry_seconds < 300
-                                                    ? 'text-amber-600' : 'text-gray-900'
-                                            }`}>
-                                                {data.auth_status.token_expires_in || 'N/A'}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Groups</span>
-                                            <span className="font-mono text-gray-900">
-                                                {data.auth_status.groups_configured.join(', ') || 'None'}
-                                            </span>
-                                        </div>
+                                        {data.auth_status.groups_configured.length === 0 && connectedServices.length === 0 ? (
+                                            <div className="text-gray-400 text-xs">No services configured</div>
+                                        ) : (
+                                            // Show all known services from backend + live status from context
+                                            [...new Set([...data.auth_status.groups_configured, ...connectedServices, ...disconnectedServices])].map(serviceId => {
+                                                const service = getServiceById(serviceId);
+                                                const displayName = service?.displayName ?? serviceId;
+                                                const connected = isServiceConnected(serviceId);
+                                                const disconnected = isServiceDisconnected(serviceId);
+
+                                                return (
+                                                    <div key={serviceId} className="flex items-center justify-between py-1 border-b border-gray-100 last:border-0">
+                                                        <span className="text-gray-700 font-medium">{displayName}</span>
+                                                        <div className="flex items-center gap-2">
+                                                            {connected ? (
+                                                                <span className="flex items-center gap-1 text-green-600 text-xs">
+                                                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                    Connected
+                                                                </span>
+                                                            ) : disconnected ? (
+                                                                <span className="flex items-center gap-1 text-orange-500 text-xs">
+                                                                    <Unplug className="w-3.5 h-3.5" />
+                                                                    Disconnected
+                                                                </span>
+                                                            ) : (
+                                                                <span className="flex items-center gap-1 text-gray-400 text-xs">
+                                                                    <AlertCircle className="w-3.5 h-3.5" />
+                                                                    Not logged in
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             </div>

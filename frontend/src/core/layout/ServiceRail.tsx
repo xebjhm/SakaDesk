@@ -1,6 +1,6 @@
 // frontend/src/core/layout/ServiceRail.tsx
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Unplug } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
@@ -86,9 +86,11 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             {/* Disconnected Warning Badge */}
                             {isServiceDisconnected(service) && (
                                 <div
-                                    className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 rounded-full border-2 border-[#1e1f22]"
+                                    className="absolute -bottom-1 -right-1 w-5 h-5 bg-orange-500 rounded-full border-2 border-[#1e1f22] flex items-center justify-center"
                                     title="Session expired - click to re-login"
-                                />
+                                >
+                                    <Unplug className="w-3 h-3 text-white" />
+                                </div>
                             )}
                         </button>
                     );

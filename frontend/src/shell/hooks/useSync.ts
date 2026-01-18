@@ -11,6 +11,9 @@ export interface UseSyncReturn {
     startSync: (blocking: boolean, service?: string) => Promise<void>;
     startSyncAllServices: (blocking: boolean) => Promise<void>;
     hasStartedSyncRef: React.MutableRefObject<boolean>;
+    // New: service that triggered session expiry (for showing LoginModal)
+    sessionExpiredService: string | null;
+    clearSessionExpired: () => void;
 }
 
 interface UseSyncOptions {
@@ -20,6 +23,8 @@ interface UseSyncOptions {
     setAuthError: (error: string | null) => void;
     setIsAuthenticated: (auth: boolean) => void;
     onSyncComplete?: () => void;
+    // New: callback to mark service as disconnected in auth context
+    markServiceDisconnected?: (serviceId: string, error?: string) => void;
 }
 
 export function useSync({
@@ -29,6 +34,7 @@ export function useSync({
     setAuthError,
     setIsAuthenticated,
     onSyncComplete,
+    markServiceDisconnected,
 }: UseSyncOptions): UseSyncReturn {
     const { activeService } = useAppStore();
 
@@ -39,6 +45,13 @@ export function useSync({
     const [syncProgress, setSyncProgress] = useState<SyncProgress>({ state: 'idle' });
     const [showSyncModal, setShowSyncModal] = useState(false);
     const [syncVersion, setSyncVersion] = useState(0);
+
+    // Track which service triggered session expiry (for showing LoginModal)
+    const [sessionExpiredService, setSessionExpiredService] = useState<string | null>(null);
+
+    const clearSessionExpired = useCallback(() => {
+        setSessionExpiredService(null);
+    }, []);
 
     const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
@@ -129,11 +142,14 @@ export function useSync({
                     setTimeout(check, 1000);
                 } else if (data.state === 'error') {
                     if (data.detail === 'SESSION_EXPIRED') {
-                        // Only reset auth if it's an active service
+                        console.log(`[Sync] ${service}: session expired detected`);
+                        // Mark this specific service as disconnected
+                        markServiceDisconnected?.(service, 'Session expired');
+                        // Trigger LoginModal for this service (if it's active)
                         if (service === activeService) {
-                            setIsAuthenticated(false);
-                            setAuthError("Session expired. Please login again.");
+                            setSessionExpiredService(service);
                         }
+                        updateProgress({ state: 'error', detail: 'Session expired' });
                         hasStartedSyncRef.current = false;
                     } else {
                         updateProgress({ state: 'error', detail: data.detail || 'Sync error' });
@@ -269,5 +285,7 @@ export function useSync({
         startSync,
         startSyncAllServices,
         hasStartedSyncRef,
+        sessionExpiredService,
+        clearSessionExpired,
     };
 }

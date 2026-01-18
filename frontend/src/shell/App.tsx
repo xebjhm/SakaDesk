@@ -10,7 +10,7 @@ import { useAppStore } from '../store/appStore'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal } from './components'
 
 function App() {
     const {
@@ -26,6 +26,8 @@ function App() {
         authCheckComplete,
         setAuthError,
         connectedServices,
+        markServiceDisconnected,
+        checkAuth,
     } = useAuth();
 
     // Migration: Auto-populate selectedServices from connectedServices for existing users
@@ -66,6 +68,8 @@ function App() {
         syncVersion,
         startSync,
         hasStartedSyncRef,
+        sessionExpiredService,
+        clearSessionExpired,
     } = useSync({
         isAuthenticated,
         appSettings,
@@ -89,6 +93,7 @@ function App() {
                     .catch(console.error);
             }
         },
+        markServiceDisconnected,
     });
 
     // UI state
@@ -212,6 +217,22 @@ function App() {
                         onSaveSettings={saveSettings}
                         onSaveServiceSettings={saveServiceSettings}
                         onClose={() => setShowSettingsModal(false)}
+                    />
+                )}
+
+                {/* Session Expired Login Modal - triggered by sync detecting SESSION_EXPIRED */}
+                {sessionExpiredService && (
+                    <LoginModal
+                        serviceId={sessionExpiredService}
+                        featureId="messages"
+                        onClose={clearSessionExpired}
+                        onSuccess={async () => {
+                            await checkAuth();
+                            clearSessionExpired();
+                            // Restart sync for this service
+                            startSync(false, sessionExpiredService);
+                        }}
+                        isDisconnected={true}
                     />
                 )}
 
