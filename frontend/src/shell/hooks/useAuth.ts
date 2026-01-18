@@ -81,53 +81,66 @@ export function useAuth(): UseAuthReturn {
         }
     }, [activeService, setActiveService]);
 
-    const getJitteredRefreshInterval = () => {
-        const baseMs = 50 * 60 * 1000;
-        const jitterMs = Math.random() * 5 * 60 * 1000;
-        return baseMs + jitterMs;
-    };
-
-    const scheduleTokenRefresh = useCallback(() => {
-        if (tokenRefreshTimeoutRef.current) {
-            clearTimeout(tokenRefreshTimeoutRef.current);
+    const scheduleRefreshForService = useCallback((serviceId: string, expiresAt: number) => {
+        // Clear existing timer for this service
+        if (refreshTimersRef.current[serviceId]) {
+            clearTimeout(refreshTimersRef.current[serviceId]);
+            delete refreshTimersRef.current[serviceId];
         }
 
-        const intervalMs = getJitteredRefreshInterval();
-        console.log(`[Auth] Scheduling token refresh in ${Math.round(intervalMs / 60000)} minutes`);
+        // Schedule refresh 10 minutes before expiry
+        const refreshAt = expiresAt - (10 * 60 * 1000);
+        const delayMs = Math.max(refreshAt - Date.now(), 60_000); // At least 1 min
 
-        tokenRefreshTimeoutRef.current = setTimeout(async () => {
-            try {
-                console.log('[Auth] Proactive token refresh triggered');
-                const services = authStatus
-                    ? Object.entries(authStatus)
-                        .filter(([_, s]) => s.authenticated === true)
-                        .map(([name]) => name)
-                    : [];
+        console.log(`[Auth] Scheduling refresh for ${serviceId} in ${Math.round(delayMs / 60000)} min`);
 
-                let allValid = true;
-                for (const service of services) {
-                    const res = await fetch(`/api/auth/refresh-if-needed?service=${encodeURIComponent(service)}`, { method: 'POST' });
-                    const data = await res.json();
-                    console.log(`[Auth] Refresh result for ${service}: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
+        refreshTimersRef.current[serviceId] = setTimeout(() => {
+            refreshServiceToken(serviceId);
+        }, delayMs);
+    }, []);
 
-                    if (data.status === 'refresh_failed' || data.status === 'no_token') {
-                        allValid = false;
-                    }
-                }
+    const refreshServiceToken = useCallback(async (serviceId: string) => {
+        try {
+            console.log(`[Auth] Refreshing token for ${serviceId}`);
+            const res = await fetch(
+                `/api/auth/refresh-if-needed?service=${encodeURIComponent(serviceId)}`,
+                { method: 'POST' }
+            );
+            const data = await res.json();
+            console.log(`[Auth] Refresh result for ${serviceId}: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
 
-                if (allValid || services.length === 0) {
-                    scheduleTokenRefresh();
-                } else {
-                    console.warn('[Auth] Token refresh failed for at least one service');
-                    setIsAuthenticated(false);
-                    setAuthError("Session expired. Please login again.");
-                }
-            } catch (e) {
-                console.error('[Auth] Token refresh error:', e);
-                scheduleTokenRefresh();
+            if (data.status === 'refresh_failed' || data.status === 'no_token') {
+                // Mark this service as disconnected
+                setServiceAuth(prev => ({
+                    ...prev,
+                    [serviceId]: {
+                        ...prev[serviceId],
+                        connected: false,
+                        error: 'Session expired. Please re-login.',
+                    },
+                }));
+                console.warn(`[Auth] Token refresh failed for ${serviceId}`);
+                // Note: Other services remain unaffected
+            } else {
+                // Update expiry time and reschedule
+                const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
+                setServiceAuth(prev => ({
+                    ...prev,
+                    [serviceId]: {
+                        ...prev[serviceId],
+                        tokenExpiresAt: newExpiresAt,
+                        error: null,
+                    },
+                }));
+                scheduleRefreshForService(serviceId, newExpiresAt);
             }
-        }, intervalMs);
-    }, [authStatus]);
+        } catch (e) {
+            console.error(`[Auth] Token refresh error for ${serviceId}:`, e);
+            // On network error, retry later
+            const retryAt = Date.now() + (5 * 60 * 1000); // Retry in 5 min
+            scheduleRefreshForService(serviceId, retryAt);
+        }
+    }, [scheduleRefreshForService]);
 
     useEffect(() => {
         checkAuth();
