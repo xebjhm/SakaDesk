@@ -196,10 +196,13 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                         <div className={cn(
                             "w-16 h-16 rounded-full flex items-center justify-center mb-1.5 bg-white transition-all relative overflow-hidden",
                             // Selection Ring
-                            isSelected ? "ring-2 ring-blue-500 ring-offset-2" : "ring-1 ring-gray-100/50 hover:ring-blue-200",
+                            isSelected ? "ring-2 ring-offset-2" : "ring-1 ring-gray-100/50",
                             // Offline: Lower saturation and contrast
                         )}
-                            style={!info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}}
+                            style={{
+                                ...(isSelected ? { '--tw-ring-color': theme.modals.accentColor } as React.CSSProperties : {}),
+                                ...(!info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}),
+                            }}
                         >
                             {info.isGroupChat && !info.avatar ? (
                                 <Users className="w-6 h-6 text-gray-500" />
@@ -233,10 +236,13 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
 
                         {/* Removed Group Member Count Badge */}
 
-                        <span className={cn(
-                            "text-[11px] text-center leading-tight max-w-[70px] line-clamp-2 transition-colors",
-                            isSelected ? "text-blue-600 font-medium" : "text-gray-600 group-hover:text-gray-800"
-                        )}>
+                        <span
+                            className={cn(
+                                "text-[11px] text-center leading-tight max-w-[70px] line-clamp-2 transition-colors",
+                                isSelected ? "font-medium" : "text-gray-600 group-hover:text-gray-800"
+                            )}
+                            style={isSelected ? { color: theme.modals.accentColor } : undefined}
+                        >
                             {info.displayName}
                         </span>
                     </button>

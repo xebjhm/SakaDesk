@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { cn } from '../../../utils/classnames';
 import { Settings, Users, RefreshCw } from 'lucide-react';
 import type { Group } from '../../../types';
+import { useMessagesTheme } from '../hooks/useMessagesTheme';
 
 // Use Group interface from types
 type GroupInfo = Group;
@@ -23,6 +24,7 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [showSettings, setShowSettings] = useState(false);
     const [loading, setLoading] = useState(true);
+    const theme = useMessagesTheme();
 
     const handleResetRead = () => {
         if (confirm('Reset all read status? This will mark all messages as unread locally.')) {
@@ -168,10 +170,13 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                         <div className={cn(
                             "w-16 h-16 rounded-full flex items-center justify-center mb-1.5 bg-white transition-all relative overflow-hidden",
                             // Selection Ring
-                            isSelected ? "ring-2 ring-blue-500 ring-offset-2" : "ring-1 ring-gray-100/50 hover:ring-blue-200",
+                            isSelected ? "ring-2 ring-offset-2" : "ring-1 ring-gray-100/50",
                             // Offline: Lower saturation and contrast
                         )}
-                            style={!info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}}
+                            style={{
+                                ...(isSelected ? { '--tw-ring-color': theme.modals.accentColor } as React.CSSProperties : {}),
+                                ...(!info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}),
+                            }}
                         >
                             {info.isGroupChat && !info.avatar ? (
                                 <Users className="w-6 h-6 text-gray-500" />
@@ -191,9 +196,12 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                             )}
                         </div>
 
-                        {/* Unread Indicator (Large Blue Circle with Count) */}
+                        {/* Unread Indicator (Circle with Count) */}
                         {showUnread && (
-                            <div className="absolute top-0 right-1 min-w-[20px] h-[20px] bg-[#7cc7e8] border border-white rounded-full z-10 shadow-sm flex items-center justify-center px-1">
+                            <div
+                                className="absolute top-0 right-1 min-w-[20px] h-[20px] border border-white rounded-full z-10 shadow-sm flex items-center justify-center px-1"
+                                style={{ backgroundColor: theme.unreadBadge }}
+                            >
                                 <span className="text-[10px] font-bold text-white">
                                     {unreadCount > 99 ? '99+' : unreadCount}
                                 </span>
@@ -202,10 +210,13 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
 
                         {/* Removed Group Member Count Badge */}
 
-                        <span className={cn(
-                            "text-[11px] text-center leading-tight max-w-[70px] line-clamp-2 transition-colors",
-                            isSelected ? "text-blue-600 font-medium" : "text-gray-600 group-hover:text-gray-800"
-                        )}>
+                        <span
+                            className={cn(
+                                "text-[11px] text-center leading-tight max-w-[70px] line-clamp-2 transition-colors",
+                                isSelected ? "font-medium" : "text-gray-600 group-hover:text-gray-800"
+                            )}
+                            style={isSelected ? { color: theme.modals.accentColor } : undefined}
+                        >
                             {info.displayName}
                         </span>
                     </button>
@@ -221,7 +232,7 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                 <h1 className="text-base font-bold text-gray-700">トーク</h1>
                 <div className="absolute right-4 flex gap-2 items-center">
                     {isSyncing && (
-                        <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+                        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: theme.modals.accentColor }} />
                     )}
                     <div className="relative">
                         <Settings
@@ -271,7 +282,7 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
             <div className="flex-1 overflow-y-auto px-2 pb-4 scrollbar-thin scrollbar-thumb-gray-300">
                 {loading ? (
                     <div className="p-6 text-center text-gray-500 text-sm flex flex-col items-center gap-2">
-                        <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+                        <RefreshCw className="w-5 h-5 animate-spin" style={{ color: theme.modals.accentColor }} />
                         <span>Loading conversations...</span>
                     </div>
                 ) : groups.length === 0 ? (
@@ -305,7 +316,7 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
             <div className="p-3 bg-white/40 backdrop-blur-sm shrink-0 border-t border-white/20">
                 <div className="text-xs text-center text-gray-500">
                     {isSyncing ? (
-                        <span className="flex items-center justify-center gap-1 text-blue-600 font-medium">
+                        <span className="flex items-center justify-center gap-1 font-medium" style={{ color: theme.modals.accentColor }}>
                             <RefreshCw className="w-3 h-3 animate-spin" />
                             Syncing...
                         </span>
