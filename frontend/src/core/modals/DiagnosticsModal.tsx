@@ -22,11 +22,21 @@ interface AuthStatus {
     groups_configured: string[];
 }
 
+interface ServiceSyncInfo {
+    service_id: string;
+    display_name: string;
+    last_sync?: string;
+    last_error?: string;
+    message_count: number;
+    member_count: number;
+}
+
 interface SyncState {
     last_sync?: string;
     last_error?: string;
     disk_usage_mb: number;
     file_count: number;
+    services: ServiceSyncInfo[];
 }
 
 interface LogsSummary {
@@ -300,19 +310,58 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                 </div>
                             </div>
 
-                            {/* Sync Status */}
-                            {(data.sync_state.last_sync || data.sync_state.last_error) && (
+                            {/* Per-Service Sync Status */}
+                            {data.sync_state.services && data.sync_state.services.length > 0 && (
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <Clock className="w-3 h-3" /> Last Sync
+                                        <Clock className="w-3 h-3" /> Sync Status by Service
                                     </h4>
-                                    <div className="space-y-2 text-sm">
-                                        {data.sync_state.last_sync && (
-                                            <p className="text-gray-600 font-mono text-xs">{data.sync_state.last_sync}</p>
-                                        )}
-                                        {data.sync_state.last_error && (
-                                            <p className="text-red-600 font-mono text-xs">{data.sync_state.last_error}</p>
-                                        )}
+                                    <div className="space-y-3">
+                                        {data.sync_state.services.map((service) => (
+                                            <div key={service.service_id} className="bg-white p-3 rounded-lg border border-gray-100">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-medium text-gray-800">{service.display_name}</span>
+                                                    {service.last_error ? (
+                                                        <span className="flex items-center gap-1 text-red-500 text-xs">
+                                                            <AlertCircle className="w-3.5 h-3.5" />
+                                                            Error
+                                                        </span>
+                                                    ) : service.last_sync ? (
+                                                        <span className="flex items-center gap-1 text-green-600 text-xs">
+                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                            OK
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-gray-400 text-xs">Never synced</span>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-2 text-xs">
+                                                    <div>
+                                                        <span className="text-gray-400">Last sync:</span>
+                                                        <span className="ml-1 font-mono text-gray-600">
+                                                            {service.last_sync || 'Never'}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-400">Members:</span>
+                                                        <span className="ml-1 font-mono text-gray-600">
+                                                            {service.member_count}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-gray-400">Messages:</span>
+                                                        <span className="ml-1 font-mono text-gray-600">
+                                                            {service.message_count.toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                {service.last_error && (
+                                                    <div className="mt-2 text-xs text-red-600 font-mono bg-red-50 p-2 rounded">
+                                                        {service.last_error}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             )}

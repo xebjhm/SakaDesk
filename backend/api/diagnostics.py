@@ -45,11 +45,22 @@ class AuthStatus(BaseModel):
     groups_configured: list[str] = []
 
 
-class SyncState(BaseModel):
+class ServiceSyncInfo(BaseModel):
+    """Sync status for a single service."""
+    service_id: str
+    display_name: str
     last_sync: Optional[str] = None
+    last_error: Optional[str] = None
+    message_count: int = 0
+    member_count: int = 0
+
+
+class SyncState(BaseModel):
+    last_sync: Optional[str] = None  # Legacy: most recent across all services
     last_error: Optional[str] = None
     disk_usage_mb: float = 0.0
     file_count: int = 0
+    services: list[ServiceSyncInfo] = []  # Per-service sync status
 
 
 class LogsSummary(BaseModel):
@@ -186,10 +197,27 @@ async def get_diagnostics():
             latest_sync = None
             last_error = None
             output_path = Path(output_dir)
+            services_info: list[ServiceSyncInfo] = []
+
+            # Service display name to ID mapping
+            service_name_to_id = {
+                "日向坂46": "hinatazaka46",
+                "櫻坂46": "sakurazaka46",
+                "乃木坂46": "nogizaka46",
+            }
 
             for service_dir in output_path.iterdir():
                 if not service_dir.is_dir():
                     continue
+
+                display_name = service_dir.name
+                service_id = service_name_to_id.get(display_name, display_name)
+
+                service_info = ServiceSyncInfo(
+                    service_id=service_id,
+                    display_name=display_name,
+                )
+
                 metadata_path = service_dir / "sync_metadata.json"
                 if metadata_path.exists():
                     try:
@@ -197,12 +225,36 @@ async def get_diagnostics():
                             metadata = json.load(f)
                             utc_sync = metadata.get('last_sync')
                             if utc_sync:
+                                # Track latest for legacy field
                                 if latest_sync is None or utc_sync > latest_sync:
                                     latest_sync = utc_sync
+                                # Format for this service
+                                try:
+                                    utc_dt = datetime.fromisoformat(utc_sync.replace('Z', '+00:00'))
+                                    local_dt = utc_dt.astimezone()
+                                    service_info.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+                                except Exception:
+                                    service_info.last_sync = utc_sync
+
                             if metadata.get('last_error'):
+                                service_info.last_error = metadata.get('last_error')
                                 last_error = metadata.get('last_error')
+
+                            # Count members and messages from metadata
+                            groups = metadata.get('groups', {})
+                            service_info.member_count = len(groups)
+                            total_messages = 0
+                            for group_data in groups.values():
+                                total_messages += group_data.get('message_count', 0)
+                            service_info.message_count = total_messages
                     except Exception:
                         pass
+
+                services_info.append(service_info)
+
+            # Sort by display name
+            services_info.sort(key=lambda s: s.display_name)
+            sync_state.services = services_info
 
             if latest_sync:
                 try:
