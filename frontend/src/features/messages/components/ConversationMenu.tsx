@@ -111,6 +111,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 messages={messages}
                 memberName={memberName}
                 memberAvatar={memberAvatar}
+                serviceId={activeService}
             />
 
             <CalendarModal
@@ -138,6 +139,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 messages={messages}
                 memberName={memberName}
                 memberAvatar={memberAvatar}
+                serviceId={activeService}
             />
         </>
     );
