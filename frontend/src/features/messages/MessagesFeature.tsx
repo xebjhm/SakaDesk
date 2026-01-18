@@ -68,8 +68,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     syncProgress,
     syncVersion,
 }) => {
-    // Get active service from Zustand store
-    const { activeService } = useAppStore();
+    // Get active service and conversation persistence from Zustand store
+    const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
 
     // Get theme for current service
     const theme = useMessagesTheme();
@@ -116,15 +116,49 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Track which service the current messages belong to
     const [messagesService, setMessagesService] = useState<string | null>(null);
 
-    // Reset selection when service changes
+    // Track the previous service to save selection before switching
+    const previousServiceRef = useRef<string | null>(null);
+
+    // Save current selection and restore previous selection when service changes
     useEffect(() => {
-        setSelectedGroupDir(undefined);
-        setSelectedName(undefined);
+        // Save current conversation for the previous service before switching
+        if (previousServiceRef.current && selectedGroupDir && selectedName) {
+            setSelectedConversation(previousServiceRef.current, {
+                path: selectedGroupDir,
+                name: selectedName,
+                isGroupChat,
+            });
+        }
+
+        // Clear current state
         setMessages([]);
         setMembersMap({});
         setError(null);
         setMessagesService(null);
-    }, [activeService]);
+
+        // Restore previous selection for the new service (if any)
+        if (activeService) {
+            const savedConversation = getSelectedConversation(activeService);
+            if (savedConversation) {
+                setSelectedGroupDir(savedConversation.path);
+                setSelectedName(savedConversation.name);
+                setIsGroupChat(savedConversation.isGroupChat);
+                setBackgroundSettings(loadBackgroundSettings(savedConversation.path));
+            } else {
+                setSelectedGroupDir(undefined);
+                setSelectedName(undefined);
+                setIsGroupChat(false);
+            }
+        } else {
+            setSelectedGroupDir(undefined);
+            setSelectedName(undefined);
+            setIsGroupChat(false);
+        }
+
+        // Update ref for next switch
+        previousServiceRef.current = activeService;
+    }, [activeService, getSelectedConversation, setSelectedConversation]);
+    // Note: selectedGroupDir, selectedName, isGroupChat intentionally excluded to avoid infinite loops
 
     // Refresh messages when sync completes
     // Only depends on syncVersion - we capture the current values at time of sync completion
@@ -326,6 +360,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             // Load background settings for new conversation
             setBackgroundSettings(loadBackgroundSettings(groupDir));
+
+            // Save selection for this service
+            if (activeService) {
+                setSelectedConversation(activeService, {
+                    path: groupDir,
+                    name: displayName,
+                    isGroupChat: groupChat,
+                });
+            }
         }
     };
 

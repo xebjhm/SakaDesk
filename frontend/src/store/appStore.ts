@@ -40,6 +40,11 @@ interface AppState {
     blogSelectionModes: Record<string, BlogSelectionMode>;
     setBlogSelectionMode: (serviceId: string, mode: BlogSelectionMode) => void;
     getBlogSelectionMode: (serviceId: string) => BlogSelectionMode;
+
+    // Selected conversation (per service) - remembers which chat room was open
+    selectedConversations: Record<string, { path: string; name: string; isGroupChat: boolean } | null>;
+    setSelectedConversation: (serviceId: string, conversation: { path: string; name: string; isGroupChat: boolean } | null) => void;
+    getSelectedConversation: (serviceId: string) => { path: string; name: string; isGroupChat: boolean } | null;
 }
 
 const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclub', 'ai'];
@@ -112,6 +117,13 @@ export const useAppStore = create<AppState>()(
                     blogSelectionModes: { ...state.blogSelectionModes, [serviceId]: mode },
                 })),
             getBlogSelectionMode: (serviceId) => get().blogSelectionModes[serviceId] || 'all',
+
+            selectedConversations: {},
+            setSelectedConversation: (serviceId, conversation) =>
+                set((state) => ({
+                    selectedConversations: { ...state.selectedConversations, [serviceId]: conversation },
+                })),
+            getSelectedConversation: (serviceId) => get().selectedConversations[serviceId] || null,
         }),
         {
             name: 'hakodesk-app-state',
@@ -131,6 +143,7 @@ export const useAppStore = create<AppState>()(
                 featureOrders: state.featureOrders,
                 favorites: state.favorites,
                 blogSelectionModes: state.blogSelectionModes,
+                selectedConversations: state.selectedConversations,
             }),
         }
     )
