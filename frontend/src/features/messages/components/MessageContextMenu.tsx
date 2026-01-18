@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { Star } from 'lucide-react';
+import { useAppStore } from '../../../store/appStore';
+import { getThemeForService } from '../../../config/groupThemes';
 
 interface MessageContextMenuProps {
     x: number;
@@ -17,6 +19,8 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     onClose,
 }) => {
     const menuRef = useRef<HTMLDivElement>(null);
+    const activeService = useAppStore((state) => state.activeService);
+    const theme = getThemeForService(activeService);
 
     // Close on click outside
     useEffect(() => {
@@ -82,7 +86,8 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                 className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors"
             >
                 <Star
-                    className={`w-4 h-4 ${isFavorite ? 'text-blue-500 fill-blue-500' : 'text-gray-400'}`}
+                    className="w-4 h-4"
+                    style={isFavorite ? { color: theme.modals.accentColor, fill: theme.modals.accentColor } : { color: '#9ca3af' }}
                 />
                 {isFavorite ? 'Remove from favorites' : 'Add to favorites'}
             </button>
