@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
 import { getServiceShortCode } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
+import { useAuth } from '../../shell/hooks/useAuth';
 
 export interface ServiceRailProps {
     services: string[];
@@ -31,6 +32,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     const { activeService, setActiveService, removeSelectedService } = useAppStore();
     const [showAddModal, setShowAddModal] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
+    const { isServiceDisconnected } = useAuth();
 
     // Check if all services are already selected
     const allServicesSelected = services.length >= 3;
@@ -80,6 +82,14 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             )}>
                                 {getServiceShortCode(service)}
                             </div>
+
+                            {/* Disconnected Warning Badge */}
+                            {isServiceDisconnected(service) && (
+                                <div
+                                    className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-orange-500 rounded-full border-2 border-[#1e1f22]"
+                                    title="Session expired - click to re-login"
+                                />
+                            )}
                         </button>
                     );
                 })}
