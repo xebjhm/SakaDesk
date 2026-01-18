@@ -175,11 +175,15 @@ export function useAuth(): UseAuthReturn {
         };
     }, []);
 
-    const connectedServices = authStatus
-        ? Object.entries(authStatus)
-            .filter(([_, s]) => s.authenticated === true)
-            .map(([name]) => name)
-        : [];
+    const connectedServices = Object.entries(serviceAuth)
+        .filter(([_, state]) => state.connected === true)
+        .map(([serviceId]) => serviceId);
+
+    // Update isAuthenticated based on serviceAuth (backwards compat)
+    useEffect(() => {
+        const anyConnected = Object.values(serviceAuth).some(s => s.connected);
+        setIsAuthenticated(anyConnected);
+    }, [serviceAuth]);
 
     const isServiceConnected = useCallback(
         (serviceId: string) => connectedServices.includes(serviceId),
