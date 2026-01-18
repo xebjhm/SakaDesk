@@ -492,6 +492,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                 </header>
 
+                {/* Gradient Bar below header */}
+                <div
+                    className="h-1 shrink-0"
+                    style={{ background: theme.messages.headerBarGradient }}
+                />
+
                 {/* Virtualized Timeline */}
                 <div
                     className="flex-1 overflow-hidden relative"

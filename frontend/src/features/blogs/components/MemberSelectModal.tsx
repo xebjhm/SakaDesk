@@ -89,12 +89,17 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             const genNumber = memberData?.generation ?? 2;
             const genKey = `${genNumber}${genNumber === 1 ? 'st' : genNumber === 2 ? 'nd' : genNumber === 3 ? 'rd' : 'th'}` as GenerationKey;
 
+            // Ensure status is a valid type
+            const rawStatus = memberData?.status ?? 'unknown';
+            const status: 'active' | 'graduated' | 'unknown' =
+                rawStatus === 'active' || rawStatus === 'graduated' ? rawStatus : 'unknown';
+
             return {
                 ...member,
                 nameJp: memberData?.nameKanji ?? member.name,
                 generation: isMascot ? 'mascot' as GenerationKey : genKey,
                 penlightColors,
-                status: memberData?.status ?? 'unknown',
+                status,
             };
         });
     }, [members, serviceId]);
