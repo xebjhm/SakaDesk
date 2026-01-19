@@ -1,5 +1,9 @@
 // frontend/src/data/services.ts
 // Single source of truth for service definitions
+// Colors are derived from the brand palette for consistency
+
+// Note: Colors are defined statically for Tailwind JIT compatibility.
+// Canonical color values live in config/colors/palette.ts - keep in sync.
 
 export interface ServiceDefinition {
     id: string;
@@ -11,6 +15,12 @@ export interface ServiceDefinition {
     blogBaseUrl: string;    // Base URL for blog content normalization
     description: string;
 }
+
+// Tailwind requires static class names at build time.
+// These colors are derived from BRAND_COLORS in palette.ts - keep them in sync.
+// hinatazaka: primary=#7cc7e8, primaryDark=#5eb3d8
+// sakurazaka: primary=#E85298, primaryLight=#f7a6c9
+// nogizaka: primary=#7e1083, primaryDark=#5a0b5e
 
 export const SERVICES: ServiceDefinition[] = [
     {
@@ -28,7 +38,8 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Sakurazaka46',
         displayName: '櫻坂46',
         shortCode: 'SA',
-        color: 'from-[#f19db5] to-[#e87a9a]',
+        // Use lighter pink gradient for softer appearance
+        color: 'from-[#f7a6c9] to-[#E85298]',
         bgColor: 'bg-[#E85298]',
         blogBaseUrl: 'https://sakurazaka46.com',
         description: 'Sakurazaka46 Messages & Blogs',

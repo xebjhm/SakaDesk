@@ -37,12 +37,13 @@ interface MessageBubbleProps {
     service?: string;
 }
 
-// Default fallback shelter colors (used when theme doesn't provide them)
+// Fallback shelter colors (Hinatazaka defaults from groupThemes.ts)
+// Canonical shelter colors are defined per-theme in groupThemes.ts -> messages.shelterColors
 const DEFAULT_SHELTER_COLORS: ShelterColors = {
-    video: '#c4a8d8',    // lavender/purple
-    text: '#8bb8d6',     // light blue
-    voice: '#b8a8d8',    // light purple
-    picture: '#a8d0e8',  // sky blue
+    video: '#c4a8d8',
+    text: '#8bb8d6',
+    voice: '#b8a8d8',
+    picture: '#a8d0e8',
 };
 
 const SHELTER_ICONS = {
