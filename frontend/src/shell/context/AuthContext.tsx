@@ -3,6 +3,15 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback, ty
 import type { MultiGroupAuthStatus } from '../../types';
 import { useAppStore } from '../../store/appStore';
 
+// Debug logging for auth flows - enable via localStorage for troubleshooting
+const AUTH_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_AUTH') === 'true';
+const log = AUTH_DEBUG
+    ? (msg: string, ...args: unknown[]) => console.log(`[Auth] ${msg}`, ...args)
+    : () => {};
+const warn = AUTH_DEBUG
+    ? (msg: string, ...args: unknown[]) => console.warn(`[Auth] ${msg}`, ...args)
+    : () => {};
+
 export interface ServiceAuthState {
     connected: boolean;
     tokenExpiresAt: number | null;
@@ -48,7 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const hasInitializedRef = useRef(false);
 
     const checkAuth = useCallback(async () => {
-        console.log('[Auth] Checking auth status for all services...');
+        log(' Checking auth status for all services...');
         try {
             const res = await fetch('/api/auth/status');
             const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean; expires_at?: number }> } = await res.json();
@@ -69,11 +78,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 if (connected) {
                     authenticatedServices.push(serviceId);
-                    console.log(`[Auth] ${serviceId}: connected, expires at ${status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : 'unknown'}`);
+                    log(`${serviceId}: connected, expires at ${status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : 'unknown'}`);
                 } else if (status.token_expired) {
-                    console.log(`[Auth] ${serviceId}: disconnected (token expired)`);
+                    log(`${serviceId}: disconnected (token expired)`);
                 } else {
-                    console.log(`[Auth] ${serviceId}: not connected`);
+                    log(`${serviceId}: not connected`);
                 }
             }
 
@@ -88,9 +97,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
 
             setAuthError(null);
-            console.log(`[Auth] Auth check complete: ${authenticatedServices.length} service(s) connected`);
+            log(`Auth check complete: ${authenticatedServices.length} service(s) connected`);
         } catch (e) {
-            console.error('[Auth] Auth check failed:', e);
+            console.error('[Auth] Auth check failed:', e);  // Keep error logging
             setIsAuthenticated(false);
         } finally {
             setAuthCheckComplete(true);
@@ -114,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const targetRefreshTime = expiresAt - refreshThreshold + jitterMs;
         const delayMs = Math.max(targetRefreshTime - now, 60_000);  // minimum 1 min
 
-        console.log(`[Auth] ${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min (expiry in ${Math.round(timeUntilExpiry / 60000)} min, jitter: +${Math.round(jitterMs / 1000)}s)`);
+        log(`${serviceId}: scheduling refresh in ${Math.round(delayMs / 60000)} min (expiry in ${Math.round(timeUntilExpiry / 60000)} min, jitter: +${Math.round(jitterMs / 1000)}s)`);
 
         refreshTimersRef.current[serviceId] = setTimeout(() => {
             refreshServiceToken(serviceId);
@@ -123,13 +132,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const refreshServiceToken = useCallback(async (serviceId: string) => {
         try {
-            console.log(`[Auth] ${serviceId}: refreshing token...`);
+            log(`${serviceId}: refreshing token...`);
             const res = await fetch(
                 `/api/auth/refresh-if-needed?service=${encodeURIComponent(serviceId)}`,
                 { method: 'POST' }
             );
             const data = await res.json();
-            console.log(`[Auth] ${serviceId}: refresh result: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
+            log(`${serviceId}: refresh result: ${data.status}, remaining: ${Math.round(data.remaining_seconds / 60)} min`);
 
             if (data.status === 'refresh_failed' || data.status === 'no_token') {
                 setServiceAuth(prev => ({
@@ -140,13 +149,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         error: 'Session expired. Please re-login.',
                     },
                 }));
-                console.warn(`[Auth] ${serviceId}: token refresh failed`);
+                warn(`${serviceId}: token refresh failed`);
             } else if (data.status === 'refreshed') {
                 // Token was actually refreshed - update expiry and reschedule
                 // Reset retry count on success
                 refreshRetryCountRef.current[serviceId] = 0;
                 const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
-                console.log(`[Auth] ${serviceId}: token refreshed, new expiry in ${Math.round(data.remaining_seconds / 60)} min`);
+                log(`${serviceId}: token refreshed, new expiry in ${Math.round(data.remaining_seconds / 60)} min`);
                 setServiceAuth(prev => ({
                     ...prev,
                     [serviceId]: {
@@ -160,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // status === 'valid' - token still valid, backend didn't refresh it yet
                 // This means we called too early. Reschedule based on actual remaining time.
                 const newExpiresAt = Date.now() + (data.remaining_seconds * 1000);
-                console.log(`[Auth] ${serviceId}: token still valid (${Math.round(data.remaining_seconds / 60)} min remaining), rescheduling`);
+                log(`${serviceId}: token still valid (${Math.round(data.remaining_seconds / 60)} min remaining), rescheduling`);
                 scheduleRefreshForService(serviceId, newExpiresAt);
             }
             // Reset retry count on any successful response
@@ -171,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             refreshRetryCountRef.current[serviceId] = retryCount;
 
             if (retryCount >= 3) {
-                console.error(`[Auth] ${serviceId}: network error after ${retryCount} retries, marking disconnected:`, e);
+                console.error(`[Auth] ${serviceId}: network error after ${retryCount} retries, marking disconnected:`, e);  // Keep error logging
                 refreshRetryCountRef.current[serviceId] = 0;
                 setServiceAuth(prev => ({
                     ...prev,
@@ -182,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                     },
                 }));
             } else {
-                console.warn(`[Auth] ${serviceId}: network error (retry ${retryCount}/3), retrying in 1 min:`, e);
+                warn(`${serviceId}: network error (retry ${retryCount}/3), retrying in 1 min`);
                 const retryAt = Date.now() + (60 * 1000);
                 scheduleRefreshForService(serviceId, retryAt + (10 * 60 * 1000)); // Add 10 min to get proper scheduling
             }
@@ -191,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // New: allow external code (like useSync) to mark a service as disconnected
     const markServiceDisconnected = useCallback((serviceId: string, error?: string) => {
-        console.log(`[Auth] ${serviceId}: marked as disconnected${error ? ` (${error})` : ''}`);
+        log(`${serviceId}: marked as disconnected${error ? ` (${error})` : ''}`);
         setServiceAuth(prev => ({
             ...prev,
             [serviceId]: {
