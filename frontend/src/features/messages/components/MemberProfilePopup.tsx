@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { RefreshCw, X } from 'lucide-react';
 import { Portal } from '../../../core/common/Portal';
 import { Z_CLASS } from '../../../constants/zIndex';
 import type { BaseModalProps } from '../../../types/modal';
+import { getThemeForService } from '../../../config/groupThemes';
 
 interface StreakData {
     days: number;
@@ -32,6 +33,18 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     const [streak, setStreak] = useState<StreakData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Get theme for the active service
+    const theme = useMemo(() => getThemeForService(activeService ?? null), [activeService]);
+
+    // Use the same header style as the chat room
+    // 'gradient' = filled gradient background (Hinatazaka, Nogizaka)
+    // 'light' = white/light background (Sakurazaka)
+    const isLightHeader = theme.messages.headerStyle === 'light';
+    const gradientStyle = useMemo(() => {
+        const { from, via, to } = theme.messages.headerGradient;
+        return `linear-gradient(to right, ${from}, ${via}, ${to})`;
+    }, [theme]);
 
     const fetchStreak = useCallback(async () => {
         if (!groupId) return;
@@ -110,17 +123,33 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                 aria-labelledby="profile-title"
             >
                 <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden relative">
-                    {/* Close button */}
+                    {/* Close button - dark for light header, white for gradient header */}
                     <button
                         onClick={onClose}
-                        className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors z-10"
+                        className={`absolute top-4 right-4 transition-colors z-10 ${
+                            isLightHeader
+                                ? 'text-gray-400 hover:text-gray-600'
+                                : 'text-white/80 hover:text-white'
+                        }`}
                         aria-label="Close"
                     >
                         <X className="w-6 h-6" />
                     </button>
 
-                    {/* Header with gradient - taller to accommodate large avatar */}
-                    <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] h-32" />
+                    {/* Header - gradient or light style based on theme */}
+                    <div
+                        className="h-32"
+                        style={{
+                            background: isLightHeader ? theme.surface.background : gradientStyle,
+                        }}
+                    />
+                    {/* Bottom gradient bar for light header style */}
+                    {isLightHeader && (
+                        <div
+                            className="h-1 -mt-1"
+                            style={{ background: theme.messages.headerBarGradient }}
+                        />
+                    )}
 
                     {/* Large Avatar - overlapping header and content */}
                     <div className="flex justify-center -mt-24">
