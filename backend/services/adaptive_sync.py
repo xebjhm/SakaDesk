@@ -197,12 +197,24 @@ def get_sync_interval_description(interval_minutes: float) -> str:
     return "Infrequent (low activity)"
 
 
-# For testing
+# For testing - run with: uv run python -m backend.services.adaptive_sync
 if __name__ == "__main__":
-    print("Testing adaptive sync intervals...")
-    print(f"Current JST hour: {get_jst_hour()}")
-    print(f"Time multiplier: {get_time_multiplier()}")
-    print()
+    import structlog
+
+    # Configure structlog for console output during testing
+    structlog.configure(
+        processors=[
+            structlog.dev.ConsoleRenderer(),
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(0),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=False,
+    )
+    test_logger = structlog.get_logger("adaptive_sync_test")
+
+    test_logger.info("Testing adaptive sync intervals")
+    test_logger.info("Current state", jst_hour=get_jst_hour(), time_multiplier=get_time_multiplier())
 
     # Test various scenarios
     scenarios = [
@@ -217,4 +229,4 @@ if __name__ == "__main__":
     for hours, desc in scenarios:
         intervals = [calculate_next_sync_interval(15, hours) for _ in range(5)]
         avg = sum(intervals) / len(intervals)
-        print(f"{desc}: avg={avg:.1f}m, samples={[f'{i:.1f}' for i in intervals]}")
+        test_logger.info(desc, avg_minutes=f"{avg:.1f}", samples=[f"{i:.1f}" for i in intervals])

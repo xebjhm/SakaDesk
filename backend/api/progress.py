@@ -145,6 +145,7 @@ class ProgressManager:
 # Global manager for per-service progress tracking
 progress_manager = ProgressManager()
 
-# Legacy: single progress instance for backwards compatibility
-# TODO: Remove after frontend is updated to use per-service progress
+# Legacy: single progress instance for backwards compatibility with
+# frontend that doesn't yet use per-service progress endpoints.
+# TECH_DEBT: Migrate frontend to /api/sync/progress/{service} and remove this.
 progress = SyncProgress()
