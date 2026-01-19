@@ -157,7 +157,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 focus:ring-[#6da0d4]/50 shadow-[0_4px_24px_rgba(109,160,212,0.15),0_1px_3px_rgba(0,0,0,0.08)] border border-[#6da0d4]/20"
+  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+  style="--tw-ring-color: #6da0d480; border-width: 1px; border-color: rgba(109, 160, 212, 0.2);"
   tabindex="0"
 >
   <audio
@@ -168,7 +169,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="flex items-center gap-3 mb-2"
   >
     <div
-      class="w-10 h-10 rounded-full p-0.5 bg-gradient-to-br from-[#6da0d4] to-[#a78bfa] shrink-0"
+      class="w-10 h-10 rounded-full p-0.5 shrink-0"
+      style="background: linear-gradient(right, rgb(109, 160, 212), rgba(109, 160, 212, 0.8));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -245,8 +247,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
     >
       <div
-        class="absolute inset-y-0 left-0 bg-gradient-to-r from-[#6da0d4] to-[#a78bfa] rounded-full"
-        style="width: 0%;"
+        class="absolute inset-y-0 left-0 rounded-full"
+        style="width: 0%; background-color: rgb(109, 160, 212);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -312,11 +314,11 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
         >
           <input
-            class="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+            class="w-full h-1 rounded-full appearance-none cursor-pointer"
             max="1"
             min="0"
             step="0.01"
-            style="background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
             type="range"
             value="1"
           />
@@ -357,7 +359,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </span>
       </button>
       <button
-        class="w-12 h-12 rounded-full bg-gradient-to-br from-[#6da0d4] to-[#5a8fc3] shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all"
+        class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+        style="background-color: rgb(109, 160, 212);"
         type="button"
       >
         <svg
@@ -417,7 +420,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 focus:ring-[#6da0d4]/50 shadow-[0_4px_24px_rgba(109,160,212,0.15),0_1px_3px_rgba(0,0,0,0.08)] border border-[#6da0d4]/20"
+  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+  style="--tw-ring-color: #6da0d480; border-width: 1px; border-color: rgba(109, 160, 212, 0.2);"
   tabindex="0"
 >
   <audio
@@ -428,7 +432,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="flex items-center gap-3 mb-2"
   >
     <div
-      class="w-10 h-10 rounded-full p-0.5 bg-gradient-to-br from-[#6da0d4] to-[#a78bfa] shrink-0"
+      class="w-10 h-10 rounded-full p-0.5 shrink-0"
+      style="background: linear-gradient(right, rgb(109, 160, 212), rgba(109, 160, 212, 0.8));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -499,8 +504,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
     >
       <div
-        class="absolute inset-y-0 left-0 bg-gradient-to-r from-[#6da0d4] to-[#a78bfa] rounded-full"
-        style="width: 0%;"
+        class="absolute inset-y-0 left-0 rounded-full"
+        style="width: 0%; background-color: rgb(109, 160, 212);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -566,11 +571,11 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
         >
           <input
-            class="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+            class="w-full h-1 rounded-full appearance-none cursor-pointer"
             max="1"
             min="0"
             step="0.01"
-            style="background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
             type="range"
             value="1"
           />
@@ -611,7 +616,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </span>
       </button>
       <button
-        class="w-12 h-12 rounded-full bg-gradient-to-br from-[#6da0d4] to-[#5a8fc3] shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all"
+        class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+        style="background-color: rgb(109, 160, 212);"
         type="button"
       >
         <svg
