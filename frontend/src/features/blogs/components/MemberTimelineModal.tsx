@@ -1,9 +1,10 @@
 // frontend/src/features/blogs/components/MemberTimelineModal.tsx
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import type { BlogMember, BlogMeta } from '../../../types';
 import { getMemberNameJp } from '../../../data/memberColors';
 import { useBlogTheme } from '../hooks';
 import type { BlogTheme } from '../hooks';
+import { formatMonthYear, formatShortDate } from '../../../utils/classnames';
 
 interface MemberTimelineModalProps {
     isOpen: boolean;
@@ -36,17 +37,20 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     // Get kanji-only name using centralized helper
     const memberNameJp = getMemberNameJp(member.name);
 
+    // Use ref to track latest onClose callback without triggering effect re-runs
+    const onCloseRef = useRef(onClose);
+    useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
     // Close on escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isOpen) {
-                onClose();
+                onCloseRef.current();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]); // onClose intentionally excluded
+    }, [isOpen]);
 
     // Group blogs by year-month
     const monthGroups = useMemo(() => {
@@ -280,8 +284,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
     const [expanded, setExpanded] = useState(defaultExpanded);
 
     // Format month header
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthLabel = `${monthNames[month - 1]} ${year}`;
+    const monthLabel = formatMonthYear(month, year);
     const postCount = blogs.length;
 
     return (
@@ -373,9 +376,9 @@ interface TimelineBlogItemProps {
 
 const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, index, theme }) => {
     const [isHovered, setIsHovered] = useState(false);
+    const [imageError, setImageError] = useState(false);
     const date = new Date(blog.published_at);
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dayLabel = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+    const dayLabel = formatShortDate(date);
 
     // Check if published within 24 hours
     const isRecent = useMemo(() => {
@@ -405,18 +408,19 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, inde
                         : '0 4px 15px -5px rgba(0, 0, 0, 0.1)',
                 }}
             >
-                {blog.thumbnail ? (
+                {blog.thumbnail && !imageError ? (
                     <img
                         src={blog.thumbnail}
                         alt={blog.title}
                         className={`w-full h-full object-cover transition-transform duration-500 ${isHovered ? 'scale-110' : 'scale-100'}`}
                         loading="lazy"
+                        onError={() => setImageError(true)}
                     />
                 ) : (
                     <div
                         className="w-full h-full flex items-center justify-center"
                         style={{
-                            background: 'linear-gradient(135deg, #f0f0f0, #e0e0e0)',
+                            background: `linear-gradient(135deg, ${theme.primaryColor}20, ${theme.secondaryColor || theme.primaryColor}15)`,
                         }}
                     >
                         <svg
