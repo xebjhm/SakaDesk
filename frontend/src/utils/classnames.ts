@@ -27,3 +27,28 @@ export function formatDuration(seconds: number | undefined): string {
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Short month names for display (English)
+ */
+export const MONTH_NAMES_SHORT = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+] as const;
+
+/**
+ * Format a month/year to "Jan 2024" format.
+ * @param month - 1-indexed month (1 = January)
+ * @param year - Full year (e.g., 2024)
+ */
+export function formatMonthYear(month: number, year: number): string {
+    return `${MONTH_NAMES_SHORT[month - 1]} ${year}`;
+}
+
+/**
+ * Format a date to "Jan 15" format.
+ * @param date - Date object to format
+ */
+export function formatShortDate(date: Date): string {
+    return `${MONTH_NAMES_SHORT[date.getMonth()]} ${date.getDate()}`;
+}
