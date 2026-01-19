@@ -42,16 +42,6 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         style="border-color: rgb(229, 231, 235);"
       >
         <div
-          class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
-          style="width: 320px; height: 240px;"
-        >
-          <img
-            alt="Attachment"
-            class="w-full h-full object-contain"
-            src="/api/content/media/path/to/photo.jpg"
-          />
-        </div>
-        <div
           class="text-gray-900 whitespace-pre-wrap text-[15px]"
         >
           <span>
@@ -157,16 +147,17 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     >
       <div
         class="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-        style="background-color: rgb(139, 184, 214);"
+        style="background-color: rgb(139, 184, 214); border: medium;"
       >
         <svg
-          class="w-8 h-8 text-white/90"
+          class="w-8 h-8"
           fill="none"
           height="24"
           stroke="currentColor"
           stroke-linecap="round"
           stroke-linejoin="round"
           stroke-width="2"
+          style="color: rgba(255, 255, 255, 0.9);"
           viewBox="0 0 24 24"
           width="24"
           xmlns="http://www.w3.org/2000/svg"
