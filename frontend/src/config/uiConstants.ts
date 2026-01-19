@@ -35,13 +35,7 @@ export const UI_CONSTANTS = {
   ],
 } as const;
 
-// Shelter message type colors
-export const SHELTER_COLORS = {
-  video: '#c4a8d8',
-  text: '#8bb8d6',
-  voice: '#b8a8d8',
-  picture: '#a8d0e8',
-} as const;
+// Note: Shelter colors are defined per-theme in groupThemes.ts (theme.messages.shelterColors)
 
 // Shelter message type icons (emoji)
 export const SHELTER_ICONS = {
