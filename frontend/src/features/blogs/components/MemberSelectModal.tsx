@@ -1,5 +1,5 @@
 // frontend/src/features/blogs/components/MemberSelectModal.tsx
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import type { BlogMemberWithThumbnail } from '../../../types';
 import { GENERATION_LABELS } from '../../../data/memberColors';
 import { getMembers, getMemberPenlightHex, toGroupId } from '../../../data/memberData';
@@ -43,17 +43,20 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     const favorites = useAppStore((state) => state.favorites[serviceId] || EMPTY_FAVORITES);
     const toggleFavorite = useAppStore((state) => state.toggleFavorite);
 
+    // Use ref to track latest onClose callback without triggering effect re-runs
+    const onCloseRef = useRef(onClose);
+    useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
     // Close on escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && isOpen) {
-                onClose();
+                onCloseRef.current();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isOpen]); // onClose intentionally excluded - callback identity changes on each render
+    }, [isOpen]);
 
     // Enrich members with generation and name data using service-specific member data
     const enrichedMembers = useMemo(() => {

@@ -162,14 +162,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Note: selectedGroupDir, selectedName, isGroupChat intentionally excluded to avoid infinite loops
 
     // Refresh messages when sync completes
-    // Only depends on syncVersion - we capture the current values at time of sync completion
-    // This intentionally uses stale closure values to avoid infinite loops
+    // DESIGN: Only depends on syncVersion - other dependencies intentionally excluded.
+    // This effect uses the closure values at the time syncVersion changes, not the latest values.
+    // Adding selectedGroupDir/isGroupChat/readState to deps would cause infinite loops
+    // because fetchMessages updates state that these values depend on.
     useEffect(() => {
         if (syncVersion > 0 && selectedGroupDir) {
-            // Use the current state values at the time syncVersion changes
             fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
     }, [syncVersion]);
 
     // === FETCH MESSAGES (Load All) ===
