@@ -17,7 +17,7 @@ from pydantic import BaseModel
 
 from backend.services.platform import get_app_data_dir, get_logs_dir, get_settings_path
 from pyhako.credentials import get_token_manager
-from pyhako import Group
+from pyhako import Group, get_jwt_remaining_seconds
 
 router = APIRouter(prefix="/api/report", tags=["report"])
 
@@ -125,34 +125,26 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
 
 def _get_token_expiry() -> dict:
-    """Get token expiry info without exposing the token."""
+    """Get token expiry info without exposing the token. Uses shared pyhako utility."""
     try:
-        import base64
         tm = get_token_manager()
 
         for group in Group:
             session_data = tm.load_session(group.value)
             if session_data and session_data.get("access_token"):
                 token = session_data["access_token"]
-                parts = token.split(".")
-                if len(parts) >= 2:
-                    payload = parts[1]
-                    payload += "=" * (4 - len(payload) % 4)
-                    decoded = base64.b64decode(payload)
-                    data = json.loads(decoded)
-                    if "exp" in data:
-                        exp_ts = data["exp"]
-                        now = datetime.now(timezone.utc).timestamp()
-                        remaining = int(exp_ts - now)
-                        if remaining < 0:
-                            return {"has_token": True, "token_expires_in": "expired", "groups_configured": [group.value]}
-                        hours = remaining // 3600
-                        mins = (remaining % 3600) // 60
-                        return {
-                            "has_token": True,
-                            "token_expires_in": f"{hours}h {mins}m",
-                            "groups_configured": [group.value]
-                        }
+                remaining = get_jwt_remaining_seconds(token)
+
+                if remaining is not None:
+                    if remaining < 0:
+                        return {"has_token": True, "token_expires_in": "expired", "groups_configured": [group.value]}
+                    hours = remaining // 3600
+                    mins = (remaining % 3600) // 60
+                    return {
+                        "has_token": True,
+                        "token_expires_in": f"{hours}h {mins}m",
+                        "groups_configured": [group.value]
+                    }
 
         return {"has_token": False, "token_expires_in": None, "groups_configured": []}
     except Exception:

@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
 from pyhako.credentials import get_token_manager
-from pyhako import Group
+from pyhako import Group, get_jwt_remaining_seconds
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
@@ -91,24 +91,10 @@ def _format_duration(seconds: int) -> str:
 
 
 def _get_token_expiry_seconds(token: str) -> Optional[int]:
-    """Extract expiry from JWT token. Returns seconds remaining or None."""
+    """Extract expiry from JWT token. Uses shared pyhako utility."""
     if not token:
         return None
-    try:
-        parts = token.split('.')
-        if len(parts) < 2:
-            return None
-        payload = parts[1]
-        payload += '=' * (4 - len(payload) % 4)
-        decoded = base64.b64decode(payload)
-        data = json.loads(decoded)
-        if 'exp' in data:
-            exp_timestamp = data['exp']
-            now = datetime.now(timezone.utc).timestamp()
-            return int(exp_timestamp - now)
-    except Exception:
-        pass
-    return None
+    return get_jwt_remaining_seconds(token)
 
 
 def _get_disk_usage(output_dir: str) -> tuple[float, int]:
