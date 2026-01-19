@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 import aiohttp
-from pyhako import BrowserAuth, Group, Client
+from pyhako import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
 from pyhako.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
@@ -36,46 +36,26 @@ class AuthService:
         return get_service_enum(service)
 
     def _is_token_expired(self, token: str) -> bool:
-        """Check if JWT token is expired."""
-        try:
-            parts = token.split('.')
-            if len(parts) >= 2:
-                payload = parts[1]
-                # Add padding
-                payload += '=' * (4 - len(payload) % 4)
-                decoded = base64.b64decode(payload)
-                data = json.loads(decoded)
-                if 'exp' in data:
-                    exp_time = datetime.fromtimestamp(data['exp'])
-                    now = datetime.now()
-                    is_expired = now > exp_time
-                    remaining_seconds = (exp_time - now).total_seconds()
+        """Check if JWT token is expired. Uses shared pyhako utility."""
+        expired = is_jwt_expired(token)
+        remaining = get_jwt_remaining_seconds(token)
+        exp_timestamp = parse_jwt_expiry(token)
 
-                    logger.debug(
-                        f"Token expiry check: expired={is_expired}, "
-                        f"remaining_seconds={remaining_seconds:.0f}, "
-                        f"exp_time={exp_time.isoformat()}"
-                    )
-                    return is_expired
-            logger.warning("Token does not have expected JWT structure (missing parts)")
-        except Exception as e:
-            logger.error(f"Failed to parse token expiry: {e}")
-        return True  # Assume expired if can't parse
+        if remaining is not None:
+            logger.debug(
+                "Token expiry check",
+                expired=expired,
+                remaining_seconds=remaining,
+                exp_timestamp=exp_timestamp,
+            )
+        else:
+            logger.warning("Token does not have expected JWT structure")
+
+        return expired
 
     def _get_token_expiry_timestamp(self, token: str) -> int | None:
-        """Extract expiry timestamp from JWT token. Returns Unix timestamp or None."""
-        try:
-            parts = token.split('.')
-            if len(parts) >= 2:
-                payload = parts[1]
-                payload += '=' * (4 - len(payload) % 4)
-                decoded = base64.b64decode(payload)
-                data = json.loads(decoded)
-                if 'exp' in data:
-                    return int(data['exp'])
-        except Exception as e:
-            logger.error(f"Failed to parse token expiry timestamp: {e}")
-        return None
+        """Extract expiry timestamp from JWT token. Uses shared pyhako utility."""
+        return parse_jwt_expiry(token)
 
     def _get_service_auth_status(self, service: str) -> dict:
         """Get authentication status for a single service."""
@@ -232,20 +212,11 @@ class AuthService:
             logger.error(f"Failed to clear credentials for {service}: {e}")
 
     def _get_token_remaining_seconds(self, token: str) -> float:
-        """Get seconds remaining until token expires. Returns negative if expired."""
-        try:
-            parts = token.split('.')
-            if len(parts) >= 2:
-                payload = parts[1]
-                payload += '=' * (4 - len(payload) % 4)
-                decoded = base64.b64decode(payload)
-                data = json.loads(decoded)
-                if 'exp' in data:
-                    exp_time = datetime.fromtimestamp(data['exp'])
-                    return (exp_time - datetime.now()).total_seconds()
-        except Exception as e:
-            logger.error(f"Failed to parse token expiry: {e}")
-        return -1  # Assume expired if can't parse
+        """Get seconds remaining until token expires. Uses shared pyhako utility."""
+        remaining = get_jwt_remaining_seconds(token)
+        if remaining is None:
+            return -1  # Assume expired if can't parse
+        return float(remaining)
 
     async def refresh_if_needed(self, service: str, threshold_minutes: int = 10) -> dict:
         """
