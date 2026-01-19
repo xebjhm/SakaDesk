@@ -584,7 +584,8 @@ class BlogService:
         download_images: bool,
     ):
         """Download a single blog's content and optionally images."""
-        entry = await scraper.get_blog_detail(item.blog_id)
+        # Pass member_id for faster lookups (important for Nogizaka old blogs)
+        entry = await scraper.get_blog_detail(item.blog_id, member_id=item.member_id)
 
         item.cache_path.mkdir(parents=True, exist_ok=True)
         cache_file = item.cache_path / "blog.json"
@@ -762,12 +763,14 @@ class BlogService:
         index = await self.load_blog_index(service)
         blog_meta = None
         member_name = None
+        found_member_id = None
 
-        for member_id, member_data in index.get("members", {}).items():
+        for mid, member_data in index.get("members", {}).items():
             for blog in member_data.get("blogs", []):
                 if blog["id"] == blog_id:
                     blog_meta = blog
                     member_name = member_data.get("name", "")
+                    found_member_id = mid
                     break
             if blog_meta:
                 break
@@ -785,9 +788,10 @@ class BlogService:
                 return json.loads(await f.read())
 
         # Fetch on-demand (single blog, no concurrency needed)
+        # Pass member_id to scraper for faster lookups (important for Nogizaka old blogs)
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
-            entry = await scraper.get_blog_detail(blog_id)
+            entry = await scraper.get_blog_detail(blog_id, member_id=found_member_id)
 
             # Save to cache
             cache_path.mkdir(parents=True, exist_ok=True)
