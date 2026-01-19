@@ -1,6 +1,7 @@
 // frontend/src/features/blogs/components/TimelineSection.tsx
 import React, { useState } from 'react';
 import type { BlogMeta } from '../../../types';
+import { formatMonthYear, formatShortDate } from '../../../utils/classnames';
 
 interface TimelineSectionProps {
     year: number;
@@ -22,8 +23,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
     const [expanded, setExpanded] = useState(defaultExpanded);
 
     // Format month header
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthLabel = `${monthNames[month - 1]} ${year}`;
+    const monthLabel = formatMonthYear(month, year);
     const postCount = blogs.length;
 
     const accentColor = memberColors?.[0] ?? '#7cc7e8';
@@ -115,9 +115,9 @@ interface TimelineBlogItemProps {
 
 const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, memberColors, index }) => {
     const [isHovered, setIsHovered] = useState(false);
+    const [imageError, setImageError] = useState(false);
     const date = new Date(blog.published_at);
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const dayLabel = `${monthNames[date.getMonth()]} ${date.getDate()}`;
+    const dayLabel = formatShortDate(date);
 
     const accentColor = memberColors?.[0] ?? '#7cc7e8';
 
@@ -141,12 +141,13 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, memb
                         : '0 4px 15px -5px rgba(0, 0, 0, 0.1)',
                 }}
             >
-                {blog.thumbnail ? (
+                {blog.thumbnail && !imageError ? (
                     <img
                         src={blog.thumbnail}
                         alt={blog.title}
                         className={`w-full h-full object-cover transition-transform duration-500 ${isHovered ? 'scale-110' : 'scale-100'}`}
                         loading="lazy"
+                        onError={() => setImageError(true)}
                     />
                 ) : (
                     <div
