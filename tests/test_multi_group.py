@@ -12,9 +12,6 @@ When implementing multi-group support:
 """
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock, patch
-from backend.services.auth_service import AuthService
-from backend.services.sync_service import SyncService
 
 
 MULTI_GROUP_NOT_IMPLEMENTED = "Multi-group support not yet implemented - see TODO.md"

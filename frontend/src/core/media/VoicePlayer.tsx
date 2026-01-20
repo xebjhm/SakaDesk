@@ -53,6 +53,8 @@ const SkipButton: React.FC<{
     );
 };
 
+// Fallback to Hinatazaka's voice player accent (#6da0d4) when no theme color provided.
+// Canonical values defined in groupThemes.ts -> messages.voicePlayerAccent
 const DEFAULT_ACCENT_COLOR = '#6da0d4';
 
 export const VoicePlayer: React.FC<VoicePlayerProps> = ({

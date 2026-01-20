@@ -5,8 +5,33 @@
  * This enables runtime theme switching without JavaScript re-renders.
  */
 
-import { type GroupId } from './palette';
+import { BRAND_COLORS, type GroupId } from './palette';
 import { getSemanticColors, UI_TOKENS } from './semantic';
+
+/**
+ * Map service IDs to GroupIds.
+ * e.g., "hinatazaka46" -> "hinatazaka"
+ */
+const SERVICE_TO_GROUP: Record<string, GroupId> = {
+    'hinatazaka46': 'hinatazaka',
+    'sakurazaka46': 'sakurazaka',
+    'nogizaka46': 'nogizaka',
+};
+
+/**
+ * Convert a service ID to a GroupId.
+ * Returns 'hinatazaka' as default if no mapping found.
+ */
+export function serviceIdToGroupId(serviceId: string): GroupId {
+    return SERVICE_TO_GROUP[serviceId] ?? 'hinatazaka';
+}
+
+/**
+ * Check if a string is a valid GroupId.
+ */
+export function isGroupId(value: string): value is GroupId {
+    return value in BRAND_COLORS;
+}
 
 /**
  * CSS variable names for theme colors.

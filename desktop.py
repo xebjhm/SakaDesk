@@ -2,15 +2,10 @@ import webview
 import threading
 import uvicorn
 import sys
-import os
 import socket
-import logging
 import traceback
 import time
 # Explicit imports to ensure PyInstaller finds them
-import fastapi
-import starlette.responses
-import backend.main
 from backend.main import app
 from backend.services.platform import get_logs_dir
 
@@ -58,7 +53,7 @@ def show_error_dialog(error_msg: str, tb: str):
     """Show a simple error dialog with traceback."""
     try:
         import tkinter as tk
-        from tkinter import messagebox, scrolledtext
+        from tkinter import scrolledtext
         
         root = tk.Tk()
         root.withdraw()
