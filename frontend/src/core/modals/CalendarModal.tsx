@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
-import { cn } from '../../utils/classnames';
+import { cn, MONTH_NAMES } from '../../utils/classnames';
 import { BaseModal, ModalLoadingState, ModalErrorState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
@@ -45,7 +45,6 @@ interface CalendarModalPropsMessages extends CalendarModalPropsBase {
 type CalendarModalProps = CalendarModalPropsAPI | CalendarModalPropsMessages;
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 // Format date to YYYY-MM-DD using LOCAL timezone (not UTC)
 const formatLocalDate = (d: Date): string => {
@@ -237,7 +236,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                 </button>
                 <div className="flex items-center gap-2">
                     <span className="text-lg font-bold text-gray-800">
-                        {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
+                        {MONTH_NAMES[currentDate.getMonth()]} {currentDate.getFullYear()}
                     </span>
                     <button
                         onClick={goToToday}
