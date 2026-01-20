@@ -1,54 +1,149 @@
-// frontend/src/stores/appStore.ts
+/**
+ * Global application state store using Zustand with persistence.
+ *
+ * Manages:
+ * - Selected services (user's subscribed idol groups)
+ * - Active service and feature navigation
+ * - Member favorites per service
+ * - Blog selection mode preferences
+ * - Conversation selection memory
+ *
+ * All state is persisted to localStorage under 'hakodesk-app-state'.
+ *
+ * @example
+ * ```tsx
+ * function ServiceSwitcher() {
+ *   const { activeService, setActiveService, selectedServices } = useAppStore();
+ *
+ *   return (
+ *     <div>
+ *       {selectedServices.map(service => (
+ *         <button
+ *           key={service}
+ *           onClick={() => setActiveService(service)}
+ *           className={service === activeService ? 'active' : ''}
+ *         >
+ *           {service}
+ *         </button>
+ *       ))}
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @module appStore
+ */
+
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
+
+/** Blog filtering mode: show all members or only favorites. */
 export type BlogSelectionMode = 'all' | 'favorite';
 
+/**
+ * Global application state interface.
+ *
+ * Organized into logical groups:
+ * - Service selection and navigation
+ * - Feature management
+ * - User preferences (favorites, modes)
+ * - UI state persistence (conversations)
+ */
 interface AppState {
-    // Selected services (user's interest, persisted locally)
+    // ─── Service Selection ───────────────────────────────────────────────────
+
+    /** List of service IDs the user has subscribed to (e.g., 'hinatazaka46'). */
     selectedServices: string[];
+    /** Add a service to the user's subscription list. */
     addSelectedService: (serviceId: string) => void;
+    /** Remove a service and switch active if needed. */
     removeSelectedService: (serviceId: string) => void;
+    /** Replace the entire subscription list. */
     setSelectedServices: (services: string[]) => void;
 
-    // Active service (currently viewing)
+    // ─── Active Navigation ───────────────────────────────────────────────────
+
+    /** Currently active service ID being viewed. */
     activeService: string | null;
+    /** Switch to viewing a different service. */
     setActiveService: (service: string) => void;
 
-    // Feature selection (per service)
+    // ─── Feature Selection ───────────────────────────────────────────────────
+
+    /** Active feature tab per service (e.g., messages, blogs). */
     activeFeatures: Record<string, FeatureId>;
+    /** Set active feature for a service. */
     setActiveFeature: (service: string, feature: FeatureId) => void;
+    /** Get active feature for a service (defaults to 'messages'). */
     getActiveFeature: (service: string) => FeatureId;
 
-    // Blog view reset trigger (increments when blog icon clicked to reset view)
+    // ─── Blog View State ─────────────────────────────────────────────────────
+
+    /** Counter that increments to trigger blog view reset. */
     blogViewResetCounter: number;
+    /** Trigger a blog view reset (e.g., when clicking blog icon). */
     triggerBlogViewReset: () => void;
 
-    // Feature order preference (per service) - for drag reordering
+    // ─── Feature Order ───────────────────────────────────────────────────────
+
+    /** Custom feature tab order per service (for drag reordering). */
     featureOrders: Record<string, FeatureId[]>;
+    /** Set custom feature order for a service. */
     setFeatureOrder: (service: string, order: FeatureId[]) => void;
+    /** Get feature order for a service (defaults to standard order). */
     getFeatureOrder: (service: string) => FeatureId[];
 
-    // Member favorites (per service)
+    // ─── Member Favorites ────────────────────────────────────────────────────
+
+    /** Favorite member IDs per service. */
     favorites: Record<string, string[]>;
+    /** Toggle a member's favorite status. */
     toggleFavorite: (serviceId: string, memberId: string) => void;
+    /** Get all favorite member IDs for a service. */
     getFavorites: (serviceId: string) => string[];
+    /** Check if a member is favorited. */
     isFavorite: (serviceId: string, memberId: string) => boolean;
 
-    // Blog selection mode (per service) - All or Favorite
+    // ─── Blog Selection Mode ─────────────────────────────────────────────────
+
+    /** Blog filtering mode per service ('all' or 'favorite'). */
     blogSelectionModes: Record<string, BlogSelectionMode>;
+    /** Set blog selection mode for a service. */
     setBlogSelectionMode: (serviceId: string, mode: BlogSelectionMode) => void;
+    /** Get blog selection mode (defaults to 'all'). */
     getBlogSelectionMode: (serviceId: string) => BlogSelectionMode;
 
-    // Selected conversation (per service) - remembers which chat room was open
+    // ─── Conversation Memory ─────────────────────────────────────────────────
+
+    /** Last selected conversation per service (restored on return). */
     selectedConversations: Record<string, { path: string; name: string; isGroupChat: boolean } | null>;
+    /** Remember the selected conversation for a service. */
     setSelectedConversation: (serviceId: string, conversation: { path: string; name: string; isGroupChat: boolean } | null) => void;
+    /** Get the last selected conversation for a service. */
     getSelectedConversation: (serviceId: string) => { path: string; name: string; isGroupChat: boolean } | null;
 }
 
+/** Default feature tab order when no custom order is set. */
 const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclub', 'ai'];
 
+/**
+ * Zustand store hook for global application state.
+ *
+ * State is automatically persisted to localStorage and restored on app load.
+ * Use selectors for optimal re-render performance.
+ *
+ * @example
+ * ```tsx
+ * // Good: Select only what you need
+ * const activeService = useAppStore(state => state.activeService);
+ *
+ * // Avoid: Selecting entire store causes re-renders on any change
+ * const store = useAppStore();
+ * ```
+ */
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({

@@ -12,15 +12,27 @@ const warn = AUTH_DEBUG
     ? (msg: string, ...args: unknown[]) => console.warn(`[Auth] ${msg}`, ...args)
     : () => {};
 
+/**
+ * Authentication state for a single service.
+ */
 export interface ServiceAuthState {
+    /** Whether the service is currently connected with a valid token */
     connected: boolean;
+    /** Unix timestamp (ms) when the token expires, or null if unknown */
     tokenExpiresAt: number | null;
+    /** Error message if authentication failed, or null */
     error: string | null;
+    /** Whether the user was ever authenticated (helps detect expired sessions) */
     wasEverConnected: boolean;
 }
 
+/** Map of service IDs to their authentication states. */
 export type ServiceAuthRecord = Record<string, ServiceAuthState>;
 
+/**
+ * Auth context value providing authentication state and actions.
+ * Use the `useAuth` hook to access this in components.
+ */
 export interface AuthContextValue {
     isAuthenticated: boolean | null;
     authCheckComplete: boolean;
@@ -43,6 +55,15 @@ export interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * Provides authentication state management for all services.
+ *
+ * Handles:
+ * - Initial auth check on mount
+ * - Automatic token refresh scheduling
+ * - Per-service connection tracking
+ * - Session expiry detection
+ */
 export function AuthProvider({ children }: { children: ReactNode }) {
     const { activeService, setActiveService } = useAppStore();
 
