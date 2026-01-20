@@ -6,7 +6,7 @@ import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pyhako import SessionExpiredError
 from backend.services.sync_service import SyncService
-from backend.services.service_utils import validate_service, get_all_services
+from backend.services.service_utils import validate_service
 from backend.api.progress import progress_manager
 import asyncio
 

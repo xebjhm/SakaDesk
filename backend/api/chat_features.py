@@ -16,7 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 
-from pyhako import Client, Group
+from pyhako import Client
 from pyhako.credentials import get_token_manager
 from backend.services.platform import is_test_mode, get_settings_path, get_session_dir
 from backend.services.service_utils import get_service_enum, validate_service

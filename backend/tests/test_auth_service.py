@@ -2,7 +2,7 @@
 import asyncio
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from backend.services.auth_service import AuthService
 
 

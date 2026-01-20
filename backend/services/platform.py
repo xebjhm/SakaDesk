@@ -6,7 +6,6 @@ import os
 import platform
 import structlog
 from pathlib import Path
-from typing import Literal
 
 logger = structlog.get_logger(__name__)
 

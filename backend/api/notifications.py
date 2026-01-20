@@ -8,7 +8,6 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.notification_service import (
-    get_notifications_enabled,
     set_notifications_enabled,
     get_notification_status,
     send_notification,

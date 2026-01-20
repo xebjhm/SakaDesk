@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from pyhako import Client, Group
+from pyhako import Client
 from pyhako.credentials import get_token_manager
 from backend.services.platform import get_settings_path, get_session_dir, is_test_mode
 from backend.services.service_utils import get_service_enum, validate_service

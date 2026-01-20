@@ -1,6 +1,5 @@
 """Tests for settings API - global and per-service settings."""
 import pytest
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch

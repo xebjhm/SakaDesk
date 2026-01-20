@@ -10,7 +10,6 @@ The upgrade flow:
 """
 
 import structlog
-import tempfile
 import subprocess
 import sys
 from pathlib import Path

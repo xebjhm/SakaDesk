@@ -6,11 +6,7 @@ This ensures consistent behavior across CLI and GUI:
 - Windows: Windows Credential Manager (WCM)
 - Linux: Plaintext fallback (development only)
 """
-import json
-import base64
 import structlog
-from pathlib import Path
-from datetime import datetime
 from typing import Optional
 import aiohttp
 from pyhako import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
@@ -20,7 +16,6 @@ from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
     get_all_services,
     get_service_enum,
-    get_service_display_name,
     validate_service,
 )
 
