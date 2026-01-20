@@ -1,7 +1,36 @@
+/**
+ * Settings hook for managing app and per-service settings.
+ *
+ * Handles:
+ * - Loading/saving app settings (output directory, etc.)
+ * - Loading/saving per-service settings (sync options, blog backup)
+ * - Setup wizard flow for first-time configuration
+ * - Folder selection dialog integration
+ *
+ * @example
+ * ```tsx
+ * function SettingsPanel() {
+ *   const { appSettings, saveSettings, showSettingsModal } = useSettings(isAuthenticated);
+ *
+ *   return (
+ *     <div>
+ *       <p>Output: {appSettings?.output_dir}</p>
+ *       <button onClick={() => saveSettings({ output_dir: '/new/path' })}>
+ *         Change Output
+ *       </button>
+ *     </div>
+ *   );
+ * }
+ * ```
+ *
+ * @module useSettings
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 
+/** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
     sync_enabled: boolean;
     adaptive_sync_enabled: boolean;
@@ -9,22 +38,39 @@ export interface ServiceSettings {
     blogs_full_backup: boolean;
 }
 
+/** Return type for the useSettings hook. */
 export interface UseSettingsReturn {
+    /** Current app settings (output dir, etc.) */
     appSettings: AppSettings | null;
+    /** Update app settings state */
     setAppSettings: React.Dispatch<React.SetStateAction<AppSettings | null>>;
+    /** Current service-specific settings */
     serviceSettings: ServiceSettings | null;
+    /** Current value of output directory input field */
     outputDirInput: string;
+    /** Update output directory input */
     setOutputDirInput: (dir: string) => void;
+    /** Error message if settings operation failed */
     settingsError: string | null;
+    /** Whether settings modal is visible */
     showSettingsModal: boolean;
+    /** Toggle settings modal */
     setShowSettingsModal: (show: boolean) => void;
+    /** Whether setup wizard is visible */
     showSetupWizard: boolean;
+    /** Toggle setup wizard */
     setShowSetupWizard: (show: boolean) => void;
+    /** Blog backup preference for setup wizard */
     setupBlogFullBackup: boolean;
+    /** Update blog backup preference */
     setSetupBlogFullBackup: (enabled: boolean) => void;
+    /** Save app settings to backend */
     saveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
+    /** Save per-service settings to backend */
     saveServiceSettings: (service: string, updates: Partial<ServiceSettings>) => Promise<void>;
+    /** Open native folder picker dialog */
     handleSelectFolder: () => Promise<void>;
+    /** Open settings modal */
     openSettingsModal: () => void;
 }
 

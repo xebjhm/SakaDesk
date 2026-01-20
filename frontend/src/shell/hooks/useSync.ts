@@ -1,3 +1,34 @@
+/**
+ * Sync hook for managing message synchronization across services.
+ *
+ * Handles:
+ * - Starting/stopping sync for individual or all services
+ * - Polling for sync progress updates
+ * - Session expiry detection and re-authentication flow
+ * - Sync state management (idle, syncing, complete, error)
+ *
+ * @example
+ * ```tsx
+ * function SyncButton() {
+ *   const { syncProgress, startSync } = useSync({
+ *     isAuthenticated: true,
+ *     appSettings: settings,
+ *     connectedServices: ['hinatazaka46'],
+ *     setAuthError: setError,
+ *     setIsAuthenticated: setAuth,
+ *   });
+ *
+ *   return (
+ *     <button onClick={() => startSync(true)}>
+ *       {syncProgress.state === 'syncing' ? 'Syncing...' : 'Sync Now'}
+ *     </button>
+ *   );
+ * }
+ * ```
+ *
+ * @module useSync
+ */
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { SyncProgress, AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
@@ -8,28 +39,45 @@ const log = SYNC_DEBUG
     ? (...args: unknown[]) => console.log('[Sync]', ...args)
     : () => {};
 
+/** Return type for the useSync hook. */
 export interface UseSyncReturn {
+    /** Current sync progress for the active service */
     syncProgress: SyncProgress;
+    /** Sync progress for each service by ID */
     syncProgressByService: Record<string, SyncProgress>;
+    /** Whether the sync modal is visible */
     showSyncModal: boolean;
+    /** Toggle sync modal visibility */
     setShowSyncModal: (show: boolean) => void;
+    /** Increments when sync completes (triggers message refresh) */
     syncVersion: number;
+    /** Start sync for a specific service (or active service if not specified) */
     startSync: (blocking: boolean, service?: string) => Promise<void>;
+    /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
+    /** Ref tracking whether initial sync has started */
     hasStartedSyncRef: React.MutableRefObject<boolean>;
-    // New: service that triggered session expiry (for showing LoginModal)
+    /** Service ID that triggered session expiry (shows LoginModal) */
     sessionExpiredService: string | null;
+    /** Clear the session expiry state */
     clearSessionExpired: () => void;
 }
 
+/** Options for the useSync hook. */
 interface UseSyncOptions {
+    /** Whether any service is authenticated */
     isAuthenticated: boolean | null;
+    /** App settings (needed for output directory) */
     appSettings: AppSettings | null;
+    /** List of connected service IDs */
     connectedServices: string[];
+    /** Callback to set auth error (kept for interface compatibility) */
     setAuthError: (error: string | null) => void;
+    /** Callback to update auth state (kept for interface compatibility) */
     setIsAuthenticated: (auth: boolean) => void;
+    /** Called when sync completes successfully */
     onSyncComplete?: () => void;
-    // New: callback to mark service as disconnected in auth context
+    /** Called when a service's session expires */
     markServiceDisconnected?: (serviceId: string, error?: string) => void;
 }
 
