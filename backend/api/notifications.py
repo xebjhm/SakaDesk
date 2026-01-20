@@ -3,6 +3,7 @@ Notification Settings API for HakoDesk.
 
 Provides endpoints to manage desktop notification preferences.
 """
+from typing import Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -25,7 +26,7 @@ class NotificationStatus(BaseModel):
     """Notification system status."""
     enabled: bool
     plyer_available: bool
-    last_error: str | None
+    last_error: Optional[str]
 
 
 @router.get("", response_model=NotificationStatus)

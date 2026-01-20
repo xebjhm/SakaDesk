@@ -535,7 +535,7 @@ async def get_talk_rooms(service: str = Query(..., description="Service identifi
             "member_count": member_count,
         })
 
-    talk_rooms.sort(key=lambda r: r["id"])
+    talk_rooms.sort(key=lambda r: r["id"])  # type: ignore[arg-type,return-value]
     return {"service": service, "talk_rooms": talk_rooms}
 
 

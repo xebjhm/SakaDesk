@@ -2,11 +2,13 @@
 Service utilities for multi-service support.
 Maps between service identifiers and PyHako Group enum.
 """
+from typing import Any, Dict, List, Optional, cast
+
 from pyhako import Group
 from pyhako.client import GROUP_CONFIG
 
 
-def get_all_services() -> list[str]:
+def get_all_services() -> List[str]:
     """Get list of all supported service identifiers (lowercase)."""
     # Return lowercase names matching Group enum values
     return [g.value for g in Group]
@@ -15,10 +17,10 @@ def get_all_services() -> list[str]:
 def get_service_display_name(service: str) -> str:
     """Get display name for a service (e.g., '日向坂46')."""
     group = get_service_enum(service)
-    return GROUP_CONFIG[group]["display_name"]
+    return cast(str, GROUP_CONFIG[group]["display_name"])
 
 
-def get_service_identifier(display_name: str) -> str | None:
+def get_service_identifier(display_name: str) -> Optional[str]:
     """
     Reverse lookup: Get service identifier from display name or romanized name.
     E.g., '日向坂46' -> 'hinatazaka46'
@@ -29,13 +31,13 @@ def get_service_identifier(display_name: str) -> str | None:
     # First try Japanese display name lookup
     for group in Group:
         if GROUP_CONFIG[group]["display_name"] == display_name:
-            return group.value
+            return cast(str, group.value)
 
     # Then try romanized name lookup (case-insensitive)
     lower_name = display_name.lower()
     for group in Group:
         if group.value == lower_name:
-            return group.value
+            return cast(str, group.value)
 
     return None
 
@@ -54,7 +56,7 @@ def validate_service(service: str) -> str:
     return service
 
 
-def get_service_config(service: str) -> dict:
+def get_service_config(service: str) -> Dict[str, Any]:
     """Get full config for a service."""
     group = get_service_enum(service)
-    return GROUP_CONFIG[group]
+    return cast(Dict[str, Any], GROUP_CONFIG[group])

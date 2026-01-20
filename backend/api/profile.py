@@ -7,7 +7,7 @@ import structlog
 import aiohttp
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Dict, Optional, cast
 
 from pyhako import Client
 from pyhako.credentials import get_token_manager
@@ -25,13 +25,13 @@ class ProfileResponse(BaseModel):
     error: Optional[str] = None
 
 
-def _load_config() -> dict:
+def _load_config() -> Dict[Any, Any]:
     """Load configuration from settings file."""
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
             with open(settings_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                return cast(Dict[Any, Any], json.load(f))
         except Exception:
             pass
     return {}

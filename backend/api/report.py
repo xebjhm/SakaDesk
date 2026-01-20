@@ -9,7 +9,7 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from urllib.parse import urlencode, quote
 
 from fastapi import APIRouter
@@ -197,7 +197,7 @@ def _get_nickname() -> Optional[str]:
         settings_path = get_settings_path()
         if settings_path.exists():
             with open(settings_path, "r", encoding="utf-8") as f:
-                return json.load(f).get("user_nickname")
+                return cast(Optional[str], json.load(f).get("user_nickname"))
     except Exception:
         pass
     return None

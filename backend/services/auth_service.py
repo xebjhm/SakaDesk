@@ -7,7 +7,7 @@ This ensures consistent behavior across CLI and GUI:
 - Linux: Plaintext fallback (development only)
 """
 import structlog
-from typing import Optional
+from typing import Any, Dict, Optional, cast
 import aiohttp
 from pyhako import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
 from pyhako.credentials import get_token_manager
@@ -46,11 +46,11 @@ class AuthService:
         else:
             logger.warning("Token does not have expected JWT structure")
 
-        return expired
+        return cast(bool, expired)
 
-    def _get_token_expiry_timestamp(self, token: str) -> int | None:
+    def _get_token_expiry_timestamp(self, token: str) -> Optional[int]:
         """Extract expiry timestamp from JWT token. Uses shared pyhako utility."""
-        return parse_jwt_expiry(token)
+        return cast(Optional[int], parse_jwt_expiry(token))
 
     def _get_service_auth_status(self, service: str) -> dict:
         """Get authentication status for a single service."""
@@ -320,12 +320,12 @@ class AuthService:
 
         if is_test_mode():
             from backend.fixtures.test_data import TEST_AUTH_CONFIG
-            return TEST_AUTH_CONFIG
+            return cast(Dict[Any, Any], TEST_AUTH_CONFIG)
 
         try:
             tm = get_token_manager()
             token_data = tm.load_session(group.value)
-            return token_data or {}
+            return cast(Dict[Any, Any], token_data or {})
         except Exception as e:
             logger.error(f"Failed to load config for {service}: {e}")
             return {}

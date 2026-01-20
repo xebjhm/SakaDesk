@@ -4,6 +4,7 @@ Converts API parameters to disk paths, decoupling API from disk structure.
 """
 from pathlib import Path
 import re
+from typing import cast
 
 from backend.services.service_utils import get_service_display_name, validate_service
 
@@ -30,7 +31,7 @@ def resolve_service_path(service: str) -> Path:
     """Get base path for a service's content."""
     validate_service(service)
     display_name = get_service_display_name(service)
-    return get_output_dir() / display_name
+    return cast(Path, get_output_dir() / display_name)
 
 
 def find_folder_by_id(base_path: Path, folder_id: int) -> Path:
