@@ -2,6 +2,12 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { SyncProgress, AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 
+// Debug flag - set localStorage.setItem('DEBUG_SYNC', 'true') to enable
+const SYNC_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_SYNC') === 'true';
+const log = SYNC_DEBUG
+    ? (...args: unknown[]) => console.log('[Sync]', ...args)
+    : () => {};
+
 export interface UseSyncReturn {
     syncProgress: SyncProgress;
     syncProgressByService: Record<string, SyncProgress>;
@@ -145,7 +151,7 @@ export function useSync({
                     setTimeout(check, 1000);
                 } else if (data.state === 'error') {
                     if (data.detail === 'SESSION_EXPIRED') {
-                        console.log(`[Sync] ${service}: session expired detected`);
+                        log(`${service}: session expired detected`);
                         // Mark this specific service as disconnected
                         markServiceDisconnected?.(service, 'Session expired');
                         // Trigger LoginModal for this service (if it's active)
@@ -215,12 +221,12 @@ export function useSync({
                 pollSyncProgress(targetService, blocking);
             } else if (response.status === 400) {
                 // Likely "already running" - just poll for existing progress
-                console.log(`[Sync] ${targetService}: sync already running, polling existing progress`);
+                log(`${targetService}: sync already running, polling existing progress`);
                 pollSyncProgress(targetService, blocking);
             } else {
                 // Other error
                 const data = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                console.error(`[Sync] ${targetService}: failed to start`, data.detail);
+                log(`${targetService}: failed to start`, data.detail);
                 if (currentProgress?.state !== 'running') {
                     const errorProgress: SyncProgress = { state: 'error', detail: data.detail || 'Failed to start sync' };
                     setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
