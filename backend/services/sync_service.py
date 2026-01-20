@@ -101,6 +101,14 @@ def migrate_legacy_state(output_dir: Path, service: str) -> bool:
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 class SyncService:
+    """
+    Per-service sync orchestrator for HakoDesk.
+
+    Manages the synchronization lifecycle: loading credentials, fetching messages,
+    downloading media, and tracking sync state. Each instance handles one service
+    (hinatazaka46, sakurazaka46, or nogizaka46).
+    """
+
     def __init__(self, service: str = "hinatazaka46"):
         validate_service(service)
         self._service = service
@@ -170,7 +178,7 @@ class SyncService:
         return {"groups": {}, "last_sync": None}
     
     async def save_metadata(self, metadata):
-        # Ensure service_data_dir exists (metadata_file is inside it)
+        """Save sync metadata to the per-service JSON file."""
         self.service_data_dir.mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(self.metadata_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
