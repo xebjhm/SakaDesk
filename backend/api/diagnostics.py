@@ -1,7 +1,7 @@
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, cast
 import platform
 import sys
 import os
@@ -93,7 +93,7 @@ def _get_token_expiry_seconds(token: str) -> Optional[int]:
     """Extract expiry from JWT token. Uses shared pyhako utility."""
     if not token:
         return None
-    return get_jwt_remaining_seconds(token)
+    return cast(Optional[int], get_jwt_remaining_seconds(token))
 
 
 def _get_disk_usage(output_dir: str) -> tuple[float, int]:

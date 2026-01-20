@@ -11,6 +11,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Dict, List, Optional, cast
 
 import aiofiles
 import aiohttp
@@ -62,7 +63,7 @@ class BlogService:
         """Get base path for blogs storage."""
         validate_service(service)
         display_name = get_service_display_name(service)
-        return get_output_dir() / display_name / "blogs"
+        return cast(Path, get_output_dir() / display_name / "blogs")
 
     def get_blog_index_path(self, service: str) -> Path:
         """Get path to blog index file."""
@@ -88,13 +89,13 @@ class BlogService:
     # Index operations
     # =========================================================================
 
-    async def load_blog_index(self, service: str) -> dict:
+    async def load_blog_index(self, service: str) -> Dict[Any, Any]:
         """Load blog index from disk."""
         index_path = self.get_blog_index_path(service)
         if index_path.exists():
             try:
                 async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
-                    return json.loads(await f.read())
+                    return cast(Dict[Any, Any], json.loads(await f.read()))
             except Exception as e:
                 logger.error(f"Failed to load blog index: {e}")
         return {"members": {}, "last_sync": None, "last_download": None}
@@ -106,14 +107,14 @@ class BlogService:
         async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(index, ensure_ascii=False, indent=2))
 
-    async def get_blog_members(self, service: str) -> dict[str, str]:
+    async def get_blog_members(self, service: str) -> Dict[str, str]:
         """Get members who have blogs for a service."""
         validate_service(service)
         group = get_service_enum(service)
 
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
-            return await scraper.get_members()
+            return cast(Dict[str, str], await scraper.get_members())
 
     # =========================================================================
     # Member thumbnails with caching
@@ -130,13 +131,13 @@ class BlogService:
         content = json.dumps(sorted_members, sort_keys=True)
         return hashlib.sha256(content.encode()).hexdigest()[:16]
 
-    async def _load_members_cache(self, service: str) -> dict | None:
+    async def _load_members_cache(self, service: str) -> Optional[Dict[str, Any]]:
         """Load members cache from disk."""
         cache_path = self.get_members_cache_path(service)
         if cache_path.exists():
             try:
                 async with aiofiles.open(cache_path, "r", encoding="utf-8") as f:
-                    return json.loads(await f.read())
+                    return cast(Optional[Dict[str, Any]], json.loads(await f.read()))
             except Exception as e:
                 logger.warning(f"Failed to load members cache: {e}")
         return None
@@ -154,7 +155,7 @@ class BlogService:
         member_id: str,
         thumbnail_url: str,
         thumbnails_dir: Path,
-    ) -> str | None:
+    ) -> Optional[str]:
         """Download a single member thumbnail and return local filename."""
         try:
             async with session.get(thumbnail_url) as resp:
@@ -196,7 +197,7 @@ class BlogService:
             )
             return None
 
-    async def get_members_with_thumbnails(self, service: str) -> list[dict]:
+    async def get_members_with_thumbnails(self, service: str) -> List[Dict[Any, Any]]:
         """Get blog members with locally cached thumbnails.
 
         Uses content hash caching: fetches member data from official site,
@@ -232,7 +233,7 @@ class BlogService:
                 # Return cached data if available
                 cache = await self._load_members_cache(service)
                 if cache:
-                    return cache.get("members", [])
+                    return cast(List[Dict[Any, Any]], cache.get("members", []))
                 return []
 
             # Convert to dict format for hashing
@@ -249,7 +250,7 @@ class BlogService:
             if cache and cache.get("hash") == fresh_hash:
                 # Content unchanged, return cached members
                 logger.debug("members_cache_hit", service=service)
-                return cache.get("members", [])
+                return cast(List[Dict[Any, Any]], cache.get("members", []))
 
             logger.info(
                 "members_cache_miss_downloading",
@@ -299,7 +300,7 @@ class BlogService:
 
             return result_members
 
-    def get_member_thumbnail_path(self, service: str, member_id: str) -> Path | None:
+    def get_member_thumbnail_path(self, service: str, member_id: str) -> Optional[Path]:
         """Get path to a member's cached thumbnail image.
 
         Args:
@@ -686,7 +687,7 @@ class BlogService:
     # Query operations
     # =========================================================================
 
-    async def get_recent_posts(self, service: str, limit: int = 20, member_ids: list[str] | None = None) -> list[dict]:
+    async def get_recent_posts(self, service: str, limit: int = 20, member_ids: Optional[List[str]] = None) -> List[dict]:
         """
         Get recent posts across all members, sorted by date descending.
 
@@ -773,7 +774,7 @@ class BlogService:
             if blog_meta:
                 break
 
-        if not blog_meta:
+        if not blog_meta or member_name is None:
             raise ValueError(f"Blog {blog_id} not found in index")
 
         # Check cache
@@ -783,7 +784,7 @@ class BlogService:
 
         if cache_file.exists():
             async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
-                return json.loads(await f.read())
+                return cast(Dict[Any, Any], json.loads(await f.read()))
 
         # Fetch on-demand (single blog, no concurrency needed)
         # Pass member_id to scraper for faster lookups (important for Nogizaka old blogs)

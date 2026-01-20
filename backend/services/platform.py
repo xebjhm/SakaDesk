@@ -6,6 +6,7 @@ import os
 import platform
 import structlog
 from pathlib import Path
+from typing import cast
 
 logger = structlog.get_logger(__name__)
 
@@ -82,7 +83,7 @@ def get_session_dir() -> Path:
     - Consistent session state across both apps
     """
     from pyhako import get_auth_dir
-    return get_auth_dir()
+    return cast(Path, get_auth_dir())
 
 
 def get_logs_dir() -> Path:

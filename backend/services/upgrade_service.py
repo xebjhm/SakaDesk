@@ -13,7 +13,7 @@ import structlog
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 import httpx
 
 from backend.services.platform import is_windows, get_app_data_dir
@@ -61,7 +61,7 @@ async def get_installer_download_url(version: str) -> Optional[str]:
             # Find the installer asset
             for asset in assets:
                 if asset.get("name") == INSTALLER_NAME:
-                    return asset.get("browser_download_url")
+                    return cast(Optional[str], asset.get("browser_download_url"))
 
             logger.error(f"Installer asset '{INSTALLER_NAME}' not found in release")
             return None
@@ -83,7 +83,7 @@ async def download_installer(url: str, progress_callback=None) -> Optional[Path]
         Path to downloaded installer, or None on failure
     """
     # Create temp directory in app data (survives reboot better than system temp)
-    upgrade_dir = get_app_data_dir() / "upgrade"
+    upgrade_dir = cast(Path, get_app_data_dir() / "upgrade")
     upgrade_dir.mkdir(parents=True, exist_ok=True)
 
     installer_path = upgrade_dir / INSTALLER_NAME
@@ -228,9 +228,10 @@ def launch_upgrade(script_path: Path) -> bool:
     try:
         # Use START to launch in a new window, detached from parent
         # /MIN = start minimized (user sees progress)
+        # Note: DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP are Windows-only flags
         subprocess.Popen(
             ["cmd", "/c", "start", "/MIN", "HakoDesk Upgrade", str(script_path)],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )
 
@@ -256,4 +257,4 @@ def cleanup_upgrade_files():
 
 def is_upgrade_supported() -> bool:
     """Check if in-place upgrade is supported on this platform."""
-    return is_windows()
+    return cast(bool, is_windows())
