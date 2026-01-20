@@ -23,7 +23,6 @@ Tests:
 import subprocess
 import platform
 import sys
-import os
 import time
 import socket
 from pathlib import Path
@@ -150,7 +149,7 @@ def test_frontend_build() -> bool:
     print("   🔨 Building frontend...")
     code, _, stderr = run_command(["npm", "run", "build"], cwd=frontend_dir, timeout=120)
     if code != 0:
-        print(f"   ❌ Frontend build failed")
+        print("   ❌ Frontend build failed")
         return False
 
     # Verify dist exists

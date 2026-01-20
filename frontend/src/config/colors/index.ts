@@ -25,4 +25,6 @@ export {
     generateThemeCSSVariables,
     applyThemeToDocument,
     clearThemeFromDocument,
+    serviceIdToGroupId,
+    isGroupId,
 } from './css-variables';

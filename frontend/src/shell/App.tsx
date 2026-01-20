@@ -6,6 +6,7 @@ import { DiagnosticsModal, ReportIssueModal, AboutModal, UpdateBanner } from '..
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
+import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -40,6 +41,14 @@ function App() {
             }
         }
     }, [authCheckComplete, connectedServices, selectedServices, setSelectedServices, activeService, setActiveService]);
+
+    // Apply theme CSS variables when activeService changes
+    useEffect(() => {
+        if (activeService) {
+            const groupId = serviceIdToGroupId(activeService);
+            applyThemeToDocument(groupId);
+        }
+    }, [activeService]);
 
     // Settings hook
     const {

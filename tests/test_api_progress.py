@@ -2,9 +2,7 @@
 
 import threading
 import time
-from unittest.mock import patch
 
-import pytest
 
 from backend.api.progress import SyncProgress, progress
 

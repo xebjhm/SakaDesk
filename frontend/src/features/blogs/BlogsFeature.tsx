@@ -248,6 +248,19 @@ export const BlogsFeature: React.FC = () => {
             });
     }, [viewState, activeService]);
 
+    // Handle navigation within reader (prev/next/jump)
+    // NOTE: Must be declared before early return to satisfy Rules of Hooks
+    const handleNavigateBlog = useCallback((blog: BlogMeta) => {
+        if (viewState.view !== 'reader') return;
+        setViewState({
+            view: 'reader',
+            blog,
+            member: viewState.member,
+            content: null, // Will be loaded by effect (or from cache)
+            fromView: viewState.fromView,
+        });
+    }, [viewState]);
+
     if (!activeService) {
         return (
             <div className="flex-1 flex items-center justify-center text-gray-500">
@@ -323,18 +336,6 @@ export const BlogsFeature: React.FC = () => {
         // Re-trigger the current view's data fetch by toggling loading
         setViewState({ view: 'recent' });
     };
-
-    // Handle navigation within reader (prev/next/jump)
-    const handleNavigateBlog = useCallback((blog: BlogMeta) => {
-        if (viewState.view !== 'reader') return;
-        setViewState({
-            view: 'reader',
-            blog,
-            member: viewState.member,
-            content: null, // Will be loaded by effect (or from cache)
-            fromView: viewState.fromView,
-        });
-    }, [viewState]);
 
     // Get current member's blogs and current index for navigation
     const getMemberBlogsNavigation = () => {

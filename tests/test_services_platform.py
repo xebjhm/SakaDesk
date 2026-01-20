@@ -3,11 +3,9 @@
 import os
 import platform
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-import pytest
 
-from backend.services import platform as platform_module
 from backend.services.platform import (
     get_system,
     is_windows,
