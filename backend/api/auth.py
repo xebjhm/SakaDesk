@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from backend.services.auth_service import AuthService
-from backend.services.service_utils import validate_service, get_all_services
+from backend.services.service_utils import validate_service
 
 router = APIRouter()
 auth_service = AuthService()

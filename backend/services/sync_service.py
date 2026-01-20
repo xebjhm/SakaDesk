@@ -7,13 +7,12 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from typing import Any
-from pyhako import Client, Group, sanitize_name, SyncManager, SessionExpiredError
+from pyhako import Client, Group, SyncManager, SessionExpiredError
 from pyhako.config import (
     MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL,
     MEDIA_DOWNLOAD_CONCURRENCY_INITIAL,
 )
 from pyhako.credentials import get_token_manager
-from pyhako.utils import get_media_extension
 from backend.api.progress import progress_manager
 from backend.services.platform import get_session_dir, is_test_mode
 from backend.services.notification_service import notify_sync_complete
@@ -138,7 +137,7 @@ class SyncService:
         settings_path = get_settings_path()
         if settings_path.exists():
             try:
-                async with aiofiles.open(settings_path, 'r') as f:
+                async with aiofiles.open(settings_path, 'r', encoding='utf-8') as f:
                     data = json.loads(await f.read())
                     logger.debug("App settings loaded", settings_keys=list(data.keys()), is_configured=data.get("is_configured"))
                     return data

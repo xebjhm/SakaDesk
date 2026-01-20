@@ -6,8 +6,7 @@ import platform
 import sys
 import os
 import json
-import base64
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
 from pyhako.credentials import get_token_manager
@@ -164,7 +163,7 @@ async def get_diagnostics():
     output_dir = None
     try:
         if get_settings_path().exists():
-            with open(get_settings_path(), 'r') as f:
+            with open(get_settings_path(), 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 config_state['is_configured'] = data.get('is_configured')
                 config_state['output_dir_configured'] = 'output_dir' in data
@@ -207,7 +206,7 @@ async def get_diagnostics():
                 metadata_path = service_dir / "sync_metadata.json"
                 if metadata_path.exists():
                     try:
-                        with open(metadata_path, 'r') as f:
+                        with open(metadata_path, 'r', encoding='utf-8') as f:
                             metadata = json.load(f)
                             utc_sync = metadata.get('last_sync')
                             if utc_sync:

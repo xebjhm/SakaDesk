@@ -29,7 +29,6 @@ from backend.services.platform import get_settings_path, is_test_mode
 from backend.services.path_resolver import (
     resolve_service_path,
     resolve_talk_room_path,
-    resolve_member_path,
     resolve_messages_file,
     resolve_media_path,
 )

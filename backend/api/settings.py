@@ -10,9 +10,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Optional
 
-from backend.services.platform import get_settings_path, get_app_data_dir
+from backend.services.platform import get_settings_path
 from backend.services.service_utils import validate_service
-from backend.services.notification_service import set_notifications_enabled, get_notifications_enabled
+from backend.services.notification_service import set_notifications_enabled
 
 logger = structlog.get_logger(__name__)
 

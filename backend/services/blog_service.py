@@ -11,7 +11,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import aiofiles
 import aiohttp
@@ -27,7 +26,6 @@ from pyhako.blog import (
     SYNC_CONCURRENCY_INCREMENTAL,
     SYNC_CONCURRENCY_INITIAL,
     get_scraper,
-    HinatazakaBlogScraper,
 )
 
 from backend.services.path_resolver import get_output_dir

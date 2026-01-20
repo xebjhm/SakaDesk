@@ -127,7 +127,7 @@ class KeyringCredentialStore(CredentialStore):
         if app_id:
             self.save(self._app_id_key, app_id)
         
-        logger.info(f"Saved essential tokens to Windows Credential Manager")
+        logger.info("Saved essential tokens to Windows Credential Manager")
     
     def load_config(self) -> Dict[str, Any]:
         """Load essential credentials from Windows Credential Manager."""
@@ -178,7 +178,7 @@ class FileCredentialStore(CredentialStore):
         return {}
     
     def _save_file(self, data: Dict[str, Any]) -> None:
-        with open(self._file_path, 'w') as f:
+        with open(self._file_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
     
     def save(self, key: str, value: str) -> None:
@@ -229,7 +229,7 @@ class LegacyFileCredentialStore(CredentialStore):
             return False
         
         try:
-            with open(self._file_path, 'r') as f:
+            with open(self._file_path, 'r', encoding='utf-8') as f:
                 old_config = json.load(f)
             
             if old_config:

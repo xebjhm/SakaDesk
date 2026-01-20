@@ -15,7 +15,7 @@ from urllib.parse import urlencode, quote
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.platform import get_app_data_dir, get_logs_dir, get_settings_path
+from backend.services.platform import get_logs_dir, get_settings_path
 from pyhako.credentials import get_token_manager
 from pyhako import Group, get_jwt_remaining_seconds
 
@@ -156,7 +156,7 @@ def _get_sync_state() -> dict:
     try:
         settings_path = get_settings_path()
         if settings_path.exists():
-            with open(settings_path, "r") as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
                 output_dir = settings.get("output_dir")
                 if output_dir:
@@ -171,7 +171,7 @@ def _get_sync_state() -> dict:
                         metadata_path = service_dir / "sync_metadata.json"
                         if metadata_path.exists():
                             try:
-                                with open(metadata_path, "r") as mf:
+                                with open(metadata_path, "r", encoding="utf-8") as mf:
                                     metadata = json.load(mf)
                                     utc_sync = metadata.get("last_sync")
                                     if utc_sync:
@@ -196,7 +196,7 @@ def _get_nickname() -> Optional[str]:
     try:
         settings_path = get_settings_path()
         if settings_path.exists():
-            with open(settings_path, "r") as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 return json.load(f).get("user_nickname")
     except Exception:
         pass

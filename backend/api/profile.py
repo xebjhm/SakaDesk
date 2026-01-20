@@ -5,7 +5,7 @@ Handles user profile information like nickname.
 import json
 import structlog
 import aiohttp
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 

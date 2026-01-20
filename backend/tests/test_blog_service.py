@@ -1,6 +1,5 @@
 import pytest
 import asyncio
-from pathlib import Path
 from unittest.mock import patch
 from backend.services.blog_service import BlogService
 
