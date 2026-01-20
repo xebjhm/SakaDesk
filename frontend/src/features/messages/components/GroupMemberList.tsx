@@ -226,7 +226,12 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
     );
 
     return (
-        <div className="w-80 h-full flex flex-col bg-gradient-to-b from-[#c8d8ec] via-[#dde6f0] to-[#f0f4f8]">
+        <div
+            className="w-80 h-full flex flex-col"
+            style={{
+                background: `linear-gradient(to bottom, ${theme.messages.sidebarGradient[0]}, ${theme.messages.sidebarGradient[1]}, ${theme.messages.sidebarGradient[2]})`,
+            }}
+        >
             {/* Header */}
             <div className="px-4 py-3 flex items-center justify-center relative">
                 <h1 className="text-base font-bold text-gray-700">トーク</h1>
@@ -294,7 +299,10 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                 {/* Online Section */}
                 {onlineGroups.length > 0 && (
                     <>
-                        <div className="px-2 py-2 sticky top-0 bg-gradient-to-b from-[#c8d8ec] to-transparent z-10">
+                        <div
+                            className="px-2 py-2 sticky top-0 z-10"
+                            style={{ background: `linear-gradient(to bottom, ${theme.messages.sidebarGradient[0]}, transparent)` }}
+                        >
                             <h2 className="text-sm text-gray-600 text-center font-medium opacity-80">オンライン</h2>
                         </div>
                         {renderGroupGrid(onlineGroups)}
@@ -304,7 +312,10 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                 {/* Offline Section */}
                 {offlineGroups.length > 0 && (
                     <>
-                        <div className="px-2 py-2 mt-4 sticky top-0 bg-gradient-to-b from-[#dde6f0] to-transparent z-10">
+                        <div
+                            className="px-2 py-2 mt-4 sticky top-0 z-10"
+                            style={{ background: `linear-gradient(to bottom, ${theme.messages.sidebarGradient[1]}, transparent)` }}
+                        >
                             <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">オフライン</h2>
                         </div>
                         {renderGroupGrid(offlineGroups)}
