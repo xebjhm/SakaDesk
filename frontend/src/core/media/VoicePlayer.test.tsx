@@ -38,8 +38,8 @@ describe('VoicePlayer component', () => {
 
     it('should render play button', () => {
       const { container } = render(<VoicePlayer {...defaultProps} />)
-      // Find the main play button by its styling
-      const playButton = container.querySelector('button.bg-\\[\\#6da0d4\\]')
+      // Find the main play button - it's the one with w-10 h-10 rounded-full (center play button)
+      const playButton = container.querySelector('button.w-10.h-10.rounded-full')
       expect(playButton).toBeInTheDocument()
     })
 
@@ -123,10 +123,11 @@ describe('VoicePlayer component', () => {
       expect(screen.getByText('T')).toBeInTheDocument() // First char of "Test User"
     })
 
-    it('should render gradient progress bar', () => {
+    it('should render colored progress bar', () => {
       const { container } = render(<VoicePlayer {...premiumProps} />)
-      const gradientBar = container.querySelector('.bg-gradient-to-r')
-      expect(gradientBar).toBeInTheDocument()
+      // Progress bar uses inline backgroundColor style (accentColor prop)
+      const progressBar = container.querySelector('.bg-gray-200\\/60 > div.rounded-full')
+      expect(progressBar).toBeInTheDocument()
     })
   })
 
@@ -135,8 +136,8 @@ describe('VoicePlayer component', () => {
       const user = userEvent.setup()
       const { container } = render(<VoicePlayer {...defaultProps} />)
 
-      // Find the play button (center button with bg-[#6da0d4])
-      const playButton = container.querySelector('button.bg-\\[\\#6da0d4\\]')
+      // Find the play button - it's the one with w-10 h-10 rounded-full (center play button)
+      const playButton = container.querySelector('button.w-10.h-10.rounded-full')
       expect(playButton).toBeInTheDocument()
 
       if (playButton) {
