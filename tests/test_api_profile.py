@@ -92,7 +92,7 @@ class TestProfileRefresh:
             assert response.status_code == 200
 
             # Check that only hinatazaka46 cache was cleared
-            with open(temp_path, 'r') as f:
+            with open(temp_path, 'r', encoding='utf-8') as f:
                 saved_config = json.load(f)
             assert "hinatazaka46" not in saved_config.get("user_nicknames", {})
             assert saved_config["user_nicknames"]["sakurazaka46"] == "OtherNickname"
