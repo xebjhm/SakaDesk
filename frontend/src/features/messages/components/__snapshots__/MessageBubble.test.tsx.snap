@@ -42,6 +42,16 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         style="border-color: rgb(229, 231, 235);"
       >
         <div
+          class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
+          style="width: 320px; height: 240px;"
+        >
+          <img
+            alt="Attachment"
+            class="w-full h-full object-contain"
+            src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
+          />
+        </div>
+        <div
           class="text-gray-900 whitespace-pre-wrap text-[15px]"
         >
           <span>

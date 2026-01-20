@@ -24,6 +24,7 @@ describe('MessageBubble component', () => {
     isUnread: false,
     onReveal: vi.fn(),
     onLongPress: vi.fn(),
+    service: '日向坂46',  // Required for media URL construction
   }
 
   it('should render text message content', () => {

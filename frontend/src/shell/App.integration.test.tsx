@@ -2,6 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import { AuthProvider } from './context/AuthContext'
+
+// Helper to render App with required providers
+const renderApp = () => {
+  return render(
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  )
+}
 
 describe('App Integration Tests', () => {
   beforeEach(() => {
@@ -10,7 +20,7 @@ describe('App Integration Tests', () => {
   })
 
   it('should render main app when authenticated', async () => {
-    render(<App />)
+    renderApp()
 
     // Wait for auth check and initial render
     await waitFor(() => {
@@ -19,7 +29,7 @@ describe('App Integration Tests', () => {
   })
 
   it('should show welcome message when no conversation selected', async () => {
-    render(<App />)
+    renderApp()
 
     await waitFor(() => {
       expect(screen.getByText(/Welcome to HakoDesk/)).toBeInTheDocument()
@@ -27,7 +37,7 @@ describe('App Integration Tests', () => {
   })
 
   it('should display sidebar with groups from API', async () => {
-    render(<App />)
+    renderApp()
 
     await waitFor(() => {
       expect(screen.getByText('Test Member')).toBeInTheDocument()
@@ -35,7 +45,7 @@ describe('App Integration Tests', () => {
   })
 
   it('should load messages when conversation is selected', async () => {
-    render(<App />)
+    renderApp()
 
     // Wait for sidebar to load
     await waitFor(() => {
@@ -60,13 +70,15 @@ describe('App Integration Tests', () => {
   })
 
   it('should show header with conversation name after selection', async () => {
-    render(<App />)
+    renderApp()
 
     await waitFor(() => {
       expect(screen.getByText('Test Member')).toBeInTheDocument()
     })
 
-    await userEvent.click(screen.getByText('Test Member'))
+    // Use getAllByText and click the first (sidebar) occurrence
+    const testMemberElements = screen.getAllByText('Test Member')
+    await userEvent.click(testMemberElements[0])
 
     // Header should update with conversation name
     await waitFor(() => {

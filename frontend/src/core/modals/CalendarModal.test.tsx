@@ -440,7 +440,8 @@ describe('CalendarModal component', () => {
       const day15Button = day15Span.closest('button')
 
       // The button with messages should have the indicator dot element inside it
-      const indicatorDot = day15Button?.querySelector('.bg-blue-500')
+      // (indicator dot uses inline backgroundColor style from theme)
+      const indicatorDot = day15Button?.querySelector('.w-1\\.5.h-1\\.5.rounded-full')
       expect(indicatorDot).toBeInTheDocument()
     })
   })
