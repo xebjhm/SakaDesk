@@ -1,0 +1,50 @@
+{
+  "common": {
+    "settings": "设置",
+    "messages": "消息",
+    "blogs": "博客",
+    "sync": "同步",
+    "login": "登录",
+    "logout": "登出",
+    "save": "保存",
+    "cancel": "取消",
+    "close": "关闭",
+    "error": "错误",
+    "loading": "加载中..."
+  },
+  "settings": {
+    "title": "设置",
+    "outputFolder": "输出文件夹",
+    "autoSync": "自动同步",
+    "syncEvery": "同步间隔",
+    "smartTiming": "智能时间",
+    "smartTimingDesc": "根据发布模式随机化间隔",
+    "desktopNotifications": "桌面通知",
+    "desktopNotificationsDesc": "收到新消息时显示通知",
+    "blogFullBackup": "博客完整备份",
+    "blogFullBackupOnDesc": "下载所有博客内容和图片以供离线阅读",
+    "blogFullBackupOffDesc": "按需获取博客内容（节省磁盘空间）",
+    "language": "语言",
+    "languageDesc": "选择您的首选语言"
+  },
+  "time": {
+    "minute": "{{count}}分钟",
+    "minute_other": "{{count}}分钟",
+    "hour": "{{count}}小时",
+    "hour_other": "{{count}}小时"
+  },
+  "login": {
+    "title": "账户管理",
+    "subtitle": "连接您订阅的坂道组合。您可以同时连接多个账户。",
+    "connect": "连接",
+    "connecting": "连接中...",
+    "disconnect": "断开",
+    "connected": "已连接",
+    "sessionExpired": "会话已过期",
+    "refreshFailed": "认证失败",
+    "returnDashboard": "返回仪表板",
+    "secureNote": "凭据通过Windows凭据管理器安全地保存在您的设备上。",
+    "errorPrefix": "错误: ",
+    "logoutConfirm": "从{{group}}登出？"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "common": {
+    "settings": "Settings",
+    "messages": "Messages",
+    "blogs": "Blogs",
+    "sync": "Sync",
+    "login": "Login",
+    "logout": "Logout",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "error": "Error",
+    "loading": "Loading..."
+  },
+  "settings": {
+    "title": "Settings",
+    "outputFolder": "Output Folder",
+    "autoSync": "Auto-Sync",
+    "syncEvery": "Sync every",
+    "smartTiming": "Smart Timing",
+    "smartTimingDesc": "Randomize intervals based on posting patterns",
+    "desktopNotifications": "Desktop Notifications",
+    "desktopNotificationsDesc": "Show notification when new messages arrive",
+    "blogFullBackup": "Blog Full Backup",
+    "blogFullBackupOnDesc": "Download all blog content and images for offline reading",
+    "blogFullBackupOffDesc": "Fetch blog content on-demand (saves disk space)",
+    "language": "Language",
+    "languageDesc": "Select your preferred language"
+  },
+  "time": {
+    "minute": "{{count}} minute",
+    "minute_other": "{{count}} minutes",
+    "hour": "{{count}} hour",
+    "hour_other": "{{count}} hours"
+  },
+  "login": {
+    "title": "Account Management",
+    "subtitle": "Connect your subscribed Sakamichi groups. You can connect multiple accounts simultaneously.",
+    "connect": "Connect",
+    "connecting": "Connecting...",
+    "disconnect": "Disconnect",
+    "connected": "Connected",
+    "sessionExpired": "Session Expired",
+    "refreshFailed": "Authentication Failed",
+    "returnDashboard": "Return to Dashboard",
+    "secureNote": "Credentials are saved securely on your device via Windows Credential Manager.",
+    "errorPrefix": "Error: ",
+    "logoutConfirm": "Logout from {{group}}?"
+  }
+}
