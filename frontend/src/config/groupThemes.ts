@@ -509,3 +509,6 @@ export function getThemeCSSVariables(theme: GroupTheme): Record<string, string> 
         '--theme-button-gradient': theme.interaction.buttonGradient,
     };
 }
+
+/** Default shelter colors for fallback (matches default/hinatazaka theme) */
+export const DEFAULT_SHELTER_COLORS = groupThemes.default.messages.shelterColors;
