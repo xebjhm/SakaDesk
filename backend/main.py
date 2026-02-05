@@ -24,7 +24,7 @@ log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "debug.log"
 
 # Configure PyHako's unified logging system (structlog-based)
-from pyhako.logging import configure_logging
+from pyhako.logging import configure_logging  # noqa: E402
 configure_logging(
     log_file=log_file,
     log_level=logging.DEBUG,
@@ -33,12 +33,12 @@ configure_logging(
 )
 
 # === NOW SAFE TO IMPORT OTHER MODULES ===
-import structlog
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs
+import structlog  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
+from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 

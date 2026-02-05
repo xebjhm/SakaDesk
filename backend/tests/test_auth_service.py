@@ -32,7 +32,7 @@ def test_get_status_single_service(auth_service):
         result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
 
         assert "authenticated" in result
-        assert result["authenticated"] == False
+        assert not result["authenticated"]
 
 
 def test_get_status_invalid_service(auth_service):
@@ -73,7 +73,7 @@ def test_get_status_authenticated_valid_token(auth_service):
         }
         with patch.object(auth_service, '_is_token_expired', return_value=False):
             result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
-            assert result["authenticated"] == True
+            assert result["authenticated"]
 
 
 def test_get_status_expired_token(auth_service):
@@ -84,8 +84,8 @@ def test_get_status_expired_token(auth_service):
         }
         with patch.object(auth_service, '_is_token_expired', return_value=True):
             result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
-            assert result["authenticated"] == False
-            assert result.get("token_expired") == True
+            assert not result["authenticated"]
+            assert result.get("token_expired")
 
 
 def test_logout_clears_credentials(auth_service):
