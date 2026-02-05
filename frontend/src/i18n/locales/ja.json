@@ -10,7 +10,18 @@
     "cancel": "キャンセル",
     "close": "閉じる",
     "error": "エラー",
-    "loading": "読み込み中..."
+    "loading": "読み込み中...",
+    "done": "完了",
+    "refresh": "更新",
+    "browse": "参照",
+    "download": "ダウンロード",
+    "dismiss": "閉じる",
+    "preview": "プレビュー",
+    "about": "HakoDeskについて",
+    "reportIssue": "問題を報告",
+    "featureRequest": "機能リクエスト",
+    "moreOptions": "その他のオプション",
+    "removeService": "サービスを削除"
   },
   "settings": {
     "title": "設定",
@@ -31,7 +42,10 @@
     "minute": "{{count}}分",
     "minute_other": "{{count}}分",
     "hour": "{{count}}時間",
-    "hour_other": "{{count}}時間"
+    "hour_other": "{{count}}時間",
+    "elapsed": "経過時間",
+    "eta": "残り時間",
+    "speed": "速度"
   },
   "login": {
     "title": "アカウント管理",
@@ -45,6 +59,214 @@
     "returnDashboard": "ダッシュボードに戻る",
     "secureNote": "認証情報はWindowsの資格情報マネージャーを通じて安全に保存されます。",
     "errorPrefix": "エラー: ",
-    "logoutConfirm": "{{group}}からログアウトしますか？"
+    "logoutConfirm": "{{group}}からログアウトしますか？",
+    "loginRequired": "ログインが必要です",
+    "sessionExpiredDesc": "{{service}}のセッションが期限切れになりました。{{feature}}を続けて使用するには、再ログインしてください。",
+    "premiumFeatureDesc": "{{feature}}は{{service}}アカウントでのログインが必要なプレミアム機能です。",
+    "credentialsSaved": "認証情報はお使いのデバイスにローカルに保存されます。",
+    "waitingForBrowser": "ブラウザを待っています...",
+    "launchBrowserLogin": "ブラウザでログイン",
+    "connectAccount": "アカウントに接続",
+    "browserPrompt": "{{service}}メッセージアカウントにログインしてください。認証情報を入力するためのブラウザウィンドウが開きます。"
+  },
+  "tos": {
+    "title": "利用規約",
+    "subtitle": "続行する前にお読みください",
+    "disclaimer": "重要な免責事項",
+    "disclaimerText": "HakoDeskは非公式のサードパーティ製バックアップツールです。乃木坂46、櫻坂46、日向坂46、ソニー・ミュージックエンタテインメント、またはその公式アプリケーションとは一切関係がなく、承認・提携していません。",
+    "acknowledgeIntro": "HakoDeskを使用することで、以下を認めることになります：",
+    "acknowledgeSubscription": "公式メッセージサービスの有効な購読をお持ちであること",
+    "acknowledgeBackup": "ダウンロードしたコンテンツは個人的なバックアップ目的のみであること",
+    "acknowledgeNoRedistribute": "ダウンロードしたコンテンツを再配布または共有しないこと",
+    "acknowledgeResponsibility": "このアプリケーションの使用に関して全責任を負うこと",
+    "reviewOfficialTos": "公式の利用規約をご確認ください：",
+    "hinatazakaTos": "日向坂46 利用規約",
+    "sakurazakaTos": "櫻坂46 利用規約",
+    "nogizakaTos": "乃木坂46 利用規約",
+    "acceptCheckbox": "これらの条件を理解し同意します。また、使用するサービスの公式利用規約を読みました。",
+    "acceptAndContinue": "同意して続行"
+  },
+  "setup": {
+    "welcome": "HakoDeskへようこそ",
+    "setupDataFolder": "データフォルダを設定しましょう",
+    "outputFolderPath": "出力フォルダパス",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderHint": "メッセージが保存されるフルパスを入力してください。Windowsエクスプローラーからコピーできます。",
+    "downloadBlogsOffline": "オフライン閲覧用にブログをダウンロード",
+    "downloadBlogsHint": "同期中にすべてのブログコンテンツと画像をダウンロードします。ディスク容量を多く使用しますが、オフラインで閲覧できます。",
+    "startUsing": "HakoDeskを開始"
+  },
+  "sync": {
+    "phase": "フェーズ{{number}}：{{name}}",
+    "starting": "開始中",
+    "pleaseWait": "お待ちください...",
+    "members": "メンバー",
+    "files": "ファイル",
+    "items": "アイテム",
+    "downloadingMedia": "メディアをダウンロード中... アプリを閉じないでください。",
+    "processing": "処理中...",
+    "scan": "スキャン",
+    "download": "ダウンロード",
+    "syncing": "同期中...",
+    "autoSyncActive": "自動同期有効"
+  },
+  "about": {
+    "title": "HakoDeskについて",
+    "version": "バージョン {{version}}",
+    "description": "メッセージアーカイブを閲覧するためのデスクトップコンパニオン。",
+    "madeWith": "Made with",
+    "by": "by"
+  },
+  "report": {
+    "title": "問題を報告",
+    "whatType": "どのような問題ですか？",
+    "categorySyncData": "同期 / データ",
+    "categorySyncDataHelp": "メッセージが欠落または誤り",
+    "categoryPlayback": "再生",
+    "categoryPlaybackHelp": "音声/動画が再生されない",
+    "categoryLogin": "ログイン",
+    "categoryLoginHelp": "サインインできないまたは期限切れ",
+    "categoryOther": "その他",
+    "categoryOtherHelp": "その他の問題",
+    "whatDoing": "何をしていましたか？",
+    "whatDoingPlaceholder": "例：ボイスメッセージを再生していた",
+    "whatWrong": "何が問題でしたか？",
+    "whatWrongPlaceholder": "例：5秒後に音声が停止した",
+    "autoContext": "自動検出されたコンテキスト：",
+    "member": "メンバー",
+    "generating": "生成中...",
+    "createGitHubIssue": "GitHubイシューを作成"
+  },
+  "addService": {
+    "title": "サービスを追加",
+    "allAdded": "すべてのサービスが追加済みです！"
+  },
+  "diagnostics": {
+    "title": "開発者診断",
+    "hiddenPanel": "非表示パネル",
+    "system": "システム",
+    "os": "OS",
+    "python": "Python",
+    "serviceAuth": "サービス認証",
+    "noServicesConfigured": "サービスが設定されていません",
+    "disconnected": "切断済み",
+    "notLoggedIn": "ログインしていません",
+    "expires": "有効期限",
+    "configuration": "設定",
+    "configured": "設定済み",
+    "outputDir": "出力ディレクトリ",
+    "off": "オフ",
+    "diskUsage": "ディスク使用量",
+    "size": "サイズ",
+    "syncStatusByService": "サービス別同期状態",
+    "ok": "OK",
+    "neverSynced": "未同期",
+    "lastSync": "最終同期",
+    "paths": "パス",
+    "appData": "アプリデータ",
+    "logs": "ログ",
+    "recent": "最近",
+    "errors": "エラー",
+    "warnings": "警告",
+    "noLogsFound": "{{type}}ログが見つかりません。",
+    "copied": "コピーしました！",
+    "copyJson": "JSONをコピー"
+  },
+  "update": {
+    "downloading": "v{{version}}をダウンロード中...",
+    "readyToInstall": "v{{version}}のインストール準備完了",
+    "installing": "インストール中...",
+    "closeToComplete": "アップグレードを完了するにはアプリを閉じてください",
+    "upgradeFailed": "アップグレードに失敗：",
+    "installNow": "今すぐインストール",
+    "updateAvailable": "アップデートがあります！",
+    "upgradeNow": "今すぐアップグレード"
+  },
+  "memberList": {
+    "title": "Talk",
+    "titleJa": "トーク",
+    "loadingConversations": "トークを読み込み中...",
+    "noConversations": "トークが見つかりません。",
+    "online": "Online",
+    "onlineJa": "オンライン",
+    "offline": "Offline",
+    "offlineJa": "オフライン"
+  },
+  "conversationMenu": {
+    "dateSearch": "日付検索",
+    "favorites": "お気に入り",
+    "media": "メディア",
+    "background": "背景",
+    "sentLetters": "送信したレター"
+  },
+  "messageList": {
+    "noMessages": "メッセージがありません",
+    "jumpToOldestUnread": "最も古い未読にジャンプ"
+  },
+  "calendar": {
+    "title": "日付検索",
+    "today": "今日",
+    "availableOnDays": "{{count}}日で利用可能",
+    "tapToJump": "日付をタップしてジャンプ",
+    "weekdays": {
+      "sun": "日",
+      "mon": "月",
+      "tue": "火",
+      "wed": "水",
+      "thu": "木",
+      "fri": "金",
+      "sat": "土"
+    },
+    "months": {
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
+    }
+  },
+  "favorites": {
+    "title": "お気に入り",
+    "noFavorites": "お気に入りがありません",
+    "addHint": "メッセージを長押しまたは右クリックしてお気に入りに追加",
+    "count": "{{count}}件のお気に入り",
+    "count_other": "{{count}}件のお気に入り"
+  },
+  "background": {
+    "title": "背景",
+    "customImage": "カスタム画像",
+    "uploadImage": "画像をアップロード",
+    "uploadHint": "最大2MB。JPG、PNG、GIF対応。",
+    "solidColor": "単色",
+    "opacity": "不透明度：{{value}}%",
+    "resetToDefault": "デフォルトに戻す",
+    "imageTooLarge": "画像が大きすぎます。2MB以下の画像を選択してください。",
+    "selectImageFile": "画像ファイルを選択してください。"
+  },
+  "landing": {
+    "welcome": "HakoDeskへようこそ",
+    "selectGroups": "フォローするグループを選択",
+    "selectAtLeastOne": "少なくとも1つのグループを選択してください",
+    "getStarted": "開始",
+    "getStartedWith": "{{count}}グループで開始",
+    "footerNote": "ブログは自由に閲覧できます。メッセージやその他のプレミアム機能にはログインが必要です。"
+  },
+  "serviceRail": {
+    "sessionExpiredRelogin": "セッション期限切れ - クリックして再ログイン",
+    "addService": "サービスを追加"
+  },
+  "media": {
+    "title": "メディア",
+    "jumpToDate": "日付にジャンプ",
+    "cached": "キャッシュ済み",
+    "publishedRecently": "24時間以内に公開",
+    "checkingUpdates": "更新を確認中..."
   }
 }
