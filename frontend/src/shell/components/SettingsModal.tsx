@@ -1,6 +1,5 @@
 import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
+import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import type { ServiceSettings } from '../hooks/useSettings';
 

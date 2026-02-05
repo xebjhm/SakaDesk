@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { X, Heart } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 interface AboutModalProps {
     isOpen: boolean;
@@ -8,6 +9,8 @@ interface AboutModalProps {
 }
 
 export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalProps) {
+    const { t } = useTranslation();
+
     // Hidden dev mode (5-click easter egg on version)
     const [versionClickCount, setVersionClickCount] = useState(0);
     const versionClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -41,7 +44,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
             <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-800">About</h3>
+                    <h3 className="text-lg font-bold text-gray-800">{t('about.title')}</h3>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
                         <X className="w-5 h-5" />
                     </button>
@@ -62,19 +65,19 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                         onClick={handleVersionClick}
                         className="text-sm text-gray-400 mb-6 cursor-text select-none"
                     >
-                        Version 0.1.0
+                        {t('about.version', { version: '0.1.0' })}
                     </p>
 
                     {/* Description */}
                     <p className="text-sm text-gray-600 mb-6">
-                        A desktop companion for viewing your Message archives.
+                        {t('about.description')}
                     </p>
 
                     {/* Made with love */}
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <span>Made with</span>
+                        <span>{t('about.madeWith')}</span>
                         <Heart className="w-3 h-3 text-red-400 fill-red-400" />
-                        <span>by xtorker</span>
+                        <span>{t('about.by')} xtorker</span>
                     </div>
                 </div>
 

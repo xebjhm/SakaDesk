@@ -9,6 +9,7 @@ import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getThemeForService } from '../../config/groupThemes';
+import { useTranslation } from '../../i18n';
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -20,10 +21,10 @@ interface MediaGalleryModalProps extends BaseModalProps {
 type MediaTab = 'photos' | 'videos' | 'voice';
 
 // Tab configuration - module level constant to avoid recreation on each render
-const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; label: string }[] = [
-    { id: 'photos', icon: Image, label: 'Photos' },
-    { id: 'videos', icon: Film, label: 'Videos' },
-    { id: 'voice', icon: Volume2, label: 'Voice messages' },
+const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; labelKey: string }[] = [
+    { id: 'photos', icon: Image, labelKey: 'media.tabs.photos' },
+    { id: 'videos', icon: Film, labelKey: 'media.tabs.videos' },
+    { id: 'voice', icon: Volume2, labelKey: 'media.tabs.voice' },
 ];
 
 // Group items by month
@@ -44,6 +45,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const theme = getThemeForService(activeService);
+    const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
@@ -197,7 +199,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     key={tab.id}
                     role="tab"
                     aria-selected={activeTab === tab.id}
-                    aria-label={tab.label}
+                    aria-label={t(tab.labelKey)}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
                         "flex-1 flex items-center justify-center py-3 transition-colors relative",
@@ -225,7 +227,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 <div className="flex-1 flex items-center justify-center py-12">
                     <ModalEmptyState
                         icon={getEmptyIcon()}
-                        message={`No ${activeTab === 'photos' ? 'photos' : 'videos'} yet`}
+                        message={t(`media.empty.${activeTab}`)}
                     />
                 </div>
             );
@@ -321,7 +323,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 <div className="flex-1 flex items-center justify-center py-12">
                     <ModalEmptyState
                         icon={Volume2}
-                        message="No voice messages yet"
+                        message={t('media.empty.voice')}
                     />
                 </div>
             );
@@ -456,23 +458,23 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             <BaseModal
                 isOpen={isOpen}
                 onClose={onClose}
-                title="Media"
+                title={t('media.title')}
                 icon={Image}
                 maxWidth="max-w-4xl"
                 className="h-[80vh]"
                 footer={
                     <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 flex justify-between items-center">
                         <span className="text-sm text-gray-500">
-                            {activeTab === 'photos' && `${mediaItems.photos.length} photos`}
-                            {activeTab === 'videos' && `${mediaItems.videos.length} videos`}
-                            {activeTab === 'voice' && `${mediaItems.voice.length} voice messages`}
+                            {activeTab === 'photos' && t('media.count.photos', { count: mediaItems.photos.length })}
+                            {activeTab === 'videos' && t('media.count.videos', { count: mediaItems.videos.length })}
+                            {activeTab === 'voice' && t('media.count.voice', { count: mediaItems.voice.length })}
                         </span>
                         <button
                             onClick={() => setShowCalendar(true)}
                             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
                         >
                             <Calendar className="w-4 h-4" />
-                            Jump to Date
+                            {t('media.jumpToDate')}
                         </button>
                     </div>
                 }
@@ -489,7 +491,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             <CalendarModal
                 isOpen={showCalendar}
                 onClose={() => setShowCalendar(false)}
-                title="Jump to Date"
+                title={t('media.jumpToDate')}
                 messages={currentTabMessages}
                 onSelectDate={handleCalendarDateSelect}
             />

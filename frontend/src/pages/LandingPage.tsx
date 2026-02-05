@@ -3,12 +3,14 @@ import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { SERVICES } from '../data/services';
 import { cn } from '../utils/classnames';
+import { useTranslation } from '../i18n';
 
 interface LandingPageProps {
     onComplete: (selectedServices: string[]) => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
+    const { t } = useTranslation();
     const [selected, setSelected] = useState<Set<string>>(new Set());
 
     const toggleService = (serviceId: string) => {
@@ -35,10 +37,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                 {/* Header */}
                 <div className="text-center mb-10">
                     <h1 className="text-4xl font-bold text-gray-900 mb-3">
-                        Welcome to HakoDesk
+                        {t('landing.welcome')}
                     </h1>
                     <p className="text-lg text-gray-500">
-                        Select the groups you want to follow
+                        {t('landing.selectGroups')}
                     </p>
                 </div>
 
@@ -110,18 +112,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                         )}
                     >
                         {selected.size === 0
-                            ? 'Select at least one group'
+                            ? t('landing.selectAtLeastOne')
                             : selected.size === 1
-                            ? 'Get Started'
-                            : `Get Started with ${selected.size} groups`}
+                            ? t('landing.getStarted')
+                            : t('landing.getStartedWith', { count: selected.size })}
                     </button>
                 </div>
 
                 {/* Footer note */}
                 <div className="text-center text-sm text-gray-400 mt-8">
                     <p>
-                        Browse blogs freely. Login required for Messages and
-                        other premium features.
+                        {t('landing.footerNote')}
                     </p>
                 </div>
             </div>

@@ -6,6 +6,7 @@ import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { getThemeForService } from '../../config/groupThemes';
+import { useTranslation } from '../../i18n';
 
 interface DateCount {
     date: string;
@@ -44,7 +45,7 @@ interface CalendarModalPropsMessages extends CalendarModalPropsBase {
 
 type CalendarModalProps = CalendarModalPropsAPI | CalendarModalPropsMessages;
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
 // Format date to YYYY-MM-DD using LOCAL timezone (not UTC)
 const formatLocalDate = (d: Date): string => {
@@ -55,12 +56,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const {
         isOpen,
         onClose,
-        title = 'Date Search',
+        title,
     } = props;
+
+    const { t } = useTranslation();
 
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const theme = getThemeForService(activeService);
+
+    // Use translated title as default
+    const modalTitle = title || t('calendar.title');
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [apiDates, setApiDates] = useState<DateCount[]>([]);
@@ -213,15 +219,15 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         <BaseModal
             isOpen={isOpen}
             onClose={onClose}
-            title={title}
+            title={modalTitle}
             icon={Calendar}
             maxWidth="max-w-md"
             footer={
                 <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-center text-sm text-gray-500">
                     {activeDates.length > 0 ? (
-                        <span>Available on {activeDates.length} days</span>
+                        <span>{t('calendar.availableOnDays', { count: activeDates.length })}</span>
                     ) : (
-                        <span>Tap a date to jump</span>
+                        <span>{t('calendar.tapToJump')}</span>
                     )}
                 </div>
             }
@@ -251,7 +257,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                             e.currentTarget.style.backgroundColor = 'transparent';
                         }}
                     >
-                        Today
+                        {t('calendar.today')}
                     </button>
                 </div>
                 <button
@@ -272,15 +278,15 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                     <>
                         {/* Weekday headers */}
                         <div className="grid grid-cols-7 mb-2">
-                            {WEEKDAYS.map((day, i) => (
+                            {WEEKDAY_KEYS.map((dayKey, i) => (
                                 <div
-                                    key={day}
+                                    key={dayKey}
                                     className={cn(
                                         "text-center text-xs font-medium py-2",
                                         i === 0 ? "text-red-500" : i === 6 ? "text-gray-600" : "text-gray-500"
                                     )}
                                 >
-                                    {day}
+                                    {t(`calendar.weekdays.${dayKey}`)}
                                 </div>
                             ))}
                         </div>

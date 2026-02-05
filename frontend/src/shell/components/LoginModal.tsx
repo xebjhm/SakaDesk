@@ -1,6 +1,7 @@
 // frontend/src/shell/components/LoginModal.tsx
 import React, { useState } from 'react';
 import { X, Loader2, LogIn } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import { getServiceById, getServiceColor } from '../../data/services';
 import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
@@ -21,6 +22,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onSuccess,
     isDisconnected = false,
 }) => {
+    const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -64,7 +66,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-white">
-                                    {isDisconnected ? 'Session Expired' : 'Login Required'}
+                                    {isDisconnected ? t('login.sessionExpired') : t('login.loginRequired')}
                                 </h3>
                                 <p className="text-sm text-white/80">
                                     {service?.displayName ?? serviceId}
@@ -83,26 +85,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 {/* Content */}
                 <div className="p-6 space-y-4">
                     <p className="text-gray-600">
-                        {isDisconnected ? (
-                            <>
-                                Your session for{' '}
-                                <span className="font-medium text-gray-900">
-                                    {service?.displayName ?? serviceId}
-                                </span>{' '}
-                                has expired. Please re-login to continue using{' '}
-                                <span className="font-medium text-gray-900">
-                                    {feature?.label ?? featureId}
-                                </span>.
-                            </>
-                        ) : (
-                            <>
-                                <span className="font-medium text-gray-900">
-                                    {feature?.label ?? featureId}
-                                </span>{' '}
-                                is a premium feature that requires logging in with your{' '}
-                                {service?.name ?? serviceId} account.
-                            </>
-                        )}
+                        {isDisconnected
+                            ? t('login.sessionExpiredDesc', {
+                                service: service?.displayName ?? serviceId,
+                                feature: feature?.label ?? featureId
+                            })
+                            : t('login.premiumFeatureDesc', {
+                                feature: feature?.label ?? featureId,
+                                service: service?.name ?? serviceId
+                            })
+                        }
                     </p>
 
                     {error && (
@@ -117,7 +109,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             disabled={isLoading}
                             className="flex-1 py-3 px-4 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
-                            Cancel
+                            {t('common.cancel')}
                         </button>
                         <button
                             onClick={handleLogin}
@@ -130,16 +122,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             {isLoading ? (
                                 <span className="flex items-center justify-center gap-2">
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    Connecting...
+                                    {t('login.connecting')}
                                 </span>
                             ) : (
-                                'Login'
+                                t('common.login')
                             )}
                         </button>
                     </div>
 
                     <p className="text-xs text-gray-400 text-center">
-                        Your credentials are saved locally on your device.
+                        {t('login.credentialsSaved')}
                     </p>
                 </div>
             </div>

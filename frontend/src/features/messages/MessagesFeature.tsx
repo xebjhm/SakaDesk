@@ -11,6 +11,7 @@ import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
+import { useTranslation } from '../../i18n';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -69,6 +70,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     syncProgress,
     syncVersion,
 }) => {
+    const { t } = useTranslation();
+
     // Get active service and conversation persistence from Zustand store
     const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
 
@@ -471,8 +474,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <Menu />
                     </button>
                     <div className="flex-1" style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}>
-                        <h2 className="text-lg font-bold">{selectedName || "Select a Conversation"}</h2>
-                        {isGroupChat && <span className="text-xs opacity-80">Group Chat</span>}
+                        <h2 className="text-lg font-bold">{selectedName || t('messageList.selectConversation')}</h2>
+                        {isGroupChat && <span className="text-xs opacity-80">{t('messageList.groupChat')}</span>}
                     </div>
                     {displayUnreadCount > 0 && (
                         <span
@@ -482,7 +485,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                                 color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white',
                             }}
                         >
-                            {displayUnreadCount} unread
+                            {t('messageList.unread', { count: displayUnreadCount })}
                         </span>
                     )}
                     {syncProgress.state === 'running' && (
@@ -539,14 +542,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                             <div className="text-center">
-                                <p className="text-lg mb-2">Welcome to HakoDesk</p>
-                                <p className="text-sm">Select a conversation from the sidebar to start.</p>
+                                <p className="text-lg mb-2">{t('messageList.welcomeTitle')}</p>
+                                <p className="text-sm">{t('messageList.welcomeSubtitle')}</p>
                             </div>
                         </div>
                     )}
 
                     {loading && messages.length === 0 && (
-                        <div className="p-10 text-center text-gray-500">Loading messages...</div>
+                        <div className="p-10 text-center text-gray-500">{t('messageList.loadingMessages')}</div>
                     )}
                     {error && (
                         <div className="p-10 text-center text-red-500">Error: {error}</div>
@@ -583,7 +586,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onClick={scrollToFirstUnread}
                             className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
                             style={{ backgroundColor: theme.modals.accentColor }}
-                            title="Jump to oldest unread"
+                            title={t('messageList.jumpToOldestUnread')}
                         >
                             <ChevronUp className="w-5 h-5" />
                         </button>
@@ -596,7 +599,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onClick={scrollToFirstUnread}
                             className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
                             style={{ backgroundColor: theme.modals.accentColor }}
-                            title="Jump to oldest unread"
+                            title={t('messageList.jumpToOldestUnread')}
                         >
                             <ChevronDown className="w-5 h-5" />
                         </button>
@@ -607,16 +610,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {showRevealConfirm && (
                     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
                         <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">Reveal All Messages?</h3>
+                            <h3 className="text-lg font-bold text-gray-900 mb-2">{t('messageList.revealAllTitle')}</h3>
                             <p className="text-gray-600 mb-6">
-                                This will mark all {displayUnreadCount} unread messages as revealed.
+                                {t('messageList.revealAllDescription', { count: displayUnreadCount })}
                             </p>
                             <div className="flex justify-end gap-3">
                                 <button
                                     onClick={() => setShowRevealConfirm(false)}
                                     className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
                                 >
-                                    Cancel
+                                    {t('common.cancel')}
                                 </button>
                                 <button
                                     onClick={() => {
@@ -626,7 +629,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                                     className="px-4 py-2 text-white rounded-lg font-medium"
                                     style={{ backgroundColor: theme.modals.accentColor }}
                                 >
-                                    Confirm
+                                    {t('messageList.confirm')}
                                 </button>
                             </div>
                         </div>

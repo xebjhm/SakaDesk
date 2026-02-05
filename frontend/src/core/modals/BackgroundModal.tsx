@@ -8,6 +8,7 @@ import { DEFAULT_BACKGROUND, loadBackgroundSettings, saveBackgroundSettings } fr
 import { UI_CONSTANTS } from '../../config/uiConstants';
 import { useAppStore } from '../../store/appStore';
 import { getThemeForService } from '../../config/groupThemes';
+import { useTranslation } from '../../i18n';
 
 interface BackgroundModalProps extends BaseModalProps {
     conversationPath: string;
@@ -20,6 +21,8 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     conversationPath,
     onSettingsChange,
 }) => {
+    const { t } = useTranslation();
+
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const theme = getThemeForService(activeService);
@@ -49,13 +52,13 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
 
         // Check file size
         if (file.size > UI_CONSTANTS.limits.maxImageSizeBytes) {
-            alert('Image too large. Please choose an image under 2MB.');
+            alert(t('background.imageTooLarge'));
             return;
         }
 
         // Check file type
         if (!file.type.startsWith('image/')) {
-            alert('Please select an image file.');
+            alert(t('background.selectImageFile'));
             return;
         }
 
@@ -100,7 +103,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
         <BaseModal
             isOpen={isOpen}
             onClose={onClose}
-            title="Background"
+            title={t('background.title')}
             icon={Palette}
             maxWidth="max-w-md"
             footer={
@@ -110,7 +113,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                         className="flex items-center gap-2 text-gray-600 hover:text-red-600 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                         <Trash2 className="w-4 h-4" />
-                        Reset to Default
+                        {t('background.resetToDefault')}
                     </button>
                     <button
                         onClick={onClose}
@@ -123,7 +126,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                             e.currentTarget.style.filter = 'brightness(1)';
                         }}
                     >
-                        Done
+                        {t('common.done')}
                     </button>
                 </div>
             }
@@ -152,7 +155,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         <Image className="w-4 h-4 inline mr-2" />
-                        Custom Image
+                        {t('background.customImage')}
                     </label>
                     <input
                         ref={fileInputRef}
@@ -174,16 +177,16 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                         }}
                     >
                         <Upload className="w-5 h-5" />
-                        <span>Upload Image</span>
+                        <span>{t('background.uploadImage')}</span>
                     </button>
-                    <p className="text-xs text-gray-400 mt-1">Max 2MB. JPG, PNG, GIF supported.</p>
+                    <p className="text-xs text-gray-400 mt-1">{t('background.uploadHint')}</p>
                 </div>
 
                 {/* Color Presets */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                         <Palette className="w-4 h-4 inline mr-2" />
-                        Solid Color
+                        {t('background.solidColor')}
                     </label>
                     <div className="flex flex-wrap gap-2">
                         {UI_CONSTANTS.backgroundPresets.map((color) => {
@@ -213,7 +216,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                 {/* Opacity Slider */}
                 <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Opacity: {settings.opacity}%
+                        {t('background.opacity', { value: settings.opacity })}
                     </label>
                     <input
                         type="range"

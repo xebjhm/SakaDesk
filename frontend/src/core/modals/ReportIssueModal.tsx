@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Bug, RefreshCw, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 type BugCategory = 'sync_data' | 'playback' | 'login' | 'other';
 
@@ -12,11 +13,18 @@ interface ReportIssueModalProps {
     crashError?: string;
 }
 
-const CATEGORIES: { id: BugCategory; label: string; help: string; icon: typeof Bug }[] = [
-    { id: 'sync_data', label: 'Sync / Data', help: 'Missing or wrong messages', icon: Database },
-    { id: 'playback', label: 'Playback', help: 'Audio/video won\'t play', icon: Play },
-    { id: 'login', label: 'Login', help: 'Can\'t sign in or expired', icon: LogIn },
-    { id: 'other', label: 'Other', help: 'Something else broke', icon: HelpCircle },
+interface CategoryConfig {
+    id: BugCategory;
+    labelKey: string;
+    helpKey: string;
+    icon: typeof Bug;
+}
+
+const CATEGORY_CONFIGS: CategoryConfig[] = [
+    { id: 'sync_data', labelKey: 'report.categorySyncData', helpKey: 'report.categorySyncDataHelp', icon: Database },
+    { id: 'playback', labelKey: 'report.categoryPlayback', helpKey: 'report.categoryPlaybackHelp', icon: Play },
+    { id: 'login', labelKey: 'report.categoryLogin', helpKey: 'report.categoryLoginHelp', icon: LogIn },
+    { id: 'other', labelKey: 'report.categoryOther', helpKey: 'report.categoryOtherHelp', icon: HelpCircle },
 ];
 
 export function ReportIssueModal({
@@ -27,6 +35,7 @@ export function ReportIssueModal({
     currentScreen,
     crashError,
 }: ReportIssueModalProps) {
+    const { t } = useTranslation();
     const [category, setCategory] = useState<BugCategory | null>(crashError ? 'other' : null);
     const [whatDoing, setWhatDoing] = useState('');
     const [whatWrong, setWhatWrong] = useState(crashError || '');
@@ -88,7 +97,7 @@ export function ReportIssueModal({
                 <div className="bg-gray-900 px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Bug className="w-5 h-5 text-amber-400" />
-                        <h3 className="text-lg font-bold text-white">Report an Issue</h3>
+                        <h3 className="text-lg font-bold text-white">{t('report.title')}</h3>
                     </div>
                     <button onClick={handleClose} className="text-gray-400 hover:text-white transition-colors">
                         <X className="w-6 h-6" />
@@ -100,10 +109,10 @@ export function ReportIssueModal({
                     {/* Category Selection */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-3">
-                            What type of issue?
+                            {t('report.whatType')}
                         </label>
                         <div className="grid grid-cols-2 gap-3">
-                            {CATEGORIES.map((cat) => {
+                            {CATEGORY_CONFIGS.map((cat) => {
                                 const Icon = cat.icon;
                                 const isSelected = category === cat.id;
                                 return (
@@ -119,10 +128,10 @@ export function ReportIssueModal({
                                         <div className="flex items-center gap-2 mb-1">
                                             <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
                                             <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
-                                                {cat.label}
+                                                {t(cat.labelKey)}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-gray-500">{cat.help}</p>
+                                        <p className="text-xs text-gray-500">{t(cat.helpKey)}</p>
                                     </button>
                                 );
                             })}
@@ -133,25 +142,25 @@ export function ReportIssueModal({
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                What were you doing?
+                                {t('report.whatDoing')}
                             </label>
                             <input
                                 type="text"
                                 value={whatDoing}
                                 onChange={(e) => setWhatDoing(e.target.value)}
-                                placeholder="e.g., Playing a voice message"
+                                placeholder={t('report.whatDoingPlaceholder')}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                What went wrong?
+                                {t('report.whatWrong')}
                             </label>
                             <input
                                 type="text"
                                 value={whatWrong}
                                 onChange={(e) => setWhatWrong(e.target.value)}
-                                placeholder="e.g., Audio stops after 5 seconds"
+                                placeholder={t('report.whatWrongPlaceholder')}
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                         </div>
@@ -160,9 +169,9 @@ export function ReportIssueModal({
                     {/* Context Info */}
                     {(currentMemberPath || crashError) && (
                         <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
-                            <p className="font-medium text-gray-700 mb-1">Auto-detected context:</p>
-                            {currentMemberPath && <p>Member: {currentMemberPath}</p>}
-                            {crashError && <p className="text-red-600">Error: {crashError.slice(0, 100)}...</p>}
+                            <p className="font-medium text-gray-700 mb-1">{t('report.autoContext')}</p>
+                            {currentMemberPath && <p>{t('report.member')}: {currentMemberPath}</p>}
+                            {crashError && <p className="text-red-600">{t('common.error')}: {crashError.slice(0, 100)}...</p>}
                         </div>
                     )}
 
@@ -180,7 +189,7 @@ export function ReportIssueModal({
                         onClick={handleClose}
                         className="px-4 py-2 text-gray-600 hover:text-gray-900 text-sm font-medium"
                     >
-                        Cancel
+                        {t('common.cancel')}
                     </button>
                     <button
                         onClick={handleSubmit}
@@ -194,12 +203,12 @@ export function ReportIssueModal({
                         {loading ? (
                             <>
                                 <RefreshCw className="w-4 h-4 animate-spin" />
-                                Generating...
+                                {t('report.generating')}
                             </>
                         ) : (
                             <>
                                 <ExternalLink className="w-4 h-4" />
-                                Create GitHub Issue
+                                {t('report.createGitHubIssue')}
                             </>
                         )}
                     </button>
