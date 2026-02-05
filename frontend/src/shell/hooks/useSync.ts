@@ -110,6 +110,8 @@ export function useSync({
     const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
     const hasStartedSyncRef = useRef(false);
+    // Track which services have already been synced on startup (to sync newly connected services)
+    const syncedServicesRef = useRef<Set<string>>(new Set());
     const syncProgressRef = useRef(syncProgress);
 
     useEffect(() => { syncProgressRef.current = syncProgress; }, [syncProgress]);
@@ -306,54 +308,71 @@ export function useSync({
         );
     }, [connectedServices, startSync]);
 
-    // Startup sync: sync ALL connected services
+    // Startup sync: sync ALL connected services, including newly connected ones
     useEffect(() => {
-        if (isAuthenticated && appSettings && !hasStartedSyncRef.current && connectedServices.length > 0) {
-            hasStartedSyncRef.current = true;
+        if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
 
+        // Find services that haven't been synced yet
+        const newServices = connectedServices.filter(s => !syncedServicesRef.current.has(s));
+        if (newServices.length === 0) return;
+
+        // Mark these services as synced (before async to prevent duplicates)
+        newServices.forEach(s => syncedServicesRef.current.add(s));
+        log(`Startup sync for new services: ${newServices.join(', ')}`);
+
+        const isFirstSync = !hasStartedSyncRef.current;
+        hasStartedSyncRef.current = true;
+
+        // Only check fresh install status on first sync
+        if (isFirstSync) {
             fetch('/api/settings/fresh')
                 .then(res => res.json())
                 .then(data => {
                     const isFresh = data.is_fresh;
 
-                    // Sync ALL connected services, not just the active one
-                    connectedServices.forEach(service => {
+                    // Sync new services
+                    newServices.forEach(service => {
                         // Fresh install: show modal for active service only
                         const showModal = isFresh && service === activeService;
                         startSync(showModal, service);
                     });
                 })
                 .catch(() => {
-                    // On error, still sync all services without blocking modal
-                    connectedServices.forEach(service => {
+                    // On error, still sync new services without blocking modal
+                    newServices.forEach(service => {
                         startSync(false, service);
                     });
                 });
-
-            // Setup auto-sync for each connected service if enabled
-            if (appSettings.auto_sync_enabled) {
-                const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
-
-                connectedServices.forEach(service => {
-                    // Clear existing interval for this service if any
-                    if (syncIntervalRefs.current[service]) {
-                        clearInterval(syncIntervalRefs.current[service]);
-                    }
-
-                    syncIntervalRefs.current[service] = setInterval(() => {
-                        startSync(false, service);
-                    }, intervalMs);
-                });
-            }
-
-            return () => {
-                // Cleanup all intervals
-                Object.values(syncIntervalRefs.current).forEach(interval => {
-                    clearInterval(interval);
-                });
-                syncIntervalRefs.current = {};
-            };
+        } else {
+            // Not first sync - just sync new services without modal
+            newServices.forEach(service => {
+                startSync(false, service);
+            });
         }
+
+        // Setup auto-sync for each connected service if enabled
+        if (appSettings.auto_sync_enabled) {
+            const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
+
+            newServices.forEach(service => {
+                // Clear existing interval for this service if any
+                if (syncIntervalRefs.current[service]) {
+                    clearInterval(syncIntervalRefs.current[service]);
+                }
+
+                syncIntervalRefs.current[service] = setInterval(() => {
+                    startSync(false, service);
+                }, intervalMs);
+            });
+        }
+
+        return () => {
+            // Cleanup all intervals
+            Object.values(syncIntervalRefs.current).forEach(interval => {
+                clearInterval(interval);
+            });
+            syncIntervalRefs.current = {};
+        };
     }, [isAuthenticated, appSettings, connectedServices, activeService, startSync]);
 
     return {
