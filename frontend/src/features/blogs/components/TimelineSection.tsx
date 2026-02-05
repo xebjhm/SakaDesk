@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import type { BlogMeta } from '../../../types';
 import { formatMonthYear, formatShortDate } from '../../../utils/classnames';
+import { useTranslation } from '../../../i18n';
 
 interface TimelineSectionProps {
     year: number;
@@ -21,6 +22,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
     memberColors,
 }) => {
     const [expanded, setExpanded] = useState(defaultExpanded);
+    const { t } = useTranslation();
 
     // Format month header
     const monthLabel = formatMonthYear(month, year);
@@ -85,7 +87,7 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
                         color: expanded ? accentColor : '#999',
                     }}
                 >
-                    {postCount} {postCount === 1 ? 'post' : 'posts'}
+                    {t('blogs.post', { count: postCount })}
                 </span>
             </button>
 
@@ -117,6 +119,7 @@ interface TimelineBlogItemProps {
 const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, memberColors, index }) => {
     const [isHovered, setIsHovered] = useState(false);
     const [imageError, setImageError] = useState(false);
+    const { t } = useTranslation();
     const date = new Date(blog.published_at);
     const dayLabel = formatShortDate(date);
 
@@ -201,7 +204,7 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, memb
                     <div
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: accentColor }}
-                        title="Cached"
+                        title={t('blogs.cached')}
                     />
                 )}
                 <svg

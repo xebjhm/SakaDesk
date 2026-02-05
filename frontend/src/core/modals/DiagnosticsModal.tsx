@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById } from '../../data/services';
-import { useTranslation } from '../../i18n';
 
 interface SystemInfo {
     os: string;
@@ -62,7 +61,6 @@ interface DiagnosticsModalProps {
 type LogTab = 'recent' | 'errors' | 'warnings';
 
 export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
-    const { t } = useTranslation();
     const [data, setData] = useState<DiagnosticsData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -148,8 +146,8 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                 <div className="bg-gray-900 px-6 py-4 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">
                         <Terminal className="w-5 h-5 text-green-400" />
-                        <h3 className="text-lg font-bold text-white">{t('diagnostics.title')}</h3>
-                        <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">{t('diagnostics.hiddenPanel')}</span>
+                        <h3 className="text-lg font-bold text-white">Developer Diagnostics</h3>
+                        <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">Hidden Panel</span>
                     </div>
                     <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
                         <X className="w-6 h-6" />
@@ -177,14 +175,14 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             <div className="grid grid-cols-2 gap-4">
                                 {/* System Info */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{t('diagnostics.system')}</h4>
+                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SYSTEM</h4>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">{t('diagnostics.os')}</span>
+                                            <span className="text-gray-500">OS</span>
                                             <span className="font-mono text-gray-900">{data.system.os} {data.system.os_release}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">{t('diagnostics.python')}</span>
+                                            <span className="text-gray-500">Python</span>
                                             <span className="font-mono text-gray-900">{data.system.python_version}</span>
                                         </div>
                                         <div className="flex justify-between">
@@ -202,10 +200,10 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
 
                                 {/* Per-Service Auth Status (Live from Context) */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{t('diagnostics.serviceAuth')}</h4>
+                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">SERVICE AUTHENTICATION</h4>
                                     <div className="space-y-3 text-sm">
                                         {data.auth_status.groups_configured.length === 0 && connectedServices.length === 0 ? (
-                                            <div className="text-gray-400 text-xs">{t('diagnostics.noServicesConfigured')}</div>
+                                            <div className="text-gray-400 text-xs">No services configured</div>
                                         ) : (
                                             // Show all known services from backend + live status from context
                                             [...new Set([...data.auth_status.groups_configured, ...connectedServices, ...disconnectedServices])].map(serviceId => {
@@ -225,17 +223,17 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                                 {connected ? (
                                                                     <span className="flex items-center gap-1 text-green-600 text-xs">
                                                                         <CheckCircle2 className="w-3.5 h-3.5" />
-                                                                        {t('login.connected')}
+                                                                        Connected
                                                                     </span>
                                                                 ) : disconnected ? (
                                                                     <span className="flex items-center gap-1 text-orange-500 text-xs">
                                                                         <Unplug className="w-3.5 h-3.5" />
-                                                                        {t('diagnostics.disconnected')}
+                                                                        Disconnected
                                                                     </span>
                                                                 ) : (
                                                                     <span className="flex items-center gap-1 text-gray-400 text-xs">
                                                                         <AlertCircle className="w-3.5 h-3.5" />
-                                                                        {t('diagnostics.notLoggedIn')}
+                                                                        Not logged in
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -244,11 +242,11 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                             <div className="mt-1 flex items-center gap-4 text-xs text-gray-500">
                                                                 <span className="flex items-center gap-1">
                                                                     <Clock className="w-3 h-3" />
-                                                                    {t('diagnostics.expires')}: {formatRemainingTime(expiresAt)}
+                                                                    Expires: {formatRemainingTime(expiresAt)}
                                                                 </span>
                                                                 <span className="flex items-center gap-1">
                                                                     <RefreshCw className="w-3 h-3" />
-                                                                    {t('common.refresh')}: {hasScheduledRefresh ? formatScheduledRefresh(expiresAt) : 'not scheduled'}
+                                                                    Refresh: {hasScheduledRefresh ? formatScheduledRefresh(expiresAt) : 'not scheduled'}
                                                                 </span>
                                                             </div>
                                                         )}
@@ -264,27 +262,27 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             <div className="grid grid-cols-2 gap-4">
                                 {/* Config State */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
-                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{t('diagnostics.configuration')}</h4>
+                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">CONFIGURATION</h4>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-500">{t('diagnostics.configured')}</span>
+                                            <span className="text-gray-500">Configured</span>
                                             {data.config_state.is_configured ?
                                                 <CheckCircle2 className="w-4 h-4 text-green-500" /> :
                                                 <AlertCircle className="w-4 h-4 text-amber-500" />
                                             }
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-500">{t('diagnostics.outputDir')}</span>
+                                            <span className="text-gray-500">Output Dir</span>
                                             {data.config_state.output_dir_configured ?
                                                 <CheckCircle2 className="w-4 h-4 text-green-500" /> :
                                                 <AlertCircle className="w-4 h-4 text-amber-500" />
                                             }
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-500">{t('settings.autoSync')}</span>
+                                            <span className="text-gray-500">Auto-Sync</span>
                                             {data.config_state.sync_interval && data.config_state.sync_interval > 0 ?
                                                 <span className="text-green-600 font-mono">{data.config_state.sync_interval}m</span> :
-                                                <span className="text-gray-400">{t('diagnostics.off')}</span>
+                                                <span className="text-gray-400">Off</span>
                                             }
                                         </div>
                                     </div>
@@ -293,11 +291,11 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                 {/* Disk Usage */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <Database className="w-3 h-3" /> {t('diagnostics.diskUsage')}
+                                        <Database className="w-3 h-3" /> DISK USAGE
                                     </h4>
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">{t('diagnostics.size')}</span>
+                                            <span className="text-gray-500">Size</span>
                                             <span className="font-mono text-gray-900">
                                                 {data.sync_state.disk_usage_mb >= 1024
                                                     ? `${(data.sync_state.disk_usage_mb / 1024).toFixed(2)} GB`
@@ -305,7 +303,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             </span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">{t('sync.files')}</span>
+                                            <span className="text-gray-500">Files</span>
                                             <span className="font-mono text-gray-900">{data.sync_state.file_count.toLocaleString()}</span>
                                         </div>
                                     </div>
@@ -316,7 +314,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             {data.sync_state.services && data.sync_state.services.length > 0 && (
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                        <Clock className="w-3 h-3" /> {t('diagnostics.syncStatusByService')}
+                                        <Clock className="w-3 h-3" /> SYNC STATUS BY SERVICE
                                     </h4>
                                     <div className="space-y-3">
                                         {data.sync_state.services.map((service) => (
@@ -326,32 +324,32 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                     {service.last_error ? (
                                                         <span className="flex items-center gap-1 text-red-500 text-xs">
                                                             <AlertCircle className="w-3.5 h-3.5" />
-                                                            {t('common.error')}
+                                                            Error
                                                         </span>
                                                     ) : service.last_sync ? (
                                                         <span className="flex items-center gap-1 text-green-600 text-xs">
                                                             <CheckCircle2 className="w-3.5 h-3.5" />
-                                                            {t('diagnostics.ok')}
+                                                            OK
                                                         </span>
                                                     ) : (
-                                                        <span className="text-gray-400 text-xs">{t('diagnostics.neverSynced')}</span>
+                                                        <span className="text-gray-400 text-xs">Never synced</span>
                                                     )}
                                                 </div>
                                                 <div className="grid grid-cols-3 gap-2 text-xs">
                                                     <div>
-                                                        <span className="text-gray-400">{t('diagnostics.lastSync')}:</span>
+                                                        <span className="text-gray-400">Last sync:</span>
                                                         <span className="ml-1 font-mono text-gray-600">
                                                             {service.last_sync || 'Never'}
                                                         </span>
                                                     </div>
                                                     <div>
-                                                        <span className="text-gray-400">{t('sync.members')}:</span>
+                                                        <span className="text-gray-400">Members:</span>
                                                         <span className="ml-1 font-mono text-gray-600">
                                                             {service.member_count}
                                                         </span>
                                                     </div>
                                                     <div>
-                                                        <span className="text-gray-400">{t('common.messages')}:</span>
+                                                        <span className="text-gray-400">Messages:</span>
                                                         <span className="ml-1 font-mono text-gray-600">
                                                             {service.message_count.toLocaleString()}
                                                         </span>
@@ -371,19 +369,19 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             {/* Paths */}
                             <div className="bg-gray-50 p-4 rounded-lg">
                                 <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                    <HardDrive className="w-3 h-3" /> {t('diagnostics.paths')}
+                                    <HardDrive className="w-3 h-3" /> PATHS
                                 </h4>
                                 <div className="space-y-2 text-xs font-mono text-gray-600">
                                     <div>
-                                        <span className="text-gray-400">{t('diagnostics.appData')}: </span>
+                                        <span className="text-gray-400">App Data: </span>
                                         <span className="break-all">{data.system.app_data_dir}</span>
                                     </div>
                                     <div>
-                                        <span className="text-gray-400">{t('common.settings')}: </span>
+                                        <span className="text-gray-400">Settings: </span>
                                         <span className="break-all">{data.system.settings_path}</span>
                                     </div>
                                     <div>
-                                        <span className="text-gray-400">{t('diagnostics.logs')}: </span>
+                                        <span className="text-gray-400">Logs: </span>
                                         <span className="break-all">{data.system.logs_dir}</span>
                                     </div>
                                 </div>
@@ -392,7 +390,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             {/* Logs with Tabs */}
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('diagnostics.logs')}</h4>
+                                    <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Logs</h4>
                                     <div className="flex gap-1 ml-auto">
                                         <button
                                             onClick={() => setLogTab('recent')}
@@ -400,7 +398,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                                 logTab === 'recent' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                                             }`}
                                         >
-                                            {t('diagnostics.recent')} ({data.logs.recent.length})
+                                            Recent ({data.logs.recent.length})
                                         </button>
                                         <button
                                             onClick={() => setLogTab('errors')}
@@ -409,7 +407,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             }`}
                                         >
                                             <AlertCircle className="w-3 h-3" />
-                                            {t('diagnostics.errors')} ({data.logs.errors.length})
+                                            Errors ({data.logs.errors.length})
                                         </button>
                                         <button
                                             onClick={() => setLogTab('warnings')}
@@ -418,7 +416,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             }`}
                                         >
                                             <AlertTriangle className="w-3 h-3" />
-                                            {t('diagnostics.warnings')} ({data.logs.warnings.length})
+                                            Warnings ({data.logs.warnings.length})
                                         </button>
                                     </div>
                                 </div>
@@ -437,7 +435,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             </div>
                                         ))
                                     ) : (
-                                        <span className="text-slate-500">{t('diagnostics.noLogsFound', { type: logTab })}</span>
+                                        <span className="text-slate-500">{`No ${logTab} logs found.`}</span>
                                     )}
                                 </div>
                             </div>
@@ -452,7 +450,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                         className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors"
                     >
                         <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                        {t('common.refresh')}
+                        Refresh
                     </button>
 
                     <button
@@ -464,7 +462,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                             }`}
                     >
                         {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        {copied ? t('diagnostics.copied') : t('diagnostics.copyJson')}
+                        {copied ? 'Copied!' : 'Copy JSON'}
                     </button>
                 </div>
             </div>

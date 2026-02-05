@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { Star } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 import { getThemeForService } from '../../../config/groupThemes';
+import { useTranslation } from '../../../i18n';
 
 interface MessageContextMenuProps {
     x: number;
@@ -18,6 +19,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     onToggleFavorite,
     onClose,
 }) => {
+    const { t } = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
     const activeService = useAppStore((state) => state.activeService);
     const theme = getThemeForService(activeService);
@@ -89,7 +91,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
                     className="w-4 h-4"
                     style={isFavorite ? { color: theme.modals.accentColor, fill: theme.modals.accentColor } : { color: '#9ca3af' }}
                 />
-                {isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                {isFavorite ? t('favorites.removeFromFavorites') : t('favorites.addToFavorites')}
             </button>
         </div>
     );

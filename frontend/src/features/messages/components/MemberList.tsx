@@ -6,6 +6,7 @@ import { formatName, getShortName } from '../../../utils';
 import { getGroupChatIds } from '../../../config/groupConfig';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
+import { useTranslation } from '../../../i18n';
 
 interface GroupInfo {
     id: string;
@@ -31,6 +32,7 @@ interface SidebarProps {
 }
 
 export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion }) => {
+    const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [loading, setLoading] = useState(true);
@@ -260,7 +262,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         >
             {/* Header */}
             <div className="px-4 py-3 flex items-center justify-center relative">
-                <h1 className="text-base font-bold text-gray-700">トーク</h1>
+                <h1 className="text-base font-bold text-gray-700">{t('memberList.title')}</h1>
                 <div className="absolute right-4 flex gap-2 items-center">
                     {isSyncing && (
                         <RefreshCw className="w-4 h-4 animate-spin" style={{ color: theme.primaryColor }} />
@@ -273,11 +275,11 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 {loading ? (
                     <div className="p-6 text-center text-gray-500 text-sm flex flex-col items-center gap-2">
                         <RefreshCw className="w-5 h-5 animate-spin" style={{ color: theme.primaryColor }} />
-                        <span>Loading conversations...</span>
+                        <span>{t('memberList.loadingConversations')}</span>
                     </div>
                 ) : groups.length === 0 ? (
                     <div className="p-6 text-center text-gray-500 text-sm">
-                        No conversations found.
+                        {t('memberList.noConversations')}
                     </div>
                 ) : null}
 
@@ -288,7 +290,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             className="px-2 py-2 sticky top-0 z-10"
                             style={{ background: `linear-gradient(to bottom, ${sidebarGradient[0]}, transparent)` }}
                         >
-                            <h2 className="text-sm text-gray-600 text-center font-medium opacity-80">オンライン</h2>
+                            <h2 className="text-sm text-gray-600 text-center font-medium opacity-80">{t('memberList.online')}</h2>
                         </div>
                         {renderGroupGrid(onlineGroups)}
                     </>
@@ -301,7 +303,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             className="px-2 py-2 mt-4 sticky top-0 z-10"
                             style={{ background: `linear-gradient(to bottom, ${sidebarGradient[1]}, transparent)` }}
                         >
-                            <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">オフライン</h2>
+                            <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">{t('memberList.offline')}</h2>
                         </div>
                         {renderGroupGrid(offlineGroups)}
                     </>
@@ -314,10 +316,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     {isSyncing ? (
                         <span className="flex items-center justify-center gap-1 font-medium" style={{ color: theme.primaryColor }}>
                             <RefreshCw className="w-3 h-3 animate-spin" />
-                            Syncing...
+                            {t('sync.syncing')}
                         </span>
                     ) : (
-                        <span>Auto-sync active</span>
+                        <span>{t('sync.autoSyncActive')}</span>
                     )}
                 </div>
             </div>

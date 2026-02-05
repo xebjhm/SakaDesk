@@ -4,7 +4,7 @@ import { Plus, Unplug } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
-import { getServiceShortCode, getServiceBgColor } from '../../data/services';
+import { getServiceShortCode, getServiceBgColor, getServiceLogoUrl } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
@@ -69,13 +69,30 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 isActive ? "h-10" : "h-0 group-hover:h-5"
                             )} />
 
-                            {/* Service Icon */}
+                            {/* Service Icon with Logo */}
                             <div className={cn(
-                                "w-12 h-12 rounded-[24px] flex items-center justify-center text-white font-bold text-sm transition-all duration-200",
+                                "w-12 h-12 rounded-[24px] flex items-center justify-center overflow-hidden transition-all duration-200",
                                 colorClass,
                                 isActive ? "rounded-[16px]" : "group-hover:rounded-[16px]"
                             )}>
-                                {getServiceShortCode(service)}
+                                {getServiceLogoUrl(service) ? (
+                                    <img
+                                        src={getServiceLogoUrl(service)}
+                                        alt={service}
+                                        className="w-full h-full object-cover"
+                                        onError={(e) => {
+                                            // Fallback to short code on error
+                                            e.currentTarget.style.display = 'none';
+                                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                        }}
+                                    />
+                                ) : null}
+                                <span className={cn(
+                                    "text-white font-bold text-sm",
+                                    getServiceLogoUrl(service) ? "hidden" : ""
+                                )}>
+                                    {getServiceShortCode(service)}
+                                </span>
                             </div>
 
                             {/* Disconnected Warning Badge */}
