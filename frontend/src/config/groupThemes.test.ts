@@ -4,7 +4,6 @@ import {
     getThemeForService,
     getThemeCSSVariables,
     type GroupId,
-    type GroupTheme,
 } from './groupThemes'
 
 describe('groupThemes', () => {

@@ -16,6 +16,7 @@ describe('useSync', () => {
             output_dir: '/test/output',
             auto_sync_enabled: false,
             sync_interval_minutes: 30,
+            is_configured: true,
         },
         connectedServices: ['hinatazaka46'],
         setAuthError: vi.fn(),
@@ -121,7 +122,7 @@ describe('useSync', () => {
             })
         )
 
-        const { result } = renderHook(() => useSync(defaultOptions))
+        renderHook(() => useSync(defaultOptions))
 
         // Hook should trigger sync on mount when authenticated
         await waitFor(() => {
