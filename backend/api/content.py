@@ -81,6 +81,33 @@ def get_output_dir() -> Path:
     return DEFAULT_OUTPUT_DIR
 
 
+def load_sync_metadata(output_dir: Path) -> Dict[str, Dict[str, Any]]:
+    """
+    Load sync_metadata.json from all service directories.
+    Returns a dict mapping "{group_id}_{member_id}" -> metadata entry.
+    """
+    all_metadata: Dict[str, Dict[str, Any]] = {}
+
+    if not output_dir.exists():
+        return all_metadata
+
+    for service_dir in output_dir.iterdir():
+        if not service_dir.is_dir():
+            continue
+
+        metadata_file = service_dir / "sync_metadata.json"
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    groups = data.get('groups', {})
+                    all_metadata.update(groups)
+            except Exception as e:
+                logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
+
+    return all_metadata
+
+
 def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
     """
     Parse a folder name in format "{id} {name}" or just "{name}".
@@ -119,6 +146,9 @@ async def get_groups():
     if not output_dir.exists():
         logger.warning(f"Output directory does not exist: {output_dir}")
         return []
+
+    # Load sync metadata for is_active status (source of truth)
+    sync_metadata = load_sync_metadata(output_dir)
 
     groups = []
 
@@ -193,14 +223,15 @@ async def get_groups():
                             # Count messages
                             m_total = data.get('total_messages', len(msgs))
                             total_messages += m_total
-
-                            # Get is_active from member data
-                            if 'is_active' in m_data:
-                                is_active = m_data.get('is_active', True)
                     except Exception as e:
                         logger.warning("Failed to read messages file", file_path=str(msg_file), error=str(e))
 
                 members_info.append(member_meta)
+
+                # Get is_active from sync_metadata (source of truth)
+                metadata_key = f"{group_id}_{member_id}"
+                if metadata_key in sync_metadata:
+                    is_active = sync_metadata[metadata_key].get('is_active', True)
 
             member_count = len(members_info)
             # Check if this is a group chat (multiple members or special group ID)

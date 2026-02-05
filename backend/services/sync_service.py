@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from typing import Any
-from pyhako import Client, Group, SyncManager, SessionExpiredError
+from pyhako import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pyhako.config import (
     MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL,
     MEDIA_DOWNLOAD_CONCURRENCY_INITIAL,
@@ -267,9 +267,20 @@ class SyncService:
                 try:
                     await client.refresh_if_needed(session, min_seconds_remaining=300)
                 except SessionExpiredError:
-                    # Session invalidated - signal frontend to redirect to login
+                    # Session invalidated server-side (e.g., logged in elsewhere)
                     logger.warning("Session expired - user needs to re-login")
-                    progress.error("Session expired. Please login again.")
+                    tm = get_token_manager()
+                    tm.delete_session(self._service)
+                    logger.info(f"Cleared invalid session for {self._service}")
+                    progress.error("Authentication session has expired. Please log in again to continue using the service.")
+                    raise  # Re-raise so API endpoint can return proper error
+                except RefreshFailedError:
+                    # All refresh attempts failed unexpectedly - potential bug
+                    logger.error("All token refresh plans failed - possible bug")
+                    tm = get_token_manager()
+                    tm.delete_session(self._service)
+                    logger.info(f"Cleared failed session for {self._service}")
+                    progress.error("Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.")
                     raise  # Re-raise so API endpoint can return proper error
 
                 # Save refreshed tokens if they changed (CLI pattern)
@@ -320,7 +331,9 @@ class SyncService:
                     members = await client.get_members(session, g['id'])
                     for m in members:
                         # Store active status from subscription
-                        is_active = g.get('subscription', {}).get('state') == 'active'
+                        # 'cancelled' subscriptions are still active until end_at date
+                        sub_state = g.get('subscription', {}).get('state')
+                        is_active = sub_state in ('active', 'cancelled')
                         tasks.append({
                             'group': g, 
                             'member': m,
