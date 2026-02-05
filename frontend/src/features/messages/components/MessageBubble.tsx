@@ -4,6 +4,7 @@ import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
+import { DEFAULT_SHELTER_COLORS } from '../../../config/groupThemes';
 
 interface ShelterColors {
     picture: string;
@@ -36,15 +37,6 @@ interface MessageBubbleProps {
     theme?: MessageBubbleTheme;
     service?: string;
 }
-
-// Fallback shelter colors (Hinatazaka defaults from groupThemes.ts)
-// Canonical shelter colors are defined per-theme in groupThemes.ts -> messages.shelterColors
-const DEFAULT_SHELTER_COLORS: ShelterColors = {
-    video: '#c4a8d8',
-    text: '#8bb8d6',
-    voice: '#b8a8d8',
-    picture: '#a8d0e8',
-};
 
 const SHELTER_ICONS = {
     video: Video,

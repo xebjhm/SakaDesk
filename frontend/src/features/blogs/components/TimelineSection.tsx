@@ -26,7 +26,8 @@ export const TimelineSection: React.FC<TimelineSectionProps> = ({
     const monthLabel = formatMonthYear(month, year);
     const postCount = blogs.length;
 
-    const accentColor = memberColors?.[0] ?? '#7cc7e8';
+    // Use member's penlight color or fall back to theme primary (set by CSS variable)
+    const accentColor = memberColors?.[0] ?? 'var(--color-primary)';
 
     return (
         <div
@@ -119,7 +120,8 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick, memb
     const date = new Date(blog.published_at);
     const dayLabel = formatShortDate(date);
 
-    const accentColor = memberColors?.[0] ?? '#7cc7e8';
+    // Use member's penlight color or fall back to theme primary (set by CSS variable)
+    const accentColor = memberColors?.[0] ?? 'var(--color-primary)';
 
     return (
         <button

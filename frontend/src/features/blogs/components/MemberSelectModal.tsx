@@ -243,10 +243,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                             <p className="text-sm text-gray-600">{error}</p>
                             <button
                                 onClick={onRetry}
-                                className="px-4 py-2 rounded-full text-white text-sm font-medium transition-all duration-300 hover:scale-105"
-                                style={{
-                                    background: 'linear-gradient(135deg, #7cc7e8 0%, #5dc2b5 100%)',
-                                }}
+                                className="px-4 py-2 rounded-full text-white text-sm font-medium transition-all duration-300 hover:scale-105 bg-theme-gradient"
                             >
                                 Retry
                             </button>
