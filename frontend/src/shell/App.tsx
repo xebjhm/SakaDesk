@@ -11,7 +11,7 @@ import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
 function App() {
     const {
@@ -119,7 +119,17 @@ function App() {
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
 
+    // ToS acceptance state - check localStorage on mount
+    const [tosAccepted, setTosAccepted] = useState(() => {
+        return localStorage.getItem('tos_accepted_at') !== null;
+    });
+
     // === RENDER ===
+
+    // Show ToS dialog on first launch (blocks all other content until accepted)
+    if (!tosAccepted) {
+        return <TosDialog onAccept={() => setTosAccepted(true)} />;
+    }
 
     // Show loading while auth check is in progress
     if (!authCheckComplete) {
