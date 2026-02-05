@@ -84,15 +84,6 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
                     );
                 })}
 
-                {/* Separator and future features hint */}
-                {availableFeatures.length < Object.keys(FEATURE_DEFINITIONS).length && (
-                    <>
-                        <div className="w-8 h-px bg-[#3f4147] my-2" />
-                        <div className="text-[10px] text-[#949ba4] text-center px-1">
-                            More coming soon
-                        </div>
-                    </>
-                )}
             </div>
 
             {/* Login Modal for paid features */}

@@ -1,6 +1,5 @@
 // Messages feature components
 export { MemberList } from './MemberList';
-export { GroupMemberList } from './GroupMemberList';
 export { MessageList } from './MessageList';
 export { MessageBubble } from './MessageBubble';
 export { MessageContextMenu } from './MessageContextMenu';

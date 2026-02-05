@@ -1,10 +1,10 @@
 // frontend/src/features/blogs/components/MemberSelectModal.tsx
 import React, { useMemo, useEffect, useRef } from 'react';
 import type { BlogMemberWithThumbnail } from '../../../types';
-import { GENERATION_LABELS } from '../../../data/memberColors';
 import { getMembers, getMemberPenlightHex, toGroupId } from '../../../data/memberData';
 import { getMemberThumbnailUrl } from '../api';
 import { useAppStore } from '../../../store/appStore';
+import { useTranslation } from '../../../i18n';
 
 interface MemberSelectModalProps {
     isOpen: boolean;
@@ -42,6 +42,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     // Get favorites from store - use stable empty array to prevent infinite loops
     const favorites = useAppStore((state) => state.favorites[serviceId] || EMPTY_FAVORITES);
     const toggleFavorite = useAppStore((state) => state.toggleFavorite);
+    const { t } = useTranslation();
 
     // Use ref to track latest onClose callback without triggering effect re-runs
     const onCloseRef = useRef(onClose);
@@ -136,11 +137,17 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     // Generation order (mascot at the end)
     const generationOrder: GenerationKey[] = ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th', 'mascot'];
 
-    // Extended generation labels including mascot
+    // Generation labels with i18n support
     const extendedLabels: Record<GenerationKey, string> = {
-        ...GENERATION_LABELS,
-        'mascot': 'Mascot',
-    } as Record<GenerationKey, string>;
+        '1st': t('generations.1st'),
+        '2nd': t('generations.2nd'),
+        '3rd': t('generations.3rd'),
+        '4th': t('generations.4th'),
+        '5th': t('generations.5th'),
+        '6th': t('generations.6th'),
+        '7th': t('generations.7th'),
+        'mascot': t('blogs.mascot'),
+    };
 
     // Calculate max columns needed across all generations for modal sizing
     // This determines the modal width and the threshold for single-row display
@@ -222,7 +229,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                 />
                                 <div className="absolute inset-1 rounded-full bg-white" />
                             </div>
-                            <span className="text-sm text-gray-400 tracking-wide">Loading members...</span>
+                            <span className="text-sm text-gray-400 tracking-wide">{t('blogs.loadingMembers')}</span>
                         </div>
                     )}
 
@@ -245,7 +252,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                 onClick={onRetry}
                                 className="px-4 py-2 rounded-full text-white text-sm font-medium transition-all duration-300 hover:scale-105 bg-theme-gradient"
                             >
-                                Retry
+                                {t('blogs.retry')}
                             </button>
                         </div>
                     )}
@@ -391,7 +398,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                 </svg>
                             </div>
                             <p className="text-sm text-gray-500">
-                                メンバーが見つかりません
+                                {t('blogs.noMembersFound')}
                             </p>
                         </div>
                     )}
@@ -399,7 +406,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
 
                 {/* Close hint */}
                 <div className="px-6 py-2 text-center">
-                    <span className="text-xs text-gray-400">Tap outside to close</span>
+                    <span className="text-xs text-gray-400">{t('blogs.tapOutsideToClose')}</span>
                 </div>
             </div>
 

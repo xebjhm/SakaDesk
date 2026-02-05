@@ -7,6 +7,7 @@ import en from './locales/en.json';
 import ja from './locales/ja.json';
 import zhCN from './locales/zh-CN.json';
 import zhTW from './locales/zh-TW.json';
+import yue from './locales/yue.json';
 
 // Supported languages with their display names
 export const SUPPORTED_LANGUAGES = {
@@ -14,6 +15,7 @@ export const SUPPORTED_LANGUAGES = {
     ja: { name: 'Japanese', nativeName: '日本語' },
     'zh-CN': { name: 'Simplified Chinese', nativeName: '简体中文' },
     'zh-TW': { name: 'Traditional Chinese', nativeName: '繁體中文' },
+    yue: { name: 'Cantonese', nativeName: '廣東話' },
 } as const;
 
 export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
@@ -24,6 +26,7 @@ const resources = {
     ja: { translation: ja },
     'zh-CN': { translation: zhCN },
     'zh-TW': { translation: zhTW },
+    yue: { translation: yue },
 };
 
 // Initialize i18next

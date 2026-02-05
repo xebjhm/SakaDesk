@@ -63,11 +63,25 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                                 >
                                     <div
                                         className={cn(
-                                            'w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center',
+                                            'w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center overflow-hidden',
                                             service.color
                                         )}
                                     >
-                                        <span className="text-white font-bold">
+                                        {service.logoUrl ? (
+                                            <img
+                                                src={service.logoUrl}
+                                                alt={service.displayName}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    e.currentTarget.style.display = 'none';
+                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                                }}
+                                            />
+                                        ) : null}
+                                        <span className={cn(
+                                            "text-white font-bold",
+                                            service.logoUrl ? "hidden" : ""
+                                        )}>
                                             {service.shortCode}
                                         </span>
                                     </div>

@@ -497,7 +497,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             }}
                         >
                             <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                            <span>{syncProgress.detail || "Syncing..."}</span>
+                            <span>{syncProgress.detail || t('sync.syncing')}</span>
                         </div>
                     )}
                     {selectedGroupDir && (

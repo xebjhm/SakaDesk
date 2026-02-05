@@ -14,6 +14,7 @@ export interface ServiceDefinition {
     bgColor: string;        // Solid bg class for icons/badges
     blogBaseUrl: string;    // Base URL for blog content normalization
     description: string;
+    logoUrl: string;        // Official logo URL (hotlinked from official site)
 }
 
 // Tailwind requires static class names at build time.
@@ -32,6 +33,7 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#7cc7e8]',
         blogBaseUrl: 'https://www.hinatazaka46.com',
         description: 'Hinatazaka46 Messages & Blogs',
+        logoUrl: 'https://cdn.hinatazaka46.com/files/14/hinata/img/favicons/apple-touch-icon.png',
     },
     {
         id: 'sakurazaka46',
@@ -43,6 +45,7 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#E85298]',
         blogBaseUrl: 'https://sakurazaka46.com',
         description: 'Sakurazaka46 Messages & Blogs',
+        logoUrl: 'https://sakurazaka46.com/files/14/s46/favicons/apple-touch-icon-180x180.png',
     },
     {
         id: 'nogizaka46',
@@ -53,6 +56,7 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#7e1083]',
         blogBaseUrl: 'https://www.nogizaka46.com',
         description: 'Nogizaka46 Messages & Blogs',
+        logoUrl: 'https://www.nogizaka46.com/files/46/assets/config/apple-touch-icon.png',
     },
 ];
 
@@ -82,4 +86,8 @@ export function getServiceBgColor(id: string): string {
 
 export function getServiceBlogBaseUrl(id: string): string {
     return SERVICES_BY_ID[id]?.blogBaseUrl ?? '';
+}
+
+export function getServiceLogoUrl(id: string): string | undefined {
+    return SERVICES_BY_ID[id]?.logoUrl;
 }

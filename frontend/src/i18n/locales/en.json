@@ -141,37 +141,6 @@
     "title": "Add Service",
     "allAdded": "All services are already added!"
   },
-  "diagnostics": {
-    "title": "Developer Diagnostics",
-    "hiddenPanel": "Hidden Panel",
-    "system": "System",
-    "os": "OS",
-    "python": "Python",
-    "serviceAuth": "Service Authentication",
-    "noServicesConfigured": "No services configured",
-    "disconnected": "Disconnected",
-    "notLoggedIn": "Not logged in",
-    "expires": "Expires",
-    "configuration": "Configuration",
-    "configured": "Configured",
-    "outputDir": "Output Dir",
-    "off": "Off",
-    "diskUsage": "Disk Usage",
-    "size": "Size",
-    "syncStatusByService": "Sync Status by Service",
-    "ok": "OK",
-    "neverSynced": "Never synced",
-    "lastSync": "Last sync",
-    "paths": "Paths",
-    "appData": "App Data",
-    "logs": "Logs",
-    "recent": "Recent",
-    "errors": "Errors",
-    "warnings": "Warnings",
-    "noLogsFound": "No {{type}} logs found.",
-    "copied": "Copied!",
-    "copyJson": "Copy JSON"
-  },
   "update": {
     "downloading": "Downloading v{{version}}...",
     "readyToInstall": "Ready to install v{{version}}",
@@ -245,6 +214,8 @@
     "title": "Favorites",
     "noFavorites": "No favorites yet",
     "addHint": "Long press or right-click on a message to add to favorites",
+    "addToFavorites": "Add to favorites",
+    "removeFromFavorites": "Remove from favorites",
     "count": "{{count}} favorite",
     "count_other": "{{count}} favorites"
   },
@@ -292,5 +263,43 @@
       "videos": "{{count}} videos",
       "voice": "{{count}} voice messages"
     }
+  },
+  "sentLetters": {
+    "title": "Sent Letters",
+    "noLetters": "No letters sent yet",
+    "noTextContent": "No text content",
+    "noContent": "No content",
+    "tapToClose": "Tap anywhere to close"
+  },
+  "blogs": {
+    "latestBlogs": "Latest Blogs",
+    "checkingUpdates": "Checking for updates...",
+    "all": "All",
+    "favorite": "Favorite",
+    "selectMember": "Select Member",
+    "loadingPosts": "Loading posts...",
+    "loadingMembers": "Loading members...",
+    "noPostsFromFavorites": "No posts from favorite members",
+    "noBlogPostsFound": "No blog posts found",
+    "addMembersHint": "Add members to favorites to see their posts here",
+    "selectServiceHint": "Select a service and sync to load blogs",
+    "noMembersFound": "No members found",
+    "tapOutsideToClose": "Tap outside to close",
+    "publishedRecently": "Published within 24 hours",
+    "cached": "Cached",
+    "mascot": "Mascot",
+    "retry": "Retry",
+    "loadingTimeline": "Loading timeline...",
+    "post": "{{count}} post",
+    "post_other": "{{count}} posts"
+  },
+  "generations": {
+    "1st": "1ST GEN",
+    "2nd": "2ND GEN",
+    "3rd": "3RD GEN",
+    "4th": "4TH GEN",
+    "5th": "5TH GEN",
+    "6th": "6TH GEN",
+    "7th": "7TH GEN"
   }
 }

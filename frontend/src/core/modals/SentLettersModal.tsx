@@ -5,6 +5,7 @@ import { BaseModal, DetailModal, SafeImage, ModalLoadingState, ModalErrorState, 
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getThemeForService } from '../../config/groupThemes';
+import { useTranslation } from '../../i18n';
 
 interface Letter {
     id: number;
@@ -30,6 +31,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
     groupId,
     activeService,
 }) => {
+    const { t } = useTranslation();
     // Get per-service theme colors
     const currentService = useAppStore((state) => state.activeService);
     const theme = getThemeForService(currentService);
@@ -98,7 +100,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
             <DetailModal
                 isOpen={!!zoomedImage}
                 onClose={() => setZoomedImage(null)}
-                footer="Tap anywhere to close"
+                footer={t('sentLetters.tapToClose')}
             >
                 <img
                     src={zoomedImage}
@@ -147,7 +149,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
                 <div className="bg-[#f8f5f0] rounded-lg p-6 min-h-[200px]">
                     <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
                         {selectedLetter.content || (
-                            <span className="text-gray-400 italic">No text content</span>
+                            <span className="text-gray-400 italic">{t('sentLetters.noTextContent')}</span>
                         )}
                     </p>
                 </div>
@@ -166,7 +168,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
         }
 
         if (letters.length === 0) {
-            return <ModalEmptyState icon={Mail} message="No letters sent yet" />;
+            return <ModalEmptyState icon={Mail} message={t('sentLetters.noLetters')} />;
         }
 
         return (
@@ -198,7 +200,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
                                 />
                             ) : (
                                 <div className="p-2 text-xs text-gray-600 line-clamp-6">
-                                    {letter.content || 'No content'}
+                                    {letter.content || t('sentLetters.noContent')}
                                 </div>
                             )}
                         </div>
@@ -224,7 +226,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
             <BaseModal
                 isOpen={isOpen}
                 onClose={onClose}
-                title="Sent Letters"
+                title={t('sentLetters.title')}
                 icon={Mail}
                 footer={
                     <div className="bg-gray-50 px-6 py-3 border-t border-gray-100">
@@ -234,7 +236,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
                             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
                         >
                             <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-                            Refresh
+                            {t('common.refresh')}
                         </button>
                     </div>
                 }

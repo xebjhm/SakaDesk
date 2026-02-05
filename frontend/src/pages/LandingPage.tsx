@@ -72,14 +72,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                     )}
                                 </div>
 
-                                {/* Service icon */}
+                                {/* Service icon with logo */}
                                 <div
                                     className={cn(
-                                        'w-16 h-16 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-4',
+                                        'w-16 h-16 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-4 overflow-hidden',
                                         service.color
                                     )}
                                 >
-                                    <span className="text-white font-bold text-xl">
+                                    {service.logoUrl ? (
+                                        <img
+                                            src={service.logoUrl}
+                                            alt={service.displayName}
+                                            className="w-full h-full object-cover"
+                                            onError={(e) => {
+                                                e.currentTarget.style.display = 'none';
+                                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                            }}
+                                        />
+                                    ) : null}
+                                    <span className={cn(
+                                        "text-white font-bold text-xl",
+                                        service.logoUrl ? "hidden" : ""
+                                    )}>
                                         {service.shortCode}
                                     </span>
                                 </div>
