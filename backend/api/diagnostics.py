@@ -273,14 +273,14 @@ async def get_diagnostics():
                     all_lines = f.readlines()
 
                     # Recent logs (last 50)
-                    logs_summary.recent = [l.strip() for l in all_lines[-50:]]
+                    logs_summary.recent = [line.strip() for line in all_lines[-50:]]
 
                     # Errors (all ERROR lines, max 50)
-                    errors = [l.strip() for l in all_lines if ' - ERROR - ' in l]
+                    errors = [line.strip() for line in all_lines if ' - ERROR - ' in line]
                     logs_summary.errors = errors[-50:]
 
                     # Warnings (all WARNING lines, max 50)
-                    warnings = [l.strip() for l in all_lines if ' - WARNING - ' in l]
+                    warnings = [line.strip() for line in all_lines if ' - WARNING - ' in line]
                     logs_summary.warnings = warnings[-50:]
     except Exception as e:
         logs_summary.recent.append(f"Error reading logs: {e}")

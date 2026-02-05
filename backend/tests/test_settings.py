@@ -54,8 +54,8 @@ def test_get_service_settings_returns_defaults(temp_settings_file):
         response = client.get("/api/settings/service/hinatazaka46")
         assert response.status_code == 200
         data = response.json()
-        assert data["sync_enabled"] == True
-        assert data["blogs_full_backup"] == False
+        assert data["sync_enabled"]
+        assert not data["blogs_full_backup"]
 
 
 def test_get_service_settings_invalid_service(temp_settings_file):
@@ -80,8 +80,8 @@ def test_update_service_settings(temp_settings_file):
         )
         assert response.status_code == 200
         data = response.json()
-        assert data["sync_enabled"] == False
-        assert data["blogs_full_backup"] == True
+        assert not data["sync_enabled"]
+        assert data["blogs_full_backup"]
 
 
 def test_update_service_settings_invalid_service(temp_settings_file):
@@ -117,7 +117,7 @@ def test_update_service_settings_persists(temp_settings_file):
         response = client.get("/api/settings/service/hinatazaka46")
         assert response.status_code == 200
         data = response.json()
-        assert data["sync_enabled"] == False
-        assert data["adaptive_sync_enabled"] == False
+        assert not data["sync_enabled"]
+        assert not data["adaptive_sync_enabled"]
         assert data["last_sync"] == "2024-01-15T12:00:00Z"
-        assert data["blogs_full_backup"] == True
+        assert data["blogs_full_backup"]
