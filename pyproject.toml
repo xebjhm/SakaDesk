@@ -65,4 +65,4 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 # Development server configuration
-# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*"
+# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-dir "../PyHako/src" --reload-exclude "output/*" --reload-exclude "auth_data/*"
