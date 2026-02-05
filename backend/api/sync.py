@@ -4,7 +4,7 @@ Supports per-service progress tracking for multi-service sync.
 """
 import structlog
 from fastapi import APIRouter, HTTPException, Query
-from pyhako import SessionExpiredError
+from pyhako import RefreshFailedError, SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.api.progress import progress_manager
@@ -34,6 +34,9 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
     except SessionExpiredError:
         logger.warning(f"Sync failed for {service}: Session expired")
         progress.error("SESSION_EXPIRED")
+    except RefreshFailedError:
+        logger.error(f"Sync failed for {service}: All refresh attempts failed")
+        progress.error("REFRESH_FAILED")
     except Exception as e:
         logger.error(f"Background sync error for {service}: {e}")
         progress.error(str(e))

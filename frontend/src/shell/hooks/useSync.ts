@@ -208,7 +208,17 @@ export function useSync({
                         if (service === activeService) {
                             setSessionExpiredService(service);
                         }
-                        updateProgress({ state: 'error', detail: 'Session expired' });
+                        updateProgress({ state: 'error', detail: 'Authentication session has expired. Please log in again to continue using the service.' });
+                        hasStartedSyncRef.current = false;
+                    } else if (data.detail === 'REFRESH_FAILED') {
+                        log(`${service}: refresh failed detected - possible bug`);
+                        // Mark this specific service as disconnected
+                        markServiceDisconnected?.(service, 'Refresh failed');
+                        // Trigger LoginModal for this service (if it's active)
+                        if (service === activeService) {
+                            setSessionExpiredService(service);
+                        }
+                        updateProgress({ state: 'error', detail: 'Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.' });
                         hasStartedSyncRef.current = false;
                     } else {
                         updateProgress({ state: 'error', detail: data.detail || 'Sync error' });
