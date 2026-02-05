@@ -2,7 +2,11 @@
 ; Creates a Windows installer package
 
 #define MyAppName "HakoDesk"
-#define MyAppVersion "0.1.0"
+; Version can be overridden via command line: iscc /DAppVersion=1.2.3 setup.iss
+#ifndef AppVersion
+  #define AppVersion "0.1.0"
+#endif
+#define MyAppVersion AppVersion
 #define MyAppPublisher "xtorker"
 #define MyAppURL "https://github.com/xtorker/Project-PyHako"
 #define MyAppExeName "HakoDesk.exe"
@@ -21,7 +25,7 @@ DisableProgramGroupPage=yes
 ; Run without admin rights (install for current user only)
 PrivilegesRequired=lowest
 OutputDir=..\..\dist
-OutputBaseFilename=hakodesk-setup
+OutputBaseFilename=HakoDesk-{#MyAppVersion}-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern

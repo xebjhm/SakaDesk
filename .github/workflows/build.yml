@@ -81,14 +81,22 @@ jobs:
     - name: Install Inno Setup
       run: choco install innosetup
 
-    # 7. Build EXE & Installer
+    # 7. Extract version from pyproject.toml
+    - name: Extract Version
+      id: version
+      run: |
+        $version = (uv run --no-sources python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Extracted version: $version"
+
+    # 8. Build EXE & Installer
     - name: Build with PyInstaller & Inno Setup
       run: |
         uv run --no-sources python tooling/windows/build_windows.py
 
-    # 8. Upload Installer
+    # 9. Upload Installer
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: hakodesk-setup
-        path: dist/hakodesk-setup.exe
+        name: HakoDesk-${{ steps.version.outputs.VERSION }}-Setup
+        path: dist/HakoDesk-${{ steps.version.outputs.VERSION }}-Setup.exe

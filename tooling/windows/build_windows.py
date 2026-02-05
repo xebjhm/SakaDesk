@@ -2,6 +2,7 @@ import os
 import subprocess
 import shutil
 import sys
+import tomllib
 from pathlib import Path
 
 # Paths
@@ -9,6 +10,14 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 DIST_DIR = PROJECT_ROOT / "dist"
 BUILD_DIR = PROJECT_ROOT / "build"
 ISS_SCRIPT = PROJECT_ROOT / "tooling" / "windows" / "setup.iss"
+PYPROJECT_TOML = PROJECT_ROOT / "pyproject.toml"
+
+
+def get_version() -> str:
+    """Extract version from pyproject.toml."""
+    with open(PYPROJECT_TOML, "rb") as f:
+        data = tomllib.load(f)
+    return data["project"]["version"]
 
 def run_command(cmd, cwd=None):
     print(f"Running: {' '.join(cmd)}")
@@ -62,15 +71,18 @@ def build_installer():
         print("ERROR: Inno Setup (ISCC.exe) not found.")
         print("Please install Inno Setup 6: https://jrsoftware.org/isdl.php")
         sys.exit(1)
-        
-    cmd = [iscc, str(ISS_SCRIPT)]
+
+    version = get_version()
+    print(f"Building installer for version: {version}")
+    cmd = [iscc, f"/DAppVersion={version}", str(ISS_SCRIPT)]
     run_command(cmd, cwd=PROJECT_ROOT)
 
 def main():
     build_exe()
     build_installer()
+    version = get_version()
     print("--- SUCCESS ---")
-    print(f"Installer created at: {DIST_DIR / 'hakodesk-setup.exe'}")
+    print(f"Installer created at: {DIST_DIR / f'HakoDesk-{version}-Setup.exe'}")
 
 if __name__ == "__main__":
     main()
