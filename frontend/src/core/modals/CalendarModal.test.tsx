@@ -405,8 +405,12 @@ describe('CalendarModal component', () => {
       })
 
       // Day 14 span's parent button should be disabled (no messages)
-      const day14Span = screen.getByText('14')
-      const day14Button = day14Span.closest('button')
+      // Use getAllByText since '14' might appear in multiple places (e.g., month header)
+      const day14Elements = screen.getAllByText('14')
+      // Find the one that's inside a button (calendar day cell)
+      const day14Span = day14Elements.find(el => el.closest('button') !== null)
+      expect(day14Span).toBeDefined()
+      const day14Button = day14Span!.closest('button')
       expect(day14Button).toBeDisabled()
 
       // Day 15 span's parent button should be enabled (has messages)

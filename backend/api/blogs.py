@@ -79,7 +79,7 @@ async def get_recent_posts(
         # Parse comma-separated member_ids if provided
         member_id_list = [m.strip() for m in member_ids.split(",") if m.strip()] if member_ids else None
         posts = await blog_service.get_recent_posts(service, limit, member_id_list)
-        return RecentPostsResponse(service=service, posts=posts)
+        return RecentPostsResponse(service=service, posts=[RecentPost(**p) for p in posts])
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -109,7 +109,7 @@ async def get_members_with_thumbnails(service: str = Query(...)):
     try:
         validate_service(service)
         members = await blog_service.get_members_with_thumbnails(service)
-        return MembersWithThumbnailsResponse(service=service, members=members)
+        return MembersWithThumbnailsResponse(service=service, members=[MemberWithThumbnail(**m) for m in members])
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
