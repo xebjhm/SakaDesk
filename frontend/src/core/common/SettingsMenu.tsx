@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Settings, Bug, Info, Lightbulb } from 'lucide-react';
 import { cn } from '../../utils/classnames';
+import { useTranslation } from '../../i18n';
 
 // App version (keep in sync with AboutModal)
 const APP_VERSION = '0.1.0';
@@ -62,6 +63,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
     onReportIssue,
     onOpenAbout,
 }) => {
+    const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
 
@@ -90,7 +92,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="group relative w-12 h-12 rounded-[24px] flex items-center justify-center transition-all duration-200 hover:rounded-[16px]"
-                title="Settings"
+                title={t('common.settings')}
             >
                 <div className={cn(
                     "w-12 h-12 rounded-[24px] bg-[#313338] flex items-center justify-center text-gray-400 transition-all duration-200 group-hover:rounded-[16px] group-hover:bg-gray-600 group-hover:text-white",
@@ -108,14 +110,14 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                         className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
                     >
                         <Settings className="w-4 h-4 text-gray-400" />
-                        Settings
+                        {t('common.settings')}
                     </button>
                     <button
                         onClick={() => handleMenuAction(onReportIssue)}
                         className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
                     >
                         <Bug className="w-4 h-4 text-gray-400" />
-                        Report Issue
+                        {t('common.reportIssue')}
                     </button>
                     <button
                         onClick={() => {
@@ -125,7 +127,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                         className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
                     >
                         <Lightbulb className="w-4 h-4 text-gray-400" />
-                        Feature Request
+                        {t('common.featureRequest')}
                     </button>
                     <div className="h-px bg-gray-700 my-1" />
                     <button
@@ -133,7 +135,7 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                         className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
                     >
                         <Info className="w-4 h-4 text-gray-400" />
-                        About
+                        {t('common.about')}
                     </button>
                 </div>
             )}

@@ -184,13 +184,13 @@
   },
   "memberList": {
     "title": "Talk",
-    "titleJa": "トーク",
     "loadingConversations": "Loading conversations...",
     "noConversations": "No conversations found.",
     "online": "Online",
-    "onlineJa": "オンライン",
     "offline": "Offline",
-    "offlineJa": "オフライン"
+    "appSettings": "App Settings",
+    "systemDiagnostics": "System Diagnostics",
+    "resetReadStatus": "Reset Read Status"
   },
   "conversationMenu": {
     "dateSearch": "Date Search",
@@ -201,7 +201,16 @@
   },
   "messageList": {
     "noMessages": "No messages",
-    "jumpToOldestUnread": "Jump to oldest unread"
+    "jumpToOldestUnread": "Jump to oldest unread",
+    "welcomeTitle": "Welcome to HakoDesk",
+    "welcomeSubtitle": "Select a conversation from the sidebar to start.",
+    "loadingMessages": "Loading messages...",
+    "selectConversation": "Select a Conversation",
+    "groupChat": "Group Chat",
+    "unread": "{{count}} unread",
+    "revealAllTitle": "Reveal All Messages?",
+    "revealAllDescription": "This will mark all {{count}} unread messages as revealed.",
+    "confirm": "Confirm"
   },
   "calendar": {
     "title": "Date Search",
@@ -267,6 +276,21 @@
     "jumpToDate": "Jump to Date",
     "cached": "Cached",
     "publishedRecently": "Published within 24 hours",
-    "checkingUpdates": "Checking for updates..."
+    "checkingUpdates": "Checking for updates...",
+    "tabs": {
+      "photos": "Photos",
+      "videos": "Videos",
+      "voice": "Voice messages"
+    },
+    "empty": {
+      "photos": "No photos yet",
+      "videos": "No videos yet",
+      "voice": "No voice messages yet"
+    },
+    "count": {
+      "photos": "{{count}} photos",
+      "videos": "{{count}} videos",
+      "voice": "{{count}} voice messages"
+    }
   }
 }

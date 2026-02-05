@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { SERVICES } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
+import { useTranslation } from '../../i18n';
 
 interface AddServiceModalProps {
     selectedServices: string[];
@@ -14,6 +15,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     selectedServices,
     onClose,
 }) => {
+    const { t } = useTranslation();
     const { addSelectedService, setActiveService } = useAppStore();
 
     // Filter out already selected services
@@ -34,7 +36,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                 <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-lg font-bold text-white">
-                            Add Service
+                            {t('addService.title')}
                         </h3>
                         <button
                             onClick={onClose}
@@ -49,7 +51,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                 <div className="p-6">
                     {availableServices.length === 0 ? (
                         <p className="text-center text-gray-500 py-4">
-                            All services are already added!
+                            {t('addService.allAdded')}
                         </p>
                     ) : (
                         <div className="space-y-3">

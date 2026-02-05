@@ -7,6 +7,7 @@ import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getThemeForService } from '../../config/groupThemes';
+import { useTranslation } from '../../i18n';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -23,6 +24,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     memberAvatar,
     serviceId,
 }) => {
+    const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
 
     // Get per-service theme colors
@@ -182,8 +184,8 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 <div className="flex-1 flex items-center justify-center py-12">
                     <ModalEmptyState
                         icon={Star}
-                        message="No favorites yet"
-                        hint="Long press or right-click on a message to add to favorites"
+                        message={t('favorites.noFavorites')}
+                        hint={t('favorites.addHint')}
                     />
                 </div>
             );
@@ -203,14 +205,14 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
             <BaseModal
                 isOpen={isOpen}
                 onClose={onClose}
-                title="Favorites"
+                title={t('favorites.title')}
                 icon={Star}
                 maxWidth="max-w-3xl"
                 className="h-[80vh]"
                 footer={
                     <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
                         <span className="text-sm text-gray-500">
-                            {favoriteMessages.length} favorite{favoriteMessages.length !== 1 ? 's' : ''}
+                            {t('favorites.count', { count: favoriteMessages.length })}
                         </span>
                     </div>
                 }

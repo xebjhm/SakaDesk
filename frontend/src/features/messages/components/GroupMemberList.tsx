@@ -3,6 +3,7 @@ import { cn } from '../../../utils/classnames';
 import { Settings, Users, RefreshCw } from 'lucide-react';
 import type { Group } from '../../../types';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
+import { useTranslation } from '../../../i18n';
 
 // Use Group interface from types
 type GroupInfo = Group;
@@ -20,6 +21,7 @@ interface GroupSidebarProps {
 const GROUP_CHAT_IDS = ['43']; // 日向坂46
 
 export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, selectedGroupDir, isSyncing, onOpenSettings, onOpenDiagnostics, activeService }) => {
+    const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [showSettings, setShowSettings] = useState(false);
@@ -256,7 +258,7 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                                                 onOpenSettings();
                                             }}
                                         >
-                                            App Settings
+                                            {t('memberList.appSettings')}
                                         </button>
                                     )}
                                     {onOpenDiagnostics && (
@@ -267,14 +269,14 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                                                 onOpenDiagnostics();
                                             }}
                                         >
-                                            System Diagnostics
+                                            {t('memberList.systemDiagnostics')}
                                         </button>
                                     )}
                                     <button
                                         className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                         onClick={handleResetRead}
                                     >
-                                        Reset Read Status
+                                        {t('memberList.resetReadStatus')}
                                     </button>
                                 </div>
                             </>
@@ -288,11 +290,11 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                 {loading ? (
                     <div className="p-6 text-center text-gray-500 text-sm flex flex-col items-center gap-2">
                         <RefreshCw className="w-5 h-5 animate-spin" style={{ color: theme.modals.accentColor }} />
-                        <span>Loading conversations...</span>
+                        <span>{t('memberList.loadingConversations')}</span>
                     </div>
                 ) : groups.length === 0 ? (
                     <div className="p-6 text-center text-gray-500 text-sm">
-                        No conversations found.
+                        {t('memberList.noConversations')}
                     </div>
                 ) : null}
 
@@ -329,10 +331,10 @@ export const GroupMemberList: React.FC<GroupSidebarProps> = ({ onSelectGroup, se
                     {isSyncing ? (
                         <span className="flex items-center justify-center gap-1 font-medium" style={{ color: theme.modals.accentColor }}>
                             <RefreshCw className="w-3 h-3 animate-spin" />
-                            Syncing...
+                            {t('sync.syncing')}
                         </span>
                     ) : (
-                        <span>Auto-sync active</span>
+                        <span>{t('sync.autoSyncActive')}</span>
                     )}
                 </div>
             </div>

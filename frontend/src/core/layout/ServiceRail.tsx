@@ -7,6 +7,7 @@ import { SettingsMenu } from '../common/SettingsMenu';
 import { getServiceShortCode, getServiceBgColor } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { useAuth } from '../../shell/hooks/useAuth';
+import { useTranslation } from '../../i18n';
 
 export interface ServiceRailProps {
     services: string[];
@@ -22,6 +23,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     onReportIssue,
     onOpenAbout,
 }) => {
+    const { t } = useTranslation();
     const { activeService, setActiveService, removeSelectedService } = useAppStore();
     const [showAddModal, setShowAddModal] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
@@ -80,7 +82,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             {isServiceDisconnected(service) && (
                                 <div
                                     className="absolute -bottom-1 -right-1 w-5 h-5 bg-orange-500 rounded-full border-2 border-[#1e1f22] flex items-center justify-center"
-                                    title="Session expired - click to re-login"
+                                    title={t('serviceRail.sessionExpiredRelogin')}
                                 >
                                     <Unplug className="w-3 h-3 text-white" />
                                 </div>
@@ -101,7 +103,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                         onClick={handleRemoveService}
                         className="w-full px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 transition-colors"
                     >
-                        Remove Service
+                        {t('common.removeService')}
                     </button>
                 </div>
             )}
@@ -116,7 +118,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     <button
                         onClick={() => setShowAddModal(true)}
                         className="group relative w-12 h-12 rounded-[24px] flex items-center justify-center transition-all duration-200 hover:rounded-[16px]"
-                        title="Add Service"
+                        title={t('serviceRail.addService')}
                     >
                         <div className="w-12 h-12 rounded-[24px] bg-[#313338] flex items-center justify-center text-green-500 transition-all duration-200 group-hover:rounded-[16px] group-hover:bg-green-600 group-hover:text-white">
                             <Plus className="w-6 h-6" />

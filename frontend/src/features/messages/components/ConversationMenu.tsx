@@ -9,6 +9,7 @@ import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
 import { getThemeForService } from '../../../config/groupThemes';
+import { useTranslation } from '../../../i18n';
 
 // Re-export for backward compatibility
 export type { BackgroundSettings } from '../../../types';
@@ -41,6 +42,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     onBackgroundChange,
     iconColor,
 }) => {
+    const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
 
@@ -49,11 +51,11 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     const theme = getThemeForService(currentService);
 
     const menuItems = [
-        { id: 'calendar' as ModalType, icon: Calendar, label: 'Date Search', enabled: true },
-        { id: 'favorites' as ModalType, icon: Star, label: 'Favorites', enabled: true },
-        { id: 'media' as ModalType, icon: Image, label: 'Media', enabled: true },
-        { id: 'background' as ModalType, icon: Palette, label: 'Background', enabled: true },
-        { id: 'letters' as ModalType, icon: Mail, label: 'Sent Letters', enabled: !isGroupChat },
+        { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), enabled: true },
+        { id: 'favorites' as ModalType, icon: Star, label: t('conversationMenu.favorites'), enabled: true },
+        { id: 'media' as ModalType, icon: Image, label: t('conversationMenu.media'), enabled: true },
+        { id: 'background' as ModalType, icon: Palette, label: t('conversationMenu.background'), enabled: true },
+        { id: 'letters' as ModalType, icon: Mail, label: t('conversationMenu.sentLetters'), enabled: !isGroupChat },
     ];
 
     const handleMenuItemClick = (modalType: ModalType) => {
@@ -72,7 +74,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                         iconColor ? "hover:bg-black/5" : "text-white/80 hover:text-white hover:bg-white/10"
                     )}
                     style={iconColor ? { color: iconColor } : undefined}
-                    title="More options"
+                    title={t('common.moreOptions')}
                 >
                     <MoreVertical className="w-5 h-5" />
                 </button>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, ExternalLink } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 interface TosDialogProps {
     onAccept: () => void;
@@ -10,6 +11,7 @@ interface TosDialogProps {
  * Blocks app usage until the user accepts the terms.
  */
 export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
+    const { t } = useTranslation();
     const [acknowledged, setAcknowledged] = useState(false);
 
     const handleAccept = () => {
@@ -28,8 +30,8 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                     <div className="flex items-center gap-3">
                         <FileText className="w-8 h-8 text-white" />
                         <div>
-                            <h3 className="text-xl font-bold text-white">Terms of Service</h3>
-                            <p className="text-sm text-white/80">Please read before continuing</p>
+                            <h3 className="text-xl font-bold text-white">{t('tos.title')}</h3>
+                            <p className="text-sm text-white/80">{t('tos.subtitle')}</p>
                         </div>
                     </div>
                 </div>
@@ -38,31 +40,29 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                 <div className="p-6 space-y-4">
                     {/* Disclaimer box */}
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                        <h4 className="font-semibold text-amber-800 mb-2">Important Disclaimer</h4>
+                        <h4 className="font-semibold text-amber-800 mb-2">{t('tos.disclaimer')}</h4>
                         <p className="text-sm text-amber-700">
-                            HakoDesk is an <strong>unofficial</strong> third-party backup tool. It is not affiliated with,
-                            endorsed by, or connected to Nogizaka46, Sakurazaka46, Hinatazaka46, Sony Music Entertainment,
-                            or any of their official applications.
+                            {t('tos.disclaimerText')}
                         </p>
                     </div>
 
                     {/* Terms summary */}
                     <div className="text-sm text-gray-600 space-y-3">
                         <p>
-                            By using HakoDesk, you acknowledge that:
+                            {t('tos.acknowledgeIntro')}
                         </p>
                         <ul className="list-disc list-inside space-y-1 pl-2">
-                            <li>You have an active subscription to the official messaging services</li>
-                            <li>Content downloaded is for personal backup purposes only</li>
-                            <li>You will not redistribute or share downloaded content</li>
-                            <li>You accept full responsibility for your use of this application</li>
+                            <li>{t('tos.acknowledgeSubscription')}</li>
+                            <li>{t('tos.acknowledgeBackup')}</li>
+                            <li>{t('tos.acknowledgeNoRedistribute')}</li>
+                            <li>{t('tos.acknowledgeResponsibility')}</li>
                         </ul>
                     </div>
 
                     {/* Official ToS links */}
                     <div className="bg-gray-50 rounded-xl p-4">
                         <p className="text-xs text-gray-500 mb-3">
-                            Please review the official Terms of Service:
+                            {t('tos.reviewOfficialTos')}
                         </p>
                         <div className="flex flex-wrap gap-2">
                             <a
@@ -72,7 +72,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                                 className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
                             >
                                 <ExternalLink className="w-3 h-3" />
-                                Hinatazaka46 ToS
+                                {t('tos.hinatazakaTos')}
                             </a>
                             <span className="text-gray-300">|</span>
                             <a
@@ -82,7 +82,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                                 className="inline-flex items-center gap-1 text-xs text-pink-600 hover:text-pink-800 hover:underline"
                             >
                                 <ExternalLink className="w-3 h-3" />
-                                Sakurazaka46 ToS
+                                {t('tos.sakurazakaTos')}
                             </a>
                             <span className="text-gray-300">|</span>
                             <a
@@ -92,7 +92,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                                 className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
                             >
                                 <ExternalLink className="w-3 h-3" />
-                                Nogizaka46 ToS
+                                {t('tos.nogizakaTos')}
                             </a>
                         </div>
                     </div>
@@ -106,7 +106,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                             className="mt-0.5 w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
                         />
                         <span className="text-sm text-gray-700">
-                            I understand and accept these terms, and I have read the official Terms of Service for the services I use.
+                            {t('tos.acceptCheckbox')}
                         </span>
                     </label>
 
@@ -116,7 +116,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                         disabled={!acknowledged}
                         className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Accept and Continue
+                        {t('tos.acceptAndContinue')}
                     </button>
                 </div>
             </div>

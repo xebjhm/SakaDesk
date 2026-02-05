@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Download, X, ExternalLink, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 
 interface VersionInfo {
     current_version: string;
@@ -23,6 +24,7 @@ interface UpdateBannerProps {
 }
 
 export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
+    const { t } = useTranslation();
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
     const [dismissed, setDismissed] = useState(false);
     const [checking, setChecking] = useState(true);
@@ -169,7 +171,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                                 <RefreshCw className="w-5 h-5 shrink-0 animate-spin" />
                                 <div className="flex-1">
                                     <div className="text-sm font-medium">
-                                        Downloading v{upgradeStatus.version}...
+                                        {t('update.downloading', { version: upgradeStatus.version })}
                                     </div>
                                     <div className="mt-1 h-1.5 bg-white/30 rounded-full overflow-hidden">
                                         <div
@@ -185,7 +187,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                             <>
                                 <CheckCircle className="w-5 h-5 shrink-0" />
                                 <div className="text-sm">
-                                    <span className="font-medium">Ready to install v{upgradeStatus.version}</span>
+                                    <span className="font-medium">{t('update.readyToInstall', { version: upgradeStatus.version })}</span>
                                 </div>
                             </>
                         )}
@@ -194,8 +196,8 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                             <>
                                 <RefreshCw className="w-5 h-5 shrink-0 animate-spin" />
                                 <div className="text-sm">
-                                    <span className="font-medium">Installing...</span>
-                                    <span className="ml-2 opacity-90">Close the app to complete upgrade</span>
+                                    <span className="font-medium">{t('update.installing')}</span>
+                                    <span className="ml-2 opacity-90">{t('update.closeToComplete')}</span>
                                 </div>
                             </>
                         )}
@@ -204,7 +206,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                             <>
                                 <AlertCircle className="w-5 h-5 shrink-0" />
                                 <div className="text-sm">
-                                    <span className="font-medium">Upgrade failed:</span>
+                                    <span className="font-medium">{t('update.upgradeFailed')}</span>
                                     <span className="ml-2 opacity-90">{upgradeStatus.error}</span>
                                 </div>
                             </>
@@ -217,7 +219,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                                 onClick={handleLaunchUpgrade}
                                 className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
                             >
-                                Install Now
+                                {t('update.installNow')}
                             </button>
                         )}
 
@@ -225,7 +227,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                             <button
                                 onClick={handleCancelUpgrade}
                                 className="p-1 hover:bg-white/20 rounded-full transition-colors"
-                                title="Cancel"
+                                title={t('common.cancel')}
                             >
                                 <X className="w-4 h-4" />
                             </button>
@@ -242,7 +244,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
             <div className="flex items-center gap-3">
                 <Download className="w-5 h-5 shrink-0" />
                 <div className="text-sm">
-                    <span className="font-medium">Update available!</span>
+                    <span className="font-medium">{t('update.updateAvailable')}</span>
                     <span className="ml-2 opacity-90">
                         v{versionInfo.current_version} → v{versionInfo.latest_version}
                     </span>
@@ -256,7 +258,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                         className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
                     >
                         <Download className="w-4 h-4" />
-                        Upgrade Now
+                        {t('update.upgradeNow')}
                     </button>
                 ) : (
                     <button
@@ -264,13 +266,13 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                         className="flex items-center gap-1.5 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-medium transition-colors"
                     >
                         <ExternalLink className="w-4 h-4" />
-                        Download
+                        {t('common.download')}
                     </button>
                 )}
                 <button
                     onClick={handleDismiss}
                     className="p-1 hover:bg-white/20 rounded-full transition-colors"
-                    title="Dismiss"
+                    title={t('common.dismiss')}
                 >
                     <X className="w-4 h-4" />
                 </button>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
+import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface SyncModalProps {
@@ -23,10 +24,12 @@ const formatSpeed = (speed: number | null | undefined, unit: string): string => 
 };
 
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
+    const { t } = useTranslation();
+
     const getUnitLabel = () => {
-        if (syncProgress.phase_number === 2) return 'members';
-        if (syncProgress.phase_number === 3) return 'files';
-        return 'items';
+        if (syncProgress.phase_number === 2) return t('sync.members');
+        if (syncProgress.phase_number === 3) return t('sync.files');
+        return t('sync.items');
     };
 
     return (
@@ -40,10 +43,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-white">
-                                Phase {syncProgress.phase_number || 1}: {syncProgress.phase_name || 'Starting'}
+                                {t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })}
                             </h3>
                             <p className="text-sm text-white/80">
-                                {syncProgress.total ? `${syncProgress.total.toLocaleString()} ${getUnitLabel()}` : 'Please wait...'}
+                                {syncProgress.total ? `${syncProgress.total.toLocaleString()} ${getUnitLabel()}` : t('sync.pleaseWait')}
                             </p>
                         </div>
                     </div>
@@ -81,19 +84,19 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
                     {/* Stats Grid */}
                     <div className="grid grid-cols-3 gap-4">
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
-                            <div className="text-xs text-gray-500 mb-1">Elapsed</div>
+                            <div className="text-xs text-gray-500 mb-1">{t('time.elapsed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
                                 {formatTime(syncProgress.elapsed_seconds)}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
-                            <div className="text-xs text-gray-500 mb-1">ETA</div>
+                            <div className="text-xs text-gray-500 mb-1">{t('time.eta')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
                                 {syncProgress.eta_seconds ? formatTime(syncProgress.eta_seconds) : '--:--'}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
-                            <div className="text-xs text-gray-500 mb-1">Speed</div>
+                            <div className="text-xs text-gray-500 mb-1">{t('time.speed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
                                 {formatSpeed(syncProgress.speed, syncProgress.speed_unit || 'it')}
                             </div>
@@ -107,14 +110,14 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
                             <div className="flex items-center gap-2 text-amber-700">
                                 <Loader2 className="w-4 h-4 animate-spin" />
                                 <span className="text-sm font-medium">
-                                    Downloading media... Please do not close the app.
+                                    {t('sync.downloadingMedia')}
                                 </span>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
                                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                                 <span className="text-sm text-gray-700 font-medium truncate">
-                                    {syncProgress.detail || "Processing..."}
+                                    {syncProgress.detail || t('sync.processing')}
                                     {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
                                 </span>
                             </div>
@@ -124,9 +127,9 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
                     {/* Phase Dots */}
                     <div className="flex justify-center gap-3 pt-2">
                         {[
-                            { phase: 'scanning', label: 'Scan' },
-                            { phase: 'syncing', label: 'Sync' },
-                            { phase: 'downloading', label: 'Download' }
+                            { phase: 'scanning', label: t('sync.scan') },
+                            { phase: 'syncing', label: t('sync.syncing') },
+                            { phase: 'downloading', label: t('sync.download') }
                         ].map((p) => {
                             const currentPhaseIndex = ['scanning', 'discovering', 'syncing', 'downloading'].indexOf(syncProgress.phase || '');
                             const thisPhaseIndex = ['scanning', 'discovering', 'syncing', 'downloading'].indexOf(p.phase);
