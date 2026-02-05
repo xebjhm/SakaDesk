@@ -1,0 +1,50 @@
+{
+  "common": {
+    "settings": "設定",
+    "messages": "訊息",
+    "blogs": "部落格",
+    "sync": "同步",
+    "login": "登入",
+    "logout": "登出",
+    "save": "儲存",
+    "cancel": "取消",
+    "close": "關閉",
+    "error": "錯誤",
+    "loading": "載入中..."
+  },
+  "settings": {
+    "title": "設定",
+    "outputFolder": "輸出資料夾",
+    "autoSync": "自動同步",
+    "syncEvery": "同步間隔",
+    "smartTiming": "智慧時間",
+    "smartTimingDesc": "根據發布模式隨機化間隔",
+    "desktopNotifications": "桌面通知",
+    "desktopNotificationsDesc": "收到新訊息時顯示通知",
+    "blogFullBackup": "部落格完整備份",
+    "blogFullBackupOnDesc": "下載所有部落格內容和圖片以供離線閱讀",
+    "blogFullBackupOffDesc": "按需獲取部落格內容（節省磁碟空間）",
+    "language": "語言",
+    "languageDesc": "選擇您偏好的語言"
+  },
+  "time": {
+    "minute": "{{count}}分鐘",
+    "minute_other": "{{count}}分鐘",
+    "hour": "{{count}}小時",
+    "hour_other": "{{count}}小時"
+  },
+  "login": {
+    "title": "帳戶管理",
+    "subtitle": "連接您訂閱的坂道團體。您可以同時連接多個帳戶。",
+    "connect": "連接",
+    "connecting": "連接中...",
+    "disconnect": "斷開",
+    "connected": "已連接",
+    "sessionExpired": "工作階段已過期",
+    "refreshFailed": "認證失敗",
+    "returnDashboard": "返回儀表板",
+    "secureNote": "憑證透過Windows憑證管理員安全地儲存在您的裝置上。",
+    "errorPrefix": "錯誤: ",
+    "logoutConfirm": "從{{group}}登出？"
+  }
+}

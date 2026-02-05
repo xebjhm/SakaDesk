@@ -1,4 +1,17 @@
-
+/**
+ * @deprecated This file is deprecated. Use the i18n system instead.
+ *
+ * Import and use translations like this:
+ *
+ * import { useTranslation } from '../i18n';
+ *
+ * function MyComponent() {
+ *     const { t } = useTranslation();
+ *     return <h1>{t('login.title')}</h1>;
+ * }
+ *
+ * See locales/*.json for available translation keys.
+ */
 export const STRINGS = {
     LOGIN: {
         TITLE: "Account Management",
