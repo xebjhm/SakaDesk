@@ -10,7 +10,18 @@
     "cancel": "取消",
     "close": "關閉",
     "error": "錯誤",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "done": "完成",
+    "refresh": "重新整理",
+    "browse": "瀏覽",
+    "download": "下載",
+    "dismiss": "關閉",
+    "preview": "預覽",
+    "about": "關於HakoDesk",
+    "reportIssue": "回報問題",
+    "featureRequest": "功能請求",
+    "moreOptions": "更多選項",
+    "removeService": "移除服務"
   },
   "settings": {
     "title": "設定",
@@ -31,7 +42,10 @@
     "minute": "{{count}}分鐘",
     "minute_other": "{{count}}分鐘",
     "hour": "{{count}}小時",
-    "hour_other": "{{count}}小時"
+    "hour_other": "{{count}}小時",
+    "elapsed": "已用時間",
+    "eta": "預計剩餘",
+    "speed": "速度"
   },
   "login": {
     "title": "帳戶管理",
@@ -45,6 +59,214 @@
     "returnDashboard": "返回儀表板",
     "secureNote": "憑證透過Windows憑證管理員安全地儲存在您的裝置上。",
     "errorPrefix": "錯誤: ",
-    "logoutConfirm": "從{{group}}登出？"
+    "logoutConfirm": "從{{group}}登出？",
+    "loginRequired": "需要登入",
+    "sessionExpiredDesc": "您的{{service}}工作階段已過期。請重新登入以繼續使用{{feature}}。",
+    "premiumFeatureDesc": "{{feature}}是需要登入{{service}}帳戶的進階功能。",
+    "credentialsSaved": "您的憑證已儲存在本機裝置上。",
+    "waitingForBrowser": "等待瀏覽器...",
+    "launchBrowserLogin": "在瀏覽器中登入",
+    "connectAccount": "連接帳戶",
+    "browserPrompt": "請登入您的{{service}}訊息帳戶。將開啟一個瀏覽器視窗供您輸入憑證。"
+  },
+  "tos": {
+    "title": "服務條款",
+    "subtitle": "繼續前請閱讀",
+    "disclaimer": "重要聲明",
+    "disclaimerText": "HakoDesk是一個非官方的第三方備份工具。它與乃木坂46、櫻坂46、日向坂46、索尼音樂娛樂或其官方應用程式沒有任何關聯、認可或連接。",
+    "acknowledgeIntro": "使用HakoDesk即表示您承認：",
+    "acknowledgeSubscription": "您擁有官方訊息服務的有效訂閱",
+    "acknowledgeBackup": "下載的內容僅用於個人備份目的",
+    "acknowledgeNoRedistribute": "您不會重新分發或分享下載的內容",
+    "acknowledgeResponsibility": "您對使用本應用程式承擔全部責任",
+    "reviewOfficialTos": "請查看官方服務條款：",
+    "hinatazakaTos": "日向坂46 服務條款",
+    "sakurazakaTos": "櫻坂46 服務條款",
+    "nogizakaTos": "乃木坂46 服務條款",
+    "acceptCheckbox": "我理解並接受這些條款，並且我已閱讀我使用的服務的官方服務條款。",
+    "acceptAndContinue": "同意並繼續"
+  },
+  "setup": {
+    "welcome": "歡迎使用HakoDesk",
+    "setupDataFolder": "讓我們設定您的資料夾",
+    "outputFolderPath": "輸出資料夾路徑",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderHint": "輸入訊息儲存的完整路徑。您可以從Windows檔案總管複製。",
+    "downloadBlogsOffline": "下載部落格以供離線閱讀",
+    "downloadBlogsHint": "同步期間下載所有部落格內容和圖片。使用更多磁碟空間但允許離線檢視。",
+    "startUsing": "開始使用HakoDesk"
+  },
+  "sync": {
+    "phase": "階段{{number}}：{{name}}",
+    "starting": "正在啟動",
+    "pleaseWait": "請稍候...",
+    "members": "成員",
+    "files": "檔案",
+    "items": "項目",
+    "downloadingMedia": "正在下載媒體...請不要關閉應用程式。",
+    "processing": "處理中...",
+    "scan": "掃描",
+    "download": "下載",
+    "syncing": "同步中...",
+    "autoSyncActive": "自動同步已啟用"
+  },
+  "about": {
+    "title": "關於HakoDesk",
+    "version": "版本 {{version}}",
+    "description": "用於檢視訊息存檔的桌面夥伴。",
+    "madeWith": "Made with",
+    "by": "by"
+  },
+  "report": {
+    "title": "回報問題",
+    "whatType": "什麼類型的問題？",
+    "categorySyncData": "同步 / 資料",
+    "categorySyncDataHelp": "訊息缺失或錯誤",
+    "categoryPlayback": "播放",
+    "categoryPlaybackHelp": "音訊/影片無法播放",
+    "categoryLogin": "登入",
+    "categoryLoginHelp": "無法登入或已過期",
+    "categoryOther": "其他",
+    "categoryOtherHelp": "其他問題",
+    "whatDoing": "您在做什麼？",
+    "whatDoingPlaceholder": "例如：播放語音訊息",
+    "whatWrong": "出了什麼問題？",
+    "whatWrongPlaceholder": "例如：音訊在5秒後停止",
+    "autoContext": "自動偵測的內容：",
+    "member": "成員",
+    "generating": "產生中...",
+    "createGitHubIssue": "建立GitHub Issue"
+  },
+  "addService": {
+    "title": "新增服務",
+    "allAdded": "所有服務已新增！"
+  },
+  "diagnostics": {
+    "title": "開發者診斷",
+    "hiddenPanel": "隱藏面板",
+    "system": "系統",
+    "os": "作業系統",
+    "python": "Python",
+    "serviceAuth": "服務認證",
+    "noServicesConfigured": "未設定服務",
+    "disconnected": "已斷開",
+    "notLoggedIn": "未登入",
+    "expires": "到期時間",
+    "configuration": "設定",
+    "configured": "已設定",
+    "outputDir": "輸出目錄",
+    "off": "關閉",
+    "diskUsage": "磁碟使用",
+    "size": "大小",
+    "syncStatusByService": "按服務同步狀態",
+    "ok": "正常",
+    "neverSynced": "從未同步",
+    "lastSync": "上次同步",
+    "paths": "路徑",
+    "appData": "應用程式資料",
+    "logs": "日誌",
+    "recent": "最近",
+    "errors": "錯誤",
+    "warnings": "警告",
+    "noLogsFound": "未找到{{type}}日誌。",
+    "copied": "已複製！",
+    "copyJson": "複製JSON"
+  },
+  "update": {
+    "downloading": "正在下載 v{{version}}...",
+    "readyToInstall": "準備安裝 v{{version}}",
+    "installing": "安裝中...",
+    "closeToComplete": "請關閉應用程式以完成升級",
+    "upgradeFailed": "升級失敗：",
+    "installNow": "立即安裝",
+    "updateAvailable": "有可用更新！",
+    "upgradeNow": "立即升級"
+  },
+  "memberList": {
+    "title": "Talk",
+    "titleJa": "トーク",
+    "loadingConversations": "正在載入對話...",
+    "noConversations": "未找到對話。",
+    "online": "Online",
+    "onlineJa": "オンライン",
+    "offline": "Offline",
+    "offlineJa": "オフライン"
+  },
+  "conversationMenu": {
+    "dateSearch": "日期搜尋",
+    "favorites": "收藏夾",
+    "media": "媒體",
+    "background": "背景",
+    "sentLetters": "已發送的信件"
+  },
+  "messageList": {
+    "noMessages": "沒有訊息",
+    "jumpToOldestUnread": "跳轉到最早的未讀"
+  },
+  "calendar": {
+    "title": "日期搜尋",
+    "today": "今天",
+    "availableOnDays": "{{count}}天可用",
+    "tapToJump": "點擊日期跳轉",
+    "weekdays": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    },
+    "months": {
+      "jan": "一月",
+      "feb": "二月",
+      "mar": "三月",
+      "apr": "四月",
+      "may": "五月",
+      "jun": "六月",
+      "jul": "七月",
+      "aug": "八月",
+      "sep": "九月",
+      "oct": "十月",
+      "nov": "十一月",
+      "dec": "十二月"
+    }
+  },
+  "favorites": {
+    "title": "收藏夾",
+    "noFavorites": "暫無收藏",
+    "addHint": "長按或右鍵點擊訊息新增到收藏夾",
+    "count": "{{count}}個收藏",
+    "count_other": "{{count}}個收藏"
+  },
+  "background": {
+    "title": "背景",
+    "customImage": "自訂圖片",
+    "uploadImage": "上傳圖片",
+    "uploadHint": "最大2MB。支援JPG、PNG、GIF。",
+    "solidColor": "純色",
+    "opacity": "不透明度：{{value}}%",
+    "resetToDefault": "恢復預設",
+    "imageTooLarge": "圖片太大。請選擇2MB以下的圖片。",
+    "selectImageFile": "請選擇圖片檔案。"
+  },
+  "landing": {
+    "welcome": "歡迎使用HakoDesk",
+    "selectGroups": "選擇您要追蹤的團體",
+    "selectAtLeastOne": "請至少選擇一個團體",
+    "getStarted": "開始",
+    "getStartedWith": "開始追蹤{{count}}個團體",
+    "footerNote": "部落格可以自由瀏覽。訊息和其他進階功能需要登入。"
+  },
+  "serviceRail": {
+    "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
+    "addService": "新增服務"
+  },
+  "media": {
+    "title": "媒體",
+    "jumpToDate": "跳轉到日期",
+    "cached": "已快取",
+    "publishedRecently": "24小時內發布",
+    "checkingUpdates": "檢查更新中..."
   }
 }

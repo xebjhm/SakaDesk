@@ -10,7 +10,18 @@
     "cancel": "Cancel",
     "close": "Close",
     "error": "Error",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "done": "Done",
+    "refresh": "Refresh",
+    "browse": "Browse",
+    "download": "Download",
+    "dismiss": "Dismiss",
+    "preview": "Preview",
+    "about": "About",
+    "reportIssue": "Report Issue",
+    "featureRequest": "Feature Request",
+    "moreOptions": "More options",
+    "removeService": "Remove Service"
   },
   "settings": {
     "title": "Settings",
@@ -31,7 +42,10 @@
     "minute": "{{count}} minute",
     "minute_other": "{{count}} minutes",
     "hour": "{{count}} hour",
-    "hour_other": "{{count}} hours"
+    "hour_other": "{{count}} hours",
+    "elapsed": "Elapsed",
+    "eta": "ETA",
+    "speed": "Speed"
   },
   "login": {
     "title": "Account Management",
@@ -45,6 +59,214 @@
     "returnDashboard": "Return to Dashboard",
     "secureNote": "Credentials are saved securely on your device via Windows Credential Manager.",
     "errorPrefix": "Error: ",
-    "logoutConfirm": "Logout from {{group}}?"
+    "logoutConfirm": "Logout from {{group}}?",
+    "loginRequired": "Login Required",
+    "sessionExpiredDesc": "Your session for {{service}} has expired. Please re-login to continue using {{feature}}.",
+    "premiumFeatureDesc": "{{feature}} is a premium feature that requires logging in with your {{service}} account.",
+    "credentialsSaved": "Your credentials are saved locally on your device.",
+    "waitingForBrowser": "Waiting for browser...",
+    "launchBrowserLogin": "Launch Browser Login",
+    "connectAccount": "Connect Account",
+    "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials."
+  },
+  "tos": {
+    "title": "Terms of Service",
+    "subtitle": "Please read before continuing",
+    "disclaimer": "Important Disclaimer",
+    "disclaimerText": "HakoDesk is an unofficial third-party backup tool. It is not affiliated with, endorsed by, or connected to Nogizaka46, Sakurazaka46, Hinatazaka46, Sony Music Entertainment, or any of their official applications.",
+    "acknowledgeIntro": "By using HakoDesk, you acknowledge that:",
+    "acknowledgeSubscription": "You have an active subscription to the official messaging services",
+    "acknowledgeBackup": "Content downloaded is for personal backup purposes only",
+    "acknowledgeNoRedistribute": "You will not redistribute or share downloaded content",
+    "acknowledgeResponsibility": "You accept full responsibility for your use of this application",
+    "reviewOfficialTos": "Please review the official Terms of Service:",
+    "hinatazakaTos": "Hinatazaka46 ToS",
+    "sakurazakaTos": "Sakurazaka46 ToS",
+    "nogizakaTos": "Nogizaka46 ToS",
+    "acceptCheckbox": "I understand and accept these terms, and I have read the official Terms of Service for the services I use.",
+    "acceptAndContinue": "Accept and Continue"
+  },
+  "setup": {
+    "welcome": "Welcome to HakoDesk",
+    "setupDataFolder": "Let's set up your data folder",
+    "outputFolderPath": "Output Folder Path",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderHint": "Enter the full path where messages will be stored. You can copy this from Windows Explorer.",
+    "downloadBlogsOffline": "Download blogs for offline reading",
+    "downloadBlogsHint": "Downloads all blog content and images during sync. Uses more disk space but allows offline viewing.",
+    "startUsing": "Start Using HakoDesk"
+  },
+  "sync": {
+    "phase": "Phase {{number}}: {{name}}",
+    "starting": "Starting",
+    "pleaseWait": "Please wait...",
+    "members": "members",
+    "files": "files",
+    "items": "items",
+    "downloadingMedia": "Downloading media... Please do not close the app.",
+    "processing": "Processing...",
+    "scan": "Scan",
+    "download": "Download",
+    "syncing": "Syncing...",
+    "autoSyncActive": "Auto-sync active"
+  },
+  "about": {
+    "title": "About",
+    "version": "Version {{version}}",
+    "description": "A desktop companion for viewing your Message archives.",
+    "madeWith": "Made with",
+    "by": "by"
+  },
+  "report": {
+    "title": "Report an Issue",
+    "whatType": "What type of issue?",
+    "categorySyncData": "Sync / Data",
+    "categorySyncDataHelp": "Missing or wrong messages",
+    "categoryPlayback": "Playback",
+    "categoryPlaybackHelp": "Audio/video won't play",
+    "categoryLogin": "Login",
+    "categoryLoginHelp": "Can't sign in or expired",
+    "categoryOther": "Other",
+    "categoryOtherHelp": "Something else broke",
+    "whatDoing": "What were you doing?",
+    "whatDoingPlaceholder": "e.g., Playing a voice message",
+    "whatWrong": "What went wrong?",
+    "whatWrongPlaceholder": "e.g., Audio stops after 5 seconds",
+    "autoContext": "Auto-detected context:",
+    "member": "Member",
+    "generating": "Generating...",
+    "createGitHubIssue": "Create GitHub Issue"
+  },
+  "addService": {
+    "title": "Add Service",
+    "allAdded": "All services are already added!"
+  },
+  "diagnostics": {
+    "title": "Developer Diagnostics",
+    "hiddenPanel": "Hidden Panel",
+    "system": "System",
+    "os": "OS",
+    "python": "Python",
+    "serviceAuth": "Service Authentication",
+    "noServicesConfigured": "No services configured",
+    "disconnected": "Disconnected",
+    "notLoggedIn": "Not logged in",
+    "expires": "Expires",
+    "configuration": "Configuration",
+    "configured": "Configured",
+    "outputDir": "Output Dir",
+    "off": "Off",
+    "diskUsage": "Disk Usage",
+    "size": "Size",
+    "syncStatusByService": "Sync Status by Service",
+    "ok": "OK",
+    "neverSynced": "Never synced",
+    "lastSync": "Last sync",
+    "paths": "Paths",
+    "appData": "App Data",
+    "logs": "Logs",
+    "recent": "Recent",
+    "errors": "Errors",
+    "warnings": "Warnings",
+    "noLogsFound": "No {{type}} logs found.",
+    "copied": "Copied!",
+    "copyJson": "Copy JSON"
+  },
+  "update": {
+    "downloading": "Downloading v{{version}}...",
+    "readyToInstall": "Ready to install v{{version}}",
+    "installing": "Installing...",
+    "closeToComplete": "Close the app to complete upgrade",
+    "upgradeFailed": "Upgrade failed:",
+    "installNow": "Install Now",
+    "updateAvailable": "Update available!",
+    "upgradeNow": "Upgrade Now"
+  },
+  "memberList": {
+    "title": "Talk",
+    "titleJa": "トーク",
+    "loadingConversations": "Loading conversations...",
+    "noConversations": "No conversations found.",
+    "online": "Online",
+    "onlineJa": "オンライン",
+    "offline": "Offline",
+    "offlineJa": "オフライン"
+  },
+  "conversationMenu": {
+    "dateSearch": "Date Search",
+    "favorites": "Favorites",
+    "media": "Media",
+    "background": "Background",
+    "sentLetters": "Sent Letters"
+  },
+  "messageList": {
+    "noMessages": "No messages",
+    "jumpToOldestUnread": "Jump to oldest unread"
+  },
+  "calendar": {
+    "title": "Date Search",
+    "today": "Today",
+    "availableOnDays": "Available on {{count}} days",
+    "tapToJump": "Tap a date to jump",
+    "weekdays": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "months": {
+      "jan": "January",
+      "feb": "February",
+      "mar": "March",
+      "apr": "April",
+      "may": "May",
+      "jun": "June",
+      "jul": "July",
+      "aug": "August",
+      "sep": "September",
+      "oct": "October",
+      "nov": "November",
+      "dec": "December"
+    }
+  },
+  "favorites": {
+    "title": "Favorites",
+    "noFavorites": "No favorites yet",
+    "addHint": "Long press or right-click on a message to add to favorites",
+    "count": "{{count}} favorite",
+    "count_other": "{{count}} favorites"
+  },
+  "background": {
+    "title": "Background",
+    "customImage": "Custom Image",
+    "uploadImage": "Upload Image",
+    "uploadHint": "Max 2MB. JPG, PNG, GIF supported.",
+    "solidColor": "Solid Color",
+    "opacity": "Opacity: {{value}}%",
+    "resetToDefault": "Reset to Default",
+    "imageTooLarge": "Image too large. Please choose an image under 2MB.",
+    "selectImageFile": "Please select an image file."
+  },
+  "landing": {
+    "welcome": "Welcome to HakoDesk",
+    "selectGroups": "Select the groups you want to follow",
+    "selectAtLeastOne": "Select at least one group",
+    "getStarted": "Get Started",
+    "getStartedWith": "Get Started with {{count}} groups",
+    "footerNote": "Browse blogs freely. Login required for Messages and other premium features."
+  },
+  "serviceRail": {
+    "sessionExpiredRelogin": "Session expired - click to re-login",
+    "addService": "Add Service"
+  },
+  "media": {
+    "title": "Media",
+    "jumpToDate": "Jump to Date",
+    "cached": "Cached",
+    "publishedRecently": "Published within 24 hours",
+    "checkingUpdates": "Checking for updates..."
   }
 }
