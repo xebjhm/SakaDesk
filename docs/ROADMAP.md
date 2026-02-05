@@ -1,6 +1,6 @@
 # HakoDesk Feature Roadmap
 
-> **Last Updated:** 2026-01-14
+> **Last Updated:** 2026-02-05
 
 This document tracks planned features, improvements, and technical debt for HakoDesk.
 
@@ -118,15 +118,14 @@ Zone C: ContentArea - Feature-specific content
 - [x] Service/feature configuration system
 - [x] Index exports for stores, config, features
 
-**Backend changes (Remaining):**
-- [ ] Update pyhako Group enum usage throughout
-- [ ] Separate credential storage per group
-- [ ] Separate sync state per group
-- [ ] Update settings structure
+**Backend changes (Completed 2026-02):**
+- [x] Per-service authentication with multi-group auth status API
+- [x] Per-service sync state tracking
+- [x] Per-service token refresh scheduling
+- [x] Sync newly connected services automatically (fixed race condition)
 
 **Core library dependency:**
-- Verify pyhako supports all three groups
-- May need core updates first
+- [x] pyhako supports all three groups (Hinatazaka, Nogizaka, Sakurazaka)
 
 ---
 
@@ -397,24 +396,27 @@ Frontend: react-i18next or similar
 ## P3: Nice-to-Have
 
 ### 14. Official Blogs Support
-**Status:** Not Started
+**Status:** ✅ Mostly Complete
 **Category:** Feature
 **Complexity:** Medium
 
 **Note:** Backup already supported in pyhako core.
 
-**Frontend design needed:**
-- Blog list view (by member)
-- Blog post reader view
-- Image gallery in posts
-- Navigation between posts
+**Implemented (2026-02-05):**
+- [x] BlogsFeature component with recent posts feed
+- [x] Blog reader view with content rendering
+- [x] Member selection modal with thumbnails
+- [x] Member timeline modal (post history)
+- [x] Auto-sync on feature visit with "Checking for updates..." indicator
+- [x] Race condition fix for rapid service switching
+- [x] Navigation between posts (prev/next/jump)
+- [x] All/Favorite filtering by member
+- [x] Backend sync endpoint: `POST /api/blogs/sync`
 
-**Tasks:**
-- [ ] Design blog UI/UX
-- [ ] Create BlogList component
-- [ ] Create BlogReader component
-- [ ] Integrate with sync (blog sync)
-- [ ] Add blog section to navigation
+**Remaining (nice-to-have):**
+- [ ] Image gallery within posts (lightbox)
+- [ ] Search within blogs
+- [ ] Offline caching improvements
 
 ---
 
@@ -722,6 +724,9 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-02-05 | Completed P3.14: Blog Support - Full blog browsing with auto-sync, race condition handling, member selection/timeline |
+| 2026-02-05 | Fixed message sync: newly connected services now sync automatically (useSync refactor) |
+| 2026-02-05 | Completed P1.4 backend: Multi-service auth, per-service sync, token refresh scheduling |
 | 2026-01-14 | Completed P1.4: Multi-Service UI Architecture - 3-zone Discord-style layout with Zustand, ServiceRail, FeatureRail, ContentArea, MessagesFeature extraction |
 | 2026-01-14 | Completed P1.20: Official App Feature Parity (MediaGallery, Favorites, SentLetters, Calendar, Background) |
 | 2026-01-13 | Completed P2.8: In-place software upgrade for Windows |
