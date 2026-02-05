@@ -71,3 +71,25 @@ export async function getBlogContent(
     }
     return res.json();
 }
+
+export interface BlogSyncResponse {
+    status: string;
+    service: string;
+    total_members: number;
+    total_blogs: number;
+    last_sync: string;
+}
+
+/**
+ * Sync blog metadata from official website.
+ * This fetches fresh blog data - does NOT require authentication.
+ */
+export async function syncBlogMetadata(service: string): Promise<BlogSyncResponse> {
+    const res = await fetch(`${API_BASE}/sync?service=${encodeURIComponent(service)}`, {
+        method: 'POST',
+    });
+    if (!res.ok) {
+        throw new Error(`Failed to sync blog metadata: ${res.status}`);
+    }
+    return res.json();
+}

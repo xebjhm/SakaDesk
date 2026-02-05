@@ -217,3 +217,39 @@ async def clear_cache(service: str = Query(...)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sync")
+async def sync_blog_metadata(service: str = Query(...)):
+    """Sync blog metadata from official website.
+
+    This endpoint fetches fresh blog data from the official website.
+    Unlike message sync, this does NOT require authentication since
+    blogs are publicly accessible.
+
+    Args:
+        service: Service name (e.g., 'sakurazaka46').
+
+    Returns:
+        Stats about the sync operation.
+    """
+    try:
+        validate_service(service)
+        index = await blog_service.sync_blog_metadata(service)
+
+        # Calculate stats
+        total_blogs = sum(
+            len(m.get("blogs", [])) for m in index.get("members", {}).values()
+        )
+
+        return {
+            "status": "ok",
+            "service": service,
+            "total_members": len(index.get("members", {})),
+            "total_blogs": total_blogs,
+            "last_sync": index.get("last_sync"),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,7 +1,7 @@
 // frontend/src/features/blogs/BlogsFeature.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { BlogMember, BlogMeta, BlogContentResponse, RecentPost, BlogMemberWithThumbnail } from '../../types';
-import { getBlogMembersWithThumbnails, getBlogList, getBlogContent, getRecentPosts } from './api';
+import { getBlogMembersWithThumbnails, getBlogList, getBlogContent, getRecentPosts, syncBlogMetadata } from './api';
 import { useAppStore } from '../../store/appStore';
 import { RecentPostsFeed, MemberTimelineModal, BlogReader } from './components';
 import { MemberSelectModal } from './components/MemberSelectModal';
@@ -56,6 +56,7 @@ export const BlogsFeature: React.FC = () => {
     // UI states
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
 
     // Reset to recent view when service changes
     useEffect(() => {
@@ -100,6 +101,49 @@ export const BlogsFeature: React.FC = () => {
             .catch(e => setError(e.message))
             .finally(() => setLoading(false));
     }, [viewState.view, activeService, selectionMode, favoritesKey]);
+
+    // Auto-sync blog metadata when entering recent view
+    // Runs in background, shows subtle indicator, then refreshes posts
+    useEffect(() => {
+        if (viewState.view !== 'recent' || !activeService) return;
+
+        // Capture service at effect start to detect if it changes during async ops
+        const serviceAtStart = activeService;
+        let cancelled = false;
+
+        // Start background sync
+        setIsSyncing(true);
+        syncBlogMetadata(serviceAtStart)
+            .then(() => {
+                // Check if service changed while syncing - abort if so
+                if (cancelled) return null;
+                // Sync complete - re-fetch posts to show any new content
+                const memberIds = selectionMode === 'favorite' && favorites.length > 0
+                    ? favorites
+                    : undefined;
+                return getRecentPosts(serviceAtStart, 20, memberIds);
+            })
+            .then(res => {
+                // Only update state if we're still on the same service
+                if (!cancelled && res) {
+                    setRecentPosts(res.posts);
+                }
+            })
+            .catch(() => {
+                // Silent fail - user still sees cached data
+                console.debug('Blog sync failed (non-fatal)');
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setIsSyncing(false);
+                }
+            });
+
+        // Cleanup: mark as cancelled if service/view changes before sync completes
+        return () => {
+            cancelled = true;
+        };
+    }, [activeService, viewState.view]); // Only re-sync when service or view changes
 
     // Pre-fetch members when service is connected (for instant modal open)
     // This runs once when the service changes, not when modal opens
@@ -379,6 +423,7 @@ export const BlogsFeature: React.FC = () => {
                     posts={recentPosts}
                     loading={loading}
                     error={error}
+                    syncing={isSyncing}
                     onSelectPost={handleSelectRecentPost}
                     onMemberSelect={() => setIsMemberModalOpen(true)}
                     onRetry={handleRetry}
