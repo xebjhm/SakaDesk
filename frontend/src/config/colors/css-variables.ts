@@ -16,6 +16,7 @@ const SERVICE_TO_GROUP: Record<string, GroupId> = {
     'hinatazaka46': 'hinatazaka',
     'sakurazaka46': 'sakurazaka',
     'nogizaka46': 'nogizaka',
+    'yodel': 'yodel',
 };
 
 /**

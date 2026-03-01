@@ -44,6 +44,16 @@ export const BRAND_COLORS = {
         /** Misty lavender accent */
         accent: '#E8E0F0',
     },
+    yodel: {
+        /** Sage Green - primary brand color (from Yodel app UI) */
+        primary: '#5a8a6a',
+        /** Darker forest green for gradients */
+        primaryDark: '#3d6b4f',
+        /** Light sage - secondary color */
+        secondary: '#7ab08a',
+        /** Soft mint accent */
+        accent: '#d4ebe0',
+    },
 } as const;
 
 /**

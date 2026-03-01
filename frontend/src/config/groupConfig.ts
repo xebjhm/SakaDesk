@@ -8,6 +8,7 @@ export const GROUP_CHAT_IDS: Record<GroupId, string[]> = {
   hinatazaka: ['43'], // 日向坂46 group chat
   sakurazaka: ['45'], // 櫻坂46 group chat (TBD - confirm actual ID)
   nogizaka: ['46'],   // 乃木坂46 group chat (TBD - confirm actual ID)
+  yodel: [],          // Yodel group chats (TBD)
   default: [],
 };
 
@@ -29,6 +30,8 @@ export function isGroupChat(groupId: string, serviceId: string | null): boolean 
     groupKey = 'sakurazaka';
   } else if (serviceLower.includes('nogi')) {
     groupKey = 'nogizaka';
+  } else if (serviceLower.includes('yodel')) {
+    groupKey = 'yodel';
   }
 
   return GROUP_CHAT_IDS[groupKey].includes(groupId);
@@ -52,6 +55,9 @@ export function getGroupChatIds(serviceId: string | null): string[] {
   }
   if (serviceLower.includes('nogi')) {
     return GROUP_CHAT_IDS.nogizaka;
+  }
+  if (serviceLower.includes('yodel')) {
+    return GROUP_CHAT_IDS.yodel;
   }
 
   return GROUP_CHAT_IDS.default;
