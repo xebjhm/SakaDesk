@@ -12,21 +12,21 @@
 export const BRAND_COLORS = {
     hinatazaka: {
         /** Sorairo (Sky Blue) - primary brand color */
-        primary: '#7cc7e8',
+        primary: '#5bbfe5',
         /** Darker sky blue for gradients */
-        primaryDark: '#5eb3d8',
+        primaryDark: '#4aa8cc',
         /** Teal - secondary accent */
         secondary: '#5dc2b5',
         /** Soft sunlight yellow */
         accent: '#fffacd',
     },
     sakurazaka: {
-        /** Official Sakura Pink - primary brand color */
-        primary: '#E85298',
+        /** Sakura Pink - primary brand color */
+        primary: '#f19cb4',
         /** Lighter cherry blossom pink */
-        primaryLight: '#f7a6c9',
+        primaryLight: '#f7c4d4',
         /** Darker rose for gradients */
-        primaryDark: '#d4729c',
+        primaryDark: '#E85298',
         /** Pure white - secondary color */
         secondary: '#FFFFFF',
         /** Cool grey-blue accent */
@@ -34,7 +34,7 @@ export const BRAND_COLORS = {
     },
     nogizaka: {
         /** Noble Purple - primary brand color */
-        primary: '#7e1083',
+        primary: '#7e2483',
         /** Soft purple for lighter contexts */
         primaryLight: '#9B59B6',
         /** Darker noble purple for gradients */
