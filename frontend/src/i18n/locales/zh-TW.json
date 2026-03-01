@@ -157,6 +157,8 @@
     "noConversations": "找不到對話。",
     "online": "線上",
     "offline": "離線",
+    "graduated": "畢業成員",
+    "graduatedTooltip": "此成員已畢業。訊息為唯讀封存。",
     "appSettings": "應用程式設定",
     "systemDiagnostics": "系統診斷",
     "resetReadStatus": "重設已讀狀態"
