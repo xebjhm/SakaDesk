@@ -2,6 +2,8 @@
 // Single source of truth for service definitions
 // Colors are derived from the brand palette for consistency
 
+import { BRAND_COLORS } from '../config/colors/palette';
+
 // Note: Colors are defined statically for Tailwind JIT compatibility.
 // Canonical color values live in config/colors/palette.ts - keep in sync.
 
@@ -12,6 +14,7 @@ export interface ServiceDefinition {
     shortCode: string;
     color: string;          // Gradient classes for UI elements
     bgColor: string;        // Solid bg class for icons/badges
+    primaryColor: string;   // Hex color for dynamic styling (rings, tints)
     blogBaseUrl: string;    // Base URL for blog content normalization
     description: string;
     logoUrl: string;        // Official logo URL (hotlinked from official site)
@@ -19,9 +22,9 @@ export interface ServiceDefinition {
 
 // Tailwind requires static class names at build time.
 // These colors are derived from BRAND_COLORS in palette.ts - keep them in sync.
-// hinatazaka: primary=#7cc7e8, primaryDark=#5eb3d8
-// sakurazaka: primary=#E85298, primaryLight=#f7a6c9
-// nogizaka: primary=#7e1083, primaryDark=#5a0b5e
+// hinatazaka: primary=#5bbfe5, primaryDark=#4aa8cc
+// sakurazaka: primary=#f19cb4, primaryDark=#E85298
+// nogizaka: primary=#7e2483, primaryDark=#5a0b5e
 
 export const SERVICES: ServiceDefinition[] = [
     {
@@ -29,34 +32,36 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Hinatazaka46',
         displayName: '日向坂46',
         shortCode: 'HI',
-        color: 'from-[#7cc7e8] to-[#5eb3d8]',
-        bgColor: 'bg-[#7cc7e8]',
+        color: 'from-[#5bbfe5] to-[#4aa8cc]',
+        bgColor: 'bg-[#5bbfe5]',
+        primaryColor: BRAND_COLORS.hinatazaka.primary,
         blogBaseUrl: 'https://www.hinatazaka46.com',
         description: 'Hinatazaka46 Messages & Blogs',
-        logoUrl: 'https://cdn.hinatazaka46.com/files/14/hinata/img/favicons/apple-touch-icon.png',
+        logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
     },
     {
         id: 'sakurazaka46',
         name: 'Sakurazaka46',
         displayName: '櫻坂46',
         shortCode: 'SA',
-        // Use lighter pink gradient for softer appearance
-        color: 'from-[#f7a6c9] to-[#E85298]',
-        bgColor: 'bg-[#E85298]',
+        color: 'from-[#f19cb4] to-[#E85298]',
+        bgColor: 'bg-[#f19cb4]',
+        primaryColor: BRAND_COLORS.sakurazaka.primary,
         blogBaseUrl: 'https://sakurazaka46.com',
         description: 'Sakurazaka46 Messages & Blogs',
-        logoUrl: 'https://sakurazaka46.com/files/14/s46/favicons/apple-touch-icon-180x180.png',
+        logoUrl: 'https://sakurazaka46.com/files/14/s46/img/about/about-logo.svg',
     },
     {
         id: 'nogizaka46',
         name: 'Nogizaka46',
         displayName: '乃木坂46',
         shortCode: 'NO',
-        color: 'from-[#7e1083] to-[#5a0b5e]',
-        bgColor: 'bg-[#7e1083]',
+        color: 'from-[#7e2483] to-[#5a0b5e]',
+        bgColor: 'bg-[#7e2483]',
+        primaryColor: BRAND_COLORS.nogizaka.primary,
         blogBaseUrl: 'https://www.nogizaka46.com',
         description: 'Nogizaka46 Messages & Blogs',
-        logoUrl: 'https://www.nogizaka46.com/files/46/assets/config/apple-touch-icon.png',
+        logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
     },
 ];
 
@@ -90,4 +95,8 @@ export function getServiceBlogBaseUrl(id: string): string {
 
 export function getServiceLogoUrl(id: string): string | undefined {
     return SERVICES_BY_ID[id]?.logoUrl;
+}
+
+export function getServicePrimaryColor(id: string): string {
+    return SERVICES_BY_ID[id]?.primaryColor ?? '#6b7280';
 }
