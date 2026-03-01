@@ -81,15 +81,18 @@ def get_output_dir() -> Path:
     return DEFAULT_OUTPUT_DIR
 
 
-def load_sync_metadata(output_dir: Path) -> Dict[str, Dict[str, Any]]:
+def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
     """
     Load sync_metadata.json from all service directories.
-    Returns a dict mapping "{group_id}_{member_id}" -> metadata entry.
+    Returns (member_entries, server_groups) where:
+      - member_entries: dict mapping "{group_id}_{member_id}" -> sync bookkeeping
+      - server_groups: dict mapping "{group_id}" -> { state, is_active }
     """
-    all_metadata: Dict[str, Dict[str, Any]] = {}
+    all_members: Dict[str, Dict[str, Any]] = {}
+    all_server_groups: Dict[str, Dict[str, Any]] = {}
 
     if not output_dir.exists():
-        return all_metadata
+        return all_members, all_server_groups
 
     for service_dir in output_dir.iterdir():
         if not service_dir.is_dir():
@@ -100,12 +103,12 @@ def load_sync_metadata(output_dir: Path) -> Dict[str, Dict[str, Any]]:
             try:
                 with open(metadata_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    groups = data.get('groups', {})
-                    all_metadata.update(groups)
+                    all_members.update(data.get('groups', {}))
+                    all_server_groups.update(data.get('server_groups', {}))
             except Exception as e:
                 logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
 
-    return all_metadata
+    return all_members, all_server_groups
 
 
 def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
@@ -147,8 +150,8 @@ async def get_groups():
         logger.warning(f"Output directory does not exist: {output_dir}")
         return []
 
-    # Load sync metadata for is_active status (source of truth)
-    sync_metadata = load_sync_metadata(output_dir)
+    # Load sync metadata for group status (source of truth)
+    sync_metadata, server_groups = load_sync_metadata(output_dir)
 
     groups = []
 
@@ -185,7 +188,6 @@ async def get_groups():
             members_info = []
             last_message_id = 0
             total_messages = 0
-            is_active = True
             group_thumbnail = None
 
             for member_dir in member_dirs:
@@ -228,14 +230,19 @@ async def get_groups():
 
                 members_info.append(member_meta)
 
-                # Get is_active from sync_metadata (source of truth)
-                metadata_key = f"{group_id}_{member_id}"
-                if metadata_key in sync_metadata:
-                    is_active = sync_metadata[metadata_key].get('is_active', True)
-
             member_count = len(members_info)
             # Check if this is a group chat (multiple members or special group ID)
             is_group_chat = member_count > 1 or group_id in GROUP_CHAT_IDS
+
+            # Derive status from group-level server state
+            sg = server_groups.get(group_id)
+            if sg:
+                is_graduated = sg.get('state') == 'closed'
+                is_active = sg.get('is_active', True) if not is_graduated else False
+            else:
+                # No server data yet — need to sync first
+                is_graduated = False
+                is_active = True
 
             groups.append({
                 "id": group_id,
@@ -247,6 +254,7 @@ async def get_groups():
                 "member_count": member_count,
                 "is_group_chat": is_group_chat,
                 "is_active": is_active,
+                "is_graduated": is_graduated,
                 "thumbnail": group_thumbnail,
                 "last_message_id": last_message_id,
                 "total_messages": total_messages,

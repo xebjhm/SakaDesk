@@ -326,21 +326,32 @@ class SyncService:
                 metadata = await self.load_metadata()
                 
                 progress.start_phase("discovering", "Discovering", 1, len(groups), "group")
-                
+
+                # Build group-level server state (merge into existing, never delete)
+                if 'server_groups' not in metadata:
+                    metadata['server_groups'] = {}
                 for g in groups:
+                    gid = str(g['id'])
+                    sub = g.get('subscription', {})
+                    sub_state = sub.get('state') if sub else None
+                    metadata['server_groups'][gid] = {
+                        'state': g.get('state', 'open'),
+                        'is_active': sub_state in ('active', 'cancelled') if g.get('state') != 'closed' else False,
+                    }
+
+                for g in groups:
+                    # Skip closed groups — their timeline/members return 404
+                    if g.get('state') == 'closed':
+                        continue
+
                     members = await client.get_members(session, g['id'])
                     for m in members:
-                        # Store active status from subscription
-                        # 'cancelled' subscriptions are still active until end_at date
-                        sub_state = g.get('subscription', {}).get('state')
-                        is_active = sub_state in ('active', 'cancelled')
                         tasks.append({
-                            'group': g, 
+                            'group': g,
                             'member': m,
-                            'is_active': is_active
                         })
-                        
-                        # Update metadata (GUI Specific)
+
+                        # Update per-member sync bookkeeping (no status flags)
                         key = f"{g['id']}_{m['id']}"
                         if key not in metadata['groups']:
                             metadata['groups'][key] = {
@@ -349,13 +360,13 @@ class SyncService:
                                 'group_thumbnail': g.get('thumbnail'),
                                 'member_id': m['id'],
                                 'member_name': m.get('name'),
-                                'is_active': is_active,
                                 'last_message_id': None,
                                 'thumbnail': m.get('thumbnail'),
-                                'portrait': m.get('portrait')
+                                'portrait': m.get('portrait'),
                             }
                         else:
-                            metadata['groups'][key]['is_active'] = is_active
+                            metadata['groups'][key]['group_name'] = g.get('name')
+                            metadata['groups'][key]['member_name'] = m.get('name')
                             metadata['groups'][key]['thumbnail'] = m.get('thumbnail')
                             metadata['groups'][key]['portrait'] = m.get('portrait')
                             metadata['groups'][key]['group_thumbnail'] = g.get('thumbnail')
@@ -540,8 +551,11 @@ class SyncService:
                 )
                 
                 # Just check active groups for now
+                server_groups = metadata.get('server_groups', {})
                 for key, info in metadata['groups'].items():
-                    if not info.get('is_active'):
+                    gid = str(info.get('group_id', ''))
+                    sg = server_groups.get(gid, {})
+                    if not sg.get('is_active'):
                         continue
                     
                     last_id = info.get('last_message_id')
