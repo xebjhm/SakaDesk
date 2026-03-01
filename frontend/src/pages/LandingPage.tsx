@@ -54,36 +54,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                 onClick={() => toggleService(service.id)}
                                 className={cn(
                                     'relative bg-white rounded-2xl shadow-lg p-6 text-left transition-all transform hover:scale-[1.02]',
-                                    'focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500',
-                                    isSelected && 'ring-2 ring-blue-500 shadow-xl'
+                                    'focus:outline-none focus:ring-2 focus:ring-offset-2',
+                                    isSelected && 'ring-2 shadow-xl'
                                 )}
+                                style={isSelected ? { '--tw-ring-color': service.primaryColor } as React.CSSProperties : undefined}
                             >
                                 {/* Selection indicator */}
                                 <div
                                     className={cn(
                                         'absolute top-4 right-4 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors',
                                         isSelected
-                                            ? 'bg-blue-500 border-blue-500'
+                                            ? 'border-transparent'
                                             : 'border-gray-300'
                                     )}
+                                    style={isSelected ? { backgroundColor: service.primaryColor, borderColor: service.primaryColor } : undefined}
                                 >
                                     {isSelected && (
                                         <Check className="w-4 h-4 text-white" />
                                     )}
                                 </div>
 
-                                {/* Service icon with logo */}
+                                {/* Service icon with logo - white circle with colored ring when selected */}
                                 <div
                                     className={cn(
-                                        'w-16 h-16 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-4 overflow-hidden',
-                                        service.color
+                                        'w-16 h-16 rounded-full bg-white flex items-center justify-center mb-4 overflow-hidden shadow-sm transition-all',
+                                        isSelected ? 'ring-[3px] ring-offset-2' : 'ring-1 ring-gray-200'
                                     )}
+                                    style={isSelected ? { '--tw-ring-color': service.primaryColor } as React.CSSProperties : undefined}
                                 >
                                     {service.logoUrl ? (
                                         <img
                                             src={service.logoUrl}
                                             alt={service.displayName}
-                                            className="w-full h-full object-cover"
+                                            className="w-12 h-12 object-contain"
                                             onError={(e) => {
                                                 e.currentTarget.style.display = 'none';
                                                 e.currentTarget.nextElementSibling?.classList.remove('hidden');
@@ -91,7 +94,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                         />
                                     ) : null}
                                     <span className={cn(
-                                        "text-white font-bold text-xl",
+                                        "text-gray-600 font-bold text-xl",
                                         service.logoUrl ? "hidden" : ""
                                     )}>
                                         {service.shortCode}
