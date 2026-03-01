@@ -1,7 +1,7 @@
 // frontend/src/config/groupThemes.ts
 // Multi-Group Theme Engine - Visual identity for each idol group
 
-export type GroupId = 'hinatazaka' | 'sakurazaka' | 'nogizaka' | 'default';
+export type GroupId = 'hinatazaka' | 'sakurazaka' | 'nogizaka' | 'yodel' | 'default';
 
 export interface GroupTheme {
     id: GroupId;
@@ -378,6 +378,101 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
     },
 
     // ========================================
+    // YODEL - "The Meadow" Theme
+    // Fresh, Natural, Independent, Green pastures
+    // ========================================
+    yodel: {
+        id: 'yodel',
+        name: 'Yodel',
+        nameJp: 'ヨーデル',
+
+        primaryColor: '#5a8a6a',      // Sage Green
+        secondaryColor: '#7ab08a',    // Light Sage
+        accentColor: '#d4ebe0',       // Soft Mint
+
+        ambient: {
+            orb1: {
+                color: 'radial-gradient(circle, #e0f2e8 0%, #d4ebe0 30%, transparent 70%)',
+                position: 'top: -18%; left: -8%;',
+                size: '68vw',
+                opacity: 0.45,
+            },
+            orb2: {
+                color: 'radial-gradient(circle, #f5faf7 0%, #eaf5ef 40%, transparent 70%)',
+                position: 'top: 25%; right: -18%;',
+                size: '58vw',
+                opacity: 0.4,
+            },
+            orb3: {
+                color: 'radial-gradient(circle, #d9f0e3 0%, transparent 70%)',
+                position: 'bottom: -22%; left: 30%;',
+                size: '48vw',
+                opacity: 0.35,
+            },
+        },
+
+        surface: {
+            background: '#FBFDFC',
+            card: 'rgba(255, 255, 255, 0.92)',
+            glass: 'rgba(255, 255, 255, 0.78)',
+            glassBorder: 'rgba(90, 138, 106, 0.18)',
+        },
+
+        text: {
+            primary: '#1a2e22',
+            secondary: '#4b5e53',
+            muted: '#8fa399',
+        },
+
+        interaction: {
+            hoverGlow: 'rgba(90, 138, 106, 0.3)',
+            focusRing: '#5a8a6a',
+            buttonGradient: 'linear-gradient(135deg, #7ab08a 0%, #5a8a6a 100%)',
+        },
+
+        vibe: ['fresh', 'natural', 'independent', 'meadow', 'serene'],
+
+        blog: {
+            memberNameColor: '#4a7a5a',
+            linkColor: '#4a7a5a',
+            linkUnderlineColor: '#4a7a5a40',
+            headerTitleColor: '#4a7a5a',
+            timelineIndicator: '#4a7a5a',
+        },
+
+        modals: {
+            accentColor: '#5a8a6a',
+            accentColorLight: '#e0f2e8',
+            accentColorMuted: '#b8d8c8',
+        },
+
+        messages: {
+            headerGradient: {
+                from: '#b8d8c8',
+                via: '#8ab89a',
+                to: '#5a8a6a',
+            },
+            headerTextColor: '#4a7a5a',
+            headerBarGradient: 'linear-gradient(to right, #b8d8c8, #5a8a6a)',
+            bubbleBorder: '#5a8a6a',
+            voicePlayerAccent: '#5a8a6a',
+            scrollButtonColor: '#5a8a6a',
+            unreadShadow: '0 0 12px rgba(90, 138, 106, 0.35)',
+            defaultBackground: '#EAF0EC',
+            unreadBadge: '#5a8a6a',
+            sidebarGradient: ['#d4ebe0', '#e5f2eb', '#f0f8f4'],
+            shelterColors: {
+                picture: '#8ab89a',
+                video: '#6a9a7a',
+                voice: '#7aaa8a',
+                text: '#5a8a6a',
+            },
+            shelterStyle: 'classic',
+            headerStyle: 'gradient',
+        },
+    },
+
+    // ========================================
     // DEFAULT - Neutral fallback
     // ========================================
     default: {
@@ -486,6 +581,9 @@ export function getThemeForService(serviceId: string | null): GroupTheme {
     }
     if (serviceLower.includes('nogi') || serviceLower.includes('nogizaka')) {
         return groupThemes.nogizaka;
+    }
+    if (serviceLower.includes('yodel')) {
+        return groupThemes.yodel;
     }
 
     return groupThemes.default;

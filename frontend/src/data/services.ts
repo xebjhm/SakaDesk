@@ -25,6 +25,7 @@ export interface ServiceDefinition {
 // hinatazaka: primary=#5bbfe5, primaryDark=#4aa8cc
 // sakurazaka: primary=#f19cb4, primaryDark=#E85298
 // nogizaka: primary=#7e2483, primaryDark=#5a0b5e
+// yodel: primary=#5a8a6a, primaryDark=#3d6b4f
 
 export const SERVICES: ServiceDefinition[] = [
     {
@@ -62,6 +63,18 @@ export const SERVICES: ServiceDefinition[] = [
         blogBaseUrl: 'https://www.nogizaka46.com',
         description: 'Nogizaka46 Messages & Blogs',
         logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
+    },
+    {
+        id: 'yodel',
+        name: 'Yodel',
+        displayName: 'Yodel',
+        shortCode: 'YO',
+        color: 'from-[#5a8a6a] to-[#3d6b4f]',
+        bgColor: 'bg-[#5a8a6a]',
+        primaryColor: BRAND_COLORS.yodel.primary,
+        blogBaseUrl: 'https://service.yodel-app.com',
+        description: 'Yodel Talk & Messages',
+        logoUrl: 'https://service.yodel-app.com/assets/assets/icon/yodel_logo.svg',
     },
 ];
 

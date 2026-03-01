@@ -58,6 +58,16 @@ export function getSemanticColors(groupId: GroupId): SemanticColors {
                 gradientTo: brand.primaryDark,
             };
         }
+        case 'yodel': {
+            const brand = BRAND_COLORS.yodel;
+            return {
+                primary: brand.primary,
+                secondary: brand.secondary,
+                accent: brand.accent,
+                gradientFrom: brand.primary,
+                gradientTo: brand.primaryDark,
+            };
+        }
     }
 }
 

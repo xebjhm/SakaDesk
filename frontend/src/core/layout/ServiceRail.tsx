@@ -4,7 +4,7 @@ import { Plus, Unplug } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
-import { getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor } from '../../data/services';
+import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
@@ -30,7 +30,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     const { isServiceDisconnected } = useAuth();
 
     // Check if all services are already selected
-    const allServicesSelected = services.length >= 3;
+    const allServicesSelected = services.length >= SERVICES.length;
 
     const handleContextMenu = (e: React.MouseEvent, serviceId: string) => {
         e.preventDefault();

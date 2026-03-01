@@ -56,6 +56,7 @@ export const SERVICE_FEATURES: Record<string, FeatureId[]> = {
     'hinatazaka46': ['messages', 'blogs'],
     'sakurazaka46': ['messages', 'blogs'],
     'nogizaka46': ['messages', 'blogs'],
+    'yodel': ['messages'],
     // Default for any service
     default: ['messages', 'blogs'],
 };
