@@ -91,12 +91,12 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
             {/* Settings Button */}
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="group relative w-12 h-12 rounded-[24px] flex items-center justify-center transition-all duration-200 hover:rounded-[16px]"
+                className="group w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
                 title={t('common.settings')}
             >
                 <div className={cn(
-                    "w-12 h-12 rounded-[24px] bg-[#313338] flex items-center justify-center text-gray-400 transition-all duration-200 group-hover:rounded-[16px] group-hover:bg-gray-600 group-hover:text-white",
-                    isOpen && "rounded-[16px] bg-gray-600 text-white"
+                    "w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 transition-all duration-200 group-hover:bg-gray-300 group-hover:text-gray-700",
+                    isOpen && "bg-gray-300 text-gray-700"
                 )}>
                     <Settings className="w-5 h-5" />
                 </div>
@@ -104,19 +104,19 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
 
             {/* Dropdown Menu - Opens to the right */}
             {isOpen && (
-                <div className="absolute left-full bottom-0 ml-2 w-48 bg-[#111214] rounded-lg shadow-xl border border-gray-700 py-1.5 z-50">
+                <div className="absolute left-full bottom-0 ml-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50">
                     <button
                         onClick={() => handleMenuAction(onOpenSettings)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
                     >
-                        <Settings className="w-4 h-4 text-gray-400" />
+                        <Settings className="w-4 h-4 text-gray-500" />
                         {t('common.settings')}
                     </button>
                     <button
                         onClick={() => handleMenuAction(onReportIssue)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
                     >
-                        <Bug className="w-4 h-4 text-gray-400" />
+                        <Bug className="w-4 h-4 text-gray-500" />
                         {t('common.reportIssue')}
                     </button>
                     <button
@@ -124,17 +124,17 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
                             setIsOpen(false);
                             window.open(buildFeatureRequestUrl(), '_blank');
                         }}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
                     >
-                        <Lightbulb className="w-4 h-4 text-gray-400" />
+                        <Lightbulb className="w-4 h-4 text-gray-500" />
                         {t('common.featureRequest')}
                     </button>
-                    <div className="h-px bg-gray-700 my-1" />
+                    <div className="h-px bg-gray-200 my-1" />
                     <button
                         onClick={() => handleMenuAction(onOpenAbout)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-[#3b3d44] flex items-center gap-2.5 transition-colors"
+                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
                     >
-                        <Info className="w-4 h-4 text-gray-400" />
+                        <Info className="w-4 h-4 text-gray-500" />
                         {t('common.about')}
                     </button>
                 </div>

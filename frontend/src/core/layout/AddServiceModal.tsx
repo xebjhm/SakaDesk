@@ -59,19 +59,18 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                                 <button
                                     key={service.id}
                                     onClick={() => handleSelect(service.id)}
-                                    className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+                                    className="group w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-left"
+                                    style={{ '--hover-border-color': service.primaryColor } as React.CSSProperties}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = service.primaryColor}
+                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = ''}
                                 >
-                                    <div
-                                        className={cn(
-                                            'w-12 h-12 rounded-xl bg-gradient-to-br flex items-center justify-center overflow-hidden',
-                                            service.color
-                                        )}
-                                    >
+                                    {/* Logo circle with subtle ring */}
+                                    <div className="w-12 h-12 rounded-full bg-white ring-1 ring-gray-200 flex items-center justify-center overflow-hidden shadow-sm">
                                         {service.logoUrl ? (
                                             <img
                                                 src={service.logoUrl}
                                                 alt={service.displayName}
-                                                className="w-full h-full object-cover"
+                                                className="w-9 h-9 object-contain"
                                                 onError={(e) => {
                                                     e.currentTarget.style.display = 'none';
                                                     e.currentTarget.nextElementSibling?.classList.remove('hidden');
@@ -79,7 +78,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                                             />
                                         ) : null}
                                         <span className={cn(
-                                            "text-white font-bold",
+                                            "text-gray-600 font-bold",
                                             service.logoUrl ? "hidden" : ""
                                         )}>
                                             {service.shortCode}
