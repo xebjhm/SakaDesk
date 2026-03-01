@@ -2,12 +2,23 @@
 import React, { useState } from 'react';
 import { cn } from '../../utils/classnames';
 import { useAppStore, FeatureId } from '../../store/appStore';
-import { getAvailableFeatures, FEATURE_DEFINITIONS, isFeaturePaid } from '../../config/features';
+import { getAvailableFeatures, isFeaturePaid } from '../../config/features';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { LoginModal } from '../../shell/components/LoginModal';
+import { getServicePrimaryColor } from '../../data/services';
 
 export interface FeatureRailProps {
     service: string;
+}
+
+/**
+ * Convert hex color to rgba with opacity for light tints
+ */
+function hexToRgba(hex: string, alpha: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
@@ -18,6 +29,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const activeFeature = getActiveFeature(service);
     const featureOrder = getFeatureOrder(service);
     const availableFeatures = getAvailableFeatures(service);
+    const primaryColor = getServicePrimaryColor(service);
 
     // Sort available features by user preference
     const sortedFeatures = [...availableFeatures].sort((a, b) => {
@@ -57,7 +69,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
 
     return (
         <>
-            <div className="w-12 bg-[#2b2d31] h-full flex flex-col items-center py-3 gap-1 shrink-0 border-r border-[#1e1f22]">
+            <div className="w-12 bg-white h-full flex flex-col items-center py-3 gap-1 shrink-0 border-r border-gray-100">
                 {sortedFeatures.map(feature => {
                     const isActive = activeFeature === feature.id;
                     const Icon = feature.icon;
@@ -69,14 +81,21 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
                             className={cn(
                                 "group relative w-10 h-10 rounded-lg flex items-center justify-center transition-all",
                                 isActive
-                                    ? "bg-[#404249] text-white"
-                                    : "text-[#949ba4] hover:text-white hover:bg-[#35373c]"
+                                    ? ""
+                                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
                             )}
+                            style={isActive ? {
+                                backgroundColor: hexToRgba(primaryColor, 0.2),
+                                color: primaryColor,
+                            } : undefined}
                             title={feature.label}
                         >
-                            {/* Active indicator */}
+                            {/* Active indicator - colored bar */}
                             {isActive && (
-                                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full" />
+                                <div
+                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
+                                    style={{ backgroundColor: primaryColor }}
+                                />
                             )}
 
                             <Icon className="w-5 h-5" />
