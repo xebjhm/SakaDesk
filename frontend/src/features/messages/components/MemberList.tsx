@@ -17,6 +17,7 @@ interface GroupInfo {
     member_count: number;
     is_group_chat: boolean;
     is_active?: boolean;
+    is_graduated?: boolean;
     thumbnail?: string; // Group thumbnail
     last_message_id?: number;
     total_messages?: number;
@@ -177,10 +178,11 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         ? groups.filter(g => !g.service || g.service === activeService)
         : groups;
 
-    const onlineGroups = sortGroups(filteredGroups.filter(g => g.is_active !== false));
-    const offlineGroups = sortGroups(filteredGroups.filter(g => g.is_active === false));
+    const onlineGroups = sortGroups(filteredGroups.filter(g => g.is_active !== false && !g.is_graduated));
+    const offlineGroups = sortGroups(filteredGroups.filter(g => g.is_active === false && !g.is_graduated));
+    const graduatedGroups = sortGroups(filteredGroups.filter(g => g.is_graduated && !g.is_group_chat));
 
-    const renderGroupGrid = (groupList: GroupInfo[]) => (
+    const renderGroupGrid = (groupList: GroupInfo[], isGraduated = false) => (
         <div className="grid grid-cols-3 gap-x-2 gap-y-4">
             {groupList.map(group => {
                 const info = getGroupDisplayInfo(group);
@@ -193,17 +195,19 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                         key={group.id}
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
                         className="flex flex-col items-center py-1 relative group"
+                        title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
                         {/* Avatar Container */}
                         <div className={cn(
                             "w-16 h-16 rounded-full flex items-center justify-center mb-1.5 bg-white transition-all relative overflow-hidden",
                             // Selection Ring
                             isSelected ? "ring-2 ring-offset-2" : "ring-1 ring-gray-100/50",
-                            // Offline: Lower saturation and contrast
                         )}
                             style={{
                                 ...(isSelected ? { '--tw-ring-color': theme.modals.accentColor } as React.CSSProperties : {}),
-                                ...(!info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}),
+                                ...(isGraduated
+                                    ? { filter: 'sepia(0.3) saturate(0.6) contrast(0.9)' }
+                                    : !info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}),
                             }}
                         >
                             {info.isGroupChat && !info.avatar ? (
@@ -306,6 +310,21 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">{t('memberList.offline')}</h2>
                         </div>
                         {renderGroupGrid(offlineGroups)}
+                    </>
+                )}
+
+                {/* Graduated Section - only shown when members have local backup */}
+                {graduatedGroups.length > 0 && (
+                    <>
+                        <div
+                            className="px-2 py-2 mt-4 sticky top-0 z-10"
+                            style={{ background: `linear-gradient(to bottom, ${sidebarGradient[2]}, transparent)` }}
+                        >
+                            <h2 className="text-sm text-gray-400 text-center font-medium opacity-80">
+                                {t('memberList.graduated')}
+                            </h2>
+                        </div>
+                        {renderGroupGrid(graduatedGroups, true)}
                     </>
                 )}
             </div>

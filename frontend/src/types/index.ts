@@ -46,6 +46,7 @@ export interface Group {
     member_count: number;
     is_group_chat: boolean;
     is_active: boolean;
+    is_graduated?: boolean;
     thumbnail?: string;
     members: MemberInfo[];
     service?: string;

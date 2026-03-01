@@ -157,6 +157,8 @@
     "noConversations": "No conversations found.",
     "online": "Online",
     "offline": "Offline",
+    "graduated": "Graduated",
+    "graduatedTooltip": "This member has graduated. Messages are read-only archives.",
     "appSettings": "App Settings",
     "systemDiagnostics": "System Diagnostics",
     "resetReadStatus": "Reset Read Status"

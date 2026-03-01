@@ -157,6 +157,8 @@
     "noConversations": "トークが見つかりませんでした。",
     "online": "オンライン",
     "offline": "オフライン",
+    "graduated": "卒業メンバー",
+    "graduatedTooltip": "このメンバーは卒業しました。メッセージは読み取り専用のアーカイブです。",
     "appSettings": "アプリ設定",
     "systemDiagnostics": "システム診断",
     "resetReadStatus": "既読状態をリセット"
