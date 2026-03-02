@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
 import { Loader2 } from 'lucide-react'
@@ -7,6 +7,8 @@ import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
 import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
+import { SearchModal, useGlobalSearchShortcut } from '../features/search'
+import type { SearchModalHandle } from '../features/search'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -118,6 +120,11 @@ function App() {
     const [showReportModal, setShowReportModal] = useState(false);
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
+
+    // Search modal
+    const searchModalRef = useRef<SearchModalHandle>(null);
+    const openSearch = useCallback(() => searchModalRef.current?.open(), []);
+    useGlobalSearchShortcut(openSearch);
 
     // ToS acceptance state - check localStorage on mount
     const [tosAccepted, setTosAccepted] = useState(() => {
@@ -263,12 +270,16 @@ function App() {
                     />
                 )}
 
+                {/* Search Modal */}
+                <SearchModal ref={searchModalRef} />
+
                 {/* Main 3-zone layout */}
                 <Layout
                     onAddService={() => {/* AddServiceModal will be triggered from ServiceRail */}}
                     onOpenSettings={openSettingsModal}
                     onReportIssue={() => setShowReportModal(true)}
                     onOpenAbout={() => setShowAboutModal(true)}
+                    onOpenSearch={openSearch}
                     messagesContent={
                         <MessagesFeature
                             appSettings={appSettings}

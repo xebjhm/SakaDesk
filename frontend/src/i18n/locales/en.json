@@ -244,6 +244,17 @@
     "sessionExpiredRelogin": "Session expired - click to re-login",
     "addService": "Add Service"
   },
+  "search": {
+    "placeholder": "Search messages...",
+    "noResults": "No messages found",
+    "noResultsHint": "Try a different search term",
+    "resultCount": "{{count}} results",
+    "resultCountPartial": "{{shown}} of {{total}} results",
+    "loadMore": "Load more results",
+    "pressEnterToSelect": "Press Enter to select",
+    "errorSearchFailed": "Search failed. Please try again.",
+    "building": "Building search index..."
+  },
   "media": {
     "title": "Media",
     "jumpToDate": "Jump to Date",

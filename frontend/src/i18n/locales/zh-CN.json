@@ -244,6 +244,17 @@
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
     "addService": "添加服务"
   },
+  "search": {
+    "placeholder": "搜索消息...",
+    "noResults": "未找到消息",
+    "noResultsHint": "请尝试其他搜索词",
+    "resultCount": "{{count}} 条结果",
+    "resultCountPartial": "显示 {{shown}} / {{total}} 条结果",
+    "loadMore": "加载更多结果",
+    "pressEnterToSelect": "按 Enter 选择",
+    "errorSearchFailed": "搜索失败，请重试。",
+    "building": "正在构建搜索索引..."
+  },
   "media": {
     "title": "媒体",
     "jumpToDate": "跳转到日期",

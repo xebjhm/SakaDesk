@@ -124,6 +124,18 @@ interface AppState {
     setSelectedConversation: (serviceId: string, conversation: { path: string; name: string; isGroupChat: boolean } | null) => void;
     /** Get the last selected conversation for a service. */
     getSelectedConversation: (serviceId: string) => { path: string; name: string; isGroupChat: boolean } | null;
+
+    // ─── Search Navigation ────────────────────────────────────────────────────
+
+    /** Counter bumped to trigger conversation navigation from search (non-persisted). */
+    conversationNavCounter: number;
+    /** Trigger programmatic navigation to a conversation (e.g., from search results). */
+    triggerConversationNavigation: () => void;
+
+    /** Target message ID to scroll to after navigation (non-persisted). */
+    targetMessageId: number | null;
+    /** Set the target message to scroll to. */
+    setTargetMessageId: (id: number | null) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -219,6 +231,13 @@ export const useAppStore = create<AppState>()(
                     selectedConversations: { ...state.selectedConversations, [serviceId]: conversation },
                 })),
             getSelectedConversation: (serviceId) => get().selectedConversations[serviceId] || null,
+
+            conversationNavCounter: 0,
+            triggerConversationNavigation: () =>
+                set((state) => ({ conversationNavCounter: state.conversationNavCounter + 1 })),
+
+            targetMessageId: null,
+            setTargetMessageId: (id) => set({ targetMessageId: id }),
         }),
         {
             name: 'hakodesk-app-state',

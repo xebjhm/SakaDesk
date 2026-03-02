@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useMemo } from 'react';
+import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
@@ -30,6 +30,10 @@ interface ChatListProps {
     onAvatarClick?: () => void;
     /** Active service ID for media URL construction */
     service?: string;
+    /** Target message ID to scroll to on mount (from search navigation) */
+    targetMessageId?: number | null;
+    /** Callback to clear targetMessageId after it's consumed */
+    onTargetMessageConsumed?: () => void;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -47,6 +51,8 @@ export const MessageList: React.FC<ChatListProps> = ({
     onToggleFavorite,
     onAvatarClick,
     service,
+    targetMessageId,
+    onTargetMessageConsumed,
 }) => {
     const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
@@ -83,9 +89,29 @@ export const MessageList: React.FC<ChatListProps> = ({
     }, [messages, userNickname]);
 
     const {
-        initialTopMostItemIndex,
+        initialTopMostItemIndex: savedScrollIndex,
         handleRangeChanged,
     } = useChatScroll(memberId, processedMessages);
+
+    // Override initial scroll position when navigating from search.
+    // This works with Virtuoso's native initialTopMostItemIndex on mount,
+    // avoiding timing races with post-mount scrollToIndex calls.
+    const targetIndex = useMemo(() => {
+        if (targetMessageId != null) {
+            const idx = processedMessages.findIndex(m => m.id === targetMessageId);
+            if (idx !== -1) return idx;
+        }
+        return null;
+    }, [targetMessageId, processedMessages]);
+
+    const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
+
+    // Clear the target after Virtuoso has mounted with the correct position
+    useEffect(() => {
+        if (targetIndex != null) {
+            onTargetMessageConsumed?.();
+        }
+    }, [targetIndex, onTargetMessageConsumed]);
 
     // Combined range change handler
     const onRangeChange = useCallback((range: { startIndex: number; endIndex: number }) => {

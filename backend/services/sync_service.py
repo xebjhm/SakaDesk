@@ -425,6 +425,19 @@ class SyncService:
                 if total_new_messages > 0:
                     notify_sync_complete(total_new_messages, members_with_new)
 
+                    # Update search index with new messages (non-fatal)
+                    try:
+                        from backend.services.search_service import get_search_service
+                        search_svc = get_search_service()
+                        members_with_changes = [
+                            (task['group'], task['member'])
+                            for task, count in results if count > 0
+                        ]
+                        indexed = await search_svc.index_members(members_with_changes, self._service)
+                        logger.info("Search index updated", indexed=indexed)
+                    except Exception as e:
+                        logger.warning("Search index update failed (non-fatal)", error=str(e))
+
                 # Phase 3: Media Download (Queued)
                 media_count = len(media_queue)
                 progress.start_phase("downloading", "Downloading Media", 3, media_count, "files")
