@@ -244,6 +244,17 @@
     "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
     "addService": "新增服務"
   },
+  "search": {
+    "placeholder": "搜尋訊息...",
+    "noResults": "找不到訊息",
+    "noResultsHint": "請嘗試其他搜尋詞",
+    "resultCount": "{{count}} 筆結果",
+    "resultCountPartial": "顯示 {{shown}} / {{total}} 筆結果",
+    "loadMore": "載入更多結果",
+    "pressEnterToSelect": "按 Enter 選擇",
+    "errorSearchFailed": "搜尋失敗，請重試。",
+    "building": "正在建立搜尋索引..."
+  },
   "media": {
     "title": "媒體",
     "jumpToDate": "跳至日期",

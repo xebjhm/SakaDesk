@@ -38,7 +38,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
-from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs  # noqa: E402
+from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs, search  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -76,6 +76,7 @@ app.include_router(notifications.router)
 app.include_router(favorites.router)
 app.include_router(chat_features.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
+app.include_router(search.router, prefix="/api/search", tags=["search"])
 
 
 @app.get("/health")

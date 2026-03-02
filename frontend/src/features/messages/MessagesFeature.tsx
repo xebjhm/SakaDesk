@@ -123,6 +123,27 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Track the previous service to save selection before switching
     const previousServiceRef = useRef<string | null>(null);
 
+    // Navigate to conversation from search results (same-service case)
+    const conversationNavCounter = useAppStore(s => s.conversationNavCounter);
+
+    useEffect(() => {
+        if (conversationNavCounter > 0 && activeService) {
+            const saved = getSelectedConversation(activeService);
+            if (saved) {
+                setSelectedGroupDir(saved.path);
+                setSelectedName(saved.name);
+                setIsGroupChat(saved.isGroupChat);
+                setBackgroundSettings(loadBackgroundSettings(saved.path));
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on counter bump
+    }, [conversationNavCounter]);
+
+    // Target message for search navigation — passed to MessageList to override
+    // Virtuoso's initialTopMostItemIndex on mount (no post-mount scroll races).
+    const targetMessageId = useAppStore(s => s.targetMessageId);
+    const setTargetMessageId = useAppStore(s => s.setTargetMessageId);
+
     // Save current selection and restore previous selection when service changes
     useEffect(() => {
         // Save current conversation for the previous service before switching
@@ -574,6 +595,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
                             service={messagesService}
+                            targetMessageId={targetMessageId}
+                            onTargetMessageConsumed={() => setTargetMessageId(null)}
                         />
                     )}
                 </div>

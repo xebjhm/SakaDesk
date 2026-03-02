@@ -1,6 +1,6 @@
 // frontend/src/core/layout/ServiceRail.tsx
 import React, { useState } from 'react';
-import { Plus, Unplug } from 'lucide-react';
+import { Plus, Unplug, Search } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
@@ -15,6 +15,7 @@ export interface ServiceRailProps {
     onOpenSettings: () => void;
     onReportIssue: () => void;
     onOpenAbout: () => void;
+    onOpenSearch: () => void;
 }
 
 export const ServiceRail: React.FC<ServiceRailProps> = ({
@@ -22,6 +23,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     onOpenSettings,
     onReportIssue,
     onOpenAbout,
+    onOpenSearch,
 }) => {
     const { t } = useTranslation();
     const { activeService, setActiveService, removeSelectedService } = useAppStore();
@@ -139,6 +141,17 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                         </div>
                     </button>
                 )}
+
+                {/* Search Button */}
+                <button
+                    onClick={onOpenSearch}
+                    className="group w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
+                    title={`${t('search.placeholder')} (${navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl+'}K)`}
+                >
+                    <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 transition-all duration-200 group-hover:bg-blue-500 group-hover:text-white">
+                        <Search className="w-5 h-5" />
+                    </div>
+                </button>
 
                 {/* Settings Menu */}
                 <SettingsMenu

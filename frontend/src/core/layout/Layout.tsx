@@ -11,6 +11,7 @@ interface LayoutProps {
     onOpenSettings: () => void;
     onReportIssue: () => void;
     onOpenAbout: () => void;
+    onOpenSearch: () => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -19,6 +20,7 @@ export const Layout: React.FC<LayoutProps> = ({
     onOpenSettings,
     onReportIssue,
     onOpenAbout,
+    onOpenSearch,
 }) => {
     const { activeService, setActiveService, selectedServices } = useAppStore();
 
@@ -41,6 +43,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 onOpenSettings={onOpenSettings}
                 onReportIssue={onReportIssue}
                 onOpenAbout={onOpenAbout}
+                onOpenSearch={onOpenSearch}
             />
 
             {/* Zone B: Feature Rail (only show when service selected) */}
