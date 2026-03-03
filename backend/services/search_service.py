@@ -1636,6 +1636,122 @@ class SearchService:
         logger.info("Incremental index update", service=service, count=count)
         return count
 
+    def _index_blogs_for_service_sync(self, service: str) -> int:
+        """Re-index all cached blogs for a single service."""
+        conn = self._get_conn()
+        output_dir = get_output_dir()
+        if not output_dir.exists():
+            return 0
+
+        # Find the service display directory
+        service_dir = None
+        for d in output_dir.iterdir():
+            if d.is_dir() and self._resolve_service_id(d.name) == service:
+                service_dir = d
+                break
+        if not service_dir:
+            return 0
+
+        blogs_dir = service_dir / "blogs"
+        if not blogs_dir.is_dir():
+            return 0
+
+        # Delete existing blogs for this service before re-indexing
+        conn.execute("DELETE FROM search_blogs WHERE service = ?", (service,))
+        conn.commit()
+
+        # Re-index using same logic as _build_blog_index_sync but for one service
+        index_path = blogs_dir / "index.json"
+        if not index_path.exists():
+            return 0
+        try:
+            with open(index_path, "r", encoding="utf-8") as f:
+                index_data = json.load(f)
+        except Exception:
+            return 0
+
+        total = 0
+        batch: list[Tuple[Any, ...]] = []
+        members = index_data.get("members", {})
+
+        for member_id_str, member_info in members.items():
+            if member_info.get("blogs_removed", False):
+                continue
+            try:
+                member_id = int(member_id_str)
+            except ValueError:
+                continue
+
+            member_name = member_info.get("name", "")
+            member_dir = blogs_dir / member_name
+            if not member_dir.is_dir():
+                continue
+
+            for entry in member_info.get("blogs", []):
+                blog_id = entry.get("id")
+                if blog_id is None:
+                    continue
+
+                published_at = entry.get("published_at", "")
+                date_prefix = ""
+                if published_at:
+                    try:
+                        date_prefix = published_at[:10].replace("-", "")
+                    except Exception:
+                        pass
+
+                blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+                if not blog_json_path.exists():
+                    continue
+
+                try:
+                    with open(blog_json_path, "r", encoding="utf-8") as f:
+                        blog_data = json.load(f)
+                except Exception:
+                    continue
+
+                html_content = blog_data.get("content", {}).get("html", "")
+                if not html_content:
+                    continue
+
+                meta = blog_data.get("meta", {})
+                title = meta.get("title", entry.get("title", ""))
+                blog_url = meta.get("url", entry.get("url", ""))
+                plain_content = _strip_html(html_content)
+                content_normalized = self._normalize_with_readings(plain_content)
+                title_normalized = self._normalize_with_readings(title) if title else ""
+
+                batch.append((
+                    str(blog_id), service, member_id, member_name,
+                    title, title_normalized, published_at, blog_url,
+                    plain_content, content_normalized,
+                ))
+                if len(batch) >= _BATCH_SIZE:
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO search_blogs "
+                        "(blog_id, service, member_id, member_name, title, title_normalized, "
+                        "published_at, blog_url, content, content_normalized) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        batch,
+                    )
+                    conn.commit()
+                    total += len(batch)
+                    batch.clear()
+
+        if batch:
+            conn.executemany(
+                "INSERT OR REPLACE INTO search_blogs "
+                "(blog_id, service, member_id, member_name, title, title_normalized, "
+                "published_at, blog_url, content, content_normalized) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                batch,
+            )
+            conn.commit()
+            total += len(batch)
+
+        logger.info("Blog index updated for service", service=service, blog_count=total)
+        return total
+
     def _get_status_sync(self) -> Dict[str, Any]:
         conn = self._get_conn()
         row = conn.execute("SELECT COUNT(*) FROM search_messages").fetchone()
@@ -1856,6 +1972,10 @@ class SearchService:
     async def index_members(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._executor, self._index_members_sync, members, service)
+
+    async def index_blogs_for_service(self, service: str) -> int:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._index_blogs_for_service_sync, service)
 
     async def get_status(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()

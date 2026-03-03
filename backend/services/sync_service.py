@@ -514,6 +514,14 @@ class SyncService:
                 except Exception as e:
                     logger.warning(f"Blog sync failed (non-fatal): {e}")
 
+                # Update blog search index (non-fatal)
+                try:
+                    from backend.services.search_service import get_search_service
+                    search_svc = get_search_service()
+                    await search_svc.index_blogs_for_service(self._service)
+                except Exception as e:
+                    logger.warning(f"Blog search index update failed (non-fatal): {e}")
+
                 metadata['last_sync'] = datetime.utcnow().isoformat() + "Z"
                 await self.save_metadata(metadata)
 
