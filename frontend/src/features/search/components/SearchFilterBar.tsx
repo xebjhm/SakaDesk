@@ -3,7 +3,7 @@ import { X, ChevronDown } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { getServicePrimaryColor, getServiceDisplayName } from '../../../data/services';
 import { formatName } from '../../../utils';
-import type { FilterChip, DateRangePreset, MembersResponse } from '../types';
+import type { FilterChip, DateRangePreset, ContentTypeFilter, MembersResponse } from '../types';
 
 interface SearchFilterBarProps {
   selectedFilters: FilterChip[];
@@ -14,6 +14,8 @@ interface SearchFilterBarProps {
   onIncludeUnreadChange: (value: boolean) => void;
   dateRange: DateRangePreset;
   onDateRangeChange: (preset: DateRangePreset) => void;
+  contentType: ContentTypeFilter;
+  onContentTypeChange: (value: ContentTypeFilter) => void;
 }
 
 const DATE_PRESETS: { value: DateRangePreset; labelKey: string }[] = [
@@ -22,6 +24,12 @@ const DATE_PRESETS: { value: DateRangePreset; labelKey: string }[] = [
   { value: '30d', labelKey: 'search.last30Days' },
   { value: '3m', labelKey: 'search.last3Months' },
   { value: '1y', labelKey: 'search.lastYear' },
+];
+
+const CONTENT_TYPE_PRESETS: { value: ContentTypeFilter; labelKey: string }[] = [
+  { value: 'all', labelKey: 'search.contentAll' },
+  { value: 'messages', labelKey: 'search.contentMessages' },
+  { value: 'blogs', labelKey: 'search.contentBlogs' },
 ];
 
 export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
@@ -33,15 +41,19 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   onIncludeUnreadChange,
   dateRange,
   onDateRangeChange,
+  contentType,
+  onContentTypeChange,
 }) => {
   const { t } = useTranslation();
   const [mentionQuery, setMentionQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const [showContentTypeDropdown, setShowContentTypeDropdown] = useState(false);
   const [membersData, setMembersData] = useState<MembersResponse | null>(null);
   const mentionInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dateDropdownRef = useRef<HTMLDivElement>(null);
+  const contentTypeDropdownRef = useRef<HTMLDivElement>(null);
 
   // Fetch members for autocomplete on mount
   useEffect(() => {
@@ -63,6 +75,9 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       }
       if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target as Node)) {
         setShowDateDropdown(false);
+      }
+      if (contentTypeDropdownRef.current && !contentTypeDropdownRef.current.contains(e.target as Node)) {
+        setShowContentTypeDropdown(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -215,8 +230,39 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           {t('search.includeUnread')}
         </label>
 
+        {/* Content type dropdown */}
+        <div className="relative ml-auto" ref={contentTypeDropdownRef}>
+          <button
+            className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors"
+            onClick={() => setShowContentTypeDropdown(!showContentTypeDropdown)}
+          >
+            {t(CONTENT_TYPE_PRESETS.find(p => p.value === contentType)?.labelKey || 'search.contentAll')}
+            <ChevronDown className="w-3 h-3" />
+          </button>
+          {showContentTypeDropdown && (
+            <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1">
+              {CONTENT_TYPE_PRESETS.map((preset) => (
+                <button
+                  key={preset.value}
+                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${
+                    contentType === preset.value ? 'text-blue-600 font-medium' : 'text-gray-700'
+                  }`}
+                  onClick={() => {
+                    onContentTypeChange(preset.value);
+                    setShowContentTypeDropdown(false);
+                  }}
+                >
+                  {t(preset.labelKey)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <span className="text-gray-300">|</span>
+
         {/* Date range dropdown */}
-        <div className="relative ml-auto" ref={dateDropdownRef}>
+        <div className="relative" ref={dateDropdownRef}>
           <button
             className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors"
             onClick={() => setShowDateDropdown(!showDateDropdown)}

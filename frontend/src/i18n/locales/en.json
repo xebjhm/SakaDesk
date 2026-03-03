@@ -245,8 +245,8 @@
     "addService": "Add Service"
   },
   "search": {
-    "placeholder": "Search messages...",
-    "noResults": "No messages found",
+    "placeholder": "Search messages and blogs...",
+    "noResults": "No results found",
     "noResultsHint": "Try a different search term",
     "resultCount": "{{count}} results",
     "resultCountPartial": "{{shown}} of {{total}} results",
@@ -263,7 +263,12 @@
     "last7Days": "Last 7 days",
     "last30Days": "Last 30 days",
     "last3Months": "Last 3 months",
-    "lastYear": "Last year"
+    "lastYear": "Last year",
+    "contentAll": "All",
+    "contentMessages": "Messages",
+    "contentBlogs": "Blogs",
+    "blogCacheHint": "Only cached blogs are searchable. Cache all in Settings.",
+    "resultCountWithBlogs": "{{count}} results ({{blogCount}} blogs)"
   },
   "media": {
     "title": "Media",

@@ -1,4 +1,5 @@
-export interface SearchResult {
+export interface MessageSearchResult {
+  result_type: 'message';
   message_id: number;
   content: string | null;
   snippet: string | null;
@@ -11,6 +12,22 @@ export interface SearchResult {
   type: string;
   is_group_chat?: boolean;
 }
+
+export interface BlogSearchResult {
+  result_type: 'blog';
+  blog_id: string;
+  title: string;
+  snippet: string | null;
+  service: string;
+  member_id: number;
+  member_name: string;
+  published_at: string;
+  blog_url: string;
+}
+
+export type SearchResult = MessageSearchResult | BlogSearchResult;
+
+export type ContentTypeFilter = 'all' | 'messages' | 'blogs';
 
 export interface SearchResponse {
   query: string;
