@@ -1,10 +1,12 @@
 """Search service for Japanese fuzzy search over synced message content."""
 import asyncio
 import json
+import re
 import sqlite3
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -19,6 +21,14 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _strip_html(html: str) -> str:
+    """Strip HTML tags, decode entities, collapse whitespace."""
+    text = re.sub(r'<[^>]+>', ' ', html)
+    text = unescape(text)
+    return re.sub(r'\s+', ' ', text).strip()
+
 
 _ALIASES_PATH = Path(__file__).parent.parent / "data" / "search_aliases.json"
 
@@ -82,6 +92,52 @@ CREATE TABLE IF NOT EXISTS read_states (
     updated_at TEXT,
     PRIMARY KEY (service, group_id, member_id)
 );
+
+CREATE TABLE IF NOT EXISTS search_blogs (
+    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+    blog_id TEXT NOT NULL,
+    service TEXT NOT NULL,
+    member_id INTEGER NOT NULL,
+    member_name TEXT NOT NULL,
+    title TEXT,
+    title_normalized TEXT,
+    published_at TEXT,
+    blog_url TEXT,
+    content TEXT,
+    content_normalized TEXT,
+    UNIQUE(blog_id)
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS search_blogs_fts USING fts5(
+    title,
+    title_normalized,
+    content,
+    content_normalized,
+    content=search_blogs,
+    content_rowid=rowid,
+    tokenize="trigram"
+);
+
+CREATE TRIGGER IF NOT EXISTS search_blogs_ai AFTER INSERT ON search_blogs BEGIN
+    INSERT INTO search_blogs_fts(rowid, title, title_normalized, content, content_normalized)
+    VALUES (new.rowid, new.title, new.title_normalized, new.content, new.content_normalized);
+END;
+
+CREATE TRIGGER IF NOT EXISTS search_blogs_ad AFTER DELETE ON search_blogs BEGIN
+    INSERT INTO search_blogs_fts(search_blogs_fts, rowid, title, title_normalized, content, content_normalized)
+    VALUES ('delete', old.rowid, old.title, old.title_normalized, old.content, old.content_normalized);
+END;
+
+CREATE TRIGGER IF NOT EXISTS search_blogs_au AFTER UPDATE ON search_blogs BEGIN
+    INSERT INTO search_blogs_fts(search_blogs_fts, rowid, title, title_normalized, content, content_normalized)
+    VALUES ('delete', old.rowid, old.title, old.title_normalized, old.content, old.content_normalized);
+    INSERT INTO search_blogs_fts(rowid, title, title_normalized, content, content_normalized)
+    VALUES (new.rowid, new.title, new.title_normalized, new.content, new.content_normalized);
+END;
+
+CREATE INDEX IF NOT EXISTS idx_search_blogs_service ON search_blogs(service);
+CREATE INDEX IF NOT EXISTS idx_search_blogs_member ON search_blogs(service, member_id);
+CREATE INDEX IF NOT EXISTS idx_search_blogs_published ON search_blogs(published_at);
 """
 
 _BATCH_SIZE = 500
@@ -800,6 +856,17 @@ class SearchService:
         }
 
     # ------------------------------------------------------------------
+    # Service resolution
+    # ------------------------------------------------------------------
+
+    def _resolve_service_id(self, display_name: str) -> Optional[str]:
+        """Map service display name to service identifier."""
+        try:
+            return get_service_identifier(display_name)
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
     # Index building (sync, runs in executor)
     # ------------------------------------------------------------------
 
@@ -904,6 +971,8 @@ class SearchService:
                 count += len(batch)
                 batch.clear()
 
+            blog_count = self._build_blog_index_sync()
+
             now = datetime.now(timezone.utc).isoformat()
             conn.execute(
                 "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
@@ -915,12 +984,150 @@ class SearchService:
             )
             conn.execute(
                 "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+                ("index_blog_count", str(blog_count)),
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
                 ("schema_version", "1"),
             )
             conn.commit()
-            logger.info("Full search index built", count=count)
+            logger.info("Full search index built", count=count, blog_count=blog_count)
         finally:
             self._building = False
+        return count
+
+    def _build_blog_index_sync(self) -> int:
+        """Index blog content from output/{service_display}/blogs/ directories."""
+        output_dir = get_output_dir()
+        if not output_dir.exists():
+            return 0
+
+        conn = self._get_conn()
+        count = 0
+        batch: list[Tuple[Any, ...]] = []
+
+        for service_dir in output_dir.iterdir():
+            if not service_dir.is_dir():
+                continue
+
+            service_id = self._resolve_service_id(service_dir.name)
+            if service_id is None:
+                continue
+
+            blogs_dir = service_dir / "blogs"
+            if not blogs_dir.exists():
+                continue
+
+            index_file = blogs_dir / "index.json"
+            if not index_file.exists():
+                continue
+
+            try:
+                with open(index_file, "r", encoding="utf-8") as f:
+                    index_data = json.load(f)
+            except Exception as e:
+                logger.warning(
+                    "Failed to read blog index.json",
+                    path=str(index_file),
+                    error=str(e),
+                )
+                continue
+
+            members = index_data.get("members", {})
+            for member_id_str, member_info in members.items():
+                if member_info.get("blogs_removed", False):
+                    continue
+
+                try:
+                    member_id = int(member_id_str)
+                except ValueError:
+                    continue
+
+                member_name = member_info.get("name", "")
+                blog_entries = member_info.get("blogs", [])
+
+                for entry in blog_entries:
+                    blog_id = entry.get("id")
+                    if blog_id is None:
+                        continue
+
+                    published_at = entry.get("published_at", "")
+                    # Derive date prefix from published_at for directory lookup
+                    # Format: YYYYMMDD from ISO timestamp like "2026-01-17T22:21:00+09:00"
+                    date_prefix = ""
+                    if published_at:
+                        try:
+                            date_prefix = published_at[:10].replace("-", "")
+                        except Exception:
+                            pass
+
+                    blog_dir = blogs_dir / member_name / f"{date_prefix}_{blog_id}"
+                    blog_json_path = blog_dir / "blog.json"
+
+                    if not blog_json_path.exists():
+                        continue
+
+                    try:
+                        with open(blog_json_path, "r", encoding="utf-8") as f:
+                            blog_data = json.load(f)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to read blog.json",
+                            path=str(blog_json_path),
+                            error=str(e),
+                        )
+                        continue
+
+                    meta = blog_data.get("meta", {})
+                    content_obj = blog_data.get("content", {})
+                    html_content = content_obj.get("html", "")
+
+                    title = meta.get("title", entry.get("title", ""))
+                    blog_url = meta.get("url", entry.get("url", ""))
+
+                    # Strip HTML and normalize
+                    plain_content = _strip_html(html_content)
+                    content_normalized = self._normalize_with_readings(plain_content)
+                    title_normalized = self._normalize_with_readings(title) if title else ""
+
+                    batch.append((
+                        str(blog_id),
+                        service_id,
+                        member_id,
+                        member_name,
+                        title,
+                        title_normalized,
+                        published_at,
+                        blog_url,
+                        plain_content,
+                        content_normalized,
+                    ))
+
+                    if len(batch) >= _BATCH_SIZE:
+                        conn.executemany(
+                            "INSERT OR REPLACE INTO search_blogs "
+                            "(blog_id, service, member_id, member_name, title, title_normalized, "
+                            "published_at, blog_url, content, content_normalized) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            batch,
+                        )
+                        conn.commit()
+                        count += len(batch)
+                        batch.clear()
+
+        if batch:
+            conn.executemany(
+                "INSERT OR REPLACE INTO search_blogs "
+                "(blog_id, service, member_id, member_name, title, title_normalized, "
+                "published_at, blog_url, content, content_normalized) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                batch,
+            )
+            conn.commit()
+            count += len(batch)
+            batch.clear()
+
+        logger.info("Blog index built", blog_count=count)
         return count
 
     def _index_members_sync(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
