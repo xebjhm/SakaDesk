@@ -143,6 +143,15 @@ CREATE INDEX IF NOT EXISTS idx_search_blogs_published ON search_blogs(published_
 _BATCH_SIZE = 500
 
 
+def _is_romaji(term: str, normalize_fn=None) -> bool:
+    """Check if term is ASCII Latin that normalizes to different hiragana."""
+    if normalize_fn is None:
+        normalize_fn = SearchService._normalize_query
+    return (term.isascii()
+            and any(c.isalpha() for c in term)
+            and normalize_fn(term) != term.lower())
+
+
 class SearchService:
     """FTS5-backed search index for message content with Japanese normalization."""
 
@@ -468,6 +477,240 @@ class SearchService:
         return content[:max_len] + ("..." if len(content) > max_len else "")
 
     # ------------------------------------------------------------------
+    # Blog snippet generation
+    # ------------------------------------------------------------------
+
+    def _make_blog_snippet(
+        self,
+        title: str,
+        content: str,
+        query: str,
+        content_normalized: str = "",
+        title_normalized: str = "",
+        max_len: int = 200,
+    ) -> str:
+        """Generate a highlighted snippet for a blog search result.
+
+        Priority:
+        1. Match in content body (delegated to ``_make_snippet``)
+        2. Match in title with ``<mark>`` highlighting
+        3. First *max_len* chars of content as fallback
+        """
+        normalized_query = self._normalize_query(query)
+        is_romaji = _is_romaji(query)
+
+        # 1. Try content body match
+        if content:
+            snippet = self._make_snippet(
+                content, query, content_normalized, normalized_query,
+                max_len=max_len, is_romaji=is_romaji,
+            )
+            # _make_snippet returns highlighted text with <mark> if found;
+            # if it fell through to the "no match" fallback it won't have <mark>.
+            if "<mark" in snippet:
+                return snippet
+
+        # 2. Try title match
+        if title:
+            lower_title = title.lower()
+            lower_query = query.lower()
+            idx = lower_title.find(lower_query)
+            if idx != -1:
+                matched = title[idx:idx + len(query)]
+                before = title[:idx]
+                after = title[idx + len(query):]
+                return f"{before}<mark>{matched}</mark>{after}"
+            # Normalized match in title
+            if normalized_query and normalized_query != lower_query:
+                idx = lower_title.find(normalized_query)
+                if idx != -1:
+                    matched = title[idx:idx + len(normalized_query)]
+                    before = title[:idx]
+                    after = title[idx + len(normalized_query):]
+                    cls = ' class="reading"' if is_romaji else ""
+                    return f"{before}<mark{cls}>{matched}</mark>{after}"
+            # Reading match in title_normalized
+            if title_normalized and normalized_query:
+                idx = title_normalized.find(normalized_query)
+                if idx != -1:
+                    mapping = self._map_reading_to_original(title, idx, normalized_query)
+                    if mapping:
+                        orig_idx, orig_len = mapping
+                        matched = title[orig_idx:orig_idx + orig_len]
+                        before = title[:orig_idx]
+                        after = title[orig_idx + orig_len:]
+                        return f'{before}<mark class="reading">{matched}</mark>{after}'
+
+        # 3. Fallback: first max_len chars of content
+        if content:
+            return content[:max_len] + ("..." if len(content) > max_len else "")
+        return title or ""
+
+    # ------------------------------------------------------------------
+    # Blog search (sync, runs in executor)
+    # ------------------------------------------------------------------
+
+    def _search_blogs_sync(
+        self,
+        query: str,
+        service: Optional[str],
+        member_id: Optional[int],
+        limit: int,
+        offset: int,
+        *,
+        services: Optional[List[str]] = None,
+        member_ids: Optional[List[int]] = None,
+        member_filters: Optional[List[tuple]] = None,
+        exact_only: bool = False,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """Search indexed blog content. Returns ``(results, total_count)``."""
+        conn = self._get_conn()
+
+        normalized_query = self._normalize_query(query)
+
+        # --- Filter clauses ---
+        filter_clauses: list[str] = []
+        filter_params: list[Any] = []
+
+        if service:
+            filter_clauses.append("b.service = ?")
+            filter_params.append(service)
+        if member_id is not None:
+            filter_clauses.append("b.member_id = ?")
+            filter_params.append(member_id)
+
+        # Multi-service/member OR filter
+        if services or member_ids or member_filters:
+            or_parts: list[str] = []
+            if services:
+                placeholders = ",".join("?" for _ in services)
+                or_parts.append(f"b.service IN ({placeholders})")
+                filter_params.extend(services)
+            if member_ids:
+                placeholders = ",".join("?" for _ in member_ids)
+                or_parts.append(f"b.member_id IN ({placeholders})")
+                filter_params.extend(member_ids)
+            if member_filters:
+                for svc_id, mid in member_filters:
+                    or_parts.append("(b.service = ? AND b.member_id = ?)")
+                    filter_params.extend([svc_id, mid])
+            filter_clauses.append(f"({' OR '.join(or_parts)})")
+
+        # Date range filters (uses published_at)
+        if date_from:
+            filter_clauses.append("b.published_at >= ?")
+            filter_params.append(date_from)
+        if date_to:
+            filter_clauses.append("b.published_at <= ?")
+            filter_params.append(date_to)
+
+        filter_sql = ""
+        if filter_clauses:
+            filter_sql = " AND " + " AND ".join(filter_clauses)
+
+        # --- Build query ---
+        all_params: list[Any] = []
+
+        if len(normalized_query) >= 3:
+            # FTS5 MATCH
+            if exact_only:
+                match_expr = f'{{title content}}: "{query.lower()}"'
+            else:
+                match_expr = (
+                    f'{{title title_normalized content content_normalized}}: '
+                    f'"{normalized_query}"'
+                )
+            data_sql = (
+                "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
+                "b.content_normalized, b.service, b.member_id, b.member_name, "
+                "b.published_at, b.blog_url "
+                "FROM search_blogs_fts f "
+                "JOIN search_blogs b ON f.rowid = b.rowid "
+                f"WHERE search_blogs_fts MATCH ? {filter_sql} "
+                "ORDER BY b.published_at DESC"
+            )
+            all_params.append(match_expr)
+            all_params.extend(filter_params)
+        else:
+            # LIKE fallback
+            like_clauses: list[str] = []
+            if exact_only:
+                like_clauses.append("(b.title LIKE ? OR b.content LIKE ?)")
+                all_params.extend([f"%{query}%", f"%{query}%"])
+            else:
+                like_clauses.append(
+                    "(b.title LIKE ? OR b.title_normalized LIKE ? "
+                    "OR b.content LIKE ? OR b.content_normalized LIKE ?)"
+                )
+                all_params.extend([
+                    f"%{query}%", f"%{normalized_query}%",
+                    f"%{query}%", f"%{normalized_query}%",
+                ])
+            all_params.extend(filter_params)
+            data_sql = (
+                "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
+                "b.content_normalized, b.service, b.member_id, b.member_name, "
+                "b.published_at, b.blog_url "
+                f"FROM search_blogs b "
+                f"WHERE {' AND '.join(like_clauses)} {filter_sql} "
+                "ORDER BY b.published_at DESC"
+            )
+
+        # --- Count ---
+        count_sql = f"SELECT COUNT(*) FROM ({data_sql})"
+        try:
+            row = conn.execute(count_sql, list(all_params)).fetchone()
+            total_count = row[0] if row else 0
+        except Exception as e:
+            logger.warning("Blog search count query failed", error=str(e))
+            total_count = 0
+
+        # --- Paginated results ---
+        if limit > 0:
+            page_sql = f"{data_sql} LIMIT ? OFFSET ?"
+            page_params = list(all_params) + [limit, offset]
+        else:
+            # limit=0 means fetch all (used for merged "all" queries)
+            page_sql = data_sql
+            page_params = list(all_params)
+
+        try:
+            rows = conn.execute(page_sql, page_params).fetchall()
+        except Exception as e:
+            logger.warning("Blog search query failed", error=str(e))
+            rows = []
+
+        # --- Build results ---
+        results: list[Dict[str, Any]] = []
+        for r in rows:
+            title = r[1] or ""
+            title_norm = r[2] or ""
+            content = r[3] or ""
+            content_norm = r[4] or ""
+
+            snippet = self._make_blog_snippet(
+                title, content, query,
+                content_normalized=content_norm,
+                title_normalized=title_norm,
+            )
+
+            results.append({
+                "result_type": "blog",
+                "blog_id": r[0],
+                "title": title,
+                "snippet": snippet,
+                "service": r[5],
+                "member_id": r[6],
+                "member_name": r[7],
+                "published_at": r[8],
+                "blog_url": r[9],
+            })
+
+        return results, total_count
+
+    # ------------------------------------------------------------------
     # Search (sync, runs in executor)
     # ------------------------------------------------------------------
 
@@ -487,8 +730,27 @@ class SearchService:
         exclude_unread: bool = False,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
+        content_type: str = "all",
     ) -> Dict[str, Any]:
         conn = self._get_conn()
+
+        # --- Blog-only short circuit ---
+        if content_type == "blogs":
+            blog_results, blog_total = self._search_blogs_sync(
+                query, service, member_id, limit, offset,
+                services=services, member_ids=member_ids,
+                member_filters=member_filters,
+                exact_only=exact_only,
+                date_from=date_from, date_to=date_to,
+            )
+            first_norm = self._normalize_query(query)
+            return {
+                "query": query,
+                "normalized_query": first_norm,
+                "total_count": blog_total,
+                "results": blog_results,
+                "has_more": (offset + limit) < blog_total,
+            }
 
         words = query.strip().split()
         is_multi_word = len(words) > 1
@@ -603,12 +865,6 @@ class SearchService:
 
         # --- Build query ---
         all_params: list[Any] = []
-
-        # Detect romaji: ASCII Latin input that normalizes to different hiragana
-        def _is_romaji(term: str) -> bool:
-            return (term.isascii()
-                    and any(c.isalpha() for c in term)
-                    and self._normalize_query(term) != term.lower())
 
         if is_multi_word:
             # Multi-word: all words must appear in the same message (AND logic)
@@ -739,6 +995,23 @@ class SearchService:
                     sub_queries.append(sq)
 
             if not sub_queries:
+                if content_type == "all":
+                    # No message results, but still search blogs
+                    blog_results, blog_total = self._search_blogs_sync(
+                        query, service, member_id, limit, offset,
+                        services=services, member_ids=member_ids,
+                        member_filters=member_filters,
+                        exact_only=exact_only,
+                        date_from=date_from, date_to=date_to,
+                    )
+                    first_norm = self._normalize_query(query)
+                    return {
+                        "query": query,
+                        "normalized_query": first_norm,
+                        "total_count": blog_total,
+                        "results": blog_results,
+                        "has_more": (offset + limit) < blog_total,
+                    }
                 return {
                     "query": query,
                     "normalized_query": "",
@@ -810,6 +1083,7 @@ class SearchService:
                 has_exact = first_term.lower() in lower_content
                 match_type = "exact" if has_exact else "reading"
             results.append({
+                "result_type": "message",
                 "message_id": r[0],
                 "content": content,
                 "snippet": snippet,
@@ -847,6 +1121,105 @@ class SearchService:
             for r in results:
                 r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set
 
+        # --- Merge blog results for "all" content_type ---
+        if content_type == "all":
+            # Fetch ALL matching blog results (unpaginated) for merged sorting
+            blog_results, blog_total = self._search_blogs_sync(
+                query, service, member_id, limit=0, offset=0,
+                services=services, member_ids=member_ids,
+                member_filters=member_filters,
+                exact_only=exact_only,
+                date_from=date_from, date_to=date_to,
+            )
+            # Fetch ALL message results (unpaginated) for merged sorting.
+            # We already have the paginated message results, but for correct
+            # combined pagination we need the full unpaginated set.
+            # Re-query without LIMIT/OFFSET to get all message results.
+            try:
+                all_msg_rows = conn.execute(data_sql, list(all_params)).fetchall()
+            except Exception as e:
+                logger.warning("Search full query failed for merge", error=str(e))
+                all_msg_rows = rows  # fall back to paginated results
+
+            # Rebuild full message results list
+            all_message_results: list[Dict[str, Any]] = []
+            for r in all_msg_rows:
+                content = r[1] or ""
+                content_norm = r[2] or ""
+                lower_content = content.lower()
+
+                if exact_only:
+                    if is_multi_word:
+                        snippet = self._make_multi_word_snippet(content, words, content_norm)
+                    else:
+                        snippet = self._make_snippet(
+                            content, first_term, content_norm, first_norm,
+                            is_romaji=query_is_romaji,
+                        )
+                    match_type = "exact"
+                elif is_multi_word:
+                    snippet = self._make_multi_word_snippet(content, words, content_norm)
+                    all_exact = all(w.lower() in lower_content for w in words)
+                    match_type = "exact" if all_exact else "reading"
+                else:
+                    snippet = self._make_snippet(
+                        content, first_term, content_norm, first_norm,
+                        is_romaji=query_is_romaji,
+                    )
+                    has_exact = first_term.lower() in lower_content
+                    match_type = "exact" if has_exact else "reading"
+                all_message_results.append({
+                    "result_type": "message",
+                    "message_id": r[0],
+                    "content": content,
+                    "snippet": snippet,
+                    "service": r[3],
+                    "group_id": r[4],
+                    "group_name": r[5],
+                    "member_id": r[6],
+                    "member_name": r[7],
+                    "timestamp": r[8],
+                    "type": "text",
+                    "match_type": match_type,
+                })
+
+            # Tag message results with is_group_chat
+            if all_message_results:
+                msg_group_ids = list({r["group_id"] for r in all_message_results})
+                placeholders = ",".join("?" for _ in msg_group_ids)
+                gc_rows = conn.execute(
+                    f"SELECT service, group_id, COUNT(DISTINCT member_id) "
+                    f"FROM search_messages "
+                    f"WHERE group_id IN ({placeholders}) "
+                    f"GROUP BY service, group_id",
+                    msg_group_ids,
+                ).fetchall()
+                group_chat_set2 = {(svc, gid) for svc, gid, cnt in gc_rows if cnt > 1}
+                for r in all_message_results:
+                    r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set2
+
+            # Merge and sort by timestamp/published_at DESC
+            combined = all_message_results + blog_results
+
+            def _sort_key(item: Dict[str, Any]) -> str:
+                if item.get("result_type") == "blog":
+                    return item.get("published_at", "") or ""
+                return item.get("timestamp", "") or ""
+
+            combined.sort(key=_sort_key, reverse=True)
+
+            combined_total = len(combined)
+            paginated = combined[offset:offset + limit] if limit > 0 else combined
+
+            return {
+                "query": query,
+                "normalized_query": first_norm,
+                "total_count": combined_total,
+                "results": paginated,
+                "has_more": (offset + (limit if limit > 0 else combined_total)) < combined_total,
+            }
+
+        # --- Messages-only return (content_type == "messages") ---
         return {
             "query": query,
             "normalized_query": first_norm,
@@ -1207,6 +1580,8 @@ class SearchService:
         row = conn.execute("SELECT COUNT(*) FROM search_messages").fetchone()
         indexed_count = row[0] if row else 0
 
+        blog_indexed_count = conn.execute("SELECT COUNT(*) FROM search_blogs").fetchone()[0]
+
         last_build = None
         row = conn.execute("SELECT value FROM search_meta WHERE key = 'last_full_build'").fetchone()
         if row:
@@ -1223,6 +1598,7 @@ class SearchService:
 
         return {
             "indexed_count": indexed_count,
+            "blog_indexed_count": blog_indexed_count,
             "last_build": last_build,
             "schema_version": schema_version,
             "is_building": self._building,
@@ -1394,6 +1770,7 @@ class SearchService:
         exclude_unread: bool = False,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
+        content_type: str = "all",
     ) -> Dict[str, Any]:
         if self._needs_build():
             await self.build_full_index()
@@ -1406,6 +1783,7 @@ class SearchService:
                 member_filters=member_filters,
                 exact_only=exact_only, exclude_unread=exclude_unread,
                 date_from=date_from, date_to=date_to,
+                content_type=content_type,
             ),
         )
 
