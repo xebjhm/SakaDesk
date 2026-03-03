@@ -136,6 +136,13 @@ interface AppState {
     targetMessageId: number | null;
     /** Set the target message to scroll to. */
     setTargetMessageId: (id: number | null) => void;
+
+    // ─── Blog Search Navigation ──────────────────────────────────────────────
+
+    /** Target blog to open from search results (non-persisted). */
+    targetBlog: { blogId: string; service: string; memberId: number; searchQuery: string } | null;
+    /** Set the target blog to open from search navigation. */
+    setTargetBlog: (target: { blogId: string; service: string; memberId: number; searchQuery: string } | null) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -238,6 +245,9 @@ export const useAppStore = create<AppState>()(
 
             targetMessageId: null,
             setTargetMessageId: (id) => set({ targetMessageId: id }),
+
+            targetBlog: null,
+            setTargetBlog: (target) => set({ targetBlog: target }),
         }),
         {
             name: 'hakodesk-app-state',

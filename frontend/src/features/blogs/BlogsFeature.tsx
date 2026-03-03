@@ -8,7 +8,7 @@ import { MemberSelectModal } from './components/MemberSelectModal';
 
 type ViewState =
     | { view: 'recent' }
-    | { view: 'reader'; blog: BlogMeta; member: BlogMember; content: BlogContentResponse | null; fromView: 'recent' | 'timeline' };
+    | { view: 'reader'; blog: BlogMeta; member: BlogMember; content: BlogContentResponse | null; fromView: 'recent' | 'timeline'; searchQuery?: string };
 
 // Stable empty array to avoid creating new references
 const EMPTY_FAVORITES: string[] = [];
@@ -27,6 +27,10 @@ export const BlogsFeature: React.FC = () => {
     const selectionMode = useAppStore((state) => state.blogSelectionModes[activeService ?? ''] ?? 'all');
     // Watch for blog view reset trigger (when user clicks blog icon in feature rail)
     const blogViewResetCounter = useAppStore((state) => state.blogViewResetCounter);
+
+    // Watch for search navigation target
+    const targetBlog = useAppStore((state) => state.targetBlog);
+    const setTargetBlog = useAppStore((state) => state.setTargetBlog);
 
     // Stable key for favorites to prevent unnecessary re-fetches
     const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
@@ -82,6 +86,41 @@ export const BlogsFeature: React.FC = () => {
             setIsMemberModalOpen(false);
         }
     }, [blogViewResetCounter]);
+
+    // Open a specific blog when navigating from search results
+    useEffect(() => {
+        if (!targetBlog || !activeService || targetBlog.service !== activeService) return;
+
+        const openTargetBlog = async () => {
+            try {
+                const content = await getBlogContent(activeService, targetBlog.blogId);
+                const meta = content.meta;
+                setViewState({
+                    view: 'reader',
+                    blog: {
+                        id: String(meta.id),
+                        title: meta.title,
+                        published_at: meta.published_at,
+                        url: meta.url,
+                        thumbnail: null,
+                        cached: true,
+                    },
+                    member: {
+                        id: String(targetBlog.memberId),
+                        name: meta.member_name,
+                    },
+                    content,
+                    fromView: 'recent',
+                    searchQuery: targetBlog.searchQuery,
+                });
+            } catch (err) {
+                console.error('[BlogsFeature] Failed to open blog from search', err);
+            }
+        };
+
+        openTargetBlog();
+        setTargetBlog(null);
+    }, [targetBlog, activeService, setTargetBlog]);
 
     // Load recent posts when in recent view
     // When selectionMode is 'favorite', fetch 20 latest posts from favorited members only
@@ -454,6 +493,7 @@ export const BlogsFeature: React.FC = () => {
                         onNavigate={handleNavigateBlog}
                         onMemberClick={handleMemberClick}
                         serviceId={activeService ?? ''}
+                        searchQuery={viewState.searchQuery}
                     />
                 );
             })()}
