@@ -207,11 +207,24 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
       // Blog search result → navigate to BlogReader
       if (result.result_type === 'blog') {
+        // Extract actual matched text from snippet <mark> tags.
+        // For reading-based matches (e.g., query "かわいい" matching "可愛い"),
+        // the <mark> tags contain the original text which BlogReader needs
+        // to highlight and scroll to the correct position.
+        const matchedTerms: string[] = [];
+        if (result.snippet) {
+          const markRegex = /<mark[^>]*>([^<]+)<\/mark>/g;
+          let m;
+          while ((m = markRegex.exec(result.snippet)) !== null) {
+            matchedTerms.push(m[1]);
+          }
+        }
         setTargetBlog({
           blogId: result.blog_id,
           service: result.service,
           memberId: result.member_id,
           searchQuery: query,
+          matchedTerms: [...new Set(matchedTerms)],
         });
         setActiveFeature(result.service, 'blogs');
         if (activeService !== result.service) {

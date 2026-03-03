@@ -24,6 +24,7 @@ export interface BlogReaderProps {
     onMemberClick: () => void;
     serviceId: string;
     searchQuery?: string;
+    matchedTerms?: string[];
 }
 
 export const BlogReader: React.FC<BlogReaderProps> = ({
@@ -40,6 +41,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     onMemberClick,
     serviceId,
     searchQuery,
+    matchedTerms,
 }) => {
     const theme = useBlogTheme();
 
@@ -96,11 +98,19 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         })
         : '';
 
-    // Highlight search query matches in blog content
+    // Highlight search query matches in blog content.
+    // Uses both the raw searchQuery and matchedTerms extracted from snippet
+    // <mark> tags. This handles reading-based matches where the query is
+    // hiragana (e.g., "かわいい") but the blog text is kanji (e.g., "可愛い").
     let processedHtml = sanitizedHtml;
-    if (searchQuery && processedHtml) {
-        const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(`(${escaped})`, 'gi');
+    if ((searchQuery || matchedTerms?.length) && processedHtml) {
+        const allTerms = new Set<string>();
+        if (searchQuery) allTerms.add(searchQuery);
+        matchedTerms?.forEach(t => allTerms.add(t));
+        const escapedTerms = [...allTerms].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        // Sort by length descending so longer matches take priority
+        escapedTerms.sort((a, b) => b.length - a.length);
+        const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
         // Only replace in text nodes (not inside HTML tags)
         processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
             return '>' + text.replace(regex, '<mark class="search-snippet search-highlight">$1</mark>') + '<';
@@ -109,7 +119,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
     // Scroll to first search highlight after content renders
     useEffect(() => {
-        if (searchQuery) {
+        if (searchQuery || matchedTerms?.length) {
             const timer = setTimeout(() => {
                 document.querySelector('.search-highlight')?.scrollIntoView({
                     behavior: 'smooth',
@@ -118,7 +128,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             }, 300);
             return () => clearTimeout(timer);
         }
-    }, [searchQuery, content]);
+    }, [searchQuery, matchedTerms, content]);
 
     return (
         <div className="flex flex-col h-full relative bg-white">
