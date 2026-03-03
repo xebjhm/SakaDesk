@@ -19,6 +19,7 @@ import structlog
 
 from pyhako import Group
 from pyhako.blog import (
+    BlogGoneError,
     DOWNLOAD_CONCURRENCY_INCREMENTAL,
     DOWNLOAD_CONCURRENCY_INITIAL,
     IMAGE_DOWNLOAD_CONCURRENCY,
@@ -461,9 +462,17 @@ class BlogService:
         queue: list[BlogDownloadItem] = []
 
         for member_id, member_data in index.get("members", {}).items():
+            # Skip members whose blogs are all removed (e.g., graduated)
+            if member_data.get("blogs_removed"):
+                continue
+
             member_name = member_data.get("name", "")
 
             for blog in member_data.get("blogs", []):
+                # Skip individually removed blogs
+                if blog.get("removed"):
+                    continue
+
                 blog_id = blog["id"]
                 date = blog["published_at"][:10].replace("-", "")
                 cache_path = self.get_blog_cache_path(
@@ -519,7 +528,7 @@ class BlogService:
         if not queue:
             if progress_callback:
                 await progress_callback("All blogs already cached")
-            return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0}
+            return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
 
         # Determine concurrency based on how many are already cached
         total_blogs = sum(
@@ -533,7 +542,7 @@ class BlogService:
             else DOWNLOAD_CONCURRENCY_INCREMENTAL
         )
 
-        stats = {"total": len(queue), "downloaded": 0, "skipped": 0, "failed": 0}
+        stats = {"total": len(queue), "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
         completed = 0
 
         async with aiohttp.ClientSession() as session:
@@ -554,6 +563,10 @@ class BlogService:
                             session, scraper, item, download_images
                         )
                         stats["downloaded"] += 1
+                    except BlogGoneError:
+                        # Blog permanently removed (404/410) - mark in index
+                        self._mark_blog_removed(index, item.member_id, item.blog_id)
+                        stats["removed"] += 1
                     except Exception as e:
                         logger.warning(
                             f"Failed to download blog {item.blog_id}: {e}"
@@ -562,18 +575,55 @@ class BlogService:
 
             await asyncio.gather(*[download_item(item) for item in queue])
 
+        # Auto-promote: if ALL blogs of a member are now removed, set member-level flag
+        # This avoids iterating hundreds of removed entries on future syncs
+        self._promote_fully_removed_members(index)
+
         from datetime import datetime, timezone
 
         index["last_download"] = datetime.now(timezone.utc).isoformat()
         await self.save_blog_index(service, index)
 
+        if stats["removed"] > 0:
+            logger.info(
+                "Marked removed blogs",
+                removed=stats["removed"],
+            )
+
         logger.info(
             "Blog content download complete",
             total=stats["total"],
             downloaded=stats["downloaded"],
+            removed=stats["removed"],
             failed=stats["failed"],
         )
         return stats
+
+    def _mark_blog_removed(self, index: dict, member_id: str, blog_id: str):
+        """Mark a blog as permanently removed in the index."""
+        member_data = index.get("members", {}).get(member_id, {})
+        for blog in member_data.get("blogs", []):
+            if blog["id"] == blog_id:
+                blog["removed"] = True
+                break
+
+    def _promote_fully_removed_members(self, index: dict):
+        """Set member-level blogs_removed flag when all blogs are removed.
+
+        This avoids iterating hundreds of individual blog entries on future syncs.
+        """
+        for member_id, member_data in index.get("members", {}).items():
+            if member_data.get("blogs_removed"):
+                continue  # Already promoted
+            blogs = member_data.get("blogs", [])
+            if blogs and all(b.get("removed") for b in blogs):
+                member_data["blogs_removed"] = True
+                logger.info(
+                    "All blogs removed for member",
+                    member_id=member_id,
+                    member_name=member_data.get("name"),
+                    blog_count=len(blogs),
+                )
 
     async def _download_single_blog(
         self,
@@ -707,10 +757,16 @@ class BlogService:
             # Skip if filtering and member not in list
             if member_ids and member_id not in member_ids:
                 continue
+            # Skip members whose blogs are all removed
+            if member_data.get("blogs_removed"):
+                continue
 
             member_name = member_data.get("name", "")
             for blog in member_data.get("blogs", []):
                 blog_id = blog["id"]
+                # Skip individually removed blogs
+                if blog.get("removed"):
+                    continue
                 # Skip duplicates (same blog appearing under multiple members)
                 if blog_id in seen_ids:
                     continue
@@ -836,15 +892,25 @@ class BlogService:
         """Get detailed cache statistics."""
         index = await self.load_blog_index(service)
 
-        total_blogs = sum(
-            len(m.get("blogs", [])) for m in index.get("members", {}).values()
-        )
+        total_blogs = 0
+        removed_count = 0
+        for m in index.get("members", {}).values():
+            blogs = m.get("blogs", [])
+            total_blogs += len(blogs)
+            if m.get("blogs_removed"):
+                removed_count += len(blogs)
+            else:
+                removed_count += sum(1 for b in blogs if b.get("removed"))
 
-        # Count cached blogs
+        # Count cached blogs (skip removed members/blogs entirely)
         cached_count = 0
         for member_id, member_data in index.get("members", {}).items():
+            if member_data.get("blogs_removed"):
+                continue
             member_name = member_data.get("name", "")
             for blog in member_data.get("blogs", []):
+                if blog.get("removed"):
+                    continue
                 date = blog["published_at"][:10].replace("-", "")
                 cache_path = self.get_blog_cache_path(
                     service, member_name, blog["id"], date
@@ -852,10 +918,13 @@ class BlogService:
                 if (cache_path / "blog.json").exists():
                     cached_count += 1
 
+        available_blogs = total_blogs - removed_count
         return {
             "total_blogs": total_blogs,
+            "available_blogs": available_blogs,
             "cached_blogs": cached_count,
-            "pending_download": total_blogs - cached_count,
+            "removed_blogs": removed_count,
+            "pending_download": available_blogs - cached_count,
             "cache_size_bytes": await self.get_cache_size(service),
             "last_sync": index.get("last_sync"),
             "last_download": index.get("last_download"),
