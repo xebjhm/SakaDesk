@@ -18,6 +18,7 @@ async def search_messages(
     exclude_unread: bool = Query(False, description="Exclude unread messages (requires read_states)"),
     date_from: str = Query(None, description="Filter messages after this ISO date"),
     date_to: str = Query(None, description="Filter messages before this ISO date"),
+    content_type: str = Query("all", description="Content type filter: all, messages, blogs"),
     limit: int = Query(50, ge=1, le=200, description="Max results"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
@@ -45,6 +46,7 @@ async def search_messages(
         exclude_unread=exclude_unread,
         date_from=date_from,
         date_to=date_to,
+        content_type=content_type,
     )
 
 
