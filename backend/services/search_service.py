@@ -71,6 +71,17 @@ CREATE TABLE IF NOT EXISTS search_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS read_states (
+    service TEXT NOT NULL,
+    group_id INTEGER NOT NULL,
+    member_id INTEGER NOT NULL,
+    last_read_id INTEGER NOT NULL DEFAULT 0,
+    read_count INTEGER NOT NULL DEFAULT 0,
+    revealed_ids TEXT DEFAULT '[]',
+    updated_at TEXT,
+    PRIMARY KEY (service, group_id, member_id)
+);
 """
 
 _BATCH_SIZE = 500
@@ -412,6 +423,14 @@ class SearchService:
         member_id: Optional[int],
         limit: int,
         offset: int,
+        *,
+        services: Optional[List[str]] = None,
+        member_ids: Optional[List[int]] = None,
+        member_filters: Optional[List[tuple]] = None,
+        exact_only: bool = False,
+        exclude_unread: bool = False,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         conn = self._get_conn()
 
@@ -441,6 +460,8 @@ class SearchService:
         # --- Filter clauses ---
         filter_clauses: list[str] = []
         filter_params: list[Any] = []
+
+        # Single service filter (from nickname resolution or legacy single-service param)
         if service:
             filter_clauses.append("m.service = ?")
             filter_params.append(service)
@@ -453,6 +474,72 @@ class SearchService:
         if extra_member_name and member_id is None:
             filter_clauses.append("m.member_name = ?")
             filter_params.append(extra_member_name)
+
+        # Multi-service/member OR filter (from search filter UI chips)
+        # These are combined with OR: any matching service OR any matching member
+        if services or member_ids or member_filters:
+            or_parts: list[str] = []
+            if services:
+                placeholders = ",".join("?" for _ in services)
+                or_parts.append(f"m.service IN ({placeholders})")
+                filter_params.extend(services)
+            if member_ids:
+                placeholders = ",".join("?" for _ in member_ids)
+                or_parts.append(f"m.member_id IN ({placeholders})")
+                filter_params.extend(member_ids)
+            # Service-scoped member pairs: matches all groups for that member within the service
+            if member_filters:
+                for svc_id, mid in member_filters:
+                    or_parts.append("(m.service = ? AND m.member_id = ?)")
+                    filter_params.extend([svc_id, mid])
+            filter_clauses.append(f"({' OR '.join(or_parts)})")
+
+        # Date range filters
+        if date_from:
+            filter_clauses.append("m.timestamp >= ?")
+            filter_params.append(date_from)
+        if date_to:
+            filter_clauses.append("m.timestamp <= ?")
+            filter_params.append(date_to)
+
+        # Unread filter: exclude messages not yet read
+        # Uses read_states table to determine read boundary per conversation.
+        # JOIN on (service, group_id) only — not member_id — because:
+        #   - Individual chats: one read_states row per (service, group_id, member_id)
+        #   - Group chats: one read_states row with member_id=0, but search_messages
+        #     stores the actual author's member_id per message
+        # MAX(last_read_id) handles both cases correctly.
+        # Also includes individually revealed messages (revealed_ids in read_states).
+        unread_join_sql = ""
+        if exclude_unread:
+            unread_join_sql = (
+                " LEFT JOIN ("
+                "SELECT service, group_id, MAX(last_read_id) as last_read_id "
+                "FROM read_states GROUP BY service, group_id"
+                ") rs ON m.service = rs.service AND m.group_id = rs.group_id"
+            )
+            # Collect all revealed_ids so they bypass the last_read_id boundary
+            all_revealed: set[int] = set()
+            try:
+                rs_rows = conn.execute(
+                    "SELECT revealed_ids FROM read_states WHERE revealed_ids != '[]'"
+                ).fetchall()
+                for (rids_json,) in rs_rows:
+                    try:
+                        all_revealed.update(json.loads(rids_json))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            if all_revealed:
+                placeholders = ",".join("?" for _ in all_revealed)
+                filter_clauses.append(
+                    f"(m.message_id <= COALESCE(rs.last_read_id, 0) "
+                    f"OR m.message_id IN ({placeholders}))"
+                )
+                filter_params.extend(list(all_revealed))
+            else:
+                filter_clauses.append("m.message_id <= COALESCE(rs.last_read_id, 0)")
 
         filter_sql = ""
         if filter_clauses:
@@ -475,7 +562,13 @@ class SearchService:
                 match_parts = []
                 for w in words:
                     norm_w = self._normalize_query(w)
-                    if _is_romaji(w) and len(w) >= 3:
+                    if exact_only:
+                        # Exact match only -- literal substring match in original
+                        # text, NOT Levenshtein fuzzy search. Skips
+                        # pronunciation/reading-based matching via
+                        # pykakasi-normalized kana column.
+                        match_parts.append(f'{{content}}: "{w.lower()}"')
+                    elif _is_romaji(w) and len(w) >= 3:
                         # Search both English content and reading
                         match_parts.append(
                             f'({{content}}: "{w.lower()}" OR '
@@ -492,6 +585,7 @@ class SearchService:
                     "m.timestamp, 0 as match_type "
                     "FROM search_fts f "
                     "JOIN search_messages m ON f.rowid = m.rowid "
+                    f"{unread_join_sql}"
                     f"WHERE search_fts MATCH ? {filter_sql} "
                     "ORDER BY m.timestamp DESC"
                 )
@@ -502,16 +596,20 @@ class SearchService:
                 like_clauses: list[str] = []
                 for w in words:
                     norm_w = self._normalize_query(w)
-                    like_clauses.append(
-                        "(m.content LIKE ? OR m.content_normalized LIKE ?)"
-                    )
-                    all_params.extend([f"%{w}%", f"%{norm_w}%"])
+                    if exact_only:
+                        like_clauses.append("m.content LIKE ?")
+                        all_params.append(f"%{w}%")
+                    else:
+                        like_clauses.append(
+                            "(m.content LIKE ? OR m.content_normalized LIKE ?)"
+                        )
+                        all_params.extend([f"%{w}%", f"%{norm_w}%"])
                 all_params.extend(filter_params)
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
                     "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                     "m.timestamp, 0 as match_type "
-                    "FROM search_messages m "
+                    f"FROM search_messages m {unread_join_sql} "
                     f"WHERE {' AND '.join(like_clauses)} {filter_sql} "
                     "ORDER BY m.timestamp DESC"
                 )
@@ -523,45 +621,64 @@ class SearchService:
                 is_term_romaji = _is_romaji(term)
 
                 if len(norm) >= 3:
-                    # Reading match (match_type=1) when romaji, exact (0) otherwise
-                    mt = 1 if is_term_romaji else 0
-                    match_expr = f'{{content content_normalized}}: "{norm}"'
+                    if exact_only:
+                        # Exact match only -- literal substring match in original
+                        # text, NOT Levenshtein fuzzy search. Skips
+                        # pronunciation/reading-based matching via
+                        # pykakasi-normalized kana column.
+                        match_expr = f'{{content}}: "{term.lower()}"'
+                    else:
+                        # Reading match (match_type=1) when romaji, exact (0) otherwise
+                        mt = 1 if is_term_romaji else 0
+                        match_expr = f'{{content content_normalized}}: "{norm}"'
+
+                    sq_mt = 0 if exact_only else (1 if is_term_romaji else 0)
                     sq = (
                         "SELECT m.message_id, m.content, m.content_normalized, "
                         "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                        f"m.timestamp, {mt} as match_type "
+                        f"m.timestamp, {sq_mt} as match_type "
                         "FROM search_fts f "
-                        "JOIN search_messages m ON f.rowid = m.rowid "
+                        f"JOIN search_messages m ON f.rowid = m.rowid {unread_join_sql} "
                         f"WHERE search_fts MATCH ? {filter_sql}"
                     )
                     all_params.append(match_expr)
                     all_params.extend(filter_params)
                     sub_queries.append(sq)
 
-                    # Romaji: also search English text in content column (exact match)
-                    if is_term_romaji and len(term) >= 3:
+                    # Romaji: also search English text (skip in exact_only mode -- already covered above)
+                    if not exact_only and is_term_romaji and len(term) >= 3:
                         en_match = f'{{content}}: "{term.lower()}"'
                         sq_en = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, 0 as match_type "
                             "FROM search_fts f "
-                            "JOIN search_messages m ON f.rowid = m.rowid "
+                            f"JOIN search_messages m ON f.rowid = m.rowid {unread_join_sql} "
                             f"WHERE search_fts MATCH ? {filter_sql}"
                         )
                         all_params.append(en_match)
                         all_params.extend(filter_params)
                         sub_queries.append(sq_en)
                 else:
-                    sq = (
-                        "SELECT m.message_id, m.content, m.content_normalized, "
-                        "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                        "m.timestamp, 0 as match_type "
-                        "FROM search_messages m "
-                        f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
-                    )
-                    all_params.append(f"%{term}%")
-                    all_params.append(f"%{norm}%")
+                    if exact_only:
+                        sq = (
+                            "SELECT m.message_id, m.content, m.content_normalized, "
+                            "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
+                            "m.timestamp, 0 as match_type "
+                            f"FROM search_messages m {unread_join_sql} "
+                            f"WHERE m.content LIKE ? {filter_sql}"
+                        )
+                        all_params.append(f"%{term}%")
+                    else:
+                        sq = (
+                            "SELECT m.message_id, m.content, m.content_normalized, "
+                            "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
+                            "m.timestamp, 0 as match_type "
+                            f"FROM search_messages m {unread_join_sql} "
+                            f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
+                        )
+                        all_params.append(f"%{term}%")
+                        all_params.append(f"%{norm}%")
                     all_params.extend(filter_params)
                     sub_queries.append(sq)
 
@@ -615,7 +732,17 @@ class SearchService:
             # Compute match_type in Python: checks if original query text
             # appears literally in content.  More accurate than SQL match_type
             # for the LIKE fallback path where SQL always returns 0.
-            if is_multi_word:
+            if exact_only:
+                # In exact_only mode, all results are "exact" by definition
+                if is_multi_word:
+                    snippet = self._make_multi_word_snippet(content, words, content_norm)
+                else:
+                    snippet = self._make_snippet(
+                        content, first_term, content_norm, first_norm,
+                        is_romaji=query_is_romaji,
+                    )
+                match_type = "exact"
+            elif is_multi_word:
                 snippet = self._make_multi_word_snippet(content, words, content_norm)
                 all_exact = all(w.lower() in lower_content for w in words)
                 match_type = "exact" if all_exact else "reading"
@@ -643,6 +770,26 @@ class SearchService:
         # Sort results: exact matches first.  Stable sort preserves the
         # original SQL timestamp-DESC ordering within each group.
         results.sort(key=lambda x: 0 if x["match_type"] == "exact" else 1)
+
+        # revealed_ids are now handled in SQL via the unread filter clause
+        # (OR m.message_id IN (...)) so no post-processing needed.
+
+        # Tag results with is_group_chat based on distinct member count per
+        # (service, group_id).  group_id is NOT unique across services, so we
+        # must include service in the grouping to avoid false positives.
+        if results:
+            group_ids = list({r["group_id"] for r in results})
+            placeholders = ",".join("?" for _ in group_ids)
+            gc_rows = conn.execute(
+                f"SELECT service, group_id, COUNT(DISTINCT member_id) "
+                f"FROM search_messages "
+                f"WHERE group_id IN ({placeholders}) "
+                f"GROUP BY service, group_id",
+                group_ids,
+            ).fetchall()
+            group_chat_set = {(svc, gid) for svc, gid, cnt in gc_rows if cnt > 1}
+            for r in results:
+                r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set
 
         return {
             "query": query,
@@ -884,6 +1031,125 @@ class SearchService:
         self._build_full_index_sync()
 
     # ------------------------------------------------------------------
+    # Read states
+    # ------------------------------------------------------------------
+
+    def _get_all_read_states_sync(self) -> Dict[str, Any]:
+        conn = self._get_conn()
+        rows = conn.execute(
+            "SELECT service, group_id, member_id, last_read_id, read_count, revealed_ids, updated_at "
+            "FROM read_states"
+        ).fetchall()
+        result = {}
+        for r in rows:
+            key = f"{r[0]}/{r[1]}/{r[2]}"
+            result[key] = {
+                "service": r[0],
+                "group_id": r[1],
+                "member_id": r[2],
+                "last_read_id": r[3],
+                "read_count": r[4],
+                "revealed_ids": json.loads(r[5]) if r[5] else [],
+                "updated_at": r[6],
+            }
+        return result
+
+    def _upsert_read_state_sync(
+        self,
+        service: str,
+        group_id: int,
+        member_id: int,
+        last_read_id: int,
+        read_count: int,
+        revealed_ids: List[int],
+    ) -> None:
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT INTO read_states (service, group_id, member_id, last_read_id, read_count, revealed_ids, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(service, group_id, member_id) DO UPDATE SET "
+            "last_read_id=excluded.last_read_id, read_count=excluded.read_count, "
+            "revealed_ids=excluded.revealed_ids, updated_at=excluded.updated_at",
+            (service, group_id, member_id, last_read_id, read_count, json.dumps(revealed_ids), now),
+        )
+        conn.commit()
+
+    def _batch_upsert_read_states_sync(self, entries: List[Dict[str, Any]]) -> int:
+        conn = self._get_conn()
+        now = datetime.now(timezone.utc).isoformat()
+        count = 0
+        for i in range(0, len(entries), _BATCH_SIZE):
+            batch = entries[i : i + _BATCH_SIZE]
+            for entry in batch:
+                conn.execute(
+                    "INSERT INTO read_states (service, group_id, member_id, last_read_id, read_count, revealed_ids, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(service, group_id, member_id) DO UPDATE SET "
+                    "last_read_id=excluded.last_read_id, read_count=excluded.read_count, "
+                    "revealed_ids=excluded.revealed_ids, updated_at=excluded.updated_at",
+                    (
+                        entry["service"],
+                        entry["group_id"],
+                        entry["member_id"],
+                        entry.get("last_read_id", 0),
+                        entry.get("read_count", 0),
+                        json.dumps(entry.get("revealed_ids", [])),
+                        now,
+                    ),
+                )
+                count += 1
+            conn.commit()
+        return count
+
+    # ------------------------------------------------------------------
+    # Members list (sync, runs in executor)
+    # ------------------------------------------------------------------
+
+    def _get_members_sync(self) -> Dict[str, Any]:
+        """Get all indexed members and services for the filter autocomplete."""
+        conn = self._get_conn()
+
+        # Members
+        member_rows = conn.execute(
+            "SELECT service, group_id, group_name, member_id, member_name, COUNT(*) as message_count "
+            "FROM search_messages "
+            "GROUP BY service, group_id, member_id "
+            "ORDER BY service, member_name"
+        ).fetchall()
+
+        members = [
+            {
+                "service": r[0],
+                "group_id": r[1],
+                "group_name": r[2],
+                "member_id": r[3],
+                "member_name": r[4],
+                "message_count": r[5],
+            }
+            for r in member_rows
+        ]
+
+        # Services
+        service_rows = conn.execute(
+            "SELECT service, COUNT(DISTINCT member_id) as member_count, COUNT(*) as message_count "
+            "FROM search_messages "
+            "GROUP BY service "
+            "ORDER BY service"
+        ).fetchall()
+
+        services = [
+            {
+                "service": r[0],
+                "member_count": r[1],
+                "message_count": r[2],
+            }
+            for r in service_rows
+        ]
+
+        return {"members": members, "services": services}
+
+    # ------------------------------------------------------------------
     # Public async API
     # ------------------------------------------------------------------
 
@@ -913,19 +1179,27 @@ class SearchService:
         member_id: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
+        *,
+        services: Optional[List[str]] = None,
+        member_ids: Optional[List[int]] = None,
+        member_filters: Optional[List[tuple]] = None,
+        exact_only: bool = False,
+        exclude_unread: bool = False,
+        date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         if self._needs_build():
             await self.build_full_index()
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor,
-            self._search_sync,
-            query,
-            service,
-            group_id,
-            member_id,
-            limit,
-            offset,
+            lambda: self._search_sync(
+                query, service, group_id, member_id, limit, offset,
+                services=services, member_ids=member_ids,
+                member_filters=member_filters,
+                exact_only=exact_only, exclude_unread=exclude_unread,
+                date_from=date_from, date_to=date_to,
+            ),
         )
 
     async def build_full_index(self) -> int:
@@ -943,6 +1217,28 @@ class SearchService:
     async def rebuild(self) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(self._executor, self._rebuild_sync)
+
+    async def get_all_read_states(self) -> Dict[str, Any]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._get_all_read_states_sync)
+
+    async def upsert_read_state(
+        self, service: str, group_id: int, member_id: int,
+        last_read_id: int, read_count: int, revealed_ids: List[int],
+    ) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            self._executor, self._upsert_read_state_sync,
+            service, group_id, member_id, last_read_id, read_count, revealed_ids,
+        )
+
+    async def batch_upsert_read_states(self, entries: List[Dict[str, Any]]) -> int:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._batch_upsert_read_states_sync, entries)
+
+    async def get_members(self) -> Dict[str, Any]:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._get_members_sync)
 
 
 # ------------------------------------------------------------------
