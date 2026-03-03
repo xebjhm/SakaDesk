@@ -1,7 +1,7 @@
 // frontend/src/features/blogs/components/BlogReader.tsx
 // Blog reader component with navigation, oshi theming, and content display
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
 import { getMemberColors, getMemberNameJp, getGroupFromService } from '../../../data/memberColors';
@@ -23,6 +23,7 @@ export interface BlogReaderProps {
     onNavigate: (blog: BlogMeta) => void;
     onMemberClick: () => void;
     serviceId: string;
+    searchQuery?: string;
 }
 
 export const BlogReader: React.FC<BlogReaderProps> = ({
@@ -38,6 +39,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     onNavigate,
     onMemberClick,
     serviceId,
+    searchQuery,
 }) => {
     const theme = useBlogTheme();
 
@@ -93,6 +95,30 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
         })
         : '';
+
+    // Highlight search query matches in blog content
+    let processedHtml = sanitizedHtml;
+    if (searchQuery && processedHtml) {
+        const escaped = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const regex = new RegExp(`(${escaped})`, 'gi');
+        // Only replace in text nodes (not inside HTML tags)
+        processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
+            return '>' + text.replace(regex, '<mark class="search-snippet search-highlight">$1</mark>') + '<';
+        });
+    }
+
+    // Scroll to first search highlight after content renders
+    useEffect(() => {
+        if (searchQuery) {
+            const timer = setTimeout(() => {
+                document.querySelector('.search-highlight')?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center',
+                });
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [searchQuery, content]);
 
     return (
         <div className="flex flex-col h-full relative bg-white">
@@ -197,10 +223,10 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                 </div>
                             </header>
 
-                            {/* Blog content - sanitized HTML rendered safely with DOMPurify */}
+                            {/* Blog content - sanitized HTML rendered safely with DOMPurify, then search highlights injected */}
                             <div
                                 className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto blog-content"
-                                dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                                dangerouslySetInnerHTML={{ __html: processedHtml }}
                             />
 
                             {/* Blog content link styles */}

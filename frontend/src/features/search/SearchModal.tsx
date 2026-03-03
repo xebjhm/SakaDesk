@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -193,22 +194,40 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
         setSelectedConversation,
         triggerConversationNavigation,
         setTargetMessageId,
+        setTargetBlog,
         activeService,
         selectedServices,
         setSelectedServices,
       } = useAppStore.getState();
 
+      // Ensure the target service is in selectedServices so ServiceRail shows it
+      if (!selectedServices.includes(result.service)) {
+        setSelectedServices([...selectedServices, result.service]);
+      }
+
+      // Blog search result → navigate to BlogReader
+      if (result.result_type === 'blog') {
+        setTargetBlog({
+          blogId: result.blog_id,
+          service: result.service,
+          memberId: result.member_id,
+          searchQuery: query,
+        });
+        setActiveFeature(result.service, 'blogs');
+        if (activeService !== result.service) {
+          setActiveService(result.service);
+        }
+        close();
+        return;
+      }
+
+      // Message search result → navigate to conversation
       const serviceDisplay = getServiceDisplayName(result.service);
       const isGroupChat = result.is_group_chat ?? false;
 
       const path = isGroupChat
         ? `${serviceDisplay}/messages/${result.group_id} ${result.group_name}`
         : `${serviceDisplay}/messages/${result.group_id} ${result.group_name}/${result.member_id} ${result.member_name}`;
-
-      // Ensure the target service is in selectedServices so ServiceRail shows it
-      if (!selectedServices.includes(result.service)) {
-        setSelectedServices([...selectedServices, result.service]);
-      }
 
       setSelectedConversation(result.service, {
         path,
@@ -226,7 +245,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
       close();
     },
-    [close]
+    [close, query]
   );
 
   // ─── Keyboard handler ─────────────────────────────────────────────────────
@@ -278,6 +297,12 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
       }
     },
     [results, selectedIndex, handleNavigate, close]
+  );
+
+  // ─── Derived state ─────────────────────────────────────────────────────────
+  const blogCount = useMemo(
+    () => results.filter((r) => r.result_type === 'blog').length,
+    [results]
   );
 
   // ─── Render ────────────────────────────────────────────────────────────────
@@ -381,13 +406,22 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
           {/* Footer */}
           {results.length > 0 && (
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex justify-between rounded-b-xl">
-              <span>
-                {totalCount > results.length
-                  ? t('search.resultCountPartial', { shown: results.length, total: totalCount })
-                  : t('search.resultCount', { count: results.length })}
-              </span>
-              <span>{t('search.pressEnterToSelect')}</span>
+            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex flex-col gap-1 rounded-b-xl">
+              <div className="flex justify-between">
+                <span>
+                  {totalCount > results.length
+                    ? t('search.resultCountPartial', { shown: results.length, total: totalCount })
+                    : blogCount > 0
+                      ? t('search.resultCountWithBlogs', { count: results.length, blogCount })
+                      : t('search.resultCount', { count: results.length })}
+                </span>
+                <span>{t('search.pressEnterToSelect')}</span>
+              </div>
+              {blogCount > 0 && (
+                <span className="text-gray-300 text-[10px]">
+                  {t('search.blogCacheHint')}
+                </span>
+              )}
             </div>
           )}
         </div>
