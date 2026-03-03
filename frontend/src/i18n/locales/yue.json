@@ -253,7 +253,17 @@
         "loadMore": "載入更多結果",
         "pressEnterToSelect": "撳 Enter 揀選",
         "errorSearchFailed": "搜尋失敗，請再試。",
-        "building": "建緊搜尋索引..."
+        "building": "建緊搜尋索引...",
+        "filters": "篩選",
+        "exactMatchOnly": "淨係完全匹配",
+        "includeUnread": "包含未讀",
+        "filterByMember": "按成員或服務篩選...",
+        "dateRange": "日期範圍",
+        "allTime": "全部時間",
+        "last7Days": "最近7日",
+        "last30Days": "最近30日",
+        "last3Months": "最近3個月",
+        "lastYear": "最近1年"
     },
     "media": {
         "title": "媒體",

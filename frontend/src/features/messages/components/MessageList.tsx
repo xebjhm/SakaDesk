@@ -93,25 +93,25 @@ export const MessageList: React.FC<ChatListProps> = ({
         handleRangeChanged,
     } = useChatScroll(memberId, processedMessages);
 
-    // Override initial scroll position when navigating from search.
-    // This works with Virtuoso's native initialTopMostItemIndex on mount,
-    // avoiding timing races with post-mount scrollToIndex calls.
+    // Search navigation: find target index for initialTopMostItemIndex (cross-room)
+    // and scrollToIndex (same-room). Both place the target at the top.
     const targetIndex = useMemo(() => {
-        if (targetMessageId != null) {
-            const idx = processedMessages.findIndex(m => m.id === targetMessageId);
-            if (idx !== -1) return idx;
-        }
-        return null;
+        if (targetMessageId == null) return undefined;
+        const idx = processedMessages.findIndex(m => m.id === targetMessageId);
+        return idx !== -1 ? idx : undefined;
     }, [targetMessageId, processedMessages]);
 
-    const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
-
-    // Clear the target after Virtuoso has mounted with the correct position
+    // Same-room navigation: Virtuoso is already mounted, so scrollToIndex works.
+    // Cross-room navigation uses initialTopMostItemIndex below instead.
     useEffect(() => {
-        if (targetIndex != null) {
-            onTargetMessageConsumed?.();
-        }
-    }, [targetIndex, onTargetMessageConsumed]);
+        if (targetIndex == null) return;
+        virtuosoRef.current?.scrollToIndex({ index: targetIndex, align: 'start' });
+        onTargetMessageConsumed?.();
+    }, [targetIndex, onTargetMessageConsumed, virtuosoRef]);
+
+    // Cross-room: on fresh mount, initialTopMostItemIndex places target at top.
+    // Falls back to savedScrollIndex when no search navigation is active.
+    const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
 
     // Combined range change handler
     const onRangeChange = useCallback((range: { startIndex: number; endIndex: number }) => {

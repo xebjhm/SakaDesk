@@ -9,6 +9,7 @@ export interface SearchResult {
   member_name: string;
   timestamp: string;
   type: string;
+  is_group_chat?: boolean;
 }
 
 export interface SearchResponse {
@@ -17,4 +18,33 @@ export interface SearchResponse {
   total_count: number;
   results: SearchResult[];
   has_more: boolean;
+}
+
+export interface FilterChip {
+  type: 'service' | 'member';
+  id: string;
+  label: string;
+  color: string;
+}
+
+export type DateRangePreset = 'all' | '7d' | '30d' | '3m' | '1y';
+
+export interface MemberEntry {
+  service: string;
+  group_id: number;
+  group_name: string;
+  member_id: number;
+  member_name: string;
+  message_count: number;
+}
+
+export interface ServiceEntry {
+  service: string;
+  member_count: number;
+  message_count: number;
+}
+
+export interface MembersResponse {
+  members: MemberEntry[];
+  services: ServiceEntry[];
 }

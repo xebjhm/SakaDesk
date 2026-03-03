@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Search, Loader2, X } from 'lucide-react';
+import { Search, Loader2, X, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 
 interface SearchInputProps {
@@ -9,6 +9,8 @@ interface SearchInputProps {
   inputRef: React.RefObject<HTMLInputElement>;
   onCompositionStart: () => void;
   onCompositionEnd: () => void;
+  onFilterToggle?: () => void;
+  filtersActive?: boolean;
 }
 
 export const SearchInput: React.FC<SearchInputProps> = ({
@@ -18,6 +20,8 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   inputRef,
   onCompositionStart,
   onCompositionEnd,
+  onFilterToggle,
+  filtersActive,
 }) => {
   const { t } = useTranslation();
 
@@ -27,7 +31,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   );
 
   return (
-    <div className="flex items-center px-4 py-3 border-b border-gray-200">
+    <div className="flex items-center px-4 py-3 border-b border-gray-200 rounded-t-xl">
       <Search className="w-5 h-5 text-gray-400 shrink-0" />
       <input
         ref={inputRef}
@@ -40,6 +44,21 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         className="flex-1 ml-3 text-base bg-transparent outline-none placeholder-gray-400"
         autoFocus
       />
+      {/* Filter toggle */}
+      {onFilterToggle && (
+        <button
+          type="button"
+          onClick={onFilterToggle}
+          className={`shrink-0 ml-1 p-1 rounded transition-colors ${
+            filtersActive
+              ? 'text-blue-600 bg-blue-50'
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+          }`}
+          title="Filters"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+        </button>
+      )}
       <div className="shrink-0 ml-2">
         {isLoading ? (
           <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />

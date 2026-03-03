@@ -113,3 +113,11 @@ export function getServiceLogoUrl(id: string): string | undefined {
 export function getServicePrimaryColor(id: string): string {
     return SERVICES_BY_ID[id]?.primaryColor ?? '#6b7280';
 }
+
+const SERVICES_BY_DISPLAY_NAME: Record<string, ServiceDefinition> = Object.fromEntries(
+    SERVICES.map((s) => [s.displayName, s])
+);
+
+export function getServiceIdFromDisplayName(displayName: string): string | undefined {
+    return SERVICES_BY_DISPLAY_NAME[displayName]?.id;
+}

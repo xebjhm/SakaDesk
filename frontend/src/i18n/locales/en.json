@@ -253,7 +253,17 @@
     "loadMore": "Load more results",
     "pressEnterToSelect": "Press Enter to select",
     "errorSearchFailed": "Search failed. Please try again.",
-    "building": "Building search index..."
+    "building": "Building search index...",
+    "filters": "Filters",
+    "exactMatchOnly": "Exact match only",
+    "includeUnread": "Include unread",
+    "filterByMember": "Filter by member or service...",
+    "dateRange": "Date range",
+    "allTime": "All time",
+    "last7Days": "Last 7 days",
+    "last30Days": "Last 30 days",
+    "last3Months": "Last 3 months",
+    "lastYear": "Last year"
   },
   "media": {
     "title": "Media",
