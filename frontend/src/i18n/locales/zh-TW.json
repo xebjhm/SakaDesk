@@ -245,8 +245,8 @@
     "addService": "新增服務"
   },
   "search": {
-    "placeholder": "搜尋訊息...",
-    "noResults": "找不到訊息",
+    "placeholder": "搜尋訊息和部落格...",
+    "noResults": "找不到結果",
     "noResultsHint": "請嘗試其他搜尋詞",
     "resultCount": "{{count}} 筆結果",
     "resultCountPartial": "顯示 {{shown}} / {{total}} 筆結果",
@@ -263,7 +263,12 @@
     "last7Days": "最近7天",
     "last30Days": "最近30天",
     "last3Months": "最近3個月",
-    "lastYear": "最近1年"
+    "lastYear": "最近1年",
+    "contentAll": "全部",
+    "contentMessages": "訊息",
+    "contentBlogs": "部落格",
+    "blogCacheHint": "僅可搜尋已快取的部落格。可在設定中快取全部。",
+    "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個部落格）"
   },
   "media": {
     "title": "媒體",

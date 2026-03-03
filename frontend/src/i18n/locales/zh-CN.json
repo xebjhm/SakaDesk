@@ -245,8 +245,8 @@
     "addService": "添加服务"
   },
   "search": {
-    "placeholder": "搜索消息...",
-    "noResults": "未找到消息",
+    "placeholder": "搜索消息和博客...",
+    "noResults": "找不到结果",
     "noResultsHint": "请尝试其他搜索词",
     "resultCount": "{{count}} 条结果",
     "resultCountPartial": "显示 {{shown}} / {{total}} 条结果",
@@ -263,7 +263,12 @@
     "last7Days": "最近7天",
     "last30Days": "最近30天",
     "last3Months": "最近3个月",
-    "lastYear": "最近1年"
+    "lastYear": "最近1年",
+    "contentAll": "全部",
+    "contentMessages": "消息",
+    "contentBlogs": "博客",
+    "blogCacheHint": "仅可搜索已缓存的博客。可在设置中缓存全部。",
+    "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个博客）"
   },
   "media": {
     "title": "媒体",

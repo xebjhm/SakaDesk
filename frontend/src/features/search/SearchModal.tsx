@@ -15,7 +15,7 @@ import { getServiceDisplayName } from '../../data/services';
 import { SearchInput } from './components/SearchInput';
 import { SearchFilterBar } from './components/SearchFilterBar';
 import { SearchResultList } from './components/SearchResultList';
-import type { SearchResult, SearchResponse, FilterChip, DateRangePreset } from './types';
+import type { SearchResult, SearchResponse, FilterChip, DateRangePreset, ContentTypeFilter } from './types';
 
 export interface SearchModalHandle {
   open: () => void;
@@ -42,6 +42,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
   const [exactOnly, setExactOnly] = useState(false);
   const [includeUnread, setIncludeUnread] = useState(false);
   const [dateRange, setDateRange] = useState<DateRangePreset>('all');
+  const [contentType, setContentType] = useState<ContentTypeFilter>('all');
 
   // ─── Refs ──────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null!);
@@ -63,6 +64,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
     setExactOnly(false);
     setIncludeUnread(false);
     setDateRange('all');
+    setContentType('all');
   }, []);
 
   const open = useCallback(() => {
@@ -100,6 +102,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
     if (memberFilters.length) params.set('member_filters', memberFilters.join(','));
     if (exactOnly) params.set('exact_only', 'true');
     if (!includeUnread) params.set('exclude_unread', 'true');
+    if (contentType !== 'all') params.set('content_type', contentType);
     if (dateRange !== 'all') {
       const now = new Date();
       let from: Date;
@@ -113,7 +116,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
       params.set('date_from', from.toISOString());
     }
     return params.toString();
-  }, [selectedFilters, exactOnly, includeUnread, dateRange]);
+  }, [selectedFilters, exactOnly, includeUnread, dateRange, contentType]);
 
   // ─── API call with debounce ────────────────────────────────────────────────
   useEffect(() => {
@@ -319,6 +322,8 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
               onIncludeUnreadChange={setIncludeUnread}
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
+              contentType={contentType}
+              onContentTypeChange={setContentType}
             />
           )}
 

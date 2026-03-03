@@ -245,8 +245,8 @@
         "addService": "加服務"
     },
     "search": {
-        "placeholder": "搜尋訊息...",
-        "noResults": "搵唔到訊息",
+        "placeholder": "搜尋訊息同網誌...",
+        "noResults": "搵唔到結果",
         "noResultsHint": "試下其他搜尋詞",
         "resultCount": "{{count}} 個結果",
         "resultCountPartial": "顯示緊 {{shown}} / {{total}} 個結果",
@@ -263,7 +263,12 @@
         "last7Days": "最近7日",
         "last30Days": "最近30日",
         "last3Months": "最近3個月",
-        "lastYear": "最近1年"
+        "lastYear": "最近1年",
+        "contentAll": "全部",
+        "contentMessages": "訊息",
+        "contentBlogs": "網誌",
+        "blogCacheHint": "淨係搵到已快取嘅網誌。可以喺設定度快取全部。",
+        "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個網誌）"
     },
     "media": {
         "title": "媒體",
