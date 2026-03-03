@@ -10,6 +10,7 @@ import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 
+import { getServiceIdFromDisplayName } from '../data/services'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
@@ -130,6 +131,67 @@ function App() {
     const [tosAccepted, setTosAccepted] = useState(() => {
         return localStorage.getItem('tos_accepted_at') !== null;
     });
+
+    // One-time migration: sync localStorage read states to backend
+    useEffect(() => {
+        const migrateReadStates = async () => {
+            try {
+                const entries: Array<{
+                    service: string;
+                    group_id: number;
+                    member_id: number;
+                    last_read_id: number;
+                    read_count: number;
+                    revealed_ids: number[];
+                }> = [];
+
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (!key?.startsWith('read_state_')) continue;
+                    const path = key.slice('read_state_'.length);
+                    // Try individual path first, then group chat path
+                    let serviceId: string | undefined;
+                    let groupId: number;
+                    let memberId: number;
+                    const individualMatch = path.match(/^(.+?)\/messages\/(\d+)\s.*?\/(\d+)\s/);
+                    if (individualMatch) {
+                        serviceId = getServiceIdFromDisplayName(individualMatch[1]);
+                        groupId = parseInt(individualMatch[2], 10);
+                        memberId = parseInt(individualMatch[3], 10);
+                    } else {
+                        const groupMatch = path.match(/^(.+?)\/messages\/(\d+)\s/);
+                        if (!groupMatch) continue;
+                        serviceId = getServiceIdFromDisplayName(groupMatch[1]);
+                        groupId = parseInt(groupMatch[2], 10);
+                        memberId = 0;
+                    }
+                    if (!serviceId) continue;
+                    try {
+                        const state = JSON.parse(localStorage.getItem(key) || '{}');
+                        entries.push({
+                            service: serviceId,
+                            group_id: groupId,
+                            member_id: memberId,
+                            last_read_id: state.lastReadId || 0,
+                            read_count: state.readCount || 0,
+                            revealed_ids: state.revealedIds || [],
+                        });
+                    } catch { /* skip malformed entries */ }
+                }
+
+                if (entries.length > 0) {
+                    await fetch('/api/read-states/batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(entries),
+                    });
+                }
+            } catch {
+                // Non-fatal — migration will retry on next app start
+            }
+        };
+        migrateReadStates();
+    }, []);
 
     // === RENDER ===
 

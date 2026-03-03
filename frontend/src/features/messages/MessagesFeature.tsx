@@ -12,6 +12,7 @@ import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../ut
 import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
+import { getServiceIdFromDisplayName } from '../../data/services';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -57,6 +58,27 @@ export interface AppSettings {
     user_nickname?: string;  // Legacy: single nickname (kept for compatibility)
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
+}
+
+// Parse path into API params. Handles both:
+//   Individual: "日向坂46/messages/34 金村 美玖/58 金村 美玖" → memberId=58
+//   Group chat: "日向坂46/messages/43 日向坂46"               → memberId=0
+function parseReadStatePath(path: string): { service: string; groupId: number; memberId: number } | null {
+    // Try individual path first (has member subdirectory)
+    const individualMatch = path.match(/^(.+?)\/messages\/(\d+)\s.*?\/(\d+)\s/);
+    if (individualMatch) {
+        const serviceId = getServiceIdFromDisplayName(individualMatch[1]);
+        if (!serviceId) return null;
+        return { service: serviceId, groupId: parseInt(individualMatch[2], 10), memberId: parseInt(individualMatch[3], 10) };
+    }
+    // Group chat path (no member subdirectory)
+    const groupMatch = path.match(/^(.+?)\/messages\/(\d+)\s/);
+    if (groupMatch) {
+        const serviceId = getServiceIdFromDisplayName(groupMatch[1]);
+        if (!serviceId) return null;
+        return { service: serviceId, groupId: parseInt(groupMatch[2], 10), memberId: 0 };
+    }
+    return null;
 }
 
 interface MessagesFeatureProps {
@@ -130,10 +152,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (conversationNavCounter > 0 && activeService) {
             const saved = getSelectedConversation(activeService);
             if (saved) {
+                console.debug('[MessagesFeature] nav from search (same-service)', { service: activeService, path: saved.path, isGroupChat: saved.isGroupChat });
                 setSelectedGroupDir(saved.path);
                 setSelectedName(saved.name);
                 setIsGroupChat(saved.isGroupChat);
                 setBackgroundSettings(loadBackgroundSettings(saved.path));
+            } else {
+                console.warn('[MessagesFeature] nav from search: no saved conversation for', activeService);
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on counter bump
@@ -165,6 +190,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (activeService) {
             const savedConversation = getSelectedConversation(activeService);
             if (savedConversation) {
+                console.debug('[MessagesFeature] service switch → restoring', { service: activeService, path: savedConversation.path, isGroupChat: savedConversation.isGroupChat });
                 setSelectedGroupDir(savedConversation.path);
                 setSelectedName(savedConversation.name);
                 setIsGroupChat(savedConversation.isGroupChat);
@@ -247,6 +273,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             }
         } catch (err: unknown) {
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+            console.error('[MessagesFeature] fetchMessages failed', { path, groupChat, activeService, error: errorMessage });
             setError(errorMessage);
             setMessages([]);
             setMembersMap({});
@@ -324,6 +351,22 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             setReadStateVersion(v => v + 1);
         } catch {
             // Ignore localStorage errors
+        }
+        // Sync to backend for search filter support (fire-and-forget)
+        const parsed = parseReadStatePath(path);
+        if (parsed) {
+            fetch('/api/read-states', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    service: parsed.service,
+                    group_id: parsed.groupId,
+                    member_id: parsed.memberId,
+                    last_read_id: state.lastReadId,
+                    read_count: state.readCount,
+                    revealed_ids: state.revealedIds,
+                }),
+            }).catch(() => {}); // Silent fail - localStorage is still the source of truth
         }
     };
 

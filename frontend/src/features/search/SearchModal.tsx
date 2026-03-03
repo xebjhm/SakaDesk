@@ -13,8 +13,9 @@ import { useAppStore } from '../../store/appStore';
 import { formatName } from '../../utils';
 import { getServiceDisplayName } from '../../data/services';
 import { SearchInput } from './components/SearchInput';
+import { SearchFilterBar } from './components/SearchFilterBar';
 import { SearchResultList } from './components/SearchResultList';
-import type { SearchResult, SearchResponse } from './types';
+import type { SearchResult, SearchResponse, FilterChip, DateRangePreset } from './types';
 
 export interface SearchModalHandle {
   open: () => void;
@@ -36,6 +37,11 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
   const [isComposing, setIsComposing] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
   const [hasMore, setHasMore] = useState(false);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [selectedFilters, setSelectedFilters] = useState<FilterChip[]>([]);
+  const [exactOnly, setExactOnly] = useState(false);
+  const [includeUnread, setIncludeUnread] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRangePreset>('all');
 
   // ─── Refs ──────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null!);
@@ -52,6 +58,11 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
     setIsComposing(false);
     setTotalCount(0);
     setHasMore(false);
+    setFiltersExpanded(false);
+    setSelectedFilters([]);
+    setExactOnly(false);
+    setIncludeUnread(false);
+    setDateRange('all');
   }, []);
 
   const open = useCallback(() => {
@@ -79,6 +90,31 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
   const PAGE_SIZE = 50;
 
+  // Build URL params from current filter state
+  const buildFilterParams = useCallback(() => {
+    const params = new URLSearchParams();
+    const serviceFilters = selectedFilters.filter(f => f.type === 'service').map(f => f.id);
+    const memberFilters = selectedFilters.filter(f => f.type === 'member').map(f => f.id);
+    if (serviceFilters.length) params.set('services', serviceFilters.join(','));
+    // Member chips use "service:member_id" format to scope per-service
+    if (memberFilters.length) params.set('member_filters', memberFilters.join(','));
+    if (exactOnly) params.set('exact_only', 'true');
+    if (!includeUnread) params.set('exclude_unread', 'true');
+    if (dateRange !== 'all') {
+      const now = new Date();
+      let from: Date;
+      switch (dateRange) {
+        case '7d': from = new Date(now.getTime() - 7 * 86400000); break;
+        case '30d': from = new Date(now.getTime() - 30 * 86400000); break;
+        case '3m': from = new Date(now.getTime() - 90 * 86400000); break;
+        case '1y': from = new Date(now.getTime() - 365 * 86400000); break;
+        default: from = new Date(0);
+      }
+      params.set('date_from', from.toISOString());
+    }
+    return params.toString();
+  }, [selectedFilters, exactOnly, includeUnread, dateRange]);
+
   // ─── API call with debounce ────────────────────────────────────────────────
   useEffect(() => {
     if (!query.trim() || isComposing) {
@@ -95,9 +131,9 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(
-          `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=0`
-        );
+        const filterParams = buildFilterParams();
+        const url = `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=0${filterParams ? '&' + filterParams : ''}`;
+        const response = await fetch(url);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -120,16 +156,16 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, isComposing, t]);
+  }, [query, isComposing, t, buildFilterParams]);
 
   // ─── Load more handler ──────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore || !query.trim()) return;
     setIsLoadingMore(true);
     try {
-      const response = await fetch(
-        `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=${results.length}`
-      );
+      const filterParams = buildFilterParams();
+      const url = `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=${results.length}${filterParams ? '&' + filterParams : ''}`;
+      const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: SearchResponse = await response.json();
       setResults((prev) => [...prev, ...data.results]);
@@ -140,7 +176,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, query, results.length]);
+  }, [isLoadingMore, hasMore, query, results.length, buildFilterParams]);
 
   // selectedIndex is managed by search effect (reset on new search)
   // and preserved across load-more operations.
@@ -155,14 +191,26 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
         triggerConversationNavigation,
         setTargetMessageId,
         activeService,
+        selectedServices,
+        setSelectedServices,
       } = useAppStore.getState();
 
       const serviceDisplay = getServiceDisplayName(result.service);
+      const isGroupChat = result.is_group_chat ?? false;
+
+      const path = isGroupChat
+        ? `${serviceDisplay}/messages/${result.group_id} ${result.group_name}`
+        : `${serviceDisplay}/messages/${result.group_id} ${result.group_name}/${result.member_id} ${result.member_name}`;
+
+      // Ensure the target service is in selectedServices so ServiceRail shows it
+      if (!selectedServices.includes(result.service)) {
+        setSelectedServices([...selectedServices, result.service]);
+      }
 
       setSelectedConversation(result.service, {
-        path: `${serviceDisplay}/messages/${result.group_id} ${result.group_name}/${result.member_id} ${result.member_name}`,
-        name: formatName(result.member_name),
-        isGroupChat: false,
+        path,
+        name: isGroupChat ? formatName(result.group_name) : formatName(result.member_name),
+        isGroupChat,
       });
       setActiveFeature(result.service, 'messages');
       setTargetMessageId(result.message_id);
@@ -245,7 +293,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
         {/* Modal panel */}
         <div
-          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[60vh]"
+          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Search input */}
@@ -256,7 +304,23 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
             inputRef={inputRef}
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => setIsComposing(false)}
+            onFilterToggle={() => setFiltersExpanded(!filtersExpanded)}
+            filtersActive={filtersExpanded || selectedFilters.length > 0}
           />
+
+          {/* Filter bar (collapsible) */}
+          {filtersExpanded && (
+            <SearchFilterBar
+              selectedFilters={selectedFilters}
+              onFiltersChange={setSelectedFilters}
+              exactOnly={exactOnly}
+              onExactOnlyChange={setExactOnly}
+              includeUnread={includeUnread}
+              onIncludeUnreadChange={setIncludeUnread}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
+          )}
 
           {/* Loading state (only when no results yet) */}
           {isLoading && results.length === 0 && (
@@ -312,7 +376,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
           {/* Footer */}
           {results.length > 0 && (
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex justify-between">
+            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex justify-between rounded-b-xl">
               <span>
                 {totalCount > results.length
                   ? t('search.resultCountPartial', { shown: results.length, total: totalCount })

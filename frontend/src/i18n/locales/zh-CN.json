@@ -253,7 +253,17 @@
     "loadMore": "加载更多结果",
     "pressEnterToSelect": "按 Enter 选择",
     "errorSearchFailed": "搜索失败，请重试。",
-    "building": "正在构建搜索索引..."
+    "building": "正在构建搜索索引...",
+    "filters": "筛选",
+    "exactMatchOnly": "仅完全匹配",
+    "includeUnread": "包含未读",
+    "filterByMember": "按成员或服务筛选...",
+    "dateRange": "日期范围",
+    "allTime": "全部时间",
+    "last7Days": "最近7天",
+    "last30Days": "最近30天",
+    "last3Months": "最近3个月",
+    "lastYear": "最近1年"
   },
   "media": {
     "title": "媒体",
