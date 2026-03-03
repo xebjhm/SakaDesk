@@ -487,7 +487,7 @@ class SearchService:
         query: str,
         content_normalized: str = "",
         title_normalized: str = "",
-        max_len: int = 200,
+        max_len: int = 80,
     ) -> str:
         """Generate a highlighted snippet for a blog search result.
 
