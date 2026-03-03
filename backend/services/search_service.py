@@ -564,8 +564,14 @@ class SearchService:
         exact_only: bool = False,
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
+        raw_rows_only: bool = False,
     ) -> Tuple[List[Dict[str, Any]], int]:
-        """Search indexed blog content. Returns ``(results, total_count)``."""
+        """Search indexed blog content. Returns ``(results, total_count)``.
+
+        When *raw_rows_only* is True, returns lightweight dicts without
+        snippet computation (used by the merged "all" code path to defer
+        expensive work until after pagination).
+        """
         conn = self._get_conn()
 
         normalized_query = self._normalize_query(query)
@@ -614,13 +620,15 @@ class SearchService:
         all_params: list[Any] = []
 
         if len(normalized_query) >= 3:
-            # FTS5 MATCH
+            # FTS5 MATCH — escape double quotes to prevent syntax injection
+            safe_query = query.lower().replace('"', '""')
+            safe_normalized = normalized_query.replace('"', '""')
             if exact_only:
-                match_expr = f'{{title content}}: "{query.lower()}"'
+                match_expr = f'{{title content}}: "{safe_query}"'
             else:
                 match_expr = (
                     f'{{title title_normalized content content_normalized}}: '
-                    f'"{normalized_query}"'
+                    f'"{safe_normalized}"'
                 )
             data_sql = (
                 "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
@@ -690,25 +698,134 @@ class SearchService:
             content = r[3] or ""
             content_norm = r[4] or ""
 
-            snippet = self._make_blog_snippet(
-                title, content, query,
-                content_normalized=content_norm,
-                title_normalized=title_norm,
-            )
+            if raw_rows_only:
+                # Lightweight dict — skip expensive snippet computation
+                results.append({
+                    "result_type": "blog",
+                    "blog_id": r[0],
+                    "title": title,
+                    "title_normalized": title_norm,
+                    "content": content,
+                    "content_normalized": content_norm,
+                    "service": r[5],
+                    "member_id": r[6],
+                    "member_name": r[7],
+                    "published_at": r[8],
+                    "blog_url": r[9],
+                })
+            else:
+                snippet = self._make_blog_snippet(
+                    title, content, query,
+                    content_normalized=content_norm,
+                    title_normalized=title_norm,
+                )
 
-            results.append({
-                "result_type": "blog",
-                "blog_id": r[0],
-                "title": title,
-                "snippet": snippet,
-                "service": r[5],
-                "member_id": r[6],
-                "member_name": r[7],
-                "published_at": r[8],
-                "blog_url": r[9],
-            })
+                results.append({
+                    "result_type": "blog",
+                    "blog_id": r[0],
+                    "title": title,
+                    "snippet": snippet,
+                    "service": r[5],
+                    "member_id": r[6],
+                    "member_name": r[7],
+                    "published_at": r[8],
+                    "blog_url": r[9],
+                })
 
         return results, total_count
+
+    # ------------------------------------------------------------------
+    # Message result helpers
+    # ------------------------------------------------------------------
+
+    def _build_message_result_dict(
+        self,
+        row: tuple,
+        query_info: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build a single message result dict with snippet and match_type.
+
+        *row* is a DB row with columns:
+            (message_id, content, content_normalized, service, group_id,
+             group_name, member_id, member_name, timestamp, match_type)
+
+        *query_info* bundles the pre-computed search query metadata:
+            first_term, first_norm, query_is_romaji, is_multi_word, words,
+            exact_only.
+        """
+        content = row[1] or ""
+        content_norm = row[2] or ""
+        lower_content = content.lower()
+
+        first_term = query_info["first_term"]
+        first_norm = query_info["first_norm"]
+        query_is_romaji = query_info["query_is_romaji"]
+        is_multi_word = query_info["is_multi_word"]
+        words = query_info["words"]
+        exact_only = query_info["exact_only"]
+
+        if exact_only:
+            if is_multi_word:
+                snippet = self._make_multi_word_snippet(content, words, content_norm)
+            else:
+                snippet = self._make_snippet(
+                    content, first_term, content_norm, first_norm,
+                    is_romaji=query_is_romaji,
+                )
+            match_type = "exact"
+        elif is_multi_word:
+            snippet = self._make_multi_word_snippet(content, words, content_norm)
+            all_exact = all(w.lower() in lower_content for w in words)
+            match_type = "exact" if all_exact else "reading"
+        else:
+            snippet = self._make_snippet(
+                content, first_term, content_norm, first_norm,
+                is_romaji=query_is_romaji,
+            )
+            has_exact = first_term.lower() in lower_content
+            match_type = "exact" if has_exact else "reading"
+
+        return {
+            "result_type": "message",
+            "message_id": row[0],
+            "content": content,
+            "snippet": snippet,
+            "service": row[3],
+            "group_id": row[4],
+            "group_name": row[5],
+            "member_id": row[6],
+            "member_name": row[7],
+            "timestamp": row[8],
+            "type": "text",
+            "match_type": match_type,
+        }
+
+    @staticmethod
+    def _tag_is_group_chat(
+        results: List[Dict[str, Any]],
+        conn: sqlite3.Connection,
+    ) -> None:
+        """Add ``is_group_chat`` flag to message results in-place.
+
+        Queries the index for the distinct member count per
+        (service, group_id) and marks results from multi-member groups.
+        Only message results (those with a ``group_id`` key) are tagged.
+        """
+        group_ids = list({r["group_id"] for r in results if "group_id" in r})
+        if not group_ids:
+            return
+        placeholders = ",".join("?" for _ in group_ids)
+        gc_rows = conn.execute(
+            f"SELECT service, group_id, COUNT(DISTINCT member_id) "
+            f"FROM search_messages "
+            f"WHERE group_id IN ({placeholders}) "
+            f"GROUP BY service, group_id",
+            group_ids,
+        ).fetchall()
+        group_chat_set = {(svc, gid) for svc, gid, cnt in gc_rows if cnt > 1}
+        for r in results:
+            if "group_id" in r:
+                r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set
 
     # ------------------------------------------------------------------
     # Search (sync, runs in executor)
@@ -1052,50 +1169,17 @@ class SearchService:
         first_term = words[0] if is_multi_word else query
         first_norm = self._normalize_query(first_term)
         query_is_romaji = _is_romaji(first_term)
-        results: list[Dict[str, Any]] = []
-        for r in rows:
-            content = r[1] or ""
-            content_norm = r[2] or ""
-            lower_content = content.lower()
-
-            # Compute match_type in Python: checks if original query text
-            # appears literally in content.  More accurate than SQL match_type
-            # for the LIKE fallback path where SQL always returns 0.
-            if exact_only:
-                # In exact_only mode, all results are "exact" by definition
-                if is_multi_word:
-                    snippet = self._make_multi_word_snippet(content, words, content_norm)
-                else:
-                    snippet = self._make_snippet(
-                        content, first_term, content_norm, first_norm,
-                        is_romaji=query_is_romaji,
-                    )
-                match_type = "exact"
-            elif is_multi_word:
-                snippet = self._make_multi_word_snippet(content, words, content_norm)
-                all_exact = all(w.lower() in lower_content for w in words)
-                match_type = "exact" if all_exact else "reading"
-            else:
-                snippet = self._make_snippet(
-                    content, first_term, content_norm, first_norm,
-                    is_romaji=query_is_romaji,
-                )
-                has_exact = first_term.lower() in lower_content
-                match_type = "exact" if has_exact else "reading"
-            results.append({
-                "result_type": "message",
-                "message_id": r[0],
-                "content": content,
-                "snippet": snippet,
-                "service": r[3],
-                "group_id": r[4],
-                "group_name": r[5],
-                "member_id": r[6],
-                "member_name": r[7],
-                "timestamp": r[8],
-                "type": "text",
-                "match_type": match_type,
-            })
+        query_info: Dict[str, Any] = {
+            "first_term": first_term,
+            "first_norm": first_norm,
+            "query_is_romaji": query_is_romaji,
+            "is_multi_word": is_multi_word,
+            "words": words,
+            "exact_only": exact_only,
+        }
+        results: list[Dict[str, Any]] = [
+            self._build_message_result_dict(r, query_info) for r in rows
+        ]
 
         # Sort results: exact matches first.  Stable sort preserves the
         # original SQL timestamp-DESC ordering within each group.
@@ -1108,108 +1192,85 @@ class SearchService:
         # (service, group_id).  group_id is NOT unique across services, so we
         # must include service in the grouping to avoid false positives.
         if results:
-            group_ids = list({r["group_id"] for r in results})
-            placeholders = ",".join("?" for _ in group_ids)
-            gc_rows = conn.execute(
-                f"SELECT service, group_id, COUNT(DISTINCT member_id) "
-                f"FROM search_messages "
-                f"WHERE group_id IN ({placeholders}) "
-                f"GROUP BY service, group_id",
-                group_ids,
-            ).fetchall()
-            group_chat_set = {(svc, gid) for svc, gid, cnt in gc_rows if cnt > 1}
-            for r in results:
-                r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set
+            self._tag_is_group_chat(results, conn)
 
         # --- Merge blog results for "all" content_type ---
         if content_type == "all":
-            # Fetch ALL matching blog results (unpaginated) for merged sorting
-            blog_results, blog_total = self._search_blogs_sync(
+            # Deferred-snippet merge: fetch lightweight rows first, sort,
+            # paginate, then compute expensive snippets only for the page.
+
+            # 1. Fetch ALL lightweight blog rows (no snippet computation)
+            raw_blog_results, blog_total = self._search_blogs_sync(
                 query, service, member_id, limit=0, offset=0,
                 services=services, member_ids=member_ids,
                 member_filters=member_filters,
                 exact_only=exact_only,
                 date_from=date_from, date_to=date_to,
+                raw_rows_only=True,
             )
-            # Fetch ALL message results (unpaginated) for merged sorting.
-            # We already have the paginated message results, but for correct
-            # combined pagination we need the full unpaginated set.
-            # Re-query without LIMIT/OFFSET to get all message results.
+
+            # 2. Fetch ALL lightweight message rows (raw DB tuples)
             try:
                 all_msg_rows = conn.execute(data_sql, list(all_params)).fetchall()
             except Exception as e:
                 logger.warning("Search full query failed for merge", error=str(e))
                 all_msg_rows = rows  # fall back to paginated results
 
-            # Rebuild full message results list
-            all_message_results: list[Dict[str, Any]] = []
+            # 3. Build unified lightweight sort list:
+            #    (sort_timestamp, source_type, raw_data)
+            #    raw_data is a DB row tuple for messages, a raw dict for blogs
+            combined_lightweight: list[Tuple[str, str, Any]] = []
             for r in all_msg_rows:
-                content = r[1] or ""
-                content_norm = r[2] or ""
-                lower_content = content.lower()
+                ts = r[8] or ""  # timestamp column
+                combined_lightweight.append((ts, "message", r))
+            for b in raw_blog_results:
+                ts = b.get("published_at", "") or ""
+                combined_lightweight.append((ts, "blog", b))
 
-                if exact_only:
-                    if is_multi_word:
-                        snippet = self._make_multi_word_snippet(content, words, content_norm)
-                    else:
-                        snippet = self._make_snippet(
-                            content, first_term, content_norm, first_norm,
-                            is_romaji=query_is_romaji,
-                        )
-                    match_type = "exact"
-                elif is_multi_word:
-                    snippet = self._make_multi_word_snippet(content, words, content_norm)
-                    all_exact = all(w.lower() in lower_content for w in words)
-                    match_type = "exact" if all_exact else "reading"
-                else:
-                    snippet = self._make_snippet(
-                        content, first_term, content_norm, first_norm,
-                        is_romaji=query_is_romaji,
+            # 4. Sort by timestamp DESC
+            combined_lightweight.sort(key=lambda x: x[0], reverse=True)
+
+            combined_total = len(combined_lightweight)
+
+            # 5. Paginate (slice)
+            if limit > 0:
+                page_items = combined_lightweight[offset:offset + limit]
+            else:
+                page_items = combined_lightweight
+
+            # 6. Build full result dicts with snippets ONLY for the page
+            paginated: list[Dict[str, Any]] = []
+            for _ts, source_type, raw_data in page_items:
+                if source_type == "message":
+                    paginated.append(
+                        self._build_message_result_dict(raw_data, query_info)
                     )
-                    has_exact = first_term.lower() in lower_content
-                    match_type = "exact" if has_exact else "reading"
-                all_message_results.append({
-                    "result_type": "message",
-                    "message_id": r[0],
-                    "content": content,
-                    "snippet": snippet,
-                    "service": r[3],
-                    "group_id": r[4],
-                    "group_name": r[5],
-                    "member_id": r[6],
-                    "member_name": r[7],
-                    "timestamp": r[8],
-                    "type": "text",
-                    "match_type": match_type,
-                })
+                else:
+                    # raw_data is a lightweight blog dict — compute snippet now
+                    blog_item = raw_data
+                    snippet = self._make_blog_snippet(
+                        blog_item["title"],
+                        blog_item.get("content", ""),
+                        query,
+                        content_normalized=blog_item.get("content_normalized", ""),
+                        title_normalized=blog_item.get("title_normalized", ""),
+                    )
+                    paginated.append({
+                        "result_type": "blog",
+                        "blog_id": blog_item["blog_id"],
+                        "title": blog_item["title"],
+                        "snippet": snippet,
+                        "service": blog_item["service"],
+                        "member_id": blog_item["member_id"],
+                        "member_name": blog_item["member_name"],
+                        "published_at": blog_item["published_at"],
+                        "blog_url": blog_item["blog_url"],
+                    })
 
             # Tag message results with is_group_chat
-            if all_message_results:
-                msg_group_ids = list({r["group_id"] for r in all_message_results})
-                placeholders = ",".join("?" for _ in msg_group_ids)
-                gc_rows = conn.execute(
-                    f"SELECT service, group_id, COUNT(DISTINCT member_id) "
-                    f"FROM search_messages "
-                    f"WHERE group_id IN ({placeholders}) "
-                    f"GROUP BY service, group_id",
-                    msg_group_ids,
-                ).fetchall()
-                group_chat_set2 = {(svc, gid) for svc, gid, cnt in gc_rows if cnt > 1}
-                for r in all_message_results:
-                    r["is_group_chat"] = (r["service"], r["group_id"]) in group_chat_set2
-
-            # Merge and sort by timestamp/published_at DESC
-            combined = all_message_results + blog_results
-
-            def _sort_key(item: Dict[str, Any]) -> str:
-                if item.get("result_type") == "blog":
-                    return item.get("published_at", "") or ""
-                return item.get("timestamp", "") or ""
-
-            combined.sort(key=_sort_key, reverse=True)
-
-            combined_total = len(combined)
-            paginated = combined[offset:offset + limit] if limit > 0 else combined
+            msg_results = [r for r in paginated if r.get("result_type") == "message"]
+            if msg_results:
+                self._tag_is_group_chat(msg_results, conn)
 
             return {
                 "query": query,
@@ -1580,7 +1641,8 @@ class SearchService:
         row = conn.execute("SELECT COUNT(*) FROM search_messages").fetchone()
         indexed_count = row[0] if row else 0
 
-        blog_indexed_count = conn.execute("SELECT COUNT(*) FROM search_blogs").fetchone()[0]
+        row = conn.execute("SELECT COUNT(*) FROM search_blogs").fetchone()
+        blog_indexed_count = row[0] if row else 0
 
         last_build = None
         row = conn.execute("SELECT value FROM search_meta WHERE key = 'last_full_build'").fetchone()
