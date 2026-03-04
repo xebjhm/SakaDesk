@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VoicePlayer } from './VoicePlayer'
+import { useAppStore } from '../../store/appStore'
 
 // Mock localStorage
 const localStorageMock = {
@@ -147,6 +148,8 @@ describe('VoicePlayer component', () => {
     })
 
     it('should show menu when menu button is clicked', async () => {
+      // Enable golden finger so Download button appears
+      useAppStore.setState({ goldenFingerActive: true })
       const user = userEvent.setup()
       render(<VoicePlayer {...defaultProps} />)
 
