@@ -57,7 +57,8 @@ function App() {
     const {
         appSettings,
         setAppSettings,
-        serviceSettings,
+        allServiceSettings,
+        connectedServices: settingsConnectedServices,
         outputDirInput,
         setOutputDirInput,
         settingsError,
@@ -306,8 +307,8 @@ function App() {
                 {showSettingsModal && appSettings && (
                     <SettingsModal
                         appSettings={appSettings}
-                        serviceSettings={serviceSettings}
-                        activeService={activeService}
+                        allServiceSettings={allServiceSettings}
+                        connectedServices={settingsConnectedServices}
                         outputDirInput={outputDirInput}
                         setOutputDirInput={setOutputDirInput}
                         onSaveSettings={saveSettings}

@@ -36,7 +36,14 @@
     "blogFullBackupOnDesc": "下載所有部落格內容及圖片以供離線閱讀",
     "blogFullBackupOffDesc": "僅在閱覽時下載內容（節省磁碟空間）",
     "language": "語言",
-    "languageDesc": "選擇介面語言"
+    "languageDesc": "選擇介面語言",
+    "syncMode": "同步模式",
+    "syncOff": "關閉",
+    "syncOffDesc": "僅手動同步",
+    "syncFixed": "固定間隔",
+    "syncFixedDesc": "以固定間隔自動同步",
+    "syncSmart": "智慧排程",
+    "serviceSettings": "服務設定"
   },
   "time": {
     "minute": "{{count}} 分鐘",
