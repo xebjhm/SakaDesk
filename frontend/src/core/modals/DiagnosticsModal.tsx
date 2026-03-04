@@ -331,10 +331,13 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <span className="text-gray-500">Auto-Sync</span>
-                                            {data.config_state.sync_interval && data.config_state.sync_interval > 0 ?
-                                                <span className="text-green-600 font-mono">{data.config_state.sync_interval}m</span> :
+                                            {!data.config_state.auto_sync ? (
                                                 <span className="text-gray-400">Off</span>
-                                            }
+                                            ) : data.config_state.adaptive_sync ? (
+                                                <span className="text-green-600 font-mono">Smart</span>
+                                            ) : (
+                                                <span className="text-green-600 font-mono">{data.config_state.sync_interval}m</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
