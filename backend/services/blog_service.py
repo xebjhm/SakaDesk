@@ -47,9 +47,39 @@ class BlogDownloadItem:
     blog_id: str
     member_id: str
     member_name: str
+    title: str
     published_at: str
     url: str
     cache_path: Path
+
+
+def _build_blog_content(
+    blog_id: str,
+    member_name: str,
+    title: str,
+    published_at: str,
+    url: str,
+    html: str,
+    images: list[dict],
+) -> dict:
+    """Build blog content dict for caching and API responses.
+
+    Metadata (title, published_at) comes from the index — the single source
+    of truth.  HTML content and images come from the scraper detail fetch.
+    """
+    return {
+        "meta": {
+            "id": blog_id,
+            "member_name": member_name,
+            "title": title,
+            "published_at": published_at,
+            "url": url,
+        },
+        "content": {
+            "html": html,
+        },
+        "images": images,
+    }
 
 
 class BlogService:
@@ -500,6 +530,7 @@ class BlogService:
                         blog_id=blog_id,
                         member_id=member_id,
                         member_name=member_name,
+                        title=blog["title"],
                         published_at=blog["published_at"],
                         url=blog["url"],
                         cache_path=cache_path,
@@ -662,20 +693,16 @@ class BlogService:
                 {"original_url": img, "local_path": None} for img in entry.images
             ]
 
-        # Save blog content
-        content = {
-            "meta": {
-                "id": entry.id,
-                "member_name": item.member_name,
-                "title": entry.title,
-                "published_at": entry.published_at.isoformat(),
-                "url": entry.url,
-            },
-            "content": {
-                "html": entry.content,
-            },
-            "images": images_result,
-        }
+        # Metadata from index (single source of truth), content from scraper
+        content = _build_blog_content(
+            blog_id=item.blog_id,
+            member_name=item.member_name,
+            title=item.title,
+            published_at=item.published_at,
+            url=item.url,
+            html=entry.content,
+            images=images_result,
+        )
 
         async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
             await f.write(json.dumps(content, ensure_ascii=False, indent=2))
@@ -854,35 +881,26 @@ class BlogService:
             async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
                 return cast(Dict[Any, Any], json.loads(await f.read()))
 
-        # Fetch on-demand (single blog, no concurrency needed)
-        # Pass member_id to scraper for faster lookups (important for Nogizaka old blogs)
+        # Fetch on-demand — delegate to _download_single_blog (single code path)
+        item = BlogDownloadItem(
+            blog_id=blog_meta["id"],
+            member_id=found_member_id or "",
+            member_name=member_name,
+            title=blog_meta["title"],
+            published_at=blog_meta["published_at"],
+            url=blog_meta["url"],
+            cache_path=cache_path,
+        )
+
         async with aiohttp.ClientSession() as session:
             scraper = get_scraper(group, session)
-            entry = await scraper.get_blog_detail(blog_id, member_id=found_member_id)
+            await self._download_single_blog(
+                session, scraper, item, download_images=False,
+            )
 
-            # Save to cache
-            cache_path.mkdir(parents=True, exist_ok=True)
-
-            content = {
-                "meta": {
-                    "id": entry.id,
-                    "member_name": member_name,
-                    "title": entry.title,
-                    "published_at": entry.published_at.isoformat(),
-                    "url": entry.url,
-                },
-                "content": {
-                    "html": entry.content,
-                },
-                "images": [
-                    {"original_url": img, "local_path": None} for img in entry.images
-                ],
-            }
-
-            async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(content, ensure_ascii=False, indent=2))
-
-            return content
+        # Read back the cached content we just wrote
+        async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
+            return cast(Dict[Any, Any], json.loads(await f.read()))
 
     # =========================================================================
     # Cache management
