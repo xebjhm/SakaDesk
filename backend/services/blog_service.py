@@ -400,19 +400,29 @@ class BlogService:
                         member_name=member_name
                     ):
                         if entry.id not in existing_ids:
-                            # Get thumbnail and precise datetime from detail page.
-                            # Sakurazaka list pages only show dates (no time), so we
-                            # need the detail page for both thumbnail and precise timestamp.
+                            # Use list page data as defaults
                             thumbnail = entry.images[0] if entry.images else None
                             published_at = entry.published_at
-                            if not thumbnail and hasattr(scraper, 'get_blog_thumbnail'):
+                            title = entry.title
+
+                            # Fetch detail page for authoritative metadata.
+                            # Sakurazaka list pages have incomplete data (no time,
+                            # no thumbnails, possibly truncated titles), so the
+                            # detail page is the single source of truth.
+                            if not thumbnail:
                                 try:
-                                    thumbnail, detail_date = await scraper.get_blog_thumbnail(entry.id)
+                                    detail_thumb, detail_date, detail_title = (
+                                        await scraper.get_blog_detail_metadata(entry.id)
+                                    )
+                                    if detail_thumb:
+                                        thumbnail = detail_thumb
                                     if detail_date:
                                         published_at = detail_date
+                                    if detail_title:
+                                        title = detail_title
                                 except Exception as e:
                                     logger.debug(
-                                        "thumbnail_fetch_failed",
+                                        "detail_metadata_failed",
                                         blog_id=entry.id,
                                         error=str(e)
                                     )
@@ -420,7 +430,7 @@ class BlogService:
                             index["members"][member_id]["blogs"].append(
                                 {
                                     "id": entry.id,
-                                    "title": entry.title,
+                                    "title": title,
                                     "published_at": published_at.isoformat(),
                                     "url": entry.url,
                                     "thumbnail": thumbnail,
