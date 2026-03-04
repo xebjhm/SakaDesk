@@ -135,7 +135,9 @@
     "version": "バージョン {{version}}",
     "description": "坂道グループ公式メッセージアプリのデスクトップコンパニオン",
     "madeWith": "Made with",
-    "by": "by"
+    "by": "by",
+    "goldenFingerEnabled": "ダウンロードボタン有効 ✨",
+    "goldenFingerDisabled": "ダウンロードボタン無効"
   },
   "report": {
     "title": "不具合報告",

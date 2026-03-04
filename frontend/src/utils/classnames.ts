@@ -60,3 +60,27 @@ export function formatMonthYear(month: number, year: number): string {
 export function formatShortDate(date: Date): string {
     return `${MONTH_NAMES_SHORT[date.getMonth()]} ${date.getDate()}`;
 }
+
+/**
+ * Format a download filename with timestamp prefix.
+ * e.g. "2026-03-03_1433_4954134.jpg"
+ *
+ * @param url - Media URL to extract original filename from
+ * @param timestamp - ISO timestamp string for the prefix
+ */
+export function formatDownloadFilename(url: string, timestamp?: string): string {
+    const raw = url.split('/').pop() || 'download';
+    let originalName: string;
+    try { originalName = decodeURIComponent(raw); } catch { originalName = raw; }
+    if (!timestamp) return originalName;
+
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return originalName;
+    const y = date.getFullYear();
+    const mo = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    const h = date.getHours().toString().padStart(2, '0');
+    const mi = date.getMinutes().toString().padStart(2, '0');
+
+    return `${y}-${mo}-${d}_${h}${mi}_${originalName}`;
+}

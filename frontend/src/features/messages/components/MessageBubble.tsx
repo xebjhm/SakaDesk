@@ -5,6 +5,7 @@ import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
 import { DEFAULT_SHELTER_COLORS } from '../../../config/groupThemes';
+import { useAppStore } from '../../../store/appStore';
 
 interface ShelterColors {
     picture: string;
@@ -34,7 +35,7 @@ interface MessageBubbleProps {
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
-    onPhotoClick?: (mediaUrl: string) => void;
+    onPhotoClick?: (mediaUrl: string, timestamp?: string) => void;
     theme?: MessageBubbleTheme;
     service?: string;
 }
@@ -146,6 +147,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     theme,
     service,
 }) => {
+    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 
@@ -312,18 +314,23 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     src={mediaUrl}
                                     alt="Attachment"
                                     className="w-full h-full object-contain cursor-pointer"
-                                    onClick={() => onPhotoClick?.(mediaUrl)}
+                                    onClick={() => onPhotoClick?.(mediaUrl, message.timestamp)}
                                 />
                             </MediaContainer>
                         )}
 
-                        {/* Video */}
+                        {/* Video
+                            Native controls language follows the browser/OS locale (navigator.language),
+                            NOT document.documentElement.lang. There's no web API to override it —
+                            a custom JS player (e.g. Video.js) would be needed for full i18n control. */}
                         {message.type === 'video' && mediaUrl && (
                             <MediaContainer message={message} isVideo>
                                 <video
                                     src={mediaUrl}
                                     className="w-full h-full object-contain"
                                     controls
+                                    controlsList={goldenFingerActive ? undefined : "nodownload"}
+                                    disablePictureInPicture
                                     playsInline
                                     preload="metadata"
                                 />
@@ -332,7 +339,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Voice */}
                         {message.type === 'voice' && mediaUrl && (
-                            <VoicePlayer src={mediaUrl} accentColor={theme?.voicePlayerAccent} />
+                            <VoicePlayer src={mediaUrl} accentColor={theme?.voicePlayerAccent} messageTimestamp={message.timestamp} />
                         )}
 
                         {/* Text */}

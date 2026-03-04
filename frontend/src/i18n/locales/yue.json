@@ -135,7 +135,9 @@
         "version": "版本 {{version}}",
         "description": "用嚟睇你 Message Archive 嘅桌面小幫手。",
         "madeWith": "Made with",
-        "by": "by"
+        "by": "by",
+        "goldenFingerEnabled": "下載掣啟用咗 ✨",
+        "goldenFingerDisabled": "下載掣停用咗"
     },
     "report": {
         "title": "報告問題",

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Heart } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
@@ -7,6 +7,12 @@ interface AboutModalProps {
     isOpen: boolean;
     onClose: () => void;
     onOpenDiagnostics: () => void;
+}
+
+/** A single floating heart that animates upward and fades out. */
+interface FloatingHeart {
+    id: number;
+    x: number; // horizontal offset in px from the heart icon center
 }
 
 export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalProps) {
@@ -18,24 +24,68 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
 
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const setGoldenFingerActive = useAppStore(s => s.setGoldenFingerActive);
-    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const handleLogoPointerDown = () => {
-        longPressTimer.current = setTimeout(() => {
-            setGoldenFingerActive(!goldenFingerActive);
-            longPressTimer.current = null;
-        }, 3000);
-    };
+    // Golden finger: 5 heart clicks in 2 seconds
+    const heartClickCount = useRef(0);
+    const heartClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [floatingHearts, setFloatingHearts] = useState<FloatingHeart[]>([]);
+    const heartIdCounter = useRef(0);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const heartAnimTimeouts = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
-    const handleLogoPointerUp = () => {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
+    // Cleanup all timers on unmount
+    useEffect(() => {
+        return () => {
+            if (heartClickTimeout.current) clearTimeout(heartClickTimeout.current);
+            if (toastTimeout.current) clearTimeout(toastTimeout.current);
+            if (versionClickTimeout.current) clearTimeout(versionClickTimeout.current);
+            heartAnimTimeouts.current.forEach(clearTimeout);
+        };
+    }, []);
+
+    const showToast = useCallback((message: string) => {
+        if (toastTimeout.current) clearTimeout(toastTimeout.current);
+        setToastMessage(message);
+        toastTimeout.current = setTimeout(() => setToastMessage(null), 2000);
+    }, []);
+
+    const handleHeartClick = useCallback(() => {
+        // Spawn a floating heart with random horizontal offset
+        const id = ++heartIdCounter.current;
+        const x = (Math.random() - 0.5) * 40; // -20px to +20px
+        setFloatingHearts(prev => [...prev, { id, x }]);
+        // Remove after animation completes (800ms)
+        const animTimer = setTimeout(() => {
+            setFloatingHearts(prev => prev.filter(h => h.id !== id));
+            heartAnimTimeouts.current.delete(animTimer);
+        }, 800);
+        heartAnimTimeouts.current.add(animTimer);
+
+        // Track clicks for easter egg
+        heartClickCount.current += 1;
+
+        if (heartClickTimeout.current) {
+            clearTimeout(heartClickTimeout.current);
         }
-    };
+
+        if (heartClickCount.current >= 5) {
+            heartClickCount.current = 0;
+            const newState = !goldenFingerActive;
+            setGoldenFingerActive(newState);
+            showToast(newState
+                ? t('about.goldenFingerEnabled')
+                : t('about.goldenFingerDisabled')
+            );
+        } else {
+            // Reset after 2 seconds of no clicks
+            heartClickTimeout.current = setTimeout(() => {
+                heartClickCount.current = 0;
+            }, 2000);
+        }
+    }, [goldenFingerActive, setGoldenFingerActive, showToast, t]);
 
     const handleVersionClick = () => {
-        // Clear previous timeout
         if (versionClickTimeout.current) {
             clearTimeout(versionClickTimeout.current);
         }
@@ -44,12 +94,10 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
         setVersionClickCount(newCount);
 
         if (newCount >= 5) {
-            // Easter egg triggered!
             setVersionClickCount(0);
             onClose();
             onOpenDiagnostics();
         } else {
-            // Reset after 2 seconds of no clicks
             versionClickTimeout.current = setTimeout(() => {
                 setVersionClickCount(0);
             }, 2000);
@@ -71,18 +119,10 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
 
                 {/* Content */}
                 <div className="p-8 flex flex-col items-center text-center">
-                    {/* Logo placeholder */}
+                    {/* Logo */}
                     <div
                         className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-lg select-none"
-                        onPointerDown={handleLogoPointerDown}
-                        onPointerUp={handleLogoPointerUp}
-                        onPointerLeave={handleLogoPointerUp}
-                        style={goldenFingerActive ? {
-                            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
-                            boxShadow: '0 0 20px rgba(255, 215, 0, 0.4)',
-                        } : {
-                            background: 'linear-gradient(to bottom right, #60A5FA, #A855F7)',
-                        }}
+                        style={{ background: 'linear-gradient(to bottom right, #60A5FA, #A855F7)' }}
                     >
                         <span className="text-3xl text-white font-bold">H</span>
                     </div>
@@ -103,15 +143,44 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                         {t('about.description')}
                     </p>
 
-                    {/* Made with love */}
+                    {/* Made with love — heart is the golden finger trigger */}
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                         <span>{t('about.madeWith')}</span>
-                        <Heart className="w-3 h-3 text-red-400 fill-red-400" />
+                        <button
+                            onClick={handleHeartClick}
+                            className="relative focus:outline-none cursor-default"
+                            aria-label="heart"
+                        >
+                            <Heart
+                                className="w-3 h-3 text-red-400 fill-red-400 transition-transform active:scale-125"
+                                style={goldenFingerActive ? { animation: 'heartbeat 1.2s ease-in-out infinite' } : undefined}
+                            />
+                            {/* Floating hearts animation */}
+                            {floatingHearts.map(heart => (
+                                <Heart
+                                    key={heart.id}
+                                    className="absolute w-3 h-3 text-red-400 fill-red-400 pointer-events-none"
+                                    style={{
+                                        left: `calc(50% + ${heart.x}px)`,
+                                        bottom: '100%',
+                                        transform: 'translateX(-50%)',
+                                        animation: 'heartFloat 0.8s ease-out forwards',
+                                    }}
+                                />
+                            ))}
+                        </button>
                         <span>{t('about.by')} xtorker</span>
                     </div>
+
+                    {/* Toast message */}
+                    {toastMessage && (
+                        <div className="mt-3 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-full animate-fade-in">
+                            {toastMessage}
+                        </div>
+                    )}
                 </div>
 
-                {/* Footer - future sponsor button area */}
+                {/* Footer */}
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
                     <a
                         href="https://github.com/xtorker/HakoDesk"
@@ -123,6 +192,28 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                     </a>
                 </div>
             </div>
+
+            {/* Keyframe for floating hearts */}
+            <style>{`
+                @keyframes heartFloat {
+                    0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+                    100% { opacity: 0; transform: translateX(-50%) translateY(-30px) scale(1.3); }
+                }
+                @keyframes heartbeat {
+                    0%, 100% { transform: scale(1); }
+                    15% { transform: scale(1.3); }
+                    30% { transform: scale(1); }
+                    45% { transform: scale(1.2); }
+                    60% { transform: scale(1); }
+                }
+                .animate-fade-in {
+                    animation: fadeIn 0.2s ease-out;
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(4px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `}</style>
         </div>
     );
 }

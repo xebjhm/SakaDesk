@@ -35,7 +35,7 @@ interface ChatListProps {
     /** Callback to clear targetMessageId after it's consumed */
     onTargetMessageConsumed?: () => void;
     /** Callback when a photo is clicked (for photo detail modal) */
-    onPhotoClick?: (mediaUrl: string) => void;
+    onPhotoClick?: (mediaUrl: string, timestamp?: string) => void;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;

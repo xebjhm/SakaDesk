@@ -83,6 +83,16 @@ function parseReadStatePath(path: string): { service: string; groupId: number; m
     return null;
 }
 
+const MAX_CACHED_CHATS = 20;
+
+interface MessageCacheEntry {
+    messages: GroupMessage[];
+    membersMap: Record<string, MemberInfo>;
+    totalMessages: number;
+    maxMessageId: number;
+    service: string;
+}
+
 interface MessagesFeatureProps {
     appSettings: AppSettings | null;
     syncProgress: SyncProgress;
@@ -114,6 +124,24 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const messagesPathRef = useRef<string | null>(null); // Track which chat messages belong to
+    const [messagesForDir, setMessagesForDir] = useState<string | null>(null); // Which dir current messages belong to (state, for render gating)
+
+    // In-memory message cache: revisited chats render instantly from cache while a background refresh runs.
+    // LRU eviction keeps at most MAX_CACHED_CHATS entries to bound memory (~300KB × N).
+    const messagesCacheRef = useRef<Map<string, MessageCacheEntry>>(new Map());
+
+    // Monotonic fetch counter: each fetchMessages call increments this. When the response
+    // arrives, it checks if it's still the latest — stale responses are discarded silently.
+    const fetchIdRef = useRef(0);
+
+    const setCacheEntry = useCallback((key: string, entry: MessageCacheEntry) => {
+        const cache = messagesCacheRef.current;
+        cache.delete(key); // Move to end (Map preserves insertion order)
+        cache.set(key, entry);
+        if (cache.size > MAX_CACHED_CHATS) {
+            cache.delete(cache.keys().next().value!); // Evict oldest
+        }
+    }, []);
 
     // Message count tracking
     const [totalMessages, setTotalMessages] = useState(0);
@@ -132,6 +160,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Photo detail modal state
     const [photoDetailSrc, setPhotoDetailSrc] = useState<string | null>(null);
+    const [photoDetailTimestamp, setPhotoDetailTimestamp] = useState<string | undefined>();
 
     // Compute unread count from messages and readState (single source of truth)
     const displayUnreadCount = useMemo(() => {
@@ -192,6 +221,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setMembersMap({});
         setError(null);
         setMessagesService(null);
+        setMessagesForDir(null);
 
         // Restore previous selection for the new service (if any)
         if (activeService) {
@@ -232,6 +262,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // === FETCH MESSAGES (Load All) ===
     const fetchMessages = async (path: string, groupChat: boolean, lastReadId: number = 0) => {
+        const thisId = ++fetchIdRef.current;
         setLoading(true);
         setError(null);
         try {
@@ -248,6 +279,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             if (groupChat) {
                 const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?${params}`);
+                if (thisId !== fetchIdRef.current) return; // stale — a newer fetch superseded this one
                 if (!res.ok) {
                     const text = await res.text();
                     try {
@@ -258,31 +290,43 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     }
                 }
                 data = await res.json() as GroupMessagesResponse;
+                if (thisId !== fetchIdRef.current) return; // stale
                 const map: Record<string, MemberInfo> = {};
                 for (const m of data.members) map[m.id] = m;
+                const msgs = data.messages || [];
                 setMembersMap(map);
-                setMessages(data.messages || []);
+                setMessages(msgs);
                 setTotalMessages(data.total_messages || 0);
                 setMaxMessageId(data.max_message_id || 0);
                 setMessagesService(activeService);
+                setMessagesForDir(path);
                 messagesPathRef.current = path;
+                setCacheEntry(path, { messages: msgs, membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
             } else {
                 const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
+                if (thisId !== fetchIdRef.current) return; // stale
                 if (!res.ok) throw new Error("Failed to load");
                 data = await res.json();
+                if (thisId !== fetchIdRef.current) return; // stale
                 const memberInfo = data.member as MemberInfo;
-                if (memberInfo) setMembersMap({ [memberInfo.id]: memberInfo });
-                setMessages(data.messages || []);
+                const mMap = memberInfo ? { [memberInfo.id]: memberInfo } : {};
+                if (memberInfo) setMembersMap(mMap);
+                const msgs = data.messages || [];
+                setMessages(msgs);
                 setTotalMessages(data.total_count || 0);
                 setMaxMessageId(data.max_message_id || 0);
                 setMessagesService(activeService);
+                setMessagesForDir(path);
                 messagesPathRef.current = path;
+                setCacheEntry(path, { messages: msgs, membersMap: mMap, totalMessages: data.total_count || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
             }
         } catch (err: unknown) {
+            if (thisId !== fetchIdRef.current) return; // stale
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             console.error('[MessagesFeature] fetchMessages failed', { path, groupChat, activeService, error: errorMessage });
             setError(errorMessage);
             setMessages([]);
+            setMessagesForDir(null);
             setMembersMap({});
         } finally {
             setLoading(false);
@@ -296,8 +340,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             const storedReadState = loadReadState(selectedGroupDir);
             setReadState(storedReadState);
 
-            // Don't clear messages eagerly — fetchMessages will swap them
-            // atomically when the response arrives, avoiding a loading flash.
+            // Use cached messages for instant render; fetchMessages refreshes in the background.
+            // Without cache, the messagesForDir guard causes a brief blank while fetching.
+            const cached = messagesCacheRef.current.get(selectedGroupDir);
+            if (cached) {
+                setMessages(cached.messages);
+                setMembersMap(cached.membersMap);
+                setTotalMessages(cached.totalMessages);
+                setMaxMessageId(cached.maxMessageId);
+                setMessagesService(cached.service);
+                setMessagesForDir(selectedGroupDir);
+            }
 
             fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
@@ -472,8 +525,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages]);
 
-    const handlePhotoClick = useCallback((mediaUrl: string) => {
+    const handlePhotoClick = useCallback((mediaUrl: string, timestamp?: string) => {
         setPhotoDetailSrc(mediaUrl);
+        setPhotoDetailTimestamp(timestamp);
     }, []);
 
     // Toggle favorite status (optimistic update + API call)
@@ -632,7 +686,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-red-500">Error: {error}</div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && (
                         <MessageList
                             memberId={selectedGroupDir}
                             messages={messages}
@@ -731,6 +785,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             {photoDetailSrc && (
                 <PhotoDetailModal
                     src={photoDetailSrc}
+                    timestamp={photoDetailTimestamp}
                     onClose={() => setPhotoDetailSrc(null)}
                 />
             )}
