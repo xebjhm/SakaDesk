@@ -122,9 +122,9 @@ async def get_next_interval(
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
     from backend.services.adaptive_sync import calculate_next_sync_interval
-    from backend.services.settings_store import load_settings
+    from backend.services.settings_store import load_config
 
-    settings = load_settings()
+    settings = await load_config()
     base = settings.get("sync_interval_minutes", 10)
     adaptive = settings.get("adaptive_sync_enabled", False)
 
