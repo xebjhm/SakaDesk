@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
+import { useTranslation } from '../../i18n';
 
 const VOLUME_STORAGE_KEY = 'hakodesk_voice_volume';
 
@@ -33,7 +34,8 @@ const SkipButton: React.FC<{
     direction: 'back' | 'forward';
     onClick: () => void;
     disabled?: boolean;
-}> = ({ direction, onClick, disabled }) => {
+    title?: string;
+}> = ({ direction, onClick, disabled, title }) => {
     const Icon = direction === 'back' ? RotateCcw : RotateCw;
 
     return (
@@ -45,7 +47,7 @@ const SkipButton: React.FC<{
                 "hover:bg-gray-100 active:bg-gray-200",
                 disabled && "opacity-50 cursor-not-allowed"
             )}
-            title={direction === 'back' ? "Back 5 seconds (←)" : "Forward 5 seconds (→)"}
+            title={title}
         >
             <Icon className="w-6 h-6 text-gray-600" strokeWidth={2} />
             {/* Number "5" inside the circle */}
@@ -70,6 +72,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     accentColor = DEFAULT_ACCENT_COLOR,
     messageTimestamp,
 }) => {
+    const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -375,12 +378,12 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                             type="button"
                                         >
                                             <Download className="w-4 h-4" />
-                                            Download
+                                            {t('common.download')}
                                         </button>
                                         <div className="border-t border-gray-200 my-1" />
                                     </>
                                 )}
-                                <div className="px-4 py-1 text-xs text-gray-400">Speed</div>
+                                <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
                                 {[0.5, 1, 1.5, 2].map(rate => (
                                     <button
                                         key={rate}
@@ -434,7 +437,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             <button
                                 onClick={handleMuteToggle}
                                 className="p-1 hover:bg-white/50 rounded-full transition-colors"
-                                title={isMuted ? "Unmute (M)" : "Mute (M)"}
+                                title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                                 type="button"
                             >
                                 {isMuted ? (
@@ -474,6 +477,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             direction="back"
                             onClick={handleSkipBack}
                             disabled={currentTime === 0}
+                            title={t('voicePlayer.skipBack')}
                         />
 
                         <button
@@ -493,6 +497,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             direction="forward"
                             onClick={handleSkipForward}
                             disabled={duration === 0}
+                            title={t('voicePlayer.skipForward')}
                         />
                     </div>
 
@@ -544,7 +549,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         <button
                             onClick={handleMuteToggle}
                             className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
-                            title={isMuted ? "Unmute (M)" : "Mute (M)"}
+                            title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
                             {isMuted ? (
@@ -615,12 +620,12 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                             type="button"
                                         >
                                             <Download className="w-4 h-4" />
-                                            Download
+                                            {t('common.download')}
                                         </button>
                                         <div className="border-t my-1" />
                                     </>
                                 )}
-                                <div className="px-4 py-1 text-xs text-gray-400">Speed</div>
+                                <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
                                 {[0.5, 1, 1.5, 2].map(rate => (
                                     <button
                                         key={rate}

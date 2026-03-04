@@ -85,7 +85,8 @@
     "waitingForBrowser": "Waiting for browser...",
     "launchBrowserLogin": "Launch Browser Login",
     "connectAccount": "Connect Account",
-    "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials."
+    "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
+    "loginFailed": "Login failed or cancelled"
   },
   "tos": {
     "title": "Terms of Service",
@@ -203,7 +204,9 @@
     "unread": "{{count}} unread",
     "revealAllTitle": "Reveal All Messages?",
     "revealAllDescription": "This will mark all {{count}} unread messages as revealed.",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "noContent": "(No content)",
+    "attachment": "Attachment"
   },
   "calendar": {
     "title": "Date Search",
@@ -344,6 +347,13 @@
     "loadingTimeline": "Loading timeline...",
     "post": "{{count}} post",
     "post_other": "{{count}} posts"
+  },
+  "voicePlayer": {
+    "speed": "Speed",
+    "skipBack": "Back 5 seconds (←)",
+    "skipForward": "Forward 5 seconds (→)",
+    "mute": "Mute (M)",
+    "unmute": "Unmute (M)"
   },
   "generations": {
     "1st": "1ST GEN",

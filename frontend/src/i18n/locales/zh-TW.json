@@ -85,7 +85,8 @@
     "waitingForBrowser": "等待瀏覽器操作...",
     "launchBrowserLogin": "啟動瀏覽器登入",
     "connectAccount": "連接帳戶",
-    "browserPrompt": "請登入您的 {{service}} 訊息帳戶。瀏覽器視窗將會開啟以供您輸入憑證。"
+    "browserPrompt": "請登入您的 {{service}} 訊息帳戶。瀏覽器視窗將會開啟以供您輸入憑證。",
+    "loginFailed": "登入失敗或已取消"
   },
   "tos": {
     "title": "服務條款",
@@ -203,7 +204,9 @@
     "unread": "{{count}} 則未讀",
     "revealAllTitle": "顯示所有訊息？",
     "revealAllDescription": "這將把所有 {{count}} 則未讀訊息標記為已讀。",
-    "confirm": "確認"
+    "confirm": "確認",
+    "noContent": "(無內容)",
+    "attachment": "附件"
   },
   "calendar": {
     "title": "日期搜尋",
@@ -344,6 +347,13 @@
     "loadingTimeline": "正在載入時間線...",
     "post": "{{count}} 篇文章",
     "post_other": "{{count}} 篇文章"
+  },
+  "voicePlayer": {
+    "speed": "播放速度",
+    "skipBack": "倒退 5 秒 (←)",
+    "skipForward": "快進 5 秒 (→)",
+    "mute": "靜音 (M)",
+    "unmute": "取消靜音 (M)"
   },
   "generations": {
     "1st": "１期生",

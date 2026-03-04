@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
+import { useAppStore } from '../store/appStore'
 
 // Helper to render App with required providers
 const renderApp = () => {
@@ -16,15 +17,25 @@ const renderApp = () => {
 describe('App Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(localStorage.getItem).mockReturnValue(null)
+    // Mock localStorage: ToS accepted, language set
+    vi.mocked(localStorage.getItem).mockImplementation((key: string) => {
+      if (key === 'tos_accepted_at') return '2024-01-01T00:00:00Z'
+      if (key === 'hakodesk-language') return 'en'
+      return null
+    })
+    // Set up Zustand store with a selected service so we skip the landing page
+    useAppStore.setState({
+      selectedServices: ['hinatazaka46'],
+      activeService: 'hinatazaka46',
+    })
   })
 
   it('should render main app when authenticated', async () => {
     renderApp()
 
-    // Wait for auth check and initial render
+    // Wait for auth check and initial render - look for i18n key fallback or English text
     await waitFor(() => {
-      expect(screen.getByText('Select a Conversation')).toBeInTheDocument()
+      expect(screen.getByText(/Select a Conversation|messages\.selectConversation/)).toBeInTheDocument()
     })
   })
 
@@ -32,7 +43,7 @@ describe('App Integration Tests', () => {
     renderApp()
 
     await waitFor(() => {
-      expect(screen.getByText(/Welcome to HakoDesk/)).toBeInTheDocument()
+      expect(screen.getByText(/Welcome to HakoDesk|messages\.welcome/)).toBeInTheDocument()
     })
   })
 

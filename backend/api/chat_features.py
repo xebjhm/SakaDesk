@@ -133,9 +133,8 @@ async def get_letters(group_id: int, service: str, count: int = 200):
     try:
         letters_data = await client.get_letters(session, group_id, count=count)
 
-        # Debug: Log first letter to see actual field names
         if letters_data:
-            logger.info(f"Letter API response sample: {letters_data[0]}")
+            logger.debug(f"Letter API response sample: {letters_data[0]}")
 
         letters = []
         for letter in letters_data:
@@ -179,8 +178,7 @@ async def get_streak(group_id: int, service: str):
     try:
         streak_data = await client.get_subscription_streak(session, group_id)
 
-        # Debug: Log actual response to see field names
-        logger.info(f"Streak API response: {streak_data}")
+        logger.debug(f"Streak API response: {streak_data}")
 
         if not streak_data:
             return StreakResponse(days=0, is_active=False)

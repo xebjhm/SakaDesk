@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, Loader2 } from 'lucide-react';
 import { cn } from '../utils/classnames';
+import { useTranslation } from '../i18n';
 
 interface LoginPageProps {
     service: string;
@@ -9,6 +10,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, initialError }) => {
+    const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(initialError || null);
 
@@ -17,7 +19,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
         setError(null);
         try {
             const res = await fetch(`/api/auth/login?service=${encodeURIComponent(service)}`, { method: 'POST' });
-            if (!res.ok) throw new Error("Login failed or cancelled");
+            if (!res.ok) throw new Error(t('login.loginFailed'));
             onLoginSuccess();
         } catch (err: any) {
             setError(err.message);
@@ -33,10 +35,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
                     <LogIn className="w-8 h-8" />
                 </div>
 
-                <h1 className="text-2xl font-bold text-gray-900">Connect Account</h1>
+                <h1 className="text-2xl font-bold text-gray-900">{t('login.connectAccount')}</h1>
                 <p className="text-gray-500">
-                    Please log in to your {service} Message account.
-                    A browser window will open for you to enter your credentials.
+                    {t('login.browserPrompt', { service })}
                 </p>
 
                 {error && (
@@ -56,15 +57,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
                     {isLoading ? (
                         <span className="flex items-center justify-center gap-2">
                             <Loader2 className="w-5 h-5 animate-spin" />
-                            Waiting for browser...
+                            {t('login.waitingForBrowser')}
                         </span>
                     ) : (
-                        "Launch Browser Login"
+                        t('login.launchBrowserLogin')
                     )}
                 </button>
 
                 <div className="text-xs text-gray-400 pt-4">
-                    Your credentials are saved locally on your device.
+                    {t('login.credentialsSaved')}
                 </div>
             </div>
         </div>
