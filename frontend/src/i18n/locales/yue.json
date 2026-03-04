@@ -52,7 +52,11 @@
         "hour_other": "{{count}} 小時",
         "elapsed": "耗時",
         "eta": "預計剩返",
-        "speed": "速度"
+        "speed": "速度",
+        "justNow": "啱啱",
+        "minutesAgo": "{{count}}分鐘前",
+        "hoursAgo": "{{count}}個鐘前",
+        "daysAgo": "{{count}}日前"
     },
     "login": {
         "title": "帳戶管理",
@@ -115,7 +119,9 @@
         "scan": "Scan",
         "download": "下載",
         "syncing": "同步中...",
-        "autoSyncActive": "自動同步著咗"
+        "lastSynced": "上次同步: {{time}}",
+        "notSynced": "未同步",
+        "syncNow": "即刻同步"
     },
     "about": {
         "title": "關於",

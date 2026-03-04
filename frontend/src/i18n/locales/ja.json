@@ -52,7 +52,11 @@
     "hour_other": "{{count}}時間",
     "elapsed": "経過",
     "eta": "残り",
-    "speed": "速度"
+    "speed": "速度",
+    "justNow": "たった今",
+    "minutesAgo": "{{count}}分前",
+    "hoursAgo": "{{count}}時間前",
+    "daysAgo": "{{count}}日前"
   },
   "login": {
     "title": "アカウント管理",
@@ -115,7 +119,9 @@
     "scan": "スキャン",
     "download": "ダウンロード",
     "syncing": "同期中...",
-    "autoSyncActive": "自動同期が有効です"
+    "lastSynced": "最終同期: {{time}}",
+    "notSynced": "未同期",
+    "syncNow": "今すぐ同期"
   },
   "about": {
     "title": "アプリについて",

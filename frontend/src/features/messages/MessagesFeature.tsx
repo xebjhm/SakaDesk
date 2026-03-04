@@ -85,12 +85,14 @@ interface MessagesFeatureProps {
     appSettings: AppSettings | null;
     syncProgress: SyncProgress;
     syncVersion: number; // Increments when sync completes - triggers refresh
+    onSyncNow?: () => void; // Manual sync trigger
 }
 
 export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     appSettings,
     syncProgress,
     syncVersion,
+    onSyncNow,
 }) => {
     const { t } = useTranslation();
 
@@ -506,6 +508,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     activeService={activeService || undefined}
                     isSyncing={syncProgress.state === 'running'}
                     readStateVersion={readStateVersion}
+                    onSyncNow={onSyncNow}
                 />
             </div>
 
