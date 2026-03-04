@@ -40,8 +40,11 @@ logger = structlog.get_logger(__name__)
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = Path("output")
 
-# Group IDs that should be treated as group chat (multiple members posting)
-GROUP_CHAT_IDS = ['43', '79']  # 日向坂46 group chat IDs
+# Group IDs that should be treated as group chat (multiple members posting),
+# keyed by service identifier to avoid cross-service collisions.
+GROUP_CHAT_IDS: dict[str, set[str]] = {
+    'hinatazaka46': {'43', '79'},
+}
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
@@ -86,7 +89,7 @@ def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dic
     Load sync_metadata.json from all service directories.
     Returns (member_entries, server_groups) where:
       - member_entries: dict mapping "{group_id}_{member_id}" -> sync bookkeeping
-      - server_groups: dict mapping "{group_id}" -> { state, is_active }
+      - server_groups: dict mapping "{service_name}:{group_id}" -> { state, is_active }
     """
     all_members: Dict[str, Dict[str, Any]] = {}
     all_server_groups: Dict[str, Dict[str, Any]] = {}
@@ -104,7 +107,11 @@ def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dic
                 with open(metadata_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     all_members.update(data.get('groups', {}))
-                    all_server_groups.update(data.get('server_groups', {}))
+                    # Namespace server_groups by service directory name to
+                    # prevent cross-service ID collisions (group IDs are only
+                    # unique within a single service).
+                    for group_id, group_data in data.get('server_groups', {}).items():
+                        all_server_groups[f"{service_dir.name}:{group_id}"] = group_data
             except Exception as e:
                 logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
 
@@ -232,10 +239,11 @@ async def get_groups():
 
             member_count = len(members_info)
             # Check if this is a group chat (multiple members or special group ID)
-            is_group_chat = member_count > 1 or group_id in GROUP_CHAT_IDS
+            service_chat_ids = GROUP_CHAT_IDS.get(service_id, set())
+            is_group_chat = member_count > 1 or group_id in service_chat_ids
 
             # Derive status from group-level server state
-            sg = server_groups.get(group_id)
+            sg = server_groups.get(f"{service_display_name}:{group_id}")
             if sg:
                 is_graduated = sg.get('state') == 'closed'
                 is_active = sg.get('is_active', True) if not is_graduated else False
@@ -565,7 +573,8 @@ async def get_talk_rooms(service: str = Query(..., description="Service identifi
 
         member_dirs = [d for d in talk_room_dir.iterdir() if d.is_dir() and (d / "messages.json").exists()]
         member_count = len(member_dirs)
-        room_type = "group_event" if member_count > 1 or talk_room_id in GROUP_CHAT_IDS else "individual"
+        service_chat_ids = GROUP_CHAT_IDS.get(service, set())
+        room_type = "group_event" if member_count > 1 or talk_room_id in service_chat_ids else "individual"
 
         talk_rooms.append({
             "id": int(talk_room_id),
