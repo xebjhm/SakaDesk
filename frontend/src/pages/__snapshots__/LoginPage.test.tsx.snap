@@ -44,9 +44,7 @@ exports[`LoginPage component > Snapshots > should match snapshot for default sta
     <p
       class="text-gray-500"
     >
-      Please log in to your 
-      hinatazaka46
-       Message account. A browser window will open for you to enter your credentials.
+      Please log in to your hinatazaka46 Message account. A browser window will open for you to enter your credentials.
     </p>
     <button
       class="w-full py-3 px-4 rounded-xl font-semibold text-white shadow-lg transition-all transform hover:scale-[1.02] bg-gradient-to-r from-blue-500 to-indigo-600 hover:shadow-xl"
@@ -106,9 +104,7 @@ exports[`LoginPage component > Snapshots > should match snapshot with error stat
     <p
       class="text-gray-500"
     >
-      Please log in to your 
-      hinatazaka46
-       Message account. A browser window will open for you to enter your credentials.
+      Please log in to your hinatazaka46 Message account. A browser window will open for you to enter your credentials.
     </p>
     <div
       class="bg-red-50 text-red-600 p-3 rounded-lg text-sm"

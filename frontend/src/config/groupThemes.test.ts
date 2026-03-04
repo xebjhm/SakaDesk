@@ -8,12 +8,12 @@ import {
 
 describe('groupThemes', () => {
     describe('theme definitions', () => {
-        it('should define all four group themes', () => {
-            expect(Object.keys(groupThemes)).toEqual(['hinatazaka', 'sakurazaka', 'nogizaka', 'default'])
+        it('should define all group themes', () => {
+            expect(Object.keys(groupThemes)).toEqual(['hinatazaka', 'sakurazaka', 'nogizaka', 'yodel', 'default'])
         })
 
         it('should have correct id for each theme', () => {
-            const groupIds: GroupId[] = ['hinatazaka', 'sakurazaka', 'nogizaka', 'default']
+            const groupIds: GroupId[] = ['hinatazaka', 'sakurazaka', 'nogizaka', 'yodel', 'default']
             for (const id of groupIds) {
                 expect(groupThemes[id].id).toBe(id)
             }

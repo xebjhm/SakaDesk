@@ -6,6 +6,7 @@ import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-
 import { MessageContextMenu } from './MessageContextMenu';
 import { DEFAULT_SHELTER_COLORS } from '../../../config/groupThemes';
 import { useAppStore } from '../../../store/appStore';
+import { useTranslation } from '../../../i18n';
 
 interface ShelterColors {
     picture: string;
@@ -147,6 +148,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     theme,
     service,
 }) => {
+    const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
@@ -312,7 +314,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <MediaContainer message={message}>
                                 <img
                                     src={mediaUrl}
-                                    alt="Attachment"
+                                    alt={t('messageList.attachment')}
                                     className="w-full h-full object-contain cursor-pointer"
                                     onClick={() => onPhotoClick?.(mediaUrl, message.timestamp)}
                                 />
@@ -355,7 +357,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Fallback for missing content */}
                         {!message.content && !mediaUrl && (
                             <div className="text-gray-400 italic text-sm">
-                                (No content)
+                                {t('messageList.noContent')}
                             </div>
                         )}
                     </div>

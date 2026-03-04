@@ -85,7 +85,8 @@
     "waitingForBrowser": "等待浏览器操作...",
     "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
-    "browserPrompt": "请登录您的 {{service}} 消息账户。将为您打开浏览器窗口以输入凭据。"
+    "browserPrompt": "请登录您的 {{service}} 消息账户。将为您打开浏览器窗口以输入凭据。",
+    "loginFailed": "登录失败或已取消"
   },
   "tos": {
     "title": "服务条款",
@@ -203,7 +204,9 @@
     "unread": "{{count}} 条未读",
     "revealAllTitle": "显示所有消息？",
     "revealAllDescription": "这将把所有 {{count}} 条未读消息标记为已读。",
-    "confirm": "确认"
+    "confirm": "确认",
+    "noContent": "(无内容)",
+    "attachment": "附件"
   },
   "calendar": {
     "title": "日期搜索",
@@ -344,6 +347,13 @@
     "loadingTimeline": "正在加载时间线...",
     "post": "{{count}} 篇文章",
     "post_other": "{{count}} 篇文章"
+  },
+  "voicePlayer": {
+    "speed": "播放速度",
+    "skipBack": "后退 5 秒 (←)",
+    "skipForward": "快进 5 秒 (→)",
+    "mute": "静音 (M)",
+    "unmute": "取消静音 (M)"
   },
   "generations": {
     "1st": "１期生",

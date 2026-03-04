@@ -85,7 +85,8 @@
     "waitingForBrowser": "ブラウザを操作してください...",
     "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
-    "browserPrompt": "{{service}}のアカウントにログインしてください。ブラウザウィンドウが開きます。"
+    "browserPrompt": "{{service}}のアカウントにログインしてください。ブラウザウィンドウが開きます。",
+    "loginFailed": "ログインに失敗したかキャンセルされました"
   },
   "tos": {
     "title": "利用規約",
@@ -203,7 +204,9 @@
     "unread": "未読 {{count}}件",
     "revealAllTitle": "全てのメッセージを表示しますか？",
     "revealAllDescription": "{{count}}件のメッセージを一括で既読にします。",
-    "confirm": "確認"
+    "confirm": "確認",
+    "noContent": "(内容なし)",
+    "attachment": "添付ファイル"
   },
   "calendar": {
     "title": "日付検索",
@@ -344,6 +347,13 @@
     "loadingTimeline": "タイムラインを読み込み中...",
     "post": "{{count}}件の記事",
     "post_other": "{{count}}件の記事"
+  },
+  "voicePlayer": {
+    "speed": "再生速度",
+    "skipBack": "5秒戻る (←)",
+    "skipForward": "5秒進む (→)",
+    "mute": "ミュート (M)",
+    "unmute": "ミュート解除 (M)"
   },
   "generations": {
     "1st": "一期生",

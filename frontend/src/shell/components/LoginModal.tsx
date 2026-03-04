@@ -38,7 +38,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 `/api/auth/login?service=${encodeURIComponent(serviceId)}`,
                 { method: 'POST' }
             );
-            if (!res.ok) throw new Error('Login failed or cancelled');
+            if (!res.ok) throw new Error(t('login.loginFailed'));
 
             // Initialize service settings entry
             await fetch(
@@ -48,7 +48,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
             onSuccess();
         } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Login failed');
+            setError(err instanceof Error ? err.message : t('login.loginFailed'));
         } finally {
             setIsLoading(false);
         }

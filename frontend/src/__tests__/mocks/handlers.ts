@@ -94,13 +94,42 @@ export const handlers = [
       output_dir: '/tmp/hakodesk_test',
       auto_sync_enabled: false,
       sync_interval_minutes: 30,
+      adaptive_sync_enabled: false,
+      blogs_full_backup: false,
       is_configured: true,
     })
+  }),
+
+  // Per-service settings
+  http.get('/api/settings/service/:service', () => {
+    return HttpResponse.json({
+      blogs_full_backup: false,
+    })
+  }),
+
+  // Save settings
+  http.put('/api/settings', () => {
+    return HttpResponse.json({ success: true })
+  }),
+
+  // Save per-service settings
+  http.put('/api/settings/service/:service', () => {
+    return HttpResponse.json({ success: true })
   }),
 
   // Fresh install check
   http.get('/api/settings/fresh', () => {
     return HttpResponse.json({ is_fresh: false })
+  }),
+
+  // User profile
+  http.get('/api/profile', () => {
+    return HttpResponse.json({ nickname: 'TestUser', error: null })
+  }),
+
+  // Refresh profile
+  http.post('/api/profile/refresh', () => {
+    return HttpResponse.json({ nickname: 'TestUser', error: null })
   }),
 
   // Sync progress (idle)
@@ -113,8 +142,42 @@ export const handlers = [
     return HttpResponse.json({ success: true })
   }),
 
+  // Next sync interval
+  http.get('/api/sync/next_interval', () => {
+    return HttpResponse.json({ interval_minutes: 10 })
+  }),
+
   // Unread counts - returns empty for tests
   http.post('/api/content/unread_counts', () => {
     return HttpResponse.json({})
+  }),
+
+  // Read states batch
+  http.post('/api/read-states/batch', () => {
+    return HttpResponse.json({ success: true })
+  }),
+
+  // Blog cache size
+  http.get('/api/blogs/cache-size', () => {
+    return HttpResponse.json({ size_bytes: 0 })
+  }),
+
+  // Search status
+  http.get('/api/search/status', () => {
+    return HttpResponse.json({ indexed_count: 0, is_building: false })
+  }),
+
+  // Version check
+  http.get('/api/version', () => {
+    return HttpResponse.json({
+      current_version: '0.1.0',
+      latest_version: '0.1.0',
+      update_available: false,
+      release_url: null,
+      release_notes: null,
+      last_checked: null,
+      error: null,
+      upgrade_supported: false,
+    })
   }),
 ]
