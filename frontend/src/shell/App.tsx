@@ -31,6 +31,7 @@ function App() {
         setAuthError,
         connectedServices,
         markServiceDisconnected,
+        isServiceDisconnected,
         checkAuth,
     } = useAuth();
 
@@ -116,6 +117,22 @@ function App() {
         },
         markServiceDisconnected,
     });
+
+    // Track active feature per service for disconnected-service detection
+    const activeFeatures = useAppStore(s => s.activeFeatures);
+    const currentFeature = activeService ? activeFeatures[activeService] ?? 'messages' : null;
+
+    // Disconnected service login popup — shown when user switches view to a disconnected service
+    const [disconnectedLoginService, setDisconnectedLoginService] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!activeService) return;
+        if (!isServiceDisconnected(activeService)) return;
+        if (currentFeature !== 'messages' && currentFeature !== 'blogs') return;
+        if (sessionExpiredService) return;
+        if (disconnectedLoginService) return; // Already showing
+        setDisconnectedLoginService(activeService);
+    }, [activeService, currentFeature]);
 
     // UI state
     const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -315,6 +332,21 @@ function App() {
                             clearSessionExpired();
                             // Restart sync for this service
                             startSync(false, sessionExpiredService);
+                        }}
+                        isDisconnected={true}
+                    />
+                )}
+
+                {/* Disconnected Service Login Modal - triggered by switching to disconnected service */}
+                {disconnectedLoginService && !sessionExpiredService && (
+                    <LoginModal
+                        serviceId={disconnectedLoginService}
+                        featureId="messages"
+                        onClose={() => setDisconnectedLoginService(null)}
+                        onSuccess={async () => {
+                            await checkAuth();
+                            setDisconnectedLoginService(null);
+                            startSync(false, disconnectedLoginService);
                         }}
                         isDisconnected={true}
                     />
