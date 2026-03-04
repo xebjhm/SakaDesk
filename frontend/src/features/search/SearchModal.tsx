@@ -334,7 +334,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
         {/* Modal panel */}
         <div
-          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh]"
+          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Search input */}
@@ -419,7 +419,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
 
           {/* Footer */}
           {results.length > 0 && (
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex flex-col gap-1 rounded-b-xl">
+            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex flex-col gap-1">
               <div className="flex justify-between">
                 <span>
                   {totalCount > results.length
