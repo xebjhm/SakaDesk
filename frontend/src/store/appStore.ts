@@ -140,9 +140,9 @@ interface AppState {
     // ─── Blog Search Navigation ──────────────────────────────────────────────
 
     /** Target blog to open from search results (non-persisted). */
-    targetBlog: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[] } | null;
+    targetBlog: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[]; readingTerms?: string[] } | null;
     /** Set the target blog to open from search navigation. */
-    setTargetBlog: (target: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[] } | null) => void;
+    setTargetBlog: (target: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[]; readingTerms?: string[] } | null) => void;
 }
 
 /** Default feature tab order when no custom order is set. */

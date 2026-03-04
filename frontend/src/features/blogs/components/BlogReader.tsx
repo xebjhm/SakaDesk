@@ -25,6 +25,7 @@ export interface BlogReaderProps {
     serviceId: string;
     searchQuery?: string;
     matchedTerms?: string[];
+    readingTerms?: string[];
 }
 
 export const BlogReader: React.FC<BlogReaderProps> = ({
@@ -42,6 +43,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     serviceId,
     searchQuery,
     matchedTerms,
+    readingTerms,
 }) => {
     const theme = useBlogTheme();
 
@@ -102,19 +104,36 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     // Uses both the raw searchQuery and matchedTerms extracted from snippet
     // <mark> tags. This handles reading-based matches where the query is
     // hiragana (e.g., "かわいい") but the blog text is kanji (e.g., "可愛い").
+    // Reading-based matches get blue highlights with dashed border,
+    // while exact matches get yellow highlights.
     let processedHtml = sanitizedHtml;
     if ((searchQuery || matchedTerms?.length) && processedHtml) {
         const allTerms = new Set<string>();
+        const readingSet = new Set(readingTerms || []);
         if (searchQuery) allTerms.add(searchQuery);
         matchedTerms?.forEach(t => allTerms.add(t));
-        const escapedTerms = [...allTerms].map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-        // Sort by length descending so longer matches take priority
-        escapedTerms.sort((a, b) => b.length - a.length);
-        const regex = new RegExp(`(${escapedTerms.join('|')})`, 'gi');
-        // Only replace in text nodes (not inside HTML tags)
-        processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
-            return '>' + text.replace(regex, '<mark class="search-snippet search-highlight">$1</mark>') + '<';
-        });
+
+        // Split into exact and reading term lists
+        const exactTermsList = [...allTerms].filter(t => !readingSet.has(t));
+        const readTermsList = [...allTerms].filter(t => readingSet.has(t));
+
+        // Helper to escape regex special chars
+        const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        // Apply reading highlights first (blue), then exact highlights (yellow)
+        // Applying exact last means if a term appears in both, exact style wins
+        for (const [terms, cssClass] of [
+            [readTermsList, 'search-snippet search-highlight reading'],
+            [exactTermsList, 'search-snippet search-highlight'],
+        ] as [string[], string][]) {
+            if (terms.length === 0) continue;
+            const escaped = terms.map(escapeRegex);
+            escaped.sort((a, b) => b.length - a.length);
+            const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
+            processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
+                return '>' + (text as string).replace(regex, `<mark class="${cssClass}">$1</mark>`) + '<';
+            });
+        }
     }
 
     // Scroll to first search highlight after content renders
@@ -239,7 +258,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                 dangerouslySetInnerHTML={{ __html: processedHtml }}
                             />
 
-                            {/* Blog content link styles */}
+                            {/* Blog content link and search highlight styles */}
                             <style>{`
                                 .blog-content a {
                                     color: ${theme.linkColor};
@@ -249,6 +268,16 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                 }
                                 .blog-content a:hover {
                                     border-bottom-color: ${theme.linkColor};
+                                }
+                                .search-highlight {
+                                    background-color: rgb(254 240 138);
+                                    color: inherit;
+                                    border-radius: 2px;
+                                    padding: 0 2px;
+                                }
+                                .search-highlight.reading {
+                                    background-color: rgb(219 234 254);
+                                    border-bottom: 1.5px dashed rgb(96 165 250);
                                 }
                             `}</style>
 

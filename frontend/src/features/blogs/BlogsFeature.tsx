@@ -8,7 +8,7 @@ import { MemberSelectModal } from './components/MemberSelectModal';
 
 type ViewState =
     | { view: 'recent' }
-    | { view: 'reader'; blog: BlogMeta; member: BlogMember; content: BlogContentResponse | null; fromView: 'recent' | 'timeline'; searchQuery?: string; matchedTerms?: string[] };
+    | { view: 'reader'; blog: BlogMeta; member: BlogMember; content: BlogContentResponse | null; fromView: 'recent' | 'timeline'; searchQuery?: string; matchedTerms?: string[]; readingTerms?: string[] };
 
 // Stable empty array to avoid creating new references
 const EMPTY_FAVORITES: string[] = [];
@@ -113,6 +113,7 @@ export const BlogsFeature: React.FC = () => {
                     fromView: 'recent',
                     searchQuery: targetBlog.searchQuery,
                     matchedTerms: targetBlog.matchedTerms,
+                    readingTerms: targetBlog.readingTerms,
                 });
             } catch (err) {
                 console.error('[BlogsFeature] Failed to open blog from search', err);
@@ -496,6 +497,7 @@ export const BlogsFeature: React.FC = () => {
                         serviceId={activeService ?? ''}
                         searchQuery={viewState.searchQuery}
                         matchedTerms={viewState.matchedTerms}
+                        readingTerms={viewState.readingTerms}
                     />
                 );
             })()}
