@@ -43,7 +43,10 @@
     "syncFixed": "Fixed Interval",
     "syncFixedDesc": "Sync at regular intervals",
     "syncSmart": "Smart Timing",
-    "serviceSettings": "Service Settings"
+    "serviceSettings": "Service Settings",
+    "syncCurrentOff": "Currently: Manual sync only",
+    "syncCurrentFixed": "Currently: Every {{minutes}} minutes",
+    "syncCurrentSmart": "Currently: Adaptive timing"
   },
   "time": {
     "minute": "{{count}} minute",

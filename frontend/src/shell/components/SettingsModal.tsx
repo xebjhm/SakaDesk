@@ -89,6 +89,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             {t('settings.syncMode')}
                         </label>
+                        {/* Current state summary */}
+                        <p className="text-xs text-gray-500 mb-2">
+                            {!appSettings.auto_sync_enabled
+                                ? t('settings.syncCurrentOff')
+                                : appSettings.adaptive_sync_enabled
+                                    ? t('settings.syncCurrentSmart')
+                                    : t('settings.syncCurrentFixed', { minutes: appSettings.sync_interval_minutes })}
+                        </p>
                         <div className="space-y-1">
                             {/* Off */}
                             <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">

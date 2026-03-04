@@ -43,7 +43,10 @@
     "syncFixed": "固定间隔",
     "syncFixedDesc": "以固定间隔自动同步",
     "syncSmart": "智能排程",
-    "serviceSettings": "服务设置"
+    "serviceSettings": "服务设置",
+    "syncCurrentOff": "目前: 仅手动同步",
+    "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
+    "syncCurrentSmart": "目前: 自适应同步"
   },
   "time": {
     "minute": "{{count}} 分钟",
