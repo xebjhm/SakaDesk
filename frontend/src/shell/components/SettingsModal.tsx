@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 
@@ -18,6 +19,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
 }) => {
     const { t, i18n } = useTranslation();
+    const selectedServices = useAppStore(s => s.selectedServices);
+    const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
+    const [isClearing, setIsClearing] = useState(false);
+
+    const formatBytes = (bytes: number): string => {
+        if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+        if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+        if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+        return `${bytes} B`;
+    };
+
+    const loadBlogCacheSize = async () => {
+        try {
+            let totalBytes = 0;
+            for (const service of selectedServices) {
+                const res = await fetch(`/api/blogs/cache-size?service=${encodeURIComponent(service)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    totalBytes += data.size_bytes || 0;
+                }
+            }
+            setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
+        } catch {
+            setBlogCacheSize(null);
+        }
+    };
+
+    useEffect(() => {
+        if (appSettings.blogs_full_backup && selectedServices.length > 0) {
+            loadBlogCacheSize();
+        }
+    }, [appSettings.blogs_full_backup, selectedServices]);
+
+    const handleCleanBlogCache = async () => {
+        if (!window.confirm(t('settings.cleanBlogCacheConfirm'))) return;
+        if (!window.confirm(t('settings.cleanBlogCacheConfirm2'))) return;
+
+        setIsClearing(true);
+        try {
+            for (const service of selectedServices) {
+                await fetch(`/api/blogs/cache?service=${encodeURIComponent(service)}`, { method: 'DELETE' });
+            }
+            await loadBlogCacheSize();
+        } catch (err) {
+            console.error('Failed to clean blog cache:', err);
+        } finally {
+            setIsClearing(false);
+        }
+    };
 
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
@@ -173,6 +223,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 ? t('settings.blogFullBackupOnDesc')
                                 : t('settings.blogFullBackupOffDesc')}
                         </p>
+                        {appSettings.blogs_full_backup && (
+                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                                <div className="text-xs text-gray-500">
+                                    {blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
+                                </div>
+                                <button
+                                    onClick={handleCleanBlogCache}
+                                    disabled={isClearing}
+                                    className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
+                                >
+                                    {isClearing ? t('common.loading') : t('settings.cleanBlogCache')}
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Desktop Notifications */}
