@@ -12,10 +12,11 @@ from pyhako import Group
 
 def test_get_all_services():
     services = get_all_services()
-    assert len(services) == 3
+    assert len(services) == 4
     assert "hinatazaka46" in services
     assert "nogizaka46" in services
     assert "sakurazaka46" in services
+    assert "yodel" in services
 
 
 def test_get_service_display_name():
