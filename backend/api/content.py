@@ -86,18 +86,20 @@ def get_output_dir() -> Path:
     return DEFAULT_OUTPUT_DIR
 
 
-def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]]]:
+def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, str]]:
     """
     Load sync_metadata.json from all service directories.
-    Returns (member_entries, server_groups) where:
+    Returns (member_entries, server_groups, last_sync_map) where:
       - member_entries: dict mapping "{group_id}_{member_id}" -> sync bookkeeping
       - server_groups: dict mapping "{service_name}:{group_id}" -> { state, is_active }
+      - last_sync_map: dict mapping service_id -> ISO timestamp of last sync
     """
     all_members: Dict[str, Dict[str, Any]] = {}
     all_server_groups: Dict[str, Dict[str, Any]] = {}
+    all_last_sync: Dict[str, str] = {}
 
     if not output_dir.exists():
-        return all_members, all_server_groups
+        return all_members, all_server_groups, all_last_sync
 
     for service_dir in output_dir.iterdir():
         if not service_dir.is_dir():
@@ -114,10 +116,15 @@ def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dic
                     # unique within a single service).
                     for group_id, group_data in data.get('server_groups', {}).items():
                         all_server_groups[f"{service_dir.name}:{group_id}"] = group_data
+                    # Extract last_sync timestamp, keyed by service ID
+                    if 'last_sync' in data:
+                        service_id = get_service_identifier(service_dir.name)
+                        if service_id:
+                            all_last_sync[service_id] = data['last_sync']
             except Exception as e:
                 logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
 
-    return all_members, all_server_groups
+    return all_members, all_server_groups, all_last_sync
 
 
 def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
@@ -160,7 +167,7 @@ async def get_groups():
         return []
 
     # Load sync metadata for group status (source of truth)
-    sync_metadata, server_groups = load_sync_metadata(output_dir)
+    sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
 
     groups = []
 
@@ -273,7 +280,7 @@ async def get_groups():
 
     # Sort: active first, then by group ID
     groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(str(g['id']))))
-    return groups
+    return {"groups": groups, "last_sync": last_sync_map}
 
 
 @router.get("/messages_by_path")

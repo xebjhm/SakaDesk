@@ -352,6 +352,7 @@ function App() {
                             appSettings={appSettings}
                             syncProgress={syncProgress}
                             syncVersion={syncVersion}
+                            onSyncNow={() => startSync(false)}
                         />
                     }
                 />

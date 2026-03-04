@@ -30,12 +30,25 @@ interface SidebarProps {
     activeService?: string; // Filter groups by service
     isSyncing?: boolean;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
+    onSyncNow?: () => void; // Manual sync trigger
 }
 
-export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion }) => {
+function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
+    const diff = Date.now() - new Date(isoTime).getTime();
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return t('time.justNow');
+    if (minutes < 60) return t('time.minutesAgo', { count: minutes });
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return t('time.hoursAgo', { count: hours });
+    const days = Math.floor(hours / 24);
+    return t('time.daysAgo', { count: days });
+}
+
+export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+    const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
 
     // Get theme colors for current service
@@ -49,8 +62,11 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                setGroups(data);
-                checkUnread(data);
+                // Support both old format (array) and new format (object with groups + last_sync)
+                const groupList = Array.isArray(data) ? data : data.groups;
+                setGroups(groupList);
+                if (data.last_sync) setLastSyncMap(data.last_sync);
+                checkUnread(groupList);
             })
             .catch(console.error)
             .finally(() => setLoading(false));
@@ -331,14 +347,29 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
 
             {/* Footer */}
             <div className="p-3 bg-white/40 backdrop-blur-sm shrink-0 border-t border-white/20">
-                <div className="text-xs text-center text-gray-500">
+                <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
                     {isSyncing ? (
-                        <span className="flex items-center justify-center gap-1 font-medium" style={{ color: theme.primaryColor }}>
+                        <span className="flex items-center gap-1 font-medium" style={{ color: theme.primaryColor }}>
                             <RefreshCw className="w-3 h-3 animate-spin" />
                             {t('sync.syncing')}
                         </span>
                     ) : (
-                        <span>{t('sync.autoSyncActive')}</span>
+                        <>
+                            <span>
+                                {activeService && lastSyncMap[activeService]
+                                    ? t('sync.lastSynced', { time: formatRelativeTime(lastSyncMap[activeService], t) })
+                                    : t('sync.notSynced')}
+                            </span>
+                            {onSyncNow && (
+                                <button
+                                    onClick={onSyncNow}
+                                    className="p-1 rounded hover:bg-white/50 transition-colors"
+                                    title={t('sync.syncNow')}
+                                >
+                                    <RefreshCw className="w-3 h-3" />
+                                </button>
+                            )}
+                        </>
                     )}
                 </div>
             </div>

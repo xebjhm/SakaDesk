@@ -52,7 +52,11 @@
     "hour_other": "{{count}} hours",
     "elapsed": "Elapsed",
     "eta": "ETA",
-    "speed": "Speed"
+    "speed": "Speed",
+    "justNow": "just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}}d ago"
   },
   "login": {
     "title": "Account Management",
@@ -115,7 +119,9 @@
     "scan": "Scan",
     "download": "Download",
     "syncing": "Syncing...",
-    "autoSyncActive": "Auto-sync active"
+    "lastSynced": "Last synced {{time}}",
+    "notSynced": "Not synced yet",
+    "syncNow": "Sync now"
   },
   "about": {
     "title": "About",
