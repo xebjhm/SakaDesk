@@ -8,6 +8,8 @@ interface SearchResultListProps {
   onSelect: (result: SearchResult) => void;
   onMouseEnterItem: (index: number) => void;
   listRef: React.RefObject<HTMLDivElement>;
+  userNicknames?: Record<string, string>;
+  userNickname?: string;
 }
 
 export const SearchResultList: React.FC<SearchResultListProps> = ({
@@ -16,6 +18,8 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
   onSelect,
   onMouseEnterItem,
   listRef,
+  userNicknames,
+  userNickname,
 }) => {
   // Auto-scroll selected item into view
   useEffect(() => {
@@ -40,6 +44,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           isSelected={index === selectedIndex}
           onSelect={onSelect}
           onMouseEnter={() => onMouseEnterItem(index)}
+          userNickname={userNicknames?.[result.service] || userNickname}
         />
       ))}
     </div>

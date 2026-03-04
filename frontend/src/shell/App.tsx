@@ -333,7 +333,11 @@ function App() {
                 )}
 
                 {/* Search Modal */}
-                <SearchModal ref={searchModalRef} />
+                <SearchModal
+                    ref={searchModalRef}
+                    userNicknames={appSettings?.user_nicknames}
+                    userNickname={appSettings?.user_nickname}
+                />
 
                 {/* Main 3-zone layout */}
                 <Layout

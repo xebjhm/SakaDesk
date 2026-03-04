@@ -24,7 +24,12 @@ export interface SearchModalHandle {
   isOpen: boolean;
 }
 
-export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
+interface SearchModalProps {
+  userNicknames?: Record<string, string>;
+  userNickname?: string;
+}
+
+export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ userNicknames, userNickname }, ref) => {
   const { t } = useTranslation();
 
   // ─── Local state ───────────────────────────────────────────────────────────
@@ -405,6 +410,8 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
               onSelect={handleNavigate}
               onMouseEnterItem={setSelectedIndex}
               listRef={listRef}
+              userNicknames={userNicknames}
+              userNickname={userNickname}
             />
           )}
 
