@@ -34,6 +34,7 @@ interface MessageBubbleProps {
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
+    onPhotoClick?: (mediaUrl: string) => void;
     theme?: MessageBubbleTheme;
     service?: string;
 }
@@ -141,6 +142,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onLongPress,
     onToggleFavorite,
     onAvatarClick,
+    onPhotoClick,
     theme,
     service,
 }) => {
@@ -309,7 +311,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 <img
                                     src={mediaUrl}
                                     alt="Attachment"
-                                    className="w-full h-full object-contain"
+                                    className="w-full h-full object-contain cursor-pointer"
+                                    onClick={() => onPhotoClick?.(mediaUrl)}
                                 />
                             </MediaContainer>
                         )}

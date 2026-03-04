@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Image, Film, Volume2, Calendar, VolumeX } from 'lucide-react';
+import { Image, Film, Volume2, Calendar, VolumeX, Download } from 'lucide-react';
 import { cn, formatDateTime, formatDuration } from '../../utils/classnames';
 import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
@@ -44,6 +44,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 }) => {
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
+    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const theme = getThemeForService(activeService);
     const { t } = useTranslation();
 
@@ -166,13 +167,42 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         className="max-w-full max-h-[80vh] object-contain"
                     />
                 )}
+                {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
+                    <button
+                        onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = mediaUrl;
+                            link.download = mediaUrl.split('/').pop() || 'photo.jpg';
+                            link.click();
+                        }}
+                        className="mt-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
+                    >
+                        <Download className="w-4 h-4" />
+                        Download
+                    </button>
+                )}
                 {selectedMedia.type === 'video' && mediaUrl && (
                     <video
                         src={mediaUrl}
                         controls
+                        controlsList="nodownload"
                         autoPlay
                         className="max-w-full max-h-[80vh]"
                     />
+                )}
+                {selectedMedia.type === 'video' && mediaUrl && goldenFingerActive && (
+                    <button
+                        onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = mediaUrl;
+                            link.download = mediaUrl.split('/').pop() || 'video.mp4';
+                            link.click();
+                        }}
+                        className="mt-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
+                    >
+                        <Download className="w-4 h-4" />
+                        Download
+                    </button>
                 )}
             </DetailModal>
         );

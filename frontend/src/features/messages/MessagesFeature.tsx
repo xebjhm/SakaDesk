@@ -13,6 +13,7 @@ import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
+import { PhotoDetailModal } from '../../core/media/PhotoDetailModal';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -128,6 +129,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Member profile popup state
     const [showMemberProfile, setShowMemberProfile] = useState(false);
+
+    // Photo detail modal state
+    const [photoDetailSrc, setPhotoDetailSrc] = useState<string | null>(null);
 
     // Compute unread count from messages and readState (single source of truth)
     const displayUnreadCount = useMemo(() => {
@@ -467,6 +471,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages]);
 
+    const handlePhotoClick = useCallback((mediaUrl: string) => {
+        setPhotoDetailSrc(mediaUrl);
+    }, []);
+
     // Toggle favorite status (optimistic update + API call)
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
         if (!activeService) {
@@ -641,6 +649,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             }
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
+                            onPhotoClick={handlePhotoClick}
                             service={messagesService}
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
@@ -716,6 +725,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
                 activeService={activeService || undefined}
             />
+
+            {/* Photo Detail Modal */}
+            {photoDetailSrc && (
+                <PhotoDetailModal
+                    src={photoDetailSrc}
+                    onClose={() => setPhotoDetailSrc(null)}
+                />
+            )}
         </div>
     );
 };

@@ -143,6 +143,12 @@ interface AppState {
     targetBlog: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[]; readingTerms?: string[] } | null;
     /** Set the target blog to open from search navigation. */
     setTargetBlog: (target: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[]; readingTerms?: string[] } | null) => void;
+
+    // ─── Golden Finger (Hidden Feature) ────────────────────────────────────
+    /** Secret download mode activated via easter egg. */
+    goldenFingerActive: boolean;
+    /** Toggle golden finger mode. */
+    setGoldenFingerActive: (active: boolean) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -248,6 +254,9 @@ export const useAppStore = create<AppState>()(
 
             targetBlog: null,
             setTargetBlog: (target) => set({ targetBlog: target }),
+
+            goldenFingerActive: false,
+            setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),
         }),
         {
             name: 'hakodesk-app-state',
@@ -268,6 +277,7 @@ export const useAppStore = create<AppState>()(
                 favorites: state.favorites,
                 blogSelectionModes: state.blogSelectionModes,
                 selectedConversations: state.selectedConversations,
+                goldenFingerActive: state.goldenFingerActive,
             }),
         }
     )
