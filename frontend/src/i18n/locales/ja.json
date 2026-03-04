@@ -107,7 +107,7 @@
     "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
     "downloadBlogsOffline": "ブログのオフライン保存",
-    "downloadBlogsHint": "同期時に全てのブログ記事と画像をダウンロードします。容量を消費しますが、オフラインで閲覧可能になります。",
+    "downloadBlogsHint": "すべてのブログ記事をオフライン検索用にダウンロードします。サービスごとに約5〜15 GBを使用します。",
     "startUsing": "HakoDeskを始める"
   },
   "sync": {
@@ -284,7 +284,9 @@
     "contentMessages": "メッセージ",
     "contentBlogs": "ブログ",
     "blogCacheHint": "キャッシュ済みのブログのみ検索可能です。設定で全てキャッシュできます。",
-    "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）"
+    "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
+    "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
+    "enableFullBackup": "フルバックアップを有効にする"
   },
   "media": {
     "title": "メディア",

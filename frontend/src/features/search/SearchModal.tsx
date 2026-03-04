@@ -27,9 +27,11 @@ export interface SearchModalHandle {
 interface SearchModalProps {
   userNicknames?: Record<string, string>;
   userNickname?: string;
+  blogBackupEnabled?: boolean;
+  onOpenSettings?: () => void;
 }
 
-export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ userNicknames, userNickname }, ref) => {
+export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ userNicknames, userNickname, blogBackupEnabled, onOpenSettings }, ref) => {
   const { t } = useTranslation();
 
   // ─── Local state ───────────────────────────────────────────────────────────
@@ -76,7 +78,9 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const open = useCallback(() => {
     setIsOpen(true);
     resetState();
-  }, [resetState]);
+    // Default content type based on blog backup setting
+    setContentType(blogBackupEnabled ? 'all' : 'messages');
+  }, [resetState, blogBackupEnabled]);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -372,6 +376,8 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
               onDateRangeChange={setDateRange}
               contentType={contentType}
               onContentTypeChange={setContentType}
+              blogBackupEnabled={blogBackupEnabled}
+              onOpenBlogSettings={onOpenSettings ? () => { close(); onOpenSettings(); } : undefined}
             />
           )}
 
