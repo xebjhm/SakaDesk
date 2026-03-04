@@ -43,7 +43,9 @@ DEFAULT_OUTPUT_DIR = Path("output")
 # Group IDs that should be treated as group chat (multiple members posting),
 # keyed by service identifier to avoid cross-service collisions.
 GROUP_CHAT_IDS: dict[str, set[str]] = {
-    'hinatazaka46': {'43', '79'},
+    'hinatazaka46': {'43', '78', '79', '93'},
+    'sakurazaka46': {'33', '73'},
+    'nogizaka46': {'45', '70'},  # 70 is closed but keep for if it reopens
 }
 
 
