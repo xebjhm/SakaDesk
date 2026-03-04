@@ -5,7 +5,7 @@ import aiohttp
 import aiofiles
 import traceback
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from pyhako import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pyhako.config import (
@@ -372,7 +372,8 @@ class SyncService:
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
                 sem = asyncio.Semaphore(limit) # Use same limit for semaphore
                 
-                assert self.manager is not None  # Set at line 191
+                if self.manager is None:
+                    raise RuntimeError("SyncManager not initialized")
 
                 async def sync_worker(task):
                     m_name = task['member']['name']
@@ -384,8 +385,8 @@ class SyncService:
                         progress.set_detail(f"{m_name} ({count:,})")
 
                     async with sem:
-                        # Pass sub_progress to manager
-                        assert self.manager is not None
+                        if self.manager is None:
+                            raise RuntimeError("SyncManager not initialized")
                         count = await self.manager.sync_member(
                             session, 
                             task['group'], 
@@ -518,7 +519,7 @@ class SyncService:
                 except Exception as e:
                     logger.warning(f"Blog search index update failed (non-fatal): {e}")
 
-                metadata['last_sync'] = datetime.utcnow().isoformat() + "Z"
+                metadata['last_sync'] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
 
             progress.complete()
