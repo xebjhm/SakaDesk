@@ -63,6 +63,7 @@ class SettingsResponse(BaseModel):
     is_configured: bool  # True if user has set up the app
     user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
     notifications_enabled: bool = True  # Desktop notifications for new messages
+    blogs_full_backup: bool = False  # Global blog full backup — applies to all services
 
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
@@ -70,6 +71,7 @@ class SettingsUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = None
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
+    blogs_full_backup: Optional[bool] = None
 
 class FreshCheckResponse(BaseModel):
     is_fresh: bool  # True if output folder is empty or doesn't exist
@@ -101,6 +103,7 @@ async def get_settings():
         is_configured=config.get("is_configured", False),
         user_nickname=config.get("user_nickname"),
         notifications_enabled=notifications_enabled,
+        blogs_full_backup=config.get("blogs_full_backup", False),
     )
 
 @router.post("", response_model=SettingsResponse)
@@ -119,6 +122,8 @@ async def update_settings(update: SettingsUpdate):
         if update.notifications_enabled is not None:
             config["notifications_enabled"] = update.notifications_enabled
             set_notifications_enabled(update.notifications_enabled)
+        if update.blogs_full_backup is not None:
+            config["blogs_full_backup"] = update.blogs_full_backup
 
     config = await _store_update(_apply)
 
@@ -130,6 +135,7 @@ async def update_settings(update: SettingsUpdate):
         is_configured=config.get("is_configured", False),
         user_nickname=config.get("user_nickname"),
         notifications_enabled=config.get("notifications_enabled", True),
+        blogs_full_backup=config.get("blogs_full_backup", False),
     )
 
 @router.get("/fresh", response_model=FreshCheckResponse)

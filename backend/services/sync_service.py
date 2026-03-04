@@ -478,11 +478,15 @@ class SyncService:
                     logger.info("No new media to download.")
 
                 # Phase 5: Blog Sync
-                # Mode depends on per-service setting: blogs_full_backup
+                # Mode depends on global setting: blogs_full_backup
                 # - False (default): Sync metadata only, content fetched on-demand
                 # - True: Full backup - download all content + images for offline reading
-                service_settings = app_settings.get("services", {}).get(self._service, {})
-                blogs_full_backup = service_settings.get("blogs_full_backup", False)
+                # Read global blog backup setting (preferred) with fallback to per-service (legacy)
+                blogs_full_backup = app_settings.get("blogs_full_backup", False)
+                if not blogs_full_backup:
+                    # Legacy fallback: check per-service setting
+                    service_settings = app_settings.get("services", {}).get(self._service, {})
+                    blogs_full_backup = service_settings.get("blogs_full_backup", False)
 
                 if blogs_full_backup:
                     progress.start_phase("blogs", "Backing up blogs (full)", 5, 0, "")

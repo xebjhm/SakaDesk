@@ -16,6 +16,8 @@ interface SearchFilterBarProps {
   onDateRangeChange: (preset: DateRangePreset) => void;
   contentType: ContentTypeFilter;
   onContentTypeChange: (value: ContentTypeFilter) => void;
+  blogBackupEnabled?: boolean;
+  onOpenBlogSettings?: () => void;
 }
 
 const DATE_PRESETS: { value: DateRangePreset; labelKey: string }[] = [
@@ -43,6 +45,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   onDateRangeChange,
   contentType,
   onContentTypeChange,
+  blogBackupEnabled,
+  onOpenBlogSettings,
 }) => {
   const { t } = useTranslation();
   const [mentionQuery, setMentionQuery] = useState('');
@@ -290,6 +294,23 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Notice: blog search limited without full backup */}
+      {(contentType === 'blogs' || contentType === 'all') && !blogBackupEnabled && (
+        <div className="px-3 py-2 border-t border-gray-100">
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+            <span>{t('search.blogSearchLimited')}</span>
+            {onOpenBlogSettings && (
+              <button
+                onClick={onOpenBlogSettings}
+                className="underline font-medium hover:text-amber-900 whitespace-nowrap"
+              >
+                {t('search.enableFullBackup')}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

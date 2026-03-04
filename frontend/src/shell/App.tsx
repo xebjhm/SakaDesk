@@ -220,21 +220,11 @@ function App() {
 
     const handleSetupComplete = async () => {
         if (outputDirInput.trim()) {
-            const success = await saveSettings({ output_dir: outputDirInput.trim() });
+            const success = await saveSettings({
+                output_dir: outputDirInput.trim(),
+                blogs_full_backup: setupBlogFullBackup,
+            });
             if (success) {
-                // Save blog backup preference for active service
-                if (activeService) {
-                    await fetch(`/api/settings/service/${encodeURIComponent(activeService)}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            sync_enabled: true,
-                            adaptive_sync_enabled: true,
-                            last_sync: null,
-                            blogs_full_backup: setupBlogFullBackup
-                        })
-                    });
-                }
                 setShowSetupWizard(false);
                 startSync(true);
             }
@@ -307,12 +297,9 @@ function App() {
                 {showSettingsModal && appSettings && (
                     <SettingsModal
                         appSettings={appSettings}
-                        allServiceSettings={allServiceSettings}
-                        connectedServices={settingsConnectedServices}
                         outputDirInput={outputDirInput}
                         setOutputDirInput={setOutputDirInput}
                         onSaveSettings={saveSettings}
-                        onSaveServiceSettings={saveServiceSettings}
                         onClose={() => setShowSettingsModal(false)}
                     />
                 )}
@@ -338,6 +325,8 @@ function App() {
                     ref={searchModalRef}
                     userNicknames={appSettings?.user_nicknames}
                     userNickname={appSettings?.user_nickname}
+                    blogBackupEnabled={appSettings?.blogs_full_backup}
+                    onOpenSettings={openSettingsModal}
                 />
 
                 {/* Main 3-zone layout */}

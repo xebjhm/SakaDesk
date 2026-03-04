@@ -1,28 +1,20 @@
 import React from 'react';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
-import type { ServiceSettings } from '../hooks/useSettings';
-import { getServiceDisplayName } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
-    allServiceSettings: Record<string, ServiceSettings>;
-    connectedServices: string[];
     outputDirInput: string;
     setOutputDirInput: (dir: string) => void;
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
-    onSaveServiceSettings: (service: string, updates: Partial<ServiceSettings>) => Promise<void>;
     onClose: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
-    allServiceSettings,
-    connectedServices,
     outputDirInput,
     setOutputDirInput,
     onSaveSettings,
-    onSaveServiceSettings,
     onClose,
 }) => {
     const { t, i18n } = useTranslation();
@@ -161,6 +153,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                     </div>
 
+                    {/* Blog Full Backup (Global) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">{t('settings.blogFullBackup')}</label>
+                            <button
+                                onClick={() => onSaveSettings({ blogs_full_backup: !appSettings.blogs_full_backup })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    appSettings.blogs_full_backup ? 'bg-blue-500' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    appSettings.blogs_full_backup ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                            {appSettings.blogs_full_backup
+                                ? t('settings.blogFullBackupOnDesc')
+                                : t('settings.blogFullBackupOffDesc')}
+                        </p>
+                    </div>
+
                     {/* Desktop Notifications */}
                     <div>
                         <div className="flex items-center justify-between">
@@ -177,49 +191,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <p className="text-xs text-gray-500 mt-1">{t('settings.desktopNotificationsDesc')}</p>
                     </div>
 
-                    {/* Per-Service Settings */}
-                    {connectedServices.length > 0 && (
-                        <div className="border-t border-gray-200 pt-4 mt-4">
-                            <h4 className="text-sm font-semibold text-gray-800 mb-3">
-                                {t('settings.serviceSettings')}
-                            </h4>
-                            <div className="space-y-3">
-                                {connectedServices.map(service => {
-                                    const svcSettings = allServiceSettings[service];
-                                    if (!svcSettings) return null;
-                                    return (
-                                        <div key={service} className="bg-gray-50 rounded-lg p-3">
-                                            <div className="text-xs font-medium text-gray-600 mb-2">
-                                                {getServiceDisplayName(service)}
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <label className="text-sm text-gray-700">
-                                                    {t('settings.blogFullBackup')}
-                                                </label>
-                                                <button
-                                                    onClick={() => onSaveServiceSettings(service, {
-                                                        blogs_full_backup: !svcSettings.blogs_full_backup
-                                                    })}
-                                                    className={`relative w-10 h-5 rounded-full transition-colors ${
-                                                        svcSettings.blogs_full_backup ? 'bg-blue-500' : 'bg-gray-300'
-                                                    }`}
-                                                >
-                                                    <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                                        svcSettings.blogs_full_backup ? 'translate-x-5' : 'translate-x-0.5'
-                                                    }`} />
-                                                </button>
-                                            </div>
-                                            <p className="text-xs text-gray-400 mt-1">
-                                                {svcSettings.blogs_full_backup
-                                                    ? t('settings.blogFullBackupOnDesc')
-                                                    : t('settings.blogFullBackupOffDesc')}
-                                            </p>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>

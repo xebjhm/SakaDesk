@@ -107,7 +107,7 @@
         "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
         "outputFolderHint": "輸入儲存訊息嘅完整路徑。你可以由檔案總管 Copy 個 Path。",
         "downloadBlogsOffline": "下載 Blog 離線睇",
-        "downloadBlogsHint": "同步嗰陣下載晒所有 Blog 內容同圖片。會食多啲位，但係你可以離線慢慢睇。",
+        "downloadBlogsHint": "下載所有網誌文章以供離線搜尋。每個服務大約用 5-15 GB。",
         "startUsing": "開始使用 HakoDesk"
     },
     "sync": {
@@ -284,7 +284,9 @@
         "contentMessages": "訊息",
         "contentBlogs": "網誌",
         "blogCacheHint": "淨係搵到已快取嘅網誌。可以喺設定度快取全部。",
-        "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個網誌）"
+        "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個網誌）",
+        "blogSearchLimited": "網誌搜尋淨係包括已快取嘅文章。",
+        "enableFullBackup": "啟用完整備份"
     },
     "media": {
         "title": "媒體",

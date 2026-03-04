@@ -58,6 +58,7 @@ export interface AppSettings {
     user_nickname?: string;  // Legacy: single nickname (kept for compatibility)
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
+    blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
 }
 
 // Parse path into API params. Handles both:
