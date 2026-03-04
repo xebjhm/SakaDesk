@@ -291,7 +291,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 {onlineGroups.length > 0 && (
                     <>
                         <div
-                            className="px-2 py-2 sticky top-0 z-10"
+                            className="px-2 py-2"
                             style={{ background: `linear-gradient(to bottom, ${sidebarGradient[0]}, transparent)` }}
                         >
                             <h2 className="text-sm text-gray-600 text-center font-medium opacity-80">{t('memberList.online')}</h2>
@@ -304,7 +304,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 {offlineGroups.length > 0 && (
                     <>
                         <div
-                            className="px-2 py-2 mt-4 sticky top-0 z-10"
+                            className="px-2 py-2 mt-4"
                             style={{ background: `linear-gradient(to bottom, ${sidebarGradient[1]}, transparent)` }}
                         >
                             <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">{t('memberList.offline')}</h2>
@@ -317,7 +317,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 {graduatedGroups.length > 0 && (
                     <>
                         <div
-                            className="px-2 py-2 mt-4 sticky top-0 z-10"
+                            className="px-2 py-2 mt-4"
                             style={{ background: `linear-gradient(to bottom, ${sidebarGradient[2]}, transparent)` }}
                         >
                             <h2 className="text-sm text-gray-400 text-center font-medium opacity-80">
