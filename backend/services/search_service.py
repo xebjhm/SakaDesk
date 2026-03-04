@@ -1580,6 +1580,11 @@ class SearchService:
         return count
 
     def _index_members_sync(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
+        """Incrementally index only NEW messages for members that changed.
+
+        Queries the max indexed message_id per member and only processes
+        messages with a higher ID, avoiding redundant pykakasi calls.
+        """
         conn = self._get_conn()
         output_dir = get_output_dir()
         if not output_dir.exists():
@@ -1594,6 +1599,14 @@ class SearchService:
             g_name = group_dict.get("name", "")
             mid = member_dict.get("id")
             m_name = member_dict.get("name", "")
+
+            # Find the highest message_id already indexed for this member
+            row = conn.execute(
+                "SELECT MAX(message_id) FROM search_messages "
+                "WHERE service = ? AND group_id = ? AND member_id = ?",
+                (service, gid, mid),
+            ).fetchone()
+            max_indexed_id = row[0] if row and row[0] is not None else 0
 
             group_dir_name = f"{gid} {g_name}"
             member_dir_name = f"{mid} {m_name}"
@@ -1610,12 +1623,18 @@ class SearchService:
                 continue
 
             for msg in data.get("messages", []):
+                msg_id = msg.get("id")
+                if msg_id is None:
+                    continue
+                # Skip messages already indexed
+                if msg_id <= max_indexed_id:
+                    continue
                 content = msg.get("content")
                 if content is None:
                     continue
                 normalized = self._normalize_with_readings(content)
                 batch.append((
-                    msg.get("id"),
+                    msg_id,
                     service,
                     gid,
                     g_name,
@@ -1648,11 +1667,15 @@ class SearchService:
             conn.commit()
             count += len(batch)
 
-        logger.info("Incremental index update", service=service, count=count)
+        logger.info("Incremental index update", service=service, new_messages=count)
         return count
 
     def _index_blogs_for_service_sync(self, service: str) -> int:
-        """Re-index all cached blogs for a single service."""
+        """Incrementally index new cached blogs for a single service.
+
+        Only processes blogs not already present in the index, avoiding
+        expensive pykakasi normalization of already-indexed content.
+        """
         conn = self._get_conn()
         output_dir = get_output_dir()
         if not output_dir.exists():
@@ -1671,11 +1694,6 @@ class SearchService:
         if not blogs_dir.is_dir():
             return 0
 
-        # Delete existing blogs for this service before re-indexing
-        conn.execute("DELETE FROM search_blogs WHERE service = ?", (service,))
-        conn.commit()
-
-        # Re-index using same logic as _build_blog_index_sync but for one service
         index_path = blogs_dir / "index.json"
         if not index_path.exists():
             return 0
@@ -1684,6 +1702,13 @@ class SearchService:
                 index_data = json.load(f)
         except Exception:
             return 0
+
+        # Get already-indexed blog IDs for this service to skip them
+        existing_ids: set[str] = set()
+        for row in conn.execute(
+            "SELECT blog_id FROM search_blogs WHERE service = ?", (service,)
+        ):
+            existing_ids.add(row[0])
 
         total = 0
         batch: list[Tuple[Any, ...]] = []
@@ -1705,6 +1730,10 @@ class SearchService:
             for entry in member_info.get("blogs", []):
                 blog_id = entry.get("id")
                 if blog_id is None:
+                    continue
+
+                # Skip already-indexed blogs
+                if str(blog_id) in existing_ids:
                     continue
 
                 published_at = entry.get("published_at", "")
@@ -1764,7 +1793,7 @@ class SearchService:
             conn.commit()
             total += len(batch)
 
-        logger.info("Blog index updated for service", service=service, blog_count=total)
+        logger.info("Blog index updated for service", service=service, new_blogs=total)
         return total
 
     def _get_status_sync(self) -> Dict[str, Any]:
@@ -1950,7 +1979,9 @@ class SearchService:
         available_services: set[str] = set()
         for d in output_dir.iterdir():
             if d.is_dir() and (d / "messages").exists():
-                available_services.add(d.name)
+                sid = self._resolve_service_id(d.name)
+                if sid:
+                    available_services.add(sid)
 
         return available_services - indexed_services
 
