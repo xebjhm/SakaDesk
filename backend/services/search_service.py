@@ -1889,8 +1889,12 @@ class SearchService:
         # Members
         member_rows = conn.execute(
             "SELECT service, group_id, group_name, member_id, member_name, COUNT(*) as message_count "
-            "FROM search_messages "
-            "GROUP BY service, group_id, member_id "
+            "FROM ("
+            "  SELECT service, group_id, group_name, member_id, member_name FROM search_messages "
+            "  UNION ALL "
+            "  SELECT service, 0 as group_id, member_name as group_name, member_id, member_name FROM search_blogs"
+            ") "
+            "GROUP BY service, member_id "
             "ORDER BY service, member_name"
         ).fetchall()
 
@@ -1909,7 +1913,11 @@ class SearchService:
         # Services
         service_rows = conn.execute(
             "SELECT service, COUNT(DISTINCT member_id) as member_count, COUNT(*) as message_count "
-            "FROM search_messages "
+            "FROM ("
+            "  SELECT service, member_id FROM search_messages "
+            "  UNION ALL "
+            "  SELECT service, member_id FROM search_blogs"
+            ") "
             "GROUP BY service "
             "ORDER BY service"
         ).fetchall()
@@ -1924,6 +1932,27 @@ class SearchService:
         ]
 
         return {"members": members, "services": services}
+
+    def _check_missing_services_sync(self) -> set:
+        """Check for services in output dir not yet in the search index."""
+        conn = self._get_conn()
+
+        indexed_services: set[str] = set()
+        for row in conn.execute("SELECT DISTINCT service FROM search_messages"):
+            indexed_services.add(row[0])
+        for row in conn.execute("SELECT DISTINCT service FROM search_blogs"):
+            indexed_services.add(row[0])
+
+        output_dir = get_output_dir()
+        if not output_dir.exists():
+            return set()
+
+        available_services: set[str] = set()
+        for d in output_dir.iterdir():
+            if d.is_dir() and (d / "messages").exists():
+                available_services.add(d.name)
+
+        return available_services - indexed_services
 
     # ------------------------------------------------------------------
     # Public async API
@@ -2020,7 +2049,18 @@ class SearchService:
 
     async def get_members(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._get_members_sync)
+        result = await loop.run_in_executor(self._executor, self._get_members_sync)
+        # Check for unindexed services and trigger rebuild if needed
+        missing = await loop.run_in_executor(
+            self._executor, self._check_missing_services_sync
+        )
+        if missing and not self._building:
+            logger.info(
+                "Found unindexed services, triggering rebuild",
+                missing=list(missing),
+            )
+            asyncio.create_task(self.build_full_index())
+        return result
 
 
 # ------------------------------------------------------------------
