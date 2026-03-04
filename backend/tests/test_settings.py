@@ -1,4 +1,5 @@
 """Tests for settings API - global and per-service settings."""
+import contextlib
 import pytest
 import tempfile
 from pathlib import Path
@@ -23,11 +24,21 @@ def temp_settings_file():
         settings_path.unlink()
 
 
+@contextlib.contextmanager
+def patch_settings_file(temp_path: Path):
+    """Patch settings file path in both the API module and the centralized store."""
+    with (
+        patch('backend.api.settings.SETTINGS_FILE', temp_path),
+        patch('backend.services.settings_store.get_settings_path', return_value=temp_path),
+    ):
+        yield
+
+
 def test_settings_has_global_and_services_structure(temp_settings_file):
     """Settings should have global and services sections."""
     from backend.api.settings import load_config, save_config
 
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         # Save new structure
         save_config({
             "global": {
@@ -50,7 +61,7 @@ def test_settings_has_global_and_services_structure(temp_settings_file):
 
 def test_get_service_settings_returns_defaults(temp_settings_file):
     """GET /api/settings/service/{service} returns default settings."""
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         response = client.get("/api/settings/service/hinatazaka46")
         assert response.status_code == 200
         data = response.json()
@@ -60,14 +71,14 @@ def test_get_service_settings_returns_defaults(temp_settings_file):
 
 def test_get_service_settings_invalid_service(temp_settings_file):
     """GET /api/settings/service/{service} with invalid service returns 400."""
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         response = client.get("/api/settings/service/invalid_service")
         assert response.status_code == 400
 
 
 def test_update_service_settings(temp_settings_file):
     """POST /api/settings/service/{service} updates settings."""
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         # Update settings
         response = client.post(
             "/api/settings/service/hinatazaka46",
@@ -86,7 +97,7 @@ def test_update_service_settings(temp_settings_file):
 
 def test_update_service_settings_invalid_service(temp_settings_file):
     """POST /api/settings/service/{service} with invalid service returns 400."""
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         response = client.post(
             "/api/settings/service/invalid_service",
             json={
@@ -100,7 +111,7 @@ def test_update_service_settings_invalid_service(temp_settings_file):
 
 def test_update_service_settings_persists(temp_settings_file):
     """POST /api/settings/service/{service} persists settings that can be retrieved."""
-    with patch('backend.api.settings.SETTINGS_FILE', temp_settings_file):
+    with patch_settings_file(temp_settings_file):
         # First update settings
         response = client.post(
             "/api/settings/service/hinatazaka46",

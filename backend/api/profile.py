@@ -2,18 +2,21 @@
 Profile API for HakoDesk
 Handles user profile information like nickname.
 """
-import json
 import structlog
 import aiohttp
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Any, Dict, Optional, cast
+from typing import Optional
 
 from pyhako import Client
 from pyhako.credentials import get_token_manager
 
-from backend.services.platform import get_settings_path, get_session_dir
+from backend.services.platform import get_session_dir
 from backend.services.service_utils import get_service_enum, validate_service
+from backend.services.settings_store import (
+    load_config as _store_load,
+    update_config as _store_update,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -23,26 +26,6 @@ router = APIRouter(prefix="/api/profile", tags=["profile"])
 class ProfileResponse(BaseModel):
     nickname: Optional[str] = None
     error: Optional[str] = None
-
-
-def _load_config() -> Dict[Any, Any]:
-    """Load configuration from settings file."""
-    settings_path = get_settings_path()
-    if settings_path.exists():
-        try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
-                return cast(Dict[Any, Any], json.load(f))
-        except Exception:
-            pass
-    return {}
-
-
-def _save_config(config: dict) -> None:
-    """Save configuration to settings file."""
-    settings_path = get_settings_path()
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(settings_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2)
 
 
 @router.get("", response_model=ProfileResponse)
@@ -61,7 +44,7 @@ async def get_profile(service: str):
     except ValueError as e:
         return ProfileResponse(error=str(e))
 
-    config = _load_config()
+    config = await _store_load()
 
     # Return cached nickname if available (per-service)
     user_nicknames = config.get("user_nicknames", {})
@@ -92,11 +75,13 @@ async def get_profile(service: str):
             # API returns 'name' field, not 'nickname'
             if profile and profile.get('name'):
                 nickname = profile['name']
-                # Cache in settings (per-service)
-                if "user_nicknames" not in config:
-                    config["user_nicknames"] = {}
-                config["user_nicknames"][service] = nickname
-                _save_config(config)
+                # Cache in settings (per-service) via atomic update
+                def _cache_nickname(cfg: dict) -> None:
+                    if "user_nicknames" not in cfg:
+                        cfg["user_nicknames"] = {}
+                    cfg["user_nicknames"][service] = nickname
+
+                await _store_update(_cache_nickname)
                 logger.info(f"Fetched and cached user nickname for {service}: {nickname}")
                 return ProfileResponse(nickname=nickname)
             else:
@@ -122,14 +107,14 @@ async def refresh_profile(service: str):
     except ValueError as e:
         return ProfileResponse(error=str(e))
 
-    config = _load_config()
+    # Clear cached nickname for this service via atomic update
+    def _clear_nickname(config: dict) -> None:
+        user_nicknames = config.get("user_nicknames", {})
+        if service in user_nicknames:
+            del user_nicknames[service]
+            config["user_nicknames"] = user_nicknames
 
-    # Clear cached nickname for this service
-    user_nicknames = config.get("user_nicknames", {})
-    if service in user_nicknames:
-        del user_nicknames[service]
-        config["user_nicknames"] = user_nicknames
-        _save_config(config)
+    await _store_update(_clear_nickname)
 
     # Now fetch fresh
     return await get_profile(service)

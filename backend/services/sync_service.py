@@ -140,18 +140,9 @@ class SyncService:
         return {}
     
     async def load_app_settings(self):
-        """Load application settings (output dir, etc)."""
-        from backend.services.platform import get_settings_path
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            try:
-                async with aiofiles.open(settings_path, 'r', encoding='utf-8') as f:
-                    data = json.loads(await f.read())
-                    logger.debug("App settings loaded", settings_keys=list(data.keys()), is_configured=data.get("is_configured"))
-                    return data
-            except Exception as e:
-                logger.error("Failed to load app settings", error=str(e), settings_path=str(settings_path))
-        return {}
+        """Load application settings via centralized store."""
+        from backend.services.settings_store import load_config
+        return await load_config()
 
     async def get_output_dir(self):
         """Resolve the effective output directory."""
