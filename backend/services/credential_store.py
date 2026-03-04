@@ -90,8 +90,6 @@ class KeyringCredentialStore(CredentialStore):
                 "keyring library not installed or backend unavailable. "
                 "Install with: pip install keyring"
             )
-            logger.error(f"Failed to initialize credential manager: {e}")
-            raise
         
         # Keys we store - only essential tokens, not the entire config
         # Windows Credential Manager has a ~1280 char limit
