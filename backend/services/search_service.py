@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS search_messages (
     timestamp TEXT,
     content TEXT,
     content_normalized TEXT,
-    UNIQUE(message_id)
+    UNIQUE(message_id, service)
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS search_fts USING fts5(
@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS search_blogs (
     blog_url TEXT,
     content TEXT,
     content_normalized TEXT,
-    UNIQUE(blog_id)
+    UNIQUE(blog_id, service)
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS search_blogs_fts USING fts5(
@@ -172,8 +172,102 @@ class SearchService:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path))
             self._conn.execute("PRAGMA journal_mode=WAL")
+            self._migrate_blog_unique_constraint(self._conn)
+            self._migrate_messages_unique_constraint(self._conn)
             self._conn.executescript(_SCHEMA_SQL)
         return self._conn
+
+    @staticmethod
+    def _migrate_blog_unique_constraint(conn: sqlite3.Connection) -> None:
+        """Migrate search_blogs from UNIQUE(blog_id) to UNIQUE(blog_id, service).
+
+        Blog IDs are shared across services, so the old constraint caused
+        INSERT OR REPLACE to overwrite cross-service entries on every sync.
+        """
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='search_blogs'"
+        ).fetchone()
+        if row is None:
+            return  # Table doesn't exist yet; _SCHEMA_SQL will create it
+        if "UNIQUE(blog_id, service)" in row[0].replace(" ", ""):
+            return  # Already migrated
+
+        logger.info("Migrating search_blogs: UNIQUE(blog_id) -> UNIQUE(blog_id, service)")
+        conn.executescript("""
+            DROP TRIGGER IF EXISTS search_blogs_ai;
+            DROP TRIGGER IF EXISTS search_blogs_ad;
+            DROP TRIGGER IF EXISTS search_blogs_au;
+            DROP TABLE IF EXISTS search_blogs_fts;
+            ALTER TABLE search_blogs RENAME TO _search_blogs_old;
+            CREATE TABLE search_blogs (
+                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                blog_id TEXT NOT NULL,
+                service TEXT NOT NULL,
+                member_id INTEGER NOT NULL,
+                member_name TEXT NOT NULL,
+                title TEXT,
+                title_normalized TEXT,
+                published_at TEXT,
+                blog_url TEXT,
+                content TEXT,
+                content_normalized TEXT,
+                UNIQUE(blog_id, service)
+            );
+            INSERT INTO search_blogs
+                (blog_id, service, member_id, member_name, title, title_normalized,
+                 published_at, blog_url, content, content_normalized)
+            SELECT blog_id, service, member_id, member_name, title, title_normalized,
+                   published_at, blog_url, content, content_normalized
+            FROM _search_blogs_old;
+            DROP TABLE _search_blogs_old;
+        """)
+
+    @staticmethod
+    def _migrate_messages_unique_constraint(conn: sqlite3.Connection) -> None:
+        """Migrate search_messages from UNIQUE(message_id) to UNIQUE(message_id, service).
+
+        Defensive change: message IDs don't currently overlap across services,
+        but this prevents silent data loss if the upstream API ever reuses IDs.
+        """
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='search_messages'"
+        ).fetchone()
+        if row is None:
+            return
+        sql_no_spaces = row[0].replace(" ", "")
+        if "UNIQUE(message_id,service)" in sql_no_spaces:
+            return  # Already migrated
+        if "UNIQUE(message_id)" not in sql_no_spaces:
+            return  # Unexpected schema, skip
+
+        logger.info("Migrating search_messages: UNIQUE(message_id) -> UNIQUE(message_id, service)")
+        conn.executescript("""
+            DROP TRIGGER IF EXISTS search_ai;
+            DROP TRIGGER IF EXISTS search_ad;
+            DROP TRIGGER IF EXISTS search_au;
+            DROP TABLE IF EXISTS search_fts;
+            ALTER TABLE search_messages RENAME TO _search_messages_old;
+            CREATE TABLE search_messages (
+                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL,
+                service TEXT NOT NULL,
+                group_id INTEGER NOT NULL,
+                group_name TEXT NOT NULL,
+                member_id INTEGER NOT NULL,
+                member_name TEXT NOT NULL,
+                timestamp TEXT,
+                content TEXT,
+                content_normalized TEXT,
+                UNIQUE(message_id, service)
+            );
+            INSERT INTO search_messages
+                (message_id, service, group_id, group_name, member_id, member_name,
+                 timestamp, content, content_normalized)
+            SELECT message_id, service, group_id, group_name, member_id, member_name,
+                   timestamp, content, content_normalized
+            FROM _search_messages_old;
+            DROP TABLE _search_messages_old;
+        """)
 
     # ------------------------------------------------------------------
     # Kakasi lazy init

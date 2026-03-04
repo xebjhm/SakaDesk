@@ -296,7 +296,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             const storedReadState = loadReadState(selectedGroupDir);
             setReadState(storedReadState);
 
-            setMessages([]);
+            // Don't clear messages eagerly — fetchMessages will swap them
+            // atomically when the response arrives, avoiding a loading flash.
 
             fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
