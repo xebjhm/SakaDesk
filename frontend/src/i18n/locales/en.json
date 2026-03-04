@@ -36,7 +36,14 @@
     "blogFullBackupOnDesc": "Download all blog content and images for offline reading",
     "blogFullBackupOffDesc": "Fetch blog content on-demand (saves disk space)",
     "language": "Language",
-    "languageDesc": "Select your preferred language"
+    "languageDesc": "Select your preferred language",
+    "syncMode": "Sync Mode",
+    "syncOff": "Off",
+    "syncOffDesc": "Manual sync only",
+    "syncFixed": "Fixed Interval",
+    "syncFixedDesc": "Sync at regular intervals",
+    "syncSmart": "Smart Timing",
+    "serviceSettings": "Service Settings"
   },
   "time": {
     "minute": "{{count}} minute",

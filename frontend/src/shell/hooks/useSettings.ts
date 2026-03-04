@@ -44,8 +44,10 @@ export interface UseSettingsReturn {
     appSettings: AppSettings | null;
     /** Update app settings state */
     setAppSettings: React.Dispatch<React.SetStateAction<AppSettings | null>>;
-    /** Current service-specific settings */
-    serviceSettings: ServiceSettings | null;
+    /** All service-specific settings keyed by service ID */
+    allServiceSettings: Record<string, ServiceSettings>;
+    /** List of connected service IDs */
+    connectedServices: string[];
     /** Current value of output directory input field */
     outputDirInput: string;
     /** Update output directory input */
@@ -75,10 +77,10 @@ export interface UseSettingsReturn {
 }
 
 export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn {
-    const { activeService } = useAppStore();
+    const { activeService, selectedServices } = useAppStore();
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
-    const [serviceSettings, setServiceSettings] = useState<ServiceSettings | null>(null);
+    const [allServiceSettings, setAllServiceSettings] = useState<Record<string, ServiceSettings>>({});
     const [outputDirInput, setOutputDirInput] = useState('');
     const [settingsError, setSettingsError] = useState<string | null>(null);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -90,7 +92,7 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`);
             if (res.ok) {
                 const data = await res.json();
-                setServiceSettings(data);
+                setAllServiceSettings(prev => ({ ...prev, [service]: data }));
             }
         } catch (e) {
             console.error('Failed to load service settings:', e);
@@ -117,8 +119,9 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
     }, []);
 
     const saveServiceSettings = useCallback(async (service: string, updates: Partial<ServiceSettings>) => {
-        if (!serviceSettings) return;
-        const merged = { ...serviceSettings, ...updates };
+        const current = allServiceSettings[service];
+        if (!current) return;
+        const merged = { ...current, ...updates };
         try {
             const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`, {
                 method: 'POST',
@@ -127,12 +130,12 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             });
             if (res.ok) {
                 const data = await res.json();
-                setServiceSettings(data);
+                setAllServiceSettings(prev => ({ ...prev, [service]: data }));
             }
         } catch (e) {
             console.error('Failed to save service settings:', e);
         }
-    }, [serviceSettings]);
+    }, [allServiceSettings]);
 
     const handleSelectFolder = useCallback(async () => {
         try {
@@ -149,11 +152,9 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
     }, []);
 
     const openSettingsModal = useCallback(() => {
-        if (activeService) {
-            loadServiceSettings(activeService);
-        }
         setShowSettingsModal(true);
-    }, [activeService, loadServiceSettings]);
+        selectedServices.forEach(service => loadServiceSettings(service));
+    }, [selectedServices, loadServiceSettings]);
 
     // Load settings on auth
     useEffect(() => {
@@ -170,6 +171,15 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
                 .catch(console.error);
         }
     }, [isAuthenticated]);
+
+    // Load settings for all connected services
+    useEffect(() => {
+        selectedServices.forEach(service => {
+            if (!allServiceSettings[service]) {
+                loadServiceSettings(service);
+            }
+        });
+    }, [selectedServices, loadServiceSettings]);
 
     // Fetch nickname when activeService changes (per-service nicknames)
     useEffect(() => {
@@ -196,7 +206,8 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
     return {
         appSettings,
         setAppSettings,
-        serviceSettings,
+        allServiceSettings,
+        connectedServices: selectedServices,
         outputDirInput,
         setOutputDirInput,
         settingsError,

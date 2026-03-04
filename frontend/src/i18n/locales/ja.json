@@ -36,7 +36,14 @@
     "blogFullBackupOnDesc": "オフライン閲覧用に画像を含む全てのブログデータを保存",
     "blogFullBackupOffDesc": "閲覧時にデータを取得（ディスク容量を節約）",
     "language": "言語",
-    "languageDesc": "表示言語を選択"
+    "languageDesc": "表示言語を選択",
+    "syncMode": "同期モード",
+    "syncOff": "オフ",
+    "syncOffDesc": "手動同期のみ",
+    "syncFixed": "固定間隔",
+    "syncFixedDesc": "一定間隔で自動同期",
+    "syncSmart": "スマートタイミング",
+    "serviceSettings": "サービス設定"
   },
   "time": {
     "minute": "{{count}}分",
