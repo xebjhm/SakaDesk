@@ -698,6 +698,11 @@ class SearchService:
             content = r[3] or ""
             content_norm = r[4] or ""
 
+            # Determine match_type for ordering (exact > reading)
+            query_lower = query.lower()
+            has_exact = query_lower in title.lower() or query_lower in content.lower()
+            blog_match_type = "exact" if has_exact else "reading"
+
             if raw_rows_only:
                 # Lightweight dict — skip expensive snippet computation
                 results.append({
@@ -712,6 +717,7 @@ class SearchService:
                     "member_name": r[7],
                     "published_at": r[8],
                     "blog_url": r[9],
+                    "match_type": blog_match_type,
                 })
             else:
                 snippet = self._make_blog_snippet(
@@ -730,6 +736,7 @@ class SearchService:
                     "member_name": r[7],
                     "published_at": r[8],
                     "blog_url": r[9],
+                    "match_type": blog_match_type,
                 })
 
         return results, total_count
@@ -1217,18 +1224,25 @@ class SearchService:
                 all_msg_rows = rows  # fall back to paginated results
 
             # 3. Build unified lightweight sort list:
-            #    (sort_timestamp, source_type, raw_data)
+            #    (match_type_int, sort_timestamp, source_type, raw_data)
             #    raw_data is a DB row tuple for messages, a raw dict for blogs
-            combined_lightweight: list[Tuple[str, str, Any]] = []
+            combined_lightweight: list[Tuple[int, str, str, Any]] = []
             for r in all_msg_rows:
                 ts = r[8] or ""  # timestamp column
-                combined_lightweight.append((ts, "message", r))
+                # match_type column is at index 9 in the SQL result
+                # 0=exact, 1=reading from SQL
+                mt = r[9] if len(r) > 9 else 0
+                combined_lightweight.append((mt, ts, "message", r))
             for b in raw_blog_results:
                 ts = b.get("published_at", "") or ""
-                combined_lightweight.append((ts, "blog", b))
+                mt = 0 if b.get("match_type") == "exact" else 1
+                combined_lightweight.append((mt, ts, "blog", b))
 
-            # 4. Sort by timestamp DESC
-            combined_lightweight.sort(key=lambda x: x[0], reverse=True)
+            # 4. Sort: match_type ASC (exact=0 first), then timestamp DESC
+            #    Use Python's stable sort: sort by secondary key first,
+            #    then primary key.
+            combined_lightweight.sort(key=lambda x: x[1], reverse=True)  # timestamp DESC
+            combined_lightweight.sort(key=lambda x: x[0])  # match_type ASC (stable)
 
             combined_total = len(combined_lightweight)
 
@@ -1240,7 +1254,7 @@ class SearchService:
 
             # 6. Build full result dicts with snippets ONLY for the page
             paginated: list[Dict[str, Any]] = []
-            for _ts, source_type, raw_data in page_items:
+            for _mt, _ts, source_type, raw_data in page_items:
                 if source_type == "message":
                     paginated.append(
                         self._build_message_result_dict(raw_data, query_info)
@@ -1265,6 +1279,7 @@ class SearchService:
                         "member_name": blog_item["member_name"],
                         "published_at": blog_item["published_at"],
                         "blog_url": blog_item["blog_url"],
+                        "match_type": blog_item.get("match_type", "reading"),
                     })
 
             # Tag message results with is_group_chat
