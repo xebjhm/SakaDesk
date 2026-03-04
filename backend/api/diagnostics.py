@@ -6,6 +6,7 @@ import platform
 import sys
 import os
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
@@ -59,6 +60,7 @@ class SyncState(BaseModel):
     last_error: Optional[str] = None
     disk_usage_mb: float = 0.0
     file_count: int = 0
+    disk_usage_detailed: Optional[dict] = None  # Expandable breakdown
     services: list[ServiceSyncInfo] = []  # Per-service sync status
 
 
@@ -119,6 +121,49 @@ def _get_disk_usage(output_dir: str) -> tuple[float, int]:
         pass
 
     return round(size_mb, 2), file_count
+
+
+_disk_cache: dict = {"data": None, "expires": 0}
+
+
+def _get_detailed_disk_usage(output_dir: str) -> dict:
+    """Get per-service, per-category disk usage breakdown with 60-second cache."""
+    now = time.time()
+    if _disk_cache["data"] and now < _disk_cache["expires"]:
+        return _disk_cache["data"]
+
+    result: dict = {"total_bytes": 0, "services": []}
+    output_path = Path(output_dir)
+    if not output_path.exists():
+        return result
+
+    for service_dir in sorted(output_path.iterdir()):
+        if not service_dir.is_dir():
+            continue
+        service_entry: dict = {
+            "name": service_dir.name,
+            "total_bytes": 0,
+            "categories": [],
+        }
+
+        for category_dir in sorted(service_dir.iterdir()):
+            if not category_dir.is_dir():
+                continue
+            cat_size = sum(
+                f.stat().st_size for f in category_dir.rglob("*") if f.is_file()
+            )
+            service_entry["categories"].append({
+                "name": category_dir.name,
+                "bytes": cat_size,
+            })
+            service_entry["total_bytes"] += cat_size
+
+        result["services"].append(service_entry)
+        result["total_bytes"] += service_entry["total_bytes"]
+
+    _disk_cache["data"] = result
+    _disk_cache["expires"] = now + 60
+    return result
 
 
 @router.get("", response_model=DiagnosticsResponse)
@@ -258,6 +303,7 @@ async def get_diagnostics():
             size_mb, file_count = _get_disk_usage(output_dir)
             sync_state.disk_usage_mb = size_mb
             sync_state.file_count = file_count
+            sync_state.disk_usage_detailed = _get_detailed_disk_usage(output_dir)
     except Exception:
         pass
 

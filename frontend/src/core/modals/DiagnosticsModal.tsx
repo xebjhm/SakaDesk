@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug } from 'lucide-react';
+import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById } from '../../data/services';
 
@@ -31,11 +31,28 @@ interface ServiceSyncInfo {
     member_count: number;
 }
 
+interface DiskUsageCategory {
+    name: string;
+    bytes: number;
+}
+
+interface DiskUsageService {
+    name: string;
+    total_bytes: number;
+    categories: DiskUsageCategory[];
+}
+
+interface DiskUsageDetailed {
+    total_bytes: number;
+    services: DiskUsageService[];
+}
+
 interface SyncState {
     last_sync?: string;
     last_error?: string;
     disk_usage_mb: number;
     file_count: number;
+    disk_usage_detailed?: DiskUsageDetailed;
     services: ServiceSyncInfo[];
 }
 
@@ -59,6 +76,40 @@ interface DiagnosticsModalProps {
 }
 
 type LogTab = 'recent' | 'errors' | 'warnings';
+
+function formatBytes(bytes: number): string {
+    if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+    if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+function DiskUsageServiceRow({ service }: { service: DiskUsageService }) {
+    const [expanded, setExpanded] = useState(false);
+    return (
+        <div>
+            <button
+                onClick={() => setExpanded(!expanded)}
+                className="w-full flex justify-between items-center py-1 hover:bg-gray-100 rounded px-1 -mx-1"
+            >
+                <span className="text-gray-600 flex items-center gap-1">
+                    <ChevronRight className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                    {service.name}
+                </span>
+                <span className="font-mono text-gray-700">{formatBytes(service.total_bytes)}</span>
+            </button>
+            {expanded && (
+                <div className="ml-5 space-y-0.5">
+                    {service.categories.map(cat => (
+                        <div key={cat.name} className="flex justify-between py-0.5">
+                            <span className="text-gray-500">{cat.name}</span>
+                            <span className="font-mono text-gray-600">{formatBytes(cat.bytes)}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [data, setData] = useState<DiagnosticsData | null>(null);
@@ -288,24 +339,31 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                     </div>
                                 </div>
 
-                                {/* Disk Usage */}
+                                {/* Disk Usage - Expandable */}
                                 <div className="bg-gray-50 p-4 rounded-lg">
                                     <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                                         <Database className="w-3 h-3" /> DISK USAGE
                                     </h4>
-                                    <div className="space-y-2 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Size</span>
+                                    <div className="space-y-1 text-sm">
+                                        {/* Total */}
+                                        <div className="flex justify-between font-medium">
+                                            <span className="text-gray-700">Total</span>
                                             <span className="font-mono text-gray-900">
-                                                {data.sync_state.disk_usage_mb >= 1024
-                                                    ? `${(data.sync_state.disk_usage_mb / 1024).toFixed(2)} GB`
-                                                    : `${data.sync_state.disk_usage_mb.toFixed(2)} MB`}
+                                                {data.sync_state.disk_usage_detailed
+                                                    ? formatBytes(data.sync_state.disk_usage_detailed.total_bytes)
+                                                    : data.sync_state.disk_usage_mb >= 1024
+                                                        ? `${(data.sync_state.disk_usage_mb / 1024).toFixed(2)} GB`
+                                                        : `${data.sync_state.disk_usage_mb.toFixed(2)} MB`}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-gray-500">Files</span>
-                                            <span className="font-mono text-gray-900">{data.sync_state.file_count.toLocaleString()}</span>
+                                        <div className="flex justify-between text-xs">
+                                            <span className="text-gray-400">Files</span>
+                                            <span className="font-mono text-gray-500">{data.sync_state.file_count.toLocaleString()}</span>
                                         </div>
+                                        {/* Per-service expandable */}
+                                        {data.sync_state.disk_usage_detailed?.services?.map((svc) => (
+                                            <DiskUsageServiceRow key={svc.name} service={svc} />
+                                        ))}
                                     </div>
                                 </div>
                             </div>
