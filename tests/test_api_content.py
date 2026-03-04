@@ -88,7 +88,8 @@ async def test_get_groups(client):
             response = client.get("/api/content/groups")
 
             assert response.status_code == 200
-            data = response.json()
+            resp = response.json()
+            data = resp["groups"]
 
             # Should have 2 groups (one member each)
             assert len(data) == 2
