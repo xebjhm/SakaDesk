@@ -41,9 +41,10 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
   const processedSnippet = userNickname && snippet
     ? snippet.replace(placeholderRegex, userNickname)
     : snippet;
-  const processedContent = userNickname && result.content
-    ? result.content.replace(placeholderRegex, userNickname)
-    : result.content;
+  const rawContent = result.result_type === 'message' ? result.content : null;
+  const processedContent = userNickname && rawContent
+    ? rawContent.replace(placeholderRegex, userNickname)
+    : rawContent;
 
   const displayContent =
     result.result_type === 'message'

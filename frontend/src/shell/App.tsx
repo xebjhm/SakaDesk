@@ -58,8 +58,6 @@ function App() {
     const {
         appSettings,
         setAppSettings,
-        allServiceSettings,
-        connectedServices: settingsConnectedServices,
         outputDirInput,
         setOutputDirInput,
         settingsError,
@@ -70,7 +68,6 @@ function App() {
         setupBlogFullBackup,
         setSetupBlogFullBackup,
         saveSettings,
-        saveServiceSettings,
         handleSelectFolder,
         openSettingsModal,
     } = useSettings(isAuthenticated);
