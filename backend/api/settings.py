@@ -13,6 +13,11 @@ from typing import Any, Optional
 from backend.services.platform import get_settings_path
 from backend.services.service_utils import validate_service
 from backend.services.notification_service import set_notifications_enabled
+from backend.services.settings_store import (
+    load_config as _store_load,
+    save_config as _store_save,
+    update_config as _store_update,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -25,8 +30,14 @@ def get_default_output_dir() -> str:
     """Returns the default output directory path."""
     return str(Path.cwd() / "output")
 
+
+# ---------------------------------------------------------------------------
+# Backward-compatible sync helpers (used by tests that patch SETTINGS_FILE).
+# Production code should use the async _store_* functions instead.
+# ---------------------------------------------------------------------------
+
 def load_config() -> dict[str, Any]:
-    """Load configuration from file."""
+    """Load configuration from file (sync, for tests only)."""
     if SETTINGS_FILE.exists():
         try:
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -38,7 +49,7 @@ def load_config() -> dict[str, Any]:
     return {}
 
 def save_config(config: dict):
-    """Save configuration to file."""
+    """Save configuration to file (sync, for tests only)."""
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2)
@@ -75,7 +86,7 @@ class ServiceSettings(BaseModel):
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
     """Get current settings."""
-    config = load_config()
+    config = await _store_load()
     output_dir = config.get("output_dir", get_default_output_dir())
 
     # Sync notification service state with persisted setting
@@ -95,22 +106,21 @@ async def get_settings():
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
-    config = load_config()
+    def _apply(config: dict) -> None:
+        if update.output_dir is not None:
+            config["output_dir"] = update.output_dir
+            config["is_configured"] = True
+        if update.auto_sync_enabled is not None:
+            config["auto_sync_enabled"] = update.auto_sync_enabled
+        if update.sync_interval_minutes is not None:
+            config["sync_interval_minutes"] = update.sync_interval_minutes
+        if update.adaptive_sync_enabled is not None:
+            config["adaptive_sync_enabled"] = update.adaptive_sync_enabled
+        if update.notifications_enabled is not None:
+            config["notifications_enabled"] = update.notifications_enabled
+            set_notifications_enabled(update.notifications_enabled)
 
-    if update.output_dir is not None:
-        config["output_dir"] = update.output_dir
-        config["is_configured"] = True
-    if update.auto_sync_enabled is not None:
-        config["auto_sync_enabled"] = update.auto_sync_enabled
-    if update.sync_interval_minutes is not None:
-        config["sync_interval_minutes"] = update.sync_interval_minutes
-    if update.adaptive_sync_enabled is not None:
-        config["adaptive_sync_enabled"] = update.adaptive_sync_enabled
-    if update.notifications_enabled is not None:
-        config["notifications_enabled"] = update.notifications_enabled
-        set_notifications_enabled(update.notifications_enabled)
-
-    save_config(config)
+    config = await _store_update(_apply)
 
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
@@ -125,7 +135,7 @@ async def update_settings(update: SettingsUpdate):
 @router.get("/fresh", response_model=FreshCheckResponse)
 async def check_fresh_install():
     """Check if output folder is empty (fresh install)."""
-    config = load_config()
+    config = await _store_load()
     output_dir = config.get("output_dir", get_default_output_dir())
     output_path = Path(output_dir)
     
@@ -209,7 +219,7 @@ async def get_service_settings(service: str):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    config = load_config()
+    config = await _store_load()
     services = config.get("services", {})
     service_config = services.get(service, {})
 
@@ -229,18 +239,17 @@ async def update_service_settings(service: str, update: ServiceSettings):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    config = load_config()
-    if "services" not in config:
-        config["services"] = {}
+    def _apply(config: dict) -> None:
+        if "services" not in config:
+            config["services"] = {}
+        config["services"][service] = {
+            "sync_enabled": update.sync_enabled,
+            "adaptive_sync_enabled": update.adaptive_sync_enabled,
+            "last_sync": update.last_sync,
+            "blogs_full_backup": update.blogs_full_backup,
+        }
 
-    config["services"][service] = {
-        "sync_enabled": update.sync_enabled,
-        "adaptive_sync_enabled": update.adaptive_sync_enabled,
-        "last_sync": update.last_sync,
-        "blogs_full_backup": update.blogs_full_backup,
-    }
-
-    save_config(config)
+    await _store_update(_apply)
     return update
 
 
@@ -256,19 +265,25 @@ async def init_service_settings(service: str):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    config = load_config()
-    if "services" not in config:
-        config["services"] = {}
+    initialized = False
 
-    # Only initialize if not already configured
-    if service not in config["services"]:
-        config["services"][service] = {
-            "sync_enabled": True,
-            "adaptive_sync_enabled": True,
-            "last_sync": None,
-            "blogs_full_backup": False,
-        }
-        save_config(config)
+    def _apply(config: dict) -> None:
+        nonlocal initialized
+        if "services" not in config:
+            config["services"] = {}
+        # Only initialize if not already configured
+        if service not in config["services"]:
+            config["services"][service] = {
+                "sync_enabled": True,
+                "adaptive_sync_enabled": True,
+                "last_sync": None,
+                "blogs_full_backup": False,
+            }
+            initialized = True
+
+    config = await _store_update(_apply)
+
+    if initialized:
         logger.info(f"Initialized settings for newly connected service: {service}")
 
     return ServiceSettings(**config["services"][service])
