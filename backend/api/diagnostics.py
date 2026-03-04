@@ -214,6 +214,7 @@ async def get_diagnostics():
                 config_state['output_dir_configured'] = 'output_dir' in data
                 config_state['auto_sync'] = data.get('auto_sync_enabled')
                 config_state['sync_interval'] = data.get('sync_interval_minutes')
+                config_state['adaptive_sync'] = data.get('adaptive_sync_enabled')
                 output_dir = data.get('output_dir')
     except Exception as e:
         config_state['error'] = str(e)
