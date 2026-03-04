@@ -29,10 +29,27 @@ class BlogListResponse(BaseModel):
     blogs: List[BlogMeta]
 
 
+class BlogContentMeta(BaseModel):
+    id: str
+    member_name: str
+    title: str
+    published_at: str  # ISO datetime from index (single source of truth)
+    url: str
+
+
+class BlogImage(BaseModel):
+    original_url: str
+    local_path: Optional[str] = None
+
+
+class BlogContent(BaseModel):
+    html: str
+
+
 class BlogContentResponse(BaseModel):
-    meta: dict
-    content: dict
-    images: List[dict]
+    meta: BlogContentMeta
+    content: BlogContent
+    images: List[BlogImage]
 
 
 class CacheSizeResponse(BaseModel):
