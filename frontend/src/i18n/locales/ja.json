@@ -43,7 +43,10 @@
     "syncFixed": "固定間隔",
     "syncFixedDesc": "一定間隔で自動同期",
     "syncSmart": "スマートタイミング",
-    "serviceSettings": "サービス設定"
+    "serviceSettings": "サービス設定",
+    "syncCurrentOff": "現在: 手動同期のみ",
+    "syncCurrentFixed": "現在: {{minutes}}分ごと",
+    "syncCurrentSmart": "現在: アダプティブタイミング"
   },
   "time": {
     "minute": "{{count}}分",
