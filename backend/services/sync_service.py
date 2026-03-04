@@ -515,6 +515,7 @@ class SyncService:
                     logger.warning(f"Blog sync failed (non-fatal): {e}")
 
                 # Update blog search index (non-fatal)
+                progress.set_detail("Updating search index...")
                 try:
                     from backend.services.search_service import get_search_service
                     search_svc = get_search_service()
