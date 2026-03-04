@@ -104,6 +104,7 @@ def _get_disk_usage(output_dir: str) -> tuple[float, int]:
     """
     total_size = 0
     file_count = 0
+    size_mb = 0.0
 
     try:
         output_path = Path(output_dir)
