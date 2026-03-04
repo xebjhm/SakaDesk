@@ -107,6 +107,34 @@ async def cancel_sync(service: str = Query(..., description="Service to cancel s
     return {"status": "cancelled", "service": service}
 
 
+@router.get("/next_interval")
+async def get_next_interval(
+    service: str = Query(..., description="Service to calculate interval for"),
+):
+    """Get the next adaptive sync interval in minutes.
+
+    Uses time-of-day and activity patterns to return a smart interval.
+    Falls back to the configured fixed interval when adaptive sync is off.
+    """
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    from backend.services.adaptive_sync import calculate_next_sync_interval
+    from backend.services.settings_store import load_settings
+
+    settings = load_settings()
+    base = settings.get("sync_interval_minutes", 10)
+    adaptive = settings.get("adaptive_sync_enabled", False)
+
+    interval = calculate_next_sync_interval(
+        base_interval_minutes=base,
+        enable_randomization=adaptive,
+    )
+    return {"interval_minutes": round(interval, 1)}
+
+
 @router.get("/check")
 async def check_new(service: str = Query(..., description="Service to check")):
     """Lightweight check for new messages."""

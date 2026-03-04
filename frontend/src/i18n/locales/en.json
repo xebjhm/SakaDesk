@@ -135,7 +135,9 @@
     "version": "Version {{version}}",
     "description": "A desktop companion for viewing your Message archives.",
     "madeWith": "Made with",
-    "by": "by"
+    "by": "by",
+    "goldenFingerEnabled": "Download button enabled ✨",
+    "goldenFingerDisabled": "Download button disabled"
   },
   "report": {
     "title": "Report an Issue",

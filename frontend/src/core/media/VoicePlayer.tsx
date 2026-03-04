@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
-import { cn } from '../../utils/classnames';
+import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 
 const VOLUME_STORAGE_KEY = 'hakodesk_voice_volume';
@@ -22,6 +22,8 @@ interface VoicePlayerProps {
     durationText?: string;
     /** Theme accent color for buttons and progress bar */
     accentColor?: string;
+    /** Raw ISO timestamp of the message, used for download filename prefix */
+    messageTimestamp?: string;
 }
 
 /**
@@ -66,6 +68,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     timestamp,
     durationText,
     accentColor = DEFAULT_ACCENT_COLOR,
+    messageTimestamp,
 }) => {
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -279,12 +282,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     };
 
     const handleDownload = () => {
-        const urlParts = src.split('/');
-        const filename = urlParts[urlParts.length - 1] || 'voice_message.m4a';
-
         const link = document.createElement('a');
         link.href = src;
-        link.download = filename;
+        link.download = formatDownloadFilename(src, messageTimestamp);
         link.click();
         setShowMenu(false);
     };

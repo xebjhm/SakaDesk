@@ -108,6 +108,7 @@ export function useSync({
     }, []);
 
     const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+    const syncTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
     const hasStartedSyncRef = useRef(false);
     // Track which services have already been synced on startup (to sync newly connected services)
@@ -318,72 +319,84 @@ export function useSync({
         );
     }, [connectedServices, startSync]);
 
-    // Startup sync: sync ALL connected services, including newly connected ones
+    // Effect 1: Startup sync — one-time per newly connected service
     useEffect(() => {
         if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
 
-        // Find services that haven't been synced yet
         const newServices = connectedServices.filter(s => !syncedServicesRef.current.has(s));
         if (newServices.length === 0) return;
 
-        // Mark these services as synced (before async to prevent duplicates)
         newServices.forEach(s => syncedServicesRef.current.add(s));
         log(`Startup sync for new services: ${newServices.join(', ')}`);
 
         const isFirstSync = !hasStartedSyncRef.current;
         hasStartedSyncRef.current = true;
 
-        // Only check fresh install status on first sync
         if (isFirstSync) {
             fetch('/api/settings/fresh')
                 .then(res => res.json())
                 .then(data => {
-                    const isFresh = data.is_fresh;
-
-                    // Sync new services
                     newServices.forEach(service => {
-                        // Fresh install: show modal for active service only
-                        const showModal = isFresh && service === activeService;
-                        startSync(showModal, service);
+                        startSync(data.is_fresh && service === activeService, service);
                     });
                 })
                 .catch(() => {
-                    // On error, still sync new services without blocking modal
-                    newServices.forEach(service => {
-                        startSync(false, service);
-                    });
+                    newServices.forEach(service => startSync(false, service));
                 });
         } else {
-            // Not first sync - just sync new services without modal
-            newServices.forEach(service => {
-                startSync(false, service);
-            });
+            newServices.forEach(service => startSync(false, service));
         }
+    }, [isAuthenticated, appSettings, connectedServices, activeService, startSync]);
 
-        // Setup auto-sync for each connected service if enabled
-        if (appSettings.auto_sync_enabled) {
+    // Effect 2: Auto-sync interval setup — re-runs when settings or services change.
+    // Adaptive mode uses setTimeout chain with dynamic intervals from the backend;
+    // fixed mode uses a plain setInterval.
+    useEffect(() => {
+        if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
+        if (!appSettings.auto_sync_enabled) return;
+
+        const clearAllTimers = () => {
+            Object.values(syncIntervalRefs.current).forEach(clearInterval);
+            Object.values(syncTimeoutRefs.current).forEach(clearTimeout);
+            syncIntervalRefs.current = {};
+            syncTimeoutRefs.current = {};
+        };
+
+        if (appSettings.adaptive_sync_enabled) {
+            // Adaptive: setTimeout chain — ask backend for next interval after each tick
+            const scheduleNext = (service: string) => {
+                fetch(`/api/sync/next_interval?service=${encodeURIComponent(service)}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        const ms = (data.interval_minutes ?? appSettings.sync_interval_minutes) * 60 * 1000;
+                        log(`${service}: adaptive next sync in ${(ms / 60000).toFixed(1)}m`);
+                        syncTimeoutRefs.current[service] = setTimeout(() => {
+                            startSync(false, service);
+                            scheduleNext(service);
+                        }, ms);
+                    })
+                    .catch(() => {
+                        // Fallback to fixed interval on error
+                        const ms = appSettings.sync_interval_minutes * 60 * 1000;
+                        syncTimeoutRefs.current[service] = setTimeout(() => {
+                            startSync(false, service);
+                            scheduleNext(service);
+                        }, ms);
+                    });
+            };
+            connectedServices.forEach(scheduleNext);
+        } else {
+            // Fixed: plain setInterval
             const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
-
-            newServices.forEach(service => {
-                // Clear existing interval for this service if any
-                if (syncIntervalRefs.current[service]) {
-                    clearInterval(syncIntervalRefs.current[service]);
-                }
-
+            connectedServices.forEach(service => {
                 syncIntervalRefs.current[service] = setInterval(() => {
                     startSync(false, service);
                 }, intervalMs);
             });
         }
 
-        return () => {
-            // Cleanup all intervals
-            Object.values(syncIntervalRefs.current).forEach(interval => {
-                clearInterval(interval);
-            });
-            syncIntervalRefs.current = {};
-        };
-    }, [isAuthenticated, appSettings, connectedServices, activeService, startSync]);
+        return clearAllTimers;
+    }, [isAuthenticated, appSettings?.auto_sync_enabled, appSettings?.adaptive_sync_enabled, appSettings?.sync_interval_minutes, connectedServices, startSync]);
 
     return {
         syncProgress,

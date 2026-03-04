@@ -29,6 +29,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
+    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const theme = getThemeForService(activeService);
 
     // Filter only favorite messages, sorted by timestamp (newest first)
@@ -76,6 +77,8 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                     <video
                         src={mediaUrl}
                         controls
+                        controlsList={goldenFingerActive ? undefined : "nodownload"}
+                        disablePictureInPicture
                         autoPlay
                         className="max-w-full max-h-[80vh]"
                     />

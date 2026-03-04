@@ -135,7 +135,9 @@
     "version": "版本 {{version}}",
     "description": "用於查看您的 Message 封存的桌面小幫手。",
     "madeWith": "Made with",
-    "by": "by"
+    "by": "by",
+    "goldenFingerEnabled": "下載按鈕已啟用 ✨",
+    "goldenFingerDisabled": "下載按鈕已停用"
   },
   "report": {
     "title": "回報問題",
