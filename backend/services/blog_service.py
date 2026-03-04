@@ -400,14 +400,16 @@ class BlogService:
                         member_name=member_name
                     ):
                         if entry.id not in existing_ids:
-                            # Get thumbnail - prefer from metadata, fallback to fetching from detail
-                            # Sakurazaka list pages show member profile images, not blog thumbnails,
-                            # so we need to fetch the actual thumbnail from the detail page
+                            # Get thumbnail and precise datetime from detail page.
+                            # Sakurazaka list pages only show dates (no time), so we
+                            # need the detail page for both thumbnail and precise timestamp.
                             thumbnail = entry.images[0] if entry.images else None
+                            published_at = entry.published_at
                             if not thumbnail and hasattr(scraper, 'get_blog_thumbnail'):
-                                # Fetch thumbnail from detail page (og:image)
                                 try:
-                                    thumbnail = await scraper.get_blog_thumbnail(entry.id)
+                                    thumbnail, detail_date = await scraper.get_blog_thumbnail(entry.id)
+                                    if detail_date:
+                                        published_at = detail_date
                                 except Exception as e:
                                     logger.debug(
                                         "thumbnail_fetch_failed",
@@ -419,7 +421,7 @@ class BlogService:
                                 {
                                     "id": entry.id,
                                     "title": entry.title,
-                                    "published_at": entry.published_at.isoformat(),
+                                    "published_at": published_at.isoformat(),
                                     "url": entry.url,
                                     "thumbnail": thumbnail,
                                 }
