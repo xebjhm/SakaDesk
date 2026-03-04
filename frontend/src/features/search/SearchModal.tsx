@@ -212,11 +212,15 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
         // the <mark> tags contain the original text which BlogReader needs
         // to highlight and scroll to the correct position.
         const matchedTerms: string[] = [];
+        const readingTerms: string[] = [];
         if (result.snippet) {
-          const markRegex = /<mark[^>]*>([^<]+)<\/mark>/g;
+          const markRegex = /<mark([^>]*)>([^<]+)<\/mark>/g;
           let m;
           while ((m = markRegex.exec(result.snippet)) !== null) {
-            matchedTerms.push(m[1]);
+            matchedTerms.push(m[2]);
+            if (m[1].includes('reading')) {
+              readingTerms.push(m[2]);
+            }
           }
         }
         setTargetBlog({
@@ -225,6 +229,7 @@ export const SearchModal = forwardRef<SearchModalHandle>((_props, ref) => {
           memberId: result.member_id,
           searchQuery: query,
           matchedTerms: [...new Set(matchedTerms)],
+          readingTerms: [...new Set(readingTerms)],
         });
         setActiveFeature(result.service, 'blogs');
         if (activeService !== result.service) {
