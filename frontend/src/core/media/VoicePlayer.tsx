@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
 import { cn } from '../../utils/classnames';
+import { useAppStore } from '../../store/appStore';
 
 const VOLUME_STORAGE_KEY = 'hakodesk_voice_volume';
 
@@ -66,6 +67,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     durationText,
     accentColor = DEFAULT_ACCENT_COLOR,
 }) => {
+    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -365,15 +367,19 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         </button>
                         {showMenu && (
                             <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] z-50">
-                                <button
-                                    onClick={handleDownload}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
-                                    type="button"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    Download
-                                </button>
-                                <div className="border-t border-gray-200 my-1" />
+                                {goldenFingerActive && (
+                                    <>
+                                        <button
+                                            onClick={handleDownload}
+                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
+                                            type="button"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download
+                                        </button>
+                                        <div className="border-t border-gray-200 my-1" />
+                                    </>
+                                )}
                                 <div className="px-4 py-1 text-xs text-gray-400">Speed</div>
                                 {[0.5, 1, 1.5, 2].map(rate => (
                                     <button
@@ -601,15 +607,19 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         </button>
                         {showMenu && (
                             <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border py-1 min-w-[140px] z-50">
-                                <button
-                                    onClick={handleDownload}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                    type="button"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    Download
-                                </button>
-                                <div className="border-t my-1" />
+                                {goldenFingerActive && (
+                                    <>
+                                        <button
+                                            onClick={handleDownload}
+                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                            type="button"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                            Download
+                                        </button>
+                                        <div className="border-t my-1" />
+                                    </>
+                                )}
                                 <div className="px-4 py-1 text-xs text-gray-400">Speed</div>
                                 {[0.5, 1, 1.5, 2].map(rate => (
                                     <button

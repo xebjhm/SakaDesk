@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { X, Heart } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useAppStore } from '../../store/appStore';
 
 interface AboutModalProps {
     isOpen: boolean;
@@ -14,6 +15,24 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     // Hidden dev mode (5-click easter egg on version)
     const [versionClickCount, setVersionClickCount] = useState(0);
     const versionClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
+    const setGoldenFingerActive = useAppStore(s => s.setGoldenFingerActive);
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleLogoPointerDown = () => {
+        longPressTimer.current = setTimeout(() => {
+            setGoldenFingerActive(!goldenFingerActive);
+            longPressTimer.current = null;
+        }, 3000);
+    };
+
+    const handleLogoPointerUp = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    };
 
     const handleVersionClick = () => {
         // Clear previous timeout
@@ -53,7 +72,18 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 {/* Content */}
                 <div className="p-8 flex flex-col items-center text-center">
                     {/* Logo placeholder */}
-                    <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-purple-500 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+                    <div
+                        className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-lg select-none"
+                        onPointerDown={handleLogoPointerDown}
+                        onPointerUp={handleLogoPointerUp}
+                        onPointerLeave={handleLogoPointerUp}
+                        style={goldenFingerActive ? {
+                            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%)',
+                            boxShadow: '0 0 20px rgba(255, 215, 0, 0.4)',
+                        } : {
+                            background: 'linear-gradient(to bottom right, #60A5FA, #A855F7)',
+                        }}
+                    >
                         <span className="text-3xl text-white font-bold">H</span>
                     </div>
 
