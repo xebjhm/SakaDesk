@@ -28,18 +28,26 @@ hiddenimports = [
 ]
 
 # Auto-collect packages
+# IMPORTANT: Any new dependency MUST be added here, especially if it is
+# lazy-imported (imported inside a function rather than at module top level).
+# PyInstaller only traces top-level imports automatically. Lazy imports are
+# invisible to static analysis and will cause "module not found" errors at
+# runtime in the built exe. Packages with bundled data files (like pykakasi's
+# .db dictionaries) also need collect_all() to include those data files.
 packages_to_collect = [
-    'fastapi', 
-    'starlette', 
-    'uvicorn', 
-    'pydantic', 
-    'pydantic_core', 
-    'pyhako', 
-    'playwright', 
-    'aiofiles', 
-    'keyring', 
+    'fastapi',
+    'starlette',
+    'uvicorn',
+    'pydantic',
+    'pydantic_core',
+    'pyhako',
+    'playwright',
+    'aiofiles',
+    'keyring',
     'backend',
-    'structlog'
+    'structlog',
+    'pykakasi',
+    'jaconv',
 ]
 
 for pkg in packages_to_collect:
