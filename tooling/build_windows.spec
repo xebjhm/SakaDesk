@@ -82,20 +82,17 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='HakoDesk',
-    debug=True, # Keep debug console for now? Or strictly windowed per request?
-    # project_guidance says "runs on Linux, Windows, macOS seamlessly", implying GUI. 
-    # But usually release builds are "windowed" (console=False). 
-    # desktop.py handles structlog, so console output is useful if console=True.
-    # Let's default to False (GUI only) but keeping debug information in spec structure if needed.
+    debug=True,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False, 
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(project_root / 'tooling' / 'windows' / 'HakoDesk.ico'),
 )
 coll = COLLECT(
     exe,

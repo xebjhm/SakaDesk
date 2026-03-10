@@ -40,22 +40,19 @@ def is_dev_mode() -> bool:
 def get_app_data_dir() -> Path:
     """
     Get the application data directory.
-    
-    Windows: %LOCALAPPDATA%\\hakodesk (e.g., C:\\Users\\Name\\AppData\\Local\\hakodesk)
-    Linux/Mac: ~/.hakodesk (development fallback)
+
+    Windows: %LOCALAPPDATA%\\HakoDesk (e.g., C:\\Users\\Name\\AppData\\Local\\HakoDesk)
+    Linux/Mac: ~/.HakoDesk (development fallback)
     """
     if is_windows():
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            app_dir = Path(base) / "hakodesk"
+            app_dir = Path(base) / "HakoDesk"
         else:
-            # Fallback if LOCALAPPDATA not set
-            app_dir = Path.home() / "AppData" / "Local" / "hakodesk"
+            app_dir = Path.home() / "AppData" / "Local" / "HakoDesk"
     else:
-        # Development mode on Linux/Mac
-        app_dir = Path.home() / ".hakodesk"
-    
-    # Ensure directory exists
+        app_dir = Path.home() / ".HakoDesk"
+
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
 

@@ -17,9 +17,10 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 # Determine log directory (inline to avoid importing platform module yet)
 if os.name == 'nt':  # Windows
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    log_dir = Path(base) / "hakodesk" / "logs"
+    _app_dir = Path(base) / "HakoDesk"
 else:  # Linux/Mac (dev)
-    log_dir = Path.home() / ".hakodesk" / "logs"
+    _app_dir = Path.home() / ".HakoDesk"
+log_dir = _app_dir / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "debug.log"
 
@@ -78,6 +79,21 @@ app.include_router(chat_features.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Release file handles so the uninstaller can delete the data directory."""
+    from backend.services.search_service import shutdown_search_service
+    shutdown_search_service()
+    # Flush and close all log file handlers
+    for handler in logging.root.handlers[:]:
+        try:
+            handler.flush()
+            handler.close()
+        except Exception:
+            pass
+    logger.info("Shutdown complete - file handles released")
 
 
 @app.get("/health")
