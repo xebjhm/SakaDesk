@@ -27,9 +27,8 @@
     "title": "設定",
     "outputFolder": "保存先フォルダ",
     "autoSync": "自動同期",
-    "syncEvery": "同期同隔",
-    "smartTiming": "スマートタイミング",
-    "smartTimingDesc": "メンバーの投稿頻度に合わせて同期タイミングを自動調整",
+    "syncEvery": "同期間隔",
+    "smartTimingDesc": "メンバーの投稿パターンに基づいて同期間隔をランダム化",
     "desktopNotifications": "デスクトップ通知",
     "desktopNotificationsDesc": "新着メッセージ受信時に通知を表示",
     "blogFullBackup": "ブログ完全バックアップ",
@@ -50,7 +49,7 @@
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
-    "syncCurrentSmart": "現在: アダプティブタイミング"
+    "syncCurrentSmart": "現在: スマートタイミング"
   },
   "time": {
     "minute": "{{count}}分",
@@ -82,10 +81,10 @@
     "sessionExpiredDesc": "{{service}}のセッション有効期限が切れました。{{feature}}を利用するには再ログインしてください。",
     "premiumFeatureDesc": "{{feature}}はプレミアム機能です。利用するには{{service}}アカウントでログインしてください。",
     "credentialsSaved": "認証情報はお使いのデバイスに安全に保存されます。",
-    "waitingForBrowser": "ブラウザを操作してください...",
+    "waitingForBrowser": "ブラウザを待機中...",
     "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
-    "browserPrompt": "{{service}}のアカウントにログインしてください。ブラウザウィンドウが開きます。",
+    "browserPrompt": "{{service}}のMessageアカウントにログインしてください。ブラウザウィンドウが開き、認証情報を入力できます。",
     "loginFailed": "ログインに失敗したかキャンセルされました"
   },
   "tos": {
@@ -152,7 +151,7 @@
     "categoryPlayback": "再生",
     "categoryPlaybackHelp": "動画や音声が再生できない",
     "categoryLogin": "ログイン",
-    "categoryLoginHelp": "サインイン不可、頻繁なログアウト等",
+    "categoryLoginHelp": "サインインできない、頻繁にログアウトされる",
     "categoryOther": "その他",
     "categoryOtherHelp": "その他の不具合",
     "whatDoing": "発生時の状況",
@@ -215,7 +214,7 @@
   "calendar": {
     "title": "日付検索",
     "today": "今日",
-    "availableOnDays": "{{count}}日分のメッセージがあります",
+    "availableOnDays": "{{count}}日分利用可能",
     "tapToJump": "日付を選択して移動",
     "weekdays": {
       "sun": "日",
@@ -274,7 +273,7 @@
     "selectAtLeastOne": "少なくとも1つのグループを選択してください",
     "getStarted": "始める",
     "getStartedWith": "{{count}}つのグループで開始する",
-    "footerNote": "ブログの閲覧は自由ですが、メッセージやその他の機能を利用するにはログインが必要です。"
+    "footerNote": "ブログの閲覧は自由ですが、メッセージやその他のプレミアム機能を利用するにはログインが必要です。"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",

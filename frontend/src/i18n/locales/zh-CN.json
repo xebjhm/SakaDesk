@@ -2,7 +2,7 @@
   "common": {
     "settings": "设置",
     "messages": "消息",
-    "blogs": "博客",
+    "blogs": "Blog",
     "sync": "同步",
     "login": "登录",
     "logout": "退出登录",
@@ -28,16 +28,15 @@
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",
-    "smartTiming": "智能定时",
     "smartTimingDesc": "根据成员发信规律随机调整间隔",
     "desktopNotifications": "桌面通知",
     "desktopNotificationsDesc": "收到新消息时显示通知",
-    "blogFullBackup": "博客完整备份",
-    "blogFullBackupOnDesc": "下载所有博客内容及图片以供离线阅读",
-    "blogFullBackupOffDesc": "按需获取博客内容（节省磁盘空间）",
-    "blogCacheSize": "博客缓存: {{size}}",
+    "blogFullBackup": "Blog 完整备份",
+    "blogFullBackupOnDesc": "下载所有 Blog 内容及图片以供离线阅读",
+    "blogFullBackupOffDesc": "按需获取 Blog 内容（节省磁盘空间）",
+    "blogCacheSize": "Blog 缓存: {{size}}",
     "cleanBlogCache": "清除缓存",
-    "cleanBlogCacheConfirm": "删除所有缓存的博客数据？这将释放磁盘空间，但博客需要重新下载。",
+    "cleanBlogCacheConfirm": "删除所有缓存的 Blog 数据？这将释放磁盘空间，但 Blog 需要重新下载。",
     "cleanBlogCacheConfirm2": "确定要删除吗？此操作无法撤消。",
     "language": "语言",
     "languageDesc": "选择首选语言",
@@ -50,7 +49,7 @@
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
-    "syncCurrentSmart": "目前: 自适应同步"
+    "syncCurrentSmart": "目前: 智能排程"
   },
   "time": {
     "minute": "{{count}} 分钟",
@@ -77,7 +76,7 @@
     "returnDashboard": "返回控制台",
     "secureNote": "凭据通过 Windows 凭据管理器安全地存储在您的设备上。",
     "errorPrefix": "错误：",
-    "logoutConfirm": "确要从 {{group}} 退出登录吗？",
+    "logoutConfirm": "确定要从 {{group}} 退出登录吗？",
     "loginRequired": "需要登录",
     "sessionExpiredDesc": "您的 {{service}} 会话已过期。请重新登录以继续使用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 是高级功能，需要登录您的 {{service}} 账户。",
@@ -85,7 +84,7 @@
     "waitingForBrowser": "等待浏览器操作...",
     "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
-    "browserPrompt": "请登录您的 {{service}} 消息账户。将为您打开浏览器窗口以输入凭据。",
+    "browserPrompt": "请登录您的 {{service}} Message 账户。将为您打开浏览器窗口以输入凭据。",
     "loginFailed": "登录失败或已取消"
   },
   "tos": {
@@ -112,8 +111,8 @@
     "outputFolderPath": "输出文件夹路径",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
-    "downloadBlogsOffline": "下载博客以供离线阅读",
-    "downloadBlogsHint": "下载所有博客文章以供离线搜索。每个服务约使用 5-15 GB。",
+    "downloadBlogsOffline": "下载 Blog 以供离线阅读",
+    "downloadBlogsHint": "下载所有 Blog 文章以供离线搜索。每个服务约使用 5-15 GB。",
     "startUsing": "开始使用 HakoDesk"
   },
   "sync": {
@@ -132,13 +131,13 @@
     "notSynced": "尚未同步",
     "syncNow": "立即同步",
     "syncingService": "正在同步 {{service}} ({{current}}/{{total}})",
-    "blogs": "博客"
+    "blogs": "Blog"
   },
   "about": {
     "title": "关于",
     "version": "版本 {{version}}",
     "identity": "坂道系列非官方工具",
-    "features": "Message • Blog • 备份",
+    "features": "Message • Blog • 存档",
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "下载按钮已启用 ✨",
@@ -152,7 +151,7 @@
     "categoryPlayback": "播放",
     "categoryPlaybackHelp": "音频/视频无法播放",
     "categoryLogin": "登录",
-    "categoryLoginHelp": "无法登录或过期",
+    "categoryLoginHelp": "无法登录或经常被登出",
     "categoryOther": "其他",
     "categoryOtherHelp": "其他故障",
     "whatDoing": "您当时在做什么？",
@@ -176,7 +175,7 @@
     "upgradeFailed": "升级失败：",
     "installNow": "立即安装",
     "updateAvailable": "有可用更新！",
-    "upgradeNow": "立即升级"
+    "upgradeNow": "立即更新"
   },
   "memberList": {
     "title": "聊天",
@@ -263,7 +262,7 @@
   },
   "features": {
     "messages": "消息",
-    "blogs": "博客",
+    "blogs": "Blog",
     "news": "新闻",
     "fanclub": "粉丝俱乐部",
     "ai": "AI 助手"
@@ -274,14 +273,14 @@
     "selectAtLeastOne": "请至少选择一个组合",
     "getStarted": "开始使用",
     "getStartedWith": "开始使用 {{count}} 个组合",
-    "footerNote": "博客可自由浏览。使用消息和其他高级功能需要登录。"
+    "footerNote": "Blog 可自由浏览。使用消息和其他高级功能需要登录。"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
     "addService": "添加服务"
   },
   "search": {
-    "placeholder": "搜索消息和博客...",
+    "placeholder": "搜索消息和 Blog...",
     "noResults": "找不到结果",
     "noResultsHint": "请尝试其他搜索词",
     "resultCount": "{{count}} 条结果",
@@ -291,7 +290,7 @@
     "errorSearchFailed": "搜索失败，请重试。",
     "building": "正在构建搜索索引...",
     "filters": "筛选",
-    "exactMatchOnly": "仅完全匹配",
+    "exactMatchOnly": "仅完全相符",
     "includeUnread": "包含未读",
     "filterByMember": "按成员或服务筛选...",
     "dateRange": "日期范围",
@@ -302,10 +301,10 @@
     "lastYear": "最近1年",
     "contentAll": "全部",
     "contentMessages": "消息",
-    "contentBlogs": "博客",
-    "blogCacheHint": "仅可搜索已缓存的博客。可在设置中缓存全部。",
-    "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个博客）",
-    "blogSearchLimited": "博客搜索仅涵盖已缓存的文章。",
+    "contentBlogs": "Blog",
+    "blogCacheHint": "仅可搜索已缓存的 Blog。可在设置中缓存全部。",
+    "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个 Blog）",
+    "blogSearchLimited": "Blog 搜索仅涵盖已缓存的文章。",
     "enableFullBackup": "启用完整备份",
     "buildingHint": "搜索索引仍在生成中，结果可能不完整。"
   },
