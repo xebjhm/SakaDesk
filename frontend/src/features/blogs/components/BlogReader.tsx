@@ -4,7 +4,7 @@
 import React, { useEffect } from 'react';
 import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
-import { getMemberColors, getMemberNameJp, getGroupFromService } from '../../../data/memberColors';
+import { toGroupId, getMemberByBlogId, getMemberByName, getMemberPenlightHex, getMemberNameKanji } from '../../../data/memberData';
 import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTheme } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
@@ -48,17 +48,18 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const theme = useBlogTheme();
 
     // Get group ID for correct member data lookup
-    const groupId = getGroupFromService(serviceId);
+    const groupId = toGroupId(serviceId);
 
     // Get member colors for oshi theming
     // Try with original name, then without spaces (API returns names with spaces like "藤嶌 果歩")
     // ポカ (mascot) should have white background - no oshi colors
     const isMascot = member.id === '000' || member.name === 'ポカ';
-    const memberColors = isMascot ? null : (
-        getMemberColors(member.name, groupId) ??
-        getMemberColors(member.name.replace(/\s+/g, ''), groupId) ??
-        getMemberColors(member.id, groupId)
+    const memberData = isMascot ? null : (
+        getMemberByName(member.name, groupId) ??
+        getMemberByName(member.name.replace(/\s+/g, ''), groupId) ??
+        getMemberByBlogId(member.id, groupId)
     );
+    const memberColors = memberData ? getMemberPenlightHex(memberData, groupId) : null;
     const oshiColor1 = memberColors?.[0] ?? '#ffffff';
     const oshiColor2 = memberColors?.[1] ?? '#ffffff';
 
@@ -187,7 +188,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     className="font-medium transition-all duration-200 hover:opacity-70"
                     style={{ color: theme.memberNameColor }}
                 >
-                    {getMemberNameJp(member.name, groupId)}
+                    {getMemberNameKanji(member.name, groupId)}
                 </button>
                 <span className="text-gray-400">/</span>
                 <span className="text-gray-700 truncate max-w-xs">{blog.title}</span>
@@ -237,7 +238,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                         className="font-medium transition-all duration-200 hover:opacity-70"
                                         style={{ color: theme.memberNameColor }}
                                     >
-                                        {getMemberNameJp(content.meta.member_name, groupId)}
+                                        {getMemberNameKanji(content.meta.member_name, groupId)}
                                     </button>
                                     <span>-</span>
                                     <time>
