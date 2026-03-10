@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, Database } from 'lucide-react';
 import { Portal } from '../../core/common/Portal';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
@@ -26,12 +26,11 @@ export interface SearchModalHandle {
 
 interface SearchModalProps {
   userNicknames?: Record<string, string>;
-  userNickname?: string;
   blogBackupEnabled?: boolean;
   onOpenSettings?: () => void;
 }
 
-export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ userNicknames, userNickname, blogBackupEnabled, onOpenSettings }, ref) => {
+export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ userNicknames, blogBackupEnabled, onOpenSettings }, ref) => {
   const { t } = useTranslation();
 
   // ─── Local state ───────────────────────────────────────────────────────────
@@ -51,10 +50,14 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const [includeUnread, setIncludeUnread] = useState(false);
   const [dateRange, setDateRange] = useState<DateRangePreset>('all');
   const [contentType, setContentType] = useState<ContentTypeFilter>('all');
+  const [isIndexBuilding, setIsIndexBuilding] = useState(false);
+  // Bumped when index build completes — triggers search re-execution
+  const [searchGeneration, setSearchGeneration] = useState(0);
 
   // ─── Refs ──────────────────────────────────────────────────────────────────
   const inputRef = useRef<HTMLInputElement>(null!);
   const listRef = useRef<HTMLDivElement>(null!);
+  const wasBuilding = useRef(false);
 
   // ─── Open / Close ──────────────────────────────────────────────────────────
   const resetState = useCallback(() => {
@@ -100,16 +103,49 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     }
   }, [isOpen]);
 
+  // ─── Check search index status when modal opens ──────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const checkStatus = () => {
+      fetch('/api/search/status')
+        .then(res => res.json())
+        .then(data => {
+          if (cancelled) return;
+          const building = data.is_building ?? false;
+          setIsIndexBuilding(building);
+          if (building) {
+            wasBuilding.current = true;
+            setTimeout(checkStatus, 3000);
+          } else if (wasBuilding.current) {
+            // Build just finished — re-trigger search
+            wasBuilding.current = false;
+            setSearchGeneration(g => g + 1);
+          }
+        })
+        .catch(() => {});
+    };
+    checkStatus();
+    return () => { cancelled = true; };
+  }, [isOpen]);
+
   const PAGE_SIZE = 50;
 
   // Build URL params from current filter state
   const buildFilterParams = useCallback(() => {
     const params = new URLSearchParams();
     const serviceFilters = selectedFilters.filter(f => f.type === 'service').map(f => f.id);
-    const memberFilters = selectedFilters.filter(f => f.type === 'member').map(f => f.id);
     if (serviceFilters.length) params.set('services', serviceFilters.join(','));
-    // Member chips use "service:member_id" format to scope per-service
-    if (memberFilters.length) params.set('member_filters', memberFilters.join(','));
+    // Member chips use "service:id1+id2" format — expand into individual service:member_id pairs
+    const memberFilterPairs: string[] = [];
+    for (const f of selectedFilters.filter(f => f.type === 'member')) {
+      const colonIdx = f.id.indexOf(':');
+      const service = f.id.slice(0, colonIdx);
+      for (const mid of f.id.slice(colonIdx + 1).split('+')) {
+        memberFilterPairs.push(`${service}:${mid}`);
+      }
+    }
+    if (memberFilterPairs.length) params.set('member_filters', memberFilterPairs.join(','));
     if (exactOnly) params.set('exact_only', 'true');
     if (!includeUnread) params.set('exclude_unread', 'true');
     if (contentType !== 'all') params.set('content_type', contentType);
@@ -153,6 +189,17 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         }
 
         const data: SearchResponse = await response.json();
+        // If the index is still building, show the building banner
+        // and auto-retry when it finishes (via status polling).
+        if (data.is_building) {
+          setIsIndexBuilding(true);
+          setResults([]);
+          setTotalCount(0);
+          setHasMore(false);
+          setSelectedIndex(-1);
+          return;
+        }
+        setIsIndexBuilding(false);
         setResults(data.results);
         setTotalCount(data.total_count);
         setHasMore(data.has_more);
@@ -169,7 +216,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, isComposing, t, buildFilterParams]);
+  }, [query, isComposing, t, buildFilterParams, searchGeneration]);
 
   // ─── Load more handler ──────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
@@ -348,7 +395,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
         {/* Modal panel */}
         <div
-          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh] overflow-hidden"
+          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Search input */}
@@ -363,7 +410,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             filtersActive={filtersExpanded || selectedFilters.length > 0}
           />
 
-          {/* Filter bar (collapsible) */}
+          {/* Filter bar (collapsible) — outside overflow wrapper so dropdowns can overflow */}
           {filtersExpanded && (
             <SearchFilterBar
               selectedFilters={selectedFilters}
@@ -381,6 +428,18 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             />
           )}
 
+          {/* Content zone — overflow-hidden clips children to bottom rounded corners
+              while keeping filter dropdowns above free to overflow the modal */}
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-xl">
+
+          {/* Index building banner */}
+          {isIndexBuilding && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
+              <Database className="w-3.5 h-3.5 shrink-0" />
+              <span>{t('search.buildingHint')}</span>
+            </div>
+          )}
+
           {/* Loading state (only when no results yet) */}
           {isLoading && results.length === 0 && (
             <div className="flex items-center justify-center py-12">
@@ -395,8 +454,8 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             </div>
           )}
 
-          {/* Empty state */}
-          {!isLoading && !error && query.trim() && results.length === 0 && (
+          {/* Empty state (hide while index is building — results will come after build) */}
+          {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 px-4">
               <Search className="w-10 h-10 text-gray-300 mb-3" />
               <p className="text-sm font-medium text-gray-500">
@@ -417,7 +476,6 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
               onMouseEnterItem={setSelectedIndex}
               listRef={listRef}
               userNicknames={userNicknames}
-              userNickname={userNickname}
             />
           )}
 
@@ -455,6 +513,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
               )}
             </div>
           )}
+          </div>{/* end content zone */}
         </div>
       </div>
 

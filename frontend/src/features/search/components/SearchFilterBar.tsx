@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, ChevronDown } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { getServicePrimaryColor, getServiceDisplayName } from '../../../data/services';
+import { getServicePrimaryColor, getServiceDisplayName, sortByServiceOrder } from '../../../data/services';
+import { useAppStore } from '../../../store/appStore';
 import { formatName } from '../../../utils';
 import type { FilterChip, DateRangePreset, ContentTypeFilter, MembersResponse } from '../types';
 
@@ -88,6 +89,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  const serviceOrder = useAppStore((s) => s.getServiceOrder());
+
   // Filter dropdown items based on query and already-selected chips
   const filteredItems = useMemo(() => {
     if (!membersData) return [];
@@ -96,8 +99,9 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
 
     const items: { type: 'service' | 'member'; id: string; label: string; sublabel?: string; color: string }[] = [];
 
-    // Services
-    for (const svc of membersData.services) {
+    // Services — sorted by global order
+    const orderedServices = sortByServiceOrder(membersData.services, serviceOrder, (s) => s.service);
+    for (const svc of orderedServices) {
       const id = svc.service;
       if (selectedIds.has(id)) continue;
       const name = getServiceDisplayName(id);
@@ -113,13 +117,22 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       }
     }
 
-    // Members — consolidate by (service, member_id) since same member can appear in multiple groups
+    // Members — consolidate by (service, member_name) since the same person
+    // can have different member_ids in messages vs blogs.
+    // Sort by global service order so members are grouped consistently with service headers.
+    const orderedMembers = [...membersData.members].sort((a, b) => {
+      const ai = serviceOrder.indexOf(a.service);
+      const bi = serviceOrder.indexOf(b.service);
+      return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+    });
     const seen = new Set<string>();
-    for (const mem of membersData.members) {
-      const dedup = `${mem.service}:${mem.member_id}`;
+    for (const mem of orderedMembers) {
+      const dedup = `${mem.service}:${mem.member_name}`;
       if (seen.has(dedup)) continue;
       seen.add(dedup);
-      const id = `${mem.service}:${mem.member_id}`;
+      // Chip id encodes all member_ids so search filters catch both messages and blogs
+      const ids = mem.member_ids ?? [mem.member_id];
+      const id = `${mem.service}:${ids.join('+')}`;
       if (selectedIds.has(id)) continue;
       const name = formatName(mem.member_name);
       const color = getServicePrimaryColor(mem.service);
@@ -134,8 +147,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       }
     }
 
-    return items.slice(0, 20); // Cap at 20 suggestions
-  }, [membersData, mentionQuery, selectedFilters]);
+    return items;
+  }, [membersData, mentionQuery, selectedFilters, serviceOrder]);
 
   const handleSelectItem = useCallback((item: typeof filteredItems[number]) => {
     onFiltersChange([...selectedFilters, { type: item.type, id: item.id, label: item.label, color: item.color }]);
@@ -149,7 +162,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   }, [selectedFilters, onFiltersChange]);
 
   return (
-    <div className="border-b border-gray-200 bg-gray-50/50">
+    <div className="bg-gray-100/60 rounded-b-xl">
       {/* Row 1: @-mention input + chips */}
       <div className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5" ref={dropdownRef}>
@@ -187,7 +200,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
 
             {/* Autocomplete dropdown */}
             {showDropdown && filteredItems.length > 0 && (
-              <div className="absolute left-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-48 overflow-y-auto">
+              <div className="absolute left-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-72 overflow-y-auto">
                 {filteredItems.map((item) => (
                   <button
                     key={`${item.type}-${item.id}`}
