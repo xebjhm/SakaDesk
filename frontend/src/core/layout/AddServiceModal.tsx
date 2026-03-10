@@ -1,7 +1,7 @@
 // frontend/src/core/layout/AddServiceModal.tsx
 import React from 'react';
 import { X } from 'lucide-react';
-import { SERVICES } from '../../data/services';
+import { getOrderedServiceDefs } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
@@ -16,10 +16,10 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
-    const { addSelectedService, setActiveService } = useAppStore();
+    const { addSelectedService, setActiveService, getServiceOrder } = useAppStore();
 
-    // Filter out already selected services
-    const availableServices = SERVICES.filter(
+    // Filter out already selected services, sorted by global order
+    const availableServices = getOrderedServiceDefs(getServiceOrder()).filter(
         (s) => !selectedServices.includes(s.id)
     );
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
-import { getServiceById } from '../../data/services';
+import { getServiceById, sortByServiceOrder } from '../../data/services';
+import { useAppStore } from '../../store/appStore';
 
 interface SystemInfo {
     os: string;
@@ -48,7 +49,6 @@ interface DiskUsageDetailed {
 }
 
 interface SyncState {
-    last_sync?: string;
     last_error?: string;
     disk_usage_mb: number;
     file_count: number;
@@ -256,8 +256,12 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                         {data.auth_status.groups_configured.length === 0 && connectedServices.length === 0 ? (
                                             <div className="text-gray-400 text-xs">No services configured</div>
                                         ) : (
-                                            // Show all known services from backend + live status from context
-                                            [...new Set([...data.auth_status.groups_configured, ...connectedServices, ...disconnectedServices])].map(serviceId => {
+                                            // Show all known services from backend + live status from context, sorted by global order
+                                            sortByServiceOrder(
+                                                [...new Set([...data.auth_status.groups_configured, ...connectedServices, ...disconnectedServices])],
+                                                useAppStore.getState().getServiceOrder(),
+                                                (id) => id,
+                                            ).map(serviceId => {
                                                 const service = getServiceById(serviceId);
                                                 const displayName = service?.displayName ?? serviceId;
                                                 const connected = isServiceConnected(serviceId);

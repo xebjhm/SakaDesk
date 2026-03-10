@@ -29,16 +29,16 @@ export interface ServiceDefinition {
 
 export const SERVICES: ServiceDefinition[] = [
     {
-        id: 'hinatazaka46',
-        name: 'Hinatazaka46',
-        displayName: '日向坂46',
-        shortCode: 'HI',
-        color: 'from-[#5bbfe5] to-[#4aa8cc]',
-        bgColor: 'bg-[#5bbfe5]',
-        primaryColor: BRAND_COLORS.hinatazaka.primary,
-        blogBaseUrl: 'https://www.hinatazaka46.com',
-        description: 'Hinatazaka46 Messages & Blogs',
-        logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
+        id: 'nogizaka46',
+        name: 'Nogizaka46',
+        displayName: '乃木坂46',
+        shortCode: 'NO',
+        color: 'from-[#7e2483] to-[#5a0b5e]',
+        bgColor: 'bg-[#7e2483]',
+        primaryColor: BRAND_COLORS.nogizaka.primary,
+        blogBaseUrl: 'https://www.nogizaka46.com',
+        description: 'Nogizaka46 Messages & Blogs',
+        logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
     },
     {
         id: 'sakurazaka46',
@@ -53,16 +53,16 @@ export const SERVICES: ServiceDefinition[] = [
         logoUrl: 'https://sakurazaka46.com/files/14/s46/img/about/about-logo.svg',
     },
     {
-        id: 'nogizaka46',
-        name: 'Nogizaka46',
-        displayName: '乃木坂46',
-        shortCode: 'NO',
-        color: 'from-[#7e2483] to-[#5a0b5e]',
-        bgColor: 'bg-[#7e2483]',
-        primaryColor: BRAND_COLORS.nogizaka.primary,
-        blogBaseUrl: 'https://www.nogizaka46.com',
-        description: 'Nogizaka46 Messages & Blogs',
-        logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
+        id: 'hinatazaka46',
+        name: 'Hinatazaka46',
+        displayName: '日向坂46',
+        shortCode: 'HI',
+        color: 'from-[#5bbfe5] to-[#4aa8cc]',
+        bgColor: 'bg-[#5bbfe5]',
+        primaryColor: BRAND_COLORS.hinatazaka.primary,
+        blogBaseUrl: 'https://www.hinatazaka46.com',
+        description: 'Hinatazaka46 Messages & Blogs',
+        logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
     },
     {
         id: 'yodel',
@@ -74,9 +74,30 @@ export const SERVICES: ServiceDefinition[] = [
         primaryColor: BRAND_COLORS.yodel.primary,
         blogBaseUrl: 'https://service.yodel-app.com',
         description: 'Yodel Talk & Messages',
-        logoUrl: 'https://service.yodel-app.com/assets/assets/icon/yodel_logo.svg',
+        logoUrl: 'https://service.yodel-app.com/icons/Icon-192.png',
     },
 ];
+
+/** Default service display order. Used as initial value for appStore.serviceOrder. */
+export const DEFAULT_SERVICE_ORDER: string[] = SERVICES.map((s) => s.id);
+
+/** Return SERVICES sorted by a custom order array. Unknown IDs sort to end. */
+export function getOrderedServiceDefs(order: string[]): ServiceDefinition[] {
+    return [...SERVICES].sort((a, b) => {
+        const ai = order.indexOf(a.id);
+        const bi = order.indexOf(b.id);
+        return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+    });
+}
+
+/** Sort any array by the global service order. `getId` extracts the service ID from each item. */
+export function sortByServiceOrder<T>(items: T[], order: string[], getId: (item: T) => string): T[] {
+    return [...items].sort((a, b) => {
+        const ai = order.indexOf(getId(a));
+        const bi = order.indexOf(getId(b));
+        return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+    });
+}
 
 export const SERVICES_BY_ID: Record<string, ServiceDefinition> = Object.fromEntries(
     SERVICES.map((s) => [s.id, s])
