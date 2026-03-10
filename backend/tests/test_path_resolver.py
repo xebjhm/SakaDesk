@@ -43,7 +43,7 @@ def test_get_output_dir_default():
     with patch('backend.services.platform.get_settings_path') as mock_path:
         mock_path.return_value = Path("/nonexistent/settings.json")
         result = get_output_dir()
-        assert result == Path("output")
+        assert result == Path.home() / "Documents" / "HakoDesk"
 
 
 def test_find_folder_by_id_base_path_not_exists(tmp_path):

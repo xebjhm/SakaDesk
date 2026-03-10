@@ -11,7 +11,7 @@ from backend.services.service_utils import get_service_display_name, validate_se
 
 def get_output_dir() -> Path:
     """Get configured output directory."""
-    from backend.services.platform import get_settings_path
+    from backend.services.platform import get_settings_path, get_default_output_dir
     import json
 
     settings_path = get_settings_path()
@@ -24,7 +24,7 @@ def get_output_dir() -> Path:
                     return Path(path_str)
         except Exception:
             pass
-    return Path("output")
+    return get_default_output_dir()
 
 
 def resolve_service_path(service: str) -> Path:

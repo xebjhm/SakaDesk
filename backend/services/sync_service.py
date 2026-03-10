@@ -14,7 +14,7 @@ from pyhako.config import (
 )
 from pyhako.credentials import get_token_manager
 from backend.api.progress import progress_manager
-from backend.services.platform import get_session_dir, is_test_mode
+from backend.services.platform import get_session_dir, is_test_mode, get_default_output_dir
 from backend.services.notification_service import notify_sync_complete
 from backend.services.service_utils import get_service_enum, get_service_display_name, validate_service
 import structlog
@@ -37,8 +37,8 @@ class SyncService:
     def __init__(self, service: str = "hinatazaka46"):
         validate_service(service)
         self._service = service
-        self.output_dir = Path("output")
-        self.service_data_dir = Path("output")  # Will be updated in start_sync
+        self.output_dir = get_default_output_dir()
+        self.service_data_dir = get_default_output_dir()  # Will be updated in start_sync
         self.config_dir = Path(".")
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
@@ -75,7 +75,7 @@ class SyncService:
         path_str = settings.get("output_dir")
         if path_str:
             return Path(path_str)
-        return Path("output")
+        return get_default_output_dir()
 
     async def load_metadata(self):
         """Load sync metadata for quick checks (per-service location)."""
@@ -120,7 +120,7 @@ class SyncService:
                 progress.error("Output folder not configured")
                 return
 
-            self.output_dir = Path(app_settings.get("output_dir", "output"))
+            self.output_dir = Path(app_settings.get("output_dir", str(get_default_output_dir())))
 
             # Per-service data directory for state files
             service_display = get_service_display_name(self._service)

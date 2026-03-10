@@ -25,7 +25,7 @@ import os
 import re
 from typing import Optional, List, Dict, Any
 
-from backend.services.platform import get_settings_path, is_test_mode
+from backend.services.platform import get_settings_path, is_test_mode, get_default_output_dir
 from backend.services.path_resolver import (
     resolve_service_path,
     resolve_talk_room_path,
@@ -38,7 +38,7 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 # Default fallback if settings not configured
-DEFAULT_OUTPUT_DIR = Path("output")
+DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
 # Group IDs that should be treated as group chat (multiple members posting),
 # keyed by service identifier to avoid cross-service collisions.

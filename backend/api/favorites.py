@@ -15,7 +15,7 @@ from typing import Optional
 
 from pyhako import Client
 from pyhako.credentials import get_token_manager
-from backend.services.platform import get_settings_path, get_session_dir, is_test_mode
+from backend.services.platform import get_settings_path, get_session_dir, is_test_mode, get_default_output_dir
 from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
@@ -41,7 +41,7 @@ def _get_output_dir() -> Path:
                     return Path(path_str)
         except Exception:
             pass
-    return Path("output")
+    return get_default_output_dir()
 
 
 def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
