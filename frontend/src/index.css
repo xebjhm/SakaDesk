@@ -30,6 +30,9 @@
   }
 
   body {
-    @apply antialiased text-gray-900 bg-gray-50;
+    @apply antialiased text-gray-900;
+    /* Must match pywebview background_color in desktop.py (#F0F2F5)
+       to prevent color mismatch at Windows 11 rounded corners */
+    background-color: #F0F2F5;
   }
 }
