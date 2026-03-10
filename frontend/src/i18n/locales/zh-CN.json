@@ -81,12 +81,21 @@
     "loginRequired": "需要登录",
     "sessionExpiredDesc": "您的 {{service}} 会话已过期。请重新登录以继续使用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 是高级功能，需要登录您的 {{service}} 账户。",
-    "credentialsSaved": "您的凭据已保存在本地设备上。",
+    "credentialsSaved": "您的凭据已安全存储在您的设备上。",
     "waitingForBrowser": "等待浏览器操作...",
     "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
     "browserPrompt": "请登录您的 {{service}} 消息账户。将为您打开浏览器窗口以输入凭据。",
-    "loginFailed": "登录失败或已取消"
+    "loginFailed": "登录失败或已取消",
+    "noServicesConnected": "未连接任何服务。请至少连接一个服务。"
+  },
+  "onboarding": {
+    "connectingService": "连接中 ({{current}}/{{total}})",
+    "connected": "已连接！",
+    "loginDesc": "点击下方按钮通过浏览器登录 {{service}}。",
+    "loginFailedDesc": "连接 {{service}} 失败。要再试一次吗？",
+    "skipForNow": "暂时跳过",
+    "retry": "重试"
   },
   "tos": {
     "title": "服务条款",
@@ -102,6 +111,7 @@
     "hinatazakaTos": "日向坂46 服务条款",
     "sakurazakaTos": "樱坂46 服务条款",
     "nogizakaTos": "乃木坂46 服务条款",
+    "yodelTos": "Yodel 服务条款",
     "acceptCheckbox": "我理解并接受这些条款，并且我已经阅读了我所使用的服务的官方服务条款。",
     "acceptAndContinue": "接受并继续"
   },
@@ -129,12 +139,15 @@
     "syncing": "同步中...",
     "lastSynced": "上次同步: {{time}}",
     "notSynced": "尚未同步",
-    "syncNow": "立即同步"
+    "syncNow": "立即同步",
+    "syncingService": "正在同步 {{service}} ({{current}}/{{total}})",
+    "blogs": "博客"
   },
   "about": {
     "title": "关于",
     "version": "版本 {{version}}",
-    "description": "用于查看您的 Message 存档的桌面伴侣。",
+    "identity": "坂道系列非官方工具",
+    "features": "Message • Blog • 备份",
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "下载按钮已启用 ✨",
@@ -295,7 +308,8 @@
     "blogCacheHint": "仅可搜索已缓存的博客。可在设置中缓存全部。",
     "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个博客）",
     "blogSearchLimited": "博客搜索仅涵盖已缓存的文章。",
-    "enableFullBackup": "启用完整备份"
+    "enableFullBackup": "启用完整备份",
+    "buildingHint": "搜索索引仍在生成中，结果可能不完整。"
   },
   "media": {
     "title": "媒体",

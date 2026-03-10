@@ -81,12 +81,21 @@
         "loginRequired": "需要登入",
         "sessionExpiredDesc": "你嘅 {{service}} Session 過咗期。請重新登入繼續用 {{feature}}。",
         "premiumFeatureDesc": "{{feature}} 係收費功能，需要登入你嘅 {{service}} 帳戶。",
-        "credentialsSaved": "你嘅登入資料已經儲存喺本機。",
+        "credentialsSaved": "你嘅登入資料已安全咁儲存喺你部機度。",
         "waitingForBrowser": "等待瀏覽器操作...",
         "launchBrowserLogin": "開瀏覽器登入",
         "connectAccount": "連接帳戶",
         "browserPrompt": "請登入你嘅 {{service}} 訊息帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
-        "loginFailed": "登入失敗或者取消咗"
+        "loginFailed": "登入失敗或者取消咗",
+        "noServicesConnected": "冇連接到任何服務。請最少連接一個服務。"
+    },
+    "onboarding": {
+        "connectingService": "連接緊 ({{current}}/{{total}})",
+        "connected": "連接咗！",
+        "loginDesc": "撳下面個掣用瀏覽器登入 {{service}}。",
+        "loginFailedDesc": "連接 {{service}} 失敗。想唔想再試？",
+        "skipForNow": "暫時略過",
+        "retry": "再試"
     },
     "tos": {
         "title": "服務條款",
@@ -102,6 +111,7 @@
         "hinatazakaTos": "日向坂46 服務條款",
         "sakurazakaTos": "櫻坂46 服務條款",
         "nogizakaTos": "乃木坂46 服務條款",
+        "yodelTos": "Yodel 服務條款",
         "acceptCheckbox": "我明白同接受呢啲條款，同埋我已經睇咗我用緊嘅服務嘅官方服務條款。",
         "acceptAndContinue": "接受並繼續"
     },
@@ -129,12 +139,15 @@
         "syncing": "同步中...",
         "lastSynced": "上次同步: {{time}}",
         "notSynced": "未同步",
-        "syncNow": "即刻同步"
+        "syncNow": "即刻同步",
+        "syncingService": "同步緊 {{service}} ({{current}}/{{total}})",
+        "blogs": "Blog"
     },
     "about": {
         "title": "關於",
         "version": "版本 {{version}}",
-        "description": "用嚟睇你 Message Archive 嘅桌面小幫手。",
+        "identity": "坂道系列非官方工具",
+        "features": "Message • Blog • 備份",
         "madeWith": "Made with",
         "by": "by",
         "goldenFingerEnabled": "下載掣啟用咗 ✨",
@@ -295,7 +308,8 @@
         "blogCacheHint": "淨係搵到已快取嘅網誌。可以喺設定度快取全部。",
         "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個網誌）",
         "blogSearchLimited": "網誌搜尋淨係包括已快取嘅文章。",
-        "enableFullBackup": "啟用完整備份"
+        "enableFullBackup": "啟用完整備份",
+        "buildingHint": "搜尋索引仲喺度建緊，結果可能唔完整。"
     },
     "media": {
         "title": "媒體",

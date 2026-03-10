@@ -81,12 +81,21 @@
     "loginRequired": "Login Required",
     "sessionExpiredDesc": "Your session for {{service}} has expired. Please re-login to continue using {{feature}}.",
     "premiumFeatureDesc": "{{feature}} is a premium feature that requires logging in with your {{service}} account.",
-    "credentialsSaved": "Your credentials are saved locally on your device.",
+    "credentialsSaved": "Your credentials are securely stored on your device.",
     "waitingForBrowser": "Waiting for browser...",
     "launchBrowserLogin": "Launch Browser Login",
     "connectAccount": "Connect Account",
     "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
-    "loginFailed": "Login failed or cancelled"
+    "loginFailed": "Login failed or cancelled",
+    "noServicesConnected": "No services were connected. Please connect at least one service."
+  },
+  "onboarding": {
+    "connectingService": "Connecting ({{current}}/{{total}})",
+    "connected": "Connected!",
+    "loginDesc": "Click the button below to log in to {{service}} via browser.",
+    "loginFailedDesc": "Failed to connect to {{service}}. Would you like to try again?",
+    "skipForNow": "Skip for now",
+    "retry": "Retry"
   },
   "tos": {
     "title": "Terms of Service",
@@ -102,6 +111,7 @@
     "hinatazakaTos": "Hinatazaka46 ToS",
     "sakurazakaTos": "Sakurazaka46 ToS",
     "nogizakaTos": "Nogizaka46 ToS",
+    "yodelTos": "Yodel ToS",
     "acceptCheckbox": "I understand and accept these terms, and I have read the official Terms of Service for the services I use.",
     "acceptAndContinue": "Accept and Continue"
   },
@@ -129,12 +139,15 @@
     "syncing": "Syncing...",
     "lastSynced": "Last synced {{time}}",
     "notSynced": "Not synced yet",
-    "syncNow": "Sync now"
+    "syncNow": "Sync now",
+    "syncingService": "Syncing {{service}} ({{current}}/{{total}})",
+    "blogs": "Blogs"
   },
   "about": {
     "title": "About",
     "version": "Version {{version}}",
-    "description": "A desktop companion for viewing your Message archives.",
+    "identity": "Unofficial Sakamichi Utility",
+    "features": "Message • Blog • Archive",
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "Download button enabled ✨",
@@ -295,7 +308,8 @@
     "blogCacheHint": "Only cached blogs are searchable. Cache all in Settings.",
     "resultCountWithBlogs": "{{count}} results ({{blogCount}} blogs)",
     "blogSearchLimited": "Blog search only covers cached posts.",
-    "enableFullBackup": "Enable full backup"
+    "enableFullBackup": "Enable full backup",
+    "buildingHint": "Search index is still being generated. Results may be incomplete."
   },
   "media": {
     "title": "Media",

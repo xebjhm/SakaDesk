@@ -1,6 +1,5 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import LanguageDetector from 'i18next-browser-languagedetector';
 
 // Import translation files
 import en from './locales/en.json';
@@ -20,6 +19,8 @@ export const SUPPORTED_LANGUAGES = {
 
 export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
 
+const STORAGE_KEY = 'hakodesk-language';
+
 // Resources object with all translations
 const resources = {
     en: { translation: en },
@@ -29,31 +30,58 @@ const resources = {
     yue: { translation: yue },
 };
 
-// Initialize i18next
+function findBrowserLanguageMatch(): string | undefined {
+    const navLang = navigator.language;
+    return Object.keys(SUPPORTED_LANGUAGES).find(
+        code => navLang === code || navLang.startsWith(code.split('-')[0])
+    );
+}
+
+// Resolve initial language synchronously from localStorage
+const savedLang = localStorage.getItem(STORAGE_KEY);
+const initialLng = (savedLang && savedLang in SUPPORTED_LANGUAGES) ? savedLang : 'en';
+
+// Initialize i18next — no LanguageDetector (it caches fallback 'en' to localStorage
+// before we can check the installer setting, blocking the settings fetch entirely).
 i18n
-    // Detect user language
-    .use(LanguageDetector)
-    // Pass the i18n instance to react-i18next
     .use(initReactI18next)
-    // Initialize i18next
     .init({
         resources,
+        lng: initialLng,
         fallbackLng: 'en',
-        debug: process.env.NODE_ENV === 'development', // Enable debug in development
+        debug: process.env.NODE_ENV === 'development',
 
         interpolation: {
-            escapeValue: false, // React already escapes by default
-        },
-
-        detection: {
-            // Order of language detection
-            order: ['localStorage', 'navigator', 'htmlTag'],
-            // Cache user language selection in localStorage
-            caches: ['localStorage'],
-            // Key to use in localStorage
-            lookupLocalStorage: 'hakodesk-language',
+            escapeValue: false,
         },
     });
+
+// On first launch (no localStorage language), check installer preference then browser language.
+// Priority: 1) localStorage (explicit user choice) → 2) installer setting → 3) browser language
+if (!savedLang) {
+    fetch('/api/settings')
+        .then(res => res.json())
+        .then(data => {
+            const installerLang = data?.language;
+            if (installerLang && installerLang in SUPPORTED_LANGUAGES) {
+                i18n.changeLanguage(installerLang);
+                localStorage.setItem(STORAGE_KEY, installerLang);
+            } else {
+                const match = findBrowserLanguageMatch();
+                if (match) {
+                    i18n.changeLanguage(match);
+                    localStorage.setItem(STORAGE_KEY, match);
+                }
+            }
+        })
+        .catch(() => {
+            const match = findBrowserLanguageMatch();
+            if (match) {
+                i18n.changeLanguage(match);
+                localStorage.setItem(STORAGE_KEY, match);
+            }
+        });
+}
 
 export default i18n;
 
