@@ -35,6 +35,7 @@ export interface SearchResponse {
   total_count: number;
   results: SearchResult[];
   has_more: boolean;
+  is_building?: boolean;
 }
 
 export interface FilterChip {
@@ -51,6 +52,7 @@ export interface MemberEntry {
   group_id: number;
   group_name: string;
   member_id: number;
+  member_ids?: number[];
   member_name: string;
   message_count: number;
 }
