@@ -45,6 +45,21 @@ Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 Name: "chinesesimplified"; MessagesFile: "languages\ChineseSimplified.isl"
 Name: "chinesetraditional"; MessagesFile: "languages\ChineseTraditional.isl"
 
+[CustomMessages]
+; Uninstall cleanup dialog
+english.UninstallCleanupPrompt=Would you like to remove your settings, search index, and saved credentials?
+japanese.UninstallCleanupPrompt=設定、検索インデックス、保存された認証情報を削除しますか？
+chinesesimplified.UninstallCleanupPrompt=是否要删除设置、搜索索引和已保存的凭据？
+chinesetraditional.UninstallCleanupPrompt=是否要刪除設定、搜尋索引和已儲存的憑證？
+english.UninstallCleanupFailed=Failed to delete application data. You may need to remove it manually at:
+japanese.UninstallCleanupFailed=アプリケーションデータの削除に失敗しました。手動で削除する必要がある場合があります：
+chinesesimplified.UninstallCleanupFailed=无法删除应用程序数据。您可能需要手动删除：
+chinesetraditional.UninstallCleanupFailed=無法刪除應用程式資料。您可能需要手動刪除：
+english.UninstallDataRemains=Your synced messages and blog data were not removed. You can find them at:%n%n%1
+japanese.UninstallDataRemains=同期済みのメッセージとブログデータは削除されていません。以下のフォルダに残っています：%n%n%1
+chinesesimplified.UninstallDataRemains=已同步的消息和博客数据未被删除，仍保存在以下位置：%n%n%1
+chinesetraditional.UninstallDataRemains=已同步的訊息和部落格資料未被刪除，仍保存在以下位置：%n%n%1
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
@@ -100,15 +115,50 @@ begin
   Exec('cmdkey.exe', '/delete:' + Target, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+// Read output_dir from settings.json (simple substring extraction, no JSON parser)
+function ReadOutputDir(SettingsFile: String): String;
+var
+  Content: AnsiString;
+  P, Q: Integer;
+begin
+  Result := '';
+  if not FileExists(SettingsFile) then Exit;
+  if not LoadStringFromFile(SettingsFile, Content) then Exit;
+  P := Pos('"output_dir"', Content);
+  if P = 0 then Exit;
+  // Find the colon after the key, then the opening quote of the value
+  P := Pos(':', Copy(Content, P, Length(Content)));
+  if P = 0 then Exit;
+  P := Pos('"', Copy(Content, P + Pos(':', Copy(Content, Pos('"output_dir"', Content), Length(Content))), Length(Content)));
+  // Simpler approach: find "output_dir" then extract between next pair of quotes after colon
+  Result := '';
+  Content := Copy(Content, Pos('"output_dir"', Content) + Length('"output_dir"'), Length(Content));
+  // Skip to colon
+  P := Pos(':', Content);
+  if P = 0 then Exit;
+  Content := Copy(Content, P + 1, Length(Content));
+  // Skip to opening quote
+  P := Pos('"', Content);
+  if P = 0 then Exit;
+  Content := Copy(Content, P + 1, Length(Content));
+  // Read until closing quote
+  Q := Pos('"', Content);
+  if Q = 0 then Exit;
+  Result := Copy(Content, 1, Q - 1);
+  // Unescape backslashes (JSON uses \\ for \)
+  StringChangeEx(Result, '\\', '\', True);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
   PyHakoDir: String;
+  OutputDir: String;
+  SettingsFile: String;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    if MsgBox('Would you like to completely remove your personal data and configuration files?' + #13#10 + #13#10 +
-              'This includes cached messages, settings, and saved credentials.',
+    if MsgBox(CustomMessage('UninstallCleanupPrompt'),
               mbConfirmation, MB_YESNO) = IDYES then
     begin
       // 1. Delete ALL credentials from Windows Credential Manager
@@ -133,15 +183,18 @@ begin
       DeleteCredential('hakodesk');
       Log('Removed all credentials from Windows Credential Manager.');
 
+      // 2. Read output_dir from settings.json BEFORE deleting app data
+      DataDir := ExpandConstant('{localappdata}\HakoDesk');
+      if not DirExists(DataDir) then
+        DataDir := ExpandConstant('{localappdata}\hakodesk');
+      SettingsFile := DataDir + '\settings.json';
+      OutputDir := ReadOutputDir(SettingsFile);
+
       // 3. Delete HakoDesk app data directory
       //    Contains: settings.json, search_index.db, logs/, webview/
       //    desktop.py releases SQLite + log handles on window close, but
       //    allow extra time for the process to fully exit after CloseApplications.
       Sleep(2000);
-      DataDir := ExpandConstant('{localappdata}\HakoDesk');
-      // Also try legacy lowercase name from older versions
-      if not DirExists(DataDir) then
-        DataDir := ExpandConstant('{localappdata}\hakodesk');
       if DirExists(DataDir) then
       begin
         if not DelTree(DataDir, True, True, True) then
@@ -149,7 +202,7 @@ begin
           // Retry after another delay — Windows may still hold handles briefly
           Sleep(3000);
           if not DelTree(DataDir, True, True, True) then
-            MsgBox('Failed to delete application data. You may need to remove it manually at: ' + DataDir, mbError, MB_OK)
+            MsgBox(CustomMessage('UninstallCleanupFailed') + ' ' + DataDir, mbError, MB_OK)
           else
             Log('HakoDesk app data deleted (retry): ' + DataDir);
         end
@@ -168,6 +221,11 @@ begin
         else
           Log('Failed to delete PyHako auth data at: ' + PyHakoDir);
       end;
+
+      // 5. Notify user about remaining synced data
+      if (OutputDir <> '') and DirExists(OutputDir) then
+        MsgBox(FmtMessage(CustomMessage('UninstallDataRemains'), [OutputDir]),
+               mbInformation, MB_OK);
     end;
   end;
 end;
