@@ -81,12 +81,21 @@
     "loginRequired": "ログインが必要です",
     "sessionExpiredDesc": "{{service}}のセッション有効期限が切れました。{{feature}}を利用するには再ログインしてください。",
     "premiumFeatureDesc": "{{feature}}はプレミアム機能です。利用するには{{service}}アカウントでログインしてください。",
-    "credentialsSaved": "認証情報はローカルに保存されました。",
+    "credentialsSaved": "認証情報はお使いのデバイスに安全に保存されます。",
     "waitingForBrowser": "ブラウザを操作してください...",
     "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
     "browserPrompt": "{{service}}のアカウントにログインしてください。ブラウザウィンドウが開きます。",
-    "loginFailed": "ログインに失敗したかキャンセルされました"
+    "loginFailed": "ログインに失敗したかキャンセルされました",
+    "noServicesConnected": "サービスに接続できませんでした。少なくとも1つのサービスに接続してください。"
+  },
+  "onboarding": {
+    "connectingService": "接続中 ({{current}}/{{total}})",
+    "connected": "接続完了！",
+    "loginDesc": "下のボタンをクリックして、ブラウザで{{service}}にログインしてください。",
+    "loginFailedDesc": "{{service}}への接続に失敗しました。もう一度試しますか？",
+    "skipForNow": "今はスキップ",
+    "retry": "再試行"
   },
   "tos": {
     "title": "利用規約",
@@ -102,6 +111,7 @@
     "hinatazakaTos": "日向坂46 利用規約",
     "sakurazakaTos": "櫻坂46 利用規約",
     "nogizakaTos": "乃木坂46 利用規約",
+    "yodelTos": "Yodel 利用規約",
     "acceptCheckbox": "上記および利用中の公式サービスの利用規約を理解し、同意します。",
     "acceptAndContinue": "同意して開始する"
   },
@@ -129,12 +139,15 @@
     "syncing": "同期中...",
     "lastSynced": "最終同期: {{time}}",
     "notSynced": "未同期",
-    "syncNow": "今すぐ同期"
+    "syncNow": "今すぐ同期",
+    "syncingService": "{{service}} を同期中 ({{current}}/{{total}})",
+    "blogs": "ブログ"
   },
   "about": {
     "title": "アプリについて",
     "version": "バージョン {{version}}",
-    "description": "坂道グループ公式メッセージアプリのデスクトップコンパニオン",
+    "identity": "坂道シリーズ非公式ツール",
+    "features": "メッセージ • ブログ • アーカイブ",
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "ダウンロードボタン有効 ✨",
@@ -295,7 +308,8 @@
     "blogCacheHint": "キャッシュ済みのブログのみ検索可能です。設定で全てキャッシュできます。",
     "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
     "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
-    "enableFullBackup": "フルバックアップを有効にする"
+    "enableFullBackup": "フルバックアップを有効にする",
+    "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"
   },
   "media": {
     "title": "メディア",
