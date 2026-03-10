@@ -22,81 +22,6 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-def migrate_legacy_state(output_dir: Path, service: str) -> bool:
-    """Migrate shared state files to per-service location.
-
-    Returns True if migration was performed, False if already migrated or nothing to migrate.
-    """
-    service_display = get_service_display_name(service)
-    service_dir = output_dir / service_display
-
-    # Skip if already migrated (per-service state file exists)
-    if (service_dir / "sync_state.json").exists():
-        return False
-
-    legacy_state = output_dir / "sync_state.json"
-    legacy_meta = output_dir / "sync_metadata.json"
-
-    if not legacy_state.exists() and not legacy_meta.exists():
-        return False  # Fresh install, nothing to migrate
-
-    # Find group_ids belonging to this service by checking existing directories
-    messages_dir = service_dir / "messages"
-    if not messages_dir.exists():
-        return False
-
-    existing_groups: set[int] = set()
-    for d in messages_dir.iterdir():
-        if d.is_dir():
-            try:
-                # Directory names like "87 MemberName" - extract group_id
-                group_id = int(d.name.split()[0])
-                existing_groups.add(group_id)
-            except (ValueError, IndexError):
-                pass
-
-    if not existing_groups:
-        return False  # No data for this service
-
-    logger.info(f"Migrating legacy state for {service}", groups=list(existing_groups))
-
-    # Filter and write sync_state.json
-    if legacy_state.exists():
-        with open(legacy_state, encoding='utf-8') as f:
-            all_state = json.load(f)
-        service_state = {
-            k: v for k, v in all_state.items()
-            if int(k.split("_")[0]) in existing_groups
-        }
-        if service_state:
-            service_dir.mkdir(parents=True, exist_ok=True)
-            with open(service_dir / "sync_state.json", 'w', encoding='utf-8') as f:
-                json.dump(service_state, f, indent=2)
-            logger.info(f"Migrated sync_state.json for {service}", entries=len(service_state))
-
-    # Filter and write sync_metadata.json
-    if legacy_meta.exists():
-        with open(legacy_meta, encoding='utf-8') as f:
-            all_meta = json.load(f)
-
-        groups_data = all_meta.get("groups", {})
-        service_groups = {
-            k: v for k, v in groups_data.items()
-            if v.get("group_id") in existing_groups
-        }
-
-        if service_groups:
-            service_meta = {
-                "groups": service_groups,
-                "last_sync": all_meta.get("last_sync")
-            }
-            service_dir.mkdir(parents=True, exist_ok=True)
-            with open(service_dir / "sync_metadata.json", 'w', encoding='utf-8') as f:
-                json.dump(service_meta, f, ensure_ascii=False, indent=2)
-            logger.info(f"Migrated sync_metadata.json for {service}", entries=len(service_groups))
-
-    return True
-
 # Default to only sync latest messages on initial sync
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
@@ -202,13 +127,6 @@ class SyncService:
             self.service_data_dir = self.output_dir / service_display
             self.metadata_file = self.service_data_dir / "sync_metadata.json"
 
-            # Migrate legacy shared state files to per-service location
-            try:
-                if migrate_legacy_state(self.output_dir, self._service):
-                    logger.info(f"Legacy state migrated for {self._service}")
-            except Exception as e:
-                logger.warning(f"Migration failed (non-fatal): {e}")
-
             # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
             if force_resync:
                 logger.info("Force Resync requested. Clearing state...")
@@ -257,22 +175,34 @@ class SyncService:
                 # This reduces API calls and makes usage less detectable
                 try:
                     await client.refresh_if_needed(session, min_seconds_remaining=300)
-                except SessionExpiredError:
-                    # Session invalidated server-side (e.g., logged in elsewhere)
-                    logger.warning("Session expired - user needs to re-login")
-                    tm = get_token_manager()
-                    tm.delete_session(self._service)
-                    logger.info(f"Cleared invalid session for {self._service}")
-                    progress.error("Authentication session has expired. Please log in again to continue using the service.")
-                    raise  # Re-raise so API endpoint can return proper error
-                except RefreshFailedError:
-                    # All refresh attempts failed unexpectedly - potential bug
-                    logger.error("All token refresh plans failed - possible bug")
-                    tm = get_token_manager()
-                    tm.delete_session(self._service)
-                    logger.info(f"Cleared failed session for {self._service}")
-                    progress.error("Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.")
-                    raise  # Re-raise so API endpoint can return proper error
+                except (SessionExpiredError, RefreshFailedError) as refresh_err:
+                    # Token refresh mechanism failed - but the token itself might
+                    # still be valid (e.g., fresh token where JWT parsing failed
+                    # or cookies don't work for the refresh endpoint).
+                    # Verify with a real API call before giving up.
+                    logger.warning(
+                        "Token refresh failed - verifying token validity",
+                        error_type=type(refresh_err).__name__,
+                        error=str(refresh_err),
+                    )
+                    try:
+                        test_groups = await client.get_groups(session, include_inactive=False)
+                        if test_groups is not None:
+                            logger.info(
+                                "Token is still valid despite refresh failure - continuing sync",
+                                groups_found=len(test_groups),
+                            )
+                        else:
+                            # get_groups returned None - token is invalid
+                            logger.error("Token verification failed - session is truly expired")
+                            tm = get_token_manager()
+                            tm.delete_session(self._service)
+                            raise SessionExpiredError("Session expired") from refresh_err
+                    except SessionExpiredError:
+                        logger.error("Token verification confirmed session is expired")
+                        tm = get_token_manager()
+                        tm.delete_session(self._service)
+                        raise
 
                 # Save refreshed tokens if they changed (CLI pattern)
                 if client.access_token != token:
@@ -482,17 +412,12 @@ class SyncService:
                 # Mode depends on global setting: blogs_full_backup
                 # - False (default): Sync metadata only, content fetched on-demand
                 # - True: Full backup - download all content + images for offline reading
-                # Read global blog backup setting (preferred) with fallback to per-service (legacy)
                 blogs_full_backup = app_settings.get("blogs_full_backup", False)
-                if not blogs_full_backup:
-                    # Legacy fallback: check per-service setting
-                    service_settings = app_settings.get("services", {}).get(self._service, {})
-                    blogs_full_backup = service_settings.get("blogs_full_backup", False)
 
                 if blogs_full_backup:
-                    progress.start_phase("blogs", "Backing up blogs (full)", 5, 0, "")
+                    progress.start_phase("blogs", "Backing up blogs (full)", 4, 0, "")
                 else:
-                    progress.start_phase("blogs", "Syncing blog metadata", 5, 0, "")
+                    progress.start_phase("blogs", "Syncing blog metadata", 4, 0, "")
 
                 try:
                     from backend.services.blog_service import BlogService

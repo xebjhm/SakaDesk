@@ -64,6 +64,7 @@ class SettingsResponse(BaseModel):
     user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
     notifications_enabled: bool = True  # Desktop notifications for new messages
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
+    language: Optional[str] = None  # UI language set by installer or user
 
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
@@ -104,6 +105,7 @@ async def get_settings():
         user_nickname=config.get("user_nickname"),
         notifications_enabled=notifications_enabled,
         blogs_full_backup=config.get("blogs_full_backup", False),
+        language=config.get("language"),
     )
 
 @router.post("", response_model=SettingsResponse)
@@ -136,6 +138,7 @@ async def update_settings(update: SettingsUpdate):
         user_nickname=config.get("user_nickname"),
         notifications_enabled=config.get("notifications_enabled", True),
         blogs_full_backup=config.get("blogs_full_backup", False),
+        language=config.get("language"),
     )
 
 @router.get("/fresh", response_model=FreshCheckResponse)
