@@ -172,102 +172,8 @@ class SearchService:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path))
             self._conn.execute("PRAGMA journal_mode=WAL")
-            self._migrate_blog_unique_constraint(self._conn)
-            self._migrate_messages_unique_constraint(self._conn)
             self._conn.executescript(_SCHEMA_SQL)
         return self._conn
-
-    @staticmethod
-    def _migrate_blog_unique_constraint(conn: sqlite3.Connection) -> None:
-        """Migrate search_blogs from UNIQUE(blog_id) to UNIQUE(blog_id, service).
-
-        Blog IDs are shared across services, so the old constraint caused
-        INSERT OR REPLACE to overwrite cross-service entries on every sync.
-        """
-        row = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='search_blogs'"
-        ).fetchone()
-        if row is None:
-            return  # Table doesn't exist yet; _SCHEMA_SQL will create it
-        if "UNIQUE(blog_id, service)" in row[0].replace(" ", ""):
-            return  # Already migrated
-
-        logger.info("Migrating search_blogs: UNIQUE(blog_id) -> UNIQUE(blog_id, service)")
-        conn.executescript("""
-            DROP TRIGGER IF EXISTS search_blogs_ai;
-            DROP TRIGGER IF EXISTS search_blogs_ad;
-            DROP TRIGGER IF EXISTS search_blogs_au;
-            DROP TABLE IF EXISTS search_blogs_fts;
-            ALTER TABLE search_blogs RENAME TO _search_blogs_old;
-            CREATE TABLE search_blogs (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                blog_id TEXT NOT NULL,
-                service TEXT NOT NULL,
-                member_id INTEGER NOT NULL,
-                member_name TEXT NOT NULL,
-                title TEXT,
-                title_normalized TEXT,
-                published_at TEXT,
-                blog_url TEXT,
-                content TEXT,
-                content_normalized TEXT,
-                UNIQUE(blog_id, service)
-            );
-            INSERT INTO search_blogs
-                (blog_id, service, member_id, member_name, title, title_normalized,
-                 published_at, blog_url, content, content_normalized)
-            SELECT blog_id, service, member_id, member_name, title, title_normalized,
-                   published_at, blog_url, content, content_normalized
-            FROM _search_blogs_old;
-            DROP TABLE _search_blogs_old;
-        """)
-
-    @staticmethod
-    def _migrate_messages_unique_constraint(conn: sqlite3.Connection) -> None:
-        """Migrate search_messages from UNIQUE(message_id) to UNIQUE(message_id, service).
-
-        Defensive change: message IDs don't currently overlap across services,
-        but this prevents silent data loss if the upstream API ever reuses IDs.
-        """
-        row = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='search_messages'"
-        ).fetchone()
-        if row is None:
-            return
-        sql_no_spaces = row[0].replace(" ", "")
-        if "UNIQUE(message_id,service)" in sql_no_spaces:
-            return  # Already migrated
-        if "UNIQUE(message_id)" not in sql_no_spaces:
-            return  # Unexpected schema, skip
-
-        logger.info("Migrating search_messages: UNIQUE(message_id) -> UNIQUE(message_id, service)")
-        conn.executescript("""
-            DROP TRIGGER IF EXISTS search_ai;
-            DROP TRIGGER IF EXISTS search_ad;
-            DROP TRIGGER IF EXISTS search_au;
-            DROP TABLE IF EXISTS search_fts;
-            ALTER TABLE search_messages RENAME TO _search_messages_old;
-            CREATE TABLE search_messages (
-                rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER NOT NULL,
-                service TEXT NOT NULL,
-                group_id INTEGER NOT NULL,
-                group_name TEXT NOT NULL,
-                member_id INTEGER NOT NULL,
-                member_name TEXT NOT NULL,
-                timestamp TEXT,
-                content TEXT,
-                content_normalized TEXT,
-                UNIQUE(message_id, service)
-            );
-            INSERT INTO search_messages
-                (message_id, service, group_id, group_name, member_id, member_name,
-                 timestamp, content, content_normalized)
-            SELECT message_id, service, group_id, group_name, member_id, member_name,
-                   timestamp, content, content_normalized
-            FROM _search_messages_old;
-            DROP TABLE _search_messages_old;
-        """)
 
     # ------------------------------------------------------------------
     # Kakasi lazy init
@@ -1070,12 +976,15 @@ class SearchService:
             if all_revealed:
                 placeholders = ",".join("?" for _ in all_revealed)
                 filter_clauses.append(
-                    f"(m.message_id <= COALESCE(rs.last_read_id, 0) "
+                    f"(rs.last_read_id IS NULL "
+                    f"OR m.message_id <= rs.last_read_id "
                     f"OR m.message_id IN ({placeholders}))"
                 )
                 filter_params.extend(list(all_revealed))
             else:
-                filter_clauses.append("m.message_id <= COALESCE(rs.last_read_id, 0)")
+                filter_clauses.append(
+                    "(rs.last_read_id IS NULL OR m.message_id <= rs.last_read_id)"
+                )
 
         filter_sql = ""
         if filter_clauses:
@@ -1323,9 +1232,16 @@ class SearchService:
             combined_lightweight: list[Tuple[int, str, str, Any]] = []
             for r in all_msg_rows:
                 ts = r[8] or ""  # timestamp column
-                # match_type column is at index 9 in the SQL result
-                # 0=exact, 1=reading from SQL
-                mt = r[9] if len(r) > 9 else 0
+                # Compute match_type from content (SQL column is unreliable —
+                # some sub-queries assign 0 for both exact and reading matches).
+                content = r[1] or ""
+                lower_content = content.lower()
+                if exact_only:
+                    mt = 0
+                elif is_multi_word:
+                    mt = 0 if all(w.lower() in lower_content for w in words) else 1
+                else:
+                    mt = 0 if first_term.lower() in lower_content else 1
                 combined_lightweight.append((mt, ts, "message", r))
             for b in raw_blog_results:
                 ts = b.get("published_at", "") or ""
@@ -1761,6 +1677,21 @@ class SearchService:
             conn.commit()
             count += len(batch)
 
+        # Mark index as usable if this is the first indexing pass.
+        # Without this, _needs_build() keeps returning True (it checks
+        # for 'last_full_build') and the first search would trigger a
+        # redundant full rebuild.
+        row = conn.execute(
+            "SELECT value FROM search_meta WHERE key = 'last_full_build'"
+        ).fetchone()
+        if row is None:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+                ("last_full_build", now),
+            )
+            conn.commit()
+
         logger.info("Incremental index update", service=service, new_messages=count)
         return count
 
@@ -2009,15 +1940,17 @@ class SearchService:
         """Get all indexed members and services for the filter autocomplete."""
         conn = self._get_conn()
 
-        # Members
+        # Members — consolidate by (service, member_name) since the same person
+        # can have different member_ids in messages vs blogs.
         member_rows = conn.execute(
-            "SELECT service, group_id, group_name, member_id, member_name, COUNT(*) as message_count "
+            "SELECT service, MAX(group_id) as group_id, member_name as group_name, "
+            "GROUP_CONCAT(DISTINCT member_id) as member_ids, member_name, COUNT(*) as message_count "
             "FROM ("
             "  SELECT service, group_id, group_name, member_id, member_name FROM search_messages "
             "  UNION ALL "
             "  SELECT service, 0 as group_id, member_name as group_name, member_id, member_name FROM search_blogs"
             ") "
-            "GROUP BY service, member_id "
+            "GROUP BY service, member_name "
             "ORDER BY service, member_name"
         ).fetchall()
 
@@ -2026,20 +1959,22 @@ class SearchService:
                 "service": r[0],
                 "group_id": r[1],
                 "group_name": r[2],
-                "member_id": r[3],
+                "member_id": int(r[3].split(",")[0]),
+                "member_ids": [int(x) for x in r[3].split(",")],
                 "member_name": r[4],
                 "message_count": r[5],
             }
             for r in member_rows
         ]
 
-        # Services
+        # Services — count unique members by name (not by ID, since same person
+        # can have different IDs in messages vs blogs).
         service_rows = conn.execute(
-            "SELECT service, COUNT(DISTINCT member_id) as member_count, COUNT(*) as message_count "
+            "SELECT service, COUNT(DISTINCT member_name) as member_count, COUNT(*) as message_count "
             "FROM ("
-            "  SELECT service, member_id FROM search_messages "
+            "  SELECT service, member_name FROM search_messages "
             "  UNION ALL "
-            "  SELECT service, member_id FROM search_blogs"
+            "  SELECT service, member_name FROM search_blogs"
             ") "
             "GROUP BY service "
             "ORDER BY service"
@@ -2119,8 +2054,19 @@ class SearchService:
         date_to: Optional[str] = None,
         content_type: str = "all",
     ) -> Dict[str, Any]:
+        # If index doesn't exist yet, start building in the background
+        # instead of blocking the search response (which causes infinite spinner).
         if self._needs_build():
-            await self.build_full_index()
+            if not self._building:
+                asyncio.create_task(self.build_full_index())
+            return {
+                "query": query,
+                "normalized_query": "",
+                "total_count": 0,
+                "results": [],
+                "has_more": False,
+                "is_building": True,
+            }
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             self._executor,
@@ -2201,3 +2147,20 @@ def get_search_service() -> SearchService:
         db_path = get_app_data_dir() / "search_index.db"
         _search_service = SearchService(db_path)
     return _search_service
+
+
+def shutdown_search_service() -> None:
+    """Close DB connection and executor. Called on app shutdown."""
+    global _search_service
+    if _search_service is not None:
+        try:
+            _search_service._executor.shutdown(wait=False)
+        except Exception:
+            pass
+        try:
+            if _search_service._conn is not None:
+                _search_service._conn.close()
+                _search_service._conn = None
+        except Exception:
+            pass
+        _search_service = None
