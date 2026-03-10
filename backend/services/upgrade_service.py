@@ -22,7 +22,15 @@ logger = structlog.get_logger(__name__)
 
 # GitHub release asset pattern
 GITHUB_REPO = "xtorker/HakoDesk"
-INSTALLER_NAME = "hakodesk-setup.exe"
+
+
+def _installer_asset_name(version: str) -> str:
+    """Build expected installer filename for a given version.
+
+    Matches Inno Setup OutputBaseFilename: HakoDesk-{version}-Setup
+    """
+    bare = version.lstrip("v")
+    return f"HakoDesk-{bare}-Setup.exe"
 
 
 async def get_installer_download_url(version: str) -> Optional[str]:
@@ -35,11 +43,12 @@ async def get_installer_download_url(version: str) -> Optional[str]:
     Returns:
         Download URL for the installer, or None if not found
     """
-    # Ensure version has 'v' prefix for GitHub tag
-    if not version.startswith("v"):
-        version = f"v{version}"
+    expected_name = _installer_asset_name(version)
 
-    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{version}"
+    # Ensure version has 'v' prefix for GitHub tag
+    tag = version if version.startswith("v") else f"v{version}"
+
+    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/{tag}"
 
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -58,12 +67,13 @@ async def get_installer_download_url(version: str) -> Optional[str]:
             data = response.json()
             assets = data.get("assets", [])
 
-            # Find the installer asset
+            # Find the installer asset (case-insensitive for robustness)
             for asset in assets:
-                if asset.get("name") == INSTALLER_NAME:
+                name = asset.get("name", "")
+                if name == expected_name or name.lower() == expected_name.lower():
                     return cast(Optional[str], asset.get("browser_download_url"))
 
-            logger.error(f"Installer asset '{INSTALLER_NAME}' not found in release")
+            logger.error(f"Installer asset '{expected_name}' not found in release")
             return None
 
     except Exception as e:
@@ -86,7 +96,9 @@ async def download_installer(url: str, progress_callback=None) -> Optional[Path]
     upgrade_dir = cast(Path, get_app_data_dir() / "upgrade")
     upgrade_dir.mkdir(parents=True, exist_ok=True)
 
-    installer_path = upgrade_dir / INSTALLER_NAME
+    # Use filename from URL (e.g., HakoDesk-0.2.0-Setup.exe)
+    filename = url.rsplit("/", 1)[-1] if "/" in url else "HakoDesk-Setup.exe"
+    installer_path = upgrade_dir / filename
 
     try:
         async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:

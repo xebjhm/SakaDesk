@@ -33,9 +33,6 @@ GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 # Cache settings - check at most once per hour
 CACHE_DURATION = timedelta(hours=1)
 
-# DEV MODE: Set to True to simulate an update being available
-DEV_FAKE_UPDATE = False
-
 # In-memory cache
 _cache: dict = {
     "last_check": None,
@@ -141,19 +138,6 @@ async def _fetch_latest_release() -> dict:
 @router.get("", response_model=VersionInfo)
 async def check_version():
     """Check for updates from GitHub releases."""
-    # DEV MODE: Return fake update for UI testing
-    if DEV_FAKE_UPDATE:
-        return VersionInfo(
-            current_version=APP_VERSION,
-            latest_version="0.2.0",
-            update_available=True,
-            release_url="https://github.com/xtorker/HakoDesk/releases/tag/v0.2.0",
-            release_notes="This is a fake update for testing the UI flow.\n\n- New feature 1\n- Bug fix 2\n- Improvement 3",
-            last_checked=datetime.now(timezone.utc).isoformat(),
-            error=None,
-            upgrade_supported=is_upgrade_supported(),
-        )
-
     cache = await _fetch_latest_release()
 
     update_available = False

@@ -56,7 +56,6 @@ class ServiceSyncInfo(BaseModel):
 
 
 class SyncState(BaseModel):
-    last_sync: Optional[str] = None  # Legacy: most recent across all services
     last_error: Optional[str] = None
     disk_usage_mb: float = 0.0
     file_count: int = 0
@@ -205,18 +204,31 @@ async def get_diagnostics():
         pass  # TokenManager may fail on some systems
 
     # Config State (Safe subset)
+    # Use same defaults as the settings API (SettingsResponse) to avoid
+    # dual-source-of-truth bugs where diagnostics shows different values.
     config_state = {}
     output_dir = None
     try:
         if get_settings_path().exists():
             with open(get_settings_path(), 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                config_state['is_configured'] = data.get('is_configured')
+                config_state['is_configured'] = data.get('is_configured', False)
                 config_state['output_dir_configured'] = 'output_dir' in data
-                config_state['auto_sync'] = data.get('auto_sync_enabled')
-                config_state['sync_interval'] = data.get('sync_interval_minutes')
-                config_state['adaptive_sync'] = data.get('adaptive_sync_enabled')
+                config_state['auto_sync'] = data.get('auto_sync_enabled', True)
+                config_state['sync_interval'] = data.get('sync_interval_minutes', 1)
+                config_state['adaptive_sync'] = data.get('adaptive_sync_enabled', True)
+                config_state['notifications'] = data.get('notifications_enabled', True)
+                config_state['blogs_full_backup'] = data.get('blogs_full_backup', False)
                 output_dir = data.get('output_dir')
+        else:
+            # No settings file yet — show all defaults
+            config_state['is_configured'] = False
+            config_state['output_dir_configured'] = False
+            config_state['auto_sync'] = True
+            config_state['sync_interval'] = 1
+            config_state['adaptive_sync'] = True
+            config_state['notifications'] = True
+            config_state['blogs_full_backup'] = False
     except Exception as e:
         config_state['error'] = str(e)
 
@@ -224,9 +236,6 @@ async def get_diagnostics():
     sync_state = SyncState()
     try:
         if output_dir:
-            # Check for per-service sync metadata files
-            # Find the most recent last_sync across all services
-            latest_sync = None
             last_error = None
             output_path = Path(output_dir)
             services_info: list[ServiceSyncInfo] = []
@@ -257,10 +266,6 @@ async def get_diagnostics():
                             metadata = json.load(f)
                             utc_sync = metadata.get('last_sync')
                             if utc_sync:
-                                # Track latest for legacy field
-                                if latest_sync is None or utc_sync > latest_sync:
-                                    latest_sync = utc_sync
-                                # Format for this service
                                 try:
                                     utc_dt = datetime.fromisoformat(utc_sync.replace('Z', '+00:00'))
                                     local_dt = utc_dt.astimezone()
@@ -287,18 +292,6 @@ async def get_diagnostics():
             # Sort by display name
             services_info.sort(key=lambda s: s.display_name)
             sync_state.services = services_info
-
-            if latest_sync:
-                try:
-                    # Parse ISO format with Z suffix (UTC)
-                    utc_dt = datetime.fromisoformat(latest_sync.replace('Z', '+00:00'))
-                    # Convert to local time
-                    local_dt = utc_dt.astimezone()
-                    # Format as human-readable local time
-                    sync_state.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S %Z')
-                except Exception:
-                    # Fallback: show as-is if parsing fails
-                    sync_state.last_sync = latest_sync
             sync_state.last_error = last_error
 
             # Get disk usage stats
