@@ -156,21 +156,19 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
         selectedServices.forEach(service => loadServiceSettings(service));
     }, [selectedServices, loadServiceSettings]);
 
-    // Load settings on auth
+    // Load app-level settings on mount (not auth-gated — output dir, is_configured are app-level)
     useEffect(() => {
-        if (isAuthenticated) {
-            fetch('/api/settings')
-                .then(res => res.json())
-                .then(data => {
-                    setAppSettings(data);
-                    setOutputDirInput(data.output_dir);
-                    if (!data.is_configured) {
-                        setShowSetupWizard(true);
-                    }
-                })
-                .catch(console.error);
-        }
-    }, [isAuthenticated]);
+        fetch('/api/settings')
+            .then(res => res.json())
+            .then(data => {
+                setAppSettings(data);
+                setOutputDirInput(data.output_dir);
+                if (!data.is_configured) {
+                    setShowSetupWizard(true);
+                }
+            })
+            .catch(console.error);
+    }, []);
 
     // Load settings for all connected services
     useEffect(() => {
@@ -190,11 +188,9 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
                     if (profileData.nickname) {
                         setAppSettings(prev => {
                             if (!prev) return prev;
-                            const newNicknames = { ...(prev.user_nicknames || {}), [activeService]: profileData.nickname };
                             return {
                                 ...prev,
-                                user_nickname: profileData.nickname,  // Legacy: keep for compatibility
-                                user_nicknames: newNicknames,
+                                user_nicknames: { ...(prev.user_nicknames || {}), [activeService]: profileData.nickname },
                             };
                         });
                     }

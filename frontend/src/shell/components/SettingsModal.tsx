@@ -71,6 +71,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
+        localStorage.setItem('hakodesk-language', lang);
     };
 
     return (

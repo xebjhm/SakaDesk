@@ -10,11 +10,10 @@ import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 
-import { getServiceIdFromDisplayName } from '../data/services'
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, OnboardingLoginFlow } from './components'
 
 function App() {
     const {
@@ -34,17 +33,6 @@ function App() {
         isServiceDisconnected,
         checkAuth,
     } = useAuth();
-
-    // Migration: Auto-populate selectedServices from connectedServices for existing users
-    useEffect(() => {
-        if (authCheckComplete && connectedServices.length > 0 && selectedServices.length === 0) {
-            setSelectedServices(connectedServices);
-            // Also set activeService if not set
-            if (!activeService) {
-                setActiveService(connectedServices[0]);
-            }
-        }
-    }, [authCheckComplete, connectedServices, selectedServices, setSelectedServices, activeService, setActiveService]);
 
     // Apply theme CSS variables when activeService changes
     useEffect(() => {
@@ -78,6 +66,8 @@ function App() {
         showSyncModal,
         syncVersion,
         startSync,
+        startSequentialSync,
+        sequentialSyncInfo,
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
@@ -100,11 +90,9 @@ function App() {
                         if (data.nickname) {
                             setAppSettings(prev => {
                                 if (!prev) return prev;
-                                const newNicknames = { ...(prev.user_nicknames || {}), [activeService]: data.nickname };
                                 return {
                                     ...prev,
-                                    user_nickname: data.nickname,  // Legacy: keep for compatibility
-                                    user_nicknames: newNicknames,
+                                    user_nicknames: { ...(prev.user_nicknames || {}), [activeService]: data.nickname },
                                 };
                             });
                         }
@@ -142,71 +130,14 @@ function App() {
     const openSearch = useCallback(() => searchModalRef.current?.open(), []);
     useGlobalSearchShortcut(openSearch);
 
+    // Onboarding login flow state (new users only, after landing page)
+    const [needsOnboardingLogin, setNeedsOnboardingLogin] = useState(false);
+    const onboardingConnectedServicesRef = useRef<string[]>([]);
+
     // ToS acceptance state - check localStorage on mount
     const [tosAccepted, setTosAccepted] = useState(() => {
         return localStorage.getItem('tos_accepted_at') !== null;
     });
-
-    // One-time migration: sync localStorage read states to backend
-    useEffect(() => {
-        const migrateReadStates = async () => {
-            try {
-                const entries: Array<{
-                    service: string;
-                    group_id: number;
-                    member_id: number;
-                    last_read_id: number;
-                    read_count: number;
-                    revealed_ids: number[];
-                }> = [];
-
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (!key?.startsWith('read_state_')) continue;
-                    const path = key.slice('read_state_'.length);
-                    // Try individual path first, then group chat path
-                    let serviceId: string | undefined;
-                    let groupId: number;
-                    let memberId: number;
-                    const individualMatch = path.match(/^(.+?)\/messages\/(\d+)\s.*?\/(\d+)\s/);
-                    if (individualMatch) {
-                        serviceId = getServiceIdFromDisplayName(individualMatch[1]);
-                        groupId = parseInt(individualMatch[2], 10);
-                        memberId = parseInt(individualMatch[3], 10);
-                    } else {
-                        const groupMatch = path.match(/^(.+?)\/messages\/(\d+)\s/);
-                        if (!groupMatch) continue;
-                        serviceId = getServiceIdFromDisplayName(groupMatch[1]);
-                        groupId = parseInt(groupMatch[2], 10);
-                        memberId = 0;
-                    }
-                    if (!serviceId) continue;
-                    try {
-                        const state = JSON.parse(localStorage.getItem(key) || '{}');
-                        entries.push({
-                            service: serviceId,
-                            group_id: groupId,
-                            member_id: memberId,
-                            last_read_id: state.lastReadId || 0,
-                            read_count: state.readCount || 0,
-                            revealed_ids: state.revealedIds || [],
-                        });
-                    } catch { /* skip malformed entries */ }
-                }
-
-                if (entries.length > 0) {
-                    await fetch('/api/read-states/batch', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(entries),
-                    });
-                }
-            } catch {
-                // Non-fatal — migration will retry on next app start
-            }
-        };
-        migrateReadStates();
-    }, []);
 
     // === RENDER ===
 
@@ -217,7 +148,7 @@ function App() {
 
     // Show loading while auth check is in progress
     if (!authCheckComplete) {
-        return <div className="h-screen flex items-center justify-center bg-gray-50"><Loader2 className="animate-spin text-blue-500" /></div>;
+        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
 
     // Show LandingPage if no services selected (new user or all services removed)
@@ -227,6 +158,21 @@ function App() {
                 onComplete={(services) => {
                     setSelectedServices(services);
                     setActiveService(services[0]);
+                    setNeedsOnboardingLogin(true);
+                }}
+            />
+        );
+    }
+
+    // Show OnboardingLoginFlow for new users after landing page
+    if (needsOnboardingLogin) {
+        return (
+            <OnboardingLoginFlow
+                selectedServices={selectedServices}
+                onComplete={async (connected) => {
+                    onboardingConnectedServicesRef.current = connected;
+                    setNeedsOnboardingLogin(false);
+                    await checkAuth();
                 }}
             />
         );
@@ -240,7 +186,15 @@ function App() {
             });
             if (success) {
                 setShowSetupWizard(false);
-                startSync(true);
+                const onboardingServices = onboardingConnectedServicesRef.current;
+                if (onboardingServices.length > 1) {
+                    // New user onboarding: sequential sync all connected services
+                    onboardingConnectedServicesRef.current = [];
+                    startSequentialSync(onboardingServices);
+                } else {
+                    onboardingConnectedServicesRef.current = [];
+                    startSync(true);
+                }
             }
         }
     };
@@ -252,7 +206,7 @@ function App() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} />}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} />}
 
                 {/* Setup Wizard (First Time) */}
                 {showSetupWizard && (
@@ -353,7 +307,6 @@ function App() {
                 <SearchModal
                     ref={searchModalRef}
                     userNicknames={appSettings?.user_nicknames}
-                    userNickname={appSettings?.user_nickname}
                     blogBackupEnabled={appSettings?.blogs_full_backup}
                     onOpenSettings={openSettingsModal}
                 />

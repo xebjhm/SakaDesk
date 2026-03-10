@@ -39,6 +39,16 @@ const log = SYNC_DEBUG
     ? (...args: unknown[]) => console.log('[Sync]', ...args)
     : () => {};
 
+/** Info about an ongoing sequential (multi-service) sync */
+export interface SequentialSyncInfo {
+    /** Total number of services being synced */
+    total: number;
+    /** Zero-based index of the currently syncing service */
+    currentIndex: number;
+    /** Service ID currently being synced */
+    currentService: string;
+}
+
 /** Return type for the useSync hook. */
 export interface UseSyncReturn {
     /** Current sync progress for the active service */
@@ -55,6 +65,10 @@ export interface UseSyncReturn {
     startSync: (blocking: boolean, service?: string) => Promise<void>;
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
+    /** Start sequential sync for a list of services (one at a time, with blocking modal) */
+    startSequentialSync: (services: string[]) => Promise<void>;
+    /** Info about the current sequential sync (null if not running) */
+    sequentialSyncInfo: SequentialSyncInfo | null;
     /** Ref tracking whether initial sync has started */
     hasStartedSyncRef: React.MutableRefObject<boolean>;
     /** Service ID that triggered session expiry (shows LoginModal) */
@@ -107,6 +121,12 @@ export function useSync({
         setSessionExpiredService(null);
     }, []);
 
+    // Sequential sync state (for onboarding multi-service sync)
+    const [sequentialSyncInfo, setSequentialSyncInfo] = useState<SequentialSyncInfo | null>(null);
+    const sequentialSyncServiceRef = useRef<string | null>(null);
+    // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
+    const syncCompleteCallbacks = useRef<Record<string, () => void>>({});
+
     const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
     const syncTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
@@ -140,6 +160,14 @@ export function useSync({
         }
     }, [onSyncComplete]);
 
+    // Helper: resolve any pending sequential-sync callback for a service
+    const resolveSyncCallback = useCallback((service: string) => {
+        if (syncCompleteCallbacks.current[service]) {
+            syncCompleteCallbacks.current[service]();
+            delete syncCompleteCallbacks.current[service];
+        }
+    }, []);
+
     const pollSyncProgress = useCallback(async (service: string, blocking: boolean) => {
         if (isPollingRef.current[service]) return;
         isPollingRef.current[service] = true;
@@ -151,8 +179,8 @@ export function useSync({
 
                 const updateProgress = (progress: SyncProgress) => {
                     setSyncProgressByService(prev => ({ ...prev, [service]: progress }));
-                    // Also update legacy if this is the active service
-                    if (service === activeService) {
+                    // Also update legacy if this is the active service or the current sequential sync service
+                    if (service === activeService || service === sequentialSyncServiceRef.current) {
                         setSyncProgress(progress);
                     }
                 };
@@ -160,6 +188,7 @@ export function useSync({
                 if (data.state === 'idle') {
                     updateProgress({ state: 'idle' });
                     isPollingRef.current[service] = false;
+                    resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
                     if (service === activeService) refreshUserProfile(service);
@@ -168,7 +197,7 @@ export function useSync({
                         state: 'idle',
                         phase: 'complete',
                         phase_name: 'Complete',
-                        phase_number: 4,
+                        phase_number: 5,
                         completed: data.total || data.completed,
                         total: data.total,
                         elapsed_seconds: data.elapsed_seconds,
@@ -179,6 +208,7 @@ export function useSync({
                         detail_extra: ''
                     });
                     isPollingRef.current[service] = false;
+                    resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
                     if (service === activeService) refreshUserProfile(service);
                     if (blocking && service === activeService) {
@@ -225,10 +255,12 @@ export function useSync({
                         updateProgress({ state: 'error', detail: data.detail || 'Sync error' });
                     }
                     isPollingRef.current[service] = false;
+                    resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 } else {
                     updateProgress({ state: 'error', detail: data.detail || 'Unknown error' });
                     isPollingRef.current[service] = false;
+                    resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 }
             } catch {
@@ -244,6 +276,7 @@ export function useSync({
                         setSyncProgress({ state: 'error', detail: 'Lost connection' });
                     }
                     isPollingRef.current[service] = false;
+                    resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 }
             }
@@ -256,6 +289,12 @@ export function useSync({
 
         if (!targetService) {
             console.error('startSync: No service specified and no active service');
+            return;
+        }
+
+        // Skip if already polling this service (prevents duplicate poll chains)
+        if (isPollingRef.current[targetService]) {
+            log(`${targetService}: already polling, skipping startSync`);
             return;
         }
 
@@ -319,9 +358,43 @@ export function useSync({
         );
     }, [connectedServices, startSync]);
 
+    const startSequentialSync = useCallback(async (services: string[]) => {
+        if (services.length === 0) return;
+
+        // Prevent startup sync effect from also triggering these services
+        services.forEach(s => syncedServicesRef.current.add(s));
+        hasStartedSyncRef.current = true;
+
+        setShowSyncModal(true);
+
+        for (let i = 0; i < services.length; i++) {
+            const service = services[i];
+            sequentialSyncServiceRef.current = service;
+            setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service });
+
+            // Update legacy progress to show this service's progress in SyncModal
+            setSyncProgress({ state: 'running', phase: 'starting', phase_name: 'Starting', detail: 'Initializing...' });
+
+            await new Promise<void>((resolve) => {
+                syncCompleteCallbacks.current[service] = resolve;
+                startSync(false, service);
+            });
+        }
+
+        sequentialSyncServiceRef.current = null;
+        setSequentialSyncInfo(null);
+        setTimeout(() => setShowSyncModal(false), 2000);
+    }, [startSync]);
+
     // Effect 1: Startup sync — one-time per newly connected service
+    // Only fires when app is fully configured (output_dir set) to avoid premature sync
+    // that triggers SESSION_EXPIRED errors during onboarding.
     useEffect(() => {
         if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
+        // Don't start sync until app is fully configured (prevents re-login dialog during onboarding)
+        if (!appSettings.is_configured) return;
+        // Don't start sync while sequential sync is running
+        if (sequentialSyncServiceRef.current !== null) return;
 
         const newServices = connectedServices.filter(s => !syncedServicesRef.current.has(s));
         if (newServices.length === 0) return;
@@ -354,6 +427,8 @@ export function useSync({
     useEffect(() => {
         if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
         if (!appSettings.auto_sync_enabled) return;
+        // Don't start auto-sync until app is fully configured
+        if (!appSettings.is_configured) return;
 
         const clearAllTimers = () => {
             Object.values(syncIntervalRefs.current).forEach(clearInterval);
@@ -406,6 +481,8 @@ export function useSync({
         syncVersion,
         startSync,
         startSyncAllServices,
+        startSequentialSync,
+        sequentialSyncInfo,
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
