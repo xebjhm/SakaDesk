@@ -81,21 +81,12 @@
     "loginRequired": "需要登录",
     "sessionExpiredDesc": "您的 {{service}} 会话已过期。请重新登录以继续使用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 是高级功能，需要登录您的 {{service}} 账户。",
-    "credentialsSaved": "您的凭据已安全存储在您的设备上。",
+    "credentialsSaved": "您的凭据将安全存储在您的设备上。",
     "waitingForBrowser": "等待浏览器操作...",
     "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
     "browserPrompt": "请登录您的 {{service}} 消息账户。将为您打开浏览器窗口以输入凭据。",
-    "loginFailed": "登录失败或已取消",
-    "noServicesConnected": "未连接任何服务。请至少连接一个服务。"
-  },
-  "onboarding": {
-    "connectingService": "连接中 ({{current}}/{{total}})",
-    "connected": "已连接！",
-    "loginDesc": "点击下方按钮通过浏览器登录 {{service}}。",
-    "loginFailedDesc": "连接 {{service}} 失败。要再试一次吗？",
-    "skipForNow": "暂时跳过",
-    "retry": "重试"
+    "loginFailed": "登录失败或已取消"
   },
   "tos": {
     "title": "服务条款",
@@ -269,6 +260,13 @@
     "resetToDefault": "恢复默认",
     "imageTooLarge": "图片过大。请选择 2MB 以下的图片。",
     "selectImageFile": "请选择图片文件。"
+  },
+  "features": {
+    "messages": "消息",
+    "blogs": "博客",
+    "news": "新闻",
+    "fanclub": "粉丝俱乐部",
+    "ai": "AI 助手"
   },
   "landing": {
     "welcome": "欢迎使用 HakoDesk",

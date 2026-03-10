@@ -81,21 +81,12 @@
         "loginRequired": "需要登入",
         "sessionExpiredDesc": "你嘅 {{service}} Session 過咗期。請重新登入繼續用 {{feature}}。",
         "premiumFeatureDesc": "{{feature}} 係收費功能，需要登入你嘅 {{service}} 帳戶。",
-        "credentialsSaved": "你嘅登入資料已安全咁儲存喺你部機度。",
+        "credentialsSaved": "你嘅登入資料會安全咁儲存喺你部機度。",
         "waitingForBrowser": "等待瀏覽器操作...",
         "launchBrowserLogin": "開瀏覽器登入",
         "connectAccount": "連接帳戶",
         "browserPrompt": "請登入你嘅 {{service}} 訊息帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
-        "loginFailed": "登入失敗或者取消咗",
-        "noServicesConnected": "冇連接到任何服務。請最少連接一個服務。"
-    },
-    "onboarding": {
-        "connectingService": "連接緊 ({{current}}/{{total}})",
-        "connected": "連接咗！",
-        "loginDesc": "撳下面個掣用瀏覽器登入 {{service}}。",
-        "loginFailedDesc": "連接 {{service}} 失敗。想唔想再試？",
-        "skipForNow": "暫時略過",
-        "retry": "再試"
+        "loginFailed": "登入失敗或者取消咗"
     },
     "tos": {
         "title": "服務條款",
@@ -269,6 +260,13 @@
         "resetToDefault": "還原預設",
         "imageTooLarge": "張相太大啦。請揀張 2MB 以下嘅。",
         "selectImageFile": "請揀圖片檔案。"
+    },
+    "features": {
+        "messages": "訊息",
+        "blogs": "Blog",
+        "news": "新聞",
+        "fanclub": "粉絲會",
+        "ai": "AI 助手"
     },
     "landing": {
         "welcome": "歡迎使用 HakoDesk",

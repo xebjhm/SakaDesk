@@ -81,21 +81,12 @@
     "loginRequired": "Login Required",
     "sessionExpiredDesc": "Your session for {{service}} has expired. Please re-login to continue using {{feature}}.",
     "premiumFeatureDesc": "{{feature}} is a premium feature that requires logging in with your {{service}} account.",
-    "credentialsSaved": "Your credentials are securely stored on your device.",
+    "credentialsSaved": "Your credentials will be securely stored on your device.",
     "waitingForBrowser": "Waiting for browser...",
     "launchBrowserLogin": "Launch Browser Login",
     "connectAccount": "Connect Account",
     "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
-    "loginFailed": "Login failed or cancelled",
-    "noServicesConnected": "No services were connected. Please connect at least one service."
-  },
-  "onboarding": {
-    "connectingService": "Connecting ({{current}}/{{total}})",
-    "connected": "Connected!",
-    "loginDesc": "Click the button below to log in to {{service}} via browser.",
-    "loginFailedDesc": "Failed to connect to {{service}}. Would you like to try again?",
-    "skipForNow": "Skip for now",
-    "retry": "Retry"
+    "loginFailed": "Login failed or cancelled"
   },
   "tos": {
     "title": "Terms of Service",
@@ -269,6 +260,13 @@
     "resetToDefault": "Reset to Default",
     "imageTooLarge": "Image too large. Please choose an image under 2MB.",
     "selectImageFile": "Please select an image file."
+  },
+  "features": {
+    "messages": "Messages",
+    "blogs": "Blogs",
+    "news": "News",
+    "fanclub": "Fan Club",
+    "ai": "AI Agent"
   },
   "landing": {
     "welcome": "Welcome to HakoDesk",

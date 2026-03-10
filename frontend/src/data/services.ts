@@ -16,7 +16,6 @@ export interface ServiceDefinition {
     bgColor: string;        // Solid bg class for icons/badges
     primaryColor: string;   // Hex color for dynamic styling (rings, tints)
     blogBaseUrl: string;    // Base URL for blog content normalization
-    description: string;
     logoUrl: string;        // Official logo URL (hotlinked from official site)
 }
 
@@ -37,7 +36,6 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#7e2483]',
         primaryColor: BRAND_COLORS.nogizaka.primary,
         blogBaseUrl: 'https://www.nogizaka46.com',
-        description: 'Nogizaka46 Messages & Blogs',
         logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
     },
     {
@@ -49,7 +47,6 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#f19cb4]',
         primaryColor: BRAND_COLORS.sakurazaka.primary,
         blogBaseUrl: 'https://sakurazaka46.com',
-        description: 'Sakurazaka46 Messages & Blogs',
         logoUrl: 'https://sakurazaka46.com/files/14/s46/img/about/about-logo.svg',
     },
     {
@@ -61,7 +58,6 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#5bbfe5]',
         primaryColor: BRAND_COLORS.hinatazaka.primary,
         blogBaseUrl: 'https://www.hinatazaka46.com',
-        description: 'Hinatazaka46 Messages & Blogs',
         logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
     },
     {
@@ -73,7 +69,6 @@ export const SERVICES: ServiceDefinition[] = [
         bgColor: 'bg-[#5a8a6a]',
         primaryColor: BRAND_COLORS.yodel.primary,
         blogBaseUrl: 'https://service.yodel-app.com',
-        description: 'Yodel Talk & Messages',
         logoUrl: 'https://service.yodel-app.com/icons/Icon-192.png',
     },
 ];
