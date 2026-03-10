@@ -56,7 +56,6 @@ export interface AppSettings {
     sync_interval_minutes: number;
     adaptive_sync_enabled?: boolean;
     is_configured: boolean;
-    user_nickname?: string;  // Legacy: single nickname (kept for compatibility)
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
@@ -697,10 +696,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
                             userNickname={
-                                // Use per-service nickname for the service of the messages being displayed
-                                messagesService && appSettings?.user_nicknames?.[messagesService]
-                                    ? appSettings.user_nicknames[messagesService]
-                                    : appSettings?.user_nickname
+                                messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined
                             }
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}

@@ -1,10 +1,13 @@
 import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { getServiceById } from '../../data/services';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
+import type { SequentialSyncInfo } from '../hooks/useSync';
 
 interface SyncModalProps {
     syncProgress: SyncProgress;
+    sequentialSyncInfo?: SequentialSyncInfo | null;
 }
 
 const formatTime = (seconds: number | undefined): string => {
@@ -23,7 +26,7 @@ const formatSpeed = (speed: number | null | undefined, unit: string): string => 
     return `${speed.toFixed(2)} ${unit}/s`;
 };
 
-export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
+export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo }) => {
     const { t } = useTranslation();
 
     const getUnitLabel = () => {
@@ -32,11 +35,33 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
         return t('sync.items');
     };
 
+    const serviceName = sequentialSyncInfo
+        ? getServiceById(sequentialSyncInfo.currentService)?.displayName ?? sequentialSyncInfo.currentService
+        : null;
+
     return (
         <div className="fixed inset-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
                 {/* Header - Chat Room Style */}
                 <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-4">
+                    {/* Multi-service counter (shown during sequential sync) */}
+                    {sequentialSyncInfo && sequentialSyncInfo.total > 1 && (
+                        <div className="flex items-center justify-center gap-2 mb-3">
+                            {Array.from({ length: sequentialSyncInfo.total }, (_, i) => (
+                                <div
+                                    key={i}
+                                    className={`h-1.5 rounded-full transition-all ${
+                                        i < sequentialSyncInfo.currentIndex ? 'bg-white w-6' :
+                                        i === sequentialSyncInfo.currentIndex ? 'bg-white w-10' :
+                                        'bg-white/30 w-6'
+                                    }`}
+                                />
+                            ))}
+                            <span className="text-white/80 text-xs ml-2 font-medium">
+                                {serviceName} ({sequentialSyncInfo.currentIndex + 1}/{sequentialSyncInfo.total})
+                            </span>
+                        </div>
+                    )}
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
                             <Download className="w-5 h-5 text-white" />
@@ -129,10 +154,12 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress }) => {
                         {[
                             { phase: 'scanning', label: t('sync.scan') },
                             { phase: 'syncing', label: t('sync.syncing') },
-                            { phase: 'downloading', label: t('sync.download') }
+                            { phase: 'downloading', label: t('sync.download') },
+                            { phase: 'blogs', label: t('sync.blogs') }
                         ].map((p) => {
-                            const currentPhaseIndex = ['scanning', 'discovering', 'syncing', 'downloading'].indexOf(syncProgress.phase || '');
-                            const thisPhaseIndex = ['scanning', 'discovering', 'syncing', 'downloading'].indexOf(p.phase);
+                            const phaseOrder = ['scanning', 'discovering', 'syncing', 'downloading', 'blogs', 'complete'];
+                            const currentPhaseIndex = phaseOrder.indexOf(syncProgress.phase || '');
+                            const thisPhaseIndex = phaseOrder.indexOf(p.phase);
                             const isActive = syncProgress.phase === p.phase || (p.phase === 'scanning' && syncProgress.phase === 'discovering');
                             const isComplete = currentPhaseIndex > thisPhaseIndex;
 

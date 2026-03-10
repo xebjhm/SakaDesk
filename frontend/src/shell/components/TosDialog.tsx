@@ -94,6 +94,16 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                                 <ExternalLink className="w-3 h-3" />
                                 {t('tos.nogizakaTos')}
                             </a>
+                            <span className="text-gray-300">|</span>
+                            <a
+                                href="https://yodel-app.com/s/yodel/rule"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
+                            >
+                                <ExternalLink className="w-3 h-3" />
+                                {t('tos.yodelTos')}
+                            </a>
                         </div>
                     </div>
 
