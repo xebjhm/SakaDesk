@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="HakoDesk_logo.png" alt="HakoDesk" width="128" />
+</p>
+
 # HakoDesk
 
 A desktop GUI application for viewing and synchronizing group chat messages from the Hako platform.
@@ -151,8 +155,8 @@ HakoDesk/
 ## Configuration
 
 Application data is stored in:
-- **Windows:** `%LOCALAPPDATA%\hakodesk\`
-- **Linux/macOS:** `~/.hakodesk/`
+- **Windows:** `%LOCALAPPDATA%\HakoDesk\`
+- **Linux/macOS:** `~/.HakoDesk/`
 
 Settings include:
 - Output folder for synchronized messages

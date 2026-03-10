@@ -54,11 +54,13 @@ export function formatMonthYear(month: number, year: number): string {
 }
 
 /**
- * Format a date to "Jan 15" format.
+ * Format a date to "Jan 15 14:30" format.
  * @param date - Date object to format
  */
 export function formatShortDate(date: Date): string {
-    return `${MONTH_NAMES_SHORT[date.getMonth()]} ${date.getDate()}`;
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${MONTH_NAMES_SHORT[date.getMonth()]} ${date.getDate()} ${h}:${m}`;
 }
 
 /**

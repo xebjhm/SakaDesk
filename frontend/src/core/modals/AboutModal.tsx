@@ -120,12 +120,11 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 {/* Content */}
                 <div className="p-8 flex flex-col items-center text-center">
                     {/* Logo */}
-                    <div
-                        className="w-20 h-20 rounded-2xl flex items-center justify-center mb-4 shadow-lg select-none"
-                        style={{ background: 'linear-gradient(to bottom right, #60A5FA, #A855F7)' }}
-                    >
-                        <span className="text-3xl text-white font-bold">H</span>
-                    </div>
+                    <img
+                        src="/logo-192.png"
+                        alt="HakoDesk"
+                        className="w-20 h-20 rounded-2xl mb-4 shadow-lg select-none"
+                    />
 
                     {/* App name */}
                     <h1 className="text-xl font-bold text-gray-800 mb-1">HakoDesk</h1>
@@ -139,9 +138,14 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                     </p>
 
                     {/* Description */}
-                    <p className="text-sm text-gray-600 mb-6">
-                        {t('about.description')}
-                    </p>
+                    <div className="mb-6 space-y-1">
+                        <p className="text-sm text-gray-400">
+                            {t('about.identity')}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                            {t('about.features')}
+                        </p>
+                    </div>
 
                     {/* Made with love — heart is the golden finger trigger */}
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">

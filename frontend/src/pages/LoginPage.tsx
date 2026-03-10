@@ -29,7 +29,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="min-h-screen bg-[#F0F2F5] flex flex-col items-center justify-center p-4">
             <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-6">
                 <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <LogIn className="w-8 h-8" />
