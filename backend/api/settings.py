@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Optional
 
-from backend.services.platform import get_settings_path
+from backend.services.platform import get_settings_path, get_default_output_dir as _platform_default_output_dir
 from backend.services.service_utils import validate_service
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
@@ -28,7 +28,7 @@ SETTINGS_FILE = get_settings_path()
 
 def get_default_output_dir() -> str:
     """Returns the default output directory path."""
-    return str(Path.cwd() / "output")
+    return str(_platform_default_output_dir())
 
 
 # ---------------------------------------------------------------------------

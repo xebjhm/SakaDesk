@@ -60,7 +60,7 @@ class TestLocalFavoriteUpdate:
             nonexistent = Path(tmp_dir) / "nonexistent.json"
             with patch('api.favorites.get_settings_path', return_value=nonexistent):
                 result = _get_output_dir()
-                assert result == Path("output")
+                assert result == Path.home() / "Documents" / "HakoDesk"
 
     def test_update_local_favorite_message_found(self):
         """Test updating favorite in local messages.json."""

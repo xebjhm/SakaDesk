@@ -37,6 +37,16 @@ def is_dev_mode() -> bool:
     return DEV_MODE or not is_windows()
 
 
+def get_default_output_dir() -> Path:
+    """
+    Get the default output directory for synced data.
+
+    Windows: %USERPROFILE%\\Documents\\HakoDesk (e.g., C:\\Users\\Name\\Documents\\HakoDesk)
+    Linux/Mac: ~/Documents/HakoDesk (development fallback)
+    """
+    return Path.home() / "Documents" / "HakoDesk"
+
+
 def get_app_data_dir() -> Path:
     """
     Get the application data directory.

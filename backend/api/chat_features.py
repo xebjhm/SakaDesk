@@ -18,7 +18,7 @@ from typing import List, Optional, Dict
 
 from pyhako import Client
 from pyhako.credentials import get_token_manager
-from backend.services.platform import is_test_mode, get_settings_path, get_session_dir
+from backend.services.platform import is_test_mode, get_settings_path, get_session_dir, get_default_output_dir
 from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -67,7 +67,7 @@ def _get_output_dir() -> Path:
                     return Path(path_str)
         except Exception:
             pass
-    return Path("output")
+    return get_default_output_dir()
 
 
 async def _get_client_and_session(service: str):
