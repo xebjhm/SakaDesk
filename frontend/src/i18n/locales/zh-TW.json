@@ -2,7 +2,7 @@
   "common": {
     "settings": "設定",
     "messages": "訊息",
-    "blogs": "部落格",
+    "blogs": "Blog",
     "sync": "同步",
     "login": "登入",
     "logout": "登出",
@@ -28,16 +28,15 @@
     "outputFolder": "輸出資料夾",
     "autoSync": "自動同步",
     "syncEvery": "同步間隔",
-    "smartTiming": "智慧排程",
     "smartTimingDesc": "根據成員發訊習慣隨機調整間隔",
     "desktopNotifications": "桌面通知",
     "desktopNotificationsDesc": "收到新訊息時顯示通知",
-    "blogFullBackup": "部落格完整備份",
-    "blogFullBackupOnDesc": "下載所有部落格內容及圖片以供離線閱讀",
+    "blogFullBackup": "Blog 完整備份",
+    "blogFullBackupOnDesc": "下載所有 Blog 內容及圖片以供離線閱讀",
     "blogFullBackupOffDesc": "僅在閱覽時下載內容（節省磁碟空間）",
-    "blogCacheSize": "部落格快取: {{size}}",
+    "blogCacheSize": "Blog 快取: {{size}}",
     "cleanBlogCache": "清除快取",
-    "cleanBlogCacheConfirm": "刪除所有快取的部落格資料？這將釋放磁碟空間，但部落格需要重新下載。",
+    "cleanBlogCacheConfirm": "刪除所有快取的 Blog 資料？這將釋放磁碟空間，但 Blog 需要重新下載。",
     "cleanBlogCacheConfirm2": "確定要刪除嗎？此操作無法復原。",
     "language": "語言",
     "languageDesc": "選擇介面語言",
@@ -50,7 +49,7 @@
     "serviceSettings": "服務設定",
     "syncCurrentOff": "目前: 僅手動同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分鐘",
-    "syncCurrentSmart": "目前: 自適應同步"
+    "syncCurrentSmart": "目前: 智慧排程"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -85,7 +84,7 @@
     "waitingForBrowser": "等待瀏覽器操作...",
     "launchBrowserLogin": "啟動瀏覽器登入",
     "connectAccount": "連接帳戶",
-    "browserPrompt": "請登入您的 {{service}} 訊息帳戶。瀏覽器視窗將會開啟以供您輸入憑證。",
+    "browserPrompt": "請登入您的 {{service}} Message 帳戶。瀏覽器視窗將會開啟以供您輸入憑證。",
     "loginFailed": "登入失敗或已取消"
   },
   "tos": {
@@ -108,12 +107,12 @@
   },
   "setup": {
     "welcome": "歡迎使用 HakoDesk",
-    "setupDataFolder": "設定資料資料夾",
+    "setupDataFolder": "設定資料儲存位置",
     "outputFolderPath": "輸出資料夾路徑",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
     "outputFolderHint": "輸入儲存訊息的完整路徑。您可以從檔案總管複製路徑。",
-    "downloadBlogsOffline": "下載部落格以供離線閱讀",
-    "downloadBlogsHint": "下載所有部落格文章以供離線搜尋。每個服務約使用 5-15 GB。",
+    "downloadBlogsOffline": "下載 Blog 以供離線閱讀",
+    "downloadBlogsHint": "下載所有 Blog 文章以供離線搜尋。每個服務約使用 5-15 GB。",
     "startUsing": "開始使用 HakoDesk"
   },
   "sync": {
@@ -132,13 +131,13 @@
     "notSynced": "尚未同步",
     "syncNow": "立即同步",
     "syncingService": "正在同步 {{service}} ({{current}}/{{total}})",
-    "blogs": "部落格"
+    "blogs": "Blog"
   },
   "about": {
     "title": "關於",
     "version": "版本 {{version}}",
     "identity": "坂道系列非官方工具",
-    "features": "Message • Blog • 備份",
+    "features": "Message • Blog • 存檔",
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "下載按鈕已啟用 ✨",
@@ -152,14 +151,14 @@
     "categoryPlayback": "播放",
     "categoryPlaybackHelp": "音訊/影片無法播放",
     "categoryLogin": "登入",
-    "categoryLoginHelp": "無法登入或時常登出",
+    "categoryLoginHelp": "無法登入或時常被登出",
     "categoryOther": "其他",
     "categoryOtherHelp": "其他錯誤",
     "whatDoing": "您當時在做什麼？",
     "whatDoingPlaceholder": "例如：播放語音訊息",
     "whatWrong": "發生了什麼問題？",
     "whatWrongPlaceholder": "例如：音訊在 5 秒後停止",
-    "autoContext": "自動偵測內容：",
+    "autoContext": "自動偵測上下文：",
     "member": "成員",
     "generating": "產生中...",
     "createGitHubIssue": "建立 GitHub Issue"
@@ -176,7 +175,7 @@
     "upgradeFailed": "升級失敗：",
     "installNow": "立即安裝",
     "updateAvailable": "有可用更新！",
-    "upgradeNow": "立即升級"
+    "upgradeNow": "立即更新"
   },
   "memberList": {
     "title": "聊天",
@@ -263,7 +262,7 @@
   },
   "features": {
     "messages": "訊息",
-    "blogs": "部落格",
+    "blogs": "Blog",
     "news": "新聞",
     "fanclub": "粉絲俱樂部",
     "ai": "AI 助手"
@@ -274,14 +273,14 @@
     "selectAtLeastOne": "請至少選擇一個團體",
     "getStarted": "開始使用",
     "getStartedWith": "開始使用 {{count}} 個團體",
-    "footerNote": "部落格可自由瀏覽。使用訊息和其他進階功能需要登入。"
+    "footerNote": "Blog 可自由瀏覽。使用訊息和其他進階功能需要登入。"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
     "addService": "新增服務"
   },
   "search": {
-    "placeholder": "搜尋訊息和部落格...",
+    "placeholder": "搜尋訊息和 Blog...",
     "noResults": "找不到結果",
     "noResultsHint": "請嘗試其他搜尋詞",
     "resultCount": "{{count}} 筆結果",
@@ -291,7 +290,7 @@
     "errorSearchFailed": "搜尋失敗，請重試。",
     "building": "正在建立搜尋索引...",
     "filters": "篩選",
-    "exactMatchOnly": "僅完全比對",
+    "exactMatchOnly": "僅完全相符",
     "includeUnread": "包含未讀",
     "filterByMember": "依成員或服務篩選...",
     "dateRange": "日期範圍",
@@ -302,10 +301,10 @@
     "lastYear": "最近1年",
     "contentAll": "全部",
     "contentMessages": "訊息",
-    "contentBlogs": "部落格",
-    "blogCacheHint": "僅可搜尋已快取的部落格。可在設定中快取全部。",
-    "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個部落格）",
-    "blogSearchLimited": "部落格搜尋僅涵蓋已快取的文章。",
+    "contentBlogs": "Blog",
+    "blogCacheHint": "僅可搜尋已快取的 Blog。可在設定中快取全部。",
+    "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個 Blog）",
+    "blogSearchLimited": "Blog 搜尋僅涵蓋已快取的文章。",
     "enableFullBackup": "啟用完整備份",
     "buildingHint": "搜尋索引仍在建立中，結果可能不完整。"
   },
@@ -346,7 +345,7 @@
     "selectMember": "選擇成員",
     "loadingPosts": "正在載入文章...",
     "loadingMembers": "正在載入成員清單...",
-    "noPostsFromFavorites": "我的推暫無部落格更新",
+    "noPostsFromFavorites": "我的推暫無 Blog 更新",
     "noBlogPostsFound": "找不到文章",
     "addMembersHint": "將成員設為我的推即可在此查看更新",
     "selectServiceHint": "選擇服務並同步以載入文章",

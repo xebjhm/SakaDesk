@@ -28,7 +28,6 @@
     "outputFolder": "Output Folder",
     "autoSync": "Auto-Sync",
     "syncEvery": "Sync every",
-    "smartTiming": "Smart Timing",
     "smartTimingDesc": "Randomize intervals based on posting patterns",
     "desktopNotifications": "Desktop Notifications",
     "desktopNotificationsDesc": "Show notification when new messages arrive",
@@ -50,7 +49,7 @@
     "serviceSettings": "Service Settings",
     "syncCurrentOff": "Currently: Manual sync only",
     "syncCurrentFixed": "Currently: Every {{minutes}} minutes",
-    "syncCurrentSmart": "Currently: Adaptive timing"
+    "syncCurrentSmart": "Currently: Smart Timing"
   },
   "time": {
     "minute": "{{count}} minute",
@@ -152,7 +151,7 @@
     "categoryPlayback": "Playback",
     "categoryPlaybackHelp": "Audio/video won't play",
     "categoryLogin": "Login",
-    "categoryLoginHelp": "Can't sign in or expired",
+    "categoryLoginHelp": "Can't sign in or frequently logged out",
     "categoryOther": "Other",
     "categoryOtherHelp": "Something else broke",
     "whatDoing": "What were you doing?",
@@ -176,7 +175,7 @@
     "upgradeFailed": "Upgrade failed:",
     "installNow": "Install Now",
     "updateAvailable": "Update available!",
-    "upgradeNow": "Upgrade Now"
+    "upgradeNow": "Update Now"
   },
   "memberList": {
     "title": "Talk",
@@ -207,7 +206,7 @@
     "groupChat": "Group Chat",
     "unread": "{{count}} unread",
     "revealAllTitle": "Reveal All Messages?",
-    "revealAllDescription": "This will mark all {{count}} unread messages as revealed.",
+    "revealAllDescription": "This will mark all {{count}} unread messages as read.",
     "confirm": "Confirm",
     "noContent": "(No content)",
     "attachment": "Attachment"
