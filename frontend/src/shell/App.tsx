@@ -6,14 +6,16 @@ import { DiagnosticsModal, ReportIssueModal, AboutModal, UpdateBanner } from '..
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
+import type { FeatureId } from '../store/appStore'
 import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
+import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, OnboardingLoginFlow } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
 function App() {
     const {
@@ -21,6 +23,7 @@ function App() {
         setActiveService,
         selectedServices,
         setSelectedServices,
+        setActiveFeature,
     } = useAppStore();
 
     // Auth hook
@@ -66,8 +69,6 @@ function App() {
         showSyncModal,
         syncVersion,
         startSync,
-        startSequentialSync,
-        sequentialSyncInfo,
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
@@ -107,13 +108,13 @@ function App() {
     const activeFeatures = useAppStore(s => s.activeFeatures);
     const currentFeature = activeService ? activeFeatures[activeService] ?? 'messages' : null;
 
-    // Disconnected service login popup — shown when user switches view to a disconnected service
+    // Disconnected service login popup — shown when user switches to a paid feature on a disconnected service
     const [disconnectedLoginService, setDisconnectedLoginService] = useState<string | null>(null);
 
     useEffect(() => {
         if (!activeService) return;
         if (!isServiceDisconnected(activeService)) return;
-        if (currentFeature !== 'messages' && currentFeature !== 'blogs') return;
+        if (!currentFeature || !isFeaturePaid(currentFeature as FeatureId)) return;
         if (sessionExpiredService) return;
         if (disconnectedLoginService) return; // Already showing
         setDisconnectedLoginService(activeService);
@@ -129,10 +130,6 @@ function App() {
     const searchModalRef = useRef<SearchModalHandle>(null);
     const openSearch = useCallback(() => searchModalRef.current?.open(), []);
     useGlobalSearchShortcut(openSearch);
-
-    // Onboarding login flow state (new users only, after landing page)
-    const [needsOnboardingLogin, setNeedsOnboardingLogin] = useState(false);
-    const onboardingConnectedServicesRef = useRef<string[]>([]);
 
     // ToS acceptance state - check localStorage on mount
     const [tosAccepted, setTosAccepted] = useState(() => {
@@ -158,21 +155,12 @@ function App() {
                 onComplete={(services) => {
                     setSelectedServices(services);
                     setActiveService(services[0]);
-                    setNeedsOnboardingLogin(true);
-                }}
-            />
-        );
-    }
-
-    // Show OnboardingLoginFlow for new users after landing page
-    if (needsOnboardingLogin) {
-        return (
-            <OnboardingLoginFlow
-                selectedServices={selectedServices}
-                onComplete={async (connected) => {
-                    onboardingConnectedServicesRef.current = connected;
-                    setNeedsOnboardingLogin(false);
-                    await checkAuth();
+                    // Default to blogs (free) for services that support it
+                    for (const svc of services) {
+                        if (SERVICE_FEATURES[svc]?.includes('blogs')) {
+                            setActiveFeature(svc, 'blogs');
+                        }
+                    }
                 }}
             />
         );
@@ -186,15 +174,7 @@ function App() {
             });
             if (success) {
                 setShowSetupWizard(false);
-                const onboardingServices = onboardingConnectedServicesRef.current;
-                if (onboardingServices.length > 1) {
-                    // New user onboarding: sequential sync all connected services
-                    onboardingConnectedServicesRef.current = [];
-                    startSequentialSync(onboardingServices);
-                } else {
-                    onboardingConnectedServicesRef.current = [];
-                    startSync(true);
-                }
+                startSync(true);
             }
         }
     };
@@ -206,7 +186,7 @@ function App() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} />}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} />}
 
                 {/* Setup Wizard (First Time) */}
                 {showSetupWizard && (
