@@ -3,7 +3,7 @@
 // Horizontal labels, glass morphism, consistent member name color
 import React, { useState } from 'react';
 import type { RecentPost } from '../../../types';
-import { getMemberNameJp } from '../../../data/memberColors';
+import { getMemberNameKanji } from '../../../data/memberData';
 import { useBlogTheme } from '../hooks';
 
 interface BlogCardProps {
@@ -175,7 +175,7 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                         letterSpacing: '0.02em',
                     }}
                 >
-                    {getMemberNameJp(post.member_name)}
+                    {getMemberNameKanji(post.member_name)}
                 </span>
             </div>
         </button>

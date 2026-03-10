@@ -170,22 +170,23 @@ function extractKanjiFromApiName(apiName: string): string {
 /**
  * Get kanji-only member name from API name format
  */
-export function getMemberNameKanji(apiName: string, group: GroupId): string {
-    const map = ensureMemberMap(group);
-
-    // Direct lookup
-    const directMatch = map.get(apiName);
-    if (directMatch) return directMatch.nameKanji;
-
-    // Try without spaces
+export function getMemberNameKanji(apiName: string, group?: GroupId): string {
+    const groups: GroupId[] = group ? [group] : ['hinatazaka', 'sakurazaka', 'nogizaka'];
     const noSpaces = apiName.replace(/\s+/g, '');
-    const noSpacesMatch = map.get(noSpaces);
-    if (noSpacesMatch) return noSpacesMatch.nameKanji;
-
-    // Extract kanji and try lookup
     const kanjiOnly = extractKanjiFromApiName(apiName);
-    const kanjiMatch = map.get(kanjiOnly);
-    if (kanjiMatch) return kanjiMatch.nameKanji;
+
+    for (const g of groups) {
+        const map = ensureMemberMap(g);
+
+        const directMatch = map.get(apiName);
+        if (directMatch) return directMatch.nameKanji;
+
+        const noSpacesMatch = map.get(noSpaces);
+        if (noSpacesMatch) return noSpacesMatch.nameKanji;
+
+        const kanjiMatch = map.get(kanjiOnly);
+        if (kanjiMatch) return kanjiMatch.nameKanji;
+    }
 
     return kanjiOnly || apiName;
 }

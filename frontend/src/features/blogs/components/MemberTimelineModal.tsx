@@ -1,7 +1,7 @@
 // frontend/src/features/blogs/components/MemberTimelineModal.tsx
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import type { BlogMember, BlogMeta } from '../../../types';
-import { getMemberNameJp } from '../../../data/memberColors';
+import { getMemberNameKanji } from '../../../data/memberData';
 import { useBlogTheme } from '../hooks';
 import type { BlogTheme } from '../hooks';
 import { formatMonthYear, formatShortDate } from '../../../utils/classnames';
@@ -37,7 +37,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     const theme = useBlogTheme();
     const { t } = useTranslation();
     // Get kanji-only name using centralized helper
-    const memberNameJp = getMemberNameJp(member.name);
+    const memberNameJp = getMemberNameKanji(member.name);
 
     // Use ref to track latest onClose callback without triggering effect re-runs
     const onCloseRef = useRef(onClose);

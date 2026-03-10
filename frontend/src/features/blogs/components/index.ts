@@ -6,4 +6,3 @@ export { MemberSelectModal } from './MemberSelectModal';
 export { MemberTimelineModal } from './MemberTimelineModal';
 export { RecentPostsFeed } from './RecentPostsFeed';
 export { TimelineRail } from './TimelineRail';
-export { TimelineSection } from './TimelineSection';
