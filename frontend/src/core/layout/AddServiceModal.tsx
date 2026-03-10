@@ -2,6 +2,7 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { getOrderedServiceDefs } from '../../data/services';
+import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../../config/features';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
@@ -16,7 +17,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
-    const { addSelectedService, setActiveService, getServiceOrder } = useAppStore();
+    const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder } = useAppStore();
 
     // Filter out already selected services, sorted by global order
     const availableServices = getOrderedServiceDefs(getServiceOrder()).filter(
@@ -25,6 +26,10 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
 
     const handleSelect = (serviceId: string) => {
         addSelectedService(serviceId);
+        // Default to blogs (free) for services that support it
+        if (SERVICE_FEATURES[serviceId]?.includes('blogs')) {
+            setActiveFeature(serviceId, 'blogs');
+        }
         setActiveService(serviceId);
         onClose();
     };
@@ -88,9 +93,18 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                                         <h4 className="font-semibold text-gray-900">
                                             {service.displayName}
                                         </h4>
-                                        <p className="text-sm text-gray-500">
-                                            {service.description}
-                                        </p>
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                            {(SERVICE_FEATURES[service.id] || []).map(featureId => {
+                                                const feature = FEATURE_DEFINITIONS[featureId];
+                                                const Icon = feature.icon;
+                                                return (
+                                                    <span key={featureId} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                                                        <Icon className="w-3 h-3" />
+                                                        {t(`features.${featureId}`)}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 </button>
                             ))}

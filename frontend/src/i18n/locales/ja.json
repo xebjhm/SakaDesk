@@ -86,16 +86,7 @@
     "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
     "browserPrompt": "{{service}}のアカウントにログインしてください。ブラウザウィンドウが開きます。",
-    "loginFailed": "ログインに失敗したかキャンセルされました",
-    "noServicesConnected": "サービスに接続できませんでした。少なくとも1つのサービスに接続してください。"
-  },
-  "onboarding": {
-    "connectingService": "接続中 ({{current}}/{{total}})",
-    "connected": "接続完了！",
-    "loginDesc": "下のボタンをクリックして、ブラウザで{{service}}にログインしてください。",
-    "loginFailedDesc": "{{service}}への接続に失敗しました。もう一度試しますか？",
-    "skipForNow": "今はスキップ",
-    "retry": "再試行"
+    "loginFailed": "ログインに失敗したかキャンセルされました"
   },
   "tos": {
     "title": "利用規約",
@@ -269,6 +260,13 @@
     "resetToDefault": "デフォルトに戻す",
     "imageTooLarge": "画像が大きすぎます。2MB以下の画像を選択してください。",
     "selectImageFile": "画像ファイルを選択してください。"
+  },
+  "features": {
+    "messages": "メッセージ",
+    "blogs": "ブログ",
+    "news": "ニュース",
+    "fanclub": "ファンクラブ",
+    "ai": "AIエージェント"
   },
   "landing": {
     "welcome": "HakoDeskへようこそ",

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
 import { SERVICES } from '../data/services';
+import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../config/features';
 import { cn } from '../utils/classnames';
 import { useTranslation } from '../i18n';
 
@@ -108,9 +109,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                 <p className="text-sm text-gray-500 mb-2">
                                     {service.name}
                                 </p>
-                                <p className="text-sm text-gray-400">
-                                    {service.description}
-                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {(SERVICE_FEATURES[service.id] || []).map(featureId => {
+                                        const feature = FEATURE_DEFINITIONS[featureId];
+                                        const Icon = feature.icon;
+                                        return (
+                                            <span key={featureId} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
+                                                <Icon className="w-3 h-3" />
+                                                {t(`features.${featureId}`)}
+                                            </span>
+                                        );
+                                    })}
+                                </div>
                             </button>
                         );
                     })}
