@@ -311,14 +311,20 @@ def build_windows_installer() -> bool:
         print(f"   ❌ Installer build failed: {stderr[:200]}")
         return False
 
-    # Check if installer was created
-    installer_path = project_root / "dist" / "hakodesk-setup.exe"
+    # Check if installer was created (name matches setup.iss OutputBaseFilename)
+    import tomllib
+    try:
+        with open(project_root / "pyproject.toml", "rb") as f:
+            version = tomllib.load(f)["project"]["version"]
+    except Exception:
+        version = "0.1.0"
+    installer_path = project_root / "dist" / f"HakoDesk-{version}-Setup.exe"
     if installer_path.exists():
         size_mb = installer_path.stat().st_size / 1024 / 1024
         print(f"   ✅ Installer created: {installer_path.name} ({size_mb:.1f} MB)")
         return True
     else:
-        print("   ❌ Installer not found after build")
+        print(f"   ❌ Installer not found: {installer_path.name}")
         return False
 
 
