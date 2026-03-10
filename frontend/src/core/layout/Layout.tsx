@@ -22,10 +22,13 @@ export const Layout: React.FC<LayoutProps> = ({
     onOpenAbout,
     onOpenSearch,
 }) => {
-    const { activeService, setActiveService, selectedServices } = useAppStore();
+    const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
 
-    // Use selectedServices (user's selections) for display
-    const services = selectedServices;
+    // Sort selected services by global display order
+    const serviceOrder = getServiceOrder();
+    const services = [...selectedServices].sort(
+        (a, b) => serviceOrder.indexOf(a) - serviceOrder.indexOf(b)
+    );
 
     // Auto-select first service if none selected
     useEffect(() => {

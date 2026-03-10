@@ -36,6 +36,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_SERVICE_ORDER } from '../data/services';
 
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
@@ -86,6 +87,15 @@ interface AppState {
     blogViewResetCounter: number;
     /** Trigger a blog view reset (e.g., when clicking blog icon). */
     triggerBlogViewReset: () => void;
+
+    // ─── Service Order ─────────────────────────────────────────────────────
+
+    /** Global service display order (all service IDs). Reorderable via ServiceRail drag. */
+    serviceOrder: string[];
+    /** Replace the service display order. */
+    setServiceOrder: (order: string[]) => void;
+    /** Get the service display order (appends any missing services from defaults). */
+    getServiceOrder: () => string[];
 
     // ─── Feature Order ───────────────────────────────────────────────────────
 
@@ -209,6 +219,15 @@ export const useAppStore = create<AppState>()(
             triggerBlogViewReset: () =>
                 set((state) => ({ blogViewResetCounter: state.blogViewResetCounter + 1 })),
 
+            serviceOrder: DEFAULT_SERVICE_ORDER,
+            setServiceOrder: (order) => set({ serviceOrder: order }),
+            getServiceOrder: () => {
+                const stored = get().serviceOrder;
+                // Append any services missing from the stored order
+                const missing = DEFAULT_SERVICE_ORDER.filter((id) => !stored.includes(id));
+                return missing.length > 0 ? [...stored, ...missing] : stored;
+            },
+
             featureOrders: {},
             setFeatureOrder: (service, order) =>
                 set((state) => ({
@@ -260,19 +279,12 @@ export const useAppStore = create<AppState>()(
         }),
         {
             name: 'hakodesk-app-state',
-            version: 2,
-            migrate: (persistedState: unknown, version: number) => {
-                const state = persistedState as Partial<AppState>;
-                if (version < 2) {
-                    // v1 → v2: Add selectedServices (empty, will be populated by App.tsx migration)
-                    return { ...state, selectedServices: [] };
-                }
-                return state;
-            },
+            version: 3,
             partialize: (state) => ({
                 selectedServices: state.selectedServices,
                 activeService: state.activeService,
                 activeFeatures: state.activeFeatures,
+                serviceOrder: state.serviceOrder,
                 featureOrders: state.featureOrders,
                 favorites: state.favorites,
                 blogSelectionModes: state.blogSelectionModes,
