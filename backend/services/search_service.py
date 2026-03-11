@@ -1942,16 +1942,18 @@ class SearchService:
 
         # Members — consolidate by (service, member_name) since the same person
         # can have different member_ids in messages vs blogs.
+        # blog_member_id: the member_id from blogs specifically, used for canonical ordering.
         member_rows = conn.execute(
             "SELECT service, MAX(group_id) as group_id, member_name as group_name, "
-            "GROUP_CONCAT(DISTINCT member_id) as member_ids, member_name, COUNT(*) as message_count "
+            "GROUP_CONCAT(DISTINCT member_id) as member_ids, member_name, COUNT(*) as message_count, "
+            "MIN(CASE WHEN source = 'blog' THEN member_id END) as blog_member_id "
             "FROM ("
-            "  SELECT service, group_id, group_name, member_id, member_name FROM search_messages "
+            "  SELECT service, group_id, group_name, member_id, member_name, 'msg' as source FROM search_messages "
             "  UNION ALL "
-            "  SELECT service, 0 as group_id, member_name as group_name, member_id, member_name FROM search_blogs"
+            "  SELECT service, 0 as group_id, member_name as group_name, member_id, member_name, 'blog' as source FROM search_blogs"
             ") "
             "GROUP BY service, member_name "
-            "ORDER BY service, member_name"
+            "ORDER BY service, blog_member_id, member_name"
         ).fetchall()
 
         members = [
@@ -1963,6 +1965,7 @@ class SearchService:
                 "member_ids": [int(x) for x in r[3].split(",")],
                 "member_name": r[4],
                 "message_count": r[5],
+                "blog_member_id": r[6],
             }
             for r in member_rows
         ]

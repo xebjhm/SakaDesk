@@ -119,11 +119,13 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
 
     // Members — consolidate by (service, member_name) since the same person
     // can have different member_ids in messages vs blogs.
-    // Sort by global service order so members are grouped consistently with service headers.
+    // Sort by global service order, then by blog_member_id within each service.
     const orderedMembers = [...membersData.members].sort((a, b) => {
       const ai = serviceOrder.indexOf(a.service);
       const bi = serviceOrder.indexOf(b.service);
-      return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+      const serviceSort = (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+      if (serviceSort !== 0) return serviceSort;
+      return (a.blog_member_id ?? Infinity) - (b.blog_member_id ?? Infinity);
     });
     const seen = new Set<string>();
     for (const mem of orderedMembers) {
