@@ -85,7 +85,10 @@
     "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
     "browserPrompt": "请登录您的 {{service}} Message 账户。将为您打开浏览器窗口以输入凭据。",
-    "loginFailed": "登录失败或已取消"
+    "loginFailed": "登录失败或已取消",
+    "connectPromptTitle": "连接您的账户？",
+    "connectPromptDesc": "登录以同步您的 {{service}} 消息。您也可以不登录直接浏览 Blog。",
+    "maybeLater": "以后再说"
   },
   "tos": {
     "title": "服务条款",

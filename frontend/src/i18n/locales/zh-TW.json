@@ -85,7 +85,10 @@
     "launchBrowserLogin": "啟動瀏覽器登入",
     "connectAccount": "連接帳戶",
     "browserPrompt": "請登入您的 {{service}} Message 帳戶。瀏覽器視窗將會開啟以供您輸入憑證。",
-    "loginFailed": "登入失敗或已取消"
+    "loginFailed": "登入失敗或已取消",
+    "connectPromptTitle": "連接您的帳戶？",
+    "connectPromptDesc": "登入以同步您的 {{service}} 訊息。您也可以不登入直接瀏覽 Blog。",
+    "maybeLater": "以後再說"
   },
   "tos": {
     "title": "服務條款",

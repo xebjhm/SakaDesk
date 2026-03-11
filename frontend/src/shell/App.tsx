@@ -24,6 +24,7 @@ function App() {
         selectedServices,
         setSelectedServices,
         setActiveFeature,
+        setFreshlyAddedService,
     } = useAppStore();
 
     // Auth hook
@@ -108,6 +109,9 @@ function App() {
     const activeFeatures = useAppStore(s => s.activeFeatures);
     const currentFeature = activeService ? activeFeatures[activeService] ?? 'messages' : null;
 
+    // Fresh service login prompt — shown after adding a new service
+    const freshlyAddedService = useAppStore(s => s.freshlyAddedService);
+
     // Disconnected service login popup — shown when user switches to a paid feature on a disconnected service
     const [disconnectedLoginService, setDisconnectedLoginService] = useState<string | null>(null);
 
@@ -160,6 +164,11 @@ function App() {
                         if (SERVICE_FEATURES[svc]?.includes('blogs')) {
                             setActiveFeature(svc, 'blogs');
                         }
+                    }
+                    // Prompt login for the first service that supports messages
+                    const firstWithMessages = services.find(svc => SERVICE_FEATURES[svc]?.includes('messages'));
+                    if (firstWithMessages) {
+                        setFreshlyAddedService(firstWithMessages);
                     }
                 }}
             />
@@ -280,6 +289,22 @@ function App() {
                             startSync(false, disconnectedLoginService);
                         }}
                         isDisconnected={true}
+                    />
+                )}
+
+                {/* Fresh Service Login Prompt — gentle prompt after adding a new service */}
+                {freshlyAddedService && !sessionExpiredService && !disconnectedLoginService && !showSetupWizard && (
+                    <LoginModal
+                        serviceId={freshlyAddedService}
+                        featureId="messages"
+                        onClose={() => setFreshlyAddedService(null)}
+                        onSuccess={async () => {
+                            await checkAuth();
+                            const svc = freshlyAddedService;
+                            setFreshlyAddedService(null);
+                            startSync(false, svc);
+                        }}
+                        isFreshPrompt={true}
                     />
                 )}
 
