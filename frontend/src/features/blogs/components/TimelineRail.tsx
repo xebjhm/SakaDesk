@@ -18,11 +18,11 @@ interface YearGroup {
 
 // Fisheye zoom configuration
 const ZOOM_CONFIG = {
-    dwellTime: 400,
+    dwellTime: 800,
     dwellTolerance: 10,
     magnifiedWindow: 50,
     magnification: 5,
-    transitionMs: 300, // Slightly longer for smoother feel
+    transitionMs: 300,
 };
 
 export const TimelineRail: React.FC<TimelineRailProps> = ({
@@ -85,8 +85,10 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
         }
 
         const center = zoomCenter / (blogs.length - 1);
-        const windowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
+        // Clamp windowSize so magnified region doesn't exceed available space
+        const rawWindowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
         const mag = ZOOM_CONFIG.magnification;
+        const windowSize = Math.min(rawWindowSize, 0.45 / mag);
 
         const dist = normalizedIndex - center;
         const absDist = Math.abs(dist);
@@ -95,20 +97,20 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
             const t = absDist / windowSize;
             const eased = t * t * (3 - 2 * t);
             const expandedDist = dist * (1 + (mag - 1) * (1 - eased));
-            return center + expandedDist;
+            return Math.max(0, Math.min(1, center + expandedDist));
         } else {
             const magnifiedSpace = windowSize * mag;
-            const remainingSpace = (1 - magnifiedSpace * 2) / 2;
-            const normalRemaining = 0.5 - windowSize;
+            const remainingSpace = Math.max((1 - magnifiedSpace * 2) / 2, 0.01);
+            const normalRemaining = Math.max(0.5 - windowSize, 0.001);
 
             if (dist > 0) {
                 const outsideDist = absDist - windowSize;
-                const compressedDist = outsideDist * (remainingSpace / Math.max(normalRemaining, 0.001));
-                return center + magnifiedSpace + compressedDist;
+                const compressedDist = outsideDist * (remainingSpace / normalRemaining);
+                return Math.max(0, Math.min(1, center + magnifiedSpace + compressedDist));
             } else {
                 const outsideDist = absDist - windowSize;
-                const compressedDist = outsideDist * (remainingSpace / Math.max(normalRemaining, 0.001));
-                return center - magnifiedSpace - compressedDist;
+                const compressedDist = outsideDist * (remainingSpace / normalRemaining);
+                return Math.max(0, Math.min(1, center - magnifiedSpace - compressedDist));
             }
         }
     }, [blogs.length, isZoomed, zoomCenter]);
@@ -122,8 +124,9 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
         }
 
         const center = zoomCenter / (blogs.length - 1);
-        const windowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
+        const rawWindowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
         const mag = ZOOM_CONFIG.magnification;
+        const windowSize = Math.min(rawWindowSize, 0.45 / mag);
         const magnifiedSpace = windowSize * mag;
 
         const dist = pos - center;
@@ -136,16 +139,16 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
             const originalDist = (absDist / mag);
             normalizedIndex = center + sign * originalDist;
         } else {
-            const remainingSpace = (1 - magnifiedSpace * 2) / 2;
-            const normalRemaining = 0.5 - windowSize;
+            const remainingSpace = Math.max((1 - magnifiedSpace * 2) / 2, 0.01);
+            const normalRemaining = Math.max(0.5 - windowSize, 0.001);
 
             if (dist > 0) {
                 const compressedDist = absDist - magnifiedSpace;
-                const originalDist = compressedDist * (normalRemaining / Math.max(remainingSpace, 0.001));
+                const originalDist = compressedDist * (normalRemaining / remainingSpace);
                 normalizedIndex = center + windowSize + originalDist;
             } else {
                 const compressedDist = absDist - magnifiedSpace;
-                const originalDist = compressedDist * (normalRemaining / Math.max(remainingSpace, 0.001));
+                const originalDist = compressedDist * (normalRemaining / remainingSpace);
                 normalizedIndex = center - windowSize - originalDist;
             }
         }
