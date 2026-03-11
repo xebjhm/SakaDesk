@@ -1449,10 +1449,6 @@ class SearchService:
                 "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
                 ("index_blog_count", str(blog_count)),
             )
-            conn.execute(
-                "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
-                ("schema_version", "1"),
-            )
             conn.commit()
             logger.info("Full search index built", count=count, blog_count=blog_count)
         finally:
@@ -1836,11 +1832,6 @@ class SearchService:
         if row:
             last_build = row[0]
 
-        schema_version = None
-        row = conn.execute("SELECT value FROM search_meta WHERE key = 'schema_version'").fetchone()
-        if row:
-            schema_version = row[0]
-
         db_size = 0
         if self._db_path.exists():
             db_size = self._db_path.stat().st_size
@@ -1849,7 +1840,6 @@ class SearchService:
             "indexed_count": indexed_count,
             "blog_indexed_count": blog_indexed_count,
             "last_build": last_build,
-            "schema_version": schema_version,
             "is_building": self._building,
             "db_size_bytes": db_size,
         }
