@@ -1394,7 +1394,11 @@ class SearchService:
                             content = msg.get("content")
                             if content is None:
                                 continue
-                            normalized = self._normalize_with_readings(content)
+                            try:
+                                normalized = self._normalize_with_readings(content)
+                            except Exception as e:
+                                logger.warning("pykakasi normalization failed, storing raw content", error=str(e))
+                                normalized = content
                             batch.append((
                                 msg.get("id"),
                                 service_id,
@@ -1642,7 +1646,11 @@ class SearchService:
                 content = msg.get("content")
                 if content is None:
                     continue
-                normalized = self._normalize_with_readings(content)
+                try:
+                    normalized = self._normalize_with_readings(content)
+                except Exception as e:
+                    logger.warning("pykakasi normalization failed, storing raw content", error=str(e))
+                    normalized = content
                 batch.append((
                     msg_id,
                     service,
