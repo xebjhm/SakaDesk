@@ -43,7 +43,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
         <div className="fixed inset-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
                 {/* Header - Chat Room Style */}
-                <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-4">
+                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
                     {/* Multi-service counter (shown during sequential sync) */}
                     {sequentialSyncInfo && sequentialSyncInfo.total > 1 && (
                         <div className="flex items-center justify-center gap-2 mb-3">
@@ -94,7 +94,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         </div>
                         <div className="h-4 bg-gray-100 rounded-full overflow-hidden shadow-inner">
                             <div
-                                className="h-full bg-gradient-to-r from-blue-400 via-blue-500 to-indigo-500 transition-all duration-300 ease-out rounded-full relative"
+                                className="h-full bg-gradient-to-r from-[#b4dcff] to-[#f0bede] transition-all duration-300 ease-out rounded-full relative"
                                 style={{
                                     width: syncProgress.total && syncProgress.total > 0
                                         ? `${((syncProgress.completed || 0) / syncProgress.total) * 100}%`
