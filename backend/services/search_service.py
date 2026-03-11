@@ -2051,10 +2051,12 @@ class SearchService:
         date_to: Optional[str] = None,
         content_type: str = "all",
     ) -> Dict[str, Any]:
-        # If index doesn't exist yet, start building in the background
-        # instead of blocking the search response (which causes infinite spinner).
+        # Failsafe: if the full build never completed (e.g. interrupted fresh
+        # install), trigger one in the background.  The executor is single-
+        # threaded so we can't search while building — return immediately.
         if self._needs_build():
             if not self._building:
+                logger.info("Full index missing at search time, triggering background build (failsafe)")
                 asyncio.create_task(self.build_full_index())
             return {
                 "query": query,
@@ -2083,7 +2085,14 @@ class SearchService:
 
     async def index_members(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._index_members_sync, members, service)
+        count = await loop.run_in_executor(self._executor, self._index_members_sync, members, service)
+        # Primary trigger: if a full build has never completed (fresh install),
+        # run one now — blocking so the sync flow waits for it to finish.
+        # This is expected: on first install the user waits for the full index.
+        if self._needs_build() and not self._building:
+            logger.info("No full index found after sync, building now (blocking)")
+            await self.build_full_index()
+        return count
 
     async def index_blogs_for_service(self, service: str) -> int:
         loop = asyncio.get_running_loop()
