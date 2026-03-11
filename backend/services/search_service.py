@@ -1677,20 +1677,14 @@ class SearchService:
             conn.commit()
             count += len(batch)
 
-        # Mark index as usable if this is the first indexing pass.
-        # Without this, _needs_build() keeps returning True (it checks
-        # for 'last_full_build') and the first search would trigger a
-        # redundant full rebuild.
-        row = conn.execute(
-            "SELECT value FROM search_meta WHERE key = 'last_full_build'"
-        ).fetchone()
-        if row is None:
-            now = datetime.now(timezone.utc).isoformat()
-            conn.execute(
-                "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
-                ("last_full_build", now),
-            )
-            conn.commit()
+        # Record timestamp for debugging — helps trace when each service
+        # was last incrementally indexed and how many messages were added.
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+            ("last_incremental_index", f"{now} service={service} new={count}"),
+        )
+        conn.commit()
 
         logger.info("Incremental index update", service=service, new_messages=count)
         return count
