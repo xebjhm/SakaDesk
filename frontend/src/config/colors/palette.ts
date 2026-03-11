@@ -1,60 +1,11 @@
 /**
- * Brand Color Palette - Single Source of Truth
+ * Primitive Color Palette
  *
- * All brand colors for each idol group are defined here.
- * Other color files (themes, services) should import from this file.
+ * Neutral and feedback colors (theme-independent).
+ * Brand colors are defined in serviceThemes.ts (the single source of truth).
  */
 
-/**
- * Primary brand colors for each Sakamichi group.
- * These are the canonical colors that define each group's visual identity.
- */
-export const BRAND_COLORS = {
-    hinatazaka: {
-        /** Sorairo (Sky Blue) - primary brand color */
-        primary: '#5bbfe5',
-        /** Darker sky blue for gradients */
-        primaryDark: '#4aa8cc',
-        /** Teal - secondary accent */
-        secondary: '#5dc2b5',
-        /** Soft sunlight yellow */
-        accent: '#fffacd',
-    },
-    sakurazaka: {
-        /** Sakura Pink - primary brand color */
-        primary: '#f19cb4',
-        /** Lighter cherry blossom pink */
-        primaryLight: '#f7c4d4',
-        /** Darker rose for gradients */
-        primaryDark: '#E85298',
-        /** Pure white - secondary color */
-        secondary: '#FFFFFF',
-        /** Cool grey-blue accent */
-        accent: '#8B9DC3',
-    },
-    nogizaka: {
-        /** Noble Purple - primary brand color */
-        primary: '#7e2483',
-        /** Soft purple for lighter contexts */
-        primaryLight: '#9B59B6',
-        /** Darker noble purple for gradients */
-        primaryDark: '#5a0b5e',
-        /** Soft purple - secondary color */
-        secondary: '#9B59B6',
-        /** Misty lavender accent */
-        accent: '#E8E0F0',
-    },
-    yodel: {
-        /** Sage Green - primary brand color (from Yodel app UI) */
-        primary: '#5a8a6a',
-        /** Darker forest green for gradients */
-        primaryDark: '#3d6b4f',
-        /** Light sage - secondary color */
-        secondary: '#7ab08a',
-        /** Soft mint accent */
-        accent: '#d4ebe0',
-    },
-} as const;
+export type { GroupId } from '../serviceThemes';
 
 /**
  * Neutral colors for UI elements (not group-specific).
@@ -100,5 +51,3 @@ export const FEEDBACK_COLORS = {
     warning: '#F59E0B',
     error: '#EF4444',
 } as const;
-
-export type GroupId = keyof typeof BRAND_COLORS;

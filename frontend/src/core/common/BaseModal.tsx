@@ -5,7 +5,7 @@ import { cn } from '../../utils/classnames';
 import type { BaseModalComponentProps } from '../../types/modal';
 import { Z_CLASS } from '../../constants/zIndex';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 
 /**
  * BaseModal component that handles common modal patterns:
@@ -41,7 +41,7 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
 }) => {
     // Get per-service theme colors for modal header
     const activeService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -217,7 +217,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
 }) => {
     // Get per-service theme colors for modal header
     const activeService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);

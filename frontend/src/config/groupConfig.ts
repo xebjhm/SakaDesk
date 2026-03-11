@@ -1,7 +1,7 @@
 // src/config/groupConfig.ts
 // Per-service configuration for group chat handling
 
-import type { GroupId } from './groupThemes';
+import type { GroupId } from './serviceThemes';
 
 // Group chat IDs by service (groups that are communal chats rather than individual member chats)
 export const GROUP_CHAT_IDS: Record<GroupId, string[]> = {

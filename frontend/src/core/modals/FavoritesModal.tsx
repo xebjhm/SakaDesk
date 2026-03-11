@@ -6,7 +6,7 @@ import { VoicePlayer } from '../media/VoicePlayer';
 import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface FavoritesModalProps extends BaseModalProps {
@@ -30,7 +30,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     // Filter only favorite messages, sorted by timestamp (newest first)
     const favoriteMessages = useMemo(() => {

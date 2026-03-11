@@ -5,7 +5,7 @@ import { BaseModal, ModalLoadingState, ModalErrorState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface DateCount {
@@ -63,7 +63,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
 
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     // Use translated title as default
     const modalTitle = title || t('calendar.title');

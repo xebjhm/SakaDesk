@@ -1,30 +1,16 @@
 // frontend/src/data/services.ts
-// Single source of truth for service definitions
-// Colors are derived from the brand palette for consistency
+// Service metadata definitions. Colors come from config/serviceThemes.ts (single source of truth).
 
-import { BRAND_COLORS } from '../config/colors/palette';
-
-// Note: Colors are defined statically for Tailwind JIT compatibility.
-// Canonical color values live in config/colors/palette.ts - keep in sync.
+import { getServiceTheme } from '../config/serviceThemes';
 
 export interface ServiceDefinition {
     id: string;
     name: string;
     displayName: string;
     shortCode: string;
-    color: string;          // Gradient classes for UI elements
-    bgColor: string;        // Solid bg class for icons/badges
-    primaryColor: string;   // Hex color for dynamic styling (rings, tints)
     blogBaseUrl: string;    // Base URL for blog content normalization
     logoUrl: string;        // Official logo URL (hotlinked from official site)
 }
-
-// Tailwind requires static class names at build time.
-// These colors are derived from BRAND_COLORS in palette.ts - keep them in sync.
-// hinatazaka: primary=#5bbfe5, primaryDark=#4aa8cc
-// sakurazaka: primary=#f19cb4, primaryDark=#E85298
-// nogizaka: primary=#7e2483, primaryDark=#5a0b5e
-// yodel: primary=#5a8a6a, primaryDark=#3d6b4f
 
 export const SERVICES: ServiceDefinition[] = [
     {
@@ -32,9 +18,6 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Nogizaka46',
         displayName: '乃木坂46',
         shortCode: 'NO',
-        color: 'from-[#7e2483] to-[#5a0b5e]',
-        bgColor: 'bg-[#7e2483]',
-        primaryColor: BRAND_COLORS.nogizaka.primary,
         blogBaseUrl: 'https://www.nogizaka46.com',
         logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
     },
@@ -43,9 +26,6 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Sakurazaka46',
         displayName: '櫻坂46',
         shortCode: 'SA',
-        color: 'from-[#f19cb4] to-[#E85298]',
-        bgColor: 'bg-[#f19cb4]',
-        primaryColor: BRAND_COLORS.sakurazaka.primary,
         blogBaseUrl: 'https://sakurazaka46.com',
         logoUrl: 'https://sakurazaka46.com/files/14/s46/img/about/about-logo.svg',
     },
@@ -54,9 +34,6 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Hinatazaka46',
         displayName: '日向坂46',
         shortCode: 'HI',
-        color: 'from-[#5bbfe5] to-[#4aa8cc]',
-        bgColor: 'bg-[#5bbfe5]',
-        primaryColor: BRAND_COLORS.hinatazaka.primary,
         blogBaseUrl: 'https://www.hinatazaka46.com',
         logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
     },
@@ -65,9 +42,6 @@ export const SERVICES: ServiceDefinition[] = [
         name: 'Yodel',
         displayName: 'Yodel',
         shortCode: 'YO',
-        color: 'from-[#5a8a6a] to-[#3d6b4f]',
-        bgColor: 'bg-[#5a8a6a]',
-        primaryColor: BRAND_COLORS.yodel.primary,
         blogBaseUrl: 'https://service.yodel-app.com',
         logoUrl: 'https://service.yodel-app.com/icons/Icon-192.png',
     },
@@ -110,14 +84,6 @@ export function getServiceDisplayName(id: string): string {
     return SERVICES_BY_ID[id]?.displayName ?? id;
 }
 
-export function getServiceColor(id: string): string {
-    return SERVICES_BY_ID[id]?.color ?? 'from-gray-400 to-gray-500';
-}
-
-export function getServiceBgColor(id: string): string {
-    return SERVICES_BY_ID[id]?.bgColor ?? 'bg-gray-500';
-}
-
 export function getServiceBlogBaseUrl(id: string): string {
     return SERVICES_BY_ID[id]?.blogBaseUrl ?? '';
 }
@@ -126,8 +92,9 @@ export function getServiceLogoUrl(id: string): string | undefined {
     return SERVICES_BY_ID[id]?.logoUrl;
 }
 
+/** Get the primary color for a service. Reads from serviceThemes (single source of truth). */
 export function getServicePrimaryColor(id: string): string {
-    return SERVICES_BY_ID[id]?.primaryColor ?? '#6b7280';
+    return getServiceTheme(id).primaryColor;
 }
 
 const SERVICES_BY_DISPLAY_NAME: Record<string, ServiceDefinition> = Object.fromEntries(

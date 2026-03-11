@@ -8,7 +8,7 @@ import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
-import { getThemeForService } from '../../../config/groupThemes';
+import { getServiceTheme } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
 
 // Re-export for backward compatibility
@@ -48,7 +48,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
 
     // Get per-service theme colors
     const currentService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(currentService);
+    const theme = getServiceTheme(currentService);
 
     const menuItems = [
         { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), enabled: true },

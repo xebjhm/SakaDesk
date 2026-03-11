@@ -5,7 +5,8 @@
  * Use these tokens in components instead of raw color values.
  */
 
-import { BRAND_COLORS, NEUTRAL_COLORS, FEEDBACK_COLORS, type GroupId } from './palette';
+import { NEUTRAL_COLORS, FEEDBACK_COLORS } from './palette';
+import { serviceThemes, type GroupId } from '../serviceThemes';
 
 /**
  * Semantic color roles for a group theme.
@@ -27,48 +28,14 @@ export interface SemanticColors {
  * Get semantic colors for a specific group.
  */
 export function getSemanticColors(groupId: GroupId): SemanticColors {
-    switch (groupId) {
-        case 'hinatazaka': {
-            const brand = BRAND_COLORS.hinatazaka;
-            return {
-                primary: brand.primary,
-                secondary: brand.secondary,
-                accent: brand.accent,
-                gradientFrom: brand.primary,
-                gradientTo: brand.primaryDark,
-            };
-        }
-        case 'sakurazaka': {
-            const brand = BRAND_COLORS.sakurazaka;
-            return {
-                primary: brand.primary,
-                secondary: brand.secondary,
-                accent: brand.accent,
-                gradientFrom: brand.primaryLight,
-                gradientTo: brand.primary,
-            };
-        }
-        case 'nogizaka': {
-            const brand = BRAND_COLORS.nogizaka;
-            return {
-                primary: brand.primary,
-                secondary: brand.secondary,
-                accent: brand.accent,
-                gradientFrom: brand.primary,
-                gradientTo: brand.primaryDark,
-            };
-        }
-        case 'yodel': {
-            const brand = BRAND_COLORS.yodel;
-            return {
-                primary: brand.primary,
-                secondary: brand.secondary,
-                accent: brand.accent,
-                gradientFrom: brand.primary,
-                gradientTo: brand.primaryDark,
-            };
-        }
-    }
+    const theme = serviceThemes[groupId];
+    return {
+        primary: theme.primaryColor,
+        secondary: theme.secondaryColor,
+        accent: theme.accentColor,
+        gradientFrom: theme.primaryColor,
+        gradientTo: theme.secondaryColor,
+    };
 }
 
 /**

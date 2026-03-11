@@ -1,10 +1,10 @@
 // frontend/src/components/ui/DynamicBackground.tsx
 // Ambient "Living Air" background with slowly floating color orbs
 import React, { useMemo } from 'react';
-import { GroupTheme } from '../../config/groupThemes';
+import { ServiceTheme } from '../../config/serviceThemes';
 
 interface DynamicBackgroundProps {
-    theme: GroupTheme;
+    theme: ServiceTheme;
     className?: string;
 }
 

@@ -6,7 +6,6 @@
 
 // Primitive colors
 export {
-    BRAND_COLORS,
     NEUTRAL_COLORS,
     FEEDBACK_COLORS,
     type GroupId,

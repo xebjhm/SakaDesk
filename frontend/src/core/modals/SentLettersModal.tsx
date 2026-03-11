@@ -4,7 +4,7 @@ import { cn } from '../../utils/classnames';
 import { BaseModal, DetailModal, SafeImage, ModalLoadingState, ModalErrorState, ModalEmptyState } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface Letter {
@@ -34,7 +34,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
     const { t } = useTranslation();
     // Get per-service theme colors
     const currentService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(currentService);
+    const theme = getServiceTheme(currentService);
 
     const [letters, setLetters] = useState<Letter[]>([]);
     const [loading, setLoading] = useState(false);

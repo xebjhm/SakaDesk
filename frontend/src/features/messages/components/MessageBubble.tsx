@@ -4,7 +4,7 @@ import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
-import { DEFAULT_SHELTER_COLORS } from '../../../config/groupThemes';
+import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
 

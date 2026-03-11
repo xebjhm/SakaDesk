@@ -1,7 +1,7 @@
 // frontend/src/pages/LandingPage.tsx
 import React, { useState } from 'react';
 import { Check } from 'lucide-react';
-import { SERVICES } from '../data/services';
+import { SERVICES, getServicePrimaryColor } from '../data/services';
 import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../config/features';
 import { cn } from '../utils/classnames';
 import { useTranslation } from '../i18n';
@@ -58,7 +58,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                     'focus:outline-none focus:ring-2 focus:ring-offset-2',
                                     isSelected && 'ring-2 shadow-xl'
                                 )}
-                                style={isSelected ? { '--tw-ring-color': service.primaryColor } as React.CSSProperties : undefined}
+                                style={isSelected ? { '--tw-ring-color': getServicePrimaryColor(service.id) } as React.CSSProperties : undefined}
                             >
                                 {/* Selection indicator */}
                                 <div
@@ -68,7 +68,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                             ? 'border-transparent'
                                             : 'border-gray-300'
                                     )}
-                                    style={isSelected ? { backgroundColor: service.primaryColor, borderColor: service.primaryColor } : undefined}
+                                    style={isSelected ? { backgroundColor: getServicePrimaryColor(service.id), borderColor: getServicePrimaryColor(service.id) } : undefined}
                                 >
                                     {isSelected && (
                                         <Check className="w-4 h-4 text-white" />
@@ -81,7 +81,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                         'w-16 h-16 rounded-full bg-white flex items-center justify-center mb-4 overflow-hidden shadow-sm transition-all',
                                         isSelected ? 'ring-[3px] ring-offset-2' : 'ring-1 ring-gray-200'
                                     )}
-                                    style={isSelected ? { '--tw-ring-color': service.primaryColor } as React.CSSProperties : undefined}
+                                    style={isSelected ? { '--tw-ring-color': getServicePrimaryColor(service.id) } as React.CSSProperties : undefined}
                                 >
                                     {service.logoUrl ? (
                                         <img
