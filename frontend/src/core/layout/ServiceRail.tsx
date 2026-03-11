@@ -57,6 +57,8 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
         setDragIndex(index);
         dragNodeRef.current = e.currentTarget as HTMLElement;
         e.dataTransfer.effectAllowed = 'move';
+        // Required by Chromium/Edge for dragover/drop events to fire
+        e.dataTransfer.setData('text/plain', '');
         // Make the drag image slightly transparent
         requestAnimationFrame(() => {
             if (dragNodeRef.current) {
@@ -160,6 +162,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                             src={getServiceLogoUrl(service)}
                                             alt={service}
                                             className="w-8 h-8 object-contain"
+                                            draggable={false}
                                             onError={(e) => {
                                                 // Fallback to short code on error
                                                 e.currentTarget.style.display = 'none';

@@ -66,13 +66,13 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                         </p>
                         <div className="flex flex-wrap gap-2">
                             <a
-                                href="https://www.hinatazaka46.com/s/h46app/page/app_terms"
+                                href="https://contact.nogizaka46.com/s/n46app/page/app_terms"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+                                className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
                             >
                                 <ExternalLink className="w-3 h-3" />
-                                {t('tos.hinatazakaTos')}
+                                {t('tos.nogizakaTos')}
                             </a>
                             <span className="text-gray-300">|</span>
                             <a
@@ -124,7 +124,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                     <button
                         onClick={handleAccept}
                         disabled={!acknowledged}
-                        className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-3 bg-blue-400 text-white rounded-xl font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {t('tos.acceptAndContinue')}
                     </button>
