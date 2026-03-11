@@ -17,7 +17,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
-    const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder } = useAppStore();
+    const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder, setFreshlyAddedService } = useAppStore();
 
     // Filter out already selected services, sorted by global order
     const availableServices = getOrderedServiceDefs(getServiceOrder()).filter(
@@ -31,6 +31,10 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
             setActiveFeature(serviceId, 'blogs');
         }
         setActiveService(serviceId);
+        // Trigger login prompt for message account (if service supports messages)
+        if (SERVICE_FEATURES[serviceId]?.includes('messages')) {
+            setFreshlyAddedService(serviceId);
+        }
         onClose();
     };
 
@@ -65,8 +69,8 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
                                     key={service.id}
                                     onClick={() => handleSelect(service.id)}
                                     className="group w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-left"
-                                    style={{ '--hover-border-color': service.primaryColor } as React.CSSProperties}
-                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = service.primaryColor}
+                                    style={{ '--hover-border-color': getServicePrimaryColor(service.id) } as React.CSSProperties}
+                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = getServicePrimaryColor(service.id)}
                                     onMouseLeave={(e) => e.currentTarget.style.borderColor = ''}
                                 >
                                     {/* Logo circle with subtle ring */}

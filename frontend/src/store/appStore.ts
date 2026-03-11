@@ -154,6 +154,13 @@ interface AppState {
     /** Set the target blog to open from search navigation. */
     setTargetBlog: (target: { blogId: string; service: string; memberId: number; searchQuery: string; matchedTerms?: string[]; readingTerms?: string[] } | null) => void;
 
+    // ─── Fresh Service Prompt ────────────────────────────────────────────────
+
+    /** Service ID that was just added (non-persisted), triggers login prompt. */
+    freshlyAddedService: string | null;
+    /** Set the freshly added service (triggers login prompt in App.tsx). */
+    setFreshlyAddedService: (service: string | null) => void;
+
     // ─── Golden Finger (Hidden Feature) ────────────────────────────────────
     /** Secret download mode activated via easter egg. */
     goldenFingerActive: boolean;
@@ -273,6 +280,9 @@ export const useAppStore = create<AppState>()(
 
             targetBlog: null,
             setTargetBlog: (target) => set({ targetBlog: target }),
+
+            freshlyAddedService: null,
+            setFreshlyAddedService: (service) => set({ freshlyAddedService: service }),
 
             goldenFingerActive: false,
             setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),

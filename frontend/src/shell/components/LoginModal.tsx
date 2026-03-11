@@ -1,8 +1,9 @@
 // frontend/src/shell/components/LoginModal.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Loader2, LogIn } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { getServiceById, getServiceColor } from '../../data/services';
+import { getServiceById } from '../../data/services';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
@@ -12,7 +13,8 @@ interface LoginModalProps {
     featureId: FeatureId;
     onClose: () => void;
     onSuccess: () => void;
-    isDisconnected?: boolean;  // New: true if session expired (vs never connected)
+    isDisconnected?: boolean;  // true if session expired (vs never connected)
+    isFreshPrompt?: boolean;   // true for gentle "connect your account?" prompt after adding service
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -21,6 +23,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     onClose,
     onSuccess,
     isDisconnected = false,
+    isFreshPrompt = false,
 }) => {
     const { t } = useTranslation();
     const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +31,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     const service = getServiceById(serviceId);
     const feature = FEATURE_DEFINITIONS[featureId];
-    const serviceColor = getServiceColor(serviceId);
+    const theme = getServiceTheme(serviceId);
+    const isLightHeader = theme.messages.headerStyle === 'light';
+    const headerBg = useMemo(() => {
+        if (isLightHeader) return '#FFFFFF';
+        const { from, via, to } = theme.messages.headerGradient;
+        return `linear-gradient(to right, ${from}, ${via}, ${to})`;
+    }, [theme, isLightHeader]);
+    const headerTextColor = isLightHeader ? theme.messages.headerTextColor : 'white';
 
     const handleLogin = async () => {
         setIsLoading(true);
@@ -57,43 +67,62 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
-                {/* Header */}
-                <div className={cn('bg-gradient-to-r px-6 py-4', serviceColor)}>
+                {/* Header — matches chat room header style per service */}
+                <div
+                    className={cn('px-6 py-4', !isLightHeader && 'shadow-sm')}
+                    style={{ background: headerBg }}
+                >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                                <LogIn className="w-5 h-5 text-white" />
+                            <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: isLightHeader ? `${headerTextColor}15` : 'rgba(255,255,255,0.2)' }}
+                            >
+                                <LogIn className="w-5 h-5" style={{ color: headerTextColor }} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white">
-                                    {isDisconnected ? t('login.sessionExpired') : t('login.loginRequired')}
+                                <h3 className="text-lg font-bold" style={{ color: headerTextColor }}>
+                                    {isFreshPrompt
+                                        ? t('login.connectPromptTitle')
+                                        : isDisconnected
+                                            ? t('login.sessionExpired')
+                                            : t('login.loginRequired')}
                                 </h3>
-                                <p className="text-sm text-white/80">
+                                <p className="text-sm" style={{ color: headerTextColor, opacity: 0.8 }}>
                                     {service?.displayName ?? serviceId}
                                 </p>
                             </div>
                         </div>
                         <button
                             onClick={onClose}
-                            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            className="w-8 h-8 rounded-full flex items-center justify-center transition-colors"
+                            style={{ backgroundColor: isLightHeader ? `${headerTextColor}15` : 'rgba(255,255,255,0.2)' }}
                         >
-                            <X className="w-4 h-4 text-white" />
+                            <X className="w-4 h-4" style={{ color: headerTextColor }} />
                         </button>
                     </div>
                 </div>
+                {/* Gradient bar below header (light style only, e.g. Sakurazaka) */}
+                {isLightHeader && (
+                    <div className="h-1" style={{ background: theme.messages.headerBarGradient }} />
+                )}
 
                 {/* Content */}
                 <div className="p-6 space-y-4">
                     <p className="text-gray-600">
-                        {isDisconnected
-                            ? t('login.sessionExpiredDesc', {
+                        {isFreshPrompt
+                            ? t('login.connectPromptDesc', {
                                 service: service?.displayName ?? serviceId,
-                                feature: feature?.label ?? featureId
                             })
-                            : t('login.premiumFeatureDesc', {
-                                feature: feature?.label ?? featureId,
-                                service: service?.name ?? serviceId
-                            })
+                            : isDisconnected
+                                ? t('login.sessionExpiredDesc', {
+                                    service: service?.displayName ?? serviceId,
+                                    feature: feature?.label ?? featureId
+                                })
+                                : t('login.premiumFeatureDesc', {
+                                    feature: feature?.label ?? featureId,
+                                    service: service?.name ?? serviceId
+                                })
                         }
                     </p>
 
@@ -109,15 +138,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             disabled={isLoading}
                             className="flex-1 py-3 px-4 rounded-xl border border-gray-200 text-gray-600 font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
                         >
-                            {t('common.cancel')}
+                            {isFreshPrompt ? t('login.maybeLater') : t('common.cancel')}
                         </button>
                         <button
                             onClick={handleLogin}
                             disabled={isLoading}
-                            className={cn(
-                                'flex-1 py-3 px-4 rounded-xl text-white font-medium transition-colors disabled:opacity-50 bg-gradient-to-r',
-                                serviceColor
-                            )}
+                            className="flex-1 py-3 px-4 rounded-xl text-white font-medium transition-colors disabled:opacity-50"
+                            style={{ backgroundColor: theme.primaryColor }}
                         >
                             {isLoading ? (
                                 <span className="flex items-center justify-center gap-2">
@@ -125,7 +152,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                                     {t('login.connecting')}
                                 </span>
                             ) : (
-                                t('common.login')
+                                isFreshPrompt ? t('login.connectAccount') : t('common.login')
                             )}
                         </button>
                     </div>

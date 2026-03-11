@@ -85,7 +85,10 @@
     "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
     "browserPrompt": "{{service}}のMessageアカウントにログインしてください。ブラウザウィンドウが開き、認証情報を入力できます。",
-    "loginFailed": "ログインに失敗したかキャンセルされました"
+    "loginFailed": "ログインに失敗したかキャンセルされました",
+    "connectPromptTitle": "アカウントを連携しますか？",
+    "connectPromptDesc": "ログインすると{{service}}のメッセージを同期できます。ログインせずにブログを閲覧することも可能です。",
+    "maybeLater": "あとで"
   },
   "tos": {
     "title": "利用規約",
