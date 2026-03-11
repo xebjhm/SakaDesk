@@ -134,7 +134,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                         className={cn(
                             'px-8 py-4 rounded-xl text-lg font-semibold transition-all',
                             selected.size > 0
-                                ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white hover:from-blue-600 hover:to-indigo-600 shadow-lg hover:shadow-xl'
+                                ? 'bg-gradient-to-r from-[#b4dcff] to-[#f0bede] text-white hover:from-[#a0d0fc] hover:to-[#e8b0d6] shadow-lg hover:shadow-xl'
                                 : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                         )}
                     >

@@ -163,7 +163,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
     // Render upgrade progress if upgrading
     if (upgradeStatus && upgradeStatus.state !== 'idle') {
         return (
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 shadow-lg">
+            <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] text-white px-4 py-2 shadow-lg">
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3 flex-1">
                         {upgradeStatus.state === 'downloading' && (
@@ -240,7 +240,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
 
     // Default update available banner
     return (
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-2 flex items-center justify-between gap-4 shadow-lg">
+        <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] text-white px-4 py-2 flex items-center justify-between gap-4 shadow-lg">
             <div className="flex items-center gap-3">
                 <Download className="w-5 h-5 shrink-0" />
                 <div className="text-sm">
