@@ -53,6 +53,7 @@ export interface MemberEntry {
   group_name: string;
   member_id: number;
   member_ids?: number[];
+  blog_member_id?: number | null;
   member_name: string;
   message_count: number;
 }
