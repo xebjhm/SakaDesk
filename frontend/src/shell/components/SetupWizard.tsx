@@ -27,7 +27,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-5">
+                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
                     <div className="flex items-center gap-3">
                         <FolderOpen className="w-8 h-8 text-white" />
                         <div>
@@ -82,7 +82,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                     <button
                         onClick={onComplete}
                         disabled={!isValid}
-                        className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-3 bg-blue-400 text-white rounded-xl font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {t('setup.startUsing')}
                     </button>

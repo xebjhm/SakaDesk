@@ -31,7 +31,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
     return (
         <div className="min-h-screen bg-[#F0F2F5] flex flex-col items-center justify-center p-4">
             <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center space-y-6">
-                <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 bg-blue-50 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
                     <LogIn className="w-8 h-8" />
                 </div>
 
@@ -51,7 +51,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
                     disabled={isLoading}
                     className={cn(
                         "w-full py-3 px-4 rounded-xl font-semibold text-white shadow-lg transition-all transform hover:scale-[1.02]",
-                        isLoading ? "bg-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-blue-500 to-indigo-600 hover:shadow-xl"
+                        isLoading ? "bg-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-[#b4dcff] to-[#f0bede] hover:shadow-xl"
                     )}
                 >
                     {isLoading ? (

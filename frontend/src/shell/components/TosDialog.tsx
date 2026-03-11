@@ -26,7 +26,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-[#a8c4e8] via-[#a0a9d8] to-[#9181c4] px-6 py-5">
+                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
                     <div className="flex items-center gap-3">
                         <FileText className="w-8 h-8 text-white" />
                         <div>
@@ -86,13 +86,13 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                             </a>
                             <span className="text-gray-300">|</span>
                             <a
-                                href="https://contact.nogizaka46.com/s/n46app/page/app_terms"
+                                href="https://www.hinatazaka46.com/s/h46app/page/app_terms"
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
+                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
                             >
                                 <ExternalLink className="w-3 h-3" />
-                                {t('tos.nogizakaTos')}
+                                {t('tos.hinatazakaTos')}
                             </a>
                             <span className="text-gray-300">|</span>
                             <a

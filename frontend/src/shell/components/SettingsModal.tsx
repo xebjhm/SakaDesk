@@ -120,7 +120,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             />
                             <button
                                 onClick={() => onSaveSettings({ output_dir: outputDirInput })}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                                className="px-4 py-2 bg-blue-400 text-white rounded-lg text-sm hover:bg-blue-500"
                             >
                                 {t('common.save')}
                             </button>
@@ -211,7 +211,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <button
                                 onClick={() => onSaveSettings({ blogs_full_backup: !appSettings.blogs_full_backup })}
                                 className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    appSettings.blogs_full_backup ? 'bg-blue-500' : 'bg-gray-300'
+                                    appSettings.blogs_full_backup ? 'bg-blue-400' : 'bg-gray-300'
                                 }`}
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
@@ -246,7 +246,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <label className="text-sm font-medium text-gray-700">{t('settings.desktopNotifications')}</label>
                             <button
                                 onClick={() => onSaveSettings({ notifications_enabled: !appSettings.notifications_enabled })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${appSettings.notifications_enabled ? 'bg-blue-500' : 'bg-gray-300'
+                                className={`relative w-12 h-6 rounded-full transition-colors ${appSettings.notifications_enabled ? 'bg-blue-400' : 'bg-gray-300'
                                     }`}
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${appSettings.notifications_enabled ? 'translate-x-7' : 'translate-x-1'
