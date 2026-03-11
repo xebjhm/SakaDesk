@@ -1938,10 +1938,25 @@ class SearchService:
     # Members list (sync, runs in executor)
     # ------------------------------------------------------------------
 
+    def _get_members_readonly(self) -> Dict[str, Any]:
+        """Get members using a short-lived read-only connection.
+
+        Used when the main executor is busy with a full build, so we can
+        still serve (partial) data from committed rows without blocking.
+        """
+        conn = sqlite3.connect(str(self._db_path))
+        try:
+            return self._get_members_from_conn(conn)
+        finally:
+            conn.close()
+
     def _get_members_sync(self) -> Dict[str, Any]:
         """Get all indexed members and services for the filter autocomplete."""
-        conn = self._get_conn()
+        return self._get_members_from_conn(self._get_conn())
 
+    @staticmethod
+    def _get_members_from_conn(conn: sqlite3.Connection) -> Dict[str, Any]:
+        """Shared implementation for member queries given a connection."""
         # Members — consolidate by (service, member_name) since the same person
         # can have different member_ids in messages vs blogs.
         # blog_member_id: the member_id from blogs specifically, used for canonical ordering.
@@ -2133,6 +2148,13 @@ class SearchService:
         return await loop.run_in_executor(self._executor, self._batch_upsert_read_states_sync, entries)
 
     async def get_members(self) -> Dict[str, Any]:
+        # If a full build is running on the single-thread executor, use a
+        # short-lived read-only connection to avoid blocking behind the build.
+        if self._building and self._db_path.exists():
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(None, self._get_members_readonly)
+            result["is_building"] = True
+            return result
         loop = asyncio.get_running_loop()
         result = await loop.run_in_executor(self._executor, self._get_members_sync)
         # Check for unindexed services and trigger rebuild if needed

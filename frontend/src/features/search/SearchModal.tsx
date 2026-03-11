@@ -425,6 +425,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
               onContentTypeChange={setContentType}
               blogBackupEnabled={blogBackupEnabled}
               onOpenBlogSettings={onOpenSettings ? () => { close(); onOpenSettings(); } : undefined}
+              refetchKey={searchGeneration}
             />
           )}
 
