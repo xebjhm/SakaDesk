@@ -136,14 +136,17 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       const ids = mem.member_ids ?? [mem.member_id];
       const id = `${mem.service}:${ids.join('+')}`;
       if (selectedIds.has(id)) continue;
-      const name = formatName(mem.member_name);
+      const serviceDisplayName = getServiceDisplayName(mem.service);
+      // Disambiguate group official accounts whose name matches the service display name
+      const isOfficialAccount = mem.member_name === serviceDisplayName;
+      const name = isOfficialAccount ? `${formatName(mem.member_name)} (${t('search.official')})` : formatName(mem.member_name);
       const color = getServicePrimaryColor(mem.service);
       if (!q || name.toLowerCase().includes(q) || mem.member_name.toLowerCase().includes(q)) {
         items.push({
           type: 'member',
           id,
           label: name,
-          sublabel: getServiceDisplayName(mem.service),
+          sublabel: serviceDisplayName,
           color,
         });
       }

@@ -309,6 +309,7 @@
     "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
     "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
     "enableFullBackup": "フルバックアップを有効にする",
+    "official": "公式",
     "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"
   },
   "media": {

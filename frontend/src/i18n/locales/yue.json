@@ -309,6 +309,7 @@
         "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個 Blog）",
         "blogSearchLimited": "Blog 搜尋淨係包括已快取嘅文章。",
         "enableFullBackup": "啟用完整備份",
+        "official": "官方",
         "buildingHint": "搜尋索引仲喺度建緊，結果可能唔完整。"
     },
     "media": {
