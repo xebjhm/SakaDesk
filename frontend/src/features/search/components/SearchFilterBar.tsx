@@ -19,6 +19,8 @@ interface SearchFilterBarProps {
   onContentTypeChange: (value: ContentTypeFilter) => void;
   blogBackupEnabled?: boolean;
   onOpenBlogSettings?: () => void;
+  /** Increment to re-fetch members (e.g. after index build completes). */
+  refetchKey?: number;
 }
 
 const DATE_PRESETS: { value: DateRangePreset; labelKey: string }[] = [
@@ -48,6 +50,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   onContentTypeChange,
   blogBackupEnabled,
   onOpenBlogSettings,
+  refetchKey,
 }) => {
   const { t } = useTranslation();
   const [mentionQuery, setMentionQuery] = useState('');
@@ -60,7 +63,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   const dateDropdownRef = useRef<HTMLDivElement>(null);
   const contentTypeDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch members for autocomplete on mount
+  // Fetch members for autocomplete on mount and when index build completes
   useEffect(() => {
     let cancelled = false;
     fetch('/api/search/members')
@@ -70,7 +73,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+  }, [refetchKey]);
 
   // Close dropdowns on outside click
   useEffect(() => {

@@ -67,4 +67,5 @@ export interface ServiceEntry {
 export interface MembersResponse {
   members: MemberEntry[];
   services: ServiceEntry[];
+  is_building?: boolean;
 }
