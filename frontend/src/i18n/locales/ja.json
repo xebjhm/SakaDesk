@@ -32,8 +32,8 @@
     "desktopNotifications": "デスクトップ通知",
     "desktopNotificationsDesc": "新着メッセージ受信時に通知を表示",
     "blogFullBackup": "ブログ完全バックアップ",
-    "blogFullBackupOnDesc": "オフライン閲覧用に画像を含む全てのブログデータを保存",
-    "blogFullBackupOffDesc": "閲覧時にデータを取得（ディスク容量を節約）",
+    "blogFullBackupOnDesc": "全文検索用に画像を含む全てのブログデータを保存",
+    "blogFullBackupOffDesc": "閲覧時にデータを取得（ディスク節約、検索は限定的）",
     "blogCacheSize": "ブログキャッシュ: {{size}}",
     "cleanBlogCache": "キャッシュを削除",
     "cleanBlogCacheConfirm": "すべてのブログキャッシュを削除しますか？ディスク容量は解放されますが、ブログの再ダウンロードが必要になります。",
@@ -114,8 +114,8 @@
     "outputFolderPath": "データ出力先パス",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
-    "downloadBlogsOffline": "ブログのオフライン保存",
-    "downloadBlogsHint": "すべてのブログ記事をオフライン検索用にダウンロードします。サービスごとに約5〜15 GBを使用します。",
+    "downloadBlogsOffline": "ブログの検索用ダウンロード",
+    "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
     "startUsing": "HakoDeskを始める"
   },
   "sync": {
@@ -360,7 +360,9 @@
     "retry": "再試行",
     "loadingTimeline": "タイムラインを読み込み中...",
     "post": "{{count}}件の記事",
-    "post_other": "{{count}}件の記事"
+    "post_other": "{{count}}件の記事",
+    "syncingBlogs": "ブログを同期中...",
+    "firstSyncHint": "初回は少し時間がかかる場合があります"
   },
   "voicePlayer": {
     "speed": "再生速度",

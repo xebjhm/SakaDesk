@@ -32,8 +32,8 @@
         "desktopNotifications": "桌面通知",
         "desktopNotificationsDesc": "收到新訊息嗰陣顯示通知",
         "blogFullBackup": "Blog 完整備份",
-        "blogFullBackupOnDesc": "下載所有 Blog 內容同圖片畀你離線睇",
-        "blogFullBackupOffDesc": "睇嗰陣先下載內容（慳返啲硬碟位）",
+        "blogFullBackupOnDesc": "下載所有 Blog 內容同圖片開啟全文搜尋",
+        "blogFullBackupOffDesc": "睇嗰陣先下載內容（慳返啲硬碟位，搜尋有限）",
         "blogCacheSize": "Blog 快取: {{size}}",
         "cleanBlogCache": "清除快取",
         "cleanBlogCacheConfirm": "刪除所有快取嘅 Blog 資料？會釋放磁碟空間，但 Blog 需要重新下載。",
@@ -85,7 +85,10 @@
         "launchBrowserLogin": "開瀏覽器登入",
         "connectAccount": "連接帳戶",
         "browserPrompt": "請登入你嘅 {{service}} Message 帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
-        "loginFailed": "登入失敗或者取消咗"
+        "loginFailed": "登入失敗或者取消咗",
+        "connectPromptTitle": "連接你嘅帳戶？",
+        "connectPromptDesc": "登入嚟同步你嘅 {{service}} 訊息。你亦可以唔登入直接睇 Blog。",
+        "maybeLater": "遲啲先"
     },
     "tos": {
         "title": "服務條款",
@@ -111,8 +114,8 @@
         "outputFolderPath": "輸出資料夾路徑",
         "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
         "outputFolderHint": "輸入儲存訊息嘅完整路徑。你可以由檔案總管 Copy 個 Path。",
-        "downloadBlogsOffline": "下載 Blog 離線睇",
-        "downloadBlogsHint": "下載所有 Blog 文章以供離線搜尋。每個服務大約用 5-15 GB。",
+        "downloadBlogsOffline": "下載 Blog 畀搜尋用",
+        "downloadBlogsHint": "下載所有 Blog 文章開啟全文搜尋。每個服務大約用 5-15 GB。",
         "startUsing": "開始使用 HakoDesk"
     },
     "sync": {
@@ -357,7 +360,9 @@
         "retry": "再試",
         "loadingTimeline": "載入緊時間線...",
         "post": "{{count}} 篇文",
-        "post_other": "{{count}} 篇文"
+        "post_other": "{{count}} 篇文",
+        "syncingBlogs": "同步緊 Blog...",
+        "firstSyncHint": "第一次同步可能要等陣"
     },
     "voicePlayer": {
         "speed": "播放速度",

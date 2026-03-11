@@ -179,8 +179,23 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     </div>
                 )}
 
+                {/* Fresh Sync State — prominent spinner when no posts and syncing for first time */}
+                {!loading && !error && posts.length === 0 && syncing && (
+                    <div className="feed-state feed-state--fresh">
+                        <div className="feed-spinner feed-spinner--large">
+                            <div
+                                className="feed-spinner__ring"
+                                style={{ background: `conic-gradient(from 0deg, transparent, ${theme.primaryColor})` }}
+                            />
+                            <div className="feed-spinner__center" />
+                        </div>
+                        <p className="feed-state__text">{t('blogs.syncingBlogs')}</p>
+                        <p className="feed-state__hint">{t('blogs.firstSyncHint')}</p>
+                    </div>
+                )}
+
                 {/* Empty State */}
-                {!loading && !error && posts.length === 0 && (
+                {!loading && !error && posts.length === 0 && !syncing && (
                     <div className="feed-state">
                         <div
                             className="feed-state__icon"
@@ -401,6 +416,11 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     padding: 24px;
                 }
 
+                .feed-state--fresh {
+                    height: 100%;
+                    min-height: 400px;
+                }
+
                 .feed-spinner {
                     position: relative;
                     width: 44px;
@@ -419,6 +439,15 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     inset: 4px;
                     border-radius: 50%;
                     background: white;
+                }
+
+                .feed-spinner--large {
+                    width: 64px;
+                    height: 64px;
+                }
+
+                .feed-spinner--large .feed-spinner__center {
+                    inset: 6px;
                 }
 
                 @keyframes spin {

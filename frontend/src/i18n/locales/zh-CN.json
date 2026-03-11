@@ -32,8 +32,8 @@
     "desktopNotifications": "桌面通知",
     "desktopNotificationsDesc": "收到新消息时显示通知",
     "blogFullBackup": "Blog 完整备份",
-    "blogFullBackupOnDesc": "下载所有 Blog 内容及图片以供离线阅读",
-    "blogFullBackupOffDesc": "按需获取 Blog 内容（节省磁盘空间）",
+    "blogFullBackupOnDesc": "下载所有 Blog 内容及图片以启用全文搜索",
+    "blogFullBackupOffDesc": "按需获取 Blog 内容（节省磁盘空间，搜索受限）",
     "blogCacheSize": "Blog 缓存: {{size}}",
     "cleanBlogCache": "清除缓存",
     "cleanBlogCacheConfirm": "删除所有缓存的 Blog 数据？这将释放磁盘空间，但 Blog 需要重新下载。",
@@ -114,8 +114,8 @@
     "outputFolderPath": "输出文件夹路径",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
-    "downloadBlogsOffline": "下载 Blog 以供离线阅读",
-    "downloadBlogsHint": "下载所有 Blog 文章以供离线搜索。每个服务约使用 5-15 GB。",
+    "downloadBlogsOffline": "下载 Blog 以供搜索",
+    "downloadBlogsHint": "下载所有 Blog 文章以启用全文搜索。每个服务约使用 5-15 GB。",
     "startUsing": "开始使用 HakoDesk"
   },
   "sync": {
@@ -360,7 +360,9 @@
     "retry": "重试",
     "loadingTimeline": "正在加载时间线...",
     "post": "{{count}} 篇文章",
-    "post_other": "{{count}} 篇文章"
+    "post_other": "{{count}} 篇文章",
+    "syncingBlogs": "正在同步 Blog...",
+    "firstSyncHint": "首次同步可能需要一些时间"
   },
   "voicePlayer": {
     "speed": "播放速度",
