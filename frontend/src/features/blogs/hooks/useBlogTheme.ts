@@ -2,10 +2,10 @@
 // Centralized hook for blog feature theme access
 import { useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
-import { getThemeForService } from '../../../config/groupThemes';
-import type { GroupTheme } from '../../../config/groupThemes';
+import { getServiceTheme } from '../../../config/serviceThemes';
+import type { ServiceTheme } from '../../../config/serviceThemes';
 
-export interface BlogTheme extends GroupTheme {
+export interface BlogTheme extends ServiceTheme {
     // Convenience aliases for common blog colors
     memberNameColor: string;
     linkColor: string;
@@ -16,13 +16,13 @@ export interface BlogTheme extends GroupTheme {
 
 /**
  * Hook to get the current blog theme based on active service.
- * Provides the full GroupTheme plus convenience aliases for blog-specific colors.
+ * Provides the full ServiceTheme plus convenience aliases for blog-specific colors.
  */
 export function useBlogTheme(): BlogTheme {
     const activeService = useAppStore((state) => state.activeService);
 
     return useMemo(() => {
-        const theme = getThemeForService(activeService);
+        const theme = getServiceTheme(activeService);
         return {
             ...theme,
             // Convenience aliases for cleaner component code

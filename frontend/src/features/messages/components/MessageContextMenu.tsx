@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useCallback } from 'react';
 import { Star } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
-import { getThemeForService } from '../../../config/groupThemes';
+import { getServiceTheme } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
 
 interface MessageContextMenuProps {
@@ -22,7 +22,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
     const { t } = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
     const activeService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     // Close on click outside
     useEffect(() => {

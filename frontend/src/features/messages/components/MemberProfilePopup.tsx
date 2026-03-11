@@ -3,7 +3,7 @@ import { RefreshCw, X } from 'lucide-react';
 import { Portal } from '../../../core/common/Portal';
 import { Z_CLASS } from '../../../constants/zIndex';
 import type { BaseModalProps } from '../../../types/modal';
-import { getThemeForService } from '../../../config/groupThemes';
+import { getServiceTheme } from '../../../config/serviceThemes';
 
 interface StreakData {
     days: number;
@@ -35,7 +35,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     const [error, setError] = useState<string | null>(null);
 
     // Get theme for the active service
-    const theme = useMemo(() => getThemeForService(activeService ?? null), [activeService]);
+    const theme = useMemo(() => getServiceTheme(activeService ?? null), [activeService]);
 
     // Use the same header style as the chat room
     // 'gradient' = filled gradient background (Hinatazaka, Nogizaka)

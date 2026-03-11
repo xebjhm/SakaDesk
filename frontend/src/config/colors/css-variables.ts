@@ -5,7 +5,8 @@
  * This enables runtime theme switching without JavaScript re-renders.
  */
 
-import { BRAND_COLORS, type GroupId } from './palette';
+import { type GroupId } from './palette';
+import { serviceThemes } from '../serviceThemes';
 import { getSemanticColors, UI_TOKENS } from './semantic';
 
 /**
@@ -31,7 +32,7 @@ export function serviceIdToGroupId(serviceId: string): GroupId {
  * Check if a string is a valid GroupId.
  */
 export function isGroupId(value: string): value is GroupId {
-    return value in BRAND_COLORS;
+    return value in serviceThemes;
 }
 
 /**

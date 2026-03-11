@@ -7,7 +7,7 @@ import type { BackgroundSettings } from '../../types';
 import { DEFAULT_BACKGROUND, loadBackgroundSettings, saveBackgroundSettings } from '../../utils';
 import { UI_CONSTANTS } from '../../config/uiConstants';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface BackgroundModalProps extends BaseModalProps {
@@ -25,7 +25,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
 
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
 
     const [settings, setSettings] = useState<BackgroundSettings>(DEFAULT_BACKGROUND);
     const [preview, setPreview] = useState<string | null>(null);

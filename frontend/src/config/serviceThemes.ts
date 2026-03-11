@@ -1,14 +1,14 @@
-// frontend/src/config/groupThemes.ts
-// Multi-Group Theme Engine - Visual identity for each idol group
+// frontend/src/config/serviceThemes.ts
+// Service Theme Engine - Visual identity for each service
 
 export type GroupId = 'hinatazaka' | 'sakurazaka' | 'nogizaka' | 'yodel' | 'default';
 
-export interface GroupTheme {
+export interface ServiceTheme {
     id: GroupId;
     name: string;
     nameJp: string;
 
-    // Core brand colors
+    // Core brand colors (single source of truth)
     primaryColor: string;
     secondaryColor: string;
     accentColor: string;
@@ -91,7 +91,7 @@ export interface GroupTheme {
     };
 }
 
-export const groupThemes: Record<GroupId, GroupTheme> = {
+export const serviceThemes: Record<GroupId, ServiceTheme> = {
     // ========================================
     // HINATAZAKA46 - "The Sky" Theme
     // Airy, Happy, Sunlight through trees (Komorebi)
@@ -567,30 +567,30 @@ export const groupThemes: Record<GroupId, GroupTheme> = {
     },
 };
 
-// Map service IDs to group themes
-export function getThemeForService(serviceId: string | null): GroupTheme {
-    if (!serviceId) return groupThemes.default;
+// Map service IDs to service themes
+export function getServiceTheme(serviceId: string | null): ServiceTheme {
+    if (!serviceId) return serviceThemes.default;
 
     const serviceLower = serviceId.toLowerCase();
 
     if (serviceLower.includes('hinata') || serviceLower.includes('hinatazaka')) {
-        return groupThemes.hinatazaka;
+        return serviceThemes.hinatazaka;
     }
     if (serviceLower.includes('sakura') || serviceLower.includes('sakurazaka')) {
-        return groupThemes.sakurazaka;
+        return serviceThemes.sakurazaka;
     }
     if (serviceLower.includes('nogi') || serviceLower.includes('nogizaka')) {
-        return groupThemes.nogizaka;
+        return serviceThemes.nogizaka;
     }
     if (serviceLower.includes('yodel')) {
-        return groupThemes.yodel;
+        return serviceThemes.yodel;
     }
 
-    return groupThemes.default;
+    return serviceThemes.default;
 }
 
 // Export theme CSS variables for use in components
-export function getThemeCSSVariables(theme: GroupTheme): Record<string, string> {
+export function getServiceThemeCSSVariables(theme: ServiceTheme): Record<string, string> {
     return {
         '--theme-primary': theme.primaryColor,
         '--theme-secondary': theme.secondaryColor,
@@ -609,4 +609,4 @@ export function getThemeCSSVariables(theme: GroupTheme): Record<string, string> 
 }
 
 /** Default shelter colors for fallback (matches default/hinatazaka theme) */
-export const DEFAULT_SHELTER_COLORS = groupThemes.default.messages.shelterColors;
+export const DEFAULT_SHELTER_COLORS = serviceThemes.default.messages.shelterColors;

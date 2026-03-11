@@ -1,7 +1,7 @@
 // frontend/src/core/layout/AddServiceModal.tsx
 import React from 'react';
 import { X } from 'lucide-react';
-import { getOrderedServiceDefs } from '../../data/services';
+import { getOrderedServiceDefs, getServicePrimaryColor } from '../../data/services';
 import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../../config/features';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
@@ -38,7 +38,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
                 {/* Header */}
-                <div className="bg-gradient-to-r from-blue-500 to-indigo-500 px-6 py-4">
+                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
                     <div className="flex items-center justify-between">
                         <h3 className="text-lg font-bold text-white">
                             {t('addService.title')}

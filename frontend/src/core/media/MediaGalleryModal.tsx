@@ -8,7 +8,7 @@ import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
-import { getThemeForService } from '../../config/groupThemes';
+import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface MediaGalleryModalProps extends BaseModalProps {
@@ -45,7 +45,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const theme = getThemeForService(activeService);
+    const theme = getServiceTheme(activeService);
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');

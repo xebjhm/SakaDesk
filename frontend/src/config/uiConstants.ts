@@ -35,7 +35,7 @@ export const UI_CONSTANTS = {
   ],
 } as const;
 
-// Note: Shelter colors are defined per-theme in groupThemes.ts (theme.messages.shelterColors)
+// Note: Shelter colors are defined per-theme in serviceThemes.ts (theme.messages.shelterColors)
 
 // Shelter message type icons (emoji)
 export const SHELTER_ICONS = {

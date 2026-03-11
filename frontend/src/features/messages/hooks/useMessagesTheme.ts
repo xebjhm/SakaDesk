@@ -2,8 +2,8 @@
 // Centralized hook for messages feature theme access
 import { useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
-import { getThemeForService } from '../../../config/groupThemes';
-import type { GroupTheme } from '../../../config/groupThemes';
+import { getServiceTheme } from '../../../config/serviceThemes';
+import type { ServiceTheme } from '../../../config/serviceThemes';
 
 export interface ShelterColors {
     picture: string;
@@ -16,7 +16,7 @@ export type ShelterStyle = 'classic' | 'light';
 
 export type HeaderStyle = 'gradient' | 'light';
 
-export interface MessagesTheme extends GroupTheme {
+export interface MessagesTheme extends ServiceTheme {
     // Convenience aliases for common message colors
     headerTextColor: string;
     headerBarGradient: string;
@@ -34,13 +34,13 @@ export interface MessagesTheme extends GroupTheme {
 
 /**
  * Hook to get the current messages theme based on active service.
- * Provides the full GroupTheme plus convenience aliases for message-specific colors.
+ * Provides the full ServiceTheme plus convenience aliases for message-specific colors.
  */
 export function useMessagesTheme(): MessagesTheme {
     const activeService = useAppStore((state) => state.activeService);
 
     return useMemo(() => {
-        const theme = getThemeForService(activeService);
+        const theme = getServiceTheme(activeService);
         return {
             ...theme,
             // Convenience aliases for cleaner component code
