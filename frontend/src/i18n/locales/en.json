@@ -309,6 +309,7 @@
     "resultCountWithBlogs": "{{count}} results ({{blogCount}} blogs)",
     "blogSearchLimited": "Blog search only covers cached posts.",
     "enableFullBackup": "Enable full backup",
+    "official": "Official",
     "buildingHint": "Search index is still being generated. Results may be incomplete."
   },
   "media": {
