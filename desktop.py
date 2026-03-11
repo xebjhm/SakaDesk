@@ -5,6 +5,8 @@ import sys
 import socket
 import traceback
 import time
+import json
+import urllib.request
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app
 from backend.services.platform import get_logs_dir, get_app_data_dir
@@ -78,16 +80,21 @@ def create_server_socket() -> tuple:
 
 
 def wait_for_server(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT) -> bool:
-    """Wait for the server to become available."""
+    """Wait for the server to respond to HTTP requests.
+
+    Uses the /health endpoint instead of raw TCP connect — this ensures
+    the ASGI app is fully loaded and can serve routes, not just that the
+    socket is listening. Prevents the 404 flash on second launch where
+    WebView2 restores its cached session before uvicorn is ready.
+    """
+    url = f'http://{host}:{port}/health'
     start = time.time()
     while time.time() - start < timeout:
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            result = sock.connect_ex((host, port))
-            sock.close()
-            if result == 0:
+            resp = urllib.request.urlopen(url, timeout=1)
+            if resp.status == 200:
                 return True
-        except OSError:
+        except Exception:
             pass
         time.sleep(0.1)
     return False
@@ -140,6 +147,43 @@ def show_error_dialog(error_msg: str, tb: str):
         else:
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
+def _get_window_file():
+    """Path to the persisted window geometry file."""
+    return get_app_data_dir() / "window.json"
+
+
+def _load_window_geometry() -> dict:
+    """Load saved window size/position, or return defaults."""
+    defaults = {"width": 1200, "height": 800}
+    path = _get_window_file()
+    if not path.exists():
+        return defaults
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        # Validate saved values are reasonable
+        w = int(data.get("width", 0))
+        h = int(data.get("height", 0))
+        if w < 400 or h < 300 or w > 7680 or h > 4320:
+            return defaults
+        result = {"width": w, "height": h}
+        # Position is optional — only restore if both x and y are present
+        if "x" in data and "y" in data:
+            result["x"] = int(data["x"])
+            result["y"] = int(data["y"])
+        return result
+    except Exception:
+        return defaults
+
+
+def _save_window_geometry(geometry: dict) -> None:
+    """Save window geometry to disk."""
+    try:
+        path = _get_window_file()
+        path.write_text(json.dumps(geometry), encoding="utf-8")
+    except Exception:
+        pass
+
+
 def main() -> None:
     try:
         # Create server socket with SO_REUSEADDR for stable port across restarts
@@ -154,17 +198,43 @@ def main() -> None:
         if not wait_for_server(HOST, port):
             raise RuntimeError(f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s")
 
+        # Load saved window geometry
+        geom = _load_window_geometry()
+
         # Create window
         # background_color matches app's bg-[#F0F2F5] to prevent white
         # showing through Windows 11 rounded corners
-        webview.create_window(
+        window = webview.create_window(
             title='HakoDesk',
             url=f'http://{HOST}:{port}',
-            width=1200,
-            height=800,
+            width=geom["width"],
+            height=geom["height"],
+            x=geom.get("x"),
+            y=geom.get("y"),
             resizable=True,
             background_color='#F0F2F5',
         )
+
+        # Track window geometry changes and save on close
+        _current_geom = {"width": geom["width"], "height": geom["height"]}
+        if "x" in geom:
+            _current_geom["x"] = geom["x"]
+            _current_geom["y"] = geom["y"]
+
+        def on_resized(width, height):
+            _current_geom["width"] = width
+            _current_geom["height"] = height
+
+        def on_moved(x, y):
+            _current_geom["x"] = x
+            _current_geom["y"] = y
+
+        def on_closing():
+            _save_window_geometry(_current_geom)
+
+        window.events.resized += on_resized
+        window.events.moved += on_moved
+        window.events.closing += on_closing
 
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)
