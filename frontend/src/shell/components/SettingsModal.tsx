@@ -242,21 +242,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                     </div>
 
-                    {/* Desktop Notifications */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">{t('settings.desktopNotifications')}</label>
-                            <button
-                                onClick={() => onSaveSettings({ notifications_enabled: !appSettings.notifications_enabled })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${appSettings.notifications_enabled ? 'bg-blue-400' : 'bg-gray-300'
-                                    }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${appSettings.notifications_enabled ? 'translate-x-7' : 'translate-x-1'
-                                    }`} />
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{t('settings.desktopNotificationsDesc')}</p>
-                    </div>
+                    {/* Desktop Notifications — hidden until feature is stable */}
 
                 </div>
             </div>
