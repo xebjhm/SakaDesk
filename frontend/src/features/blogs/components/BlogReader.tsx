@@ -1,7 +1,7 @@
 // frontend/src/features/blogs/components/BlogReader.tsx
 // Blog reader component with navigation, oshi theming, and content display
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
 import { toGroupId, getMemberByBlogId, getMemberByName, getMemberPenlightHex, getMemberNameKanji } from '../../../data/memberData';
@@ -9,6 +9,8 @@ import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTheme } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
+import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
+import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -46,6 +48,9 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     readingTerms,
 }) => {
     const theme = useBlogTheme();
+    const blogContentRef = useRef<HTMLDivElement>(null);
+    const [blogPhotoIndex, setBlogPhotoIndex] = useState<number | null>(null);
+    const [blogPhotoItems, setBlogPhotoItems] = useState<MediaViewerItem[]>([]);
 
     // Get group ID for correct member data lookup
     const groupId = toGroupId(serviceId);
@@ -75,6 +80,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     };
 
     // Normalize relative URLs in HTML content to absolute URLs
+    // Skip /api/ URLs — those are local backend endpoints (e.g., cached blog images)
     const normalizeHtmlUrls = (html: string, baseUrl: string): string => {
         if (!baseUrl) return html;
         return html.replace(
@@ -82,6 +88,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             (match, attr, quote, url) => {
                 if (!url) return match;
                 if (url.startsWith('//')) return `${attr}=${quote}https:${url}${quote}`;
+                if (url.startsWith('/api/')) return match;
                 if (url.startsWith('/')) return `${attr}=${quote}${baseUrl}${url}${quote}`;
                 if (!url.startsWith('http')) return `${attr}=${quote}${baseUrl}/${url}${quote}`;
                 return match;
@@ -149,6 +156,36 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             return () => clearTimeout(timer);
         }
     }, [searchQuery, matchedTerms, content]);
+
+    // Intercept clicks on blog images to open in photo viewer
+    useEffect(() => {
+        const container = blogContentRef.current;
+        if (!container || !content) return;
+
+        const handleImgClick = (e: Event) => {
+            const target = e.target as HTMLElement;
+            if (target.tagName !== 'IMG') return;
+
+            const imgSrc = (target as HTMLImageElement).src;
+            if (!imgSrc) return;
+
+            // Collect all image srcs from the blog content
+            const allImgs = Array.from(container.querySelectorAll('img'));
+            const items: MediaViewerItem[] = allImgs
+                .map(img => img.src)
+                .filter(Boolean)
+                .map(src => ({ src, type: 'picture' as const, timestamp: blog.published_at }));
+
+            const clickedIdx = items.findIndex(item => item.src === imgSrc);
+            if (clickedIdx !== -1) {
+                setBlogPhotoItems(items);
+                setBlogPhotoIndex(clickedIdx);
+            }
+        };
+
+        container.addEventListener('click', handleImgClick);
+        return () => container.removeEventListener('click', handleImgClick);
+    }, [content, blog.published_at]);
 
     return (
         <div className="flex flex-col h-full relative bg-white">
@@ -255,7 +292,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
                             {/* Blog content - sanitized HTML rendered safely with DOMPurify, then search highlights injected */}
                             <div
-                                className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto blog-content"
+                                ref={blogContentRef}
+                                className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto [&_img]:cursor-pointer blog-content"
                                 dangerouslySetInnerHTML={{ __html: processedHtml }}
                             />
 
@@ -303,6 +341,16 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     onNext={handleNext}
                 />
             </div>
+
+            {/* Blog Photo Viewer */}
+            {blogPhotoIndex !== null && blogPhotoItems.length > 0 && (
+                <MediaViewerModal
+                    mediaItems={blogPhotoItems}
+                    currentIndex={blogPhotoIndex}
+                    onClose={() => setBlogPhotoIndex(null)}
+                    onNavigate={setBlogPhotoIndex}
+                />
+            )}
         </div>
     );
 };
