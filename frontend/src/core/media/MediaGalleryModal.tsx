@@ -1,8 +1,10 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Image, Film, Volume2, Calendar, VolumeX, Download } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
+import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
+import { VideoPlayer } from './VideoPlayer';
 import { LazyVideo } from './LazyVideo';
 import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
 import { CalendarModal } from '../modals/CalendarModal';
@@ -142,22 +144,79 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
     }, []);
 
+    // Get the flat sorted list of items for the current tab
+    const currentTabItems = useMemo(() => {
+        const items = activeTab === 'photos' ? mediaItems.photos :
+                      activeTab === 'videos' ? mediaItems.videos :
+                      mediaItems.voice;
+        return [...items].sort((a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+    }, [activeTab, mediaItems]);
+
+    // Keyboard navigation for detail view
+    const handleDetailKeyDown = useCallback((e: KeyboardEvent) => {
+        if (!selectedMedia) return;
+
+        const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
+        if (currentIdx === -1) return;
+
+        switch (e.key) {
+            case 'ArrowLeft':
+                e.preventDefault();
+                if (currentIdx < currentTabItems.length - 1) {
+                    setSelectedMedia(currentTabItems[currentIdx + 1]);
+                }
+                break;
+            case 'ArrowRight':
+                e.preventDefault();
+                if (currentIdx > 0) {
+                    setSelectedMedia(currentTabItems[currentIdx - 1]);
+                }
+                break;
+        }
+    }, [selectedMedia, currentTabItems]);
+
+    useEffect(() => {
+        if (!selectedMedia) return;
+        document.addEventListener('keydown', handleDetailKeyDown);
+        return () => document.removeEventListener('keydown', handleDetailKeyDown);
+    }, [selectedMedia, handleDetailKeyDown]);
+
     // Detail view for selected media
     const renderDetailView = () => {
         if (!selectedMedia) return null;
 
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
+        const detailIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
 
         return (
             <DetailModal
                 isOpen={!!selectedMedia}
                 onClose={() => setSelectedMedia(null)}
                 footer={
-                    <>
-                        <span>{memberName}</span>
-                        <span className="mx-2">•</span>
-                        <span>{formatDateTime(selectedMedia.timestamp)}</span>
-                    </>
+                    <div className="flex items-center justify-between w-full">
+                        <div>
+                            <span>{memberName}</span>
+                            <span className="mx-2">•</span>
+                            <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                            {currentTabItems.length > 1 && (
+                                <>
+                                    <span className="mx-2">•</span>
+                                    <span>{detailIdx + 1} / {currentTabItems.length}</span>
+                                </>
+                            )}
+                        </div>
+                        {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
+                                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
+                            >
+                                <Download className="w-4 h-4" />
+                                {t('common.download')}
+                            </button>
+                        )}
+                    </div>
                 }
             >
                 {selectedMedia.type === 'picture' && mediaUrl && (
@@ -167,43 +226,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         className="max-w-full max-h-[80vh] object-contain"
                     />
                 )}
-                {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
-                    <button
-                        onClick={() => {
-                            const link = document.createElement('a');
-                            link.href = mediaUrl;
-                            link.download = formatDownloadFilename(mediaUrl, selectedMedia.timestamp);
-                            link.click();
-                        }}
-                        className="mt-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-                    >
-                        <Download className="w-4 h-4" />
-                        {t('common.download')}
-                    </button>
-                )}
                 {selectedMedia.type === 'video' && mediaUrl && (
-                    <video
+                    <VideoPlayer
                         src={mediaUrl}
-                        controls
-                        controlsList={goldenFingerActive ? undefined : "nodownload"}
-                        disablePictureInPicture
                         autoPlay
-                        className="max-w-full max-h-[80vh]"
+                        messageTimestamp={selectedMedia.timestamp}
+                        noAudio={selectedMedia.is_muted}
+                        viewerMode
+                        videoClassName="max-w-full max-h-[80vh]"
                     />
-                )}
-                {selectedMedia.type === 'video' && mediaUrl && goldenFingerActive && (
-                    <button
-                        onClick={() => {
-                            const link = document.createElement('a');
-                            link.href = mediaUrl;
-                            link.download = formatDownloadFilename(mediaUrl, selectedMedia.timestamp);
-                            link.click();
-                        }}
-                        className="mt-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-                    >
-                        <Download className="w-4 h-4" />
-                        {t('common.download')}
-                    </button>
                 )}
             </DetailModal>
         );
@@ -469,6 +500,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 durationText={currentVoice ? formatDuration(currentVoice.media_duration) : undefined}
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
+                                viewerMode
                             />
                         </div>
                     </div>
