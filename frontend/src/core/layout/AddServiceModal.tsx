@@ -6,6 +6,7 @@ import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../../config/features';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
+import { useModalClose } from '../common/useModalClose';
 
 interface AddServiceModalProps {
     selectedServices: string[];
@@ -17,6 +18,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
+    const handleBackdropClick = useModalClose(true, onClose);
     const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder, setFreshlyAddedService } = useAppStore();
 
     // Filter out already selected services, sorted by global order
@@ -39,8 +41,8 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
                     <div className="flex items-center justify-between">

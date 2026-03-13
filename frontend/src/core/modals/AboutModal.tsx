@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Heart } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
+import { useModalClose } from '../common/useModalClose';
 
 interface AboutModalProps {
     isOpen: boolean;
@@ -17,6 +18,7 @@ interface FloatingHeart {
 
 export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalProps) {
     const { t } = useTranslation();
+    const handleBackdropClick = useModalClose(isOpen, onClose);
 
     // Hidden dev mode (5-click easter egg on version)
     const [versionClickCount, setVersionClickCount] = useState(0);
@@ -43,6 +45,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
             heartAnimTimeouts.current.forEach(clearTimeout);
         };
     }, []);
+
 
     const showToast = useCallback((message: string) => {
         if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -107,8 +110,8 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100">
                     <h3 className="text-lg font-bold text-gray-800">{t('about.title')}</h3>
@@ -119,12 +122,14 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
 
                 {/* Content */}
                 <div className="p-8 flex flex-col items-center text-center">
-                    {/* Logo */}
-                    <img
-                        src="/logo-192.png"
-                        alt="HakoDesk"
-                        className="w-20 h-20 rounded-2xl mb-4 shadow-lg select-none"
-                    />
+                    {/* Logo — wrapper handles rounding/shadow/overflow to avoid subpixel gap */}
+                    <div className="w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
+                        <img
+                            src="/logo-192.png"
+                            alt="HakoDesk"
+                            className="w-full h-full select-none"
+                        />
+                    </div>
 
                     {/* App name */}
                     <h1 className="text-xl font-bold text-gray-800 mb-1">HakoDesk</h1>

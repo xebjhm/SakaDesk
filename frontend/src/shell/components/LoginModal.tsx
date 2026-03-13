@@ -7,6 +7,7 @@ import { getServiceTheme } from '../../config/serviceThemes';
 import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
+import { useModalClose } from '../../core/common/useModalClose';
 
 interface LoginModalProps {
     serviceId: string;
@@ -26,6 +27,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     isFreshPrompt = false,
 }) => {
     const { t } = useTranslation();
+    const handleBackdropClick = useModalClose(true, onClose);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -65,8 +67,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 {/* Header — matches chat room header style per service */}
                 <div
                     className={cn('px-6 py-4', !isLightHeader && 'shadow-sm')}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
+import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 
 interface SettingsModalProps {
@@ -19,6 +20,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
 }) => {
     const { t, i18n } = useTranslation();
+    const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
@@ -75,8 +77,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
                     <h3 className="text-lg font-bold text-gray-800">{t('settings.title')}</h3>
                     <button
