@@ -284,6 +284,8 @@
   },
   "search": {
     "placeholder": "Search messages and blogs...",
+    "placeholderMessages": "Search messages...",
+    "placeholderBlogs": "Search blogs...",
     "noResults": "No results found",
     "noResultsHint": "Try a different search term",
     "resultCount": "{{count}} results",
