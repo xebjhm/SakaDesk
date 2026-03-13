@@ -284,6 +284,8 @@
   },
   "search": {
     "placeholder": "メッセージとブログを検索...",
+    "placeholderMessages": "メッセージを検索...",
+    "placeholderBlogs": "ブログを検索...",
     "noResults": "結果が見つかりません",
     "noResultsHint": "別の検索語をお試しください",
     "resultCount": "{{count}}件の結果",

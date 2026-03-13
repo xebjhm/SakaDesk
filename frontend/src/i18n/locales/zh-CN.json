@@ -284,6 +284,8 @@
   },
   "search": {
     "placeholder": "搜索消息和 Blog...",
+    "placeholderMessages": "搜索消息...",
+    "placeholderBlogs": "搜索 Blog...",
     "noResults": "找不到结果",
     "noResultsHint": "请尝试其他搜索词",
     "resultCount": "{{count}} 条结果",

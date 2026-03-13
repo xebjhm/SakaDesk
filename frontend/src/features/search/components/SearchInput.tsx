@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Search, Loader2, X, SlidersHorizontal } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
+import type { ContentTypeFilter } from '../types';
 
 interface SearchInputProps {
   value: string;
@@ -11,6 +12,7 @@ interface SearchInputProps {
   onCompositionEnd: () => void;
   onFilterToggle?: () => void;
   filtersActive?: boolean;
+  contentType?: ContentTypeFilter;
 }
 
 export const SearchInput: React.FC<SearchInputProps> = ({
@@ -22,8 +24,17 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   onCompositionEnd,
   onFilterToggle,
   filtersActive,
+  contentType = 'all',
 }) => {
   const { t } = useTranslation();
+
+  const placeholder = useMemo(() => {
+    switch (contentType) {
+      case 'messages': return t('search.placeholderMessages');
+      case 'blogs': return t('search.placeholderBlogs');
+      default: return t('search.placeholder');
+    }
+  }, [contentType, t]);
 
   const isMac = useMemo(
     () => navigator.platform.toUpperCase().includes('MAC'),
@@ -40,7 +51,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         onChange={(e) => onChange(e.target.value)}
         onCompositionStart={onCompositionStart}
         onCompositionEnd={onCompositionEnd}
-        placeholder={t('search.placeholder')}
+        placeholder={placeholder}
         className="flex-1 ml-3 text-base bg-transparent outline-none placeholder-gray-400"
         autoFocus
       />

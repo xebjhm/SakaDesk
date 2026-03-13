@@ -284,6 +284,8 @@
     },
     "search": {
         "placeholder": "搜尋訊息同 Blog...",
+        "placeholderMessages": "搜尋訊息...",
+        "placeholderBlogs": "搜尋 Blog...",
         "noResults": "搵唔到結果",
         "noResultsHint": "試下其他搜尋詞",
         "resultCount": "{{count}} 個結果",

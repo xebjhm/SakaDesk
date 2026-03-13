@@ -408,6 +408,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             onCompositionEnd={() => setIsComposing(false)}
             onFilterToggle={() => setFiltersExpanded(!filtersExpanded)}
             filtersActive={filtersExpanded || selectedFilters.length > 0}
+            contentType={contentType}
           />
 
           {/* Filter bar (collapsible) — outside overflow wrapper so dropdowns can overflow */}
