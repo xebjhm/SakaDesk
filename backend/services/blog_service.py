@@ -357,7 +357,7 @@ class BlogService:
     # Stage 1: Metadata sync (fast)
     # =========================================================================
 
-    async def sync_blog_metadata(self, service: str, progress_callback=None) -> dict:
+    async def sync_blog_metadata(self, service: str, progress_callback=None, cancel_event: Optional[asyncio.Event] = None) -> dict:
         """
         Stage 1: Sync blog metadata (titles, dates, URLs) for all members.
 
@@ -397,6 +397,8 @@ class BlogService:
             async def sync_member(member_id: str, member_name: str):
                 nonlocal completed
                 async with sem:
+                    if cancel_event and cancel_event.is_set():
+                        return
                     if progress_callback:
                         await progress_callback(
                             f"Scanning {member_name} ({completed + 1}/{total})"
@@ -544,6 +546,7 @@ class BlogService:
         service: str,
         download_images: bool = True,
         progress_callback=None,
+        cancel_event: Optional[asyncio.Event] = None,
     ) -> dict:
         """
         Stage 2: Download full blog content and optionally images.
@@ -573,6 +576,9 @@ class BlogService:
                 await progress_callback("All blogs already cached")
             return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
 
+        if cancel_event and cancel_event.is_set():
+            return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
+
         # Determine concurrency based on how many are already cached
         total_blogs = sum(
             len(m.get("blogs", [])) for m in index.get("members", {}).values()
@@ -595,6 +601,8 @@ class BlogService:
             async def download_item(item: BlogDownloadItem):
                 nonlocal completed
                 async with sem:
+                    if cancel_event and cancel_event.is_set():
+                        return
                     completed += 1
                     if progress_callback:
                         await progress_callback(
@@ -752,7 +760,7 @@ class BlogService:
     # Combined sync (for convenience)
     # =========================================================================
 
-    async def sync_full_backup(self, service: str, progress_callback=None):
+    async def sync_full_backup(self, service: str, progress_callback=None, cancel_event: Optional[asyncio.Event] = None):
         """
         Full backup mode: Stage 1 + Stage 2.
         Sync metadata then download all content + images.
@@ -760,13 +768,18 @@ class BlogService:
         # Stage 1: Metadata sync
         if progress_callback:
             await progress_callback("Stage 1: Syncing blog metadata...")
-        await self.sync_blog_metadata(service, progress_callback)
+        await self.sync_blog_metadata(service, progress_callback, cancel_event=cancel_event)
+
+        if cancel_event and cancel_event.is_set():
+            logger.info(f"Blog backup cancelled after Stage 1 for {service}")
+            return {"cancelled": True}
 
         # Stage 2: Content download
         if progress_callback:
             await progress_callback("Stage 2: Downloading blog content...")
         stats = await self.download_blog_content(
-            service, download_images=True, progress_callback=progress_callback
+            service, download_images=True, progress_callback=progress_callback,
+            cancel_event=cancel_event,
         )
 
         logger.info(f"Full blog backup complete: {stats}")
@@ -846,6 +859,48 @@ class BlogService:
             "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True),
         }
 
+    def _rewrite_local_images(
+        self, content: dict, cache_path: Path, service: str, blog_id: str
+    ) -> dict:
+        """Rewrite image URLs in blog content to use local API when cached on disk.
+
+        For each image with a local_path that exists on disk, replaces the
+        external URL in both the images array and the HTML content with
+        /api/blogs/image?service=...&blog_id=...&filename=... so the frontend
+        serves images from disk instead of hitting external servers.
+        """
+        from urllib.parse import quote
+
+        images = content.get("images", [])
+        html = content.get("content", {}).get("html", "")
+
+        for img in images:
+            local_rel = img.get("local_path")
+            original_url = img.get("original_url")
+            if not local_rel or not original_url:
+                continue
+
+            # local_path is like "./images/img_0.jpg" — resolve against cache_path
+            local_abs = (cache_path / local_rel).resolve()
+            if not local_abs.exists():
+                continue
+
+            filename = local_abs.name  # e.g. "img_0.jpg"
+            api_url = (
+                f"/api/blogs/image"
+                f"?service={quote(service)}"
+                f"&blog_id={quote(blog_id)}"
+                f"&filename={quote(filename)}"
+            )
+
+            # Replace in HTML
+            html = html.replace(original_url, api_url)
+            # Update image entry to point to local API
+            img["local_url"] = api_url
+
+        content["content"]["html"] = html
+        return content
+
     async def get_blog_content(self, service: str, blog_id: str) -> dict:
         """
         Get full blog content. Fetches on-demand if not cached.
@@ -879,7 +934,8 @@ class BlogService:
 
         if cache_file.exists():
             async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
-                return cast(Dict[Any, Any], json.loads(await f.read()))
+                content = cast(Dict[Any, Any], json.loads(await f.read()))
+            return self._rewrite_local_images(content, cache_path, service, blog_id)
 
         # Fetch on-demand — delegate to _download_single_blog (single code path)
         item = BlogDownloadItem(
@@ -900,7 +956,8 @@ class BlogService:
 
         # Read back the cached content we just wrote
         async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
-            return cast(Dict[Any, Any], json.loads(await f.read()))
+            content = cast(Dict[Any, Any], json.loads(await f.read()))
+        return self._rewrite_local_images(content, cache_path, service, blog_id)
 
     # =========================================================================
     # Cache management
@@ -982,3 +1039,87 @@ class BlogService:
             base_path.mkdir(parents=True, exist_ok=True)
             async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
                 await f.write(index_backup)
+
+
+# =============================================================================
+# Blog Backup Manager (immediate toggle support)
+# =============================================================================
+
+class BlogBackupManager:
+    """Singleton manager for blog backup background tasks.
+
+    Provides fine-grained cancellation via asyncio.Event per service.
+    Coordinates between the settings toggle and Phase 5 of sync.
+    """
+
+    def __init__(self):
+        self._tasks: dict[str, asyncio.Task] = {}
+        self._cancel_events: dict[str, asyncio.Event] = {}
+        self._lock = asyncio.Lock()
+
+    def is_running(self, service: str) -> bool:
+        task = self._tasks.get(service)
+        return task is not None and not task.done()
+
+    async def start(self, services: list[str]):
+        """Start blog backup for the given services. Cancels any existing tasks first."""
+        async with self._lock:
+            for service in services:
+                await self._cancel_service(service)
+
+                cancel_event = asyncio.Event()
+                self._cancel_events[service] = cancel_event
+
+                task = asyncio.create_task(
+                    self._run_backup(service, cancel_event)
+                )
+                self._tasks[service] = task
+
+    async def stop(self, services: list[str] | None = None):
+        """Stop blog backup for the given services (or all if None)."""
+        async with self._lock:
+            targets = services or list(self._tasks.keys())
+            for service in targets:
+                await self._cancel_service(service)
+
+    async def _cancel_service(self, service: str):
+        """Cancel backup for a single service. Must hold self._lock."""
+        if service in self._cancel_events:
+            self._cancel_events[service].set()
+
+        task = self._tasks.pop(service, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+
+        self._cancel_events.pop(service, None)
+
+    async def _run_backup(self, service: str, cancel_event: asyncio.Event):
+        """Run full backup for one service with cancellation support."""
+        blog_service = BlogService()
+        try:
+            logger.info(f"Standalone blog backup started for {service}")
+            await blog_service.sync_full_backup(
+                service, cancel_event=cancel_event,
+            )
+            logger.info(f"Standalone blog backup finished for {service}")
+        except asyncio.CancelledError:
+            logger.info(f"Standalone blog backup cancelled for {service}")
+        except Exception as e:
+            logger.error(f"Standalone blog backup error for {service}: {e}")
+        finally:
+            self._tasks.pop(service, None)
+            self._cancel_events.pop(service, None)
+
+
+_blog_backup_manager: BlogBackupManager | None = None
+
+
+def get_blog_backup_manager() -> BlogBackupManager:
+    global _blog_backup_manager
+    if _blog_backup_manager is None:
+        _blog_backup_manager = BlogBackupManager()
+    return _blog_backup_manager
