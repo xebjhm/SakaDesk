@@ -3,6 +3,7 @@ import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, Hard
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
+import { useModalClose } from '../common/useModalClose';
 
 interface SystemInfo {
     os: string;
@@ -112,6 +113,7 @@ function DiskUsageServiceRow({ service }: { service: DiskUsageService }) {
 }
 
 export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
+    const handleBackdropClick = useModalClose(isOpen, onClose);
     const [data, setData] = useState<DiagnosticsData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -191,8 +193,8 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="bg-gray-900 px-6 py-4 flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-3">

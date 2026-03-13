@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Bug, RefreshCw, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useModalClose } from '../common/useModalClose';
 
 type BugCategory = 'sync_data' | 'playback' | 'login' | 'other';
 
@@ -88,11 +89,13 @@ export function ReportIssueModal({
         onClose();
     };
 
+    const handleBackdropClick = useModalClose(isOpen, handleClose);
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl max-w-lg w-full shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
+            <div className="bg-white rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="bg-gray-900 px-6 py-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
