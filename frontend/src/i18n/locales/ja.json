@@ -372,6 +372,9 @@
     "mute": "ミュート (M)",
     "unmute": "ミュート解除 (M)"
   },
+  "videoPlayer": {
+    "noAudio": "音声なし"
+  },
   "generations": {
     "1st": "一期生",
     "2nd": "二期生",

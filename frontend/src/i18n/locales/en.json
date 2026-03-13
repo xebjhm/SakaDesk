@@ -372,6 +372,9 @@
     "mute": "Mute (M)",
     "unmute": "Unmute (M)"
   },
+  "videoPlayer": {
+    "noAudio": "No audio"
+  },
   "generations": {
     "1st": "1ST GEN",
     "2nd": "2ND GEN",

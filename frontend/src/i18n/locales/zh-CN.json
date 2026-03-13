@@ -372,6 +372,9 @@
     "mute": "静音 (M)",
     "unmute": "取消静音 (M)"
   },
+  "videoPlayer": {
+    "noAudio": "无音频"
+  },
   "generations": {
     "1st": "１期生",
     "2nd": "２期生",
