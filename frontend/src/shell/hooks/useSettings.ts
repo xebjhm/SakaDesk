@@ -110,6 +110,18 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             const data = await res.json();
             setAppSettings(data);
             setOutputDirInput(data.output_dir);
+
+            // Immediate blog backup toggle: start/stop backup on setting change
+            if ('blogs_full_backup' in updates) {
+                const services = useAppStore.getState().selectedServices;
+                if (updates.blogs_full_backup && services.length > 0) {
+                    const params = services.map(s => `services=${encodeURIComponent(s)}`).join('&');
+                    fetch(`/api/blogs/backup/start?${params}`, { method: 'POST' }).catch(console.error);
+                } else if (!updates.blogs_full_backup) {
+                    fetch('/api/blogs/backup/stop', { method: 'POST' }).catch(console.error);
+                }
+            }
+
             return true;
         } catch (e) {
             console.error('Failed to save settings:', e);
