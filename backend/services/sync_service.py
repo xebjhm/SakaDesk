@@ -414,26 +414,35 @@ class SyncService:
                 # - True: Full backup - download all content + images for offline reading
                 blogs_full_backup = app_settings.get("blogs_full_backup", False)
 
-                if blogs_full_backup:
+                # Skip if standalone blog backup (triggered by toggle) is already running
+                from backend.services.blog_service import BlogService, get_blog_backup_manager
+                backup_manager = get_blog_backup_manager()
+                standalone_running = backup_manager.is_running(self._service)
+
+                if standalone_running:
+                    progress.start_phase("blogs", "Blog backup in progress", 4, 0, "")
+                    progress.set_detail("Backup already running (triggered by toggle)")
+                    logger.info(f"Skipping Phase 5 blog sync — standalone backup running for {self._service}")
+                elif blogs_full_backup:
                     progress.start_phase("blogs", "Backing up blogs (full)", 4, 0, "")
-                else:
-                    progress.start_phase("blogs", "Syncing blog metadata", 4, 0, "")
-
-                try:
-                    from backend.services.blog_service import BlogService
-                    blog_service = BlogService()
-
-                    async def blog_progress(msg):
-                        progress.set_detail(msg)
-
-                    if blogs_full_backup:
+                    try:
+                        blog_service = BlogService()
+                        async def blog_progress(msg):
+                            progress.set_detail(msg)
                         await blog_service.sync_full_backup(self._service, progress_callback=blog_progress)
                         logger.info(f"Full blog backup complete for {self._service}")
-                    else:
+                    except Exception as e:
+                        logger.warning(f"Blog sync failed (non-fatal): {e}")
+                else:
+                    progress.start_phase("blogs", "Syncing blog metadata", 4, 0, "")
+                    try:
+                        blog_service = BlogService()
+                        async def blog_progress(msg):
+                            progress.set_detail(msg)
                         await blog_service.sync_blog_metadata(self._service, progress_callback=blog_progress)
                         logger.info(f"Blog metadata synced for {self._service}")
-                except Exception as e:
-                    logger.warning(f"Blog sync failed (non-fatal): {e}")
+                    except Exception as e:
+                        logger.warning(f"Blog sync failed (non-fatal): {e}")
 
                 # Update blog search index (non-fatal)
                 progress.set_detail("Updating search index...")

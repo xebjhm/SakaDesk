@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
-from backend.services.blog_service import BlogService
+from backend.services.blog_service import BlogService, get_blog_backup_manager
 from backend.services.service_utils import validate_service
 
 router = APIRouter()
@@ -236,6 +236,41 @@ async def clear_cache(service: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/backup/start")
+async def start_blog_backup(services: List[str] = Query(...)):
+    """Start blog full backup for specified services immediately."""
+    try:
+        for s in services:
+            validate_service(s)
+
+        manager = get_blog_backup_manager()
+        await manager.start(services)
+
+        return {"status": "started", "services": services}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/backup/stop")
+async def stop_blog_backup(services: Optional[List[str]] = Query(None)):
+    """Stop blog full backup for specified services (or all if none specified)."""
+    try:
+        if services:
+            for s in services:
+                validate_service(s)
+
+        manager = get_blog_backup_manager()
+        await manager.stop(services)
+
+        return {"status": "stopped", "services": services or ["all"]}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/sync")
 async def sync_blog_metadata(service: str = Query(...)):
     """Sync blog metadata from official website.
@@ -270,3 +305,94 @@ async def sync_blog_metadata(service: str = Query(...)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Allowed domains for the image proxy (official blog hosts and CDNs)
+_PROXY_ALLOWED_HOSTS = {
+    "cdn.hinatazaka46.com", "www.hinatazaka46.com", "hinatazaka46.com",
+    "cdn.sakurazaka46.com", "www.sakurazaka46.com", "sakurazaka46.com",
+    "cdn.nogizaka46.com", "www.nogizaka46.com", "nogizaka46.com",
+    "img.nogizaka46.com",
+}
+
+
+@router.get("/proxy-image")
+async def proxy_blog_image(url: str = Query(...)):
+    """Proxy download for external blog images to bypass browser CORS restrictions.
+
+    Only allows fetching from known official blog domains for security.
+    """
+    from urllib.parse import urlparse
+    import httpx
+
+    parsed = urlparse(url)
+    if parsed.hostname not in _PROXY_ALLOWED_HOSTS:
+        raise HTTPException(status_code=403, detail="Domain not allowed for proxy")
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            resp = await client.get(url, timeout=30.0)
+            resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "application/octet-stream")
+        from starlette.responses import Response
+        return Response(content=resp.content, media_type=content_type)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
+
+
+@router.get("/image")
+async def serve_blog_image(
+    service: str = Query(...),
+    blog_id: str = Query(...),
+    filename: str = Query(...),
+):
+    """Serve a locally cached blog image from disk.
+
+    Used when full blog backup has downloaded images locally.
+    """
+    import re
+    from pathlib import Path as _Path
+
+    try:
+        validate_service(service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Validate filename to prevent path traversal
+    if not re.match(r'^img_\d+\.\w+$', filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    # Resolve the blog's cache directory via service
+    index = await blog_service.load_blog_index(service)
+    blog_meta = None
+    member_name = None
+    for _mid, member_data in index.get("members", {}).items():
+        for blog in member_data.get("blogs", []):
+            if blog["id"] == blog_id:
+                blog_meta = blog
+                member_name = member_data.get("name", "")
+                break
+        if blog_meta:
+            break
+
+    if not blog_meta or member_name is None:
+        raise HTTPException(status_code=404, detail="Blog not found")
+
+    date = blog_meta["published_at"][:10].replace("-", "")
+    cache_path = blog_service.get_blog_cache_path(service, member_name, blog_id, date)
+    image_path = cache_path / "images" / filename
+
+    if not image_path.exists():
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    ext = image_path.suffix.lower()
+    media_types = {
+        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+    }
+    return FileResponse(
+        image_path,
+        media_type=media_types.get(ext, "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=604800"},
+    )
