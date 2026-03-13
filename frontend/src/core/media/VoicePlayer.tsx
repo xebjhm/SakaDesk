@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
+import { downloadMedia } from '../../utils/download';
+import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 
-const VOLUME_STORAGE_KEY = 'hakodesk_voice_volume';
+const VOLUME_STORAGE_KEY = 'hakodesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;
@@ -25,6 +28,10 @@ interface VoicePlayerProps {
     accentColor?: string;
     /** Raw ISO timestamp of the message, used for download filename prefix */
     messageTimestamp?: string;
+    /** Auto-start playing when component mounts */
+    autoPlay?: boolean;
+    /** Enable keyboard shortcuts at window level (skip focus check). Only for viewer/modal, not chat bubbles. */
+    viewerMode?: boolean;
 }
 
 /**
@@ -71,37 +78,31 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     durationText,
     accentColor = DEFAULT_ACCENT_COLOR,
     messageTimestamp,
+    autoPlay,
+    viewerMode,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+    const menuPortalRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
-    const [volume, setVolume] = useState(() => {
-        // Restore saved volume from localStorage
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem(VOLUME_STORAGE_KEY);
-            if (saved !== null) {
-                const vol = parseFloat(saved);
-                if (!isNaN(vol) && vol >= 0 && vol <= 1) return vol;
-            }
-        }
-        return 1;
-    });
-    const [savedVolume, setSavedVolume] = useState(1); // For mute/unmute toggle
+    const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
     const [showVolume, setShowVolume] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
+    const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     const [playbackRate, setPlaybackRate] = useState(1);
 
     // For smooth progress animation
     const [animatedProgress, setAnimatedProgress] = useState(0);
     const lastUpdateRef = useRef<number>(Date.now());
 
-    // Setup audio event listeners
+    // Setup audio event listeners and connect to amplification pipeline
     useEffect(() => {
         const audio = audioRef.current;
         if (!audio) return;
@@ -118,8 +119,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         audio.addEventListener('play', handlePlay);
         audio.addEventListener('pause', handlePause);
 
-        // Set initial volume and playback rate
-        audio.volume = volume;
+        // Connect to Web Audio API for amplification (volume controlled via GainNode)
+        connectElement(audio);
         audio.playbackRate = playbackRate;
 
         return () => {
@@ -128,19 +129,18 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             audio.removeEventListener('ended', handleEnded);
             audio.removeEventListener('play', handlePlay);
             audio.removeEventListener('pause', handlePause);
-            // Clear any pending timeouts
             if (volumeHideTimeout.current) {
                 clearTimeout(volumeHideTimeout.current);
             }
         };
-    }, []);
+    }, [connectElement]);
 
-    // Sync volume to audio element
+    // Auto-play on mount if requested
     useEffect(() => {
-        if (audioRef.current) {
-            audioRef.current.volume = volume;
+        if (autoPlay && audioRef.current) {
+            audioRef.current.play().catch(() => {});
         }
-    }, [volume]);
+    }, [autoPlay]);
 
     // Sync playback rate to audio element
     useEffect(() => {
@@ -204,26 +204,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5);
     }, []);
 
-    const handleMuteToggle = useCallback(() => {
-        if (volume > 0) {
-            setSavedVolume(volume);
-            setVolume(0);
-            localStorage.setItem(VOLUME_STORAGE_KEY, '0');
-        } else {
-            const restored = savedVolume || 1;
-            setVolume(restored);
-            localStorage.setItem(VOLUME_STORAGE_KEY, restored.toString());
-        }
-    }, [volume, savedVolume]);
+    // handleMuteToggle provided by useAmplifiedVolume hook
 
     // Keyboard shortcuts - must be after handler definitions
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            const isFocused = containerRef.current?.contains(document.activeElement);
-            if (!isFocused) return;
+            // In viewer mode: listen globally (no focus check), skip Left/Right (reserved for modal nav)
+            // In normal mode: only when container is focused
+            if (!viewerMode) {
+                const isFocused = containerRef.current?.contains(document.activeElement);
+                if (!isFocused) return;
 
-            const target = e.target as HTMLElement;
-            if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') return;
+                const target = e.target as HTMLElement;
+                if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') return;
+            }
 
             switch (e.key) {
                 case ' ':
@@ -231,12 +225,28 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     togglePlay();
                     break;
                 case 'ArrowLeft':
-                    e.preventDefault();
-                    handleSkipBack();
+                    if (!viewerMode) {
+                        e.preventDefault();
+                        handleSkipBack();
+                    }
                     break;
                 case 'ArrowRight':
-                    e.preventDefault();
-                    handleSkipForward();
+                    if (!viewerMode) {
+                        e.preventDefault();
+                        handleSkipForward();
+                    }
+                    break;
+                case 'ArrowUp':
+                    if (viewerMode) {
+                        e.preventDefault();
+                        setVolume(Math.min(volume + 0.05, 1));
+                    }
+                    break;
+                case 'ArrowDown':
+                    if (viewerMode) {
+                        e.preventDefault();
+                        setVolume(Math.max(volume - 0.05, 0));
+                    }
                     break;
                 case 'm':
                 case 'M':
@@ -248,7 +258,32 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle]);
+    }, [viewerMode, togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle, volume, setVolume]);
+
+    // Close menu on click outside or Escape key
+    useEffect(() => {
+        if (!showMenu) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (
+                menuButtonRef.current && !menuButtonRef.current.contains(target) &&
+                menuPortalRef.current && !menuPortalRef.current.contains(target)
+            ) {
+                setShowMenu(false);
+            }
+        };
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEsc);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEsc);
+        };
+    }, [showMenu]);
 
     const handleVolumeMouseEnter = useCallback(() => {
         if (volumeHideTimeout.current) {
@@ -276,19 +311,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     };
 
     const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newVolume = parseFloat(e.target.value);
-        setVolume(newVolume);
-        localStorage.setItem(VOLUME_STORAGE_KEY, newVolume.toString());
-        if (newVolume > 0) {
-            setSavedVolume(newVolume);
-        }
+        setVolume(parseFloat(e.target.value));
     };
 
     const handleDownload = () => {
-        const link = document.createElement('a');
-        link.href = src;
-        link.download = formatDownloadFilename(src, messageTimestamp);
-        link.click();
+        downloadMedia(src, formatDownloadFilename(src, messageTimestamp));
         setShowMenu(false);
     };
 
@@ -304,12 +331,23 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    const isMuted = volume === 0;
+    const isMuted = isVolumeMuted || volume === 0;
 
     const handleMenuToggle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
-        setShowMenu(prev => !prev);
+        setShowMenu(prev => {
+            if (!prev && menuButtonRef.current) {
+                // Calculate position synchronously before render to avoid layout flash
+                const rect = menuButtonRef.current.getBoundingClientRect();
+                setMenuStyle({
+                    position: 'fixed' as const,
+                    bottom: `${window.innerHeight - rect.top + 8}px`,
+                    right: `${window.innerWidth - rect.right}px`,
+                });
+            }
+            return !prev;
+        });
         setShowVolume(false);
     }, []);
 
@@ -327,7 +365,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
-                <audio ref={audioRef} src={src} preload="metadata" />
+                <audio ref={audioRef} src={src} preload="metadata" loop />
 
                 {/* Row 1: Avatar + Info + Menu */}
                 <div className="flex items-center gap-3 mb-2">
@@ -359,48 +397,15 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             </p>
                         )}
                     </div>
-                    {/* Options menu */}
-                    <div className="relative">
-                        <button
-                            onClick={handleMenuToggle}
-                            className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-                            type="button"
-                        >
-                            <MoreVertical className="w-4 h-4 text-gray-500" />
-                        </button>
-                        {showMenu && (
-                            <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[140px] z-50">
-                                {goldenFingerActive && (
-                                    <>
-                                        <button
-                                            onClick={handleDownload}
-                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
-                                            type="button"
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            {t('common.download')}
-                                        </button>
-                                        <div className="border-t border-gray-200 my-1" />
-                                    </>
-                                )}
-                                <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                                {[0.5, 1, 1.5, 2].map(rate => (
-                                    <button
-                                        key={rate}
-                                        onClick={() => handlePlaybackRateChange(rate)}
-                                        className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80"
-                                        style={{
-                                            color: playbackRate === rate ? accentColor : '#374151',
-                                            fontWeight: playbackRate === rate ? 500 : 400,
-                                        }}
-                                        type="button"
-                                    >
-                                        {rate}x
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    {/* Options menu trigger */}
+                    <button
+                        ref={menuButtonRef}
+                        onClick={handleMenuToggle}
+                        className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                        type="button"
+                    >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                    </button>
                 </div>
 
                 {/* Row 2: Progress Bar */}
@@ -504,6 +509,45 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Right: Balance space */}
                     <div className="flex-1" />
                 </div>
+
+                {/* Menu portal */}
+                {showMenu && createPortal(
+                    <div
+                        ref={menuPortalRef}
+                        style={menuStyle}
+                        className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                    >
+                        {goldenFingerActive && (
+                            <>
+                                <button
+                                    onClick={handleDownload}
+                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
+                                    type="button"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    {t('common.download')}
+                                </button>
+                                <div className="border-t border-gray-200 my-1" />
+                            </>
+                        )}
+                        <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
+                        {[0.5, 1, 1.5, 2].map(rate => (
+                            <button
+                                key={rate}
+                                onClick={() => handlePlaybackRateChange(rate)}
+                                className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80"
+                                style={{
+                                    color: playbackRate === rate ? accentColor : '#374151',
+                                    fontWeight: playbackRate === rate ? 500 : 400,
+                                }}
+                                type="button"
+                            >
+                                {rate}x
+                            </button>
+                        ))}
+                    </div>,
+                    document.body
+                )}
             </div>
         );
     }
@@ -517,7 +561,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
         >
             {/* Hidden audio element */}
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} src={src} preload="metadata" loop />
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">
@@ -602,46 +646,52 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     <div className="text-xs text-gray-500 whitespace-nowrap">
                         {formatTime(currentTime)} / {formatTime(duration)}
                     </div>
-                    <div className="relative">
-                        <button
-                            onClick={handleMenuToggle}
-                            className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
-                            type="button"
-                        >
-                            <MoreVertical className="w-4 h-4 text-gray-500" />
-                        </button>
-                        {showMenu && (
-                            <div className="absolute bottom-full right-0 mb-2 bg-white rounded-lg shadow-lg border py-1 min-w-[140px] z-50">
-                                {goldenFingerActive && (
-                                    <>
-                                        <button
-                                            onClick={handleDownload}
-                                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                            type="button"
-                                        >
-                                            <Download className="w-4 h-4" />
-                                            {t('common.download')}
-                                        </button>
-                                        <div className="border-t my-1" />
-                                    </>
-                                )}
-                                <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                                {[0.5, 1, 1.5, 2].map(rate => (
-                                    <button
-                                        key={rate}
-                                        onClick={() => handlePlaybackRateChange(rate)}
-                                        className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
-                                        style={{ color: playbackRate === rate ? accentColor : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
-                                        type="button"
-                                    >
-                                        {rate}x
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                    <button
+                        ref={menuButtonRef}
+                        onClick={handleMenuToggle}
+                        className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                        type="button"
+                    >
+                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                    </button>
                 </div>
             </div>
+
+            {/* Menu portal */}
+            {showMenu && createPortal(
+                <div
+                    ref={menuPortalRef}
+                    style={menuStyle}
+                    className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                >
+                    {goldenFingerActive && (
+                        <>
+                            <button
+                                onClick={handleDownload}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                type="button"
+                            >
+                                <Download className="w-4 h-4" />
+                                {t('common.download')}
+                            </button>
+                            <div className="border-t border-gray-200 my-1" />
+                        </>
+                    )}
+                    <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
+                    {[0.5, 1, 1.5, 2].map(rate => (
+                        <button
+                            key={rate}
+                            onClick={() => handlePlaybackRateChange(rate)}
+                            className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
+                            style={{ color: playbackRate === rate ? accentColor : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
+                            type="button"
+                        >
+                            {rate}x
+                        </button>
+                    ))}
+                </div>,
+                document.body
+            )}
         </div>
     );
 };
