@@ -47,9 +47,9 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
 
-    // Handle ESC key to close modal
+    // Handle ESC key to close modal (skip when exiting fullscreen — browser handles that)
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isOpen) {
+        if (e.key === 'Escape' && isOpen && !document.fullscreenElement) {
             onClose();
         }
     }, [isOpen, onClose]);
@@ -223,9 +223,12 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
 
-    // Handle ESC key to close modal
+    // Handle ESC key — stopImmediatePropagation prevents parent modals from also closing.
+    // Capture phase so this fires BEFORE parent BaseModal's bubble-phase handler.
+    // Skip when exiting fullscreen — browser handles that, we don't want to close the modal.
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isOpen) {
+        if (e.key === 'Escape' && isOpen && !document.fullscreenElement) {
+            e.stopImmediatePropagation();
             onClose();
         }
     }, [isOpen, onClose]);
@@ -235,11 +238,11 @@ export const DetailModal: React.FC<DetailModalProps> = ({
         if (isOpen) {
             previousFocusRef.current = document.activeElement as HTMLElement;
             setTimeout(() => modalRef.current?.focus(), 0);
-            document.addEventListener('keydown', handleKeyDown);
+            document.addEventListener('keydown', handleKeyDown, true);
             document.body.style.overflow = 'hidden';
 
             return () => {
-                document.removeEventListener('keydown', handleKeyDown);
+                document.removeEventListener('keydown', handleKeyDown, true);
                 document.body.style.overflow = '';
                 previousFocusRef.current?.focus();
             };
