@@ -34,8 +34,8 @@ interface ChatListProps {
     targetMessageId?: number | null;
     /** Callback to clear targetMessageId after it's consumed */
     onTargetMessageConsumed?: () => void;
-    /** Callback when a photo is clicked (for photo detail modal) */
-    onPhotoClick?: (mediaUrl: string, timestamp?: string) => void;
+    /** Callback when a media item is clicked (for media viewer modal) */
+    onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -55,7 +55,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     service,
     targetMessageId,
     onTargetMessageConsumed,
-    onPhotoClick,
+    onMediaClick,
 }) => {
     const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
@@ -155,7 +155,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             onLongPress={onLongPress}
                             onToggleFavorite={onToggleFavorite}
                             onAvatarClick={onAvatarClick}
-                            onPhotoClick={onPhotoClick}
+                            onMediaClick={onMediaClick}
                             theme={bubbleTheme}
                             service={service}
                         />

@@ -2,10 +2,10 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
+import { VideoPlayer } from '../../../core/media/VideoPlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
 import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
-import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
 
 interface ShelterColors {
@@ -36,7 +36,7 @@ interface MessageBubbleProps {
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
-    onPhotoClick?: (mediaUrl: string, timestamp?: string) => void;
+    onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     theme?: MessageBubbleTheme;
     service?: string;
 }
@@ -144,12 +144,11 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onLongPress,
     onToggleFavorite,
     onAvatarClick,
-    onPhotoClick,
+    onMediaClick,
     theme,
     service,
 }) => {
     const { t } = useTranslation();
-    const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const date = new Date(message.timestamp);
     const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
 
@@ -316,25 +315,20 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     src={mediaUrl}
                                     alt={t('messageList.attachment')}
                                     className="w-full h-full object-contain cursor-pointer"
-                                    onClick={() => onPhotoClick?.(mediaUrl, message.timestamp)}
+                                    onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
                                 />
                             </MediaContainer>
                         )}
 
-                        {/* Video
-                            Native controls language follows the browser/OS locale (navigator.language),
-                            NOT document.documentElement.lang. There's no web API to override it —
-                            a custom JS player (e.g. Video.js) would be needed for full i18n control. */}
+                        {/* Video */}
                         {message.type === 'video' && mediaUrl && (
                             <MediaContainer message={message} isVideo>
-                                <video
+                                <VideoPlayer
                                     src={mediaUrl}
-                                    className="w-full h-full object-contain"
-                                    controls
-                                    controlsList={goldenFingerActive ? undefined : "nodownload"}
-                                    disablePictureInPicture
-                                    playsInline
-                                    preload="metadata"
+                                    messageTimestamp={message.timestamp}
+                                    noAudio={message.is_muted}
+                                    className="w-full h-full"
+                                    videoClassName="w-full h-full object-contain"
                                 />
                             </MediaContainer>
                         )}

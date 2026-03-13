@@ -13,7 +13,8 @@ import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
-import { PhotoDetailModal } from '../../core/media/PhotoDetailModal';
+import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
+import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -157,9 +158,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Member profile popup state
     const [showMemberProfile, setShowMemberProfile] = useState(false);
 
-    // Photo detail modal state
-    const [photoDetailSrc, setPhotoDetailSrc] = useState<string | null>(null);
-    const [photoDetailTimestamp, setPhotoDetailTimestamp] = useState<string | undefined>();
+    // Media viewer modal state
+    const [mediaViewerIndex, setMediaViewerIndex] = useState<number | null>(null);
 
     // Compute unread count from messages and readState (single source of truth)
     const displayUnreadCount = useMemo(() => {
@@ -524,10 +524,28 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages]);
 
-    const handlePhotoClick = useCallback((mediaUrl: string, timestamp?: string) => {
-        setPhotoDetailSrc(mediaUrl);
-        setPhotoDetailTimestamp(timestamp);
-    }, []);
+    // Build media items list for the viewer (all photos/videos/voices sorted by timestamp)
+    const mediaItems = useMemo((): MediaViewerItem[] => {
+        if (!messagesService) return [];
+        return messages
+            .filter(m => m.media_file && (m.type === 'picture' || m.type === 'video' || m.type === 'voice'))
+            .map(m => {
+                const sender = getSenderInfo(m);
+                return {
+                    src: `/api/content/media/${encodeURIComponent(messagesService)}/${m.media_file!.split('/').map(encodeURIComponent).join('/')}`,
+                    type: m.type as 'picture' | 'video' | 'voice',
+                    timestamp: m.timestamp,
+                    avatarUrl: sender.avatar,
+                    memberName: sender.name,
+                    isMuted: m.is_muted,
+                };
+            });
+    }, [messages, messagesService, getSenderInfo]);
+
+    const handleMediaClick = useCallback((mediaUrl: string, _type: string, _timestamp?: string) => {
+        const idx = mediaItems.findIndex(item => item.src === mediaUrl);
+        if (idx !== -1) setMediaViewerIndex(idx);
+    }, [mediaItems]);
 
     // Toggle favorite status (optimistic update + API call)
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
@@ -700,7 +718,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             }
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
-                            onPhotoClick={handlePhotoClick}
+                            onMediaClick={handleMediaClick}
                             service={messagesService}
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
@@ -777,12 +795,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 activeService={activeService || undefined}
             />
 
-            {/* Photo Detail Modal */}
-            {photoDetailSrc && (
-                <PhotoDetailModal
-                    src={photoDetailSrc}
-                    timestamp={photoDetailTimestamp}
-                    onClose={() => setPhotoDetailSrc(null)}
+            {/* Media Viewer Modal */}
+            {mediaViewerIndex !== null && mediaItems.length > 0 && (
+                <MediaViewerModal
+                    mediaItems={mediaItems}
+                    currentIndex={mediaViewerIndex}
+                    onClose={() => setMediaViewerIndex(null)}
+                    onNavigate={setMediaViewerIndex}
                 />
             )}
         </div>
