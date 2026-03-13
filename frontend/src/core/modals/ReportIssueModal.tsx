@@ -71,6 +71,13 @@ export function ReportIssueModal({
 
             const data = await res.json();
 
+            // Copy full diagnostics (including logs) to clipboard for pasting into the issue
+            try {
+                await navigator.clipboard.writeText(JSON.stringify(data.diagnostics, null, 2));
+            } catch {
+                // Clipboard unavailable — user still gets compact diagnostics in the URL
+            }
+
             // Open GitHub in new tab
             window.open(data.github_url, '_blank');
             onClose();

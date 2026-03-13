@@ -209,7 +209,11 @@ def _build_github_url(
     what_wrong: str,
     diagnostics: dict
 ) -> str:
-    """Build GitHub issue URL with pre-filled content."""
+    """Build GitHub issue URL with pre-filled content.
+
+    Only includes compact system info in the URL to avoid GitHub's URL length limit.
+    Logs are excluded — they're too large for URL encoding.
+    """
     category_labels = {
         "sync_data": "Sync / Data",
         "playback": "Playback",
@@ -219,7 +223,9 @@ def _build_github_url(
 
     title = f"[Bug] {category_labels.get(category, 'Other')}: {what_wrong[:50]}"
 
-    diag_json = json.dumps(diagnostics, indent=2)
+    # Compact diagnostics — exclude logs to keep URL short
+    compact_diag = {k: v for k, v in diagnostics.items() if k != "logs"}
+    diag_json = json.dumps(compact_diag, indent=2)
 
     body = f"""## Bug Report
 
@@ -230,10 +236,22 @@ def _build_github_url(
 ---
 
 <details>
-<summary>Diagnostics (click to expand)</summary>
+<summary>System Info (click to expand)</summary>
 
 ```json
 {diag_json}
+```
+
+</details>
+
+<details>
+<summary>Full Diagnostics (paste from clipboard)</summary>
+
+> Full diagnostics (including logs) were copied to your clipboard.
+> **Paste here** with Ctrl+V / Cmd+V, replacing this text.
+
+```json
+PASTE_HERE
 ```
 
 </details>
