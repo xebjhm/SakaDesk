@@ -161,17 +161,20 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
         if (currentIdx === -1) return;
 
+        // Gallery grid reads left-to-right (newest top-left, oldest bottom-right).
+        // Right = next in grid = index+1 (older).
+        // Left = prev in grid = index-1 (newer).
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
-                if (currentIdx < currentTabItems.length - 1) {
-                    setSelectedMedia(currentTabItems[currentIdx + 1]);
+                if (currentIdx > 0) {
+                    setSelectedMedia(currentTabItems[currentIdx - 1]);
                 }
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (currentIdx > 0) {
-                    setSelectedMedia(currentTabItems[currentIdx - 1]);
+                if (currentIdx < currentTabItems.length - 1) {
+                    setSelectedMedia(currentTabItems[currentIdx + 1]);
                 }
                 break;
         }
@@ -203,7 +206,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             {currentTabItems.length > 1 && (
                                 <>
                                     <span className="mx-2">•</span>
-                                    <span>{detailIdx + 1} / {currentTabItems.length}</span>
+                                    <span>{currentTabItems.length - detailIdx} / {currentTabItems.length}</span>
                                 </>
                             )}
                         </div>
