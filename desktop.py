@@ -2,6 +2,7 @@ import webview
 import threading
 import uvicorn
 import sys
+import os
 import socket
 import traceback
 import time
@@ -20,6 +21,9 @@ logger = structlog.get_logger()
 # Constants
 HOST = "127.0.0.1"
 SERVER_STARTUP_TIMEOUT = 10  # seconds
+
+# Global reference so cleanup can signal graceful shutdown
+_uvicorn_server: uvicorn.Server | None = None
 
 
 def _get_port_file():
@@ -45,6 +49,20 @@ def create_server_socket() -> tuple:
     """
     port_file = _get_port_file()
 
+    def _port_is_active(port: int) -> bool:
+        """Check if something is actually listening on the port.
+
+        SO_REUSEADDR on Windows allows bind() to succeed even when another
+        process is actively listening — so bind() alone can't tell us if
+        the port is truly free.  A TCP connect check catches this.
+        """
+        try:
+            conn = socket.create_connection((HOST, port), timeout=0.5)
+            conn.close()
+            return True
+        except (ConnectionRefusedError, OSError, TimeoutError):
+            return False
+
     def _try_bind(port: int):
         """Try to bind a SO_REUSEADDR socket to the given port."""
         try:
@@ -61,9 +79,12 @@ def create_server_socket() -> tuple:
         try:
             saved = int(port_file.read_text(encoding='utf-8').strip())
             if 1024 < saved < 65536:
-                sock = _try_bind(saved)
-                if sock is not None:
-                    return saved, sock
+                # On Windows, SO_REUSEADDR lets bind() succeed even if an old
+                # process is still listening. Check with a connect() first.
+                if not _port_is_active(saved):
+                    sock = _try_bind(saved)
+                    if sock is not None:
+                        return saved, sock
         except (ValueError, OSError):
             pass  # Corrupt file or port in use — allocate new one
 
@@ -107,9 +128,10 @@ def start_server(sock: socket.socket) -> None:
     which uses SO_EXCLUSIVEADDRUSE on Windows — that flag rejects ports
     in TIME_WAIT state and would force a new port on quick restarts.
     """
+    global _uvicorn_server
     config = uvicorn.Config(app, log_level="error")
-    server = uvicorn.Server(config)
-    server.run(sockets=[sock])
+    _uvicorn_server = uvicorn.Server(config)
+    _uvicorn_server.run(sockets=[sock])
 
 def show_error_dialog(error_msg: str, tb: str):
     """Show a simple error dialog with traceback."""
@@ -245,9 +267,15 @@ def main() -> None:
         )
 
         # Cleanup AFTER webview closes but BEFORE process exits.
-        # The uvicorn thread is a daemon — Python kills it instantly when
-        # main() returns, so @app.on_event("shutdown") never fires.
-        # We must release file handles here so the uninstaller can delete them.
+        # Signal uvicorn to shut down gracefully so it releases the socket.
+        # Without this, the daemon thread keeps the port occupied and the
+        # next launch fails with "Server failed to start on port ...".
+        if _uvicorn_server is not None:
+            _uvicorn_server.should_exit = True
+            # Give uvicorn a moment to close its socket
+            t.join(timeout=3)
+
+        # Release file handles so the uninstaller can delete them.
         import logging
         try:
             from backend.services.search_service import shutdown_search_service
@@ -260,6 +288,11 @@ def main() -> None:
                 handler.close()
             except Exception:
                 pass
+
+        # Force-exit to kill any lingering threads (e.g. asyncio loops,
+        # background tasks). On Windows, daemon threads aren't reliably
+        # terminated by normal exit and can keep the process alive.
+        os._exit(0)
 
     except Exception as e:
         error_msg = str(e)
