@@ -1,0 +1,668 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`VoicePlayer component > Snapshots > should match snapshot for compact variant 1`] = `
+<div
+  class="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2 focus:ring-[#6da0d4]/50"
+  tabindex="0"
+>
+  <audio
+    preload="metadata"
+    src="/api/media/voice.m4a"
+  />
+  <div
+    class="mb-3"
+  >
+    <div
+      class="relative h-1 bg-gray-300 rounded-full overflow-hidden"
+    >
+      <div
+        class="absolute inset-y-0 left-0 bg-[#6da0d4] rounded-full"
+        style="width: 0%;"
+      />
+      <input
+        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        max="100"
+        min="0"
+        type="range"
+        value="0"
+      />
+    </div>
+  </div>
+  <div
+    class="flex items-center"
+  >
+    <div
+      class="flex-1 flex items-center"
+    >
+      <div
+        class="relative flex items-center"
+      >
+        <button
+          class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+          title="Mute (M)"
+          type="button"
+        >
+          <svg
+            class="w-4 h-4 text-gray-500"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <polygon
+              points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+            />
+            <path
+              d="M15.54 8.46a5 5 0 0 1 0 7.07"
+            />
+            <path
+              d="M19.07 4.93a10 10 0 0 1 0 14.14"
+            />
+          </svg>
+        </button>
+        <div
+          class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
+        >
+          <input
+            class="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+            max="1"
+            min="0"
+            step="0.01"
+            style="background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            type="range"
+            value="1"
+          />
+        </div>
+      </div>
+    </div>
+    <button
+      class="w-10 h-10 rounded-full bg-[#6da0d4] shadow-md flex items-center justify-center hover:bg-[#5a8fc3] transition-colors shrink-0"
+      type="button"
+    >
+      <svg
+        class="w-5 h-5 text-white fill-current ml-0.5"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <polygon
+          points="5 3 19 12 5 21 5 3"
+        />
+      </svg>
+    </button>
+    <div
+      class="flex-1 flex items-center justify-end gap-1"
+    >
+      <div
+        class="text-xs text-gray-500 whitespace-nowrap"
+      >
+        0:00
+         / 
+        0:00
+      </div>
+      <div
+        class="relative"
+      >
+        <button
+          class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+          type="button"
+        >
+          <svg
+            class="w-4 h-4 text-gray-500"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="1"
+            />
+            <circle
+              cx="12"
+              cy="5"
+              r="1"
+            />
+            <circle
+              cx="12"
+              cy="19"
+              r="1"
+            />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
+<div
+  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 focus:ring-[#6da0d4]/50 shadow-[0_4px_24px_rgba(109,160,212,0.15),0_1px_3px_rgba(0,0,0,0.08)] border border-[#6da0d4]/20"
+  tabindex="0"
+>
+  <audio
+    preload="metadata"
+    src="/api/media/voice.m4a"
+  />
+  <div
+    class="flex items-center gap-3 mb-2"
+  >
+    <div
+      class="w-10 h-10 rounded-full p-0.5 bg-gradient-to-br from-[#6da0d4] to-[#a78bfa] shrink-0"
+    >
+      <div
+        class="w-full h-full rounded-full overflow-hidden bg-white"
+      >
+        <img
+          alt=""
+          class="w-full h-full object-cover"
+          src="/avatar.jpg"
+        />
+      </div>
+    </div>
+    <div
+      class="flex-1 min-w-0"
+    >
+      <p
+        class="text-sm font-semibold text-gray-800 truncate"
+      >
+        Test User
+      </p>
+      <p
+        class="text-xs text-gray-500"
+      >
+        2024/06/15 14:30
+        <span
+          class="mx-1 text-gray-300"
+        >
+          •
+        </span>
+        01:45
+      </p>
+    </div>
+    <div
+      class="relative"
+    >
+      <button
+        class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+        type="button"
+      >
+        <svg
+          class="w-4 h-4 text-gray-500"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="5"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="19"
+            r="1"
+          />
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div
+    class="mb-2"
+  >
+    <div
+      class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
+    >
+      <div
+        class="absolute inset-y-0 left-0 bg-gradient-to-r from-[#6da0d4] to-[#a78bfa] rounded-full"
+        style="width: 0%;"
+      />
+      <input
+        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        max="100"
+        min="0"
+        type="range"
+        value="0"
+      />
+    </div>
+    <div
+      class="flex justify-between mt-1"
+    >
+      <span
+        class="text-[10px] text-gray-500"
+      >
+        0:00
+      </span>
+      <span
+        class="text-[10px] text-gray-500"
+      >
+        0:00
+      </span>
+    </div>
+  </div>
+  <div
+    class="flex items-center"
+  >
+    <div
+      class="flex-1 flex items-center"
+    >
+      <div
+        class="relative flex items-center"
+      >
+        <button
+          class="p-1 hover:bg-white/50 rounded-full transition-colors"
+          title="Mute (M)"
+          type="button"
+        >
+          <svg
+            class="w-4 h-4 text-gray-500"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <polygon
+              points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+            />
+            <path
+              d="M15.54 8.46a5 5 0 0 1 0 7.07"
+            />
+            <path
+              d="M19.07 4.93a10 10 0 0 1 0 14.14"
+            />
+          </svg>
+        </button>
+        <div
+          class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
+        >
+          <input
+            class="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+            max="1"
+            min="0"
+            step="0.01"
+            style="background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            type="range"
+            value="1"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex items-center gap-2"
+    >
+      <button
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        disabled=""
+        title="Back 5 seconds (←)"
+      >
+        <svg
+          class="w-6 h-6 text-gray-600"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+          />
+          <path
+            d="M3 3v5h5"
+          />
+        </svg>
+        <span
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+        >
+          5
+        </span>
+      </button>
+      <button
+        class="w-12 h-12 rounded-full bg-gradient-to-br from-[#6da0d4] to-[#5a8fc3] shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all"
+        type="button"
+      >
+        <svg
+          class="w-6 h-6 text-white fill-current ml-0.5"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <polygon
+            points="5 3 19 12 5 21 5 3"
+          />
+        </svg>
+      </button>
+      <button
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        disabled=""
+        title="Forward 5 seconds (→)"
+      >
+        <svg
+          class="w-6 h-6 text-gray-600"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
+          />
+          <path
+            d="M21 3v5h-5"
+          />
+        </svg>
+        <span
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+        >
+          5
+        </span>
+      </button>
+    </div>
+    <div
+      class="flex-1"
+    />
+  </div>
+</div>
+`;
+
+exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
+<div
+  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 focus:ring-[#6da0d4]/50 shadow-[0_4px_24px_rgba(109,160,212,0.15),0_1px_3px_rgba(0,0,0,0.08)] border border-[#6da0d4]/20"
+  tabindex="0"
+>
+  <audio
+    preload="metadata"
+    src="/api/media/voice.m4a"
+  />
+  <div
+    class="flex items-center gap-3 mb-2"
+  >
+    <div
+      class="w-10 h-10 rounded-full p-0.5 bg-gradient-to-br from-[#6da0d4] to-[#a78bfa] shrink-0"
+    >
+      <div
+        class="w-full h-full rounded-full overflow-hidden bg-white"
+      >
+        <div
+          class="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium bg-gray-100"
+        >
+          T
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex-1 min-w-0"
+    >
+      <p
+        class="text-sm font-semibold text-gray-800 truncate"
+      >
+        Test User
+      </p>
+      <p
+        class="text-xs text-gray-500"
+      >
+        2024/06/15 14:30
+      </p>
+    </div>
+    <div
+      class="relative"
+    >
+      <button
+        class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+        type="button"
+      >
+        <svg
+          class="w-4 h-4 text-gray-500"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="5"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="19"
+            r="1"
+          />
+        </svg>
+      </button>
+    </div>
+  </div>
+  <div
+    class="mb-2"
+  >
+    <div
+      class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
+    >
+      <div
+        class="absolute inset-y-0 left-0 bg-gradient-to-r from-[#6da0d4] to-[#a78bfa] rounded-full"
+        style="width: 0%;"
+      />
+      <input
+        class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+        max="100"
+        min="0"
+        type="range"
+        value="0"
+      />
+    </div>
+    <div
+      class="flex justify-between mt-1"
+    >
+      <span
+        class="text-[10px] text-gray-500"
+      >
+        0:00
+      </span>
+      <span
+        class="text-[10px] text-gray-500"
+      >
+        0:00
+      </span>
+    </div>
+  </div>
+  <div
+    class="flex items-center"
+  >
+    <div
+      class="flex-1 flex items-center"
+    >
+      <div
+        class="relative flex items-center"
+      >
+        <button
+          class="p-1 hover:bg-white/50 rounded-full transition-colors"
+          title="Mute (M)"
+          type="button"
+        >
+          <svg
+            class="w-4 h-4 text-gray-500"
+            fill="none"
+            height="24"
+            stroke="currentColor"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            viewBox="0 0 24 24"
+            width="24"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <polygon
+              points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"
+            />
+            <path
+              d="M15.54 8.46a5 5 0 0 1 0 7.07"
+            />
+            <path
+              d="M19.07 4.93a10 10 0 0 1 0 14.14"
+            />
+          </svg>
+        </button>
+        <div
+          class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
+        >
+          <input
+            class="w-full h-1 rounded-full appearance-none cursor-pointer accent-[#6da0d4]"
+            max="1"
+            min="0"
+            step="0.01"
+            style="background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            type="range"
+            value="1"
+          />
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex items-center gap-2"
+    >
+      <button
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        disabled=""
+        title="Back 5 seconds (←)"
+      >
+        <svg
+          class="w-6 h-6 text-gray-600"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"
+          />
+          <path
+            d="M3 3v5h5"
+          />
+        </svg>
+        <span
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+        >
+          5
+        </span>
+      </button>
+      <button
+        class="w-12 h-12 rounded-full bg-gradient-to-br from-[#6da0d4] to-[#5a8fc3] shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all"
+        type="button"
+      >
+        <svg
+          class="w-6 h-6 text-white fill-current ml-0.5"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <polygon
+            points="5 3 19 12 5 21 5 3"
+          />
+        </svg>
+      </button>
+      <button
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        disabled=""
+        title="Forward 5 seconds (→)"
+      >
+        <svg
+          class="w-6 h-6 text-gray-600"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"
+          />
+          <path
+            d="M21 3v5h-5"
+          />
+        </svg>
+        <span
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+        >
+          5
+        </span>
+      </button>
+    </div>
+    <div
+      class="flex-1"
+    />
+  </div>
+</div>
+`;

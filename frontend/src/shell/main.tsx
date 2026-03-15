@@ -1,0 +1,20 @@
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import '../index.css'
+
+// Initialize i18n before rendering the app
+import '../i18n'
+
+import { ErrorBoundary } from '../core/common/ErrorBoundary'
+import { AuthProvider } from './context/AuthContext'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+        <AuthProvider>
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        </AuthProvider>
+    </React.StrictMode>,
+)
