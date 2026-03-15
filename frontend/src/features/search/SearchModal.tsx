@@ -51,6 +51,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const [dateRange, setDateRange] = useState<DateRangePreset>('all');
   const [contentType, setContentType] = useState<ContentTypeFilter>('all');
   const [isIndexBuilding, setIsIndexBuilding] = useState(false);
+  const [blogSyncInProgress, setBlogSyncInProgress] = useState(false);
   // Bumped when index build completes — triggers search re-execution
   const [searchGeneration, setSearchGeneration] = useState(0);
 
@@ -128,6 +129,28 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     checkStatus();
     return () => { cancelled = true; };
   }, [isOpen]);
+
+  // ─── Poll blog backup status when modal is open ────────────────────────────
+  useEffect(() => {
+    if (!isOpen || !blogBackupEnabled) {
+      setBlogSyncInProgress(false);
+      return;
+    }
+    let cancelled = false;
+    const checkBackup = () => {
+      fetch('/api/blogs/backup/status')
+        .then(res => res.json())
+        .then(data => {
+          if (cancelled) return;
+          const anyRunning = Object.keys(data.running ?? {}).length > 0;
+          setBlogSyncInProgress(anyRunning);
+          if (anyRunning) setTimeout(checkBackup, 5000);
+        })
+        .catch(() => {});
+    };
+    checkBackup();
+    return () => { cancelled = true; };
+  }, [isOpen, blogBackupEnabled]);
 
   const PAGE_SIZE = 50;
 
@@ -410,6 +433,15 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             filtersActive={filtersExpanded || selectedFilters.length > 0}
             contentType={contentType}
           />
+
+          {/* Blog backup notice — always visible when backup is running */}
+          {blogBackupEnabled && blogSyncInProgress && (
+            <div className="px-4 py-2 border-b border-gray-100">
+              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+                {t('search.blogBackupInProgress')}
+              </div>
+            </div>
+          )}
 
           {/* Filter bar (collapsible) — outside overflow wrapper so dropdowns can overflow */}
           {filtersExpanded && (

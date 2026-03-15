@@ -134,7 +134,16 @@
         "notSynced": "未同步",
         "syncNow": "即刻同步",
         "syncingService": "同步緊 {{service}} ({{current}}/{{total}})",
-        "blogs": "Blog"
+        "blogs": "Blog",
+        "syncComplete": "同步完成！",
+        "complete": "搞掂",
+        "initializing": "初始化緊...",
+        "lostConnection": "斷咗線",
+        "failedToStart": "開始唔到同步",
+        "error": "同步出錯",
+        "unknownError": "唔知咩錯誤",
+        "sessionExpired": "認證過咗期。請重新登入繼續使用服務。",
+        "refreshFailed": "認證失敗咗。請重新登入繼續使用服務。如果問題持續，請報告。"
     },
     "about": {
         "title": "關於",
@@ -310,6 +319,7 @@
         "blogCacheHint": "淨係搵到已快取嘅 Blog。可以喺設定度快取全部。",
         "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個 Blog）",
         "blogSearchLimited": "Blog 搜尋淨係包括已快取嘅文章。",
+        "blogBackupInProgress": "Blog 備份進行緊 \u2014 搜尋結果可能唔完整。",
         "enableFullBackup": "啟用完整備份",
         "official": "官方",
         "buildingHint": "搜尋索引仲喺度建緊，結果可能唔完整。"

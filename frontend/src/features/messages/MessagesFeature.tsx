@@ -37,7 +37,7 @@ export interface ReadState {
 }
 
 export interface SyncProgress {
-    state: 'idle' | 'running' | 'error';
+    state: 'idle' | 'running' | 'complete' | 'error';
     phase?: string;
     phase_name?: string;
     phase_number?: number;

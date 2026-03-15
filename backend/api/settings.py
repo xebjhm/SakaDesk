@@ -165,58 +165,47 @@ async def check_fresh_install():
 @router.post("/select-folder")
 async def select_folder():
     """Open a native folder picker dialog."""
+    import asyncio
+
     try:
         import tkinter as tk
         from tkinter import filedialog
-        import threading
     except ImportError as e:
         logger.warning(f"Tkinter not available: {e}")
         return {"path": None, "error": "Folder picker not available (tkinter missing)"}
 
-    # Run in a separate thread to avoid blocking the async event loop
-    # although tkinter mainloop usually needs main thread, we are just opening a dialog.
-    # On linux this might be tricky if no X11/Wayland context in this specific process,
-    # but for a GUI app it should be fine.
-    
-    selected_path: list[Optional[str]] = [None]
-
-    def open_dialog() -> None:
+    def open_dialog() -> Optional[str]:
+        """Open a tkinter folder dialog. Runs in an executor thread."""
         try:
             root = tk.Tk()
-            root.withdraw() # Hide the main window
-            root.attributes('-topmost', True) # Bring to front
+            root.withdraw()  # Hide the main window
+            root.attributes('-topmost', True)  # Bring to front
 
             folder = filedialog.askdirectory(title="Select Output Folder")
-            if folder:
-                selected_path[0] = folder
-            
             root.destroy()
+            return folder if folder else None
         except Exception as e:
             logger.error(f"Dialog error: {e}")
+            return None
 
-    # For thread safety with tkinter
-    # In some envs, tk must run in main thread. 
-    # But FastAPI runs in async.
-    # We'll try running it directly first? No, that blocks.
-    # We'll run in a thread.
-    
     # Timeout after 5 minutes (user should have selected a folder by then)
     DIALOG_TIMEOUT_SECONDS = 300
 
     try:
-        thread = threading.Thread(target=open_dialog)
-        thread.start()
-        thread.join(timeout=DIALOG_TIMEOUT_SECONDS)
-
-        if thread.is_alive():
-            logger.warning("Folder dialog timed out after 5 minutes")
-            return {"path": None, "error": "Dialog timed out"}
+        loop = asyncio.get_event_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, open_dialog),
+            timeout=DIALOG_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Folder dialog timed out after 5 minutes")
+        return {"path": None, "error": "Dialog timed out"}
     except Exception as e:
-        logger.error(f"Thread error: {e}")
+        logger.error(f"Executor error: {e}")
         return {"path": None, "error": str(e)}
 
-    if selected_path[0]:
-        return {"path": selected_path[0]}
+    if result:
+        return {"path": result}
     return {"path": None}
 
 

@@ -1,5 +1,5 @@
 """Search API endpoints for fuzzy message search."""
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from backend.services.search_service import get_search_service
 
 router = APIRouter()
@@ -24,7 +24,12 @@ async def search_messages(
 ):
     # Parse comma-separated lists
     services_list = [s.strip() for s in services.split(",") if s.strip()] if services else None
-    member_ids_list = [int(m.strip()) for m in member_ids.split(",") if m.strip()] if member_ids else None
+    member_ids_list = None
+    if member_ids:
+        try:
+            member_ids_list = [int(m.strip()) for m in member_ids.split(",") if m.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid member_id: must be integers")
 
     # Parse service:member_id pairs (e.g. "hinatazaka46:58,sakurazaka46:12")
     member_filters_list = None
@@ -34,7 +39,10 @@ async def search_messages(
             pair = pair.strip()
             if ":" in pair:
                 svc_id, mid = pair.split(":", 1)
-                member_filters_list.append((svc_id.strip(), int(mid.strip())))
+                try:
+                    member_filters_list.append((svc_id.strip(), int(mid.strip())))
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="Invalid member_id: must be integers")
 
     svc = get_search_service()
     return await svc.search(

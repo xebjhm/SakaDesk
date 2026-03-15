@@ -17,6 +17,11 @@ import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
+/** Services that support blogs (used to filter blog backup requests). */
+const BLOG_SERVICES = Object.entries(SERVICE_FEATURES)
+    .filter(([key, features]) => key !== 'default' && features.includes('blogs'))
+    .map(([key]) => key);
+
 function App() {
     const {
         activeService,
@@ -67,9 +72,12 @@ function App() {
     // Sync hook - now syncs ALL connected services independently
     const {
         syncProgress,
+        syncProgressByService,
         showSyncModal,
         syncVersion,
         startSync,
+        startSequentialSync,
+        sequentialSyncInfo,
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
@@ -109,8 +117,11 @@ function App() {
     const activeFeatures = useAppStore(s => s.activeFeatures);
     const currentFeature = activeService ? activeFeatures[activeService] ?? 'messages' : null;
 
-    // Fresh service login prompt — shown after adding a new service
+    // Fresh service login prompt — shown after adding a new service (outside onboarding)
     const freshlyAddedService = useAppStore(s => s.freshlyAddedService);
+
+    // Initial sync tracking — services currently undergoing their first sync
+    const initialSyncServices = useAppStore(s => s.initialSyncServices);
 
     // Disconnected service login popup — shown when user switches to a paid feature on a disconnected service
     const [disconnectedLoginService, setDisconnectedLoginService] = useState<string | null>(null);
@@ -123,6 +134,25 @@ function App() {
         if (disconnectedLoginService) return; // Already showing
         setDisconnectedLoginService(activeService);
     }, [activeService, currentFeature]);
+
+    // ── First-Launch Login Carousel ──────────────────────────────────
+    // On first launch, after LandingPage completes, we step through each
+    // selected service that supports messages and show a login prompt.
+    // Zero network activity until the carousel + setup wizard are done.
+    const [loginCarousel, setLoginCarousel] = useState<string[] | null>(null);
+    const [loginCarouselIndex, setLoginCarouselIndex] = useState(0);
+
+    const advanceLoginCarousel = useCallback(() => {
+        if (!loginCarousel) return;
+        const nextIndex = loginCarouselIndex + 1;
+        if (nextIndex >= loginCarousel.length) {
+            // Carousel done — if setup wizard needs to show, it's already pending
+            setLoginCarousel(null);
+            setLoginCarouselIndex(0);
+        } else {
+            setLoginCarouselIndex(nextIndex);
+        }
+    }, [loginCarousel, loginCarouselIndex]);
 
     // UI state
     const [showDiagnostics, setShowDiagnostics] = useState(false);
@@ -165,10 +195,11 @@ function App() {
                             setActiveFeature(svc, 'blogs');
                         }
                     }
-                    // Prompt login for the first service that supports messages
-                    const firstWithMessages = services.find(svc => SERVICE_FEATURES[svc]?.includes('messages'));
-                    if (firstWithMessages) {
-                        setFreshlyAddedService(firstWithMessages);
+                    // Start login carousel for services that support messages
+                    const messageServices = services.filter(svc => SERVICE_FEATURES[svc]?.includes('messages'));
+                    if (messageServices.length > 0) {
+                        setLoginCarousel(messageServices);
+                        setLoginCarouselIndex(0);
                     }
                 }}
             />
@@ -183,10 +214,28 @@ function App() {
             });
             if (success) {
                 setShowSetupWizard(false);
-                startSync(true);
+                // Sequential sync: one service at a time with blocking modal
+                const servicesToSync = connectedServices.length > 0
+                    ? connectedServices
+                    : [];
+                if (servicesToSync.length > 0) {
+                    await startSequentialSync(servicesToSync);
+                }
+                // Start blog backup in background AFTER sync completes
+                if (setupBlogFullBackup) {
+                    const blogServices = selectedServices.filter(s => BLOG_SERVICES.includes(s));
+                    if (blogServices.length > 0) {
+                        const params = blogServices.map(s => `services=${encodeURIComponent(s)}`).join('&');
+                        fetch(`/api/blogs/backup/start?${params}`, { method: 'POST' }).catch(console.error);
+                    }
+                }
             }
         }
     };
+
+    // Login carousel is active — show LoginModal for current service
+    const loginCarouselService = loginCarousel?.[loginCarouselIndex] ?? null;
+    const isOnboarding = loginCarousel !== null || showSetupWizard;
 
     return (
         <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
@@ -194,11 +243,25 @@ function App() {
             <UpdateBanner />
 
             <div className="flex flex-1 overflow-hidden">
-                {/* Sync Modal */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} />}
+                {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} />}
 
-                {/* Setup Wizard (First Time) */}
-                {showSetupWizard && (
+                {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
+                {loginCarouselService && (
+                    <LoginModal
+                        serviceId={loginCarouselService}
+                        featureId="messages"
+                        onClose={advanceLoginCarousel}
+                        onSuccess={async () => {
+                            await checkAuth();
+                            advanceLoginCarousel();
+                        }}
+                        isFreshPrompt={true}
+                    />
+                )}
+
+                {/* Setup Wizard (First Time) — shown after login carousel completes */}
+                {showSetupWizard && !loginCarousel && (
                     <SetupWizard
                         outputDirInput={outputDirInput}
                         setOutputDirInput={setOutputDirInput}
@@ -262,7 +325,7 @@ function App() {
                 )}
 
                 {/* Session Expired Login Modal - triggered by sync detecting SESSION_EXPIRED */}
-                {sessionExpiredService && (
+                {sessionExpiredService && !isOnboarding && (
                     <LoginModal
                         serviceId={sessionExpiredService}
                         featureId="messages"
@@ -278,7 +341,7 @@ function App() {
                 )}
 
                 {/* Disconnected Service Login Modal - triggered by switching to disconnected service */}
-                {disconnectedLoginService && !sessionExpiredService && (
+                {disconnectedLoginService && !sessionExpiredService && !isOnboarding && (
                     <LoginModal
                         serviceId={disconnectedLoginService}
                         featureId="messages"
@@ -292,8 +355,8 @@ function App() {
                     />
                 )}
 
-                {/* Fresh Service Login Prompt — gentle prompt after adding a new service */}
-                {freshlyAddedService && !sessionExpiredService && !disconnectedLoginService && !showSetupWizard && (
+                {/* Fresh Service Login Prompt — gentle prompt after adding a new service (outside onboarding) */}
+                {freshlyAddedService && !sessionExpiredService && !disconnectedLoginService && !isOnboarding && (
                     <LoginModal
                         serviceId={freshlyAddedService}
                         featureId="messages"
@@ -302,6 +365,7 @@ function App() {
                             await checkAuth();
                             const svc = freshlyAddedService;
                             setFreshlyAddedService(null);
+                            useAppStore.getState().addInitialSyncService(svc);
                             startSync(false, svc);
                         }}
                         isFreshPrompt={true}
@@ -316,22 +380,26 @@ function App() {
                     onOpenSettings={openSettingsModal}
                 />
 
-                {/* Main 3-zone layout */}
-                <Layout
-                    onAddService={() => {/* AddServiceModal will be triggered from ServiceRail */}}
-                    onOpenSettings={openSettingsModal}
-                    onReportIssue={() => setShowReportModal(true)}
-                    onOpenAbout={() => setShowAboutModal(true)}
-                    onOpenSearch={openSearch}
-                    messagesContent={
-                        <MessagesFeature
-                            appSettings={appSettings}
-                            syncProgress={syncProgress}
-                            syncVersion={syncVersion}
-                            onSyncNow={() => startSync(false)}
-                        />
-                    }
-                />
+                {/* Main 3-zone layout — hidden during onboarding and sync to show clean background */}
+                {!isOnboarding && !showSyncModal && (
+                    <Layout
+                        onAddService={() => {/* AddServiceModal will be triggered from ServiceRail */}}
+                        onOpenSettings={openSettingsModal}
+                        onReportIssue={() => setShowReportModal(true)}
+                        onOpenAbout={() => setShowAboutModal(true)}
+                        onOpenSearch={openSearch}
+                        syncProgressByService={syncProgressByService}
+                        initialSyncServices={initialSyncServices}
+                        messagesContent={
+                            <MessagesFeature
+                                appSettings={appSettings}
+                                syncProgress={syncProgress}
+                                syncVersion={syncVersion}
+                                onSyncNow={() => startSync(false)}
+                            />
+                        }
+                    />
+                )}
             </div>
         </div>
     )

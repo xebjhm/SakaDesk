@@ -73,7 +73,7 @@ class SyncProgress:
             self._state = "complete"
             self._phase = "complete"
             self._phase_name = "Complete"
-            self._phase_number = 5
+            # Don't override phase_number — keep it as the last real phase
             self._completed = self._total
             self._detail = "Sync complete!"
             self._detail_extra = ""

@@ -2,16 +2,21 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
+import { InlineSyncView } from './InlineSyncView';
+import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface ContentAreaProps {
     service: string;
-    // MessagesFeature will need these props initially
     messagesContent: React.ReactNode;
+    syncProgress?: SyncProgress;
+    isInitialSyncing?: boolean;
 }
 
 export const ContentArea: React.FC<ContentAreaProps> = ({
     service,
     messagesContent,
+    syncProgress,
+    isInitialSyncing,
 }) => {
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
@@ -53,6 +58,14 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                 return messagesContent;
         }
     };
+
+    if (isInitialSyncing && syncProgress?.state === 'running') {
+        return (
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F0F2F5]">
+                <InlineSyncView service={service} syncProgress={syncProgress} />
+            </div>
+        );
+    }
 
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F0F2F5]">

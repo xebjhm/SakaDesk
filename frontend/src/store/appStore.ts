@@ -161,6 +161,15 @@ interface AppState {
     /** Set the freshly added service (triggers login prompt in App.tsx). */
     setFreshlyAddedService: (service: string | null) => void;
 
+    // ─── Initial Sync Tracking ─────────────────────────────────────────────
+
+    /** Services currently undergoing their first sync after being added (non-persisted). */
+    initialSyncServices: Record<string, true>;
+    /** Mark a service as undergoing initial sync. */
+    addInitialSyncService: (serviceId: string) => void;
+    /** Remove a service from initial sync tracking. */
+    removeInitialSyncService: (serviceId: string) => void;
+
     // ─── Golden Finger (Hidden Feature) ────────────────────────────────────
     /** Secret download mode activated via easter egg. */
     goldenFingerActive: boolean;
@@ -283,6 +292,17 @@ export const useAppStore = create<AppState>()(
 
             freshlyAddedService: null,
             setFreshlyAddedService: (service) => set({ freshlyAddedService: service }),
+
+            initialSyncServices: {},
+            addInitialSyncService: (serviceId) =>
+                set((state) => ({
+                    initialSyncServices: { ...state.initialSyncServices, [serviceId]: true },
+                })),
+            removeInitialSyncService: (serviceId) =>
+                set((state) => {
+                    const { [serviceId]: _, ...rest } = state.initialSyncServices;
+                    return { initialSyncServices: rest };
+                }),
 
             goldenFingerActive: false,
             setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),
