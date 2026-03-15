@@ -343,7 +343,8 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
             data['max_message_id'] = max_message_id
             return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to load messages", path=path, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/group_messages/{group_path:path}")
@@ -688,7 +689,8 @@ async def get_messages_param(
             data['max_message_id'] = max_message_id
             return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to load messages", service=service, talk_room_id=talk_room_id, member_id=member_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/talk_room_messages")

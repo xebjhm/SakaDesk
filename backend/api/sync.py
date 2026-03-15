@@ -148,7 +148,8 @@ async def check_new(service: str = Query(..., description="Service to check")):
         new_msgs = await sync_service.check_new_messages()
         return {"new_messages": new_msgs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to check for new messages", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.post("/older")
@@ -169,4 +170,5 @@ async def sync_older(
         count = await sync_service.sync_older_messages(group_id, member_id, limit)
         return {"count": count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to sync older messages", service=service, group_id=group_id, member_id=member_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
