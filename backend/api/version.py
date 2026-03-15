@@ -24,7 +24,7 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/version", tags=["version"])
 
 # Current app version - should match pyproject.toml
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 # GitHub API settings
 GITHUB_REPO = "xtorker/HakoDesk"
