@@ -513,7 +513,7 @@ class SyncService:
             return new_messages
             
         except Exception as e:
-            logger.error(f"Check for new messages error: {e}")
+            logger.error("Check for new messages error", error=str(e))
             return []
 
     async def sync_older_messages(self, group_id, member_id, limit):

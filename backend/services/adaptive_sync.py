@@ -176,9 +176,11 @@ def calculate_next_sync_interval(
     interval = max(5, min(60, interval))
 
     logger.debug(
-        f"Calculated sync interval: {interval:.1f}m "
-        f"(base={base_interval_minutes}, time_mult={time_mult}, "
-        f"activity_mult={activity_mult})"
+        "Calculated sync interval",
+        interval_minutes=round(interval, 1),
+        base=base_interval_minutes,
+        time_mult=time_mult,
+        activity_mult=activity_mult,
     )
 
     return interval
