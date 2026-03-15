@@ -1,24 +1,78 @@
-from fastapi import APIRouter, HTTPException
+"""
+Content API for HakoDesk
+Handles reading synced message data from PyHako output directory.
+
+PyHako directory structure:
+  output_dir/
+    {service_name}/                    <- e.g., "日向坂46"
+      messages/
+        {group_id} {group_name}/       <- e.g., "34 金村 美玖"
+          {member_id} {member_name}/   <- e.g., "58 金村 美玖"
+            messages.json
+            picture/
+            video/
+            voice/
+      blogs/
+        ...
+"""
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from pathlib import Path
 import json
-import logging
-from typing import List, Optional
+import structlog
+import os
+import re
+from typing import Optional, List, Dict, Any
 
-from backend.services.platform import get_settings_path
+from backend.services.platform import get_settings_path, is_test_mode, get_default_output_dir
+from backend.services.path_resolver import (
+    resolve_service_path,
+    resolve_talk_room_path,
+    resolve_messages_file,
+    resolve_media_path,
+)
+from backend.services.service_utils import validate_service, get_service_identifier, get_service_display_name
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Default fallback if settings not configured
-DEFAULT_OUTPUT_DIR = Path("output")
+DEFAULT_OUTPUT_DIR = get_default_output_dir()
+
+# Group IDs that should be treated as group chat (multiple members posting),
+# keyed by service identifier to avoid cross-service collisions.
+GROUP_CHAT_IDS: dict[str, set[str]] = {
+    'hinatazaka46': {'43', '78', '79', '93'},
+    'sakurazaka46': {'33', '73'},
+    'nogizaka46': {'45', '70'},  # 70 is closed but keep for if it reopens
+}
+
+
+def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
+    """Validate that a user-provided path stays within the base directory."""
+    if '\x00' in user_path or '\n' in user_path or '\r' in user_path:
+        raise HTTPException(status_code=400, detail="Invalid path characters")
+
+    base_resolved = base_dir.resolve()
+    target_path = (base_dir / user_path).resolve()
+
+    try:
+        common = os.path.commonpath([str(base_resolved), str(target_path)])
+        if common != str(base_resolved):
+            logger.warning(f"Path traversal attempt: {user_path} -> {target_path}")
+            raise HTTPException(status_code=403, detail="Access denied")
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not str(target_path).startswith(str(base_resolved) + os.sep) and target_path != base_resolved:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return target_path
 
 
 def get_output_dir() -> Path:
-    """
-    Get the configured output directory from settings.
-    Falls back to 'output' if not configured.
-    """
+    """Get the configured output directory from settings."""
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
@@ -27,156 +81,244 @@ def get_output_dir() -> Path:
                 path_str = settings.get("output_dir")
                 if path_str:
                     return Path(path_str)
-        except:
-            pass
+        except Exception as e:
+            logger.warning("Failed to load output_dir from settings", error=str(e))
     return DEFAULT_OUTPUT_DIR
 
-# Group IDs that should be treated as group chat regardless of member count
-GROUP_CHAT_IDS = ['43']  # 日向坂46
+
+def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, str]]:
+    """
+    Load sync_metadata.json from all service directories.
+    Returns (member_entries, server_groups, last_sync_map) where:
+      - member_entries: dict mapping "{group_id}_{member_id}" -> sync bookkeeping
+      - server_groups: dict mapping "{service_name}:{group_id}" -> { state, is_active }
+      - last_sync_map: dict mapping service_id -> ISO timestamp of last sync
+    """
+    all_members: Dict[str, Dict[str, Any]] = {}
+    all_server_groups: Dict[str, Dict[str, Any]] = {}
+    all_last_sync: Dict[str, str] = {}
+
+    if not output_dir.exists():
+        return all_members, all_server_groups, all_last_sync
+
+    for service_dir in output_dir.iterdir():
+        if not service_dir.is_dir():
+            continue
+
+        metadata_file = service_dir / "sync_metadata.json"
+        if metadata_file.exists():
+            try:
+                with open(metadata_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    all_members.update(data.get('groups', {}))
+                    # Namespace server_groups by service directory name to
+                    # prevent cross-service ID collisions (group IDs are only
+                    # unique within a single service).
+                    for group_id, group_data in data.get('server_groups', {}).items():
+                        all_server_groups[f"{service_dir.name}:{group_id}"] = group_data
+                    # Extract last_sync timestamp, keyed by service ID
+                    if 'last_sync' in data:
+                        service_id = get_service_identifier(service_dir.name)
+                        if service_id:
+                            all_last_sync[service_id] = data['last_sync']
+            except Exception as e:
+                logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
+
+    return all_members, all_server_groups, all_last_sync
+
+
+def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
+    """
+    Parse a folder name in format "{id} {name}" or just "{name}".
+    Returns (id, name) tuple. ID may be None if not present.
+    """
+    match = re.match(r'^(\d+)\s+(.+)$', folder_name)
+    if match:
+        return match.group(1), match.group(2)
+    return None, folder_name
+
+
+def get_member_dirs(group_dir: Path) -> List[Path]:
+    """Get all member directories within a group directory."""
+    members = []
+    for item in group_dir.iterdir():
+        if item.is_dir():
+            member_id, _ = parse_id_name(item.name)
+            if member_id and (item / "messages.json").exists():
+                members.append(item)
+    return members
+
 
 @router.get("/groups")
 async def get_groups():
     """
     List all groups found in the output directory.
-    Returns groups with member count and is_active status.
+
+    PyHako structure:
+      output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
     """
+    if is_test_mode():
+        from backend.fixtures.test_data import TEST_GROUPS
+        return TEST_GROUPS
+
     output_dir = get_output_dir()
     if not output_dir.exists():
+        logger.warning(f"Output directory does not exist: {output_dir}")
         return []
-    
+
+    # Load sync metadata for group status (source of truth)
+    sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
+
     groups = []
-    
-    # Load metadata for enrichment (thumbnails)
-    metadata_map = {}
-    meta_file = output_dir / "sync_metadata.json"
-    if meta_file.exists():
-        try:
-            with open(meta_file, 'r', encoding='utf-8') as f:
-                meta = json.load(f)
-                metadata_map = meta.get('groups', {})
-        except:
-            pass
 
-    for g_dir in output_dir.iterdir():
-        if g_dir.is_dir() and "_" in g_dir.name:
-            try:
-                gid, gname = g_dir.name.split("_", 1)
-                
-                # Count members in this group
-                member_dirs = [m for m in g_dir.iterdir() if m.is_dir() and "_" in m.name]
-                member_count = len(member_dirs)
-                
-                if member_count == 0:
-                    continue
-                
-                # Check if this is a group chat (multi-member or exception like group 43)
-                is_group_chat = member_count > 1 or gid in GROUP_CHAT_IDS
-                
-                members_info = []
-                is_active = True  # Default to active
-                group_thumbnail = None
-                
-                # Check metadata for group info
-                for key, val in metadata_map.items():
-                    if key.startswith(f"{gid}_"):
-                        if val.get('group_thumbnail'):
-                            group_thumbnail = val.get('group_thumbnail')
-                        # Also could refine is_active logic here if needed, but existing logic considers all members
-                        
-                
-                last_message_id = 0
-                total_messages = 0
-                
-                for m_dir in member_dirs:
-                    mid, mname = m_dir.name.split("_", 1)
-                    
-                    msg_file = m_dir / "messages.json"
-                    member_meta = {"id": mid, "name": mname, "dir_name": m_dir.name}
-                    
-                    if msg_file.exists():
-                        try:
-                            with open(msg_file, 'r', encoding='utf-8') as f:
-                                data = json.load(f)
-                                m_data = data.get('member', {})
-                                member_meta['thumbnail'] = m_data.get('thumbnail')
-                                member_meta['portrait'] = m_data.get('portrait')
-                                member_meta['phone_image'] = m_data.get('phone_image')
-                                
-                                # Access metadata map fallback (Key: gid_mid)
-                                meta_key = f"{gid}_{mid}"
-                                meta_val = metadata_map.get(meta_key, {})
-                                
-                                # Priority: messages.json > metadata.json
-                                member_meta['group_thumbnail'] = m_data.get('group_thumbnail') or meta_val.get('group_thumbnail')
-                                
-                                # Get last message ID
-                                msgs = data.get('messages', [])
-                                if msgs:
-                                    last_id = msgs[-1].get('id', 0)
-                                    if last_id > last_message_id:
-                                        last_message_id = last_id
-                                
-                                # Count messages
-                                m_total = data.get('total_messages', len(msgs))
-                                total_messages += m_total
+    # Iterate over service directories (e.g., 日向坂46)
+    for service_dir in output_dir.iterdir():
+        if not service_dir.is_dir():
+            continue
 
-                                # Get is_active from member data
-                                if 'is_active' in m_data:
-                                    is_active = m_data.get('is_active', True)
-                        except:
-                            pass
-                    
-                    members_info.append(member_meta)
-                
-                groups.append({
-                    "id": gid,
-                    "name": gname,
-                    "dir_name": g_dir.name,
-                    "member_count": member_count,
-                    "is_group_chat": is_group_chat,
-                    "is_active": is_active,
-                    "thumbnail": group_thumbnail,
-                    "last_message_id": last_message_id,
-                    "total_messages": total_messages,
-                    "members": members_info
-                })
-            except:
+        messages_dir = service_dir / "messages"
+        if not messages_dir.exists() or not messages_dir.is_dir():
+            continue
+
+        service_display_name = service_dir.name
+        # Convert display name to service identifier (e.g., "日向坂46" -> "hinatazaka46")
+        service_id = get_service_identifier(service_display_name)
+        if not service_id:
+            # Skip unknown service directories
+            continue
+
+        # Iterate over group directories (e.g., "34 金村 美玖")
+        for group_dir in messages_dir.iterdir():
+            if not group_dir.is_dir():
                 continue
-    
-    # Sort: active first, then by group ID, group chats last within each section
-    groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(g['id'])))
-    return groups
+
+            group_id, group_name = parse_id_name(group_dir.name)
+            if not group_id:
+                continue
+
+            # Get member directories within this group
+            member_dirs = get_member_dirs(group_dir)
+            if not member_dirs:
+                continue
+
+            members_info = []
+            last_message_id = 0
+            total_messages = 0
+            group_thumbnail = None
+
+            for member_dir in member_dirs:
+                member_id, member_name = parse_id_name(member_dir.name)
+                msg_file = member_dir / "messages.json"
+
+                member_meta = {
+                    "id": member_id,
+                    "name": member_name,
+                    "dir_name": member_dir.name,
+                    # Relative path from output_dir to member dir
+                    "path": str(member_dir.relative_to(output_dir)).replace("\\", "/")
+                }
+
+                if msg_file.exists():
+                    try:
+                        with open(msg_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                            m_data = data.get('member', {})
+                            member_meta['thumbnail'] = m_data.get('thumbnail')
+                            member_meta['portrait'] = m_data.get('portrait')
+                            member_meta['phone_image'] = m_data.get('phone_image')
+                            member_meta['group_thumbnail'] = m_data.get('group_thumbnail')
+
+                            if m_data.get('group_thumbnail'):
+                                group_thumbnail = m_data.get('group_thumbnail')
+
+                            # Get last message ID
+                            msgs = data.get('messages', [])
+                            if msgs:
+                                last_id = msgs[-1].get('id', 0)
+                                if last_id > last_message_id:
+                                    last_message_id = last_id
+
+                            # Count messages
+                            m_total = data.get('total_messages', len(msgs))
+                            total_messages += m_total
+                    except Exception as e:
+                        logger.warning("Failed to read messages file", file_path=str(msg_file), error=str(e))
+
+                members_info.append(member_meta)
+
+            member_count = len(members_info)
+            # Check if this is a group chat (multiple members or special group ID)
+            service_chat_ids = GROUP_CHAT_IDS.get(service_id, set())
+            is_group_chat = member_count > 1 or group_id in service_chat_ids
+
+            # Derive status from group-level server state
+            sg = server_groups.get(f"{service_display_name}:{group_id}")
+            if sg:
+                is_graduated = sg.get('state') == 'closed'
+                is_active = sg.get('is_active', True) if not is_graduated else False
+            else:
+                # No server data yet — need to sync first
+                is_graduated = False
+                is_active = True
+
+            groups.append({
+                "id": group_id,
+                "name": group_name,
+                "service": service_id,
+                "dir_name": group_dir.name,
+                # Path to group directory relative to output_dir
+                "group_path": str(group_dir.relative_to(output_dir)).replace("\\", "/"),
+                "member_count": member_count,
+                "is_group_chat": is_group_chat,
+                "is_active": is_active,
+                "is_graduated": is_graduated,
+                "thumbnail": group_thumbnail,
+                "last_message_id": last_message_id,
+                "total_messages": total_messages,
+                "members": members_info
+            })
+
+    # Sort: active first, then by group ID
+    groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(str(g['id']))))
+    return {"groups": groups, "last_sync": last_sync_map}
 
 
 @router.get("/messages_by_path")
 async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0):
     """
     Get messages using the relative path from output dir.
-    limit=0 means all messages.
-    If limit > 0, returns the *last* limit messages (latest) by default if offset is 0.
-    last_read_id: If provided, calculates unread_count (messages with id > last_read_id).
+    Path should point to the member directory containing messages.json.
+
+    Example path: "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
     """
+    if is_test_mode():
+        from backend.fixtures.test_data import get_test_messages_response
+        return get_test_messages_response(path, last_read_id)
+
     output_dir = get_output_dir()
-    safe_path = (output_dir / path).resolve()
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    safe_path = validate_path_within_dir(output_dir, path)
+    logger.debug("Loading messages", path=path, limit=limit, last_read_id=last_read_id)
+
     msg_file = safe_path / "messages.json"
     if not msg_file.exists():
+        logger.debug("Messages file not found", file_path=str(msg_file))
         raise HTTPException(status_code=404, detail="No messages found")
-        
+
     try:
         with open(msg_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             messages = data.get('messages', [])
-            
-            # Filter/Sort
-            # Sort by timestamp to handle non-monotonic IDs
+
+            # Sort by timestamp
             messages.sort(key=lambda x: x.get('timestamp', ''))
-            
+
             total = len(messages)
-            
-            # Calculate unread count from ALL messages (before limiting)
+
+            # Calculate unread count and max_message_id
             unread_count = 0
             max_message_id = 0
             if last_read_id > 0:
@@ -187,73 +329,80 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
                     if msg_id > last_read_id:
                         unread_count += 1
             else:
-                # No lastReadId provided - all are unread
                 unread_count = total
                 if messages:
                     max_message_id = max(m.get('id', 0) for m in messages)
-            
+
+            # Simple pagination: return latest messages
             if limit > 0:
-                # If we want the *latest* N messages:
-                # slice from max(0, total - limit) to total
-                start = max(0, total - limit)
-                messages = messages[start:]
-                
+                messages = messages[-limit:]
+
             data['messages'] = messages
             data['total_count'] = total
             data['unread_count'] = unread_count
             data['max_message_id'] = max_message_id
             return data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to load messages", path=path, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
-@router.get("/group_messages/{group_dir}")
-async def get_group_messages(group_dir: str, limit: int = 200, offset: int = 0, last_read_id: int = 0):
+@router.get("/group_messages/{group_path:path}")
+async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0, last_read_id: int = 0):
     """
-    Get merged messages from all members in a group (for live events/group chats).
-    last_read_id: If provided, calculates unread_count (messages with id > last_read_id).
+    Get merged messages from all members in a group (for group chats).
+
+    Example group_path: "日向坂46/messages/43 日向坂46"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
     """
     output_dir = get_output_dir()
-    safe_path = (output_dir / group_dir).resolve()
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
-    
+    safe_path = validate_path_within_dir(output_dir, group_path)
+
     if not safe_path.is_dir():
         raise HTTPException(status_code=404, detail="Group not found")
-    
+
     all_messages = []
     members_map = {}
-    
-    for m_dir in safe_path.iterdir():
-        if m_dir.is_dir() and "_" in m_dir.name:
-            mid, mname = m_dir.name.split("_", 1)
-            
-            msg_file = m_dir / "messages.json"
-            if msg_file.exists():
-                try:
-                    with open(msg_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        member_info = data.get('member', {})
-                        members_map[mid] = {
-                            "id": mid,
-                            "name": mname,
-                            "thumbnail": member_info.get('thumbnail'),
-                            "portrait": member_info.get('portrait'),
-                            "phone_image": member_info.get('phone_image'),
-                            "group_thumbnail": member_info.get('group_thumbnail')
-                        }
-                        
-                        for msg in data.get('messages', []):
-                            msg['member_id'] = mid
-                            msg['member_name'] = mname
-                            all_messages.append(msg)
-                except:
-                    pass
-    
+
+    for member_dir in safe_path.iterdir():
+        if not member_dir.is_dir():
+            continue
+
+        member_id, member_name = parse_id_name(member_dir.name)
+        if not member_id:
+            continue
+
+        msg_file = member_dir / "messages.json"
+        if not msg_file.exists():
+            continue
+
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                member_info = data.get('member', {})
+                members_map[member_id] = {
+                    "id": member_id,
+                    "name": member_name,
+                    "thumbnail": member_info.get('thumbnail'),
+                    "portrait": member_info.get('portrait'),
+                    "phone_image": member_info.get('phone_image'),
+                    "group_thumbnail": member_info.get('group_thumbnail')
+                }
+
+                for msg in data.get('messages', []):
+                    msg['member_id'] = member_id
+                    msg['member_name'] = member_name
+                    all_messages.append(msg)
+        except Exception as e:
+            logger.warning("Failed to load member messages in group chat", member_dir=str(member_dir), error=str(e))
+
     all_messages.sort(key=lambda m: m.get('timestamp', ''))
     total = len(all_messages)
-    
-    # Calculate unread count from ALL messages (before limiting)
+
+    # Calculate unread count
     unread_count = 0
     max_message_id = 0
     if last_read_id > 0:
@@ -267,16 +416,15 @@ async def get_group_messages(group_dir: str, limit: int = 200, offset: int = 0, 
         unread_count = total
         if all_messages:
             max_message_id = max(m.get('id', 0) for m in all_messages)
-    
-    # Return latest 'limit' messages
+
+    # Simple pagination: return latest messages
     if limit > 0:
-        start = max(0, total - limit)
-        paginated = all_messages[start:]
+        paginated = all_messages[-limit:]
     else:
         paginated = all_messages
-    
+
     return {
-        "group_dir": group_dir,
+        "group_path": group_path,
         "total_messages": total,
         "unread_count": unread_count,
         "max_message_id": max_message_id,
@@ -285,16 +433,361 @@ async def get_group_messages(group_dir: str, limit: int = 200, offset: int = 0, 
     }
 
 
+class ReadStateInput(BaseModel):
+    """Read state for a single conversation."""
+    lastReadId: int = 0
+    revealedIds: List[int] = []
+
+
+@router.post("/unread_counts")
+async def get_unread_counts(read_states: Dict[str, Any]):
+    """
+    Calculate accurate unread counts for multiple paths.
+
+    This is the single source of truth for unread counts.
+    The frontend should use this instead of estimating based on message IDs.
+
+    A message is considered UNREAD if:
+    - Its ID is greater than lastReadId (not sequentially read), AND
+    - Its ID is NOT in revealedIds (not individually revealed)
+
+    Args:
+        read_states: Dictionary mapping path -> {lastReadId: int, revealedIds: int[]}
+                     e.g., {"path/to/member": {"lastReadId": 100, "revealedIds": [150, 200]}}
+
+    Returns:
+        Dictionary mapping path -> unread_count
+    """
+    output_dir = get_output_dir()
+    if not output_dir.exists():
+        return {}
+
+    result: Dict[str, int] = {}
+
+    for path, state in read_states.items():
+        try:
+            # Parse the read state - support both old format (int) and new format (dict)
+            if isinstance(state, dict):
+                last_read_id = state.get('lastReadId', 0)
+                revealed_ids = set(state.get('revealedIds', []))
+            else:
+                # Legacy format: just lastReadId as int
+                last_read_id = int(state) if state else 0
+                revealed_ids = set()
+
+            safe_path = validate_path_within_dir(output_dir, path)
+
+            # Check if it's a group chat (has subdirectories with messages.json)
+            # or individual member (has messages.json directly)
+            msg_file = safe_path / "messages.json"
+
+            if msg_file.exists():
+                # Individual member path
+                with open(msg_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    messages = data.get('messages', [])
+                    # A message is unread if: ID > lastReadId AND ID not in revealedIds
+                    unread = sum(
+                        1 for m in messages
+                        if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                    )
+                    result[path] = unread
+            elif safe_path.is_dir():
+                # Group chat path - count messages from all member subdirs
+                total_unread = 0
+                for member_dir in safe_path.iterdir():
+                    if not member_dir.is_dir():
+                        continue
+                    member_msg_file = member_dir / "messages.json"
+                    if member_msg_file.exists():
+                        try:
+                            with open(member_msg_file, 'r', encoding='utf-8') as f:
+                                data = json.load(f)
+                                messages = data.get('messages', [])
+                                total_unread += sum(
+                                    1 for m in messages
+                                    if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                                )
+                        except Exception as e:
+                            logger.warning("Failed to calculate unread count for member", member_dir=str(member_dir), error=str(e))
+                result[path] = total_unread
+            else:
+                result[path] = 0
+        except Exception as e:
+            logger.debug(f"Error calculating unread for {path}: {e}")
+            result[path] = 0
+
+    return result
+
+
 @router.get("/media/{file_path:path}")
 async def get_media(file_path: str):
-    """Serve media files."""
+    """Serve media files.
+
+    Path format: {service_id}/{rest} where service_id is romaji (e.g., 'sakurazaka46')
+    and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
+
+    The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+    """
     output_dir = get_output_dir()
-    safe_path = (output_dir / file_path).resolve()
+
+    # Translate service ID to display name if the first segment is a known service
+    parts = file_path.split('/', 1)
+    if len(parts) == 2:
+        service_part, rest = parts
+        try:
+            # Translate romaji ID (e.g., 'sakurazaka46') to display name (e.g., '櫻坂46')
+            display_name = get_service_display_name(service_part)
+            file_path = f"{display_name}/{rest}"
+        except ValueError:
+            # Not a valid service ID, use path as-is (might already be display name)
+            pass
+
+    safe_path = validate_path_within_dir(output_dir, file_path)
     logger.debug(f"Media request: {file_path} -> {safe_path}, exists={safe_path.exists()}")
-    
-    if not str(safe_path).startswith(str(output_dir.resolve())):
-        raise HTTPException(status_code=403, detail="Access denied")
+
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-        
+
     return FileResponse(safe_path)
+
+
+# =============================================================================
+# Param-based Content Endpoints (New API)
+# These use query parameters instead of path parameters for cleaner URLs
+# =============================================================================
+
+
+@router.get("/talk_rooms")
+async def get_talk_rooms(service: str = Query(..., description="Service identifier")):
+    """List all talk rooms for a service (param-based)."""
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    service_path = resolve_service_path(service)
+    messages_path = service_path / "messages"
+
+    if not messages_path.exists():
+        return {"service": service, "talk_rooms": []}
+
+    talk_rooms = []
+    for talk_room_dir in messages_path.iterdir():
+        if not talk_room_dir.is_dir():
+            continue
+
+        talk_room_id, talk_room_name = parse_id_name(talk_room_dir.name)
+        if not talk_room_id:
+            continue
+
+        member_dirs = [d for d in talk_room_dir.iterdir() if d.is_dir() and (d / "messages.json").exists()]
+        member_count = len(member_dirs)
+        service_chat_ids = GROUP_CHAT_IDS.get(service, set())
+        room_type = "group_event" if member_count > 1 or talk_room_id in service_chat_ids else "individual"
+
+        talk_rooms.append({
+            "id": int(talk_room_id),
+            "name": talk_room_name,
+            "type": room_type,
+            "member_count": member_count,
+        })
+
+    talk_rooms.sort(key=lambda r: r["id"])  # type: ignore[arg-type,return-value]
+    return {"service": service, "talk_rooms": talk_rooms}
+
+
+@router.get("/members")
+async def get_members(
+    service: str = Query(...),
+    talk_room_id: int = Query(...)
+):
+    """List members in a talk room (param-based)."""
+    try:
+        validate_service(service)
+        talk_room_path = resolve_talk_room_path(service, talk_room_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    members = []
+    for member_dir in talk_room_path.iterdir():
+        if not member_dir.is_dir():
+            continue
+
+        member_id, member_name = parse_id_name(member_dir.name)
+        if not member_id:
+            continue
+
+        msg_file = member_dir / "messages.json"
+        if not msg_file.exists():
+            continue
+
+        member_info = {"id": int(member_id), "name": member_name}
+
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                m_data = data.get('member', {})
+                member_info['thumbnail'] = m_data.get('thumbnail')
+                member_info['portrait'] = m_data.get('portrait')
+        except Exception:
+            pass
+
+        members.append(member_info)
+
+    return {"service": service, "talk_room_id": talk_room_id, "members": members}
+
+
+@router.get("/messages")
+async def get_messages_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    member_id: int = Query(...),
+    limit: int = 0,
+    last_read_id: int = 0
+):
+    """Get messages for a member (param-based)."""
+    try:
+        validate_service(service)
+        msg_file = resolve_messages_file(service, talk_room_id, member_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not msg_file.exists():
+        raise HTTPException(status_code=404, detail="No messages found")
+
+    try:
+        with open(msg_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            messages = data.get('messages', [])
+            messages.sort(key=lambda x: x.get('timestamp', ''))
+
+            total = len(messages)
+            unread_count = 0
+            max_message_id = 0
+
+            for m in messages:
+                msg_id = m.get('id', 0)
+                if msg_id > max_message_id:
+                    max_message_id = msg_id
+                if last_read_id > 0 and msg_id > last_read_id:
+                    unread_count += 1
+
+            if last_read_id == 0:
+                unread_count = total
+
+            if limit > 0:
+                messages = messages[-limit:]
+
+            data['messages'] = messages
+            data['total_count'] = total
+            data['unread_count'] = unread_count
+            data['max_message_id'] = max_message_id
+            return data
+    except Exception as e:
+        logger.error("Failed to load messages", service=service, talk_room_id=talk_room_id, member_id=member_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
+
+
+@router.get("/talk_room_messages")
+async def get_talk_room_messages_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    limit: int = 200,
+    last_read_id: int = 0
+):
+    """Get merged messages from all members in a talk room (param-based)."""
+    try:
+        validate_service(service)
+        talk_room_path = resolve_talk_room_path(service, talk_room_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    all_messages = []
+    members_map = {}
+
+    for member_dir in talk_room_path.iterdir():
+        if not member_dir.is_dir():
+            continue
+
+        member_id, member_name = parse_id_name(member_dir.name)
+        if not member_id:
+            continue
+
+        msg_file = member_dir / "messages.json"
+        if not msg_file.exists():
+            continue
+
+        try:
+            with open(msg_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                member_info = data.get('member', {})
+                members_map[member_id] = {
+                    "id": int(member_id),
+                    "name": member_name,
+                    "thumbnail": member_info.get('thumbnail'),
+                }
+
+                for msg in data.get('messages', []):
+                    msg['member_id'] = member_id
+                    msg['member_name'] = member_name
+                    all_messages.append(msg)
+        except Exception as e:
+            logger.warning(f"Failed to load messages: {e}")
+
+    all_messages.sort(key=lambda m: m.get('timestamp', ''))
+    total = len(all_messages)
+
+    unread_count = sum(1 for m in all_messages if m.get('id', 0) > last_read_id) if last_read_id else total
+    max_message_id = max((m.get('id', 0) for m in all_messages), default=0)
+
+    if limit > 0:
+        all_messages = all_messages[-limit:]
+
+    return {
+        "service": service,
+        "talk_room_id": talk_room_id,
+        "total_messages": total,
+        "unread_count": unread_count,
+        "max_message_id": max_message_id,
+        "members": list(members_map.values()),
+        "messages": all_messages,
+    }
+
+
+@router.get("/media_file")
+async def get_media_param(
+    service: str = Query(...),
+    talk_room_id: int = Query(...),
+    member_id: int = Query(...),
+    type: str = Query(..., description="Media type: picture, video, voice"),
+    file: str = Query(..., description="Filename")
+):
+    """Serve media files (param-based)."""
+    # Validate media type
+    ALLOWED_MEDIA_TYPES = {"picture", "video", "voice"}
+    if type not in ALLOWED_MEDIA_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}")
+
+    # Validate filename (no path traversal)
+    if '/' in file or '\\' in file or '..' in file or '\x00' in file:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    try:
+        validate_service(service)
+        media_path = resolve_media_path(service, talk_room_id, member_id, type, file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    if not media_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(media_path)

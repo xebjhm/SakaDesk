@@ -3,7 +3,36 @@
 @tailwind utilities;
 
 @layer base {
+  /* Theme CSS variables - defaults to Hinatazaka colors */
+  :root {
+    /* Group-specific colors (updated by JS when service changes) */
+    --color-primary: #7cc7e8;
+    --color-secondary: #5dc2b5;
+    --color-accent: #fffacd;
+    --color-gradient-from: #7cc7e8;
+    --color-gradient-to: #5eb3d8;
+
+    /* UI surfaces (consistent across themes) */
+    --color-surface-base: #FFFFFF;
+    --color-surface-elevated: #FAFAFA;
+    --color-surface-sunken: #F3F4F6;
+
+    /* Text colors */
+    --color-text-primary: #1f2937;
+    --color-text-secondary: #4b5563;
+    --color-text-muted: #9ca3af;
+    --color-text-inverse: #FFFFFF;
+
+    /* Feedback colors */
+    --color-success: #10B981;
+    --color-warning: #F59E0B;
+    --color-error: #EF4444;
+  }
+
   body {
-    @apply antialiased text-gray-900 bg-gray-50;
+    @apply antialiased text-gray-900;
+    /* Must match pywebview background_color in desktop.py (#F0F2F5)
+       to prevent color mismatch at Windows 11 rounded corners */
+    background-color: #F0F2F5;
   }
 }
