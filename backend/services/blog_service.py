@@ -20,13 +20,8 @@ import structlog
 from pyhako import Group
 from pyhako.blog import (
     BlogGoneError,
-    DOWNLOAD_CONCURRENCY_INCREMENTAL,
-    DOWNLOAD_CONCURRENCY_INITIAL,
-    IMAGE_DOWNLOAD_CONCURRENCY,
     MAX_PAGES_SAFETY_CAP,
     MemberInfo,
-    SYNC_CONCURRENCY_INCREMENTAL,
-    SYNC_CONCURRENCY_INITIAL,
     get_scraper,
 )
 
@@ -38,6 +33,18 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# Groups that have blog support. Yodel does not have blogs.
+BLOG_SUPPORTED_GROUPS = frozenset({Group.HINATAZAKA46, Group.NOGIZAKA46, Group.SAKURAZAKA46})
+
+
+def _is_blog_supported(service: str) -> bool:
+    """Check if a service supports blog operations."""
+    try:
+        group = get_service_enum(service)
+        return group in BLOG_SUPPORTED_GROUPS
+    except ValueError:
+        return False
 
 
 @dataclass
@@ -141,6 +148,8 @@ class BlogService:
     async def get_blog_members(self, service: str) -> Dict[str, str]:
         """Get members who have blogs for a service."""
         validate_service(service)
+        if not _is_blog_supported(service):
+            return {}
         group = get_service_enum(service)
 
         async with aiohttp.ClientSession() as session:
@@ -255,7 +264,8 @@ class BlogService:
 
         thumbnails_dir = self.get_member_thumbnails_path(service)
 
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=6)
+        async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
             fresh_members = await scraper.get_members_with_thumbnails()
 
@@ -293,23 +303,20 @@ class BlogService:
             # Download all thumbnails (they change together)
             thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
-            # Use semaphore for concurrent downloads
-            sem = asyncio.Semaphore(5)
             result_members: list[dict] = []
 
             async def download_and_add(member: MemberInfo):
-                async with sem:
-                    thumbnail_filename = await self._download_member_thumbnail(
-                        session,
-                        member.id,
-                        member.thumbnail_url,
-                        thumbnails_dir,
-                    )
-                    result_members.append({
-                        "id": member.id,
-                        "name": member.name,
-                        "thumbnail": thumbnail_filename,
-                    })
+                thumbnail_filename = await self._download_member_thumbnail(
+                    session,
+                    member.id,
+                    member.thumbnail_url,
+                    thumbnails_dir,
+                )
+                result_members.append({
+                    "id": member.id,
+                    "name": member.name,
+                    "thumbnail": thumbnail_filename,
+                })
 
             await asyncio.gather(*[download_and_add(m) for m in fresh_members])
 
@@ -365,111 +372,108 @@ class BlogService:
         No individual blog detail fetches needed.
 
         Uses concurrent fetching:
-        - First sync (no existing data): SYNC_CONCURRENCY_INITIAL concurrent members
-        - Incremental sync: SYNC_CONCURRENCY_INCREMENTAL concurrent members
+        - Concurrency is managed by the global AdaptivePool
 
         Returns:
             Updated index dict with metadata for all members.
         """
         validate_service(service)
+        if not _is_blog_supported(service):
+            logger.info(f"Skipping blog metadata sync for {service} (not supported)")
+            return {}
         group = get_service_enum(service)
 
         index = await self.load_blog_index(service)
 
         # Determine if this is first sync or incremental
         is_first_sync = not index.get("members")
-        concurrency = (
-            SYNC_CONCURRENCY_INITIAL if is_first_sync else SYNC_CONCURRENCY_INCREMENTAL
-        )
         # First sync: fetch all pages to build complete index
-        # Incremental: only fetch recent pages (3) to catch new posts
-        max_pages = MAX_PAGES_SAFETY_CAP if is_first_sync else 3
+        # Incremental: fetch recent pages to catch new posts (5 pages ≈ 50-160
+        # blogs, covers ~1 year at typical posting frequency)
+        max_pages = MAX_PAGES_SAFETY_CAP if is_first_sync else 5
 
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=10)
+        async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
             members = await scraper.get_members()
-
-            # Semaphore for concurrency control
-            sem = asyncio.Semaphore(concurrency)
             completed = 0
             total = len(members)
 
             async def sync_member(member_id: str, member_name: str):
                 nonlocal completed
-                async with sem:
-                    if cancel_event and cancel_event.is_set():
-                        return
-                    if progress_callback:
-                        await progress_callback(
-                            f"Scanning {member_name} ({completed + 1}/{total})"
+                if cancel_event and cancel_event.is_set():
+                    return
+                if progress_callback:
+                    await progress_callback(
+                        f"Scanning {member_name} ({completed + 1}/{total})"
+                    )
+
+                if member_id not in index["members"]:
+                    index["members"][member_id] = {"name": member_name, "blogs": []}
+
+                existing_ids = {
+                    b["id"] for b in index["members"][member_id]["blogs"]
+                }
+
+                # For incremental sync, use since_date to stop early when hitting old blogs
+                # This avoids paginating through entire history just to find no new posts
+                since_date = None
+                if not is_first_sync and index["members"][member_id]["blogs"]:
+                    # Find the newest blog date for this member
+                    from datetime import datetime
+
+                    newest_date_str = max(
+                        b["published_at"]
+                        for b in index["members"][member_id]["blogs"]
+                    )
+                    since_date = datetime.fromisoformat(newest_date_str)
+
+                # Use fast metadata method - parses list pages only
+                # Pass member_name to filter out "featured" blogs from other members
+                # (Sakurazaka list pages sometimes include blogs from other members)
+                async for entry in scraper.get_blogs_metadata(
+                    member_id, since_date=since_date, max_pages=max_pages,
+                    member_name=member_name
+                ):
+                    if entry.id not in existing_ids:
+                        # Use list page data as defaults
+                        thumbnail = entry.images[0] if entry.images else None
+                        published_at = entry.published_at
+                        title = entry.title
+
+                        # Fetch detail page for authoritative metadata.
+                        # Sakurazaka list pages have incomplete data (no time,
+                        # no thumbnails, possibly truncated titles), so the
+                        # detail page is the single source of truth.
+                        if not thumbnail:
+                            try:
+                                detail_thumb, detail_date, detail_title = (
+                                    await scraper.get_blog_detail_metadata(entry.id)
+                                )
+                                if detail_thumb:
+                                    thumbnail = detail_thumb
+                                if detail_date:
+                                    published_at = detail_date
+                                if detail_title:
+                                    title = detail_title
+                            except Exception as e:
+                                logger.debug(
+                                    "detail_metadata_failed",
+                                    blog_id=entry.id,
+                                    error=str(e)
+                                )
+
+                        index["members"][member_id]["blogs"].append(
+                            {
+                                "id": entry.id,
+                                "title": title,
+                                "published_at": published_at.isoformat(),
+                                "url": entry.url,
+                                "thumbnail": thumbnail,
+                            }
                         )
 
-                    if member_id not in index["members"]:
-                        index["members"][member_id] = {"name": member_name, "blogs": []}
-
-                    existing_ids = {
-                        b["id"] for b in index["members"][member_id]["blogs"]
-                    }
-
-                    # For incremental sync, use since_date to stop early when hitting old blogs
-                    # This avoids paginating through entire history just to find no new posts
-                    since_date = None
-                    if not is_first_sync and index["members"][member_id]["blogs"]:
-                        # Find the newest blog date for this member
-                        from datetime import datetime
-
-                        newest_date_str = max(
-                            b["published_at"]
-                            for b in index["members"][member_id]["blogs"]
-                        )
-                        since_date = datetime.fromisoformat(newest_date_str)
-
-                    # Use fast metadata method - parses list pages only
-                    # Pass member_name to filter out "featured" blogs from other members
-                    # (Sakurazaka list pages sometimes include blogs from other members)
-                    async for entry in scraper.get_blogs_metadata(
-                        member_id, since_date=since_date, max_pages=max_pages,
-                        member_name=member_name
-                    ):
-                        if entry.id not in existing_ids:
-                            # Use list page data as defaults
-                            thumbnail = entry.images[0] if entry.images else None
-                            published_at = entry.published_at
-                            title = entry.title
-
-                            # Fetch detail page for authoritative metadata.
-                            # Sakurazaka list pages have incomplete data (no time,
-                            # no thumbnails, possibly truncated titles), so the
-                            # detail page is the single source of truth.
-                            if not thumbnail:
-                                try:
-                                    detail_thumb, detail_date, detail_title = (
-                                        await scraper.get_blog_detail_metadata(entry.id)
-                                    )
-                                    if detail_thumb:
-                                        thumbnail = detail_thumb
-                                    if detail_date:
-                                        published_at = detail_date
-                                    if detail_title:
-                                        title = detail_title
-                                except Exception as e:
-                                    logger.debug(
-                                        "detail_metadata_failed",
-                                        blog_id=entry.id,
-                                        error=str(e)
-                                    )
-
-                            index["members"][member_id]["blogs"].append(
-                                {
-                                    "id": entry.id,
-                                    "title": title,
-                                    "published_at": published_at.isoformat(),
-                                    "url": entry.url,
-                                    "thumbnail": thumbnail,
-                                }
-                            )
-
-                    completed += 1
+                completed += 1
 
             # Run all member syncs concurrently with semaphore limit
             await asyncio.gather(
@@ -552,8 +556,7 @@ class BlogService:
         Stage 2: Download full blog content and optionally images.
 
         Uses a queue-based approach with concurrent downloads:
-        - First download: DOWNLOAD_CONCURRENCY_INITIAL concurrent blogs
-        - Incremental: DOWNLOAD_CONCURRENCY_INCREMENTAL concurrent blogs
+        - Concurrency is managed by the global AdaptivePool
 
         Args:
             service: Service name.
@@ -580,49 +583,37 @@ class BlogService:
             return {"total": 0, "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
 
         # Determine concurrency based on how many are already cached
-        total_blogs = sum(
-            len(m.get("blogs", [])) for m in index.get("members", {}).values()
-        )
-        cached_count = total_blogs - len(queue)
-        is_first_download = cached_count == 0
-        concurrency = (
-            DOWNLOAD_CONCURRENCY_INITIAL
-            if is_first_download
-            else DOWNLOAD_CONCURRENCY_INCREMENTAL
-        )
-
         stats = {"total": len(queue), "downloaded": 0, "skipped": 0, "failed": 0, "removed": 0}
         completed = 0
 
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=10)
+        async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
-            sem = asyncio.Semaphore(concurrency)
 
             async def download_item(item: BlogDownloadItem):
                 nonlocal completed
-                async with sem:
-                    if cancel_event and cancel_event.is_set():
-                        return
-                    completed += 1
-                    if progress_callback:
-                        await progress_callback(
-                            f"Downloading {item.member_name} ({completed}/{len(queue)})"
-                        )
+                if cancel_event and cancel_event.is_set():
+                    return
+                completed += 1
+                if progress_callback:
+                    await progress_callback(
+                        f"Downloading {item.member_name} ({completed}/{len(queue)})"
+                    )
 
-                    try:
-                        await self._download_single_blog(
-                            session, scraper, item, download_images
-                        )
-                        stats["downloaded"] += 1
-                    except BlogGoneError:
-                        # Blog permanently removed (404/410) - mark in index
-                        self._mark_blog_removed(index, item.member_id, item.blog_id)
-                        stats["removed"] += 1
-                    except Exception as e:
-                        logger.warning(
-                            f"Failed to download blog {item.blog_id}: {e}"
-                        )
-                        stats["failed"] += 1
+                try:
+                    await self._download_single_blog(
+                        session, scraper, item, download_images
+                    )
+                    stats["downloaded"] += 1
+                except BlogGoneError:
+                    # Blog permanently removed (404/410) - mark in index
+                    self._mark_blog_removed(index, item.member_id, item.blog_id)
+                    stats["removed"] += 1
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to download blog {item.blog_id}: {e}"
+                    )
+                    stats["failed"] += 1
 
             await asyncio.gather(*[download_item(item) for item in queue])
 
@@ -717,39 +708,40 @@ class BlogService:
 
     async def _download_images(
         self,
-        session: aiohttp.ClientSession,
+        session,
         image_urls: list[str],
         images_dir: Path,
     ) -> list[dict]:
-        """Download images concurrently."""
-        sem = asyncio.Semaphore(IMAGE_DOWNLOAD_CONCURRENCY)
+        """Download images concurrently.
+
+        Concurrency is managed by the TCPConnector limit on the session.
+        """
         results: list[dict] = [None] * len(image_urls)  # type: ignore
 
         async def download_image(idx: int, img_url: str):
-            async with sem:
-                try:
-                    ext = Path(img_url).suffix or ".jpg"
-                    # Clean extension (remove query params)
-                    if "?" in ext:
-                        ext = ext.split("?")[0]
-                    local_name = f"img_{idx}{ext}"
-                    local_path = images_dir / local_name
+            try:
+                ext = Path(img_url).suffix or ".jpg"
+                # Clean extension (remove query params)
+                if "?" in ext:
+                    ext = ext.split("?")[0]
+                local_name = f"img_{idx}{ext}"
+                local_path = images_dir / local_name
 
-                    async with session.get(img_url) as resp:
-                        if resp.status == 200:
-                            images_dir.mkdir(parents=True, exist_ok=True)
-                            content = await resp.read()
-                            async with aiofiles.open(local_path, "wb") as f:
-                                await f.write(content)
-                            results[idx] = {
-                                "original_url": img_url,
-                                "local_path": f"./images/{local_name}",
-                            }
-                        else:
-                            results[idx] = {"original_url": img_url, "local_path": None}
-                except Exception as e:
-                    logger.warning(f"Failed to download image {img_url}: {e}")
-                    results[idx] = {"original_url": img_url, "local_path": None}
+                async with session.get(img_url) as resp:
+                    if resp.status == 200:
+                        images_dir.mkdir(parents=True, exist_ok=True)
+                        content = await resp.read()
+                        async with aiofiles.open(local_path, "wb") as f:
+                            await f.write(content)
+                        results[idx] = {
+                            "original_url": img_url,
+                            "local_path": f"./images/{local_name}",
+                        }
+                    else:
+                        results[idx] = {"original_url": img_url, "local_path": None}
+            except Exception as e:
+                logger.warning(f"Failed to download image {img_url}: {e}")
+                results[idx] = {"original_url": img_url, "local_path": None}
 
         await asyncio.gather(
             *[download_image(i, url) for i, url in enumerate(image_urls)]
@@ -765,6 +757,9 @@ class BlogService:
         Full backup mode: Stage 1 + Stage 2.
         Sync metadata then download all content + images.
         """
+        if not _is_blog_supported(service):
+            logger.info(f"Skipping full blog backup for {service} (not supported)")
+            return {}
         # Stage 1: Metadata sync
         if progress_callback:
             await progress_callback("Stage 1: Syncing blog metadata...")
@@ -948,7 +943,8 @@ class BlogService:
             cache_path=cache_path,
         )
 
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(limit=6)
+        async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
             await self._download_single_blog(
                 session, scraper, item, download_images=False,
@@ -1099,6 +1095,12 @@ class BlogBackupManager:
 
     async def _run_backup(self, service: str, cancel_event: asyncio.Event):
         """Run full backup for one service with cancellation support."""
+        if not _is_blog_supported(service):
+            logger.info(f"Skipping blog backup for {service} (not supported)")
+            self._tasks.pop(service, None)
+            self._cancel_events.pop(service, None)
+            return
+
         blog_service = BlogService()
         try:
             logger.info(f"Standalone blog backup started for {service}")
@@ -1106,6 +1108,15 @@ class BlogBackupManager:
                 service, cancel_event=cancel_event,
             )
             logger.info(f"Standalone blog backup finished for {service}")
+
+            # Index blogs for search now that blog.json files exist on disk
+            try:
+                from backend.services.search_service import get_search_service
+                search_svc = get_search_service()
+                indexed = await search_svc.index_blogs_for_service(service)
+                logger.info(f"Blog search index updated after backup", service=service, indexed=indexed)
+            except Exception as e:
+                logger.warning(f"Blog search index update failed (non-fatal): {e}")
         except asyncio.CancelledError:
             logger.info(f"Standalone blog backup cancelled for {service}")
         except Exception as e:

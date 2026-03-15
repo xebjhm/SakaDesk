@@ -81,6 +81,48 @@ app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])
 
 
+@app.on_event("startup")
+async def startup():
+    """Auto-resume blog backup if enabled but not triggered by sync."""
+    import asyncio
+
+    async def _deferred_blog_backup():
+        await asyncio.sleep(60)  # Wait long enough for sync to finish and enqueue
+        try:
+            from backend.services.settings_store import load_config
+            from backend.services.blog_service import (
+                get_blog_backup_manager,
+                _is_blog_supported,
+            )
+
+            settings = await load_config()
+            if not settings.get("blogs_full_backup") or not settings.get("is_configured"):
+                return
+
+            # If auto-sync is enabled, sync flow handles blog enqueue (Step 3).
+            # This startup hook is only for the case where auto-sync is OFF
+            # but blogs_full_backup is ON.
+            if settings.get("auto_sync_enabled"):
+                return
+
+            manager = get_blog_backup_manager()
+            # Only start if nothing is already running (frontend toggle may have triggered it)
+            if any(manager.is_running(s) for s in manager._tasks):
+                return
+
+            from pyhako.credentials import get_token_manager
+
+            tm = get_token_manager()
+            services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
+            if services:
+                await manager.start(services)
+                logger.info("Blog backup auto-resumed on startup", services=services)
+        except Exception as e:
+            logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
+
+    asyncio.create_task(_deferred_blog_backup())
+
+
 @app.on_event("shutdown")
 async def shutdown():
     """Release file handles so the uninstaller can delete the data directory."""

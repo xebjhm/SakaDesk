@@ -223,6 +223,19 @@ async def get_cache_size(service: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/cache-stats")
+async def get_cache_stats(service: str = Query(...)):
+    """Get blog cache statistics for a service."""
+    try:
+        validate_service(service)
+        stats = await blog_service.get_cache_stats(service)
+        return stats
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/cache")
 async def clear_cache(service: str = Query(...)):
     """Clear blog cache for a service."""
@@ -234,6 +247,14 @@ async def clear_cache(service: str = Query(...)):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/backup/status")
+async def get_blog_backup_status():
+    """Get status of running blog backup tasks."""
+    manager = get_blog_backup_manager()
+    running = {s: True for s in manager._tasks if manager.is_running(s)}
+    return {"running": running}
 
 
 @router.post("/backup/start")
