@@ -32,6 +32,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { SyncProgress, AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
+import i18n from '../../i18n';
 
 // Debug flag - set localStorage.setItem('DEBUG_SYNC', 'true') to enable
 const SYNC_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_SYNC') === 'true';
@@ -198,6 +199,7 @@ export function useSync({
                 if (data.state === 'idle') {
                     updateProgress({ state: 'idle' });
                     isPollingRef.current[service] = false;
+                    useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
@@ -206,7 +208,7 @@ export function useSync({
                     updateProgress({
                         state: 'complete',
                         phase: 'complete',
-                        phase_name: 'Complete',
+                        phase_name: i18n.t('sync.complete'),
                         phase_number: data.phase_number,
                         completed: data.total || data.completed,
                         total: data.total,
@@ -214,10 +216,11 @@ export function useSync({
                         eta_seconds: 0,
                         speed: data.speed,
                         speed_unit: data.speed_unit,
-                        detail: 'Sync complete!',
+                        detail: i18n.t('sync.syncComplete'),
                         detail_extra: ''
                     });
                     isPollingRef.current[service] = false;
+                    useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
                     if (service === activeService) refreshUserProfile(service);
@@ -249,7 +252,8 @@ export function useSync({
                         if (service === activeService) {
                             setSessionExpiredService(service);
                         }
-                        updateProgress({ state: 'error', detail: 'Authentication session has expired. Please log in again to continue using the service.' });
+                        updateProgress({ state: 'error', detail: i18n.t('sync.sessionExpired') });
+                        useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
                     } else if (data.detail === 'REFRESH_FAILED') {
                         log(`${service}: refresh failed detected - possible bug`);
@@ -259,17 +263,20 @@ export function useSync({
                         if (service === activeService) {
                             setSessionExpiredService(service);
                         }
-                        updateProgress({ state: 'error', detail: 'Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.' });
+                        updateProgress({ state: 'error', detail: i18n.t('sync.refreshFailed') });
+                        useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
                     } else {
-                        updateProgress({ state: 'error', detail: data.detail || 'Sync error' });
+                        updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.error') });
                     }
                     isPollingRef.current[service] = false;
+                    useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 } else {
-                    updateProgress({ state: 'error', detail: data.detail || 'Unknown error' });
+                    updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.unknownError') });
                     isPollingRef.current[service] = false;
+                    useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 }
@@ -280,12 +287,13 @@ export function useSync({
                 } else {
                     setSyncProgressByService(prev => ({
                         ...prev,
-                        [service]: { state: 'error', detail: 'Lost connection' }
+                        [service]: { state: 'error', detail: i18n.t('sync.lostConnection') }
                     }));
                     if (service === activeService) {
-                        setSyncProgress({ state: 'error', detail: 'Lost connection' });
+                        setSyncProgress({ state: 'error', detail: i18n.t('sync.lostConnection') });
                     }
                     isPollingRef.current[service] = false;
+                    useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     if (blocking && service === activeService) setShowSyncModal(false);
                 }
@@ -315,8 +323,8 @@ export function useSync({
             const initialProgress: SyncProgress = {
                 state: 'running',
                 phase: 'starting',
-                phase_name: 'Starting',
-                detail: 'Initializing...'
+                phase_name: i18n.t('sync.starting'),
+                detail: i18n.t('sync.initializing')
             };
             setSyncProgressByService(prev => ({ ...prev, [targetService]: initialProgress }));
             if (targetService === activeService) {
@@ -335,10 +343,10 @@ export function useSync({
                 pollSyncProgress(targetService, blocking);
             } else {
                 // Other error
-                const data = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                const data = await response.json().catch(() => ({ detail: i18n.t('sync.unknownError') }));
                 log(`${targetService}: failed to start`, data.detail);
                 if (currentProgress?.state !== 'running') {
-                    const errorProgress: SyncProgress = { state: 'error', detail: data.detail || 'Failed to start sync' };
+                    const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
                     setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
                     if (targetService === activeService) {
                         setSyncProgress(errorProgress);
@@ -347,7 +355,7 @@ export function useSync({
             }
         } catch {
             if (currentProgress?.state !== 'running') {
-                const errorProgress: SyncProgress = { state: 'error', detail: 'Failed to start sync' };
+                const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
                 if (targetService === activeService) {
                     setSyncProgress(errorProgress);
@@ -389,8 +397,8 @@ export function useSync({
             const initialProgress: SyncProgress = {
                 state: 'running',
                 phase: 'starting',
-                phase_name: 'Starting',
-                detail: 'Initializing...'
+                phase_name: i18n.t('sync.starting'),
+                detail: i18n.t('sync.initializing')
             };
             setSyncProgressByService(prev => ({ ...prev, [service]: initialProgress }));
             setSyncProgress(initialProgress);

@@ -135,7 +135,15 @@
     "syncNow": "今すぐ同期",
     "syncingService": "{{service}} を同期中 ({{current}}/{{total}})",
     "blogs": "ブログ",
-    "syncComplete": "同期完了！"
+    "syncComplete": "同期完了！",
+    "complete": "完了",
+    "initializing": "初期化中...",
+    "lostConnection": "接続が切断されました",
+    "failedToStart": "同期の開始に失敗しました",
+    "error": "同期エラー",
+    "unknownError": "不明なエラー",
+    "sessionExpired": "認証セッションが期限切れです。サービスを引き続きご利用いただくには、再度ログインしてください。",
+    "refreshFailed": "認証に予期せず失敗しました。再度ログインしてください。問題が続く場合は、不具合報告をお願いします。"
   },
   "about": {
     "title": "アプリについて",
