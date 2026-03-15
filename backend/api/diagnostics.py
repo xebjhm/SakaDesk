@@ -16,7 +16,7 @@ from pyhako import Group, get_jwt_remaining_seconds
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
 # App version - ideally from pyproject.toml or __version__
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 # PyHako version - try importlib.metadata first (works with installed packages)
 try:

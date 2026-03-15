@@ -1,12 +1,12 @@
 [project]
 name = "hakodesk"
-version = "0.1.0"
+version = "0.2.0"
 description = "HakoDesk GUI Application"
 requires-python = ">=3.9"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pyhako>=0.1.1",
+    "pyhako>=0.2.0",
     "python-multipart",
     "aiofiles",
     "keyring",
