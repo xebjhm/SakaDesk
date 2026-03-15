@@ -134,7 +134,8 @@
     "notSynced": "未同期",
     "syncNow": "今すぐ同期",
     "syncingService": "{{service}} を同期中 ({{current}}/{{total}})",
-    "blogs": "ブログ"
+    "blogs": "ブログ",
+    "syncComplete": "同期完了！"
   },
   "about": {
     "title": "アプリについて",
@@ -310,6 +311,7 @@
     "blogCacheHint": "キャッシュ済みのブログのみ検索可能です。設定で全てキャッシュできます。",
     "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
     "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
+    "blogBackupInProgress": "ブログバックアップ中 \u2014 検索結果が不完全な場合があります。",
     "enableFullBackup": "フルバックアップを有効にする",
     "official": "公式",
     "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"

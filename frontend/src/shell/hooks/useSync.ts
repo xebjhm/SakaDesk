@@ -144,6 +144,16 @@ export function useSync({
         }
     }, [activeService, syncProgressByService]);
 
+    // During sequential sync, keep syncProgress in sync with the current service's
+    // progress. This is needed because pollSyncProgress may hold stale closures
+    // that only update syncProgressByService but not the legacy syncProgress.
+    useEffect(() => {
+        const currentService = sequentialSyncInfo?.currentService;
+        if (currentService && syncProgressByService[currentService]) {
+            setSyncProgress(syncProgressByService[currentService]);
+        }
+    }, [sequentialSyncInfo, syncProgressByService]);
+
     const refreshUserProfile = useCallback(async (service: string) => {
         if (!service) {
             console.error('refreshUserProfile: No service specified');
@@ -194,10 +204,10 @@ export function useSync({
                     if (service === activeService) refreshUserProfile(service);
                 } else if (data.state === 'complete') {
                     updateProgress({
-                        state: 'idle',
+                        state: 'complete',
                         phase: 'complete',
                         phase_name: 'Complete',
-                        phase_number: 5,
+                        phase_number: data.phase_number,
                         completed: data.total || data.completed,
                         total: data.total,
                         elapsed_seconds: data.elapsed_seconds,
@@ -372,8 +382,18 @@ export function useSync({
             sequentialSyncServiceRef.current = service;
             setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service });
 
-            // Update legacy progress to show this service's progress in SyncModal
-            setSyncProgress({ state: 'running', phase: 'starting', phase_name: 'Starting', detail: 'Initializing...' });
+            // Force clear any stale polling state from previous syncs
+            isPollingRef.current[service] = false;
+
+            // Reset both legacy and per-service progress before starting
+            const initialProgress: SyncProgress = {
+                state: 'running',
+                phase: 'starting',
+                phase_name: 'Starting',
+                detail: 'Initializing...'
+            };
+            setSyncProgressByService(prev => ({ ...prev, [service]: initialProgress }));
+            setSyncProgress(initialProgress);
 
             await new Promise<void>((resolve) => {
                 syncCompleteCallbacks.current[service] = resolve;

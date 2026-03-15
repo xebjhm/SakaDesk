@@ -134,7 +134,8 @@
     "notSynced": "Not synced yet",
     "syncNow": "Sync now",
     "syncingService": "Syncing {{service}} ({{current}}/{{total}})",
-    "blogs": "Blogs"
+    "blogs": "Blogs",
+    "syncComplete": "Sync complete!"
   },
   "about": {
     "title": "About",
@@ -310,6 +311,7 @@
     "blogCacheHint": "Only cached blogs are searchable. Cache all in Settings.",
     "resultCountWithBlogs": "{{count}} results ({{blogCount}} blogs)",
     "blogSearchLimited": "Blog search only covers cached posts.",
+    "blogBackupInProgress": "Blog backup in progress \u2014 search results may be incomplete.",
     "enableFullBackup": "Enable full backup",
     "official": "Official",
     "buildingHint": "Search index is still being generated. Results may be incomplete."
