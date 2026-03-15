@@ -8,10 +8,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 from pyhako import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
-from pyhako.config import (
-    MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL,
-    MEDIA_DOWNLOAD_CONCURRENCY_INITIAL,
-)
 from pyhako.credentials import get_token_manager
 from backend.api.progress import progress_manager
 from backend.services.platform import get_session_dir, is_test_mode, get_default_output_dir
@@ -148,17 +144,18 @@ class SyncService:
             auth_dir = str(get_session_dir())
 
             # Detect if fresh sync for THIS service (empty service dir or just metadata)
-            # Smart Concurrency: 20 for fresh, 5 for update
             existing_files = list(self.service_data_dir.iterdir()) if self.service_data_dir.exists() else []
-            # Filter out metadata files
             existing_content = [f for f in existing_files if f.name not in ["sync_metadata.json", "sync_state.json"]]
             is_fresh = len(existing_content) == 0
 
-            limit = 20 if is_fresh else 5
-            media_concurrency = MEDIA_DOWNLOAD_CONCURRENCY_INITIAL if is_fresh else MEDIA_DOWNLOAD_CONCURRENCY_INCREMENTAL
-            logger.info(f"Smart Concurrency: limit={limit}, media_concurrency={media_concurrency} (Fresh={is_fresh})")
+            logger.info(
+                "sync_start",
+                service=self._service,
+                is_fresh=is_fresh,
+                connector_limit=20,
+            )
 
-            connector = aiohttp.TCPConnector(limit=limit)
+            connector = aiohttp.TCPConnector(limit=20)
             async with aiohttp.ClientSession(connector=connector) as session:
                 # Create client with auth_dir for headless refresh (CLI pattern)
                 client = Client(
@@ -299,33 +296,29 @@ class SyncService:
                 media_queue: list[dict[str, Any]] = []
                 
                 # Phase 2: Sync Members (Parallel)
+                # Concurrency is managed by TCPConnector(limit=20) on the session.
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
-                sem = asyncio.Semaphore(limit) # Use same limit for semaphore
-                
+
                 if self.manager is None:
                     raise RuntimeError("SyncManager not initialized")
 
                 async def sync_worker(task):
                     m_name = task['member']['name']
 
-                    # Granular progress callback
                     async def sub_progress(date_str, count):
-                        # Update detail immediately to show activity
-                        # "MemberName (5,400)"
                         progress.set_detail(f"{m_name} ({count:,})")
 
-                    async with sem:
-                        if self.manager is None:
-                            raise RuntimeError("SyncManager not initialized")
-                        count = await self.manager.sync_member(
-                            session, 
-                            task['group'], 
-                            task['member'], 
-                            media_queue, 
-                            progress_callback=sub_progress
-                        )
-                        progress.update(1, detail=f"{m_name} ({count:,})", detail_extra="")
-                        return task, count
+                    if self.manager is None:
+                        raise RuntimeError("SyncManager not initialized")
+                    count = await self.manager.sync_member(
+                        session,
+                        task['group'],
+                        task['member'],
+                        media_queue,
+                        progress_callback=sub_progress
+                    )
+                    progress.update(1, detail=f"{m_name} ({count:,})", detail_extra="")
+                    return task, count
 
                 # Run parallel sync
                 results = await asyncio.gather(*[sync_worker(t) for t in tasks])
@@ -389,7 +382,7 @@ class SyncService:
                             current_total = total_successed + c
                             progress.set_completed(current_total, detail=f"{current_total:,} files")
 
-                        chunk_dimensions = await self.manager.process_media_queue(session, chunk, concurrency=media_concurrency, progress_callback=chunk_cb)
+                        chunk_dimensions = await self.manager.process_media_queue(session, chunk, progress_callback=chunk_cb)
 
                         # Merge chunk dimensions into all_dimensions_by_dir
                         for member_dir, dims in chunk_dimensions.items():
@@ -408,53 +401,38 @@ class SyncService:
                 else:
                     logger.info("No new media to download.")
 
-                # Phase 5: Blog Sync
-                # Mode depends on global setting: blogs_full_backup
-                # - False (default): Sync metadata only, content fetched on-demand
-                # - True: Full backup - download all content + images for offline reading
-                blogs_full_backup = app_settings.get("blogs_full_backup", False)
-
-                # Skip if standalone blog backup (triggered by toggle) is already running
-                from backend.services.blog_service import BlogService, get_blog_backup_manager
-                backup_manager = get_blog_backup_manager()
-                standalone_running = backup_manager.is_running(self._service)
-
-                if standalone_running:
-                    progress.start_phase("blogs", "Blog backup in progress", 4, 0, "")
-                    progress.set_detail("Backup already running (triggered by toggle)")
-                    logger.info(f"Skipping Phase 5 blog sync — standalone backup running for {self._service}")
-                elif blogs_full_backup:
-                    progress.start_phase("blogs", "Backing up blogs (full)", 4, 0, "")
-                    try:
-                        blog_service = BlogService()
-                        async def blog_progress(msg):
-                            progress.set_detail(msg)
-                        await blog_service.sync_full_backup(self._service, progress_callback=blog_progress)
-                        logger.info(f"Full blog backup complete for {self._service}")
-                    except Exception as e:
-                        logger.warning(f"Blog sync failed (non-fatal): {e}")
-                else:
-                    progress.start_phase("blogs", "Syncing blog metadata", 4, 0, "")
-                    try:
-                        blog_service = BlogService()
-                        async def blog_progress(msg):
-                            progress.set_detail(msg)
-                        await blog_service.sync_blog_metadata(self._service, progress_callback=blog_progress)
-                        logger.info(f"Blog metadata synced for {self._service}")
-                    except Exception as e:
-                        logger.warning(f"Blog sync failed (non-fatal): {e}")
-
-                # Update blog search index (non-fatal)
-                progress.set_detail("Updating search index...")
+                # Phase 4: Build search index
+                # Blog sync is NOT part of the blocking sync flow. Blog metadata
+                # sync and full backup are background tasks triggered separately
+                # after the sync modal closes (see App.tsx handleSetupComplete).
+                progress.start_phase("indexing", "Building search index", 4, 0, "")
                 try:
                     from backend.services.search_service import get_search_service
                     search_svc = get_search_service()
-                    await search_svc.index_blogs_for_service(self._service)
+                    progress.set_detail("Indexing messages...")
+                    # index_members already ran after Phase 2 for members with new messages,
+                    # but a full build may be needed on first sync
+                    if search_svc._needs_build() and not search_svc._building:
+                        await search_svc.build_full_index()
+                    logger.info(f"Search index updated for {self._service}")
                 except Exception as e:
-                    logger.warning(f"Blog search index update failed (non-fatal): {e}")
+                    logger.warning(f"Search index build failed (non-fatal): {e}")
 
                 metadata['last_sync'] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
+
+            # Auto-enqueue blog backup if enabled (runs in background after modal closes)
+            try:
+                from backend.services.settings_store import load_config
+                blog_settings = await load_config()
+                if blog_settings.get("blogs_full_backup"):
+                    from backend.services.blog_service import get_blog_backup_manager
+                    manager = get_blog_backup_manager()
+                    if not manager.is_running(self._service):
+                        await manager.start([self._service])
+                        logger.info("Blog backup auto-enqueued after sync", service=self._service)
+            except Exception as e:
+                logger.warning(f"Blog backup auto-enqueue failed (non-fatal): {e}")
 
             progress.complete()
             
