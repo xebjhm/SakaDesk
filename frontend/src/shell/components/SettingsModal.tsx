@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
@@ -24,6 +25,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const selectedServices = useAppStore(s => s.selectedServices);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
+    const [blogBackupRunning, setBlogBackupRunning] = useState(false);
+    const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -52,6 +55,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         if (appSettings.blogs_full_backup && selectedServices.length > 0) {
             loadBlogCacheSize();
         }
+    }, [appSettings.blogs_full_backup, selectedServices]);
+
+    // Poll blog backup status when backup is enabled
+    useEffect(() => {
+        if (!appSettings.blogs_full_backup) {
+            setBlogBackupRunning(false);
+            return;
+        }
+        let cancelled = false;
+        const check = () => {
+            fetch('/api/blogs/backup/status')
+                .then(res => res.json())
+                .then(data => {
+                    if (cancelled) return;
+                    const running = Object.keys(data.running ?? {}).length > 0;
+                    setBlogBackupRunning(running);
+                    if (running) setTimeout(check, 5000);
+                    // Fetch aggregate cache stats for all services
+                    if (running || appSettings.blogs_full_backup) {
+                        Promise.all(
+                            selectedServices.map(s =>
+                                fetch(`/api/blogs/cache-stats?service=${encodeURIComponent(s)}`)
+                                    .then(r => r.ok ? r.json() : null)
+                                    .catch(() => null)
+                            )
+                        ).then(results => {
+                            if (cancelled) return;
+                            let cached = 0, total = 0;
+                            for (const r of results) {
+                                if (r) { cached += r.cached_blogs || 0; total += r.available_blogs || 0; }
+                            }
+                            setBlogBackupStats(total > 0 ? { cached, total } : null);
+                        });
+                    }
+                })
+                .catch(() => {});
+        };
+        check();
+        return () => { cancelled = true; };
     }, [appSettings.blogs_full_backup, selectedServices]);
 
     const handleCleanBlogCache = async () => {
@@ -209,7 +251,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     {/* Blog Full Backup (Global) */}
                     <div>
                         <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">{t('settings.blogFullBackup')}</label>
+                            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                                {t('settings.blogFullBackup')}
+                                {blogBackupRunning && (
+                                    <span className="text-xs text-blue-500 flex items-center gap-1">
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                        {blogBackupStats
+                                            ? `${blogBackupStats.cached}/${blogBackupStats.total}`
+                                            : ''
+                                        }
+                                    </span>
+                                )}
+                            </label>
                             <button
                                 onClick={() => onSaveSettings({ blogs_full_backup: !appSettings.blogs_full_backup })}
                                 className={`relative w-12 h-6 rounded-full transition-colors ${
