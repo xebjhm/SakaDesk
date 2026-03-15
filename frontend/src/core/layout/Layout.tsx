@@ -4,6 +4,7 @@ import { ServiceRail } from './ServiceRail';
 import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { useAppStore } from '../../store/appStore';
+import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface LayoutProps {
     messagesContent: React.ReactNode;
@@ -12,6 +13,8 @@ interface LayoutProps {
     onReportIssue: () => void;
     onOpenAbout: () => void;
     onOpenSearch: () => void;
+    syncProgressByService?: Record<string, SyncProgress>;
+    initialSyncServices?: Record<string, true>;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -21,6 +24,8 @@ export const Layout: React.FC<LayoutProps> = ({
     onReportIssue,
     onOpenAbout,
     onOpenSearch,
+    syncProgressByService,
+    initialSyncServices,
 }) => {
     const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
 
@@ -59,6 +64,8 @@ export const Layout: React.FC<LayoutProps> = ({
                 <ContentArea
                     service={activeService}
                     messagesContent={messagesContent}
+                    syncProgress={syncProgressByService?.[activeService]}
+                    isInitialSyncing={!!initialSyncServices?.[activeService]}
                 />
             ) : (
                 <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">

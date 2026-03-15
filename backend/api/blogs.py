@@ -7,8 +7,12 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
+import structlog
+
 from backend.services.blog_service import BlogService, get_blog_backup_manager
 from backend.services.service_utils import validate_service
+
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 blog_service = BlogService()
@@ -100,7 +104,8 @@ async def get_recent_posts(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to fetch recent blog posts", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/members")
@@ -113,7 +118,8 @@ async def get_blog_members(service: str = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to fetch blog members", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/members-with-thumbnails", response_model=MembersWithThumbnailsResponse)
@@ -130,7 +136,8 @@ async def get_members_with_thumbnails(service: str = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to fetch members with thumbnails", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/member-thumbnail/{service}/{member_id}")
@@ -173,7 +180,8 @@ async def get_member_thumbnail(service: str, member_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to serve member thumbnail", service=service, member_id=member_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/list", response_model=BlogListResponse)
@@ -188,7 +196,8 @@ async def get_blog_list(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to fetch blog list", service=service, member_id=member_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/content", response_model=BlogContentResponse)
@@ -203,7 +212,8 @@ async def get_blog_content(
     except ValueError as e:
         raise HTTPException(status_code=400 if "Invalid service" in str(e) else 404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to fetch blog content", service=service, blog_id=blog_id, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/cache-size", response_model=CacheSizeResponse)
@@ -220,7 +230,22 @@ async def get_cache_size(service: str = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to get cache size", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
+
+
+@router.get("/cache-stats")
+async def get_cache_stats(service: str = Query(...)):
+    """Get blog cache statistics for a service."""
+    try:
+        validate_service(service)
+        stats = await blog_service.get_cache_stats(service)
+        return stats
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error("Failed to get cache stats", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.delete("/cache")
@@ -233,7 +258,16 @@ async def clear_cache(service: str = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to clear blog cache", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
+
+
+@router.get("/backup/status")
+async def get_blog_backup_status():
+    """Get status of running blog backup tasks."""
+    manager = get_blog_backup_manager()
+    running = {s: True for s in manager._tasks if manager.is_running(s)}
+    return {"running": running}
 
 
 @router.post("/backup/start")
@@ -250,7 +284,8 @@ async def start_blog_backup(services: List[str] = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to start blog backup", services=services, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.post("/backup/stop")
@@ -268,7 +303,8 @@ async def stop_blog_backup(services: Optional[List[str]] = Query(None)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to stop blog backup", services=services, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.post("/sync")
@@ -304,7 +340,8 @@ async def sync_blog_metadata(service: str = Query(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Failed to sync blog metadata", service=service, error=str(e))
+        raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 # Allowed domains for the image proxy (official blog hosts and CDNs)

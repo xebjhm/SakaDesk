@@ -65,23 +65,24 @@ class AuthService:
                 cookie_keys = list(cookies.keys()) if cookies else []
 
                 logger.debug(
-                    f"Loaded session from TokenManager for {service}: "
-                    f"has_token={bool(token)}, "
-                    f"has_cookies={bool(cookies)}, "
-                    f"cookie_keys={cookie_keys}"
+                    "Loaded session from TokenManager",
+                    service=service,
+                    has_token=bool(token),
+                    has_cookies=bool(cookies),
+                    cookie_keys=cookie_keys,
                 )
 
                 if token:
                     expires_at = self._get_token_expiry_timestamp(token)
                     if self._is_token_expired(token):
-                        logger.warning(f"Token is expired for {service}, returning token_expired status")
+                        logger.warning("Token is expired, returning token_expired status", service=service)
                         return {
                             "authenticated": False,
                             "token_expired": True,
                             "expires_at": expires_at,
                             "message": "Token expired. Please re-login."
                         }
-                    logger.info(f"Auth status check for {service}: authenticated and token valid, expires_at={expires_at}")
+                    logger.info("Auth status check: authenticated and token valid", service=service, expires_at=expires_at)
                     return {
                         "authenticated": True,
                         "expires_at": expires_at,
@@ -89,9 +90,9 @@ class AuthService:
                         "storage_type": "secure" if not is_dev_mode() else "development"
                     }
             else:
-                logger.debug(f"No token data found in TokenManager for {service}")
+                logger.debug("No token data found in TokenManager", service=service)
         except Exception as e:
-            logger.error(f"Failed to check auth status for {service}: {e}", exc_info=True)
+            logger.error("Failed to check auth status", service=service, error=str(e), exc_info=True)
 
         return {"authenticated": False}
 
@@ -107,7 +108,7 @@ class AuthService:
             If service is provided: dict with 'authenticated' key for that service.
             If service is None: dict with 'services' key containing status for all services.
         """
-        logger.debug(f"Checking authentication status for service={service}...")
+        logger.debug("Checking authentication status", service=service)
 
         # Test mode: always return authenticated with test config
         if is_test_mode():
@@ -153,7 +154,7 @@ class AuthService:
         group = self._get_group(service)
 
         try:
-            logger.info(f"Starting browser login for {service}, session dir: {self._session_dir}")
+            logger.info("Starting browser login", service=service, session_dir=str(self._session_dir))
 
             creds = await BrowserAuth.login(
                 group=group,
@@ -164,11 +165,11 @@ class AuthService:
 
             if creds:
                 self._save_credentials(service, creds)
-                logger.info(f"Login successful for {service}, credentials saved to TokenManager")
+                logger.info("Login successful, credentials saved to TokenManager", service=service)
                 return True
 
         except Exception as e:
-            logger.error(f"Login error for {service}: {e}")
+            logger.error("Login error", service=service, error=str(e))
             return False
 
         return False
@@ -184,9 +185,9 @@ class AuthService:
                 creds.get('refresh_token'),
                 creds.get('cookies')
             )
-            logger.info(f"Credentials saved to TokenManager for {service}")
+            logger.info("Credentials saved to TokenManager", service=service)
         except Exception as e:
-            logger.error(f"Failed to save credentials for {service}: {e}")
+            logger.error("Failed to save credentials", service=service, error=str(e))
             raise
 
     def logout(self, service: str):
@@ -202,9 +203,9 @@ class AuthService:
         try:
             tm = get_token_manager()
             tm.delete_session(group.value)
-            logger.info(f"Credentials cleared from TokenManager for {service}")
+            logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
-            logger.error(f"Failed to clear credentials for {service}: {e}")
+            logger.error("Failed to clear credentials", service=service, error=str(e))
 
     def _get_token_remaining_seconds(self, token: str) -> float:
         """Get seconds remaining until token expires. Uses shared pyhako utility."""
@@ -229,7 +230,7 @@ class AuthService:
         validate_service(service)
         group = self._get_group(service)
 
-        logger.debug(f"refresh_if_needed called for {service} with threshold={threshold_minutes} minutes")
+        logger.debug("refresh_if_needed called", service=service, threshold_minutes=threshold_minutes)
 
         if is_test_mode():
             return {"refreshed": False, "remaining_seconds": 3600, "status": "test_mode"}
@@ -239,7 +240,7 @@ class AuthService:
             token_data = tm.load_session(group.value)
 
             if not token_data or not token_data.get('access_token'):
-                logger.warning(f"No token found for refresh check for {service}")
+                logger.warning("No token found for refresh check", service=service)
                 return {"refreshed": False, "remaining_seconds": 0, "status": "no_token"}
 
             token = token_data['access_token']
@@ -247,13 +248,15 @@ class AuthService:
             threshold_seconds = threshold_minutes * 60
 
             logger.debug(
-                f"Token status for {service}: remaining_seconds={remaining_seconds:.0f}, "
-                f"threshold_seconds={threshold_seconds}"
+                "Token status",
+                service=service,
+                remaining_seconds=round(remaining_seconds),
+                threshold_seconds=threshold_seconds,
             )
 
             # If token is still valid and not within threshold, no refresh needed
             if remaining_seconds > threshold_seconds:
-                logger.debug(f"Token still valid for {service}, no refresh needed")
+                logger.debug("Token still valid, no refresh needed", service=service)
                 return {
                     "refreshed": False,
                     "remaining_seconds": remaining_seconds,
@@ -261,7 +264,7 @@ class AuthService:
                 }
 
             # Token is expired or within threshold - attempt refresh
-            logger.info(f"Token for {service} expires in {remaining_seconds:.0f}s, attempting refresh...")
+            logger.info("Token expiring soon, attempting refresh", service=service, remaining_seconds=round(remaining_seconds))
 
             # Use proper API-based refresh via Client.refresh_access_token()
             # This calls /update_token endpoint with cookies - much more reliable
@@ -290,14 +293,14 @@ class AuthService:
                     )
 
                     new_remaining = self._get_token_remaining_seconds(new_token)
-                    logger.info(f"Token refreshed successfully for {service} via API, new expiry in {new_remaining:.0f}s")
+                    logger.info("Token refreshed successfully via API", service=service, new_remaining_seconds=round(new_remaining))
                     return {
                         "refreshed": True,
                         "remaining_seconds": new_remaining,
                         "status": "refreshed"
                     }
                 else:
-                    logger.warning(f"API-based refresh failed for {service}, session may require re-login")
+                    logger.warning("API-based refresh failed, session may require re-login", service=service)
                     return {
                         "refreshed": False,
                         "remaining_seconds": remaining_seconds,
@@ -305,7 +308,7 @@ class AuthService:
                     }
 
         except Exception as e:
-            logger.error(f"refresh_if_needed error for {service}: {e}", exc_info=True)
+            logger.error("refresh_if_needed error", service=service, error=str(e), exc_info=True)
             return {"refreshed": False, "remaining_seconds": 0, "status": f"error: {e}"}
 
     def get_config(self, service: str) -> dict:
@@ -327,5 +330,5 @@ class AuthService:
             token_data = tm.load_session(group.value)
             return cast(Dict[Any, Any], token_data or {})
         except Exception as e:
-            logger.error(f"Failed to load config for {service}: {e}")
+            logger.error("Failed to load config", service=service, error=str(e))
             return {}

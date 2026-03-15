@@ -158,8 +158,15 @@ class SearchService:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
         self._conn: Optional[sqlite3.Connection] = None
+        self._read_conn: Optional[sqlite3.Connection] = None
         self._building = False
-        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search-db")
+        # Writer executor — single-threaded (SQLite allows one writer)
+        self._write_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search-write")
+        # Reader executor — single-threaded (reads are fast, <100ms)
+        # Uses a separate connection so reads never block behind writes.
+        self._read_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search-read")
+        # Legacy alias kept for any code that still references _executor
+        self._executor = self._write_executor
         self._kakasi: Any = None
         self._aliases: Dict[str, Any] = self._load_aliases()
 
@@ -168,12 +175,26 @@ class SearchService:
     # ------------------------------------------------------------------
 
     def _get_conn(self) -> sqlite3.Connection:
+        """Get the write connection (used by write executor only)."""
         if self._conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path))
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA_SQL)
         return self._conn
+
+    def _get_read_conn(self) -> sqlite3.Connection:
+        """Get the read connection (used by read executor only).
+
+        Separate from the write connection so reads never block behind
+        writes.  SQLite WAL mode allows concurrent readers.
+        """
+        if self._read_conn is None:
+            self._db_path.parent.mkdir(parents=True, exist_ok=True)
+            self._read_conn = sqlite3.connect(str(self._db_path))
+            self._read_conn.execute("PRAGMA journal_mode=WAL")
+            self._read_conn.executescript(_SCHEMA_SQL)
+        return self._read_conn
 
     # ------------------------------------------------------------------
     # Kakasi lazy init
@@ -855,8 +876,9 @@ class SearchService:
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
         content_type: str = "all",
+        conn: Optional[sqlite3.Connection] = None,
     ) -> Dict[str, Any]:
-        conn = self._get_conn()
+        conn = conn or self._get_conn()
 
         # --- Blog-only short circuit ---
         if content_type == "blogs":
@@ -1820,7 +1842,7 @@ class SearchService:
         return total
 
     def _get_status_sync(self) -> Dict[str, Any]:
-        conn = self._get_conn()
+        conn = self._get_read_conn()
         row = conn.execute("SELECT COUNT(*) FROM search_messages").fetchone()
         indexed_count = row[0] if row else 0
 
@@ -1848,6 +1870,9 @@ class SearchService:
         if self._conn is not None:
             self._conn.close()
             self._conn = None
+        if self._read_conn is not None:
+            self._read_conn.close()
+            self._read_conn = None
         if self._db_path.exists():
             self._db_path.unlink()
         self._build_full_index_sync()
@@ -1857,7 +1882,7 @@ class SearchService:
     # ------------------------------------------------------------------
 
     def _get_all_read_states_sync(self) -> Dict[str, Any]:
-        conn = self._get_conn()
+        conn = self._get_read_conn()
         rows = conn.execute(
             "SELECT service, group_id, member_id, last_read_id, read_count, revealed_ids, updated_at "
             "FROM read_states"
@@ -1942,7 +1967,7 @@ class SearchService:
 
     def _get_members_sync(self) -> Dict[str, Any]:
         """Get all indexed members and services for the filter autocomplete."""
-        return self._get_members_from_conn(self._get_conn())
+        return self._get_members_from_conn(self._get_read_conn())
 
     @staticmethod
     def _get_members_from_conn(conn: sqlite3.Connection) -> Dict[str, Any]:
@@ -2003,7 +2028,7 @@ class SearchService:
 
     def _check_missing_services_sync(self) -> set:
         """Check for services in output dir not yet in the search index."""
-        conn = self._get_conn()
+        conn = self._get_read_conn()
 
         indexed_services: set[str] = set()
         for row in conn.execute("SELECT DISTINCT service FROM search_messages"):
@@ -2064,13 +2089,14 @@ class SearchService:
         date_to: Optional[str] = None,
         content_type: str = "all",
     ) -> Dict[str, Any]:
-        # Failsafe: if the full build never completed (e.g. interrupted fresh
-        # install), trigger one in the background.  The executor is single-
-        # threaded so we can't search while building — return immediately.
-        if self._needs_build():
-            if not self._building:
-                logger.info("Full index missing at search time, triggering background build (failsafe)")
-                asyncio.create_task(self.build_full_index())
+        # Failsafe: if the full build never completed, trigger one.
+        # Unlike before, we still return partial results via the read
+        # executor (which uses a separate connection, not blocked by writes).
+        if self._needs_build() and not self._building:
+            logger.info("Full index missing at search time, triggering background build (failsafe)")
+            asyncio.create_task(self.build_full_index())
+        # If the DB doesn't exist at all yet, return empty immediately
+        if not self._db_path.exists():
             return {
                 "query": query,
                 "normalized_query": "",
@@ -2080,8 +2106,8 @@ class SearchService:
                 "is_building": True,
             }
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(
-            self._executor,
+        result = await loop.run_in_executor(
+            self._read_executor,
             lambda: self._search_sync(
                 query, service, group_id, member_id, limit, offset,
                 services=services, member_ids=member_ids,
@@ -2089,8 +2115,12 @@ class SearchService:
                 exact_only=exact_only, exclude_unread=exclude_unread,
                 date_from=date_from, date_to=date_to,
                 content_type=content_type,
+                conn=self._get_read_conn(),
             ),
         )
+        if self._building:
+            result["is_building"] = True
+        return result
 
     async def build_full_index(self) -> int:
         loop = asyncio.get_running_loop()
@@ -2113,7 +2143,7 @@ class SearchService:
 
     async def get_status(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._get_status_sync)
+        return await loop.run_in_executor(self._read_executor, self._get_status_sync)
 
     async def rebuild(self) -> None:
         loop = asyncio.get_running_loop()
@@ -2121,7 +2151,7 @@ class SearchService:
 
     async def get_all_read_states(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._get_all_read_states_sync)
+        return await loop.run_in_executor(self._read_executor, self._get_all_read_states_sync)
 
     async def upsert_read_state(
         self, service: str, group_id: int, member_id: int,
@@ -2138,18 +2168,17 @@ class SearchService:
         return await loop.run_in_executor(self._executor, self._batch_upsert_read_states_sync, entries)
 
     async def get_members(self) -> Dict[str, Any]:
-        # If a full build is running on the single-thread executor, use a
-        # short-lived read-only connection to avoid blocking behind the build.
-        if self._building and self._db_path.exists():
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, self._get_members_readonly)
-            result["is_building"] = True
-            return result
+        # Read executor uses a separate connection, so reads never block
+        # behind writes — no need for the _get_members_readonly workaround.
+        if not self._db_path.exists():
+            return {"members": [], "services": [], "is_building": self._building}
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(self._executor, self._get_members_sync)
+        result = await loop.run_in_executor(self._read_executor, self._get_members_sync)
+        if self._building:
+            result["is_building"] = True
         # Check for unindexed services and trigger rebuild if needed
         missing = await loop.run_in_executor(
-            self._executor, self._check_missing_services_sync
+            self._read_executor, self._check_missing_services_sync
         )
         if missing and not self._building:
             logger.info(
@@ -2176,17 +2205,27 @@ def get_search_service() -> SearchService:
 
 
 def shutdown_search_service() -> None:
-    """Close DB connection and executor. Called on app shutdown."""
+    """Close DB connections and executors. Called on app shutdown."""
     global _search_service
     if _search_service is not None:
         try:
-            _search_service._executor.shutdown(wait=False)
+            _search_service._write_executor.shutdown(wait=False)
+        except Exception:
+            pass
+        try:
+            _search_service._read_executor.shutdown(wait=False)
         except Exception:
             pass
         try:
             if _search_service._conn is not None:
                 _search_service._conn.close()
                 _search_service._conn = None
+        except Exception:
+            pass
+        try:
+            if _search_service._read_conn is not None:
+                _search_service._read_conn.close()
+                _search_service._read_conn = None
         except Exception:
             pass
         _search_service = None
