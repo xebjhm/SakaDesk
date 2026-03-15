@@ -6,7 +6,7 @@ import aiofiles
 import traceback
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 from pyhako import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pyhako.credentials import get_token_manager
 from backend.api.progress import progress_manager
@@ -38,6 +38,7 @@ class SyncService:
         self.config_dir = Path(".")
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
+        self.metadata_file: Optional[Path] = None
         self.manager = None
 
     def _get_group(self) -> Group:
@@ -57,7 +58,7 @@ class SyncService:
             if token_data:
                 return token_data
         except Exception as e:
-            logger.error(f"Config load error: {e}")
+            logger.error("Config load error", error=str(e))
         return {}
     
     async def load_app_settings(self):
@@ -91,6 +92,8 @@ class SyncService:
     
     async def save_metadata(self, metadata):
         """Save sync metadata to the per-service JSON file."""
+        if self.metadata_file is None:
+            raise RuntimeError("save_metadata called before start_sync")
         self.service_data_dir.mkdir(parents=True, exist_ok=True)
         async with aiofiles.open(self.metadata_file, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
@@ -221,7 +224,7 @@ class SyncService:
                         )
                         logger.info("Refreshed tokens saved successfully to TokenManager")
                     except Exception as e:
-                        logger.error(f"Failed to save refreshed tokens: {e}", exc_info=True)
+                        logger.error("Failed to save refreshed tokens", error=str(e), exc_info=True)
                 else:
                     logger.debug("Token unchanged after refresh check, no save needed")
 
@@ -358,7 +361,7 @@ class SyncService:
                 progress.start_phase("downloading", "Downloading Media", 3, media_count, "files")
                 
                 if media_queue:
-                    logger.info(f"Downloading {media_count} media files...")
+                    logger.info("Downloading media files", media_count=media_count)
 
                     # Track accumulation manually to ensure we report honest numbers
                     total_successed = 0
@@ -414,9 +417,9 @@ class SyncService:
                     # but a full build may be needed on first sync
                     if search_svc._needs_build() and not search_svc._building:
                         await search_svc.build_full_index()
-                    logger.info(f"Search index updated for {self._service}")
+                    logger.info("Search index updated", service=self._service)
                 except Exception as e:
-                    logger.warning(f"Search index build failed (non-fatal): {e}")
+                    logger.warning("Search index build failed (non-fatal)", error=str(e))
 
                 metadata['last_sync'] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
@@ -432,13 +435,13 @@ class SyncService:
                         await manager.start([self._service])
                         logger.info("Blog backup auto-enqueued after sync", service=self._service)
             except Exception as e:
-                logger.warning(f"Blog backup auto-enqueue failed (non-fatal): {e}")
+                logger.warning("Blog backup auto-enqueue failed (non-fatal)", error=str(e))
 
             progress.complete()
             
         except Exception as e:
 
-            logger.error(f"Sync Error: {e}")
+            logger.error("Sync error", error=str(e))
             logger.error(traceback.format_exc())
             progress.error(str(e))
         finally:
@@ -505,7 +508,7 @@ class SyncService:
                                     'thumbnail': info.get('thumbnail')
                                 })
                         except Exception as e:
-                            logger.debug(f"Failed to check messages for {info.get('member_name', 'unknown')}: {e}")
+                            logger.debug("Failed to check messages", member_name=info.get('member_name', 'unknown'), error=str(e))
             
             return new_messages
             
