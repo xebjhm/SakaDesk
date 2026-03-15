@@ -72,6 +72,7 @@ function App() {
     // Sync hook - now syncs ALL connected services independently
     const {
         syncProgress,
+        syncProgressByService,
         showSyncModal,
         syncVersion,
         startSync,
@@ -118,6 +119,9 @@ function App() {
 
     // Fresh service login prompt — shown after adding a new service (outside onboarding)
     const freshlyAddedService = useAppStore(s => s.freshlyAddedService);
+
+    // Initial sync tracking — services currently undergoing their first sync
+    const initialSyncServices = useAppStore(s => s.initialSyncServices);
 
     // Disconnected service login popup — shown when user switches to a paid feature on a disconnected service
     const [disconnectedLoginService, setDisconnectedLoginService] = useState<string | null>(null);
@@ -361,6 +365,7 @@ function App() {
                             await checkAuth();
                             const svc = freshlyAddedService;
                             setFreshlyAddedService(null);
+                            useAppStore.getState().addInitialSyncService(svc);
                             startSync(false, svc);
                         }}
                         isFreshPrompt={true}
@@ -383,6 +388,8 @@ function App() {
                         onReportIssue={() => setShowReportModal(true)}
                         onOpenAbout={() => setShowAboutModal(true)}
                         onOpenSearch={openSearch}
+                        syncProgressByService={syncProgressByService}
+                        initialSyncServices={initialSyncServices}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}

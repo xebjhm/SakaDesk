@@ -135,7 +135,15 @@
     "syncNow": "立即同步",
     "syncingService": "正在同步 {{service}} ({{current}}/{{total}})",
     "blogs": "Blog",
-    "syncComplete": "同步完成！"
+    "syncComplete": "同步完成！",
+    "complete": "完成",
+    "initializing": "初始化中...",
+    "lostConnection": "連線中斷",
+    "failedToStart": "無法啟動同步",
+    "error": "同步錯誤",
+    "unknownError": "未知錯誤",
+    "sessionExpired": "認證工作階段已過期。請重新登入以繼續使用服務。",
+    "refreshFailed": "認證意外失敗。請重新登入以繼續使用服務。若問題持續，請回報此問題。"
   },
   "about": {
     "title": "關於",

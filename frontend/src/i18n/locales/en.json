@@ -135,7 +135,15 @@
     "syncNow": "Sync now",
     "syncingService": "Syncing {{service}} ({{current}}/{{total}})",
     "blogs": "Blogs",
-    "syncComplete": "Sync complete!"
+    "syncComplete": "Sync complete!",
+    "complete": "Complete",
+    "initializing": "Initializing...",
+    "lostConnection": "Lost connection",
+    "failedToStart": "Failed to start sync",
+    "error": "Sync error",
+    "unknownError": "Unknown error",
+    "sessionExpired": "Authentication session has expired. Please log in again to continue using the service.",
+    "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue."
   },
   "about": {
     "title": "About",
