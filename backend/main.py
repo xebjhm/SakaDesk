@@ -34,6 +34,9 @@ configure_logging(
 )
 
 # === NOW SAFE TO IMPORT OTHER MODULES ===
+import asyncio  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+
 import structlog  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -43,7 +46,73 @@ from backend.api import auth, content, sync, settings, diagnostics, profile, rep
 
 logger = structlog.get_logger(__name__)
 
-app = FastAPI(title="HakoDesk")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage startup and shutdown lifecycle for the application."""
+    # --- Startup ---
+    background_task = asyncio.create_task(_deferred_blog_backup())
+
+    yield
+
+    # --- Shutdown ---
+    # Cancel the deferred blog backup if it's still pending
+    if not background_task.done():
+        background_task.cancel()
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            pass
+
+    from backend.services.search_service import shutdown_search_service
+    shutdown_search_service()
+    # Flush and close all log file handlers so the uninstaller can delete the data directory
+    for handler in logging.root.handlers[:]:
+        try:
+            handler.flush()
+            handler.close()
+        except Exception:
+            pass
+    logger.info("Shutdown complete - file handles released")
+
+
+async def _deferred_blog_backup():
+    """Auto-resume blog backup if enabled but not triggered by sync."""
+    await asyncio.sleep(60)  # Wait long enough for sync to finish and enqueue
+    try:
+        from backend.services.settings_store import load_config
+        from backend.services.blog_service import (
+            get_blog_backup_manager,
+            _is_blog_supported,
+        )
+
+        settings = await load_config()
+        if not settings.get("blogs_full_backup") or not settings.get("is_configured"):
+            return
+
+        # If auto-sync is enabled, sync flow handles blog enqueue (Step 3).
+        # This startup hook is only for the case where auto-sync is OFF
+        # but blogs_full_backup is ON.
+        if settings.get("auto_sync_enabled"):
+            return
+
+        manager = get_blog_backup_manager()
+        # Only start if nothing is already running (frontend toggle may have triggered it)
+        if any(manager.is_running(s) for s in manager._tasks):
+            return
+
+        from pyhako.credentials import get_token_manager
+
+        tm = get_token_manager()
+        services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
+        if services:
+            await manager.start(services)
+            logger.info("Blog backup auto-resumed on startup", services=services)
+    except Exception as e:
+        logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
+
+
+app = FastAPI(title="HakoDesk", lifespan=lifespan)
 
 # CORS configuration
 # In production, frontend is served from same origin (no CORS needed).
@@ -79,63 +148,6 @@ app.include_router(chat_features.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])
-
-
-@app.on_event("startup")
-async def startup():
-    """Auto-resume blog backup if enabled but not triggered by sync."""
-    import asyncio
-
-    async def _deferred_blog_backup():
-        await asyncio.sleep(60)  # Wait long enough for sync to finish and enqueue
-        try:
-            from backend.services.settings_store import load_config
-            from backend.services.blog_service import (
-                get_blog_backup_manager,
-                _is_blog_supported,
-            )
-
-            settings = await load_config()
-            if not settings.get("blogs_full_backup") or not settings.get("is_configured"):
-                return
-
-            # If auto-sync is enabled, sync flow handles blog enqueue (Step 3).
-            # This startup hook is only for the case where auto-sync is OFF
-            # but blogs_full_backup is ON.
-            if settings.get("auto_sync_enabled"):
-                return
-
-            manager = get_blog_backup_manager()
-            # Only start if nothing is already running (frontend toggle may have triggered it)
-            if any(manager.is_running(s) for s in manager._tasks):
-                return
-
-            from pyhako.credentials import get_token_manager
-
-            tm = get_token_manager()
-            services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
-            if services:
-                await manager.start(services)
-                logger.info("Blog backup auto-resumed on startup", services=services)
-        except Exception as e:
-            logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
-
-    asyncio.create_task(_deferred_blog_backup())
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Release file handles so the uninstaller can delete the data directory."""
-    from backend.services.search_service import shutdown_search_service
-    shutdown_search_service()
-    # Flush and close all log file handlers
-    for handler in logging.root.handlers[:]:
-        try:
-            handler.flush()
-            handler.close()
-        except Exception:
-            pass
-    logger.info("Shutdown complete - file handles released")
 
 
 @app.get("/health")
