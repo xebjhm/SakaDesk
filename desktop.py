@@ -8,6 +8,8 @@ import traceback
 import time
 import json
 import urllib.request
+import ctypes
+import platform
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app
 from backend.services.platform import get_logs_dir, get_app_data_dir
@@ -174,34 +176,84 @@ def _get_window_file():
     return get_app_data_dir() / "window.json"
 
 
+def _get_dpi_scale() -> float:
+    """Get the Windows DPI scale factor (e.g. 1.5 for 150%).
+
+    pywebview's WinForms backend treats create_window(x, y) as logical
+    coordinates and multiplies them by scale_factor internally, but the
+    moved/resized events report physical (already-scaled) pixel values.
+    We need this factor to convert between the two coordinate systems
+    so that saved geometry can be correctly restored.
+
+    Returns 1.0 on non-Windows platforms where no scaling mismatch exists.
+    """
+    if platform.system() != "Windows":
+        return 1.0
+    try:
+        return ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0  # type: ignore[attr-defined,no-any-return]
+    except Exception:
+        return 1.0
+
+
 def _load_window_geometry() -> dict:
-    """Load saved window size/position, or return defaults."""
+    """Load saved window size/position, or return defaults.
+
+    Saved values are in logical (DPI-independent) coordinates, matching
+    what pywebview's create_window() expects.  Old files (without the
+    ``"format": "logical"`` marker) contain physical coordinates from
+    before the DPI fix — these are converted on the fly.
+    """
     defaults = {"width": 1200, "height": 800}
     path = _get_window_file()
     if not path.exists():
         return defaults
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        # Validate saved values are reasonable
         w = int(data.get("width", 0))
         h = int(data.get("height", 0))
         if w < 400 or h < 300 or w > 7680 or h > 4320:
             return defaults
+
+        # Migrate old physical-coordinate files to logical
+        if data.get("format") != "logical":
+            scale = _get_dpi_scale()
+            w = round(w / scale)
+            h = round(h / scale)
+
         result = {"width": w, "height": h}
-        # Position is optional — only restore if both x and y are present
         if "x" in data and "y" in data:
-            result["x"] = int(data["x"])
-            result["y"] = int(data["y"])
+            x = int(data["x"])
+            y = int(data["y"])
+            if data.get("format") != "logical":
+                x = round(x / scale)
+                y = round(y / scale)
+            result["x"] = x
+            result["y"] = y
         return result
     except Exception:
         return defaults
 
 
 def _save_window_geometry(geometry: dict) -> None:
-    """Save window geometry to disk."""
+    """Save window geometry to disk in logical (DPI-independent) coordinates.
+
+    pywebview's moved/resized events report physical pixel values, but
+    create_window() expects logical values (WinForms multiplies both
+    position and size by the DPI scale factor internally).  Dividing
+    by the scale factor on save prevents drift on every restart.
+    """
     try:
+        scale = _get_dpi_scale()
+        logical: dict = {
+            "width": round(geometry["width"] / scale),
+            "height": round(geometry["height"] / scale),
+            "format": "logical",
+        }
+        if "x" in geometry and "y" in geometry:
+            logical["x"] = round(geometry["x"] / scale)
+            logical["y"] = round(geometry["y"] / scale)
         path = _get_window_file()
-        path.write_text(json.dumps(geometry), encoding="utf-8")
+        path.write_text(json.dumps(logical), encoding="utf-8")
     except Exception:
         pass
 
