@@ -29,6 +29,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
+import { SERVICE_FEATURES } from '../../config/features';
 
 /** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
@@ -111,11 +112,16 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             setAppSettings(data);
             setOutputDirInput(data.output_dir);
 
-            // Immediate blog backup toggle: start/stop backup on setting change
-            if ('blogs_full_backup' in updates) {
-                const services = useAppStore.getState().selectedServices;
-                if (updates.blogs_full_backup && services.length > 0) {
-                    const params = services.map(s => `services=${encodeURIComponent(s)}`).join('&');
+            // Blog backup toggle: start/stop backup on setting change.
+            // Only fires from SettingsModal (post-setup). During first-launch
+            // setup, blog backup is deferred to after sequential sync completes
+            // (handled in App.tsx handleSetupComplete).
+            if ('blogs_full_backup' in updates && data.is_configured) {
+                const { selectedServices: services } = useAppStore.getState();
+                // Filter to services that actually support blogs (excludes yodel)
+                const blogServices = services.filter(s => SERVICE_FEATURES[s]?.includes('blogs'));
+                if (updates.blogs_full_backup && blogServices.length > 0) {
+                    const params = blogServices.map(s => `services=${encodeURIComponent(s)}`).join('&');
                     fetch(`/api/blogs/backup/start?${params}`, { method: 'POST' }).catch(console.error);
                 } else if (!updates.blogs_full_backup) {
                     fetch('/api/blogs/backup/stop', { method: 'POST' }).catch(console.error);

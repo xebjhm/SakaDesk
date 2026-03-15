@@ -68,10 +68,18 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-white">
-                                {t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })}
+                                {syncProgress.phase === 'complete'
+                                    ? syncProgress.phase_name
+                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })
+                                }
                             </h3>
                             <p className="text-sm text-white/80">
-                                {syncProgress.total ? `${syncProgress.total.toLocaleString()} ${getUnitLabel()}` : t('sync.pleaseWait')}
+                                {syncProgress.phase === 'complete'
+                                    ? t('sync.syncComplete')
+                                    : syncProgress.total
+                                        ? `${syncProgress.total.toLocaleString()} ${getUnitLabel()}`
+                                        : t('sync.pleaseWait')
+                                }
                             </p>
                         </div>
                     </div>
@@ -154,10 +162,9 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         {[
                             { phase: 'scanning', label: t('sync.scan') },
                             { phase: 'syncing', label: t('sync.syncing') },
-                            { phase: 'downloading', label: t('sync.download') },
-                            { phase: 'blogs', label: t('sync.blogs') }
+                            { phase: 'downloading', label: t('sync.download') }
                         ].map((p) => {
-                            const phaseOrder = ['scanning', 'discovering', 'syncing', 'downloading', 'blogs', 'complete'];
+                            const phaseOrder = ['scanning', 'discovering', 'syncing', 'downloading', 'complete'];
                             const currentPhaseIndex = phaseOrder.indexOf(syncProgress.phase || '');
                             const thisPhaseIndex = phaseOrder.indexOf(p.phase);
                             const isActive = syncProgress.phase === p.phase || (p.phase === 'scanning' && syncProgress.phase === 'discovering');

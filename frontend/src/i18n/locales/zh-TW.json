@@ -134,7 +134,8 @@
     "notSynced": "尚未同步",
     "syncNow": "立即同步",
     "syncingService": "正在同步 {{service}} ({{current}}/{{total}})",
-    "blogs": "Blog"
+    "blogs": "Blog",
+    "syncComplete": "同步完成！"
   },
   "about": {
     "title": "關於",
@@ -310,6 +311,7 @@
     "blogCacheHint": "僅可搜尋已快取的 Blog。可在設定中快取全部。",
     "resultCountWithBlogs": "{{count}} 個結果（{{blogCount}} 個 Blog）",
     "blogSearchLimited": "Blog 搜尋僅涵蓋已快取的文章。",
+    "blogBackupInProgress": "Blog 備份進行中 \u2014 搜尋結果可能不完整。",
     "enableFullBackup": "啟用完整備份",
     "official": "官方",
     "buildingHint": "搜尋索引仍在建立中，結果可能不完整。"
