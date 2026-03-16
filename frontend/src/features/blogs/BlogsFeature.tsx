@@ -31,6 +31,9 @@ export const BlogsFeature: React.FC = () => {
     // Watch for search navigation target
     const targetBlog = useAppStore((state) => state.targetBlog);
     const setTargetBlog = useAppStore((state) => state.setTargetBlog);
+    const setBlogRecentPosts = useAppStore((state) => state.setBlogRecentPosts);
+
+    const knownPostIdsRef = React.useRef<Set<string>>(new Set());
 
     // Stable key for favorites to prevent unnecessary re-fetches
     const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
@@ -65,7 +68,12 @@ export const BlogsFeature: React.FC = () => {
     // Reset to recent view when service changes
     useEffect(() => {
         setViewState({ view: 'recent' });
-        setRecentPosts([]);
+        // Load cached posts immediately (no spinner)
+        const cached = activeService
+            ? (useAppStore.getState().blogRecentPostsCache[activeService] || [])
+            : [];
+        setRecentPosts(cached);
+        knownPostIdsRef.current = new Set(cached.map(p => p.id));
         setMemberBlogsCache(new Map());
         setContentCache(new Map());
         setError(null);
@@ -135,11 +143,23 @@ export const BlogsFeature: React.FC = () => {
             ? favorites
             : undefined;
 
-        setLoading(true);
+        // Only show loading spinner if we have no cached posts
+        const hasCached = recentPosts.length > 0;
+        if (!hasCached) {
+            setLoading(true);
+        }
         setError(null);
+
         getRecentPosts(activeService, 20, memberIds)
-            .then(res => setRecentPosts(res.posts))
-            .catch(e => setError(e.message))
+            .then(res => {
+                setRecentPosts(res.posts);
+                setBlogRecentPosts(activeService, res.posts);
+                // Mark all fetched posts as known (no animation on initial load)
+                knownPostIdsRef.current = new Set(res.posts.map(p => p.id));
+            })
+            .catch(e => {
+                if (!hasCached) setError(e.message);
+            })
             .finally(() => setLoading(false));
     }, [viewState.view, activeService, selectionMode, favoritesKey]);
 
@@ -168,6 +188,8 @@ export const BlogsFeature: React.FC = () => {
                 // Only update state if we're still on the same service
                 if (!cancelled && res) {
                     setRecentPosts(res.posts);
+                    setBlogRecentPosts(serviceAtStart, res.posts);
+                    // Don't update knownPostIdsRef here — new posts will animate
                 }
             })
             .catch(() => {
@@ -465,6 +487,7 @@ export const BlogsFeature: React.FC = () => {
                     loading={loading}
                     error={error}
                     syncing={isSyncing}
+                    knownPostIds={knownPostIdsRef.current}
                     onSelectPost={handleSelectRecentPost}
                     onMemberSelect={() => setIsMemberModalOpen(true)}
                     onRetry={handleRetry}
