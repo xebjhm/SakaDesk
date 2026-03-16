@@ -1,7 +1,7 @@
 """
-Authentication Service for HakoDesk
+Authentication Service for ZakaDesk
 
-Uses pyhako's TokenManager for credential storage (same as CLI).
+Uses pyzaka's TokenManager for credential storage (same as CLI).
 This ensures consistent behavior across CLI and GUI:
 - Windows: Windows Credential Manager (WCM)
 - Linux: Plaintext fallback (development only)
@@ -9,8 +9,8 @@ This ensures consistent behavior across CLI and GUI:
 import structlog
 from typing import Any, Dict, Optional, cast
 import aiohttp
-from pyhako import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
-from pyhako.credentials import get_token_manager
+from pyzaka import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
+from pyzaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
@@ -31,7 +31,7 @@ class AuthService:
         return get_service_enum(service)
 
     def _is_token_expired(self, token: str) -> bool:
-        """Check if JWT token is expired. Uses shared pyhako utility."""
+        """Check if JWT token is expired. Uses shared pyzaka utility."""
         expired = is_jwt_expired(token)
         remaining = get_jwt_remaining_seconds(token)
         exp_timestamp = parse_jwt_expiry(token)
@@ -49,7 +49,7 @@ class AuthService:
         return cast(bool, expired)
 
     def _get_token_expiry_timestamp(self, token: str) -> Optional[int]:
-        """Extract expiry timestamp from JWT token. Uses shared pyhako utility."""
+        """Extract expiry timestamp from JWT token. Uses shared pyzaka utility."""
         return cast(Optional[int], parse_jwt_expiry(token))
 
     def _get_service_auth_status(self, service: str) -> dict:
@@ -175,7 +175,7 @@ class AuthService:
         return False
 
     def _save_credentials(self, service: str, creds: dict):
-        """Save credentials to pyhako's TokenManager (CLI pattern)."""
+        """Save credentials to pyzaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
         try:
             tm = get_token_manager()
@@ -208,7 +208,7 @@ class AuthService:
             logger.error("Failed to clear credentials", service=service, error=str(e))
 
     def _get_token_remaining_seconds(self, token: str) -> float:
-        """Get seconds remaining until token expires. Uses shared pyhako utility."""
+        """Get seconds remaining until token expires. Uses shared pyzaka utility."""
         remaining = get_jwt_remaining_seconds(token)
         if remaining is None:
             return -1  # Assume expired if can't parse

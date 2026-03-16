@@ -33,7 +33,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
 
     // Check version on mount
     useEffect(() => {
-        const dismissedVersion = localStorage.getItem('hakodesk_dismissed_update');
+        const dismissedVersion = localStorage.getItem('zakadesk_dismissed_update');
 
         const checkVersion = async () => {
             try {
@@ -83,7 +83,7 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
 
     const handleDismiss = () => {
         if (versionInfo?.latest_version) {
-            localStorage.setItem('hakodesk_dismissed_update', versionInfo.latest_version);
+            localStorage.setItem('zakadesk_dismissed_update', versionInfo.latest_version);
         }
         setDismissed(true);
         onDismiss?.();

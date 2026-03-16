@@ -70,7 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({
             ) : (
                 <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">
                     <div className="text-center">
-                        <p className="text-lg mb-2">Welcome to HakoDesk</p>
+                        <p className="text-lg mb-2">Welcome to ZakaDesk</p>
                         <p className="text-sm">Select a service to get started</p>
                     </div>
                 </div>

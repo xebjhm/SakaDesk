@@ -94,8 +94,8 @@
     "title": "利用規約",
     "subtitle": "ご利用前に必ずお読みください",
     "disclaimer": "重要免責事項",
-    "disclaimerText": "HakoDeskは非公式のサードパーティ製バックアップツールです。乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment、および関連する公式アプリとは一切関係ありません。",
-    "acknowledgeIntro": "HakoDeskを利用することで、以下に同意したものとみなされます：",
+    "disclaimerText": "ZakaDeskは非公式のサードパーティ製バックアップツールです。乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment、および関連する公式アプリとは一切関係ありません。",
+    "acknowledgeIntro": "ZakaDeskを利用することで、以下に同意したものとみなされます：",
     "acknowledgeSubscription": "公式メッセージサービスの有効な購読契約を持っていること",
     "acknowledgeBackup": "ダウンロードしたコンテンツは私的なバックアップ目的でのみ利用すること",
     "acknowledgeNoRedistribute": "ダウンロードしたコンテンツを再配布・共有しないこと",
@@ -109,14 +109,14 @@
     "acceptAndContinue": "同意して開始する"
   },
   "setup": {
-    "welcome": "HakoDeskへようこそ",
+    "welcome": "ZakaDeskへようこそ",
     "setupDataFolder": "データ保存先の設定",
     "outputFolderPath": "データ出力先パス",
-    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\ZakaDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
     "downloadBlogsOffline": "ブログの検索用ダウンロード",
     "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
-    "startUsing": "HakoDeskを始める"
+    "startUsing": "ZakaDeskを始める"
   },
   "sync": {
     "phase": "フェーズ {{number}}: {{name}}",
@@ -211,7 +211,7 @@
   "messageList": {
     "noMessages": "メッセージがありません",
     "jumpToOldestUnread": "未読の最初へ移動",
-    "welcomeTitle": "HakoDeskへようこそ",
+    "welcomeTitle": "ZakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",
     "selectConversation": "トークを選択してください",
@@ -280,7 +280,7 @@
     "ai": "AIエージェント"
   },
   "landing": {
-    "welcome": "HakoDeskへようこそ",
+    "welcome": "ZakaDeskへようこそ",
     "selectGroups": "フォローするグループを選択してください",
     "selectAtLeastOne": "少なくとも1つのグループを選択してください",
     "getStarted": "始める",

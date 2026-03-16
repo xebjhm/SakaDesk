@@ -94,8 +94,8 @@
     "title": "服务条款",
     "subtitle": "继续前请阅读",
     "disclaimer": "重要免责声明",
-    "disclaimerText": "HakoDesk 是非官方的第三方备份工具。它与乃木坂46、樱坂46、日向坂46、Sony Music Entertainment 或其任何官方应用程序无关，也未获其认可或与之相关。",
-    "acknowledgeIntro": "使用 HakoDesk 即表示您承认：",
+    "disclaimerText": "ZakaDesk 是非官方的第三方备份工具。它与乃木坂46、樱坂46、日向坂46、Sony Music Entertainment 或其任何官方应用程序无关，也未获其认可或与之相关。",
+    "acknowledgeIntro": "使用 ZakaDesk 即表示您承认：",
     "acknowledgeSubscription": "您拥有官方消息服务的有效订阅",
     "acknowledgeBackup": "下载的内容仅用于个人备份目的",
     "acknowledgeNoRedistribute": "您不会重新分发或共享下载的内容",
@@ -109,14 +109,14 @@
     "acceptAndContinue": "接受并继续"
   },
   "setup": {
-    "welcome": "欢迎使用 HakoDesk",
+    "welcome": "欢迎使用 ZakaDesk",
     "setupDataFolder": "设置数据文件夹",
     "outputFolderPath": "输出文件夹路径",
-    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\ZakaDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
     "downloadBlogsOffline": "下载 Blog 以供搜索",
     "downloadBlogsHint": "下载所有 Blog 文章以启用全文搜索。每个服务约使用 5-15 GB。",
-    "startUsing": "开始使用 HakoDesk"
+    "startUsing": "开始使用 ZakaDesk"
   },
   "sync": {
     "phase": "阶段 {{number}}：{{name}}",
@@ -211,7 +211,7 @@
   "messageList": {
     "noMessages": "没有消息",
     "jumpToOldestUnread": "跳转到最早未读",
-    "welcomeTitle": "欢迎使用 HakoDesk",
+    "welcomeTitle": "欢迎使用 ZakaDesk",
     "welcomeSubtitle": "从侧边栏选择一个对话开始。",
     "loadingMessages": "正在加载消息...",
     "selectConversation": "选择一个对话",
@@ -280,7 +280,7 @@
     "ai": "AI 助手"
   },
   "landing": {
-    "welcome": "欢迎使用 HakoDesk",
+    "welcome": "欢迎使用 ZakaDesk",
     "selectGroups": "选择您想要关注的组合",
     "selectAtLeastOne": "请至少选择一个组合",
     "getStarted": "开始使用",

@@ -1,45 +1,60 @@
 <p align="center">
-  <img src="HakoDesk_logo.png" alt="HakoDesk" width="128" />
+  <img src="ZakaDesk_logo.png" alt="ZakaDesk" width="128" />
 </p>
 
-# HakoDesk
+# ZakaDesk
 
-A desktop GUI application for viewing and synchronizing group chat messages from the Hako platform.
+A desktop GUI application for browsing, synchronizing, and backing up content from Nogizaka46, Sakurazaka46, Hinatazaka46, and Yodel services.
 
 ## Features
 
+- **Multi-service support** — browse Nogizaka46, Sakurazaka46, Hinatazaka46, and Yodel from a single app
 - **Multi-group chat display** with member lists and thumbnails
-- **Message synchronization** from cloud with real-time progress tracking
+- **Blog browsing and backup** with full content preservation
+- **Global search** across messages and blogs (with Japanese transliteration)
+- **Message synchronization** from cloud with adaptive progress tracking
 - **Unread message management** with read state persistence
 - **Virtual scrolling** for efficient display of 10k+ messages
 - **Voice message playback** for audio content
-- **Secure credential storage** using platform-native keyring (Windows Credential Manager)
-- **Settings management** (output folder, auto-sync interval)
+- **Favorites and sent letters** management
+- **Calendar navigation** for browsing messages by date
+- **Notifications** panel for service alerts
+- **Internationalization** — English, Japanese, Traditional Chinese, Simplified Chinese, Cantonese
+- **Service-themed UI** with per-service color schemes
+- **Background customization** for the content area
+- **First-launch onboarding flow** with login carousel and sequential sync
+- **Update checker** with in-app upgrade notifications
+- **Secure credential storage** using platform-native keyring
+- **Settings management** (output folder, auto-sync interval, blog backup status)
 - **Diagnostics panel** for debugging and log access
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     HakoDesk                            │
+│                     ZakaDesk                            │
 ├─────────────────────────────────────────────────────────┤
 │  desktop.py (pywebview)                                 │
 │     ├── Starts FastAPI backend on dynamic port          │
 │     └── Creates native window pointing to localhost     │
 ├─────────────────────────────────────────────────────────┤
 │  Backend (FastAPI + Python)                             │
-│     ├── API Routes: auth, sync, content, settings       │
-│     └── Services: auth_service, sync_service, platform  │
+│     ├── API Routes: auth, sync, content, settings,      │
+│     │   blogs, search, notifications, favorites, ...    │
+│     └── Services: auth, sync, blog, search, adaptive    │
+│         sync, notifications, settings, upgrade, ...     │
 ├─────────────────────────────────────────────────────────┤
 │  Frontend (React + TypeScript + Vite)                   │
-│     ├── Components: Message display, Settings, Login    │
-│     └── State: Unread tracking, scroll position, sync   │
+│     ├── 3-zone layout: ServiceRail │ FeatureRail │      │
+│     │   ContentArea                                     │
+│     ├── Features: messages, blogs, search               │
+│     └── State: Zustand store, i18n (5 languages)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.12+
 - Node.js 18+ (for frontend development/building)
 - [uv](https://docs.astral.sh/uv/) package manager
 
@@ -49,8 +64,8 @@ A desktop GUI application for viewing and synchronizing group chat messages from
 
 ```bash
 # Clone the repository
-git clone https://github.com/xtorker/Project-PyHako.git
-cd Project-PyHako/HakoDesk
+git clone https://github.com/xebjhm/Project-pyzaka.git
+cd Project-pyzaka/ZakaDesk
 
 # Install Python dependencies with uv
 uv sync
@@ -119,25 +134,47 @@ scripts\build_windows.bat
 ## Project Structure
 
 ```
-HakoDesk/
+ZakaDesk/
 ├── backend/                 # FastAPI backend
 │   ├── api/                 # API route handlers
 │   │   ├── auth.py          # Authentication endpoints
+│   │   ├── blogs.py         # Blog browsing/backup
+│   │   ├── chat_features.py # Letters, calendar, etc.
 │   │   ├── content.py       # Message/group content
+│   │   ├── diagnostics.py   # Debug utilities
+│   │   ├── favorites.py     # Favorites management
+│   │   ├── notifications.py # Service notifications
+│   │   ├── profile.py       # User profile
+│   │   ├── progress.py      # Sync progress
+│   │   ├── read_states.py   # Unread tracking
+│   │   ├── report.py        # Reporting
+│   │   ├── search.py        # Global search
 │   │   ├── settings.py      # Settings management
 │   │   ├── sync.py          # Sync orchestration
-│   │   └── diagnostics.py   # Debug utilities
+│   │   └── version.py       # Version/update check
 │   └── services/            # Business logic
+│       ├── adaptive_sync.py # Adaptive sync scheduling
 │       ├── auth_service.py  # Authentication logic
+│       ├── blog_service.py  # Blog backup engine
+│       ├── notification_service.py # Notification handling
+│       ├── path_resolver.py # Data path resolution
+│       ├── platform.py      # Cross-platform utilities
+│       ├── search_service.py # Search index & query
+│       ├── service_utils.py # Shared service helpers
+│       ├── settings_store.py # Persistent settings
 │       ├── sync_service.py  # Sync engine
-│       ├── credential_store.py # Secure storage
-│       └── platform.py      # Cross-platform utilities
+│       └── upgrade_service.py # Update checker
 ├── frontend/                # React + TypeScript + Vite
 │   ├── src/
-│   │   ├── App.tsx          # Main application component
-│   │   ├── components/      # UI components
+│   │   ├── shell/           # App shell, layout, routing
+│   │   ├── core/            # Shared layout & media components
+│   │   ├── features/        # Feature modules (messages, blogs, search)
+│   │   ├── store/           # Zustand state management
+│   │   ├── config/          # Service themes, feature flags
+│   │   ├── i18n/            # Translations (en, ja, zh-TW, zh-CN, yue)
 │   │   ├── pages/           # Page components
-│   │   └── types/           # TypeScript interfaces
+│   │   ├── types/           # TypeScript interfaces
+│   │   └── utils/           # Shared utilities
 │   └── dist/                # Built frontend (generated)
 ├── tests/                   # Test suite
 ├── tooling/                 # Build scripts
@@ -155,8 +192,8 @@ HakoDesk/
 ## Configuration
 
 Application data is stored in:
-- **Windows:** `%LOCALAPPDATA%\HakoDesk\`
-- **Linux/macOS:** `~/.HakoDesk/`
+- **Windows:** `%LOCALAPPDATA%\ZakaDesk\`
+- **Linux/macOS:** `~/.ZakaDesk/`
 
 Settings include:
 - Output folder for synchronized messages
@@ -171,19 +208,29 @@ When running the backend, interactive API documentation is available at:
 
 ## Dependencies
 
-### Runtime
-- **PyHako** - Core sync SDK (local dependency)
-- **FastAPI** - Web framework
-- **uvicorn** - ASGI server
-- **pywebview** - Desktop window wrapper
-- **keyring** - Secure credential storage
+### Backend (Python)
+- **pyzaka** - Core sync SDK (local dependency)
+- **FastAPI** + **uvicorn** - Web framework and ASGI server
+- **python-multipart** + **aiofiles** - File upload and async file I/O
+- **keyring** + **keyrings-alt** - Secure credential storage
 - **structlog** - Structured logging
+- **plyer** - Native desktop notifications
+- **pykakasi** + **jaconv** - Japanese transliteration for search
+- **tk** - Tkinter for native file dialogs
 
-### Frontend
-- **React 18** - UI framework
+> `pywebview` is used at runtime to create the desktop window but is a build-time/system dependency, not listed in `pyproject.toml`.
+
+### Frontend (TypeScript)
+- **React 18** + **react-router-dom** - UI framework and routing
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
+- **zustand** - State management
+- **i18next** + **react-i18next** - Internationalization
+- **framer-motion** - Animations
 - **react-virtuoso** - Virtual scrolling
+- **lucide-react** - Icon set
+- **dompurify** - HTML sanitization
+- **clsx** + **tailwind-merge** - Class name utilities
 
 ## License
 

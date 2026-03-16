@@ -1,5 +1,5 @@
 """
-Chat Features API for HakoDesk.
+Chat Features API for ZakaDesk.
 
 Provides endpoints for:
 - Sent letters
@@ -16,8 +16,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 
-from pyhako import Client
-from pyhako.credentials import get_token_manager
+from pyzaka import Client
+from pyzaka.credentials import get_token_manager
 from backend.services.platform import is_test_mode, get_settings_path, get_session_dir, get_default_output_dir
 from backend.services.service_utils import get_service_enum, validate_service
 
@@ -71,7 +71,7 @@ def _get_output_dir() -> Path:
 
 
 async def _get_client_and_session(service: str):
-    """Get pyhako client and aiohttp session with auth for given service."""
+    """Get pyzaka client and aiohttp session with auth for given service."""
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Not available in test mode")
 
@@ -121,7 +121,7 @@ async def get_letters(group_id: int, service: str, count: int = 200):
     """
     Fetch user's sent letters to a member.
 
-    Uses pyhako.Client.get_letters() to fetch from the official API.
+    Uses pyzaka.Client.get_letters() to fetch from the official API.
 
     Args:
         group_id: The member's group ID.
@@ -167,7 +167,7 @@ async def get_streak(group_id: int, service: str):
     """
     Fetch subscription streak for a member.
 
-    Uses pyhako.Client.get_subscription_streak() to fetch consecutive days.
+    Uses pyzaka.Client.get_subscription_streak() to fetch consecutive days.
 
     Args:
         group_id: The member's group ID.

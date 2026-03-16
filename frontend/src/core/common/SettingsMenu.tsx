@@ -49,7 +49,7 @@ function buildFeatureRequestUrl(): string {
         body: body,
     });
 
-    return `https://github.com/xtorker/HakoDesk/issues/new?${params.toString()}`;
+    return `https://github.com/xebjhm/ZakaDesk/issues/new?${params.toString()}`;
 }
 
 interface SettingsMenuProps {

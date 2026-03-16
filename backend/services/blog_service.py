@@ -1,5 +1,5 @@
 """
-Blog service for HakoDesk.
+Blog service for ZakaDesk.
 Handles blog metadata sync, on-demand content fetching, and caching.
 
 Two-stage sync design (similar to message sync):
@@ -17,8 +17,8 @@ import aiofiles
 import aiohttp
 import structlog
 
-from pyhako import Group
-from pyhako.blog import (
+from pyzaka import Group
+from pyzaka.blog import (
     BlogGoneError,
     MAX_PAGES_SAFETY_CAP,
     MemberInfo,

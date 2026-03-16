@@ -1,7 +1,7 @@
 """
 Tests for Content API.
 
-PyHako directory structure:
+pyzaka directory structure:
   output_dir/
     {service_name}/                    <- e.g., "日向坂46"
       messages/
@@ -18,7 +18,7 @@ import json
 
 @pytest.mark.asyncio
 async def test_get_groups(client):
-    """Test parsing of group directory structure with PyHako format."""
+    """Test parsing of group directory structure with pyzaka format."""
 
     with patch("backend.api.content.get_output_dir") as mock_get_out:
         root_path = MagicMock()

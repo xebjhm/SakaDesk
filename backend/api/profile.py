@@ -1,5 +1,5 @@
 """
-Profile API for HakoDesk
+Profile API for ZakaDesk
 Handles user profile information like nickname.
 """
 import structlog
@@ -8,8 +8,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
-from pyhako import Client
-from pyhako.credentials import get_token_manager
+from pyzaka import Client
+from pyzaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir
 from backend.services.service_utils import get_service_enum, validate_service

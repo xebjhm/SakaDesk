@@ -1,12 +1,12 @@
 [project]
-name = "hakodesk"
-version = "0.2.0"
-description = "HakoDesk GUI Application"
-requires-python = ">=3.9"
+name = "zakadesk"
+version = "0.2.1"
+description = "ZakaDesk GUI Application"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pyhako>=0.2.0",
+    "pyzaka>=0.2.0",
     "python-multipart",
     "aiofiles",
     "keyring",
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-pyhako = { path = "../PyHako", editable = true }
+pyzaka = { path = "../pyzaka", editable = true }
 
 [dependency-groups]
 dev = [
@@ -49,7 +49,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
@@ -67,4 +67,4 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 # Development server configuration
-# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-dir "../PyHako/src" --reload-exclude "output/*" --reload-exclude "auth_data/*"
+# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-dir "../pyzaka/src" --reload-exclude "output/*" --reload-exclude "auth_data/*"
