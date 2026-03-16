@@ -7,8 +7,8 @@ import traceback
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Optional
-from pyhako import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
-from pyhako.credentials import get_token_manager
+from pyzaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
+from pyzaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
 from backend.services.platform import get_session_dir, is_test_mode, get_default_output_dir
 from backend.services.notification_service import notify_sync_complete
@@ -23,7 +23,7 @@ DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 class SyncService:
     """
-    Per-service sync orchestrator for HakoDesk.
+    Per-service sync orchestrator for ZakaDesk.
 
     Manages the synchronization lifecycle: loading credentials, fetching messages,
     downloading media, and tracking sync state. Each instance handles one service
@@ -46,7 +46,7 @@ class SyncService:
         return get_service_enum(self._service)
 
     async def load_config(self):
-        """Load config from pyhako's TokenManager (WCM on Windows)."""
+        """Load config from pyzaka's TokenManager (WCM on Windows)."""
         # Test mode uses fixtures
         if is_test_mode():
             from backend.fixtures.test_data import TEST_AUTH_CONFIG
@@ -137,7 +137,7 @@ class SyncService:
                 if state_file.exists():
                     state_file.unlink()
 
-            # Load credentials from pyhako's TokenManager (same as CLI)
+            # Load credentials from pyzaka's TokenManager (same as CLI)
             config = await self.load_config()
             token = config.get('access_token')
             if not token:

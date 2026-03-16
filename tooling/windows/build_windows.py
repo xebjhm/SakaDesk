@@ -82,7 +82,7 @@ def main():
     build_installer()
     version = get_version()
     print("--- SUCCESS ---")
-    print(f"Installer created at: {DIST_DIR / f'HakoDesk-{version}-Setup.exe'}")
+    print(f"Installer created at: {DIST_DIR / f'ZakaDesk-{version}-Setup.exe'}")
 
 if __name__ == "__main__":
     main()

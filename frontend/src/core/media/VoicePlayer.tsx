@@ -7,7 +7,7 @@ import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 
-const VOLUME_STORAGE_KEY = 'hakodesk_voice_amp';
+const VOLUME_STORAGE_KEY = 'zakadesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;

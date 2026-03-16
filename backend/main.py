@@ -17,15 +17,15 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 # Determine log directory (inline to avoid importing platform module yet)
 if os.name == 'nt':  # Windows
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    _app_dir = Path(base) / "HakoDesk"
+    _app_dir = Path(base) / "ZakaDesk"
 else:  # Linux/Mac (dev)
-    _app_dir = Path.home() / ".HakoDesk"
+    _app_dir = Path.home() / ".ZakaDesk"
 log_dir = _app_dir / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "debug.log"
 
-# Configure PyHako's unified logging system (structlog-based)
-from pyhako.logging import configure_logging  # noqa: E402
+# Configure pyzaka's unified logging system (structlog-based)
+from pyzaka.logging import configure_logging  # noqa: E402
 configure_logging(
     log_file=log_file,
     log_level=logging.DEBUG,
@@ -101,7 +101,7 @@ async def _deferred_blog_backup():
         if any(manager.is_running(s) for s in manager._tasks):
             return
 
-        from pyhako.credentials import get_token_manager
+        from pyzaka.credentials import get_token_manager
 
         tm = get_token_manager()
         services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
@@ -112,7 +112,7 @@ async def _deferred_blog_backup():
         logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
 
 
-app = FastAPI(title="HakoDesk", lifespan=lifespan)
+app = FastAPI(title="ZakaDesk", lifespan=lifespan)
 
 # CORS configuration
 # In production, frontend is served from same origin (no CORS needed).

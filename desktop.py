@@ -146,7 +146,7 @@ def show_error_dialog(error_msg: str, tb: str):
         
         # Create a custom dialog
         dialog = tk.Toplevel(root)
-        dialog.title("HakoDesk Error")
+        dialog.title("ZakaDesk Error")
         dialog.geometry("600x400")
         
         tk.Label(dialog, text="An error occurred:", font=("Arial", 12, "bold")).pack(pady=10)
@@ -279,7 +279,7 @@ def main() -> None:
         # background_color matches app's bg-[#F0F2F5] to prevent white
         # showing through Windows 11 rounded corners
         window = webview.create_window(
-            title='HakoDesk',
+            title='ZakaDesk',
             url=f'http://{HOST}:{port}',
             width=geom["width"],
             height=geom["height"],

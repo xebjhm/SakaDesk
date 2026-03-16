@@ -7,7 +7,7 @@ These fixtures simulate authenticated state and API responses.
 TEST_AUTH_CONFIG = {
     "access_token": "test_token_for_e2e_testing_only",
     "x-talk-app-id": "test_app_id",
-    "session_dir": "/tmp/hakodesk_test_session",
+    "session_dir": "/tmp/zakadesk_test_session",
 }
 
 # Test member data

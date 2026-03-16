@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build verification script for HakoDesk.
+Build verification script for ZakaDesk.
 
 Verifies that the application can be built and runs correctly on the current platform.
 
@@ -169,7 +169,7 @@ def test_python_imports() -> bool:
     imports_to_test = [
         "fastapi",
         "uvicorn",
-        "pyhako",
+        "pyzaka",
         "keyring",
         "structlog",
         "backend.main",
@@ -318,7 +318,7 @@ def build_windows_installer() -> bool:
             version = tomllib.load(f)["project"]["version"]
     except Exception:
         version = "0.1.0"
-    installer_path = project_root / "dist" / f"HakoDesk-{version}-Setup.exe"
+    installer_path = project_root / "dist" / f"ZakaDesk-{version}-Setup.exe"
     if installer_path.exists():
         size_mb = installer_path.stat().st_size / 1024 / 1024
         print(f"   ✅ Installer created: {installer_path.name} ({size_mb:.1f} MB)")
@@ -334,7 +334,7 @@ def main():
     build_mode = "--build" in args
 
     print("=" * 50)
-    print("  HakoDesk Build Verification")
+    print("  ZakaDesk Build Verification")
     print("=" * 50)
     print(f"  Platform: {platform.system()} {platform.machine()}")
     print(f"  Python:   {sys.version.split()[0]}")

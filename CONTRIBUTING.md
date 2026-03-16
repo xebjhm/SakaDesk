@@ -1,6 +1,6 @@
-# Contributing to HakoDesk
+# Contributing to ZakaDesk
 
-Thank you for your interest in contributing to HakoDesk! This document outlines our development workflow, branching strategy, and contribution guidelines.
+Thank you for your interest in contributing to ZakaDesk! This document outlines our development workflow, branching strategy, and contribution guidelines.
 
 ## Table of Contents
 
@@ -235,7 +235,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ### Scope (Optional)
 
-Common scopes for HakoDesk:
+Common scopes for ZakaDesk:
 - `backend` - Python backend
 - `frontend` - React frontend
 - `auth` - Authentication
@@ -320,10 +320,10 @@ Closes #45"
 
 ### Python (Backend)
 
-- **Formatter**: Follow PEP 8 (use `black` if available)
+- **Formatter/Linter**: `ruff` (format and check)
 - **Type Hints**: Required for all public functions
 - **Type Checker**: `mypy` must pass
-- **Tests**: Maintain >50% coverage
+- **Tests**: Maintain coverage (20% enforced in CI, 50% target)
 - **Docstrings**: Required for public modules, classes, and functions
 
 ### TypeScript (Frontend)
@@ -355,19 +355,117 @@ We follow [Semantic Versioning](https://semver.org/):
 
 ### Release Checklist
 
-- [ ] All features for release are merged to `dev`
-- [ ] Create `release/vX.Y.Z` branch from `dev`
-- [ ] Update version in `pyproject.toml`
-- [ ] Update version in `frontend/package.json`
-- [ ] Move `[Unreleased]` changelog entries to `[X.Y.Z]`
-- [ ] Add release date to changelog
-- [ ] Final testing on release branch
-- [ ] Merge to `main` with `--no-ff`
-- [ ] Tag release: `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
-- [ ] Push tag: `git push origin vX.Y.Z`
-- [ ] Merge back to `dev`
-- [ ] Create GitHub Release with changelog excerpt
-- [ ] Build and upload release artifacts
+> **Rule: Nothing gets pushed until all tests pass locally. No exceptions.**
+
+#### Phase 1: Pre-Release Verification (on `dev`)
+
+Before creating the release branch, verify everything works:
+
+```bash
+# Backend tests
+uv run pytest -v --tb=short --ignore=tests/test_startup.py
+
+# Frontend tests (use UTC for deterministic snapshots)
+cd frontend && TZ=UTC npx vitest run
+
+# TypeScript check
+cd frontend && npx tsc --noEmit
+```
+
+All tests must pass. Fix any failures before proceeding.
+
+#### Phase 2: Version Bump (on `release/vX.Y.Z`)
+
+```bash
+git checkout dev && git pull origin dev
+git checkout -b release/vX.Y.Z
+```
+
+Update version in **2 locations**:
+
+| File | Field |
+|------|-------|
+| `pyproject.toml` | `version = "X.Y.Z"` |
+| `pyproject.toml` | `pyzaka>=X.Y.Z` (dependency — must match published pyzaka) |
+| `frontend/package.json` | `"version": "X.Y.Z"` |
+
+> **Note:** Backend `APP_VERSION` is read automatically from `pyproject.toml` via `backend/version.py`. The About modal fetches it from `/api/version/current` at runtime. No other files need manual version updates.
+
+Update `CHANGELOG.md`:
+- Move `[Unreleased]` entries to `[X.Y.Z] - YYYY-MM-DD`
+- Add comparison link: `[X.Y.Z]: https://github.com/...`
+- Update `[Unreleased]` link to compare from new tag
+
+Commit: `chore(release): bump version to X.Y.Z`
+
+#### Phase 3: Final Test Run (on `release/vX.Y.Z`)
+
+Run the **full** test suite again after version bump:
+
+```bash
+# Backend
+uv run pytest -v --tb=short --ignore=tests/test_startup.py
+
+# Frontend (UTC for CI parity)
+cd frontend && TZ=UTC npx vitest run
+
+# TypeScript
+cd frontend && npx tsc --noEmit
+```
+
+#### Phase 4: Release Order (pyzaka first, then ZakaDesk)
+
+**Important**: pyzaka must be published to PyPI before ZakaDesk CI runs,
+because ZakaDesk CI installs pyzaka from PyPI (`uv sync --no-sources`).
+
+```bash
+# 1. pyzaka: merge, tag, push
+cd pyzaka
+git checkout main && git merge --no-ff release/vX.Y.Z -m "Release vX.Y.Z"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main --tags   # CI publishes to PyPI
+git checkout dev && git merge --no-ff release/vX.Y.Z -m "Merge release back into dev"
+git push origin dev
+
+# 2. Verify pyzaka is on PyPI (wait ~60s)
+uv pip install pyzaka==X.Y.Z --dry-run
+
+# 3. ZakaDesk: merge, tag, push
+cd ZakaDesk
+git checkout main && git merge --no-ff release/vX.Y.Z -m "Release vX.Y.Z"
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main --tags   # CI builds installer + creates GitHub Release
+git checkout dev && git merge --no-ff release/vX.Y.Z -m "Merge release back into dev"
+git push origin dev
+```
+
+#### Phase 5: Verify
+
+- [ ] pyzaka: Check PyPI page shows new version
+- [ ] ZakaDesk: Check GitHub Actions — build should be green
+- [ ] ZakaDesk: Check GitHub Releases page — installer exe attached
+- [ ] Download and smoke-test the installer
+
+#### CI/CD Behavior
+
+| Trigger | What happens |
+|---------|-------------|
+| Push to `main`/`dev` | Build + test (artifact only, no release) |
+| Push tag `v*.*.*` | Build + test + create GitHub Release with installer |
+| Pull request | Build + test |
+
+### Lessons Learned (v0.2.0)
+
+These are common pitfalls to avoid:
+
+1. **Run tests locally before pushing** — CI failures cause noisy fix-push cycles
+2. **Use `TZ=UTC` for frontend tests** — snapshots with timestamps break across timezones
+3. **Mock `AudioContext`** — jsdom doesn't provide Web Audio API
+4. **Mock `useAppStore.getState()`** — if hooks call `getState()` directly, tests need it
+5. **`uv add --dev` in CI is fragile** — use `uv pip install` for build-only tools
+6. **E2E tests need Python/uv** — they must run after Python setup, not after Node setup
+7. **Windows PowerShell env syntax** — `VAR=value cmd` doesn't work, use Playwright's `env` option
+8. **pyzaka must be on PyPI first** — ZakaDesk CI pulls from PyPI, not local path
 
 ---
 
@@ -375,4 +473,4 @@ We follow [Semantic Versioning](https://semver.org/):
 
 If you have questions about contributing, please open an issue or reach out to the maintainers.
 
-Thank you for contributing to HakoDesk!
+Thank you for contributing to ZakaDesk!

@@ -1,5 +1,5 @@
 """
-Notification Settings API for HakoDesk.
+Notification Settings API for ZakaDesk.
 
 Provides endpoints to manage desktop notification preferences.
 """
@@ -47,7 +47,7 @@ async def update_settings(settings: NotificationSettings):
 async def test_notification():
     """Send a test notification to verify the system works."""
     success = send_notification(
-        title="HakoDesk Test",
+        title="ZakaDesk Test",
         message="Notifications are working!",
         timeout=5,
     )

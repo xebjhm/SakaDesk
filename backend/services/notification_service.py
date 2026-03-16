@@ -1,5 +1,5 @@
 """
-Desktop Notification Service for HakoDesk.
+Desktop Notification Service for ZakaDesk.
 
 Provides cross-platform desktop notifications using plyer.
 Notifications are triggered when new messages arrive during sync.
@@ -24,7 +24,7 @@ def is_plyer_available() -> bool:
 def send_notification(
     title: str,
     message: str,
-    app_name: str = "HakoDesk",
+    app_name: str = "ZakaDesk",
     timeout: int = 10,
 ) -> bool:
     """
@@ -87,7 +87,7 @@ def notify_new_messages(member_name: str, count: int) -> bool:
         message = f"{count} new messages from {member_name}"
 
     return send_notification(
-        title="HakoDesk",
+        title="ZakaDesk",
         message=message,
         timeout=5,
     )

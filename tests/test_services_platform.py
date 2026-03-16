@@ -87,10 +87,10 @@ class TestAppDataDirectory:
         result = get_app_data_dir()
         assert isinstance(result, Path)
 
-    def test_app_data_dir_contains_hakodesk(self):
-        """get_app_data_dir() should return a path containing 'HakoDesk'."""
+    def test_app_data_dir_contains_zakadesk(self):
+        """get_app_data_dir() should return a path containing 'ZakaDesk'."""
         result = get_app_data_dir()
-        assert "HakoDesk" in str(result)
+        assert "ZakaDesk" in str(result)
 
     def test_app_data_dir_exists(self):
         """get_app_data_dir() should create the directory if it doesn't exist."""
@@ -99,17 +99,17 @@ class TestAppDataDirectory:
         assert result.is_dir()
 
     @patch("backend.services.platform.is_windows", return_value=False)
-    def test_linux_uses_home_hakodesk(self, mock_is_windows):
-        """Linux should use ~/.HakoDesk directory."""
+    def test_linux_uses_home_zakadesk(self, mock_is_windows):
+        """Linux should use ~/.ZakaDesk directory."""
         result = get_app_data_dir()
-        assert ".HakoDesk" in str(result)
+        assert ".ZakaDesk" in str(result)
 
     @patch("backend.services.platform.is_windows", return_value=True)
     @patch.dict(os.environ, {"LOCALAPPDATA": "/tmp/test_localappdata"})
     def test_windows_uses_localappdata(self, mock_is_windows):
-        """Windows should use LOCALAPPDATA\\HakoDesk."""
+        """Windows should use LOCALAPPDATA\\ZakaDesk."""
         result = get_app_data_dir()
-        assert "HakoDesk" in str(result)
+        assert "ZakaDesk" in str(result)
 
 
 class TestSettingsPath:
@@ -168,13 +168,13 @@ class TestSessionDir:
         assert result.exists()
         assert result.is_dir()
 
-    def test_session_dir_uses_pyhako_auth_dir(self):
-        """get_session_dir() should use pyhako.get_auth_dir() for shared browser session."""
-        from pyhako import get_auth_dir
+    def test_session_dir_uses_pyzaka_auth_dir(self):
+        """get_session_dir() should use pyzaka.get_auth_dir() for shared browser session."""
+        from pyzaka import get_auth_dir
         session = get_session_dir()
-        pyhako_auth = get_auth_dir()
-        assert session == pyhako_auth
-        assert "pyhako" in str(session)
+        pyzaka_auth = get_auth_dir()
+        assert session == pyzaka_auth
+        assert "pyzaka" in str(session)
         assert "auth_data" in str(session)
 
 

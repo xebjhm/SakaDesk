@@ -1,8 +1,8 @@
 """
-Content API for HakoDesk
-Handles reading synced message data from PyHako output directory.
+Content API for ZakaDesk
+Handles reading synced message data from pyzaka output directory.
 
-PyHako directory structure:
+pyzaka directory structure:
   output_dir/
     {service_name}/                    <- e.g., "日向坂46"
       messages/
@@ -154,7 +154,7 @@ async def get_groups():
     """
     List all groups found in the output directory.
 
-    PyHako structure:
+    pyzaka structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
     """
     if is_test_mode():
