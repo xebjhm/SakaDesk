@@ -27,6 +27,16 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const setGoldenFingerActive = useAppStore(s => s.setGoldenFingerActive);
 
+    // Fetch version from backend (single source of truth)
+    const [appVersion, setAppVersion] = useState('');
+    useEffect(() => {
+        if (!isOpen) return;
+        fetch('/api/version/current')
+            .then(r => r.json())
+            .then(data => setAppVersion(data.version ?? ''))
+            .catch(() => {});
+    }, [isOpen]);
+
     // Golden finger: 5 heart clicks in 2 seconds
     const heartClickCount = useRef(0);
     const heartClickTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -126,20 +136,20 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                     <div className="w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
                         <img
                             src="/logo-192.png"
-                            alt="HakoDesk"
+                            alt="ZakaDesk"
                             className="w-full h-full select-none"
                         />
                     </div>
 
                     {/* App name */}
-                    <h1 className="text-xl font-bold text-gray-800 mb-1">HakoDesk</h1>
+                    <h1 className="text-xl font-bold text-gray-800 mb-1">ZakaDesk</h1>
 
                     {/* Version - plain text, secretly clickable */}
                     <p
                         onClick={handleVersionClick}
                         className="text-sm text-gray-400 mb-6 cursor-text select-none"
                     >
-                        {t('about.version', { version: '0.1.0' })}
+                        {appVersion ? t('about.version', { version: appVersion }) : '\u00A0'}
                     </p>
 
                     {/* Description */}
@@ -178,7 +188,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                                 />
                             ))}
                         </button>
-                        <span>{t('about.by')} xtorker</span>
+                        <span>{t('about.by')} xebjhm</span>
                     </div>
 
                     {/* Toast message */}
@@ -192,12 +202,12 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 {/* Footer */}
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
                     <a
-                        href="https://github.com/xtorker/HakoDesk"
+                        href="https://github.com/xebjhm/ZakaDesk"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
                     >
-                        github.com/xtorker/HakoDesk
+                        github.com/xebjhm/ZakaDesk
                     </a>
                 </div>
             </div>

@@ -1,5 +1,5 @@
 """
-Bug Report API for HakoDesk.
+Bug Report API for ZakaDesk.
 Collects diagnostics with smart log filtering and redaction.
 """
 import json
@@ -16,20 +16,19 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.platform import get_logs_dir, get_settings_path
-from pyhako.credentials import get_token_manager
-from pyhako import Group, get_jwt_remaining_seconds
+from pyzaka.credentials import get_token_manager
+from pyzaka import Group, get_jwt_remaining_seconds
+
+from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/api/report", tags=["report"])
 
-# App version
-APP_VERSION = "0.2.0"
-
-# Try to get PyHako version
+# Try to get pyzaka version
 try:
-    import pyhako
-    PYHAKO_VERSION = getattr(pyhako, "__version__", "unknown")
+    import pyzaka
+    PYZAKA_VERSION = getattr(pyzaka, "__version__", "unknown")
 except Exception:
-    PYHAKO_VERSION = "unknown"
+    PYZAKA_VERSION = "unknown"
 
 
 class ReportContext(BaseModel):
@@ -125,7 +124,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
 
 def _get_token_expiry() -> dict:
-    """Get token expiry info without exposing the token. Uses shared pyhako utility."""
+    """Get token expiry info without exposing the token. Uses shared pyzaka utility."""
     try:
         tm = get_token_manager()
 
@@ -258,7 +257,7 @@ PASTE_HERE
 """
 
     params = urlencode({"title": title, "body": body}, quote_via=quote)
-    return f"https://github.com/xtorker/HakoDesk/issues/new?{params}"
+    return f"https://github.com/xebjhm/ZakaDesk/issues/new?{params}"
 
 
 @router.post("", response_model=ReportResponse)
@@ -277,7 +276,7 @@ async def generate_report(context: ReportContext, what_doing: str = "", what_wro
             "os_release": platform.release(),
             "python_version": sys.version.split()[0],
             "app_version": APP_VERSION,
-            "pyhako_version": PYHAKO_VERSION,
+            "pyzaka_version": PYZAKA_VERSION,
         },
         "auth": _get_token_expiry(),
     }
@@ -325,7 +324,7 @@ async def get_diagnostics_only():
             "os_release": platform.release(),
             "python_version": sys.version.split()[0],
             "app_version": APP_VERSION,
-            "pyhako_version": PYHAKO_VERSION,
+            "pyzaka_version": PYZAKA_VERSION,
         },
         "auth": _get_token_expiry(),
         "sync_state": _get_sync_state(),

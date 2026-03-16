@@ -1,5 +1,5 @@
 """
-Version Check API for HakoDesk.
+Version Check API for ZakaDesk.
 Checks GitHub releases for updates with caching to respect rate limits.
 Also provides in-place upgrade functionality for Windows.
 """
@@ -19,15 +19,14 @@ from backend.services.upgrade_service import (
     is_upgrade_supported,
 )
 
+from backend.version import APP_VERSION
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
-# Current app version - should match pyproject.toml
-APP_VERSION = "0.2.0"
-
 # GitHub API settings
-GITHUB_REPO = "xtorker/HakoDesk"
+GITHUB_REPO = "xebjhm/ZakaDesk"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # Cache settings - check at most once per hour
@@ -109,7 +108,7 @@ async def _fetch_latest_release() -> dict:
                 GITHUB_API_URL,
                 headers={
                     "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": f"HakoDesk/{APP_VERSION}"
+                    "User-Agent": f"ZakaDesk/{APP_VERSION}"
                 }
             )
 

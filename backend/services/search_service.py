@@ -593,7 +593,11 @@ class SearchService:
         snippet computation (used by the merged "all" code path to defer
         expensive work until after pagination).
         """
-        conn = self._get_conn()
+        # NOTE: Must use read connection — this method runs in the read executor
+        # thread via _search_sync(). Using _get_conn() (write connection) causes
+        # SQLite thread-safety errors. If adding a third connection or executor,
+        # refactor to pass the connection as a parameter instead.
+        conn = self._get_read_conn()
 
         normalized_query = self._normalize_query(query)
 

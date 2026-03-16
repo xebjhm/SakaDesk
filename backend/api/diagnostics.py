@@ -10,20 +10,19 @@ import time
 from datetime import datetime
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
-from pyhako.credentials import get_token_manager
-from pyhako import Group, get_jwt_remaining_seconds
+from pyzaka.credentials import get_token_manager
+from pyzaka import Group, get_jwt_remaining_seconds
+
+from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
-# App version - ideally from pyproject.toml or __version__
-APP_VERSION = "0.2.0"
-
-# PyHako version - try importlib.metadata first (works with installed packages)
+# pyzaka version - try importlib.metadata first (works with installed packages)
 try:
     from importlib.metadata import version
-    PYHAKO_VERSION = version("pyhako")
+    PYZAKA_VERSION = version("pyzaka")
 except Exception:
-    PYHAKO_VERSION = "unknown"
+    PYZAKA_VERSION = "unknown"
 
 
 class SystemInfo(BaseModel):
@@ -31,7 +30,7 @@ class SystemInfo(BaseModel):
     os_release: str
     python_version: str
     app_version: str
-    pyhako_version: str
+    pyzaka_version: str
     app_data_dir: str
     settings_path: str
     logs_dir: str
@@ -91,7 +90,7 @@ def _format_duration(seconds: int) -> str:
 
 
 def _get_token_expiry_seconds(token: str) -> Optional[int]:
-    """Extract expiry from JWT token. Uses shared pyhako utility."""
+    """Extract expiry from JWT token. Uses shared pyzaka utility."""
     if not token:
         return None
     return cast(Optional[int], get_jwt_remaining_seconds(token))
@@ -176,7 +175,7 @@ async def get_diagnostics():
         os_release=platform.release(),
         python_version=sys.version.split()[0],
         app_version=APP_VERSION,
-        pyhako_version=PYHAKO_VERSION,
+        pyzaka_version=PYZAKA_VERSION,
         app_data_dir=str(get_app_data_dir()),
         settings_path=str(get_settings_path()),
         logs_dir=str(get_logs_dir()),
