@@ -30,3 +30,13 @@ Object.defineProperty(window, 'localStorage', { value: localStorageMock })
 HTMLMediaElement.prototype.load = vi.fn()
 HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined)
 HTMLMediaElement.prototype.pause = vi.fn()
+
+// Mock Web Audio API (not available in jsdom)
+class MockAudioContext {
+  destination = {}
+  state = 'running'
+  createMediaElementSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }))
+  createGain = vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }))
+  close = vi.fn()
+}
+globalThis.AudioContext = MockAudioContext as unknown as typeof AudioContext

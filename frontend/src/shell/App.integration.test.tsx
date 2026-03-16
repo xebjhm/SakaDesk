@@ -20,7 +20,7 @@ describe('App Integration Tests', () => {
     // Mock localStorage: ToS accepted, language set
     vi.mocked(localStorage.getItem).mockImplementation((key: string) => {
       if (key === 'tos_accepted_at') return '2024-01-01T00:00:00Z'
-      if (key === 'hakodesk-language') return 'en'
+      if (key === 'zakadesk-language') return 'en'
       return null
     })
     // Set up Zustand store with a selected service so we skip the landing page
@@ -43,7 +43,7 @@ describe('App Integration Tests', () => {
     renderApp()
 
     await waitFor(() => {
-      expect(screen.getByText(/Welcome to HakoDesk|messages\.welcome/)).toBeInTheDocument()
+      expect(screen.getByText(/Welcome to ZakaDesk|messages\.welcome/)).toBeInTheDocument()
     })
   })
 

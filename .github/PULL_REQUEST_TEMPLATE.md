@@ -36,8 +36,10 @@ Closes #
 <!-- Describe how you tested these changes -->
 
 - [ ] Backend tests pass (`uv run pytest -v`)
-- [ ] Frontend tests pass (`cd frontend && npm test`)
+- [ ] Frontend tests pass (`cd frontend && npm run test:run`)
 - [ ] Type checking passes (`uv run mypy backend/`)
+- [ ] TypeScript checking passes (`cd frontend && npx tsc --noEmit`)
+- [ ] Linting passes (`uv run ruff check .`)
 - [ ] Manual testing performed
 
 **Manual Testing Details:**

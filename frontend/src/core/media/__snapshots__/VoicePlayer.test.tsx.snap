@@ -7,6 +7,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
   tabindex="0"
 >
   <audio
+    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />
@@ -74,9 +75,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
             type="range"
-            value="1"
+            value="0.5"
           />
         </div>
       </div>
@@ -113,43 +114,39 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
          / 
         0:00
       </div>
-      <div
-        class="relative"
+      <button
+        class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+        type="button"
       >
-        <button
-          class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
-          type="button"
+        <svg
+          class="w-4 h-4 text-gray-500"
+          fill="none"
+          height="24"
+          stroke="currentColor"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          viewBox="0 0 24 24"
+          width="24"
+          xmlns="http://www.w3.org/2000/svg"
         >
-          <svg
-            class="w-4 h-4 text-gray-500"
-            fill="none"
-            height="24"
-            stroke="currentColor"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            viewBox="0 0 24 24"
-            width="24"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="1"
-            />
-            <circle
-              cx="12"
-              cy="5"
-              r="1"
-            />
-            <circle
-              cx="12"
-              cy="19"
-              r="1"
-            />
-          </svg>
-        </button>
-      </div>
+          <circle
+            cx="12"
+            cy="12"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="5"
+            r="1"
+          />
+          <circle
+            cx="12"
+            cy="19"
+            r="1"
+          />
+        </svg>
+      </button>
     </div>
   </div>
 </div>
@@ -162,6 +159,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   tabindex="0"
 >
   <audio
+    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />
@@ -202,43 +200,39 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         01:45
       </p>
     </div>
-    <div
-      class="relative"
+    <button
+      class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+      type="button"
     >
-      <button
-        class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-        type="button"
+      <svg
+        class="w-4 h-4 text-gray-500"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <svg
-          class="w-4 h-4 text-gray-500"
-          fill="none"
-          height="24"
-          stroke="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          viewBox="0 0 24 24"
-          width="24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="1"
-          />
-          <circle
-            cx="12"
-            cy="5"
-            r="1"
-          />
-          <circle
-            cx="12"
-            cy="19"
-            r="1"
-          />
-        </svg>
-      </button>
-    </div>
+        <circle
+          cx="12"
+          cy="12"
+          r="1"
+        />
+        <circle
+          cx="12"
+          cy="5"
+          r="1"
+        />
+        <circle
+          cx="12"
+          cy="19"
+          r="1"
+        />
+      </svg>
+    </button>
   </div>
   <div
     class="mb-2"
@@ -318,9 +312,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
             type="range"
-            value="1"
+            value="0.5"
           />
         </div>
       </div>
@@ -425,6 +419,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   tabindex="0"
 >
   <audio
+    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />
@@ -459,43 +454,39 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         2024/06/15 14:30
       </p>
     </div>
-    <div
-      class="relative"
+    <button
+      class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+      type="button"
     >
-      <button
-        class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
-        type="button"
+      <svg
+        class="w-4 h-4 text-gray-500"
+        fill="none"
+        height="24"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        viewBox="0 0 24 24"
+        width="24"
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <svg
-          class="w-4 h-4 text-gray-500"
-          fill="none"
-          height="24"
-          stroke="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-          viewBox="0 0 24 24"
-          width="24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="1"
-          />
-          <circle
-            cx="12"
-            cy="5"
-            r="1"
-          />
-          <circle
-            cx="12"
-            cy="19"
-            r="1"
-          />
-        </svg>
-      </button>
-    </div>
+        <circle
+          cx="12"
+          cy="12"
+          r="1"
+        />
+        <circle
+          cx="12"
+          cy="5"
+          r="1"
+        />
+        <circle
+          cx="12"
+          cy="19"
+          r="1"
+        />
+      </svg>
+    </button>
   </div>
   <div
     class="mb-2"
@@ -575,9 +566,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 100%, rgb(209, 213, 219) 100%);"
+            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
             type="range"
-            value="1"
+            value="0.5"
           />
         </div>
       </div>

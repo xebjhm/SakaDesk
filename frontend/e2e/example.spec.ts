@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('HakoDesk E2E Tests (Test Mode)', () => {
+test.describe('ZakaDesk E2E Tests (Test Mode)', () => {
   test('should show authenticated state in test mode', async ({ page }) => {
     await page.goto('/')
 
