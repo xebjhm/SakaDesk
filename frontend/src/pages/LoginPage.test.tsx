@@ -117,7 +117,7 @@ describe('LoginPage component', () => {
 
   it('should render security notice', () => {
     render(<LoginPage {...defaultProps} />)
-    expect(screen.getByText(/Your credentials are saved locally/i)).toBeInTheDocument()
+    expect(screen.getByText(/Your credentials will be securely stored/i)).toBeInTheDocument()
   })
 
   describe('Snapshots', () => {

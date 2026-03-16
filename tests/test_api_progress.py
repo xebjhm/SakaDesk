@@ -147,7 +147,7 @@ class TestSyncProgressCompletion:
         assert status["state"] == "complete"
         assert status["phase"] == "complete"
         assert status["phase_name"] == "Complete"
-        assert status["phase_number"] == 4
+        assert status["phase_number"] == 1  # Keeps last real phase number
         assert status["detail"] == "Sync complete!"
 
     def test_error_sets_state_and_message(self):

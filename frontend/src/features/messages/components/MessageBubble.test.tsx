@@ -1,8 +1,13 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MessageBubble } from './MessageBubble'
 import type { Message } from '../../../types'
+
+// Fix timezone to UTC for deterministic snapshot output
+const originalTZ = process.env.TZ
+beforeAll(() => { process.env.TZ = 'UTC' })
+afterAll(() => { process.env.TZ = originalTZ })
 
 const createMessage = (overrides: Partial<Message> = {}): Message => ({
   id: 1,

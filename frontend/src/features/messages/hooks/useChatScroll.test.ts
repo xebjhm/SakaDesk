@@ -78,7 +78,7 @@ describe('useChatScroll hook', () => {
 
     renderHook(() => useChatScroll('room-A', messages))
 
-    expect(localStorage.getItem).toHaveBeenCalledWith('hakodesk_scroll_room-A')
+    expect(localStorage.getItem).toHaveBeenCalledWith('zakadesk_scroll_room-A')
   })
 
   it('should save position immediately when savePositionImmediate is called', () => {
@@ -98,7 +98,7 @@ describe('useChatScroll hook', () => {
       result.current.savePositionImmediate()
     })
 
-    expect(localStorage.setItem).toHaveBeenCalledWith('hakodesk_scroll_room-1', '102')
+    expect(localStorage.setItem).toHaveBeenCalledWith('zakadesk_scroll_room-1', '102')
   })
 
   it('should handle empty messages array', () => {
