@@ -71,9 +71,20 @@ export function formatShortDate(date: Date): string {
  * @param timestamp - ISO timestamp string for the prefix
  */
 export function formatDownloadFilename(url: string, timestamp?: string): string {
-    const raw = url.split('/').pop() || 'download';
-    let originalName: string;
-    try { originalName = decodeURIComponent(raw); } catch { originalName = raw; }
+    // For URLs with a `filename` query param (e.g. /api/blogs/image?filename=img_0.jpg),
+    // extract from the param. Otherwise extract from the URL path.
+    let raw: string;
+    const filenameParam = new URL(url, window.location.origin).searchParams.get('filename');
+    if (filenameParam) {
+        raw = filenameParam;
+    } else {
+        const pathOnly = url.split('?')[0];
+        raw = pathOnly.split('/').pop() || 'download';
+    }
+    let decoded: string;
+    try { decoded = decodeURIComponent(raw); } catch { decoded = raw; }
+    // Extract just the filename (split on both / and \ for Windows paths)
+    const originalName = decoded.split(/[/\\]/).pop() || decoded;
     if (!timestamp) return originalName;
 
     const date = new Date(timestamp);
