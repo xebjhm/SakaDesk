@@ -29,6 +29,15 @@ const formatSpeed = (speed: number | null | undefined, unit: string): string => 
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo }) => {
     const { t } = useTranslation();
 
+    const phaseNameMap: Record<string, string> = {
+        scanning: t('sync.phaseScanning'),
+        discovering: t('sync.phaseDiscovering'),
+        syncing: t('sync.phaseSyncing'),
+        downloading: t('sync.phaseDownloading'),
+    };
+
+    const getPhaseName = () => phaseNameMap[syncProgress.phase || ''] || syncProgress.phase_name || t('sync.starting');
+
     const getUnitLabel = () => {
         if (syncProgress.phase_number === 2) return t('sync.members');
         if (syncProgress.phase_number === 3) return t('sync.files');
@@ -69,8 +78,8 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         <div>
                             <h3 className="text-lg font-bold text-white">
                                 {syncProgress.phase === 'complete'
-                                    ? syncProgress.phase_name
-                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })
+                                    ? t('sync.complete')
+                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: getPhaseName() })
                                 }
                             </h3>
                             <p className="text-sm text-white/80">

@@ -117,6 +117,10 @@
   "sync": {
     "phase": "フェーズ {{number}}: {{name}}",
     "starting": "開始中",
+    "phaseScanning": "グループをスキャン中",
+    "phaseDiscovering": "検出中",
+    "phaseSyncing": "メタデータ取得中",
+    "phaseDownloading": "メディアダウンロード中",
     "pleaseWait": "お待ちください...",
     "members": "メンバー",
     "files": "ファイル",
