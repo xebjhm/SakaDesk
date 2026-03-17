@@ -9,6 +9,7 @@ Two-stage sync design (similar to message sync):
 import asyncio
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -778,18 +779,21 @@ class BlogService:
         Sync metadata then download all content + images.
         """
         if not _is_blog_supported(service):
-            logger.info(f"Skipping full blog backup for {service} (not supported)")
+            logger.info("Skipping full blog backup (not supported)", service=service)
             return {}
+        t0 = time.monotonic()
         # Stage 1: Metadata sync
         if progress_callback:
             await progress_callback("Stage 1: Syncing blog metadata...")
         await self.sync_blog_metadata(service, progress_callback, cancel_event=cancel_event)
+        logger.info("blog_stage1_complete", service=service, elapsed=f"{time.monotonic() - t0:.1f}s")
 
         if cancel_event and cancel_event.is_set():
-            logger.info(f"Blog backup cancelled after Stage 1 for {service}")
+            logger.info("Blog backup cancelled after Stage 1", service=service)
             return {"cancelled": True}
 
         # Stage 2: Content download
+        t1 = time.monotonic()
         if progress_callback:
             await progress_callback("Stage 2: Downloading blog content...")
         stats = await self.download_blog_content(
@@ -797,7 +801,13 @@ class BlogService:
             cancel_event=cancel_event,
         )
 
-        logger.info(f"Full blog backup complete: {stats}")
+        logger.info(
+            "blog_backup_complete",
+            service=service,
+            stage2_elapsed=f"{time.monotonic() - t1:.1f}s",
+            total_elapsed=f"{time.monotonic() - t0:.1f}s",
+            **{k: v for k, v in stats.items() if k != "cancelled"},
+        )
         return stats
 
     # =========================================================================
