@@ -4,6 +4,8 @@ import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { useModalClose } from '../common/useModalClose';
 
+declare const __APP_VERSION__: string;
+
 interface AboutModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -27,15 +29,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const setGoldenFingerActive = useAppStore(s => s.setGoldenFingerActive);
 
-    // Fetch version from backend (single source of truth)
-    const [appVersion, setAppVersion] = useState('');
-    useEffect(() => {
-        if (!isOpen) return;
-        fetch('/api/version/current')
-            .then(r => r.json())
-            .then(data => setAppVersion(data.version ?? ''))
-            .catch(() => {});
-    }, [isOpen]);
+    const appVersion = __APP_VERSION__;
 
     // Golden finger: 5 heart clicks in 2 seconds
     const heartClickCount = useRef(0);
