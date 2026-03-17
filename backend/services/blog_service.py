@@ -114,7 +114,9 @@ class BlogService:
         """Get path to cached blog content."""
         base = self.get_blogs_base_path(service)
         folder_name = f"{date}_{blog_id}"
-        return base / member_name / folder_name
+        # Sanitize: strip trailing whitespace that Windows cannot mkdir
+        safe_name = member_name.strip().replace("/", "_")
+        return base / safe_name / folder_name
 
     def get_member_thumbnails_path(self, service: str) -> Path:
         """Get path to member thumbnails directory."""
