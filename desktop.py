@@ -31,6 +31,19 @@ SERVER_STARTUP_TIMEOUT = 10  # seconds
 _uvicorn_server: uvicorn.Server | None = None
 
 
+def _kill_children(children: list) -> None:
+    """Terminate then kill a list of multiprocessing.Process objects."""
+    for child in children:
+        try:
+            if child.is_alive():
+                child.terminate()
+                child.join(timeout=3)
+                if child.is_alive():
+                    child.kill()
+        except Exception:
+            pass
+
+
 def _get_port_file():
     """Path to the persisted port file."""
     return get_app_data_dir() / ".port"
@@ -322,21 +335,31 @@ def main() -> None:
         )
 
         # Cleanup AFTER webview closes but BEFORE process exits.
+
+        # Snapshot child processes NOW, before any shutdown logic can
+        # clear the tracking set.  Python's ProcessPoolExecutor management
+        # thread removes workers from multiprocessing._children when it
+        # joins them during shutdown(). Capturing first ensures we can
+        # still kill them even after the reference is gone.
+        import multiprocessing
+        children_snapshot = list(multiprocessing.active_children())
+
         # Signal uvicorn to shut down gracefully so it releases the socket.
-        # Without this, the daemon thread keeps the port occupied and the
-        # next launch fails with "Server failed to start on port ...".
         if _uvicorn_server is not None:
             _uvicorn_server.should_exit = True
-            # Give uvicorn a moment to close its socket
-            t.join(timeout=3)
+            # Wait for lifespan shutdown (blog backup stop + executor teardown)
+            t.join(timeout=8)
 
-        # Release file handles so the uninstaller can delete them.
+        # Fallback: if lifespan didn't finish in time, force-cleanup from here.
         import logging
         try:
             from backend.services.search_service import shutdown_search_service
             shutdown_search_service()
         except Exception:
             pass
+
+        _kill_children(children_snapshot)
+
         for handler in logging.root.handlers[:]:
             try:
                 handler.flush()
@@ -352,7 +375,7 @@ def main() -> None:
     except Exception as e:
         error_msg = str(e)
         tb = traceback.format_exc()
-        
+
         # Log to file
         try:
             log_file = get_logs_dir() / "crash.log"
@@ -361,10 +384,15 @@ def main() -> None:
             logger.error(f"Crash log saved to {log_file}")
         except Exception:
             pass  # Logging failure shouldn't prevent error dialog
-        
+
         # Show dialog
         show_error_dialog(error_msg, tb)
-        sys.exit(1)
+
+        # Kill child processes even on crash path — sys.exit() does NOT
+        # terminate them, and os._exit() only kills the current process.
+        import multiprocessing
+        _kill_children(multiprocessing.active_children())
+        os._exit(1)
 
 if __name__ == '__main__':
     main()

@@ -64,6 +64,13 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    # Stop any running blog backup tasks so their asyncio Tasks end cleanly
+    from backend.services.blog_service import get_blog_backup_manager
+    try:
+        await get_blog_backup_manager().stop()
+    except Exception:
+        pass
+
     from backend.services.search_service import shutdown_search_service
     shutdown_search_service()
     # Flush and close all log file handlers so the uninstaller can delete the data directory
