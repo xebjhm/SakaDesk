@@ -1087,10 +1087,18 @@ class BlogBackupManager:
         task = self._tasks.get(service)
         return task is not None and not task.done()
 
-    async def start(self, services: list[str]):
-        """Start blog backup for the given services. Cancels any existing tasks first."""
+    async def start(self, services: list[str], *, force: bool = False):
+        """Start blog backup for the given services.
+
+        Skips services that are already running unless *force* is True,
+        in which case existing tasks are cancelled and restarted.
+        """
         async with self._lock:
             for service in services:
+                if not force and self.is_running(service):
+                    logger.debug("Blog backup already running, skipping", service=service)
+                    continue
+
                 await self._cancel_service(service)
 
                 cancel_event = asyncio.Event()
