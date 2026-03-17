@@ -2,6 +2,7 @@ import multiprocessing
 multiprocessing.freeze_support()
 
 import webview
+webview.settings['ALLOW_DOWNLOADS'] = True
 import threading
 import uvicorn
 import sys

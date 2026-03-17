@@ -354,10 +354,14 @@ _PROXY_ALLOWED_HOSTS = {
 
 
 @router.get("/proxy-image")
-async def proxy_blog_image(url: str = Query(...)):
+async def proxy_blog_image(
+    url: str = Query(...),
+    download: Optional[str] = Query(None),
+):
     """Proxy download for external blog images to bypass browser CORS restrictions.
 
     Only allows fetching from known official blog domains for security.
+    Pass ``download=filename`` to force a download (Content-Disposition: attachment).
     """
     from urllib.parse import urlparse
     import httpx
@@ -373,7 +377,10 @@ async def proxy_blog_image(url: str = Query(...)):
 
         content_type = resp.headers.get("content-type", "application/octet-stream")
         from starlette.responses import Response
-        return Response(content=resp.content, media_type=content_type)
+        headers = {}
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="{download}"'
+        return Response(content=resp.content, media_type=content_type, headers=headers)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
 
@@ -383,6 +390,7 @@ async def serve_blog_image(
     service: str = Query(...),
     blog_id: str = Query(...),
     filename: str = Query(...),
+    download: Optional[str] = Query(None),
 ):
     """Serve a locally cached blog image from disk.
 
@@ -428,8 +436,15 @@ async def serve_blog_image(
         ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
         ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
     }
+    headers = {"Cache-Control": "public, max-age=604800"}
+    if download:
+        return FileResponse(
+            image_path,
+            filename=download,
+            media_type="application/octet-stream",
+        )
     return FileResponse(
         image_path,
         media_type=media_types.get(ext, "application/octet-stream"),
-        headers={"Cache-Control": "public, max-age=604800"},
+        headers=headers,
     )
