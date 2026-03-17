@@ -2784,7 +2784,18 @@ def shutdown_search_service() -> None:
         except Exception:
             pass
         try:
-            _search_service._build_executor.shutdown(wait=False)
+            _search_service._build_executor.shutdown(wait=False, cancel_futures=True)
+            # ProcessPoolExecutor spawns real child processes that survive
+            # shutdown(wait=False). Force-terminate them so they don't hold
+            # file handles open (which blocks the uninstaller on Windows).
+            for proc in list(
+                getattr(_search_service._build_executor, "_processes", {}).values()
+            ):
+                if proc.is_alive():
+                    proc.terminate()
+                    proc.join(timeout=3)
+                    if proc.is_alive():
+                        proc.kill()
         except Exception:
             pass
         try:
