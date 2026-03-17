@@ -385,7 +385,8 @@
     "unmute": "Unmute (M)"
   },
   "videoPlayer": {
-    "noAudio": "No audio"
+    "noAudio": "No audio",
+    "loop": "Loop"
   },
   "generations": {
     "1st": "1ST GEN",

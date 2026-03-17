@@ -385,7 +385,8 @@
     "unmute": "ミュート解除 (M)"
   },
   "videoPlayer": {
-    "noAudio": "音声なし"
+    "noAudio": "音声なし",
+    "loop": "リピート"
   },
   "generations": {
     "1st": "一期生",
