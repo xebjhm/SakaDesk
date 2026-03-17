@@ -84,8 +84,8 @@ def _redact_nickname(text: str, nickname: Optional[str]) -> str:
 def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> dict:
     """
     Smart log filtering:
-    1. All ERROR and WARNING lines
-    2. Last 30 lines of any level
+    1. Errors/warnings from dedicated error.log (or fall back to debug.log)
+    2. Last 30 lines of debug.log for recent context
     3. Deduplicated, capped at 150 lines
     """
     errors = []
@@ -95,19 +95,31 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
         return {"errors": [], "recent": ["No log file found"]}
 
     try:
+        # Recent context from debug.log
         with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
             all_lines = f.readlines()
 
-        # Get all errors/warnings
-        for line in all_lines:
-            if " - ERROR - " in line or " - WARNING - " in line:
-                redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
-                errors.append(redacted)
-
-        # Get last 30 lines
         for line in all_lines[-30:]:
             redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
             recent.append(redacted)
+
+        # Errors/warnings: prefer error.log (pre-filtered, smaller)
+        error_log = log_path.parent / "error.log"
+        error_lines = []
+        if error_log.exists():
+            with open(error_log, "r", encoding="utf-8", errors="ignore") as f:
+                error_lines = f.readlines()
+        else:
+            error_lines = all_lines
+
+        def _is_error_or_warning(line: str) -> bool:
+            ll = line.lower()
+            return "[error" in ll or "[warning" in ll
+
+        for line in error_lines:
+            if _is_error_or_warning(line):
+                redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
+                errors.append(redacted)
 
         # Deduplicate (errors that appear in recent don't need to be in both)
         recent_set = set(recent)

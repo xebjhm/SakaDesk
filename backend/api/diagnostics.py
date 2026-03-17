@@ -4,7 +4,6 @@ from pydantic import BaseModel
 from typing import Optional, cast
 import platform
 import sys
-import os
 import json
 import time
 from datetime import datetime
@@ -302,26 +301,33 @@ async def get_diagnostics():
         pass
 
     # Logs with categorization
+    # debug.log has everything (recent context); error.log is pre-filtered
     logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
     try:
         log_dir = get_logs_dir()
         if log_dir.exists():
-            log_files = sorted(log_dir.glob("*.log"), key=os.path.getmtime, reverse=True)
-            if log_files:
-                latest_log = log_files[0]
-                with open(latest_log, 'r', encoding='utf-8', errors='ignore') as f:
+            # Recent logs from debug.log (last 50 lines)
+            debug_log = log_dir / "debug.log"
+            if debug_log.exists():
+                with open(debug_log, 'r', encoding='utf-8', errors='ignore') as f:
                     all_lines = f.readlines()
-
-                    # Recent logs (last 50)
                     logs_summary.recent = [line.strip() for line in all_lines[-50:]]
 
-                    # Errors (all ERROR lines, max 50)
-                    errors = [line.strip() for line in all_lines if ' - ERROR - ' in line]
+            # Errors/warnings from dedicated error.log (smaller, faster)
+            error_log = log_dir / "error.log"
+            if error_log.exists():
+                with open(error_log, 'r', encoding='utf-8', errors='ignore') as f:
+                    err_lines = f.readlines()
+                    errors = [line.strip() for line in err_lines if '[error' in line.lower()]
+                    warnings = [line.strip() for line in err_lines if '[warning' in line.lower()]
                     logs_summary.errors = errors[-50:]
-
-                    # Warnings (all WARNING lines, max 50)
-                    warnings = [line.strip() for line in all_lines if ' - WARNING - ' in line]
                     logs_summary.warnings = warnings[-50:]
+            elif debug_log.exists():
+                # Fallback: extract from debug.log if error.log doesn't exist yet
+                errors = [line.strip() for line in all_lines if '[error' in line.lower()]
+                warnings = [line.strip() for line in all_lines if '[warning' in line.lower()]
+                logs_summary.errors = errors[-50:]
+                logs_summary.warnings = warnings[-50:]
     except Exception as e:
         logs_summary.recent.append(f"Error reading logs: {e}")
 
