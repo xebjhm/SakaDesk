@@ -4,6 +4,7 @@ import json
 import aiohttp
 import aiofiles
 import traceback
+from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -298,33 +299,56 @@ class SyncService:
                 # Global Media Queue
                 media_queue: list[dict[str, Any]] = []
                 
-                # Phase 2: Sync Members (Parallel)
-                # Concurrency is managed by TCPConnector(limit=20) on the session.
+                # Phase 2: Sync Members (Group-Level Timeline Fetch)
+                # Instead of fetching the group timeline once per member (N API calls),
+                # fetch once per group and distribute to all members (1 API call).
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
 
                 if self.manager is None:
                     raise RuntimeError("SyncManager not initialized")
 
-                async def sync_worker(task):
-                    m_name = task['member']['name']
+                # Group tasks by group_id for batch fetching
+                tasks_by_group: dict[int, list[dict[str, Any]]] = defaultdict(list)
+                for task in tasks:
+                    tasks_by_group[task['group']['id']].append(task)
 
-                    async def sub_progress(date_str, count):
-                        progress.set_detail(f"{m_name} ({count:,})")
-
+                async def sync_group(gid: int, group_tasks: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int]]:
                     if self.manager is None:
                         raise RuntimeError("SyncManager not initialized")
-                    count = await self.manager.sync_member(
-                        session,
-                        task['group'],
-                        task['member'],
-                        media_queue,
-                        progress_callback=sub_progress
-                    )
-                    progress.update(1, detail=f"{m_name} ({count:,})", detail_extra="")
-                    return task, count
 
-                # Run parallel sync
-                results = await asyncio.gather(*[sync_worker(t) for t in tasks])
+                    # Find minimum last_id across all members in this group
+                    since_ids = [
+                        self.manager.get_last_id(gid, t['member']['id'])
+                        for t in group_tasks
+                    ]
+                    # If any member has never synced (None), fetch from the beginning
+                    min_since_id = None if any(s is None for s in since_ids) else min(since_ids)
+
+                    # ONE API call for the entire group
+                    all_messages = await self.manager.client.get_messages(
+                        session, gid, since_id=min_since_id
+                    )
+
+                    # Process each member using pre-fetched data (in-memory filtering)
+                    group_results: list[tuple[dict[str, Any], int]] = []
+                    for task in group_tasks:
+                        count = await self.manager.sync_member(
+                            session,
+                            task['group'],
+                            task['member'],
+                            media_queue,
+                            prefetched_messages=all_messages,
+                        )
+                        m_name = task['member']['name']
+                        progress.update(1, detail=f"{m_name} ({count:,})", detail_extra="")
+                        group_results.append((task, count))
+                    return group_results
+
+                # Groups run in parallel (1 API call each instead of N)
+                all_group_results = await asyncio.gather(*[
+                    sync_group(gid, gt) for gid, gt in tasks_by_group.items()
+                ])
+                results = [item for sublist in all_group_results for item in sublist]
                 
                 # Update Metadata from results and track new message counts
                 total_new_messages = 0
@@ -403,23 +427,6 @@ class SyncService:
 
                 else:
                     logger.info("No new media to download.")
-
-                # Phase 4: Build search index
-                # Blog sync is NOT part of the blocking sync flow. Blog metadata
-                # sync and full backup are background tasks triggered separately
-                # after the sync modal closes (see App.tsx handleSetupComplete).
-                progress.start_phase("indexing", "Building search index", 4, 0, "")
-                try:
-                    from backend.services.search_service import get_search_service
-                    search_svc = get_search_service()
-                    progress.set_detail("Indexing messages...")
-                    # index_members already ran after Phase 2 for members with new messages,
-                    # but a full build may be needed on first sync
-                    if search_svc._needs_build() and not search_svc._building:
-                        await search_svc.build_full_index()
-                    logger.info("Search index updated", service=self._service)
-                except Exception as e:
-                    logger.warning("Search index build failed (non-fatal)", error=str(e))
 
                 metadata['last_sync'] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
