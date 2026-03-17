@@ -96,16 +96,13 @@ async def _deferred_blog_backup():
         if settings.get("auto_sync_enabled"):
             return
 
-        manager = get_blog_backup_manager()
-        # Only start if nothing is already running (frontend toggle may have triggered it)
-        if any(manager.is_running(s) for s in manager._tasks):
-            return
-
         from pyzaka.credentials import get_token_manager
 
+        manager = get_blog_backup_manager()
         tm = get_token_manager()
         services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
         if services:
+            # start() skips services already running (e.g. frontend toggle)
             await manager.start(services)
             logger.info("Blog backup auto-resumed on startup", services=services)
     except Exception as e:
