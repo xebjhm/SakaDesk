@@ -385,7 +385,8 @@
     "unmute": "取消静音 (M)"
   },
   "videoPlayer": {
-    "noAudio": "无音频"
+    "noAudio": "无音频",
+    "loop": "循环播放"
   },
   "generations": {
     "1st": "１期生",
