@@ -1,6 +1,7 @@
 
 import asyncio
 import json
+import time
 import aiohttp
 import aiofiles
 import traceback
@@ -233,10 +234,11 @@ class SyncService:
                 # Use service_data_dir so sync_state.json is per-service
                 self.manager = SyncManager(client, self.service_data_dir)
 
+                sync_t0 = time.monotonic()
                 progress.start_phase("scanning", "Scanning Groups", 1, 0, "group")
                 # Always include_inactive=True to get both online and offline members
                 groups = await client.get_groups(session, include_inactive=True)
-                
+
                 if not groups:
                     logger.info("No groups found!")
                     progress.complete()
@@ -295,13 +297,24 @@ class SyncService:
                 
                 total_members = len(tasks)
                 self.output_dir.mkdir(parents=True, exist_ok=True)
-                
+
+                closed_count = sum(1 for g in groups if g.get('state') == 'closed')
+                logger.info(
+                    "phase1_complete",
+                    elapsed=f"{time.monotonic() - sync_t0:.1f}s",
+                    groups=len(groups),
+                    closed_groups=closed_count,
+                    active_groups=len(groups) - closed_count,
+                    total_members=total_members,
+                )
+
                 # Global Media Queue
                 media_queue: list[dict[str, Any]] = []
-                
+
                 # Phase 2: Sync Members (Group-Level Timeline Fetch)
                 # Instead of fetching the group timeline once per member (N API calls),
                 # fetch once per group and distribute to all members (1 API call).
+                phase2_t0 = time.monotonic()
                 progress.start_phase("syncing", "Collecting Metadata", 2, total_members, "members")
 
                 if self.manager is None:
@@ -316,13 +329,25 @@ class SyncService:
                     if self.manager is None:
                         raise RuntimeError("SyncManager not initialized")
 
+                    g_t0 = time.monotonic()
+                    g_name = group_tasks[0]['group'].get('name', '?')
+
                     # Find minimum last_id across all members in this group
                     since_ids = [
                         self.manager.get_last_id(gid, t['member']['id'])
                         for t in group_tasks
                     ]
                     # If any member has never synced (None), fetch from the beginning
-                    min_since_id = None if any(s is None for s in since_ids) else min(since_ids)
+                    none_count = sum(1 for s in since_ids if s is None)
+                    min_since_id = None if none_count else min(since_ids)
+
+                    if none_count:
+                        logger.debug(
+                            "group_full_fetch",
+                            group=g_name, group_id=gid,
+                            members=len(group_tasks),
+                            unsynced_members=none_count,
+                        )
 
                     # ONE API call for the entire group
                     all_messages = await self.manager.client.get_messages(
@@ -342,6 +367,17 @@ class SyncService:
                         m_name = task['member']['name']
                         progress.update(1, detail=f"{m_name} ({count:,})", detail_extra="")
                         group_results.append((task, count))
+
+                    group_new = sum(c for _, c in group_results)
+                    logger.debug(
+                        "group_sync_done",
+                        group=g_name, group_id=gid,
+                        members=len(group_tasks),
+                        fetched_msgs=len(all_messages),
+                        new_msgs=group_new,
+                        min_since_id=min_since_id,
+                        elapsed=f"{time.monotonic() - g_t0:.1f}s",
+                    )
                     return group_results
 
                 # Groups run in parallel (1 API call each instead of N)
@@ -349,7 +385,14 @@ class SyncService:
                     sync_group(gid, gt) for gid, gt in tasks_by_group.items()
                 ])
                 results = [item for sublist in all_group_results for item in sublist]
-                
+
+                logger.info(
+                    "phase2_complete",
+                    elapsed=f"{time.monotonic() - phase2_t0:.1f}s",
+                    groups=len(tasks_by_group),
+                    total_members=total_members,
+                )
+
                 # Update Metadata from results and track new message counts
                 total_new_messages = 0
                 members_with_new = 0
@@ -390,6 +433,7 @@ class SyncService:
                         logger.warning("Search index update failed (non-fatal)", error=str(e))
 
                 # Phase 3: Media Download (Queued)
+                phase3_t0 = time.monotonic()
                 media_count = len(media_queue)
                 progress.start_phase("downloading", "Downloading Media", 3, media_count, "files")
                 
@@ -437,8 +481,22 @@ class SyncService:
                 else:
                     logger.info("No new media to download.")
 
+                logger.info(
+                    "phase3_complete",
+                    elapsed=f"{time.monotonic() - phase3_t0:.1f}s",
+                    media_count=media_count,
+                )
+
                 metadata['last_sync'] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
+
+                logger.info(
+                    "sync_complete",
+                    total_elapsed=f"{time.monotonic() - sync_t0:.1f}s",
+                    new_messages=total_new_messages,
+                    members_with_new=members_with_new,
+                    media_downloaded=media_count,
+                )
 
             # Auto-enqueue blog backup if enabled (runs in background after modal closes)
             try:
