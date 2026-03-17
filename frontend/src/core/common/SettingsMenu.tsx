@@ -4,8 +4,7 @@ import { Settings, Bug, Info, Lightbulb } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 
-// App version (keep in sync with AboutModal)
-const APP_VERSION = '0.1.0';
+declare const __APP_VERSION__: string;
 
 /**
  * Build a GitHub issue URL for feature requests with pre-filled template.
@@ -26,7 +25,7 @@ function buildFeatureRequestUrl(): string {
     // Pre-fill the issue body with a template
     const body = `## Feature Request
 
-**App Version:** ${APP_VERSION}
+**App Version:** ${__APP_VERSION__}
 **OS:** ${os}
 
 ### Description
