@@ -139,11 +139,15 @@ class BlogService:
         return {"members": {}, "last_sync": None, "last_download": None}
 
     async def save_blog_index(self, service: str, index: dict):
-        """Save blog index to disk."""
+        """Save blog index to disk (atomic write via temp file + rename)."""
+        import os
+
         index_path = self.get_blog_index_path(service)
         index_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
+        tmp_path = index_path.with_suffix(".json.tmp")
+        async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
             await f.write(json.dumps(index, ensure_ascii=False, indent=2))
+        os.replace(tmp_path, index_path)
 
     async def get_blog_members(self, service: str) -> Dict[str, str]:
         """Get members who have blogs for a service."""
