@@ -117,6 +117,10 @@
   "sync": {
     "phase": "Phase {{number}}: {{name}}",
     "starting": "Starting",
+    "phaseScanning": "Scanning Groups",
+    "phaseDiscovering": "Discovering",
+    "phaseSyncing": "Collecting Metadata",
+    "phaseDownloading": "Downloading Media",
     "pleaseWait": "Please wait...",
     "members": "members",
     "files": "files",

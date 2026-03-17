@@ -117,6 +117,10 @@
     "sync": {
         "phase": "階段 {{number}}：{{name}}",
         "starting": "開始緊",
+        "phaseScanning": "掃描群組",
+        "phaseDiscovering": "探索緊",
+        "phaseSyncing": "攞緊資料",
+        "phaseDownloading": "下載媒體",
         "pleaseWait": "等陣...",
         "members": "成員",
         "files": "檔案",

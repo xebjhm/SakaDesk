@@ -31,6 +31,15 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
     const isLightHeader = theme.messages.headerStyle === 'light';
     const headerGradient = `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`;
 
+    const phaseNameMap: Record<string, string> = {
+        scanning: t('sync.phaseScanning'),
+        discovering: t('sync.phaseDiscovering'),
+        syncing: t('sync.phaseSyncing'),
+        downloading: t('sync.phaseDownloading'),
+    };
+
+    const getPhaseName = () => phaseNameMap[syncProgress.phase || ''] || syncProgress.phase_name || t('sync.starting');
+
     const getUnitLabel = () => {
         if (syncProgress.phase_number === 2) return t('sync.members');
         if (syncProgress.phase_number === 3) return t('sync.files');
@@ -55,8 +64,8 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                         <div>
                             <h3 className="text-lg font-bold" style={{ color: isLightHeader ? theme.messages.headerTextColor : 'white' }}>
                                 {syncProgress.phase === 'complete'
-                                    ? syncProgress.phase_name
-                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })
+                                    ? t('sync.complete')
+                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: getPhaseName() })
                                 }
                             </h3>
                             <p className="text-sm" style={{ color: isLightHeader ? `${theme.messages.headerTextColor}cc` : 'rgba(255,255,255,0.8)' }}>
