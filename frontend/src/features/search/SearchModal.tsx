@@ -212,17 +212,9 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         }
 
         const data: SearchResponse = await response.json();
-        // If the index is still building, show the building banner
-        // and auto-retry when it finishes (via status polling).
-        if (data.is_building) {
-          setIsIndexBuilding(true);
-          setResults([]);
-          setTotalCount(0);
-          setHasMore(false);
-          setSelectedIndex(-1);
-          return;
-        }
-        setIsIndexBuilding(false);
+        // Show building banner if index is still being built, but
+        // still render whatever partial results the backend returned.
+        setIsIndexBuilding(!!data.is_building);
         setResults(data.results);
         setTotalCount(data.total_count);
         setHasMore(data.has_more);
