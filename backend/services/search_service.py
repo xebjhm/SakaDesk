@@ -2775,6 +2775,7 @@ def shutdown_search_service() -> None:
     """Close DB connections and executors. Called on app shutdown."""
     global _search_service
     if _search_service is not None:
+        logger.info("search_service_shutdown_start")
         try:
             _search_service._write_executor.shutdown(wait=False)
         except Exception:
@@ -2788,13 +2789,16 @@ def shutdown_search_service() -> None:
             # ProcessPoolExecutor spawns real child processes that survive
             # shutdown(wait=False). Force-terminate them so they don't hold
             # file handles open (which blocks the uninstaller on Windows).
-            for proc in list(
+            procs = list(
                 getattr(_search_service._build_executor, "_processes", {}).values()
-            ):
+            )
+            for proc in procs:
                 if proc.is_alive():
+                    logger.debug("terminating_build_worker", pid=proc.pid)
                     proc.terminate()
                     proc.join(timeout=3)
                     if proc.is_alive():
+                        logger.warning("force_killing_build_worker", pid=proc.pid)
                         proc.kill()
         except Exception:
             pass
@@ -2811,3 +2815,4 @@ def shutdown_search_service() -> None:
         except Exception:
             pass
         _search_service = None
+        logger.info("search_service_shutdown_complete")
