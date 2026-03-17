@@ -1630,19 +1630,22 @@ class SearchService:
         count = 0
         batch: list[Tuple[Any, ...]] = []
 
+        # Batch query: get max indexed message_id for all members at once
+        max_indexed_ids: dict[tuple, int] = {}
+        for row in conn.execute(
+            "SELECT group_id, member_id, MAX(message_id) FROM search_messages "
+            "WHERE service = ? GROUP BY group_id, member_id",
+            (service,),
+        ):
+            max_indexed_ids[(row[0], row[1])] = row[2]
+
         for group_dict, member_dict in members:
             gid = group_dict.get("id")
             g_name = group_dict.get("name", "")
             mid = member_dict.get("id")
             m_name = member_dict.get("name", "")
 
-            # Find the highest message_id already indexed for this member
-            row = conn.execute(
-                "SELECT MAX(message_id) FROM search_messages "
-                "WHERE service = ? AND group_id = ? AND member_id = ?",
-                (service, gid, mid),
-            ).fetchone()
-            max_indexed_id = row[0] if row and row[0] is not None else 0
+            max_indexed_id = max_indexed_ids.get((gid, mid), 0)
 
             group_dir_name = f"{gid} {g_name}"
             member_dir_name = f"{mid} {m_name}"
@@ -2137,8 +2140,8 @@ class SearchService:
         # run one now — blocking so the sync flow waits for it to finish.
         # This is expected: on first install the user waits for the full index.
         if self._needs_build() and not self._building:
-            logger.info("No full index found after sync, building now (blocking)")
-            await self.build_full_index()
+            logger.info("No full index found, triggering background build")
+            asyncio.create_task(self.build_full_index())
         return count
 
     async def index_blogs_for_service(self, service: str) -> int:
