@@ -332,27 +332,53 @@ class SyncService:
                     g_t0 = time.monotonic()
                     g_name = group_tasks[0]['group'].get('name', '?')
 
-                    # Find minimum last_id across all members in this group
+                    # Find minimum last_id across all members in this group.
+                    # Only consider SYNCED members; unsynced ones (last_id=None)
+                    # are seeded to the group's current head below so that future
+                    # messages are caught incrementally — without forcing a full
+                    # re-fetch of the entire group history.
                     since_ids = [
                         self.manager.get_last_id(gid, t['member']['id'])
                         for t in group_tasks
                     ]
-                    # If any member has never synced (None), fetch from the beginning
-                    none_count = sum(1 for s in since_ids if s is None)
-                    min_since_id = None if none_count else min(since_ids)
+                    synced_ids = [s for s in since_ids if s is not None]
+                    none_count = len(since_ids) - len(synced_ids)
+
+                    if synced_ids:
+                        min_since_id = min(synced_ids)
+                    else:
+                        # Every member is new — genuine first sync for this group
+                        min_since_id = None
 
                     if none_count:
                         logger.debug(
-                            "group_full_fetch",
+                            "group_has_unsynced_members",
                             group=g_name, group_id=gid,
                             members=len(group_tasks),
                             unsynced_members=none_count,
+                            full_fetch=min_since_id is None,
                         )
 
                     # ONE API call for the entire group
                     all_messages = await self.manager.client.get_messages(
                         session, gid, since_id=min_since_id
                     )
+
+                    # Seed unsynced members: set their last_id to the group's
+                    # current head so the next sync treats them as caught-up.
+                    # If the member sends a message later, incremental sync
+                    # will pick it up naturally.
+                    if none_count and all_messages:
+                        head_id = max(m['id'] for m in all_messages)
+                        for task, sid in zip(group_tasks, since_ids):
+                            if sid is None:
+                                mid = task['member']['id']
+                                self.manager.update_sync_state(gid, mid, head_id, 0)
+                                logger.debug(
+                                    "seeded_unsynced_member",
+                                    group=g_name, member=task['member']['name'],
+                                    member_id=mid, seeded_last_id=head_id,
+                                )
 
                     # Process each member using pre-fetched data (in-memory filtering)
                     group_results: list[tuple[dict[str, Any], int]] = []
