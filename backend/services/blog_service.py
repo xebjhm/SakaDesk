@@ -431,47 +431,63 @@ class BlogService:
                 # Use fast metadata method - parses list pages only
                 # Pass member_name to filter out "featured" blogs from other members
                 # (Sakurazaka list pages sometimes include blogs from other members)
+                new_entries = []
+                needs_detail: list[tuple[int, dict]] = []
+
                 async for entry in scraper.get_blogs_metadata(
                     member_id, since_date=since_date, max_pages=max_pages,
                     member_name=member_name
                 ):
                     if entry.id not in existing_ids:
-                        # Use list page data as defaults
-                        thumbnail = entry.images[0] if entry.images else None
-                        published_at = entry.published_at
-                        title = entry.title
-
-                        # Fetch detail page for authoritative metadata.
+                        blog_data = {
+                            "id": entry.id,
+                            "title": entry.title,
+                            "published_at": entry.published_at,
+                            "url": entry.url,
+                            "thumbnail": entry.images[0] if entry.images else None,
+                        }
+                        new_entries.append(blog_data)
                         # Sakurazaka list pages have incomplete data (no time,
                         # no thumbnails, possibly truncated titles), so the
                         # detail page is the single source of truth.
-                        if not thumbnail:
-                            try:
-                                detail_thumb, detail_date, detail_title = (
-                                    await scraper.get_blog_detail_metadata(entry.id)
-                                )
-                                if detail_thumb:
-                                    thumbnail = detail_thumb
-                                if detail_date:
-                                    published_at = detail_date
-                                if detail_title:
-                                    title = detail_title
-                            except Exception as e:
-                                logger.debug(
-                                    "detail_metadata_failed",
-                                    blog_id=entry.id,
-                                    error=str(e)
-                                )
+                        if not blog_data["thumbnail"]:
+                            needs_detail.append((len(new_entries) - 1, blog_data))
 
-                        index["members"][member_id]["blogs"].append(
-                            {
-                                "id": entry.id,
-                                "title": title,
-                                "published_at": published_at.isoformat(),
-                                "url": entry.url,
-                                "thumbnail": thumbnail,
-                            }
-                        )
+                # Batch detail fetches for entries missing thumbnails
+                if needs_detail:
+                    async def fetch_detail(idx: int, blog: dict):
+                        try:
+                            detail_thumb, detail_date, detail_title = (
+                                await scraper.get_blog_detail_metadata(blog["id"])
+                            )
+                            if detail_thumb:
+                                blog["thumbnail"] = detail_thumb
+                            if detail_date:
+                                blog["published_at"] = detail_date
+                            if detail_title:
+                                blog["title"] = detail_title
+                        except Exception as e:
+                            logger.debug(
+                                "detail_metadata_failed",
+                                blog_id=blog["id"],
+                                error=str(e)
+                            )
+
+                    await asyncio.gather(*[
+                        fetch_detail(idx, blog) for idx, blog in needs_detail
+                    ])
+
+                for blog_data in new_entries:
+                    pub_at = blog_data["published_at"]
+                    index["members"][member_id]["blogs"].append(
+                        {
+                            "id": blog_data["id"],
+                            "title": blog_data["title"],
+                            "published_at": pub_at.isoformat() if hasattr(pub_at, 'isoformat') else pub_at,
+                            "url": blog_data["url"],
+                            "thumbnail": blog_data["thumbnail"],
+                        }
+                    )
 
                 completed += 1
 
