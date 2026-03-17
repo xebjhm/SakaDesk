@@ -490,32 +490,39 @@ class SyncService:
                     auth_dir=auth_dir  # Enable headless refresh fallback
                 )
                 
-                # Just check active groups for now
+                # Group members by group_id for batch fetching
                 server_groups = metadata.get('server_groups', {})
+                members_by_group: dict[int, list[dict]] = defaultdict(list)
                 for key, info in metadata['groups'].items():
                     gid = str(info.get('group_id', ''))
                     sg = server_groups.get(gid, {})
                     if not sg.get('is_active'):
                         continue
-                    
                     last_id = info.get('last_message_id')
                     if last_id:
-                        # Fetch just the latest message to compare
-                        try:
-                            msgs = await client.get_messages(
-                                session, 
-                                info['group_id'], 
-                                since_id=last_id
-                            )
-                            member_msgs = [m for m in msgs if m.get('member_id') == info['member_id']]
+                        members_by_group[info['group_id']].append(info)
+
+                # ONE API call per group instead of per member
+                for gid, member_infos in members_by_group.items():
+                    try:
+                        min_last_id = min(m['last_message_id'] for m in member_infos)
+                        msgs = await client.get_messages(
+                            session, gid, since_id=min_last_id
+                        )
+                        for info in member_infos:
+                            member_msgs = [
+                                m for m in msgs
+                                if m.get('member_id') == info['member_id']
+                                and m['id'] > info['last_message_id']
+                            ]
                             if member_msgs:
                                 new_messages.append({
                                     'member_name': info['member_name'],
                                     'count': len(member_msgs),
                                     'thumbnail': info.get('thumbnail')
                                 })
-                        except Exception as e:
-                            logger.debug("Failed to check messages", member_name=info.get('member_name', 'unknown'), error=str(e))
+                    except Exception as e:
+                        logger.debug("Failed to check messages for group", group_id=gid, error=str(e))
             
             return new_messages
             
