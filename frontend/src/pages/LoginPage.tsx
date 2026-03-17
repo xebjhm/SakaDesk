@@ -20,6 +20,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ service, onLoginSuccess, i
         try {
             const res = await fetch(`/api/auth/login?service=${encodeURIComponent(service)}`, { method: 'POST' });
             if (!res.ok) throw new Error(t('login.loginFailed'));
+
+            // Brief delay before advancing to prevent concurrent browser launches
+            await new Promise(resolve => setTimeout(resolve, 1500));
             onLoginSuccess();
         } catch (err: any) {
             setError(err.message);

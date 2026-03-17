@@ -6,6 +6,7 @@ This ensures consistent behavior across CLI and GUI:
 - Windows: Windows Credential Manager (WCM)
 - Linux: Plaintext fallback (development only)
 """
+import asyncio
 import structlog
 from typing import Any, Dict, Optional, cast
 import aiohttp
@@ -25,6 +26,7 @@ logger = structlog.get_logger(__name__)
 class AuthService:
     def __init__(self):
         self._session_dir = get_session_dir()
+        self._browser_lock = asyncio.Lock()
 
     def _get_group(self, service: str) -> Group:
         """Convert service string to Group enum."""
@@ -153,24 +155,28 @@ class AuthService:
         validate_service(service)
         group = self._get_group(service)
 
-        try:
-            logger.info("Starting browser login", service=service, session_dir=str(self._session_dir))
+        if self._browser_lock.locked():
+            logger.warning("Browser login already in progress, queuing", service=service)
 
-            creds = await BrowserAuth.login(
-                group=group,
-                headless=False,
-                user_data_dir=str(self._session_dir),
-                channel="chrome"
-            )
+        async with self._browser_lock:
+            try:
+                logger.info("Starting browser login", service=service, session_dir=str(self._session_dir))
 
-            if creds:
-                self._save_credentials(service, creds)
-                logger.info("Login successful, credentials saved to TokenManager", service=service)
-                return True
+                creds = await BrowserAuth.login(
+                    group=group,
+                    headless=False,
+                    user_data_dir=str(self._session_dir),
+                    channel="chrome"
+                )
 
-        except Exception as e:
-            logger.error("Login error", service=service, error=str(e))
-            return False
+                if creds:
+                    self._save_credentials(service, creds)
+                    logger.info("Login successful, credentials saved to TokenManager", service=service)
+                    return True
+
+            except Exception as e:
+                logger.error("Login error", service=service, error=str(e))
+                return False
 
         return False
 
