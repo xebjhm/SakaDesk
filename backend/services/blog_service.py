@@ -985,11 +985,15 @@ class BlogService:
         if not base_path.exists():
             return 0
 
-        total = 0
-        for file in base_path.rglob("*"):
-            if file.is_file():
-                total += file.stat().st_size
-        return total
+        def _walk() -> int:
+            total = 0
+            for file in base_path.rglob("*"):
+                if file.is_file():
+                    total += file.stat().st_size
+            return total
+
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _walk)
 
     async def get_cache_stats(self, service: str) -> dict:
         """Get detailed cache statistics."""
@@ -1005,8 +1009,9 @@ class BlogService:
             else:
                 removed_count += sum(1 for b in blogs if b.get("removed"))
 
-        # Count cached blogs (skip removed members/blogs entirely)
-        cached_count = 0
+        # Count cached blogs in executor to avoid blocking the event loop
+        # (synchronous .exists() for potentially thousands of blog paths)
+        blog_paths: list[Path] = []
         for member_id, member_data in index.get("members", {}).items():
             if member_data.get("blogs_removed"):
                 continue
@@ -1018,8 +1023,13 @@ class BlogService:
                 cache_path = self.get_blog_cache_path(
                     service, member_name, blog["id"], date
                 )
-                if (cache_path / "blog.json").exists():
-                    cached_count += 1
+                blog_paths.append(cache_path / "blog.json")
+
+        def _count_cached() -> int:
+            return sum(1 for p in blog_paths if p.exists())
+
+        loop = asyncio.get_running_loop()
+        cached_count = await loop.run_in_executor(None, _count_cached)
 
         available_blogs = total_blogs - removed_count
         return {
