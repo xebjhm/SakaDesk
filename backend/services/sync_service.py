@@ -121,7 +121,7 @@ class SyncService:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
             app_settings = await self.load_app_settings()
             if not app_settings.get("is_configured"):
-                logger.warning("Sync skipped - configuration incomplete", is_configured=app_settings.get("is_configured", False), has_output_dir=bool(app_settings.get("output_dir")))
+                logger.warning("Sync skipped - configuration incomplete", is_configured=app_settings.get("is_configured"), has_output_dir=bool(app_settings.get("output_dir")))
                 progress.error("Output folder not configured")
                 return
 
@@ -340,7 +340,10 @@ class SyncService:
 
                     # Find the oldest timestamp cursor across all members.
                     # Only consider SYNCED members; unsynced ones (last_ts=None)
-                    # are seeded to the group's current head below.
+                    # will naturally get all prefetched messages in sync_member
+                    # (its filter passes everything when last_ts is None), and
+                    # sync_member's own update_sync_state records the correct
+                    # cursor after processing.
                     since_timestamps = [
                         self.manager.get_last_ts(gid, t['member']['id'])
                         for t in group_tasks
@@ -374,26 +377,6 @@ class SyncService:
                     all_messages = await self.manager.client.get_messages(
                         session, gid, since_ts=min_since_ts
                     )
-
-                    # Seed unsynced members: set their cursor to the group's
-                    # current head so the next sync treats them as caught-up.
-                    if none_count and all_messages:
-                        head_id = max(m['id'] for m in all_messages)
-                        head_ts = max(
-                            (m.get('published_at') or '' for m in all_messages),
-                            default=None,
-                        )
-                        for task, ts in zip(group_tasks, since_timestamps):
-                            if ts is None:
-                                mid = task['member']['id']
-                                self.manager.update_sync_state(
-                                    gid, mid, head_id, 0, last_ts=head_ts,
-                                )
-                                logger.debug(
-                                    "seeded_unsynced_member",
-                                    group=g_name, member=task['member']['name'],
-                                    member_id=mid, seeded_last_ts=head_ts,
-                                )
 
                     # Process each member using pre-fetched data (in-memory filtering)
                     group_results: list[tuple[dict[str, Any], int]] = []
