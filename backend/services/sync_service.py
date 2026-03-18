@@ -607,23 +607,40 @@ class SyncService:
                     sg = server_groups.get(gid, {})
                     if not sg.get('is_active'):
                         continue
-                    last_id = info.get('last_message_id')
-                    if last_id:
+                    # Accept members with either timestamp or ID cursor
+                    if info.get('last_sync_ts') or info.get('last_message_id'):
                         members_by_group[info['group_id']].append(info)
 
                 # ONE API call per group instead of per member
                 for gid, member_infos in members_by_group.items():
                     try:
-                        min_last_id = min(m['last_message_id'] for m in member_infos)
-                        msgs = await client.get_messages(
-                            session, gid, since_id=min_last_id
-                        )
+                        # Prefer timestamp cursor; fall back to ID for old state
+                        ts_list = [m['last_sync_ts'] for m in member_infos if m.get('last_sync_ts')]
+                        if ts_list:
+                            min_ts = min(ts_list)
+                            msgs = await client.get_messages(
+                                session, gid, since_ts=min_ts
+                            )
+                        else:
+                            min_last_id = min(m['last_message_id'] for m in member_infos)
+                            msgs = await client.get_messages(
+                                session, gid, since_id=min_last_id
+                            )
+
                         for info in member_infos:
-                            member_msgs = [
-                                m for m in msgs
-                                if m.get('member_id') == info['member_id']
-                                and m['id'] > info['last_message_id']
-                            ]
+                            member_ts = info.get('last_sync_ts')
+                            if member_ts:
+                                member_msgs = [
+                                    m for m in msgs
+                                    if m.get('member_id') == info['member_id']
+                                    and (m.get('published_at') or '') > member_ts
+                                ]
+                            else:
+                                member_msgs = [
+                                    m for m in msgs
+                                    if m.get('member_id') == info['member_id']
+                                    and m['id'] > (info.get('last_message_id') or 0)
+                                ]
                             if member_msgs:
                                 new_messages.append({
                                     'member_name': info['member_name'],
