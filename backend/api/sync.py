@@ -125,8 +125,8 @@ async def get_next_interval(
     from backend.services.settings_store import load_config
 
     settings = await load_config()
-    base = settings.get("sync_interval_minutes", 10)
-    adaptive = settings.get("adaptive_sync_enabled", False)
+    base = settings["sync_interval_minutes"]
+    adaptive = settings["adaptive_sync_enabled"]
 
     interval = calculate_next_sync_interval(
         base_interval_minutes=base,

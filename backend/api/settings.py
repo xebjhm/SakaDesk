@@ -93,18 +93,17 @@ async def get_settings():
     output_dir = config.get("output_dir", get_default_output_dir())
 
     # Sync notification service state with persisted setting
-    notifications_enabled = config.get("notifications_enabled", True)
-    set_notifications_enabled(notifications_enabled)
+    set_notifications_enabled(config["notifications_enabled"])
 
     return SettingsResponse(
         output_dir=output_dir,
-        auto_sync_enabled=config.get("auto_sync_enabled", True),
-        sync_interval_minutes=config.get("sync_interval_minutes", 1),
-        adaptive_sync_enabled=config.get("adaptive_sync_enabled", True),
-        is_configured=config.get("is_configured", False),
+        auto_sync_enabled=config["auto_sync_enabled"],
+        sync_interval_minutes=config["sync_interval_minutes"],
+        adaptive_sync_enabled=config["adaptive_sync_enabled"],
+        is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
-        notifications_enabled=notifications_enabled,
-        blogs_full_backup=config.get("blogs_full_backup", False),
+        notifications_enabled=config["notifications_enabled"],
+        blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
     )
 
@@ -131,13 +130,13 @@ async def update_settings(update: SettingsUpdate):
 
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
-        auto_sync_enabled=config.get("auto_sync_enabled", True),
-        sync_interval_minutes=config.get("sync_interval_minutes", 1),
-        adaptive_sync_enabled=config.get("adaptive_sync_enabled", True),
-        is_configured=config.get("is_configured", False),
+        auto_sync_enabled=config["auto_sync_enabled"],
+        sync_interval_minutes=config["sync_interval_minutes"],
+        adaptive_sync_enabled=config["adaptive_sync_enabled"],
+        is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
-        notifications_enabled=config.get("notifications_enabled", True),
-        blogs_full_backup=config.get("blogs_full_backup", False),
+        notifications_enabled=config["notifications_enabled"],
+        blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
     )
 

@@ -19,12 +19,23 @@ logger = structlog.get_logger(__name__)
 
 _lock = asyncio.Lock()
 
+# Single source of truth for settings defaults.
+# All callers of load_config() get these automatically.
+_SETTINGS_DEFAULTS: dict[str, Any] = {
+    "auto_sync_enabled": True,
+    "sync_interval_minutes": 1,
+    "adaptive_sync_enabled": True,
+    "is_configured": False,
+    "notifications_enabled": True,
+    "blogs_full_backup": False,
+}
+
 
 def _read_file(path: Path) -> dict:
     if path.exists():
         with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+            return {**_SETTINGS_DEFAULTS, **json.load(f)}
+    return dict(_SETTINGS_DEFAULTS)
 
 
 def _write_file(path: Path, data: dict) -> None:
