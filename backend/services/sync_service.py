@@ -633,7 +633,7 @@ class SyncService:
                                 member_msgs = [
                                     m for m in msgs
                                     if m.get('member_id') == info['member_id']
-                                    and (m.get('published_at') or '') > member_ts
+                                    and (m.get('published_at') or '') >= member_ts
                                 ]
                             else:
                                 member_msgs = [
