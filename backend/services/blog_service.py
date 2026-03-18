@@ -610,6 +610,12 @@ class BlogService:
         completed = 0
 
         connector = aiohttp.TCPConnector(limit=10)
+        # Bound total in-flight image downloads across all blogs.
+        # Without this, asyncio.gather queues ALL images at once; requests
+        # waiting in the connector queue still count against aiohttp's
+        # total timeout (default 300s), causing mass TimeoutError on
+        # slower servers (e.g. sakurazaka46.com at ~50 req/s).
+        image_sem = asyncio.Semaphore(50)
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
 
@@ -625,7 +631,7 @@ class BlogService:
 
                 try:
                     await self._download_single_blog(
-                        session, scraper, item, download_images
+                        session, scraper, item, download_images, image_sem
                     )
                     stats["downloaded"] += 1
                 except BlogGoneError:
@@ -634,7 +640,10 @@ class BlogService:
                     stats["removed"] += 1
                 except Exception as e:
                     logger.warning(
-                        f"Failed to download blog {item.blog_id}: {e}"
+                        "Failed to download blog",
+                        blog_id=item.blog_id,
+                        error_type=type(e).__name__,
+                        error=str(e),
                     )
                     stats["failed"] += 1
 
@@ -696,8 +705,14 @@ class BlogService:
         scraper,
         item: BlogDownloadItem,
         download_images: bool,
+        image_sem: Optional[asyncio.Semaphore] = None,
     ):
-        """Download a single blog's content and optionally images."""
+        """Download a single blog's content and optionally images.
+
+        Args:
+            image_sem: Semaphore bounding concurrent image downloads across
+                       the entire batch.  None for single-blog on-demand fetches.
+        """
         # Pass member_id for faster lookups (important for Nogizaka old blogs)
         entry = await scraper.get_blog_detail(item.blog_id, member_id=item.member_id)
 
@@ -708,7 +723,7 @@ class BlogService:
         images_result = []
         if download_images and entry.images:
             images_result = await self._download_images(
-                session, entry.images, item.cache_path / "images"
+                session, entry.images, item.cache_path / "images", image_sem
             )
         else:
             images_result = [
@@ -731,40 +746,59 @@ class BlogService:
 
     async def _download_images(
         self,
-        session,
+        session: aiohttp.ClientSession,
         image_urls: list[str],
         images_dir: Path,
+        semaphore: Optional[asyncio.Semaphore] = None,
     ) -> list[dict]:
-        """Download images concurrently.
+        """Download images concurrently with bounded concurrency.
 
-        Concurrency is managed by the TCPConnector limit on the session.
+        Args:
+            semaphore: Limits total in-flight image downloads across all
+                       blogs in a batch.  When provided, ``session.get``
+                       is only called after acquiring the semaphore, so
+                       the aiohttp timeout clock does not start while
+                       waiting.  None for unbounded (single-blog fetches).
         """
         results: list[dict] = [None] * len(image_urls)  # type: ignore
 
         async def download_image(idx: int, img_url: str):
-            try:
-                ext = Path(img_url).suffix or ".jpg"
-                # Clean extension (remove query params)
-                if "?" in ext:
-                    ext = ext.split("?")[0]
-                local_name = f"img_{idx}{ext}"
-                local_path = images_dir / local_name
+            ext = Path(img_url).suffix or ".jpg"
+            # Clean extension (remove query params)
+            if "?" in ext:
+                ext = ext.split("?")[0]
+            local_name = f"img_{idx}{ext}"
+            local_path = images_dir / local_name
 
-                async with session.get(img_url) as resp:
-                    if resp.status == 200:
-                        images_dir.mkdir(parents=True, exist_ok=True)
-                        content = await resp.read()
-                        async with aiofiles.open(local_path, "wb") as f:
-                            await f.write(content)
-                        results[idx] = {
-                            "original_url": img_url,
-                            "local_path": f"./images/{local_name}",
-                        }
-                    else:
-                        results[idx] = {"original_url": img_url, "local_path": None}
+            try:
+                if semaphore:
+                    await semaphore.acquire()
+                try:
+                    async with session.get(img_url) as resp:
+                        if resp.status == 200:
+                            images_dir.mkdir(parents=True, exist_ok=True)
+                            content = await resp.read()
+                            async with aiofiles.open(local_path, "wb") as f:
+                                await f.write(content)
+                            results[idx] = {
+                                "original_url": img_url,
+                                "local_path": f"./images/{local_name}",
+                            }
+                            return
+                        else:
+                            logger.debug("Image download non-200", url=img_url, status=resp.status)
+                finally:
+                    if semaphore:
+                        semaphore.release()
             except Exception as e:
-                logger.warning(f"Failed to download image {img_url}: {e}")
-                results[idx] = {"original_url": img_url, "local_path": None}
+                logger.warning(
+                    "Failed to download image",
+                    url=img_url,
+                    error_type=type(e).__name__,
+                    error=str(e) or "(no message)",
+                )
+
+            results[idx] = {"original_url": img_url, "local_path": None}
 
         await asyncio.gather(
             *[download_image(i, url) for i, url in enumerate(image_urls)]
@@ -979,7 +1013,7 @@ class BlogService:
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
             await self._download_single_blog(
-                session, scraper, item, download_images=False,
+                session, scraper, item, download_images=True,
             )
 
         # Read back the cached content we just wrote
