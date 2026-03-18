@@ -93,12 +93,16 @@ class SyncService:
         return {"groups": {}, "last_sync": None}
     
     async def save_metadata(self, metadata):
-        """Save sync metadata to the per-service JSON file."""
+        """Save sync metadata to the per-service JSON file (atomic write)."""
+        import os
+
         if self.metadata_file is None:
             raise RuntimeError("save_metadata called before start_sync")
         self.service_data_dir.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(self.metadata_file, 'w', encoding='utf-8') as f:
+        tmp = self.metadata_file.with_suffix(".json.tmp")
+        async with aiofiles.open(tmp, 'w', encoding='utf-8') as f:
             await f.write(json.dumps(metadata, ensure_ascii=False, indent=2))
+        os.replace(tmp, self.metadata_file)
 
     async def start_sync(self, include_inactive: bool = True, force_resync: bool = False, initial_limit: int = DEFAULT_INITIAL_MESSAGE_LIMIT):
         """
