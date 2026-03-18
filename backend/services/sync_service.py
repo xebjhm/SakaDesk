@@ -7,7 +7,7 @@ import aiofiles
 import traceback
 from collections import defaultdict
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
 from pyzaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pyzaka.credentials import get_token_manager
@@ -329,6 +329,8 @@ class SyncService:
                 for task in tasks:
                     tasks_by_group[task['group']['id']].append(task)
 
+                SYNC_OVERLAP_SECONDS = 300  # 5-minute overlap window
+
                 async def sync_group(gid: int, group_tasks: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int]]:
                     if self.manager is None:
                         raise RuntimeError("SyncManager not initialized")
@@ -336,23 +338,28 @@ class SyncService:
                     g_t0 = time.monotonic()
                     g_name = group_tasks[0]['group'].get('name', '?')
 
-                    # Find minimum last_id across all members in this group.
-                    # Only consider SYNCED members; unsynced ones (last_id=None)
-                    # are seeded to the group's current head below so that future
-                    # messages are caught incrementally — without forcing a full
-                    # re-fetch of the entire group history.
-                    since_ids = [
-                        self.manager.get_last_id(gid, t['member']['id'])
+                    # Find the oldest timestamp cursor across all members.
+                    # Only consider SYNCED members; unsynced ones (last_ts=None)
+                    # are seeded to the group's current head below.
+                    since_timestamps = [
+                        self.manager.get_last_ts(gid, t['member']['id'])
                         for t in group_tasks
                     ]
-                    synced_ids = [s for s in since_ids if s is not None]
-                    none_count = len(since_ids) - len(synced_ids)
+                    synced_ts = [s for s in since_timestamps if s is not None]
+                    none_count = len(since_timestamps) - len(synced_ts)
 
-                    if synced_ids:
-                        min_since_id = min(synced_ids)
+                    if synced_ts:
+                        min_ts = min(synced_ts)
+                        # Subtract overlap to catch boundary messages
+                        try:
+                            dt = datetime.fromisoformat(min_ts.replace('Z', '+00:00'))
+                            overlap_dt = dt - timedelta(seconds=SYNC_OVERLAP_SECONDS)
+                            min_since_ts: str | None = overlap_dt.isoformat().replace('+00:00', 'Z')
+                        except (ValueError, TypeError):
+                            min_since_ts = min_ts
                     else:
-                        # Every member is new — genuine first sync for this group
-                        min_since_id = None
+                        # Every member is new — genuine first sync
+                        min_since_ts = None
 
                     if none_count:
                         logger.debug(
@@ -360,28 +367,32 @@ class SyncService:
                             group=g_name, group_id=gid,
                             members=len(group_tasks),
                             unsynced_members=none_count,
-                            full_fetch=min_since_id is None,
+                            full_fetch=min_since_ts is None,
                         )
 
                     # ONE API call for the entire group
                     all_messages = await self.manager.client.get_messages(
-                        session, gid, since_id=min_since_id
+                        session, gid, since_ts=min_since_ts
                     )
 
-                    # Seed unsynced members: set their last_id to the group's
+                    # Seed unsynced members: set their cursor to the group's
                     # current head so the next sync treats them as caught-up.
-                    # If the member sends a message later, incremental sync
-                    # will pick it up naturally.
                     if none_count and all_messages:
                         head_id = max(m['id'] for m in all_messages)
-                        for task, sid in zip(group_tasks, since_ids):
-                            if sid is None:
+                        head_ts = max(
+                            (m.get('published_at') or '' for m in all_messages),
+                            default=None,
+                        )
+                        for task, ts in zip(group_tasks, since_timestamps):
+                            if ts is None:
                                 mid = task['member']['id']
-                                self.manager.update_sync_state(gid, mid, head_id, 0)
+                                self.manager.update_sync_state(
+                                    gid, mid, head_id, 0, last_ts=head_ts,
+                                )
                                 logger.debug(
                                     "seeded_unsynced_member",
                                     group=g_name, member=task['member']['name'],
-                                    member_id=mid, seeded_last_id=head_id,
+                                    member_id=mid, seeded_last_ts=head_ts,
                                 )
 
                     # Process each member using pre-fetched data (in-memory filtering)
@@ -405,7 +416,7 @@ class SyncService:
                         members=len(group_tasks),
                         fetched_msgs=len(all_messages),
                         new_msgs=group_new,
-                        min_since_id=min_since_id,
+                        min_since_ts=min_since_ts,
                         elapsed=f"{time.monotonic() - g_t0:.1f}s",
                     )
                     return group_results
@@ -432,9 +443,11 @@ class SyncService:
                         members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(task['group']['id'], task['member']['id'])
-                        if last_id:
+                        last_ts = self.manager.get_last_ts(task['group']['id'], task['member']['id'])
+                        if last_id or last_ts:
                             if key in metadata['groups']:
                                 metadata['groups'][key]['last_message_id'] = last_id
+                                metadata['groups'][key]['last_sync_ts'] = last_ts
 
                 # Send notification for new messages (after Phase 2, before media download)
                 if total_new_messages > 0:
