@@ -9,6 +9,7 @@ Two-stage sync design (similar to message sync):
 import asyncio
 import hashlib
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -371,7 +372,7 @@ class BlogService:
     # Stage 1: Metadata sync (fast)
     # =========================================================================
 
-    async def sync_blog_metadata(self, service: str, progress_callback=None, cancel_event: Optional[asyncio.Event] = None) -> dict:
+    async def sync_blog_metadata(self, service: str, progress_callback=None, cancel_event: Optional[threading.Event] = None) -> dict:
         """
         Stage 1: Sync blog metadata (titles, dates, URLs) for all members.
 
@@ -573,7 +574,7 @@ class BlogService:
         service: str,
         download_images: bool = True,
         progress_callback=None,
-        cancel_event: Optional[asyncio.Event] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> dict:
         """
         Stage 2: Download full blog content and optionally images.
@@ -770,26 +771,26 @@ class BlogService:
             local_name = f"img_{idx}{ext}"
             local_path = images_dir / local_name
 
+            async def _fetch_image():
+                async with session.get(img_url) as resp:
+                    if resp.status == 200:
+                        images_dir.mkdir(parents=True, exist_ok=True)
+                        content = await resp.read()
+                        async with aiofiles.open(local_path, "wb") as f:
+                            await f.write(content)
+                        results[idx] = {
+                            "original_url": img_url,
+                            "local_path": f"./images/{local_name}",
+                        }
+                    else:
+                        logger.debug("Image download non-200", url=img_url, status=resp.status)
+
             try:
                 if semaphore:
-                    await semaphore.acquire()
-                try:
-                    async with session.get(img_url) as resp:
-                        if resp.status == 200:
-                            images_dir.mkdir(parents=True, exist_ok=True)
-                            content = await resp.read()
-                            async with aiofiles.open(local_path, "wb") as f:
-                                await f.write(content)
-                            results[idx] = {
-                                "original_url": img_url,
-                                "local_path": f"./images/{local_name}",
-                            }
-                            return
-                        else:
-                            logger.debug("Image download non-200", url=img_url, status=resp.status)
-                finally:
-                    if semaphore:
-                        semaphore.release()
+                    async with semaphore:
+                        await _fetch_image()
+                else:
+                    await _fetch_image()
             except Exception as e:
                 logger.warning(
                     "Failed to download image",
@@ -809,7 +810,7 @@ class BlogService:
     # Combined sync (for convenience)
     # =========================================================================
 
-    async def sync_full_backup(self, service: str, progress_callback=None, cancel_event: Optional[asyncio.Event] = None):
+    async def sync_full_backup(self, service: str, progress_callback=None, cancel_event: Optional[threading.Event] = None):
         """
         Full backup mode: Stage 1 + Stage 2.
         Sync metadata then download all content + images.
@@ -1118,71 +1119,128 @@ class BlogService:
 # =============================================================================
 
 class BlogBackupManager:
-    """Singleton manager for blog backup background tasks.
+    """Manages blog backup tasks on a dedicated background thread.
 
-    Provides fine-grained cancellation via asyncio.Event per service.
-    Coordinates between the settings toggle and Phase 5 of sync.
+    All backup coroutines run on a separate asyncio event loop so they
+    cannot starve the main uvicorn event loop (UI responsiveness).
+
+    Public methods (start, stop, is_running, shutdown) are synchronous
+    and thread-safe — safe to call from any thread or async context.
     """
 
     def __init__(self):
-        self._tasks: dict[str, asyncio.Task] = {}
-        self._cancel_events: dict[str, asyncio.Event] = {}
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
+        self._cancel_events: dict[str, threading.Event] = {}
+        self._running: set[str] = set()
+        self._thread: threading.Thread | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
-    def is_running(self, service: str) -> bool:
-        task = self._tasks.get(service)
-        return task is not None and not task.done()
+    def _ensure_thread(self) -> asyncio.AbstractEventLoop:
+        """Start the background thread and event loop if not already running.
 
-    async def start(self, services: list[str], *, force: bool = False):
+        Must be called with self._lock held.
+        """
+        if self._loop is not None and self._thread is not None and self._thread.is_alive():
+            return self._loop
+
+        ready = threading.Event()
+        loop_holder: list[asyncio.AbstractEventLoop] = []
+
+        def _run():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop_holder.append(loop)
+            ready.set()
+            loop.run_forever()
+            # After run_forever returns (shutdown), clean up pending tasks
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
+
+        self._thread = threading.Thread(target=_run, name="blog-backup", daemon=True)
+        self._thread.start()
+        ready.wait(timeout=5)
+        self._loop = loop_holder[0]
+        return self._loop
+
+    def start(self, services: list[str], *, force: bool = False) -> None:
         """Start blog backup for the given services.
 
-        Skips services that are already running unless *force* is True,
-        in which case existing tasks are cancelled and restarted.
+        Synchronous and thread-safe. Skips services already running
+        unless *force* is True.
         """
-        async with self._lock:
+        with self._lock:
+            loop = self._ensure_thread()
             for service in services:
-                if not force and self.is_running(service):
+                if not force and service in self._running:
                     logger.debug("Blog backup already running, skipping", service=service)
                     continue
 
-                await self._cancel_service(service)
+                # Cancel any previous run for this service
+                self._signal_cancel(service)
 
-                cancel_event = asyncio.Event()
+                cancel_event = threading.Event()
                 self._cancel_events[service] = cancel_event
+                self._running.add(service)
 
-                task = asyncio.create_task(
-                    self._run_backup(service, cancel_event)
+                asyncio.run_coroutine_threadsafe(
+                    self._run_backup(service, cancel_event),
+                    loop,
                 )
-                self._tasks[service] = task
 
-    async def stop(self, services: list[str] | None = None):
-        """Stop blog backup for the given services (or all if None)."""
-        async with self._lock:
-            targets = services or list(self._tasks.keys())
+    def stop(self, services: list[str] | None = None) -> None:
+        """Stop blog backup for the given services (or all).
+
+        Synchronous and thread-safe.
+        """
+        with self._lock:
+            targets = services or list(self._running)
             for service in targets:
-                await self._cancel_service(service)
+                self._signal_cancel(service)
+                self._running.discard(service)
 
-    async def _cancel_service(self, service: str):
-        """Cancel backup for a single service. Must hold self._lock."""
-        if service in self._cancel_events:
-            self._cancel_events[service].set()
+    def is_running(self, service: str) -> bool:
+        """Thread-safe check whether a service backup is active."""
+        with self._lock:
+            return service in self._running
 
-        task = self._tasks.pop(service, None)
-        if task and not task.done():
-            task.cancel()
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                pass
+    def running_services(self) -> list[str]:
+        """Thread-safe snapshot of all running service IDs."""
+        with self._lock:
+            return list(self._running)
 
-        self._cancel_events.pop(service, None)
+    def shutdown(self) -> None:
+        """Stop all backups and shut down the background thread."""
+        with self._lock:
+            targets = list(self._running)
+            for service in targets:
+                self._signal_cancel(service)
+                self._running.discard(service)
+            loop = self._loop
+            thread = self._thread
+            self._loop = None
+            self._thread = None
+        if loop is not None:
+            loop.call_soon_threadsafe(loop.stop)
+        if thread is not None:
+            thread.join(timeout=5)
 
-    async def _run_backup(self, service: str, cancel_event: asyncio.Event):
+    def _signal_cancel(self, service: str) -> None:
+        """Signal cancellation for a service. Must hold self._lock."""
+        event = self._cancel_events.pop(service, None)
+        if event is not None:
+            event.set()
+
+    async def _run_backup(self, service: str, cancel_event: threading.Event):
         """Run full backup for one service with cancellation support."""
         if not _is_blog_supported(service):
             logger.info(f"Skipping blog backup for {service} (not supported)")
-            self._tasks.pop(service, None)
-            self._cancel_events.pop(service, None)
+            with self._lock:
+                self._running.discard(service)
+                self._cancel_events.pop(service, None)
             return
 
         blog_service = BlogService()
@@ -1198,7 +1256,7 @@ class BlogBackupManager:
                 from backend.services.search_service import get_search_service
                 search_svc = get_search_service()
                 indexed = await search_svc.index_blogs_for_service(service)
-                logger.info(f"Blog search index updated after backup", service=service, indexed=indexed)
+                logger.info("Blog search index updated after backup", service=service, indexed=indexed)
             except Exception as e:
                 logger.warning(f"Blog search index update failed (non-fatal): {e}")
         except asyncio.CancelledError:
@@ -1206,15 +1264,20 @@ class BlogBackupManager:
         except Exception as e:
             logger.error(f"Standalone blog backup error for {service}: {e}")
         finally:
-            self._tasks.pop(service, None)
-            self._cancel_events.pop(service, None)
+            with self._lock:
+                self._running.discard(service)
+                self._cancel_events.pop(service, None)
 
 
 _blog_backup_manager: BlogBackupManager | None = None
+_blog_backup_manager_lock = threading.Lock()
 
 
 def get_blog_backup_manager() -> BlogBackupManager:
+    """Thread-safe singleton access."""
     global _blog_backup_manager
     if _blog_backup_manager is None:
-        _blog_backup_manager = BlogBackupManager()
+        with _blog_backup_manager_lock:
+            if _blog_backup_manager is None:
+                _blog_backup_manager = BlogBackupManager()
     return _blog_backup_manager

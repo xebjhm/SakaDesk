@@ -266,7 +266,7 @@ async def clear_cache(service: str = Query(...)):
 async def get_blog_backup_status():
     """Get status of running blog backup tasks."""
     manager = get_blog_backup_manager()
-    running = {s: True for s in manager._tasks if manager.is_running(s)}
+    running = {s: True for s in manager.running_services()}
     return {"running": running}
 
 
@@ -278,7 +278,7 @@ async def start_blog_backup(services: List[str] = Query(...)):
             validate_service(s)
 
         manager = get_blog_backup_manager()
-        await manager.start(services)
+        manager.start(services)
 
         return {"status": "started", "services": services}
     except ValueError as e:
@@ -297,7 +297,7 @@ async def stop_blog_backup(services: Optional[List[str]] = Query(None)):
                 validate_service(s)
 
         manager = get_blog_backup_manager()
-        await manager.stop(services)
+        manager.stop(services)
 
         return {"status": "stopped", "services": services or ["all"]}
     except ValueError as e:
