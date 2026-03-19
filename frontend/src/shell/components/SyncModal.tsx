@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { getServiceById } from '../../data/services';
+import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 import type { SequentialSyncInfo } from '../hooks/useSync';
 
@@ -10,39 +11,11 @@ interface SyncModalProps {
     sequentialSyncInfo?: SequentialSyncInfo | null;
 }
 
-const formatTime = (seconds: number | undefined): string => {
-    if (!seconds || seconds <= 0) return '00:00';
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    if (m >= 60) {
-        const h = Math.floor(m / 60);
-        return `${h}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-};
-
-const formatSpeed = (speed: number | null | undefined, unit: string): string => {
-    if (!speed || speed <= 0) return '';
-    return `${speed.toFixed(2)} ${unit}/s`;
-};
-
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo }) => {
     const { t } = useTranslation();
 
-    const phaseNameMap: Record<string, string> = {
-        scanning: t('sync.phaseScanning'),
-        discovering: t('sync.phaseDiscovering'),
-        syncing: t('sync.phaseSyncing'),
-        downloading: t('sync.phaseDownloading'),
-    };
-
-    const getPhaseName = () => phaseNameMap[syncProgress.phase || ''] || syncProgress.phase_name || t('sync.starting');
-
-    const getUnitLabel = () => {
-        if (syncProgress.phase_number === 2) return t('sync.members');
-        if (syncProgress.phase_number === 3) return t('sync.files');
-        return t('sync.items');
-    };
+    const getPhaseName = () => getSyncPhaseName(syncProgress, t);
+    const getUnitLabel = () => getSyncUnitLabel(syncProgress, t);
 
     const serviceName = sequentialSyncInfo
         ? getServiceById(sequentialSyncInfo.currentService)?.displayName ?? sequentialSyncInfo.currentService
@@ -128,19 +101,19 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.elapsed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {formatTime(syncProgress.elapsed_seconds)}
+                                {formatSyncTime(syncProgress.elapsed_seconds)}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.eta')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {syncProgress.eta_seconds ? formatTime(syncProgress.eta_seconds) : '--:--'}
+                                {syncProgress.eta_seconds ? formatSyncTime(syncProgress.eta_seconds) : '--:--'}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.speed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {formatSpeed(syncProgress.speed, syncProgress.speed_unit || 'it')}
+                                {formatSyncSpeed(syncProgress.speed, syncProgress.speed_unit || 'it')}
                             </div>
                         </div>
                     </div>
