@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.1] - 2026-03-16
 
 ### Changed
-- Rebranded from HakoDesk to ZakaDesk across the entire codebase
+- Rebranded from HakoDesk to SakaDesk across the entire codebase
 - Renamed SDK dependency from pyhako to pyzaka
 - Renamed base exception from HakoError to ZakaError
 - Renamed CLI class from HakoCLI to ZakaCLI
-- Updated icon filename to ZakaDesk.ico
+- Updated icon filename to SakaDesk.ico
 - Updated About page version to 0.2.1
 
 ## [0.2.0] - 2026-03-16
@@ -65,7 +65,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-01-11
 
 ### Added
-- Initial ZakaDesk GUI application
+- Initial SakaDesk GUI application
 - Cross-platform support (Windows production, Linux/Mac development)
 - Secure credential storage via Windows Credential Manager
 - Browser-based OAuth authentication flow
@@ -84,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/ZakaDesk/compare/v0.2.1...HEAD
-[0.2.1]: https://github.com/xebjhm/ZakaDesk/compare/v0.2.0...v0.2.1
-[0.2.0]: https://github.com/xebjhm/ZakaDesk/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/xebjhm/ZakaDesk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/xebjhm/SakaDesk/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/xebjhm/SakaDesk/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/xebjhm/SakaDesk/releases/tag/v0.1.0

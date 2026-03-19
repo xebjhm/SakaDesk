@@ -17,9 +17,9 @@ if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
 # Determine log directory (inline to avoid importing platform module yet)
 if os.name == 'nt':  # Windows
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
-    _app_dir = Path(base) / "ZakaDesk"
+    _app_dir = Path(base) / "SakaDesk"
 else:  # Linux/Mac (dev)
-    _app_dir = Path.home() / ".ZakaDesk"
+    _app_dir = Path.home() / ".SakaDesk"
 log_dir = _app_dir / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "debug.log"
@@ -120,7 +120,7 @@ async def _deferred_blog_backup():
         logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
 
 
-app = FastAPI(title="ZakaDesk", lifespan=lifespan)
+app = FastAPI(title="SakaDesk", lifespan=lifespan)
 
 # CORS configuration
 # In production, frontend is served from same origin (no CORS needed).

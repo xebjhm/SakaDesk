@@ -1,5 +1,5 @@
 """
-Chat Features API for ZakaDesk.
+Chat Features API for SakaDesk.
 
 Provides endpoints for:
 - Sent letters

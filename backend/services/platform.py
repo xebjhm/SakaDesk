@@ -1,5 +1,5 @@
 """
-Platform Abstraction Layer for ZakaDesk
+Platform Abstraction Layer for SakaDesk
 Handles cross-platform differences for Windows deployment with Linux development.
 """
 import os
@@ -41,27 +41,27 @@ def get_default_output_dir() -> Path:
     """
     Get the default output directory for synced data.
 
-    Windows: %USERPROFILE%\\Documents\\ZakaDesk (e.g., C:\\Users\\Name\\Documents\\ZakaDesk)
-    Linux/Mac: ~/Documents/ZakaDesk (development fallback)
+    Windows: %USERPROFILE%\\Documents\\SakaDesk (e.g., C:\\Users\\Name\\Documents\\SakaDesk)
+    Linux/Mac: ~/Documents/SakaDesk (development fallback)
     """
-    return Path.home() / "Documents" / "ZakaDesk"
+    return Path.home() / "Documents" / "SakaDesk"
 
 
 def get_app_data_dir() -> Path:
     """
     Get the application data directory.
 
-    Windows: %LOCALAPPDATA%\\ZakaDesk (e.g., C:\\Users\\Name\\AppData\\Local\\ZakaDesk)
-    Linux/Mac: ~/.ZakaDesk (development fallback)
+    Windows: %LOCALAPPDATA%\\SakaDesk (e.g., C:\\Users\\Name\\AppData\\Local\\SakaDesk)
+    Linux/Mac: ~/.SakaDesk (development fallback)
     """
     if is_windows():
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            app_dir = Path(base) / "ZakaDesk"
+            app_dir = Path(base) / "SakaDesk"
         else:
-            app_dir = Path.home() / "AppData" / "Local" / "ZakaDesk"
+            app_dir = Path.home() / "AppData" / "Local" / "SakaDesk"
     else:
-        app_dir = Path.home() / ".ZakaDesk"
+        app_dir = Path.home() / ".SakaDesk"
 
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
@@ -85,7 +85,7 @@ def get_session_dir() -> Path:
 
     Uses pyzaka.get_auth_dir() to share browser session with CLI.
     This enables:
-    - Shared Google OAuth cookies between CLI and ZakaDesk
+    - Shared Google OAuth cookies between CLI and SakaDesk
     - Auto-OAuth when re-logging in (no password re-entry)
     - Consistent session state across both apps
     """

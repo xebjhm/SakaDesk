@@ -3,7 +3,7 @@ Tests for multi-group functionality.
 
 NOTE: Multi-group support is PLANNED but NOT YET IMPLEMENTED.
 These tests are skipped until the multi-group architecture is added.
-Currently, ZakaDesk only supports Hinatazaka46 (hardcoded in sync_service.py).
+Currently, SakaDesk only supports Hinatazaka46 (hardcoded in sync_service.py).
 
 When implementing multi-group support:
 1. AuthService should use TokenManager per-group

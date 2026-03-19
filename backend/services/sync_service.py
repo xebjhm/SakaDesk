@@ -25,7 +25,7 @@ DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 class SyncService:
     """
-    Per-service sync orchestrator for ZakaDesk.
+    Per-service sync orchestrator for SakaDesk.
 
     Manages the synchronization lifecycle: loading credentials, fetching messages,
     downloading media, and tracking sync state. Each instance handles one service

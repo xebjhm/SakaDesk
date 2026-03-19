@@ -1,7 +1,7 @@
 """
 Centralized settings file access with asyncio.Lock.
 
-All reads and writes to ~/.ZakaDesk/settings.json MUST go through this module
+All reads and writes to ~/.SakaDesk/settings.json MUST go through this module
 to prevent TOCTOU race conditions during concurrent login/sync operations.
 """
 import json

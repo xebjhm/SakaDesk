@@ -1,5 +1,5 @@
 """
-Blogs API for ZakaDesk.
+Blogs API for SakaDesk.
 Provides endpoints for blog browsing, content fetching, and cache management.
 """
 from fastapi import APIRouter, HTTPException, Query

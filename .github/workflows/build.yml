@@ -105,8 +105,8 @@ jobs:
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ZakaDesk-${{ steps.version.outputs.VERSION }}-Setup
-        path: dist/ZakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
+        name: SakaDesk-${{ steps.version.outputs.VERSION }}-Setup
+        path: dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
 
     # 12. Create GitHub Release (only on version tags)
     - name: Create GitHub Release
@@ -115,6 +115,6 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         gh release create "${{ github.ref_name }}" `
-          "dist/ZakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe" `
-          --title "ZakaDesk ${{ steps.version.outputs.VERSION }}" `
+          "dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe" `
+          --title "SakaDesk ${{ steps.version.outputs.VERSION }}" `
           --generate-notes

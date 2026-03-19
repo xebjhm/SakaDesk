@@ -239,7 +239,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             <span className="font-mono text-gray-900">{data.system.python_version}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">ZakaDesk</span>
+                                            <span className="text-gray-500">SakaDesk</span>
                                             <span className="font-mono text-gray-900">v{data.system.app_version}</span>
                                         </div>
                                         <div className="flex justify-between">

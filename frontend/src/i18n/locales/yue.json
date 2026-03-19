@@ -94,7 +94,7 @@
         "title": "服務條款",
         "subtitle": "用之前請睇吓",
         "disclaimer": "重要免責聲明",
-        "disclaimerText": "ZakaDesk 係非官方嘅第三方工具，同乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment 或者任何佢哋嘅官方 App 都冇關係，亦未獲認可。",
+        "disclaimerText": "SakaDesk 係非官方嘅第三方工具，同乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment 或者任何佢哋嘅官方 App 都冇關係，亦未獲認可。",
         "officialExcerpts": "官方服務條款重點摘錄：",
         "reviewOfficialTos": "睇吓完整官方服務條款：",
         "hinatazakaTos": "日向坂46 服務條款",
@@ -105,14 +105,14 @@
         "acceptAndContinue": "接受並繼續"
     },
     "setup": {
-        "welcome": "歡迎使用 ZakaDesk",
+        "welcome": "歡迎使用 SakaDesk",
         "setupDataFolder": "設定資料儲存位置",
         "outputFolderPath": "輸出資料夾路徑",
-        "outputFolderPlaceholder": "C:\\Users\\YourName\\ZakaDesk-data",
+        "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
         "outputFolderHint": "輸入儲存訊息嘅完整路徑。你可以由檔案總管 Copy 個 Path。",
         "downloadBlogsOffline": "下載 Blog 畀搜尋用",
         "downloadBlogsHint": "下載所有 Blog 文章開啟全文搜尋。每個服務大約用 5-15 GB。",
-        "startUsing": "開始使用 ZakaDesk"
+        "startUsing": "開始使用 SakaDesk"
     },
     "sync": {
         "phase": "階段 {{number}}：{{name}}",
@@ -211,7 +211,7 @@
     "messageList": {
         "noMessages": "冇訊息",
         "jumpToOldestUnread": "跳去最早未讀",
-        "welcomeTitle": "歡迎使用 ZakaDesk",
+        "welcomeTitle": "歡迎使用 SakaDesk",
         "welcomeSubtitle": "喺側邊揀個對話開始啦。",
         "loadingMessages": "載入緊訊息...",
         "selectConversation": "揀個對話",
@@ -280,7 +280,7 @@
         "ai": "AI 助手"
     },
     "landing": {
-        "welcome": "歡迎使用 ZakaDesk",
+        "welcome": "歡迎使用 SakaDesk",
         "selectGroups": "揀你想 Follow 嘅組合",
         "selectAtLeastOne": "請最少揀一個組合",
         "getStarted": "開始使用",

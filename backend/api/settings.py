@@ -1,5 +1,5 @@
 """
-Settings API for ZakaDesk
+Settings API for SakaDesk
 Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """

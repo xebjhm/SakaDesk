@@ -1,5 +1,5 @@
 #!/bin/bash
-# ZakaDesk Development Server Script
+# SakaDesk Development Server Script
 # Usage: ./dev.sh [start|stop|restart|status]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +47,7 @@ stop_frontend() {
 }
 
 status() {
-    echo "=== ZakaDesk Dev Server Status ==="
+    echo "=== SakaDesk Dev Server Status ==="
     if fuser $BACKEND_PORT/tcp 2>/dev/null | grep -q .; then
         echo "Backend:  RUNNING on port $BACKEND_PORT"
     else

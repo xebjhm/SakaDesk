@@ -88,9 +88,9 @@ class TestAppDataDirectory:
         assert isinstance(result, Path)
 
     def test_app_data_dir_contains_zakadesk(self):
-        """get_app_data_dir() should return a path containing 'ZakaDesk'."""
+        """get_app_data_dir() should return a path containing 'SakaDesk'."""
         result = get_app_data_dir()
-        assert "ZakaDesk" in str(result)
+        assert "SakaDesk" in str(result)
 
     def test_app_data_dir_exists(self):
         """get_app_data_dir() should create the directory if it doesn't exist."""
@@ -100,16 +100,16 @@ class TestAppDataDirectory:
 
     @patch("backend.services.platform.is_windows", return_value=False)
     def test_linux_uses_home_zakadesk(self, mock_is_windows):
-        """Linux should use ~/.ZakaDesk directory."""
+        """Linux should use ~/.SakaDesk directory."""
         result = get_app_data_dir()
-        assert ".ZakaDesk" in str(result)
+        assert ".SakaDesk" in str(result)
 
     @patch("backend.services.platform.is_windows", return_value=True)
     @patch.dict(os.environ, {"LOCALAPPDATA": "/tmp/test_localappdata"})
     def test_windows_uses_localappdata(self, mock_is_windows):
-        """Windows should use LOCALAPPDATA\\ZakaDesk."""
+        """Windows should use LOCALAPPDATA\\SakaDesk."""
         result = get_app_data_dir()
-        assert "ZakaDesk" in str(result)
+        assert "SakaDesk" in str(result)
 
 
 class TestSettingsPath:

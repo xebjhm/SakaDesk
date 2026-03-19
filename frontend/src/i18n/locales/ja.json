@@ -94,7 +94,7 @@
     "title": "利用規約",
     "subtitle": "ご利用前に必ずお読みください",
     "disclaimer": "重要免責事項",
-    "disclaimerText": "ZakaDeskは非公式のサードパーティ製ユーティリティです。乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment、および関連する公式アプリとは一切関係ありません。",
+    "disclaimerText": "SakaDeskは非公式のサードパーティ製ユーティリティです。乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment、および関連する公式アプリとは一切関係ありません。",
     "officialExcerpts": "公式利用規約の主な抜粋：",
     "reviewOfficialTos": "各公式サービスの利用規約全文はこちら：",
     "hinatazakaTos": "日向坂46 利用規約",
@@ -105,14 +105,14 @@
     "acceptAndContinue": "同意して開始する"
   },
   "setup": {
-    "welcome": "ZakaDeskへようこそ",
+    "welcome": "SakaDeskへようこそ",
     "setupDataFolder": "データ保存先の設定",
     "outputFolderPath": "データ出力先パス",
-    "outputFolderPlaceholder": "C:\\Users\\YourName\\ZakaDesk-data",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
     "downloadBlogsOffline": "ブログの検索用ダウンロード",
     "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
-    "startUsing": "ZakaDeskを始める"
+    "startUsing": "SakaDeskを始める"
   },
   "sync": {
     "phase": "フェーズ {{number}}: {{name}}",
@@ -211,7 +211,7 @@
   "messageList": {
     "noMessages": "メッセージがありません",
     "jumpToOldestUnread": "未読の最初へ移動",
-    "welcomeTitle": "ZakaDeskへようこそ",
+    "welcomeTitle": "SakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",
     "selectConversation": "トークを選択してください",
@@ -280,7 +280,7 @@
     "ai": "AIエージェント"
   },
   "landing": {
-    "welcome": "ZakaDeskへようこそ",
+    "welcome": "SakaDeskへようこそ",
     "selectGroups": "フォローするグループを選択してください",
     "selectAtLeastOne": "少なくとも1つのグループを選択してください",
     "getStarted": "始める",

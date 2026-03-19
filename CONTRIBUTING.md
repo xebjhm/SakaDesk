@@ -1,6 +1,6 @@
-# Contributing to ZakaDesk
+# Contributing to SakaDesk
 
-Thank you for your interest in contributing to ZakaDesk! This document outlines our development workflow, branching strategy, and contribution guidelines.
+Thank you for your interest in contributing to SakaDesk! This document outlines our development workflow, branching strategy, and contribution guidelines.
 
 ## Table of Contents
 
@@ -235,7 +235,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 ### Scope (Optional)
 
-Common scopes for ZakaDesk:
+Common scopes for SakaDesk:
 - `backend` - Python backend
 - `frontend` - React frontend
 - `auth` - Authentication
@@ -413,10 +413,10 @@ cd frontend && TZ=UTC npx vitest run
 cd frontend && npx tsc --noEmit
 ```
 
-#### Phase 4: Release Order (pyzaka first, then ZakaDesk)
+#### Phase 4: Release Order (pyzaka first, then SakaDesk)
 
-**Important**: pyzaka must be published to PyPI before ZakaDesk CI runs,
-because ZakaDesk CI installs pyzaka from PyPI (`uv sync --no-sources`).
+**Important**: pyzaka must be published to PyPI before SakaDesk CI runs,
+because SakaDesk CI installs pyzaka from PyPI (`uv sync --no-sources`).
 
 ```bash
 # 1. pyzaka: merge, tag, push
@@ -430,8 +430,8 @@ git push origin dev
 # 2. Verify pyzaka is on PyPI (wait ~60s)
 uv pip install pyzaka==X.Y.Z --dry-run
 
-# 3. ZakaDesk: merge, tag, push
-cd ZakaDesk
+# 3. SakaDesk: merge, tag, push
+cd SakaDesk
 git checkout main && git merge --no-ff release/vX.Y.Z -m "Release vX.Y.Z"
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main --tags   # CI builds installer + creates GitHub Release
@@ -442,8 +442,8 @@ git push origin dev
 #### Phase 5: Verify
 
 - [ ] pyzaka: Check PyPI page shows new version
-- [ ] ZakaDesk: Check GitHub Actions — build should be green
-- [ ] ZakaDesk: Check GitHub Releases page — installer exe attached
+- [ ] SakaDesk: Check GitHub Actions — build should be green
+- [ ] SakaDesk: Check GitHub Releases page — installer exe attached
 - [ ] Download and smoke-test the installer
 
 #### CI/CD Behavior
@@ -465,7 +465,7 @@ These are common pitfalls to avoid:
 5. **`uv add --dev` in CI is fragile** — use `uv pip install` for build-only tools
 6. **E2E tests need Python/uv** — they must run after Python setup, not after Node setup
 7. **Windows PowerShell env syntax** — `VAR=value cmd` doesn't work, use Playwright's `env` option
-8. **pyzaka must be on PyPI first** — ZakaDesk CI pulls from PyPI, not local path
+8. **pyzaka must be on PyPI first** — SakaDesk CI pulls from PyPI, not local path
 
 ---
 
@@ -473,4 +473,4 @@ These are common pitfalls to avoid:
 
 If you have questions about contributing, please open an issue or reach out to the maintainers.
 
-Thank you for contributing to ZakaDesk!
+Thank you for contributing to SakaDesk!

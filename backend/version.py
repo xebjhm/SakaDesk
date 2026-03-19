@@ -1,4 +1,4 @@
-"""Single source of truth for ZakaDesk app version, read from pyproject.toml."""
+"""Single source of truth for SakaDesk app version, read from pyproject.toml."""
 
 import sys
 from pathlib import Path

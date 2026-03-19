@@ -130,13 +130,13 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                     <div className="w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
                         <img
                             src="/logo-192.png"
-                            alt="ZakaDesk"
+                            alt="SakaDesk"
                             className="w-full h-full select-none"
                         />
                     </div>
 
                     {/* App name */}
-                    <h1 className="text-xl font-bold text-gray-800 mb-1">ZakaDesk</h1>
+                    <h1 className="text-xl font-bold text-gray-800 mb-1">SakaDesk</h1>
 
                     {/* Version - plain text, secretly clickable */}
                     <p
@@ -196,12 +196,12 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 {/* Footer */}
                 <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
                     <a
-                        href="https://github.com/xebjhm/ZakaDesk"
+                        href="https://github.com/xebjhm/SakaDesk"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
                     >
-                        github.com/xebjhm/ZakaDesk
+                        github.com/xebjhm/SakaDesk
                     </a>
                 </div>
             </div>

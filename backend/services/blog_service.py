@@ -1,5 +1,5 @@
 """
-Blog service for ZakaDesk.
+Blog service for SakaDesk.
 Handles blog metadata sync, on-demand content fetching, and caching.
 
 Two-stage sync design (similar to message sync):
