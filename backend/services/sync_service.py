@@ -531,7 +531,7 @@ class SyncService:
                 if blog_settings.get("blogs_full_backup"):
                     from backend.services.blog_service import get_blog_backup_manager
                     manager = get_blog_backup_manager()
-                    await manager.start([self._service])
+                    manager.start([self._service])
                     logger.info("Blog backup auto-enqueued after sync", service=self._service)
             except Exception as e:
                 logger.warning("Blog backup auto-enqueue failed (non-fatal)", error=str(e))

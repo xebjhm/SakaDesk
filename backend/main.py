@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
     # Stop any running blog backup tasks so their asyncio Tasks end cleanly
     from backend.services.blog_service import get_blog_backup_manager
     try:
-        await get_blog_backup_manager().stop()
+        get_blog_backup_manager().shutdown()
     except Exception:
         pass
 
@@ -104,13 +104,17 @@ async def _deferred_blog_backup():
             return
 
         from pyzaka.credentials import get_token_manager
+        from pyzaka import Group
 
         manager = get_blog_backup_manager()
         tm = get_token_manager()
-        services = [s for s in tm.list_sessions() if _is_blog_supported(s)]
+        services = [
+            g.value for g in Group
+            if tm.load_session(g.value) and _is_blog_supported(g.value)
+        ]
         if services:
             # start() skips services already running (e.g. frontend toggle)
-            await manager.start(services)
+            manager.start(services)
             logger.info("Blog backup auto-resumed on startup", services=services)
     except Exception as e:
         logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")

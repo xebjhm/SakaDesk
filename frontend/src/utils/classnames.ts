@@ -74,7 +74,9 @@ export function formatDownloadFilename(url: string, timestamp?: string): string 
     // For URLs with a `filename` query param (e.g. /api/blogs/image?filename=img_0.jpg),
     // extract from the param. Otherwise extract from the URL path.
     let raw: string;
-    const filenameParam = new URL(url, window.location.origin).searchParams.get('filename');
+    const filenameParam = url.includes('filename=')
+        ? new URL(url, window.location.origin).searchParams.get('filename')
+        : null;
     if (filenameParam) {
         raw = filenameParam;
     } else {

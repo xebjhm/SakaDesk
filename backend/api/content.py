@@ -520,6 +520,28 @@ async def get_unread_counts(read_states: Dict[str, Any]):
     return result
 
 
+def _resolve_media_path(file_path: str) -> Path:
+    """Resolve a media file path, translating service ID to display name.
+
+    Raises HTTPException 404 if the resolved path does not exist.
+    """
+    output_dir = get_output_dir()
+
+    parts = file_path.split('/', 1)
+    if len(parts) == 2:
+        service_part, rest = parts
+        try:
+            display_name = get_service_display_name(service_part)
+            file_path = f"{display_name}/{rest}"
+        except ValueError:
+            pass
+
+    safe_path = validate_path_within_dir(output_dir, file_path)
+    if not safe_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return safe_path
+
+
 @router.get("/media/{file_path:path}")
 async def get_media(file_path: str):
     """Serve media files.
@@ -529,26 +551,8 @@ async def get_media(file_path: str):
 
     The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
     """
-    output_dir = get_output_dir()
-
-    # Translate service ID to display name if the first segment is a known service
-    parts = file_path.split('/', 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            # Translate romaji ID (e.g., 'sakurazaka46') to display name (e.g., '櫻坂46')
-            display_name = get_service_display_name(service_part)
-            file_path = f"{display_name}/{rest}"
-        except ValueError:
-            # Not a valid service ID, use path as-is (might already be display name)
-            pass
-
-    safe_path = validate_path_within_dir(output_dir, file_path)
-    logger.debug(f"Media request: {file_path} -> {safe_path}, exists={safe_path.exists()}")
-
-    if not safe_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
+    safe_path = _resolve_media_path(file_path)
+    logger.debug(f"Media request: {file_path} -> {safe_path}, exists=True")
     return FileResponse(safe_path)
 
 
@@ -805,21 +809,7 @@ async def download_media(file_path: str, filename: Optional[str] = None):
         filename: Custom download filename (e.g. with timestamp prefix).
                   Defaults to the file's actual name on disk.
     """
-    output_dir = get_output_dir()
-
-    parts = file_path.split('/', 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            display_name = get_service_display_name(service_part)
-            file_path = f"{display_name}/{rest}"
-        except ValueError:
-            pass
-
-    safe_path = validate_path_within_dir(output_dir, file_path)
-    if not safe_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
+    safe_path = _resolve_media_path(file_path)
     return FileResponse(
         safe_path,
         filename=filename or safe_path.name,
