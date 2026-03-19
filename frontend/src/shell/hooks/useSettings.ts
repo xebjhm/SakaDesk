@@ -113,9 +113,8 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             setOutputDirInput(data.output_dir);
 
             // Blog backup toggle: start/stop backup on setting change.
-            // Only fires from SettingsModal (post-setup). During first-launch
-            // setup, blog backup is deferred to after sequential sync completes
-            // (handled in App.tsx handleSetupComplete).
+            // During first-launch setup, App.tsx defers saving blogs_full_backup
+            // until after sync completes, so this fires at the right time.
             if ('blogs_full_backup' in updates && data.is_configured) {
                 const { selectedServices: services } = useAppStore.getState();
                 // Filter to services that actually support blogs (excludes yodel)
