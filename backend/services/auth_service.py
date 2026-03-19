@@ -1,5 +1,5 @@
 """
-Authentication Service for ZakaDesk
+Authentication Service for SakaDesk
 
 Uses pyzaka's TokenManager for credential storage (same as CLI).
 This ensures consistent behavior across CLI and GUI:

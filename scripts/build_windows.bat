@@ -1,5 +1,5 @@
 @echo off
-REM ZakaDesk Windows Build and Test Script
+REM SakaDesk Windows Build and Test Script
 REM Run this from Windows (double-click or cmd.exe)
 REM Works from any location - auto-detects project path
 
@@ -9,7 +9,7 @@ set PROJECT_DIR=%SCRIPT_DIR%..
 set BUILD_DIR=%PROJECT_DIR%\dist
 
 echo ============================================
-echo  ZakaDesk Windows Build ^& Test
+echo  SakaDesk Windows Build ^& Test
 echo ============================================
 echo.
 
@@ -37,8 +37,8 @@ echo      Project: %CD%
 echo.
 
 echo [2/5] Preparing workspace...
-set WORKSPACE_ROOT=%TEMP%\ZakaDesk_Workspace
-set WORKSPACE_APP=%WORKSPACE_ROOT%\ZakaDesk
+set WORKSPACE_ROOT=%TEMP%\SakaDesk_Workspace
+set WORKSPACE_APP=%WORKSPACE_ROOT%\SakaDesk
 set WORKSPACE_LIB=%WORKSPACE_ROOT%\pyzaka
 
 if exist "%WORKSPACE_ROOT%" rmdir /s /q "%WORKSPACE_ROOT%"
@@ -48,10 +48,10 @@ mkdir "%WORKSPACE_ROOT%"
 @REM /E - recursive, /XD - exclude dirs, /R:1 /W:1 - retry once wait 1s
 @REM Exclude: .venv, dist, build, .git, auth_data, output, __pycache__, .pytest_cache
 
-echo      Copying ZakaDesk to workspace...
+echo      Copying SakaDesk to workspace...
 robocopy "%PROJECT_DIR%" "%WORKSPACE_APP%" /E /XD .venv dist build .git auth_data output __pycache__ .pytest_cache .idea .vscode node_modules /R:1 /W:1 /NFL /NDL /NJH /NJS
 if %ERRORLEVEL% geq 8 (
-    echo ERROR: Robocopy failed for ZakaDesk
+    echo ERROR: Robocopy failed for SakaDesk
     pause
     exit /b 1
 )
@@ -131,7 +131,7 @@ if exist "%BUILD_DIR%\zakadesk-setup.exe" (
     echo      Installer copied to %BUILD_DIR%
 ) else (
     echo      WARNING: Installer not found, copying raw build...
-    xcopy /E /Y "%WORKSPACE_APP%\dist\ZakaDesk\*" "%BUILD_DIR%\ZakaDesk\" >nul
+    xcopy /E /Y "%WORKSPACE_APP%\dist\SakaDesk\*" "%BUILD_DIR%\SakaDesk\" >nul
 )
 
 popd
@@ -142,7 +142,7 @@ echo  Build complete!
 if exist "%BUILD_DIR%\zakadesk-setup.exe" (
     echo  Installer: %BUILD_DIR%\zakadesk-setup.exe
 ) else (
-    echo  Executable: %BUILD_DIR%\ZakaDesk\ZakaDesk.exe
+    echo  Executable: %BUILD_DIR%\SakaDesk\SakaDesk.exe
 )
 echo ============================================
 echo.

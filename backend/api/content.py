@@ -1,5 +1,5 @@
 """
-Content API for ZakaDesk
+Content API for SakaDesk
 Handles reading synced message data from pyzaka output directory.
 
 pyzaka directory structure:

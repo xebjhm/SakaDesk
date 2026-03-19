@@ -1,7 +1,7 @@
-; Inno Setup Script for ZakaDesk
+; Inno Setup Script for SakaDesk
 ; Creates a Windows installer package
 
-#define MyAppName "ZakaDesk"
+#define MyAppName "SakaDesk"
 ; Version can be overridden via command line: iscc /DAppVersion=1.2.3 setup.iss
 #ifndef AppVersion
   #define AppVersion "0.1.0"
@@ -9,7 +9,7 @@
 #define MyAppVersion AppVersion
 #define MyAppPublisher "xebjhm"
 #define MyAppURL "https://github.com/xebjhm/Project-pyzaka"
-#define MyAppExeName "ZakaDesk.exe"
+#define MyAppExeName "SakaDesk.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -25,15 +25,15 @@ DisableProgramGroupPage=yes
 ; Run without admin rights (install for current user only)
 PrivilegesRequired=lowest
 OutputDir=..\..\dist
-OutputBaseFilename=ZakaDesk-{#MyAppVersion}-Setup
-SetupIconFile=ZakaDesk.ico
+OutputBaseFilename=SakaDesk-{#MyAppVersion}-Setup
+SetupIconFile=SakaDesk.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ; Show language selection dialog at install
 ShowLanguageDialog=yes
-; Close running ZakaDesk before install/uninstall
+; Close running SakaDesk before install/uninstall
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
 
@@ -64,9 +64,9 @@ chinesetraditional.UninstallDataRemains=已同步的訊息和部落格資料未�
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Source from PyInstaller output (ZakaDesk folder)
-Source: "..\..\dist\ZakaDesk\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\ZakaDesk\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Source from PyInstaller output (SakaDesk folder)
+Source: "..\..\dist\SakaDesk\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\SakaDesk\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -83,7 +83,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Map Inno Setup language name to ZakaDesk i18n locale code
+    // Map Inno Setup language name to SakaDesk i18n locale code
     if ActiveLanguage = 'japanese' then
       LangCode := 'ja'
     else if ActiveLanguage = 'chinesesimplified' then
@@ -93,7 +93,7 @@ begin
     else
       LangCode := 'en';
 
-    SettingsDir := ExpandConstant('{localappdata}\ZakaDesk');
+    SettingsDir := ExpandConstant('{localappdata}\SakaDesk');
     if not DirExists(SettingsDir) then
       ForceDirectories(SettingsDir);
 
@@ -172,7 +172,7 @@ begin
       //   Old keyring: target="{service}" (username stored internally)
       DeleteCredential('pyzaka');
       //
-      // ZakaDesk credentials (credential_store.py, KEYRING_SERVICE="zakadesk"):
+      // SakaDesk credentials (credential_store.py, KEYRING_SERVICE="zakadesk"):
       //   These may exist from older app versions that used a separate credential store.
       //   keyring v25+: target="{key}@zakadesk"
       DeleteCredential('access_token@zakadesk');
@@ -184,13 +184,13 @@ begin
       Log('Removed all credentials from Windows Credential Manager.');
 
       // 2. Read output_dir from settings.json BEFORE deleting app data
-      DataDir := ExpandConstant('{localappdata}\ZakaDesk');
+      DataDir := ExpandConstant('{localappdata}\SakaDesk');
       if not DirExists(DataDir) then
         DataDir := ExpandConstant('{localappdata}\zakadesk');
       SettingsFile := DataDir + '\settings.json';
       OutputDir := ReadOutputDir(SettingsFile);
 
-      // 3. Delete ZakaDesk app data directory
+      // 3. Delete SakaDesk app data directory
       //    Contains: settings.json, search_index.db, logs/, webview/
       //    desktop.py releases SQLite + log handles on window close, but
       //    allow extra time for the process to fully exit after CloseApplications.
@@ -204,10 +204,10 @@ begin
           if not DelTree(DataDir, True, True, True) then
             MsgBox(CustomMessage('UninstallCleanupFailed') + ' ' + DataDir, mbError, MB_OK)
           else
-            Log('ZakaDesk app data deleted (retry): ' + DataDir);
+            Log('SakaDesk app data deleted (retry): ' + DataDir);
         end
         else
-          Log('ZakaDesk app data deleted: ' + DataDir);
+          Log('SakaDesk app data deleted: ' + DataDir);
       end;
 
       // 4. Delete pyzaka shared auth data directory

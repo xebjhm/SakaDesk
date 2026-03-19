@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="ZakaDesk_logo.png" alt="ZakaDesk" width="128" />
+  <img src="SakaDesk_logo.png" alt="SakaDesk" width="128" />
 </p>
 
-# ZakaDesk
+# SakaDesk
 
 A desktop GUI application for browsing, synchronizing, and backing up content from Nogizaka46, Sakurazaka46, Hinatazaka46, and Yodel services.
 
@@ -32,7 +32,7 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     ZakaDesk                            │
+│                     SakaDesk                            │
 ├─────────────────────────────────────────────────────────┤
 │  desktop.py (pywebview)                                 │
 │     ├── Starts FastAPI backend on dynamic port          │
@@ -65,7 +65,7 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 ```bash
 # Clone the repository
 git clone https://github.com/xebjhm/Project-pyzaka.git
-cd Project-pyzaka/ZakaDesk
+cd Project-pyzaka/SakaDesk
 
 # Install Python dependencies with uv
 uv sync
@@ -134,7 +134,7 @@ scripts\build_windows.bat
 ## Project Structure
 
 ```
-ZakaDesk/
+SakaDesk/
 ├── backend/                 # FastAPI backend
 │   ├── api/                 # API route handlers
 │   │   ├── auth.py          # Authentication endpoints
@@ -192,8 +192,8 @@ ZakaDesk/
 ## Configuration
 
 Application data is stored in:
-- **Windows:** `%LOCALAPPDATA%\ZakaDesk\`
-- **Linux/macOS:** `~/.ZakaDesk/`
+- **Windows:** `%LOCALAPPDATA%\SakaDesk\`
+- **Linux/macOS:** `~/.SakaDesk/`
 
 Settings include:
 - Output folder for synchronized messages

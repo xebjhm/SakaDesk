@@ -82,7 +82,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='ZakaDesk',
+    name='SakaDesk',
     debug=True,
     bootloader_ignore_signals=False,
     strip=False,
@@ -93,7 +93,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(project_root / 'tooling' / 'windows' / 'ZakaDesk.ico'),
+    icon=str(project_root / 'tooling' / 'windows' / 'SakaDesk.ico'),
 )
 coll = COLLECT(
     exe,
@@ -103,5 +103,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='ZakaDesk',
+    name='SakaDesk',
 )

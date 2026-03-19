@@ -43,7 +43,7 @@ describe('App Integration Tests', () => {
     renderApp()
 
     await waitFor(() => {
-      expect(screen.getByText(/Welcome to ZakaDesk|messages\.welcome/)).toBeInTheDocument()
+      expect(screen.getByText(/Welcome to SakaDesk|messages\.welcome/)).toBeInTheDocument()
     })
   })
 

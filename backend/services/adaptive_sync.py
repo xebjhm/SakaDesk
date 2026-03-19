@@ -1,5 +1,5 @@
 """
-Adaptive Sync Scheduler for ZakaDesk.
+Adaptive Sync Scheduler for SakaDesk.
 
 Implements randomized sync intervals based on observed posting patterns.
 Designed to avoid detection patterns while efficiently catching new messages.

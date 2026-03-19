@@ -94,7 +94,7 @@
     "title": "Terms of Service",
     "subtitle": "Please read before continuing",
     "disclaimer": "Important Disclaimer",
-    "disclaimerText": "ZakaDesk is an unofficial third-party utility. It is not affiliated with, endorsed by, or connected to Nogizaka46, Sakurazaka46, Hinatazaka46, Sony Music Entertainment, or any of their official applications.",
+    "disclaimerText": "SakaDesk is an unofficial third-party utility. It is not affiliated with, endorsed by, or connected to Nogizaka46, Sakurazaka46, Hinatazaka46, Sony Music Entertainment, or any of their official applications.",
     "officialExcerpts": "Key excerpts from the official Terms of Service:",
     "reviewOfficialTos": "Read the complete official Terms of Service:",
     "hinatazakaTos": "Hinatazaka46 ToS",
@@ -105,14 +105,14 @@
     "acceptAndContinue": "Accept and Continue"
   },
   "setup": {
-    "welcome": "Welcome to ZakaDesk",
+    "welcome": "Welcome to SakaDesk",
     "setupDataFolder": "Let's set up your data folder",
     "outputFolderPath": "Output Folder Path",
-    "outputFolderPlaceholder": "C:\\Users\\YourName\\ZakaDesk-data",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "Enter the full path where messages will be stored. You can copy this from Windows Explorer.",
     "downloadBlogsOffline": "Download blogs for search",
     "downloadBlogsHint": "Downloads all blog posts to enable full-text search. Uses approximately 5\u201315 GB per service.",
-    "startUsing": "Start Using ZakaDesk"
+    "startUsing": "Start Using SakaDesk"
   },
   "sync": {
     "phase": "Phase {{number}}: {{name}}",
@@ -211,7 +211,7 @@
   "messageList": {
     "noMessages": "No messages",
     "jumpToOldestUnread": "Jump to oldest unread",
-    "welcomeTitle": "Welcome to ZakaDesk",
+    "welcomeTitle": "Welcome to SakaDesk",
     "welcomeSubtitle": "Select a conversation from the sidebar to start.",
     "loadingMessages": "Loading messages...",
     "selectConversation": "Select a Conversation",
@@ -280,7 +280,7 @@
     "ai": "AI Agent"
   },
   "landing": {
-    "welcome": "Welcome to ZakaDesk",
+    "welcome": "Welcome to SakaDesk",
     "selectGroups": "Select the groups you want to follow",
     "selectAtLeastOne": "Select at least one group",
     "getStarted": "Get Started",

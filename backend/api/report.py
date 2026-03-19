@@ -1,5 +1,5 @@
 """
-Bug Report API for ZakaDesk.
+Bug Report API for SakaDesk.
 Collects diagnostics with smart log filtering and redaction.
 """
 import json
@@ -269,7 +269,7 @@ PASTE_HERE
 """
 
     params = urlencode({"title": title, "body": body}, quote_via=quote)
-    return f"https://github.com/xebjhm/ZakaDesk/issues/new?{params}"
+    return f"https://github.com/xebjhm/SakaDesk/issues/new?{params}"
 
 
 @router.post("", response_model=ReportResponse)

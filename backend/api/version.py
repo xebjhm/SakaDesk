@@ -1,5 +1,5 @@
 """
-Version Check API for ZakaDesk.
+Version Check API for SakaDesk.
 Checks GitHub releases for updates with caching to respect rate limits.
 Also provides in-place upgrade functionality for Windows.
 """
@@ -26,7 +26,7 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/api/version", tags=["version"])
 
 # GitHub API settings
-GITHUB_REPO = "xebjhm/ZakaDesk"
+GITHUB_REPO = "xebjhm/SakaDesk"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # Cache settings - check at most once per hour
@@ -108,7 +108,7 @@ async def _fetch_latest_release() -> dict:
                 GITHUB_API_URL,
                 headers={
                     "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": f"ZakaDesk/{APP_VERSION}"
+                    "User-Agent": f"SakaDesk/{APP_VERSION}"
                 }
             )
 

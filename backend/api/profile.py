@@ -1,5 +1,5 @@
 """
-Profile API for ZakaDesk
+Profile API for SakaDesk
 Handles user profile information like nickname.
 """
 import structlog

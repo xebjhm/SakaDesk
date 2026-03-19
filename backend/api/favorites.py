@@ -1,5 +1,5 @@
 """
-Favorites API for ZakaDesk.
+Favorites API for SakaDesk.
 
 Handles adding/removing messages from server-side favorites.
 Also updates local messages.json for instant feedback.
