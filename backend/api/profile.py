@@ -8,8 +8,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
-from pyzaka import Client
-from pyzaka.credentials import get_token_manager
+from pysaka import Client
+from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir
 from backend.services.service_utils import get_service_enum, validate_service

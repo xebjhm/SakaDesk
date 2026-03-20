@@ -24,8 +24,8 @@ log_dir = _app_dir / "logs"
 log_dir.mkdir(parents=True, exist_ok=True)
 log_file = log_dir / "debug.log"
 
-# Configure pyzaka's unified logging system (structlog-based)
-from pyzaka.logging import configure_logging  # noqa: E402
+# Configure pysaka's unified logging system (structlog-based)
+from pysaka.logging import configure_logging  # noqa: E402
 configure_logging(
     log_file=log_file,
     log_level=logging.DEBUG,
@@ -103,8 +103,8 @@ async def _deferred_blog_backup():
         if settings.get("auto_sync_enabled"):
             return
 
-        from pyzaka.credentials import get_token_manager
-        from pyzaka import Group
+        from pysaka.credentials import get_token_manager
+        from pysaka import Group
 
         manager = get_blog_backup_manager()
         tm = get_token_manager()

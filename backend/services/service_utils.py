@@ -1,11 +1,11 @@
 """
 Service utilities for multi-service support.
-Maps between service identifiers and pyzaka Group enum.
+Maps between service identifiers and pysaka Group enum.
 """
 from typing import Any, Dict, List, Optional, cast
 
-from pyzaka import Group
-from pyzaka.client import GROUP_CONFIG
+from pysaka import Group
+from pysaka.client import GROUP_CONFIG
 
 
 def get_all_services() -> List[str]:
