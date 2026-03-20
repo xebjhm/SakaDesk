@@ -386,7 +386,7 @@ Update version in **2 locations**:
 | File | Field |
 |------|-------|
 | `pyproject.toml` | `version = "X.Y.Z"` |
-| `pyproject.toml` | `pyzaka>=X.Y.Z` (dependency — must match published pyzaka) |
+| `pyproject.toml` | `pysaka>=X.Y.Z` (dependency — must match published pysaka) |
 | `frontend/package.json` | `"version": "X.Y.Z"` |
 
 > **Note:** Backend `APP_VERSION` is read automatically from `pyproject.toml` via `backend/version.py`. The About modal fetches it from `/api/version/current` at runtime. No other files need manual version updates.
@@ -413,22 +413,22 @@ cd frontend && TZ=UTC npx vitest run
 cd frontend && npx tsc --noEmit
 ```
 
-#### Phase 4: Release Order (pyzaka first, then SakaDesk)
+#### Phase 4: Release Order (pysaka first, then SakaDesk)
 
-**Important**: pyzaka must be published to PyPI before SakaDesk CI runs,
-because SakaDesk CI installs pyzaka from PyPI (`uv sync --no-sources`).
+**Important**: pysaka must be published to PyPI before SakaDesk CI runs,
+because SakaDesk CI installs pysaka from PyPI (`uv sync --no-sources`).
 
 ```bash
-# 1. pyzaka: merge, tag, push
-cd pyzaka
+# 1. pysaka: merge, tag, push
+cd pysaka
 git checkout main && git merge --no-ff release/vX.Y.Z -m "Release vX.Y.Z"
 git tag -a vX.Y.Z -m "Release vX.Y.Z"
 git push origin main --tags   # CI publishes to PyPI
 git checkout dev && git merge --no-ff release/vX.Y.Z -m "Merge release back into dev"
 git push origin dev
 
-# 2. Verify pyzaka is on PyPI (wait ~60s)
-uv pip install pyzaka==X.Y.Z --dry-run
+# 2. Verify pysaka is on PyPI (wait ~60s)
+uv pip install pysaka==X.Y.Z --dry-run
 
 # 3. SakaDesk: merge, tag, push
 cd SakaDesk
@@ -441,7 +441,7 @@ git push origin dev
 
 #### Phase 5: Verify
 
-- [ ] pyzaka: Check PyPI page shows new version
+- [ ] pysaka: Check PyPI page shows new version
 - [ ] SakaDesk: Check GitHub Actions — build should be green
 - [ ] SakaDesk: Check GitHub Releases page — installer exe attached
 - [ ] Download and smoke-test the installer
@@ -465,7 +465,7 @@ These are common pitfalls to avoid:
 5. **`uv add --dev` in CI is fragile** — use `uv pip install` for build-only tools
 6. **E2E tests need Python/uv** — they must run after Python setup, not after Node setup
 7. **Windows PowerShell env syntax** — `VAR=value cmd` doesn't work, use Playwright's `env` option
-8. **pyzaka must be on PyPI first** — SakaDesk CI pulls from PyPI, not local path
+8. **pysaka must be on PyPI first** — SakaDesk CI pulls from PyPI, not local path
 
 ---
 

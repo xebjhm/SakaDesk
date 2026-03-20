@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Rebranded from HakoDesk to SakaDesk across the entire codebase
-- Renamed SDK dependency from pyhako to pyzaka
-- Renamed base exception from HakoError to ZakaError
-- Renamed CLI class from HakoCLI to ZakaCLI
+- Renamed SDK dependency from pyhako to pysaka
+- Renamed base exception from HakoError to SakaError
+- Renamed CLI class from HakoCLI to SakaCLI
 - Updated icon filename to SakaDesk.ico
 - Updated About page version to 0.2.1
 
@@ -41,12 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suites: backend (83 tests), frontend (Vitest), E2E (Playwright)
 
 ### Changed
-- Auth/sync flow follows pyzaka CLI pattern with TokenManager integration
+- Auth/sync flow follows pysaka CLI pattern with TokenManager integration
 - FastAPI lifecycle migrated from deprecated `on_event` to `lifespan` context manager
 - Folder picker uses async executor instead of blocking thread.join
 - PriorityPool replaced with per-operation TCPConnector limits
 - Structured logging uses keyword args instead of f-strings throughout
-- Requires pyzaka >= 0.2.0
+- Requires pysaka >= 0.2.0
 
 ### Fixed
 - XSS vulnerability in search result snippets — now sanitized with DOMPurify

@@ -1,10 +1,10 @@
-# HakoDesk Development Guide
+# SakaDesk Development Guide
 
 ## Quick Start
 
 ```bash
 # Backend
-cd /path/to/HakoDesk
+cd /path/to/SakaDesk
 uv sync
 uv run uvicorn backend.main:app --port 8000 --reload
 
@@ -78,7 +78,7 @@ npm run test:e2e:ui
 npm run test:e2e:headed
 ```
 
-Test mode (`HAKODESK_TEST_MODE=true`) bypasses real OAuth and returns fixture data.
+Test mode (`SAKADESK_TEST_MODE=true`) bypasses real OAuth and returns fixture data.
 
 #### Option 2: Real Auth - For Manual Testing
 
@@ -87,7 +87,7 @@ For testing the complete flow with real authentication:
 **Step 1: Start backend in normal mode**
 
 ```bash
-cd /path/to/HakoDesk
+cd /path/to/SakaDesk
 uv run uvicorn backend.main:app --port 8000 --reload
 ```
 
@@ -118,17 +118,17 @@ PLAYWRIGHT_AUTH_FILE=.auth/user.json npm run test:e2e
 | Mode | Purpose | Auth | Data |
 |------|---------|------|------|
 | **Normal** | Production/Dev | Real OAuth | Real API |
-| **Dev Mode** (`HAKODESK_DEV_MODE=true`) | Linux development | Real OAuth | Real API, plaintext creds |
-| **Test Mode** (`HAKODESK_TEST_MODE=true`) | E2E/Integration testing | Mocked | Fixture data |
+| **Dev Mode** (`SAKADESK_DEV_MODE=true`) | Linux development | Real OAuth | Real API, plaintext creds |
+| **Test Mode** (`SAKADESK_TEST_MODE=true`) | E2E/Integration testing | Mocked | Fixture data |
 
 ### Environment Variables
 
 ```bash
 # Development on Linux (already automatic)
-HAKODESK_DEV_MODE=true
+SAKADESK_DEV_MODE=true
 
 # Enable test mode for E2E testing
-HAKODESK_TEST_MODE=true
+SAKADESK_TEST_MODE=true
 ```
 
 ---
@@ -196,7 +196,7 @@ The GitHub Actions workflow (`.github/workflows/build.yml`) runs:
 
 ```bash
 # Enable debug logging
-HAKODESK_DEV_MODE=true uv run uvicorn backend.main:app --port 8000 --reload --log-level debug
+SAKADESK_DEV_MODE=true uv run uvicorn backend.main:app --port 8000 --reload --log-level debug
 ```
 
 ### Frontend DevTools
@@ -219,7 +219,7 @@ This opens Playwright Inspector for step-by-step debugging.
 ## Common Issues
 
 ### "Login failed" in tests
-- Ensure `HAKODESK_TEST_MODE=true` is set
+- Ensure `SAKADESK_TEST_MODE=true` is set
 - Check backend is running on port 8000
 
 ### Snapshot test failures

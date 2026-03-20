@@ -64,8 +64,8 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 
 ```bash
 # Clone the repository
-git clone https://github.com/xebjhm/Project-pyzaka.git
-cd Project-pyzaka/SakaDesk
+git clone https://github.com/xebjhm/Project-pysaka.git
+cd Project-pysaka/SakaDesk
 
 # Install Python dependencies with uv
 uv sync
@@ -209,7 +209,7 @@ When running the backend, interactive API documentation is available at:
 ## Dependencies
 
 ### Backend (Python)
-- **pyzaka** - Core sync SDK (local dependency)
+- **pysaka** - Core sync SDK (local dependency)
 - **FastAPI** + **uvicorn** - Web framework and ASGI server
 - **python-multipart** + **aiofiles** - File upload and async file I/O
 - **keyring** + **keyrings-alt** - Secure credential storage
