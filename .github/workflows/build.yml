@@ -27,10 +27,10 @@ jobs:
         npm ci
         npm run build
 
-    - name: Run Frontend Tests
+    - name: Run Frontend Tests with Coverage
       working-directory: ./frontend
       run: |
-        npm run test:run
+        npm run test:coverage
 
     # E2E tests require a running backend with uv+Python — run after Python setup
     # (Playwright browser install and E2E step moved to after backend tests)
@@ -64,7 +64,7 @@ jobs:
     # 4. Run Tests with Coverage
     - name: Run Tests with Coverage
       run: |
-        uv run --no-sources pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=20 --ignore=tests/test_startup.py -k "not test_get_group_messages and not test_get_messages_by_path"
+        uv run --no-sources pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=50 --ignore=tests/test_startup.py -k "not test_get_group_messages and not test_get_messages_by_path"
 
     # 5. Type Check with mypy
     - name: Type Check with mypy

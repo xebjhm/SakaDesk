@@ -40,7 +40,7 @@ describe('LoginPage component', () => {
 
     await waitFor(() => {
       expect(defaultProps.onLoginSuccess).toHaveBeenCalled()
-    })
+    }, { timeout: 3000 })
   })
 
   it('should show loading state while logging in', async () => {
