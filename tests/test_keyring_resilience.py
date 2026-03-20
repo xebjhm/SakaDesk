@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch
 import sys
-from pyzaka.credentials import KeyringStore, ZakaError
+from pysaka.credentials import KeyringStore, SakaError
 
 def test_keyring_fallback_logic():
     """
@@ -10,7 +10,7 @@ def test_keyring_fallback_logic():
     """
     with patch("keyring.set_password", side_effect=Exception("DBus Error")):
         with patch("keyring.delete_password"):
-            # Case 1: keyrings.alt is missing -> Should Raise ZakaError
+            # Case 1: keyrings.alt is missing -> Should Raise SakaError
             with patch.dict(sys.modules, {"keyrings.alt": None}):
                 # We also need to patch importlib or similar to ensure it fails to import
                 # A simpler way is to patch the specific import in the function but it's inside __init__
@@ -28,8 +28,8 @@ def test_keyring_fallback_logic():
         try:
             store = KeyringStore()
             assert store is not None
-        except ZakaError as e:
-            pytest.fail(f"KeyringStore raised ZakaError despite fallback availability: {e}")
+        except SakaError as e:
+            pytest.fail(f"KeyringStore raised SakaError despite fallback availability: {e}")
             
 def test_keyring_crash_without_fallback():
     """Verify it crashes if fallback is explicitly completely broken/missing."""

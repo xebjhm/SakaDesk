@@ -87,7 +87,7 @@ class TestAppDataDirectory:
         result = get_app_data_dir()
         assert isinstance(result, Path)
 
-    def test_app_data_dir_contains_zakadesk(self):
+    def test_app_data_dir_contains_sakadesk(self):
         """get_app_data_dir() should return a path containing 'SakaDesk'."""
         result = get_app_data_dir()
         assert "SakaDesk" in str(result)
@@ -99,7 +99,7 @@ class TestAppDataDirectory:
         assert result.is_dir()
 
     @patch("backend.services.platform.is_windows", return_value=False)
-    def test_linux_uses_home_zakadesk(self, mock_is_windows):
+    def test_linux_uses_home_sakadesk(self, mock_is_windows):
         """Linux should use ~/.SakaDesk directory."""
         result = get_app_data_dir()
         assert ".SakaDesk" in str(result)
@@ -168,13 +168,13 @@ class TestSessionDir:
         assert result.exists()
         assert result.is_dir()
 
-    def test_session_dir_uses_pyzaka_auth_dir(self):
-        """get_session_dir() should use pyzaka.get_auth_dir() for shared browser session."""
-        from pyzaka import get_auth_dir
+    def test_session_dir_uses_pysaka_auth_dir(self):
+        """get_session_dir() should use pysaka.get_auth_dir() for shared browser session."""
+        from pysaka import get_auth_dir
         session = get_session_dir()
-        pyzaka_auth = get_auth_dir()
-        assert session == pyzaka_auth
-        assert "pyzaka" in str(session)
+        pysaka_auth = get_auth_dir()
+        assert session == pysaka_auth
+        assert "pysaka" in str(session)
         assert "auth_data" in str(session)
 
 

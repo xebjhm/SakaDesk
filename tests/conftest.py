@@ -11,25 +11,25 @@ sys.path.append(str(Path(__file__).parent.parent))
 # This prevents Tkinter/GTK/QT from trying to initialize
 sys.modules["webview"] = MagicMock()
 
-# MOCK PYZAKA CREDENTIALS BEFORE IMPORTING
+# MOCK PYSAKA CREDENTIALS BEFORE IMPORTING
 # This prevents Keyring access during test collection
-mock_pyzaka_credentials = MagicMock()
-mock_pyzaka_credentials.TokenManager = MagicMock()
-mock_pyzaka_credentials.get_token_manager = MagicMock(return_value=MagicMock())
-sys.modules["pyzaka.credentials"] = mock_pyzaka_credentials
+mock_pysaka_credentials = MagicMock()
+mock_pysaka_credentials.TokenManager = MagicMock()
+mock_pysaka_credentials.get_token_manager = MagicMock(return_value=MagicMock())
+sys.modules["pysaka.credentials"] = mock_pysaka_credentials
 
-# Mock pyzaka module with get_auth_dir that returns a real Path
-# Note: pyzaka is a real installed package, we just mock specific parts
-# We need to mock pyzaka.logging to prevent actual logging configuration
-sys.modules["pyzaka.logging"] = MagicMock()
+# Mock pysaka module with get_auth_dir that returns a real Path
+# Note: pysaka is a real installed package, we just mock specific parts
+# We need to mock pysaka.logging to prevent actual logging configuration
+sys.modules["pysaka.logging"] = MagicMock()
 
 # Set up get_auth_dir for shared browser session tests
-_test_auth_dir = Path.home() / ".local" / "share" / "pyzaka" / "auth_data"
+_test_auth_dir = Path.home() / ".local" / "share" / "pysaka" / "auth_data"
 _test_auth_dir.mkdir(parents=True, exist_ok=True)
 
-# Patch pyzaka.get_auth_dir at import time
-import pyzaka as real_pyzaka
-real_pyzaka.get_auth_dir = lambda: _test_auth_dir
+# Patch pysaka.get_auth_dir at import time
+import pysaka as real_pysaka
+real_pysaka.get_auth_dir = lambda: _test_auth_dir
 
 from backend.main import app
 
@@ -46,10 +46,10 @@ def mock_webview():
 
 @pytest.fixture(autouse=True)
 def mock_token_manager():
-    """Global mock for pyzaka TokenManager to prevent keyring access during tests."""
+    """Global mock for pysaka TokenManager to prevent keyring access during tests."""
     # Since we mocked it in sys.modules, we can just configure that mock
     # But for safety and clean state per test, we can use patch which handles restoration
-    with patch("pyzaka.credentials.TokenManager") as MockTM:
+    with patch("pysaka.credentials.TokenManager") as MockTM:
         instance = MockTM.return_value
         instance.load_session.return_value = {"access_token": "mock_token"}
         yield MockTM
