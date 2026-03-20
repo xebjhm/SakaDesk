@@ -13,8 +13,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from pyzaka import Client
-from pyzaka.credentials import get_token_manager
+from pysaka import Client
+from pysaka.credentials import get_token_manager
 from backend.services.platform import get_settings_path, get_session_dir, is_test_mode, get_default_output_dir
 from backend.services.service_utils import get_service_enum, validate_service
 
@@ -102,7 +102,7 @@ def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
 
 
 async def _get_client_and_session(service: str):
-    """Get pyzaka client and aiohttp session with auth for given service."""
+    """Get pysaka client and aiohttp session with auth for given service."""
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Favorites not available in test mode")
 

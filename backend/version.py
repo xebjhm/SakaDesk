@@ -5,7 +5,7 @@ from pathlib import Path
 
 try:
     from importlib.metadata import version
-    APP_VERSION = version("zakadesk")
+    APP_VERSION = version("sakadesk")
 except Exception:
     # Fallback: parse pyproject.toml directly (dev mode or PyInstaller bundle)
     import tomllib

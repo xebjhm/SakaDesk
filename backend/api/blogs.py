@@ -2,6 +2,7 @@
 Blogs API for SakaDesk.
 Provides endpoints for blog browsing, content fetching, and cache management.
 """
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -92,15 +93,23 @@ class MembersWithThumbnailsResponse(BaseModel):
 async def get_recent_posts(
     service: str = Query(...),
     limit: int = Query(default=20, ge=1, le=100),
-    member_ids: Optional[str] = Query(default=None, description="Comma-separated member IDs to filter by")
+    member_ids: Optional[str] = Query(
+        default=None, description="Comma-separated member IDs to filter by"
+    ),
 ):
     """Get recent blog posts across all members (or filtered by member_ids), sorted by date."""
     try:
         validate_service(service)
         # Parse comma-separated member_ids if provided
-        member_id_list = [m.strip() for m in member_ids.split(",") if m.strip()] if member_ids else None
+        member_id_list = (
+            [m.strip() for m in member_ids.split(",") if m.strip()]
+            if member_ids
+            else None
+        )
         posts = await blog_service.get_recent_posts(service, limit, member_id_list)
-        return RecentPostsResponse(service=service, posts=[RecentPost(**p) for p in posts])
+        return RecentPostsResponse(
+            service=service, posts=[RecentPost(**p) for p in posts]
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -114,7 +123,10 @@ async def get_blog_members(service: str = Query(...)):
     try:
         validate_service(service)
         members = await blog_service.get_blog_members(service)
-        return {"service": service, "members": [{"id": k, "name": v} for k, v in members.items()]}
+        return {
+            "service": service,
+            "members": [{"id": k, "name": v} for k, v in members.items()],
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -132,11 +144,15 @@ async def get_members_with_thumbnails(service: str = Query(...)):
     try:
         validate_service(service)
         members = await blog_service.get_members_with_thumbnails(service)
-        return MembersWithThumbnailsResponse(service=service, members=[MemberWithThumbnail(**m) for m in members])
+        return MembersWithThumbnailsResponse(
+            service=service, members=[MemberWithThumbnail(**m) for m in members]
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error("Failed to fetch members with thumbnails", service=service, error=str(e))
+        logger.error(
+            "Failed to fetch members with thumbnails", service=service, error=str(e)
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
@@ -173,22 +189,24 @@ async def get_member_thumbnail(service: str, member_id: str):
             media_type=media_type,
             headers={
                 "Cache-Control": "public, max-age=86400",  # Cache for 1 day
-            }
+            },
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Failed to serve member thumbnail", service=service, member_id=member_id, error=str(e))
+        logger.error(
+            "Failed to serve member thumbnail",
+            service=service,
+            member_id=member_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/list", response_model=BlogListResponse)
-async def get_blog_list(
-    service: str = Query(...),
-    member_id: str = Query(...)
-):
+async def get_blog_list(service: str = Query(...), member_id: str = Query(...)):
     """Get blog list for a member."""
     try:
         validate_service(service)
@@ -196,23 +214,32 @@ async def get_blog_list(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error("Failed to fetch blog list", service=service, member_id=member_id, error=str(e))
+        logger.error(
+            "Failed to fetch blog list",
+            service=service,
+            member_id=member_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
 @router.get("/content", response_model=BlogContentResponse)
-async def get_blog_content(
-    service: str = Query(...),
-    blog_id: str = Query(...)
-):
+async def get_blog_content(service: str = Query(...), blog_id: str = Query(...)):
     """Get full blog content (fetches on-demand if not cached)."""
     try:
         validate_service(service)
         return await blog_service.get_blog_content(service, blog_id)
     except ValueError as e:
-        raise HTTPException(status_code=400 if "Invalid service" in str(e) else 404, detail=str(e))
+        raise HTTPException(
+            status_code=400 if "Invalid service" in str(e) else 404, detail=str(e)
+        )
     except Exception as e:
-        logger.error("Failed to fetch blog content", service=service, blog_id=blog_id, error=str(e))
+        logger.error(
+            "Failed to fetch blog content",
+            service=service,
+            blog_id=blog_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
@@ -225,7 +252,7 @@ async def get_cache_size(service: str = Query(...)):
         return CacheSizeResponse(
             service=service,
             size_bytes=size_bytes,
-            size_mb=round(size_bytes / (1024 * 1024), 2)
+            size_mb=round(size_bytes / (1024 * 1024), 2),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -346,9 +373,15 @@ async def sync_blog_metadata(service: str = Query(...)):
 
 # Allowed domains for the image proxy (official blog hosts and CDNs)
 _PROXY_ALLOWED_HOSTS = {
-    "cdn.hinatazaka46.com", "www.hinatazaka46.com", "hinatazaka46.com",
-    "cdn.sakurazaka46.com", "www.sakurazaka46.com", "sakurazaka46.com",
-    "cdn.nogizaka46.com", "www.nogizaka46.com", "nogizaka46.com",
+    "cdn.hinatazaka46.com",
+    "www.hinatazaka46.com",
+    "hinatazaka46.com",
+    "cdn.sakurazaka46.com",
+    "www.sakurazaka46.com",
+    "sakurazaka46.com",
+    "cdn.nogizaka46.com",
+    "www.nogizaka46.com",
+    "nogizaka46.com",
     "img.nogizaka46.com",
 }
 
@@ -377,9 +410,13 @@ async def proxy_blog_image(
 
         content_type = resp.headers.get("content-type", "application/octet-stream")
         from starlette.responses import Response
+
         headers = {}
         if download:
-            headers["Content-Disposition"] = f'attachment; filename="{download}"'
+            from urllib.parse import quote
+
+            safe_name = quote(download, safe="")
+            headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
         return Response(content=resp.content, media_type=content_type, headers=headers)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
@@ -397,7 +434,6 @@ async def serve_blog_image(
     Used when full blog backup has downloaded images locally.
     """
     import re
-    from pathlib import Path as _Path
 
     try:
         validate_service(service)
@@ -405,7 +441,7 @@ async def serve_blog_image(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Validate filename to prevent path traversal
-    if not re.match(r'^img_\d+\.\w+$', filename):
+    if not re.match(r"^img_\d+\.\w+$", filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     # Resolve the blog's cache directory via service
@@ -433,8 +469,11 @@ async def serve_blog_image(
 
     ext = image_path.suffix.lower()
     media_types = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
     }
     headers = {"Cache-Control": "public, max-age=604800"}
     if download:

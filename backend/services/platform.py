@@ -11,10 +11,10 @@ from typing import cast
 logger = structlog.get_logger(__name__)
 
 # Environment variable to force dev mode
-DEV_MODE = os.environ.get("ZAKADESK_DEV_MODE", "false").lower() == "true"
+DEV_MODE = os.environ.get("SAKADESK_DEV_MODE", "false").lower() == "true"
 
 # Environment variable to enable test mode (bypasses real auth)
-TEST_MODE = os.environ.get("ZAKADESK_TEST_MODE", "false").lower() == "true"
+TEST_MODE = os.environ.get("SAKADESK_TEST_MODE", "false").lower() == "true"
 
 
 def is_test_mode() -> bool:
@@ -83,13 +83,13 @@ def get_session_dir() -> Path:
     """
     Get directory for browser session data (auth_data).
 
-    Uses pyzaka.get_auth_dir() to share browser session with CLI.
+    Uses pysaka.get_auth_dir() to share browser session with CLI.
     This enables:
     - Shared Google OAuth cookies between CLI and SakaDesk
     - Auto-OAuth when re-logging in (no password re-entry)
     - Consistent session state across both apps
     """
-    from pyzaka import get_auth_dir
+    from pysaka import get_auth_dir
     return cast(Path, get_auth_dir())
 
 

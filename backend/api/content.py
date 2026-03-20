@@ -1,8 +1,8 @@
 """
 Content API for SakaDesk
-Handles reading synced message data from pyzaka output directory.
+Handles reading synced message data from pysaka output directory.
 
-pyzaka directory structure:
+pysaka directory structure:
   output_dir/
     {service_name}/                    <- e.g., "日向坂46"
       messages/
@@ -154,7 +154,7 @@ async def get_groups():
     """
     List all groups found in the output directory.
 
-    pyzaka structure:
+    pysaka structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
     """
     if is_test_mode():

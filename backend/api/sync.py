@@ -4,7 +4,7 @@ Supports per-service progress tracking for multi-service sync.
 """
 import structlog
 from fastapi import APIRouter, HTTPException, Query
-from pyzaka import RefreshFailedError, SessionExpiredError
+from pysaka import RefreshFailedError, SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.api.progress import progress_manager

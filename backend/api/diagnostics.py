@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, cast
@@ -9,19 +8,20 @@ import time
 from datetime import datetime
 from pathlib import Path
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
-from pyzaka.credentials import get_token_manager
-from pyzaka import Group, get_jwt_remaining_seconds
+from pysaka.credentials import get_token_manager
+from pysaka import Group, get_jwt_remaining_seconds
 
 from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
-# pyzaka version - try importlib.metadata first (works with installed packages)
+# pysaka version - try importlib.metadata first (works with installed packages)
 try:
     from importlib.metadata import version
-    PYZAKA_VERSION = version("pyzaka")
+
+    PYSAKA_VERSION = version("pysaka")
 except Exception:
-    PYZAKA_VERSION = "unknown"
+    PYSAKA_VERSION = "unknown"
 
 
 class SystemInfo(BaseModel):
@@ -29,7 +29,7 @@ class SystemInfo(BaseModel):
     os_release: str
     python_version: str
     app_version: str
-    pyzaka_version: str
+    pysaka_version: str
     app_data_dir: str
     settings_path: str
     logs_dir: str
@@ -45,6 +45,7 @@ class AuthStatus(BaseModel):
 
 class ServiceSyncInfo(BaseModel):
     """Sync status for a single service."""
+
     service_id: str
     display_name: str
     last_sync: Optional[str] = None
@@ -89,7 +90,7 @@ def _format_duration(seconds: int) -> str:
 
 
 def _get_token_expiry_seconds(token: str) -> Optional[int]:
-    """Extract expiry from JWT token. Uses shared pyzaka utility."""
+    """Extract expiry from JWT token. Uses shared pysaka utility."""
     if not token:
         return None
     return cast(Optional[int], get_jwt_remaining_seconds(token))
@@ -150,10 +151,12 @@ def _get_detailed_disk_usage(output_dir: str) -> dict:
             cat_size = sum(
                 f.stat().st_size for f in category_dir.rglob("*") if f.is_file()
             )
-            service_entry["categories"].append({
-                "name": category_dir.name,
-                "bytes": cat_size,
-            })
+            service_entry["categories"].append(
+                {
+                    "name": category_dir.name,
+                    "bytes": cat_size,
+                }
+            )
             service_entry["total_bytes"] += cat_size
 
         result["services"].append(service_entry)
@@ -174,11 +177,11 @@ async def get_diagnostics():
         os_release=platform.release(),
         python_version=sys.version.split()[0],
         app_version=APP_VERSION,
-        pyzaka_version=PYZAKA_VERSION,
+        pysaka_version=PYSAKA_VERSION,
         app_data_dir=str(get_app_data_dir()),
         settings_path=str(get_settings_path()),
         logs_dir=str(get_logs_dir()),
-        is_windows=(platform.system() == "Windows")
+        is_windows=(platform.system() == "Windows"),
     )
 
     # Auth Status (token expiry without exposing the token)
@@ -188,12 +191,14 @@ async def get_diagnostics():
         groups_configured = []
         for group in Group:
             session_data = tm.load_session(group.value)
-            if session_data and session_data.get('access_token'):
+            if session_data and session_data.get("access_token"):
                 groups_configured.append(group.value)
                 # Get expiry info from first valid token
                 if not auth_status.has_token:
                     auth_status.has_token = True
-                    expiry_seconds = _get_token_expiry_seconds(session_data['access_token'])
+                    expiry_seconds = _get_token_expiry_seconds(
+                        session_data["access_token"]
+                    )
                     if expiry_seconds is not None:
                         auth_status.token_expiry_seconds = expiry_seconds
                         auth_status.token_expires_in = _format_duration(expiry_seconds)
@@ -208,27 +213,27 @@ async def get_diagnostics():
     output_dir = None
     try:
         if get_settings_path().exists():
-            with open(get_settings_path(), 'r', encoding='utf-8') as f:
+            with open(get_settings_path(), "r", encoding="utf-8") as f:
                 data = json.load(f)
-                config_state['is_configured'] = data.get('is_configured', False)
-                config_state['output_dir_configured'] = 'output_dir' in data
-                config_state['auto_sync'] = data.get('auto_sync_enabled', True)
-                config_state['sync_interval'] = data.get('sync_interval_minutes', 1)
-                config_state['adaptive_sync'] = data.get('adaptive_sync_enabled', True)
-                config_state['notifications'] = data.get('notifications_enabled', True)
-                config_state['blogs_full_backup'] = data.get('blogs_full_backup', False)
-                output_dir = data.get('output_dir')
+                config_state["is_configured"] = data.get("is_configured", False)
+                config_state["output_dir_configured"] = "output_dir" in data
+                config_state["auto_sync"] = data.get("auto_sync_enabled", True)
+                config_state["sync_interval"] = data.get("sync_interval_minutes", 1)
+                config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
+                config_state["notifications"] = data.get("notifications_enabled", True)
+                config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
+                output_dir = data.get("output_dir")
         else:
             # No settings file yet — show all defaults
-            config_state['is_configured'] = False
-            config_state['output_dir_configured'] = False
-            config_state['auto_sync'] = True
-            config_state['sync_interval'] = 1
-            config_state['adaptive_sync'] = True
-            config_state['notifications'] = True
-            config_state['blogs_full_backup'] = False
+            config_state["is_configured"] = False
+            config_state["output_dir_configured"] = False
+            config_state["auto_sync"] = True
+            config_state["sync_interval"] = 1
+            config_state["adaptive_sync"] = True
+            config_state["notifications"] = True
+            config_state["blogs_full_backup"] = False
     except Exception as e:
-        config_state['error'] = str(e)
+        config_state["error"] = str(e)
 
     # Sync State
     sync_state = SyncState()
@@ -260,27 +265,31 @@ async def get_diagnostics():
                 metadata_path = service_dir / "sync_metadata.json"
                 if metadata_path.exists():
                     try:
-                        with open(metadata_path, 'r', encoding='utf-8') as f:
+                        with open(metadata_path, "r", encoding="utf-8") as f:
                             metadata = json.load(f)
-                            utc_sync = metadata.get('last_sync')
+                            utc_sync = metadata.get("last_sync")
                             if utc_sync:
                                 try:
-                                    utc_dt = datetime.fromisoformat(utc_sync.replace('Z', '+00:00'))
+                                    utc_dt = datetime.fromisoformat(
+                                        utc_sync.replace("Z", "+00:00")
+                                    )
                                     local_dt = utc_dt.astimezone()
-                                    service_info.last_sync = local_dt.strftime('%Y-%m-%d %H:%M:%S')
+                                    service_info.last_sync = local_dt.strftime(
+                                        "%Y-%m-%d %H:%M:%S"
+                                    )
                                 except Exception:
                                     service_info.last_sync = utc_sync
 
-                            if metadata.get('last_error'):
-                                service_info.last_error = metadata.get('last_error')
-                                last_error = metadata.get('last_error')
+                            if metadata.get("last_error"):
+                                service_info.last_error = metadata.get("last_error")
+                                last_error = metadata.get("last_error")
 
                             # Count members and messages from metadata
-                            groups = metadata.get('groups', {})
+                            groups = metadata.get("groups", {})
                             service_info.member_count = len(groups)
                             total_messages = 0
                             for group_data in groups.values():
-                                total_messages += group_data.get('message_count', 0)
+                                total_messages += group_data.get("message_count", 0)
                             service_info.message_count = total_messages
                     except Exception:
                         pass
@@ -303,29 +312,38 @@ async def get_diagnostics():
     # Logs with categorization
     # debug.log has everything (recent context); error.log is pre-filtered
     logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
+    all_lines: list[str] = []
     try:
         log_dir = get_logs_dir()
         if log_dir.exists():
             # Recent logs from debug.log (last 50 lines)
             debug_log = log_dir / "debug.log"
             if debug_log.exists():
-                with open(debug_log, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(debug_log, "r", encoding="utf-8", errors="ignore") as f:
                     all_lines = f.readlines()
                     logs_summary.recent = [line.strip() for line in all_lines[-50:]]
 
             # Errors/warnings from dedicated error.log (smaller, faster)
             error_log = log_dir / "error.log"
             if error_log.exists():
-                with open(error_log, 'r', encoding='utf-8', errors='ignore') as f:
+                with open(error_log, "r", encoding="utf-8", errors="ignore") as f:
                     err_lines = f.readlines()
-                    errors = [line.strip() for line in err_lines if '[error' in line.lower()]
-                    warnings = [line.strip() for line in err_lines if '[warning' in line.lower()]
+                    errors = [
+                        line.strip() for line in err_lines if "[error" in line.lower()
+                    ]
+                    warnings = [
+                        line.strip() for line in err_lines if "[warning" in line.lower()
+                    ]
                     logs_summary.errors = errors[-50:]
                     logs_summary.warnings = warnings[-50:]
             elif debug_log.exists():
                 # Fallback: extract from debug.log if error.log doesn't exist yet
-                errors = [line.strip() for line in all_lines if '[error' in line.lower()]
-                warnings = [line.strip() for line in all_lines if '[warning' in line.lower()]
+                errors = [
+                    line.strip() for line in all_lines if "[error" in line.lower()
+                ]
+                warnings = [
+                    line.strip() for line in all_lines if "[warning" in line.lower()
+                ]
                 logs_summary.errors = errors[-50:]
                 logs_summary.warnings = warnings[-50:]
     except Exception as e:
@@ -336,5 +354,5 @@ async def get_diagnostics():
         auth_status=auth_status,
         config_state=config_state,
         sync_state=sync_state,
-        logs=logs_summary
+        logs=logs_summary,
     )
