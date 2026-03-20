@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "backend/tests"]
 asyncio_mode = "strict"
 
 [tool.coverage.run]
