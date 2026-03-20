@@ -97,7 +97,7 @@ describe('SyncModal', () => {
     });
 
     it('does not show sequential counter when total is 1', () => {
-        const { container } = render(
+        render(
             <SyncModal
                 syncProgress={baseProgress}
                 sequentialSyncInfo={{

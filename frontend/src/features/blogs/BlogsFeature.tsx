@@ -40,14 +40,6 @@ export const BlogsFeature: React.FC = () => {
     // Stable key for favorites to prevent unnecessary re-fetches
     const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
 
-    // Refs for values read inside effects that should not trigger re-runs
-    const recentPostsRef = React.useRef(recentPosts);
-    recentPostsRef.current = recentPosts;
-    const selectionModeRef = React.useRef(selectionMode);
-    selectionModeRef.current = selectionMode;
-    const favoritesRef = React.useRef(favorites);
-    favoritesRef.current = favorites;
-
     const [viewState, setViewState] = useState<ViewState>({ view: 'recent' });
 
     // Modal state for member selection
@@ -74,6 +66,14 @@ export const BlogsFeature: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
+
+    // Refs for values read inside effects that should not trigger re-runs
+    const recentPostsRef = React.useRef(recentPosts);
+    recentPostsRef.current = recentPosts;
+    const selectionModeRef = React.useRef(selectionMode);
+    selectionModeRef.current = selectionMode;
+    const favoritesRef = React.useRef(favorites);
+    favoritesRef.current = favorites;
 
     // Reset to recent view when service changes
     useEffect(() => {
