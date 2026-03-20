@@ -101,6 +101,8 @@
         "sakurazakaTos": "櫻坂46 服務條款",
         "nogizakaTos": "乃木坂46 服務條款",
         "yodelTos": "Yodel 服務條款",
+        "articleIpTitle": "第3條（知識產權）",
+        "articleProhibitedTitle": "第8條（禁止事項）",
         "acceptCheckbox": "我明白同接受呢啲條款，同埋我已經睇咗我用緊嘅服務嘅官方服務條款。",
         "acceptAndContinue": "接受並繼續"
     },
@@ -285,7 +287,8 @@
         "selectAtLeastOne": "請最少揀一個組合",
         "getStarted": "開始使用",
         "getStartedWith": "由 {{count}} 個組合開始",
-        "footerNote": "Blog 可以隨便睇。用訊息同其他進階功能就需要登入。"
+        "footerNote": "Blog 可以隨便睇。用訊息同其他進階功能就需要登入。",
+        "selectService": "揀個服務開始用啦"
     },
     "serviceRail": {
         "sessionExpiredRelogin": "Session 過咗期 - Click 呢度重新登入",
@@ -375,7 +378,8 @@
         "post": "{{count}} 篇文",
         "post_other": "{{count}} 篇文",
         "syncingBlogs": "同步緊 Blog...",
-        "firstSyncHint": "第一次同步可能要等陣"
+        "firstSyncHint": "第一次同步可能要等陣",
+        "selectService": "請揀個服務先"
     },
     "voicePlayer": {
         "speed": "播放速度",

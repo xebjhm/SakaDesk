@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { BlogMember, BlogMeta, BlogContentResponse, RecentPost, BlogMemberWithThumbnail } from '../../types';
 import { getBlogMembersWithThumbnails, getBlogList, getBlogContent, getRecentPosts, syncBlogMetadata } from './api';
 import { useAppStore } from '../../store/appStore';
+import { useTranslation } from '../../i18n';
 import { RecentPostsFeed, MemberTimelineModal, BlogReader } from './components';
 import { MemberSelectModal } from './components/MemberSelectModal';
 
@@ -21,6 +22,7 @@ const POKA_MEMBER: BlogMemberWithThumbnail = {
 };
 
 export const BlogsFeature: React.FC = () => {
+    const { t } = useTranslation();
     const activeService = useAppStore((state) => state.activeService);
     const favorites = useAppStore((state) => state.favorites[activeService ?? ''] || EMPTY_FAVORITES);
     // Get selection mode for API fetching - when 'favorite', fetch only from favorited members
@@ -37,6 +39,14 @@ export const BlogsFeature: React.FC = () => {
 
     // Stable key for favorites to prevent unnecessary re-fetches
     const favoritesKey = useMemo(() => favorites.join(','), [favorites]);
+
+    // Refs for values read inside effects that should not trigger re-runs
+    const recentPostsRef = React.useRef(recentPosts);
+    recentPostsRef.current = recentPosts;
+    const selectionModeRef = React.useRef(selectionMode);
+    selectionModeRef.current = selectionMode;
+    const favoritesRef = React.useRef(favorites);
+    favoritesRef.current = favorites;
 
     const [viewState, setViewState] = useState<ViewState>({ view: 'recent' });
 
@@ -144,7 +154,7 @@ export const BlogsFeature: React.FC = () => {
             : undefined;
 
         // Only show loading spinner if we have no cached posts
-        const hasCached = recentPosts.length > 0;
+        const hasCached = recentPostsRef.current.length > 0;
         if (!hasCached) {
             setLoading(true);
         }
@@ -179,8 +189,8 @@ export const BlogsFeature: React.FC = () => {
                 // Check if service changed while syncing - abort if so
                 if (cancelled) return null;
                 // Sync complete - re-fetch posts to show any new content
-                const memberIds = selectionMode === 'favorite' && favorites.length > 0
-                    ? favorites
+                const memberIds = selectionModeRef.current === 'favorite' && favoritesRef.current.length > 0
+                    ? favoritesRef.current
                     : undefined;
                 return getRecentPosts(serviceAtStart, 20, memberIds);
             })
@@ -371,7 +381,7 @@ export const BlogsFeature: React.FC = () => {
     if (!activeService) {
         return (
             <div className="flex-1 flex items-center justify-center text-gray-500">
-                サービスを選択してください
+                {t('blogs.selectService')}
             </div>
         );
     }

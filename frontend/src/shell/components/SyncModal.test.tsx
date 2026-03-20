@@ -32,25 +32,25 @@ const baseProgress: SyncProgress = {
 describe('SyncModal', () => {
     it('renders without crashing', () => {
         const { container } = render(<SyncModal syncProgress={baseProgress} />);
-        expect(container.querySelector('.fixed')).toBeDefined();
+        expect(container.querySelector('.fixed')).toBeInTheDocument();
     });
 
     it('shows progress fraction', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // The component renders "completed / total" as "5 / 20"
-        expect(screen.getByText('5 / 20')).toBeDefined();
+        expect(screen.getByText('5 / 20')).toBeInTheDocument();
     });
 
     it('shows percentage', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // 5/20 = 25%
-        expect(screen.getByText('25%')).toBeDefined();
+        expect(screen.getByText('25%')).toBeInTheDocument();
     });
 
     it('shows phase name via t() key for scanning phase', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // The header calls t('sync.phase', ...) which our mock returns as 'sync.phase'
-        expect(screen.getByText('sync.phase')).toBeDefined();
+        expect(screen.getByText('sync.phase')).toBeInTheDocument();
     });
 
     it('shows download phase with media warning', () => {
@@ -63,7 +63,7 @@ describe('SyncModal', () => {
         };
         render(<SyncModal syncProgress={downloading} />);
         // Phase 3 renders the media downloading warning
-        expect(screen.getByText('sync.downloadingMedia')).toBeDefined();
+        expect(screen.getByText('sync.downloadingMedia')).toBeInTheDocument();
     });
 
     it('shows complete state', () => {
@@ -75,8 +75,8 @@ describe('SyncModal', () => {
             total: 20,
         };
         render(<SyncModal syncProgress={complete} />);
-        expect(screen.getByText('sync.complete')).toBeDefined();
-        expect(screen.getByText('sync.syncComplete')).toBeDefined();
+        expect(screen.getByText('sync.complete')).toBeInTheDocument();
+        expect(screen.getByText('sync.syncComplete')).toBeInTheDocument();
     });
 
     it('shows sequential sync counter', () => {
@@ -92,8 +92,8 @@ describe('SyncModal', () => {
         );
         // The counter text is: "{serviceName} ({currentIndex+1}/{total})"
         // With our mock: "Service-hinatazaka46 (1/2)"
-        expect(screen.getByText(/Service-hinatazaka46/)).toBeDefined();
-        expect(screen.getByText(/1\/2/)).toBeDefined();
+        expect(screen.getByText(/Service-hinatazaka46/)).toBeInTheDocument();
+        expect(screen.getByText(/1\/2/)).toBeInTheDocument();
     });
 
     it('does not show sequential counter when total is 1', () => {
@@ -117,7 +117,7 @@ describe('SyncModal', () => {
             detail: 'Processing group Alpha',
         };
         render(<SyncModal syncProgress={withDetail} />);
-        expect(screen.getByText(/Processing group Alpha/)).toBeDefined();
+        expect(screen.getByText(/Processing group Alpha/)).toBeInTheDocument();
     });
 
     it('shows detail with detail_extra', () => {
@@ -127,21 +127,21 @@ describe('SyncModal', () => {
             detail_extra: '(page 3)',
         };
         render(<SyncModal syncProgress={withExtra} />);
-        expect(screen.getByText(/Fetching \(page 3\)/)).toBeDefined();
+        expect(screen.getByText(/Fetching \(page 3\)/)).toBeInTheDocument();
     });
 
     it('shows elapsed time and ETA', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // elapsed_seconds=30 => formatSyncTime => "00:30"
-        expect(screen.getByText('00:30')).toBeDefined();
+        expect(screen.getByText('00:30')).toBeInTheDocument();
         // eta_seconds=90 => formatSyncTime => "01:30"
-        expect(screen.getByText('01:30')).toBeDefined();
+        expect(screen.getByText('01:30')).toBeInTheDocument();
     });
 
     it('shows speed', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // speed=2.5, unit="groups" => "2.50 groups/s"
-        expect(screen.getByText('2.50 groups/s')).toBeDefined();
+        expect(screen.getByText('2.50 groups/s')).toBeInTheDocument();
     });
 
     it('shows fallback ETA when eta_seconds is null', () => {
@@ -150,14 +150,14 @@ describe('SyncModal', () => {
             eta_seconds: null,
         };
         render(<SyncModal syncProgress={noEta} />);
-        expect(screen.getByText('--:--')).toBeDefined();
+        expect(screen.getByText('--:--')).toBeInTheDocument();
     });
 
     it('shows phase dots for scanning, syncing, downloading', () => {
         render(<SyncModal syncProgress={baseProgress} />);
         // Phase dot labels use t() keys
-        expect(screen.getByText('sync.scan')).toBeDefined();
-        expect(screen.getByText('sync.syncing')).toBeDefined();
-        expect(screen.getByText('sync.download')).toBeDefined();
+        expect(screen.getByText('sync.scan')).toBeInTheDocument();
+        expect(screen.getByText('sync.syncing')).toBeInTheDocument();
+        expect(screen.getByText('sync.download')).toBeInTheDocument();
     });
 });

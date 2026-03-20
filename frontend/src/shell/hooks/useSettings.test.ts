@@ -192,8 +192,10 @@ describe('useSettings – blog backup side effect', () => {
             await result.current.saveSettings({ blogs_full_backup: true })
         })
 
-        // Give any fire-and-forget fetches a chance to land
-        await new Promise(r => setTimeout(r, 50))
+        // Verify no backup calls were made
+        await waitFor(() => {
+            expect(fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'POST' }))
+        })
 
         const backupCalls = calls.filter(c => c.url.startsWith('/api/blogs/backup/'))
         expect(backupCalls).toHaveLength(0)
@@ -218,8 +220,10 @@ describe('useSettings – blog backup side effect', () => {
             await result.current.saveSettings({ output_dir: '/tmp/new_dir' })
         })
 
-        // Give any fire-and-forget fetches a chance to land
-        await new Promise(r => setTimeout(r, 50))
+        // Verify no backup calls were made
+        await waitFor(() => {
+            expect(fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'POST' }))
+        })
 
         const backupCalls = calls.filter(c => c.url.startsWith('/api/blogs/backup/'))
         expect(backupCalls).toHaveLength(0)
@@ -279,8 +283,10 @@ describe('useSettings – blog backup side effect', () => {
             await result.current.saveSettings({ blogs_full_backup: true })
         })
 
-        // Give any fire-and-forget fetches a chance to land
-        await new Promise(r => setTimeout(r, 50))
+        // Verify no backup calls were made
+        await waitFor(() => {
+            expect(fetch).toHaveBeenCalledWith('/api/settings', expect.objectContaining({ method: 'POST' }))
+        })
 
         const backupCalls = calls.filter(c => c.url.startsWith('/api/blogs/backup/'))
         expect(backupCalls).toHaveLength(0)

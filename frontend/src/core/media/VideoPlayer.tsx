@@ -6,7 +6,7 @@ import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 
-const VOLUME_STORAGE_KEY = 'zakadesk_video_amp';
+const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
 interface VideoPlayerProps {
     src: string;

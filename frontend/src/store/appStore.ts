@@ -8,7 +8,7 @@
  * - Blog selection mode preferences
  * - Conversation selection memory
  *
- * All state is persisted to localStorage under 'zakadesk-app-state'.
+ * All state is persisted to localStorage under 'sakadesk-app-state'.
  *
  * @example
  * ```tsx
@@ -324,7 +324,7 @@ export const useAppStore = create<AppState>()(
             setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),
         }),
         {
-            name: 'zakadesk-app-state',
+            name: 'sakadesk-app-state',
             version: 4,
             partialize: (state) => ({
                 selectedServices: state.selectedServices,

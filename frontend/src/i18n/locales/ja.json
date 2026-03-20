@@ -101,6 +101,8 @@
     "sakurazakaTos": "櫻坂46 利用規約",
     "nogizakaTos": "乃木坂46 利用規約",
     "yodelTos": "Yodel 利用規約",
+    "articleIpTitle": "第3条（知的財産権）",
+    "articleProhibitedTitle": "第8条（禁止事項）",
     "acceptCheckbox": "上記および利用中の公式サービスの利用規約を理解し、同意します。",
     "acceptAndContinue": "同意して開始する"
   },
@@ -285,7 +287,8 @@
     "selectAtLeastOne": "少なくとも1つのグループを選択してください",
     "getStarted": "始める",
     "getStartedWith": "{{count}}つのグループで開始する",
-    "footerNote": "ブログの閲覧は自由ですが、メッセージやその他のプレミアム機能を利用するにはログインが必要です。"
+    "footerNote": "ブログの閲覧は自由ですが、メッセージやその他のプレミアム機能を利用するにはログインが必要です。",
+    "selectService": "サービスを選択してください"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
@@ -375,7 +378,8 @@
     "post": "{{count}}件の記事",
     "post_other": "{{count}}件の記事",
     "syncingBlogs": "ブログを同期中...",
-    "firstSyncHint": "初回は少し時間がかかる場合があります"
+    "firstSyncHint": "初回は少し時間がかかる場合があります",
+    "selectService": "サービスを選択してください"
   },
   "voicePlayer": {
     "speed": "再生速度",
