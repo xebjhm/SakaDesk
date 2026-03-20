@@ -6,7 +6,6 @@ when `blogs_full_backup` is enabled in settings.
 """
 import asyncio
 import threading
-import time
 
 import pytest
 from unittest.mock import patch, AsyncMock
@@ -62,9 +61,16 @@ class TestBlogBackupAutoEnqueue:
     def test_shutdown_stops_thread(self):
         """shutdown() should clean up the background thread."""
         manager = BlogBackupManager()
-        with patch.object(manager, '_run_backup', new_callable=AsyncMock):
+        entered = threading.Event()
+
+        async def mock_run_backup(service, cancel_event):
+            entered.set()
+            while not cancel_event.is_set():
+                await asyncio.sleep(0.01)
+
+        with patch.object(manager, '_run_backup', side_effect=mock_run_backup):
             manager.start(["hinatazaka46"])
-            time.sleep(0.1)
+            assert entered.wait(timeout=5), "_run_backup was never entered"
             assert manager._thread is not None
             assert manager._thread.is_alive()
 
