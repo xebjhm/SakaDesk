@@ -10,7 +10,7 @@ interface SystemInfo {
     os_release: string;
     python_version: string;
     app_version: string;
-    pyzaka_version: string;
+    pysaka_version: string;
     app_data_dir: string;
     settings_path: string;
     logs_dir: string;
@@ -243,9 +243,9 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             <span className="font-mono text-gray-900">v{data.system.app_version}</span>
                                         </div>
                                         <div className="flex justify-between">
-                                            <span className="text-gray-500">pyzaka</span>
+                                            <span className="text-gray-500">pysaka</span>
                                             <span className="font-mono text-gray-900">
-                                                {data.system.pyzaka_version === 'unknown' ? 'unknown' : `v${data.system.pyzaka_version}`}
+                                                {data.system.pysaka_version === 'unknown' ? 'unknown' : `v${data.system.pysaka_version}`}
                                             </span>
                                         </div>
                                     </div>

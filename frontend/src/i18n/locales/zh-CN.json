@@ -101,6 +101,8 @@
     "sakurazakaTos": "樱坂46 服务条款",
     "nogizakaTos": "乃木坂46 服务条款",
     "yodelTos": "Yodel 服务条款",
+    "articleIpTitle": "第3条（知识产权）",
+    "articleProhibitedTitle": "第8条（禁止事项）",
     "acceptCheckbox": "我理解并接受这些条款，并且我已经阅读了我所使用的服务的官方服务条款。",
     "acceptAndContinue": "接受并继续"
   },
@@ -285,7 +287,8 @@
     "selectAtLeastOne": "请至少选择一个组合",
     "getStarted": "开始使用",
     "getStartedWith": "开始使用 {{count}} 个组合",
-    "footerNote": "Blog 可自由浏览。使用消息和其他高级功能需要登录。"
+    "footerNote": "Blog 可自由浏览。使用消息和其他高级功能需要登录。",
+    "selectService": "选择服务以开始使用"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
@@ -375,7 +378,8 @@
     "post": "{{count}} 篇文章",
     "post_other": "{{count}} 篇文章",
     "syncingBlogs": "正在同步 Blog...",
-    "firstSyncHint": "首次同步可能需要一些时间"
+    "firstSyncHint": "首次同步可能需要一些时间",
+    "selectService": "请选择服务"
   },
   "voicePlayer": {
     "speed": "播放速度",

@@ -101,6 +101,8 @@
     "sakurazakaTos": "Sakurazaka46 ToS",
     "nogizakaTos": "Nogizaka46 ToS",
     "yodelTos": "Yodel ToS",
+    "articleIpTitle": "Article 3 (Intellectual Property Rights)",
+    "articleProhibitedTitle": "Article 8 (Prohibited Activities)",
     "acceptCheckbox": "I understand and accept these terms, and I have read the official Terms of Service for the services I use.",
     "acceptAndContinue": "Accept and Continue"
   },
@@ -285,7 +287,8 @@
     "selectAtLeastOne": "Select at least one group",
     "getStarted": "Get Started",
     "getStartedWith": "Get Started with {{count}} groups",
-    "footerNote": "Browse blogs freely. Login required for Messages and other premium features."
+    "footerNote": "Browse blogs freely. Login required for Messages and other premium features.",
+    "selectService": "Select a service to get started"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "Session expired - click to re-login",
@@ -375,7 +378,8 @@
     "post": "{{count}} post",
     "post_other": "{{count}} posts",
     "syncingBlogs": "Syncing blogs...",
-    "firstSyncHint": "This may take a moment for the first time"
+    "firstSyncHint": "This may take a moment for the first time",
+    "selectService": "Please select a service"
   },
   "voicePlayer": {
     "speed": "Speed",
