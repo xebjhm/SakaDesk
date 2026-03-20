@@ -1345,9 +1345,9 @@ wheels = [
 ]
 
 [[package]]
-name = "pyzaka"
+name = "pysaka"
 version = "0.2.0"
-source = { editable = "../pyzaka" }
+source = { editable = "../pysaka" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -1807,7 +1807,7 @@ wheels = [
 ]
 
 [[package]]
-name = "zakadesk"
+name = "sakadesk"
 version = "0.2.1"
 source = { virtual = "." }
 dependencies = [
@@ -1819,7 +1819,7 @@ dependencies = [
     { name = "plyer" },
     { name = "pykakasi" },
     { name = "python-multipart" },
-    { name = "pyzaka" },
+    { name = "pysaka" },
     { name = "structlog" },
     { name = "tk" },
     { name = "uvicorn", extra = ["standard"] },
@@ -1845,7 +1845,7 @@ requires-dist = [
     { name = "plyer", specifier = ">=2.1.0" },
     { name = "pykakasi", specifier = ">=2.3.0" },
     { name = "python-multipart" },
-    { name = "pyzaka", editable = "../pyzaka" },
+    { name = "pysaka", editable = "../pysaka" },
     { name = "structlog", specifier = ">=25.5.0" },
     { name = "tk", specifier = ">=0.1.0" },
     { name = "uvicorn", extras = ["standard"] },

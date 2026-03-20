@@ -169,7 +169,7 @@ def test_python_imports() -> bool:
     imports_to_test = [
         "fastapi",
         "uvicorn",
-        "pyzaka",
+        "pysaka",
         "keyring",
         "structlog",
         "backend.main",
