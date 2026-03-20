@@ -64,8 +64,8 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 
 ```bash
 # Clone the repository
-git clone https://github.com/xebjhm/Project-pysaka.git
-cd Project-pysaka/SakaDesk
+git clone https://github.com/xebjhm/SakaDesk.git
+cd SakaDesk
 
 # Install Python dependencies with uv
 uv sync

@@ -8,7 +8,7 @@
 #endif
 #define MyAppVersion AppVersion
 #define MyAppPublisher "xebjhm"
-#define MyAppURL "https://github.com/xebjhm/Project-pyzaka"
+#define MyAppURL "https://github.com/xebjhm/SakaDesk"
 #define MyAppExeName "SakaDesk.exe"
 
 [Setup]
