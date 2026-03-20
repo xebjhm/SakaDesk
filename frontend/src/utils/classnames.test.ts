@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cn, formatDateTime, formatDuration } from './classnames'
+import { cn, formatDateTime, formatDuration, formatDownloadFilename } from './classnames'
 
 describe('cn utility function', () => {
   it('should merge class names', () => {
@@ -99,5 +99,43 @@ describe('formatDuration', () => {
     expect(formatDuration(5)).toBe('00:05')
     expect(formatDuration(9)).toBe('00:09')
     expect(formatDuration(61)).toBe('01:01')
+  })
+})
+
+describe('formatDownloadFilename', () => {
+  it('should extract filename from a simple path', () => {
+    expect(formatDownloadFilename('https://example.com/media/photo.jpg')).toBe('photo.jpg')
+  })
+
+  it('should add YYYY-MM-DD_HHMM_ prefix when timestamp is provided', () => {
+    // Build a local-time Date so the assertion is timezone-independent
+    const ts = new Date(2026, 2, 3, 14, 33).toISOString() // March 3, 2026, 14:33 local
+    expect(formatDownloadFilename('https://example.com/media/4954134.jpg', ts))
+      .toBe('2026-03-03_1433_4954134.jpg')
+  })
+
+  it('should extract just the filename from Windows backslash paths (URL-encoded %5C)', () => {
+    expect(formatDownloadFilename('https://example.com/media/C%3A%5CUsers%5Cphoto.jpg'))
+      .toBe('photo.jpg')
+  })
+
+  it('should extract filename from ?filename= query param', () => {
+    expect(formatDownloadFilename('/api/blogs/image?filename=img_0.jpg'))
+      .toBe('img_0.jpg')
+  })
+
+  it('should return filename only when no timestamp is given', () => {
+    expect(formatDownloadFilename('https://example.com/files/report.pdf'))
+      .toBe('report.pdf')
+  })
+
+  it('should return filename only when timestamp is invalid', () => {
+    expect(formatDownloadFilename('https://example.com/files/report.pdf', 'not-a-date'))
+      .toBe('report.pdf')
+  })
+
+  it('should decode URL-encoded Japanese characters', () => {
+    expect(formatDownloadFilename('https://example.com/media/%E5%86%99%E7%9C%9F.png'))
+      .toBe('\u5199\u771f.png')
   })
 })
