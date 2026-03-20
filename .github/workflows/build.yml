@@ -8,9 +8,13 @@ on:
     branches: [main, dev]
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v4
 
@@ -31,6 +35,9 @@ jobs:
     - name: Lint with ruff
       run: uv run --no-sources ruff check .
 
+    - name: Check formatting with ruff
+      run: uv run --no-sources ruff format --check .
+
     - name: Type Check with mypy
       run: uv run --no-sources mypy backend/
 
@@ -50,6 +57,8 @@ jobs:
 
   test-backend:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v4
 
@@ -69,11 +78,13 @@ jobs:
     - name: Run Tests with Coverage
       run: |
         uv run --no-sources pytest -v --tb=short \
-          --cov=backend --cov-report=term-missing --cov-fail-under=50 \
+          --cov=backend --cov-report=term-missing --cov-fail-under=80 \
           --ignore=tests/test_startup.py
 
   test-frontend:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v4
 
@@ -94,6 +105,8 @@ jobs:
     needs: [lint, test-backend, test-frontend]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
+    permissions:
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
@@ -122,9 +135,11 @@ jobs:
         version: "latest"
 
     - name: Install Dependencies
-      run: |
-        uv sync --no-sources
-        uv pip install pyinstaller pywebview
+      run: uv sync --no-sources
+
+    # Pinned for reproducible builds; not in pyproject.toml (build-only tools)
+    - name: Install Build Tools
+      run: uv pip install pyinstaller==6.13.0 pywebview==5.3.2
 
     # Build
     - name: Install Inno Setup

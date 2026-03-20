@@ -41,7 +41,7 @@ packages_to_collect = [
     'uvicorn',
     'pydantic',
     'pydantic_core',
-    'pyzaka',
+    'pysaka',
     'playwright',
     'aiofiles',
     'keyring',

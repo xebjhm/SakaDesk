@@ -39,7 +39,7 @@ echo.
 echo [2/5] Preparing workspace...
 set WORKSPACE_ROOT=%TEMP%\SakaDesk_Workspace
 set WORKSPACE_APP=%WORKSPACE_ROOT%\SakaDesk
-set WORKSPACE_LIB=%WORKSPACE_ROOT%\pyzaka
+set WORKSPACE_LIB=%WORKSPACE_ROOT%\pysaka
 
 if exist "%WORKSPACE_ROOT%" rmdir /s /q "%WORKSPACE_ROOT%"
 mkdir "%WORKSPACE_ROOT%"
@@ -56,10 +56,10 @@ if %ERRORLEVEL% geq 8 (
     exit /b 1
 )
 
-echo      Copying pyzaka (dependency) to workspace...
-robocopy "%PROJECT_DIR%\..\pyzaka" "%WORKSPACE_LIB%" /E /XD .venv dist build .git auth_data output __pycache__ .pytest_cache .idea .vscode /R:1 /W:1 /NFL /NDL /NJH /NJS
+echo      Copying pysaka (dependency) to workspace...
+robocopy "%PROJECT_DIR%\..\pysaka" "%WORKSPACE_LIB%" /E /XD .venv dist build .git auth_data output __pycache__ .pytest_cache .idea .vscode /R:1 /W:1 /NFL /NDL /NJH /NJS
 if %ERRORLEVEL% geq 8 (
-    echo ERROR: Robocopy failed for pyzaka
+    echo ERROR: Robocopy failed for pysaka
     pause
     exit /b 1
 )
@@ -126,8 +126,10 @@ popd
 echo.
 echo [5/5] Copying artifacts back...
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
-copy /Y "%WORKSPACE_APP%\dist\zakadesk-setup.exe" "%BUILD_DIR%\" >nul 2>&1
-if exist "%BUILD_DIR%\zakadesk-setup.exe" (
+copy /Y "%WORKSPACE_APP%\dist\SakaDesk-*-Setup.exe" "%BUILD_DIR%\" >nul 2>&1
+REM Check if any installer was copied (glob match)
+dir /B "%BUILD_DIR%\SakaDesk-*-Setup.exe" >nul 2>&1
+if %ERRORLEVEL% equ 0 (
     echo      Installer copied to %BUILD_DIR%
 ) else (
     echo      WARNING: Installer not found, copying raw build...
@@ -139,8 +141,9 @@ popd
 echo.
 echo ============================================
 echo  Build complete!
-if exist "%BUILD_DIR%\zakadesk-setup.exe" (
-    echo  Installer: %BUILD_DIR%\zakadesk-setup.exe
+dir /B "%BUILD_DIR%\SakaDesk-*-Setup.exe" >nul 2>&1
+if %ERRORLEVEL% equ 0 (
+    echo  Installer: %BUILD_DIR%\SakaDesk-*-Setup.exe
 ) else (
     echo  Executable: %BUILD_DIR%\SakaDesk\SakaDesk.exe
 )

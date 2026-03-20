@@ -5,14 +5,14 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
-BACKEND_LOG="/tmp/zakadesk-backend.log"
-FRONTEND_LOG="/tmp/zakadesk-frontend.log"
+BACKEND_LOG="/tmp/sakadesk-backend.log"
+FRONTEND_LOG="/tmp/sakadesk-frontend.log"
 
 start_backend() {
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
     nohup uv run uvicorn backend.main:app --port $BACKEND_PORT --reload > "$BACKEND_LOG" 2>&1 &
-    echo $! > /tmp/zakadesk-backend.pid
+    echo $! > /tmp/sakadesk-backend.pid
     sleep 2
     if curl -s "http://localhost:$BACKEND_PORT/api/health" > /dev/null 2>&1; then
         echo "Backend started successfully"
@@ -25,7 +25,7 @@ start_frontend() {
     echo "Starting frontend on port $FRONTEND_PORT..."
     cd "$SCRIPT_DIR/frontend"
     nohup npm run dev -- --port $FRONTEND_PORT --strictPort > "$FRONTEND_LOG" 2>&1 &
-    echo $! > /tmp/zakadesk-frontend.pid
+    echo $! > /tmp/sakadesk-frontend.pid
     sleep 3
     echo "Frontend started on http://localhost:$FRONTEND_PORT"
 }
@@ -33,16 +33,16 @@ start_frontend() {
 stop_backend() {
     echo "Stopping backend..."
     fuser -k $BACKEND_PORT/tcp 2>/dev/null || true
-    [ -f /tmp/zakadesk-backend.pid ] && kill $(cat /tmp/zakadesk-backend.pid) 2>/dev/null
-    rm -f /tmp/zakadesk-backend.pid
+    [ -f /tmp/sakadesk-backend.pid ] && kill $(cat /tmp/sakadesk-backend.pid) 2>/dev/null
+    rm -f /tmp/sakadesk-backend.pid
     echo "Backend stopped"
 }
 
 stop_frontend() {
     echo "Stopping frontend..."
     fuser -k $FRONTEND_PORT/tcp 2>/dev/null || true
-    [ -f /tmp/zakadesk-frontend.pid ] && kill $(cat /tmp/zakadesk-frontend.pid) 2>/dev/null
-    rm -f /tmp/zakadesk-frontend.pid
+    [ -f /tmp/sakadesk-frontend.pid ] && kill $(cat /tmp/sakadesk-frontend.pid) 2>/dev/null
+    rm -f /tmp/sakadesk-frontend.pid
     echo "Frontend stopped"
 }
 

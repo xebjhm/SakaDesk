@@ -1,12 +1,12 @@
 [project]
-name = "zakadesk"
+name = "sakadesk"
 version = "0.2.1"
 description = "SakaDesk GUI Application"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pyzaka>=0.2.0",
+    "pysaka>=0.2.0",
     "python-multipart",
     "aiofiles",
     "keyring",
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-pyzaka = { path = "../pyzaka", editable = true }
+pysaka = { path = "../pysaka", editable = true }
 
 [dependency-groups]
 dev = [
@@ -40,7 +40,7 @@ source = ["backend"]
 omit = ["backend/__pycache__/*", "tests/*"]
 
 [tool.coverage.report]
-fail_under = 50
+fail_under = 80
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
@@ -67,4 +67,4 @@ disallow_untyped_defs = false
 check_untyped_defs = true
 
 # Development server configuration
-# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-dir "../pyzaka/src" --reload-exclude "output/*" --reload-exclude "auth_data/*"
+# Run with: uv run uvicorn backend.main:app --port 8000 --reload --reload-dir "../pysaka/src" --reload-exclude "output/*" --reload-exclude "auth_data/*"
