@@ -7,15 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-03-16
+## [0.2.1] - 2026-03-21
 
 ### Changed
-- Rebranded from HakoDesk to SakaDesk across the entire codebase
-- Renamed SDK dependency from pyhako to pysaka
-- Renamed base exception from HakoError to SakaError
-- Renamed CLI class from HakoCLI to SakaCLI
-- Updated icon filename to SakaDesk.ico
-- Updated About page version to 0.2.1
+- **Breaking:** Rebranded from HakoDesk to SakaDesk across the entire codebase
+- Renamed SDK dependency from pyhako to pysaka (requires pysaka >= 0.3.0)
+- Externalized remaining hardcoded Japanese strings to i18n locale files
+- Replaced ToS acknowledgement list with official service excerpts
+- Moved BlogBackupManager to dedicated background thread
+- Centralized settings defaults in settings_store
+
+### Added
+- Pre-commit hooks (ruff, mypy, tsc, eslint) for development quality gates
+- Comprehensive backend test suites (23 new modules, 80%+ coverage)
+- Frontend test suites for SyncModal, useSettings, syncFormatters, downloads
+- Atomic file writes for blog index and sync metadata (prevents corruption)
+- Batch operations: check_new_messages, group timeline fetch, blog metadata
+- ProcessPoolExecutor for GIL-free search index builds
+- Timestamp-based sync cursor (replaces message-ID cursor)
+- Log rotation with separate error.log
+- Video player loop toggle button (replaces auto-loop)
+- Blog recent posts cache with Zustand persistence
+
+### Fixed
+- Concurrent image downloads bounded to prevent timeout
+- React effect dependency stability with useRef in BlogsFeature and useSettings
+- Conditional React hook calls in PhotoDetailModal
+- TypeScript compilation errors in BlogsFeature
+- mypy type errors in search_service, sync_service, and diagnostics
+- Flaky BlogBackupManager tests replaced time.sleep with threading.Event
+- Frontend snapshot tests compatible with pre-commit whitespace hooks
+- Prevent concurrent browser login launches
+- freeze_support() added to prevent duplicate app on Windows
+- Search indexing moved to background to unblock sync Phase 3
+
+### Security
+- CI hardened with explicit permissions per job
+- Version validation in Inno Setup to prevent command injection
+- Coverage threshold enforced at 80% for backend
 
 ## [0.2.0] - 2026-03-16
 
