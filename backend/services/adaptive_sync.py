@@ -25,7 +25,6 @@ because the idols post on a Japan schedule.
 import random
 import structlog
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 
 logger = structlog.get_logger(__name__)
 
@@ -86,45 +85,6 @@ def get_time_multiplier() -> float:
     return _TIME_MULTIPLIERS.get(get_jst_hour(), 1.0)
 
 
-def get_activity_multiplier(hours_since_last_post: Optional[float]) -> float:
-    """
-    Get multiplier based on how recently a member posted.
-
-    More recent activity = check more often
-
-    Args:
-        hours_since_last_post: Hours since member's last message, or None if unknown
-
-    Returns:
-        Multiplier (lower = more frequent)
-    """
-    if hours_since_last_post is None:
-        return 1.0
-
-    if hours_since_last_post < 1:
-        # Very recent activity - check more often
-        return 0.5
-
-    if hours_since_last_post < 3:
-        # Recent activity
-        return 0.7
-
-    if hours_since_last_post < 6:
-        # Moderate activity
-        return 0.9
-
-    if hours_since_last_post < 24:
-        # Normal
-        return 1.0
-
-    if hours_since_last_post < 72:
-        # Inactive for a day or more
-        return 1.3
-
-    # Very inactive - check less often
-    return 1.5
-
-
 def add_jitter(interval_minutes: float, jitter_pct: float = 0.2) -> float:
     """
     Add random jitter to an interval.
@@ -152,7 +112,6 @@ mode (when adaptive sync is disabled).
 
 
 def calculate_next_sync_interval(
-    hours_since_last_post: Optional[float] = None,
     enable_randomization: bool = True,
 ) -> float:
     """
@@ -161,16 +120,14 @@ def calculate_next_sync_interval(
     Algorithm:
     1. Start with fixed base interval (10 minutes)
     2. Apply time-of-day multiplier (peak hours = more frequent)
-    3. Apply activity multiplier (recent posts = more frequent)
-    4. Add jitter (±20%) to avoid predictable patterns
+    3. Add jitter (±20%) to avoid predictable patterns
 
     Resulting intervals:
-      Peak (20:00 JST, recent post):  10 × 0.5 × 0.5 = ~5 min
-      Daytime (10:00, normal):         10 × 0.8 × 1.0 = ~8 min
-      Dead hours (03:00, inactive):    10 × 3.0 × 1.3 = ~39 min
+      Peak (20:00 JST):   10 × 0.5  = ~5 min
+      Daytime (10:00):    10 × 0.8  = ~8 min
+      Dead hours (03:00): 10 × 3.0  = ~30 min
 
     Args:
-        hours_since_last_post: Hours since most recent member posted
         enable_randomization: Whether to apply adaptive timing
 
     Returns:
@@ -185,10 +142,6 @@ def calculate_next_sync_interval(
     time_mult = get_time_multiplier()
     interval *= time_mult
 
-    # Apply activity multiplier
-    activity_mult = get_activity_multiplier(hours_since_last_post)
-    interval *= activity_mult
-
     # Add jitter
     interval = add_jitter(interval)
 
@@ -202,7 +155,6 @@ def calculate_next_sync_interval(
         interval_minutes=round(interval, 1),
         base=_ADAPTIVE_BASE_MINUTES,
         time_mult=time_mult,
-        activity_mult=activity_mult,
     )
 
     return interval
@@ -242,19 +194,11 @@ if __name__ == "__main__":
         "Current state", jst_hour=get_jst_hour(), time_multiplier=get_time_multiplier()
     )
 
-    # Test various scenarios
-    scenarios = [
-        (None, "No activity data"),
-        (0.5, "Posted 30 min ago"),
-        (2.0, "Posted 2 hours ago"),
-        (6.0, "Posted 6 hours ago"),
-        (24.0, "Posted 24 hours ago"),
-        (72.0, "Posted 3 days ago"),
-    ]
-
-    for hours, desc in scenarios:
-        intervals = [calculate_next_sync_interval(hours) for _ in range(5)]
-        avg = sum(intervals) / len(intervals)
-        test_logger.info(
-            desc, avg_minutes=f"{avg:.1f}", samples=[f"{i:.1f}" for i in intervals]
-        )
+    # Sample intervals at current time
+    intervals = [calculate_next_sync_interval() for _ in range(5)]
+    avg = sum(intervals) / len(intervals)
+    test_logger.info(
+        "Sample intervals",
+        avg_minutes=f"{avg:.1f}",
+        samples=[f"{i:.1f}" for i in intervals],
+    )
