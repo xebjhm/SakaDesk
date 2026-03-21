@@ -1,5 +1,6 @@
 """Read state API endpoints for tracking message read progress."""
-from typing import Any, Dict, List
+
+from typing import List
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -28,8 +29,12 @@ async def get_all_read_states():
 async def upsert_read_state(entry: ReadStateEntry):
     svc = get_search_service()
     await svc.upsert_read_state(
-        entry.service, entry.group_id, entry.member_id,
-        entry.last_read_id, entry.read_count, entry.revealed_ids,
+        entry.service,
+        entry.group_id,
+        entry.member_id,
+        entry.last_read_id,
+        entry.read_count,
+        entry.revealed_ids,
     )
     return {"status": "ok"}
 

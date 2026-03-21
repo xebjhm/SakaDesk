@@ -1,6 +1,5 @@
 """Extended tests for blogs API endpoints beyond basic coverage."""
 
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -26,17 +25,19 @@ class TestGetRecentPosts:
     @patch("backend.api.blogs.blog_service")
     def test_recent_success(self, mock_svc):
         """Returns recent posts."""
-        mock_svc.get_recent_posts = AsyncMock(return_value=[
-            {
-                "id": "post1",
-                "title": "Test Blog",
-                "published_at": "2025-01-01T00:00:00Z",
-                "url": "https://example.com/blog/1",
-                "thumbnail": None,
-                "member_id": "100",
-                "member_name": "Test Member",
-            }
-        ])
+        mock_svc.get_recent_posts = AsyncMock(
+            return_value=[
+                {
+                    "id": "post1",
+                    "title": "Test Blog",
+                    "published_at": "2025-01-01T00:00:00Z",
+                    "url": "https://example.com/blog/1",
+                    "thumbnail": None,
+                    "member_id": "100",
+                    "member_name": "Test Member",
+                }
+            ]
+        )
         response = client.get("/api/blogs/recent?service=hinatazaka46&limit=10")
         assert response.status_code == 200
         data = response.json()
@@ -67,10 +68,12 @@ class TestGetBlogMembers:
     @patch("backend.api.blogs.blog_service")
     def test_blog_members_success(self, mock_svc):
         """Returns member list."""
-        mock_svc.get_blog_members = AsyncMock(return_value={
-            "100": "Member A",
-            "101": "Member B",
-        })
+        mock_svc.get_blog_members = AsyncMock(
+            return_value={
+                "100": "Member A",
+                "101": "Member B",
+            }
+        )
         response = client.get("/api/blogs/members?service=hinatazaka46")
         assert response.status_code == 200
         data = response.json()
@@ -101,9 +104,11 @@ class TestGetMembersWithThumbnails:
     @patch("backend.api.blogs.blog_service")
     def test_members_thumbnails_success(self, mock_svc):
         """Returns members with thumbnail paths."""
-        mock_svc.get_members_with_thumbnails = AsyncMock(return_value=[
-            {"id": "100", "name": "Member A", "thumbnail": "/path/to/thumb.jpg"},
-        ])
+        mock_svc.get_members_with_thumbnails = AsyncMock(
+            return_value=[
+                {"id": "100", "name": "Member A", "thumbnail": "/path/to/thumb.jpg"},
+            ]
+        )
         response = client.get("/api/blogs/members-with-thumbnails?service=hinatazaka46")
         assert response.status_code == 200
         data = response.json()
@@ -113,7 +118,9 @@ class TestGetMembersWithThumbnails:
     @patch("backend.api.blogs.blog_service")
     def test_members_thumbnails_error(self, mock_svc):
         """Returns 500 on error."""
-        mock_svc.get_members_with_thumbnails = AsyncMock(side_effect=RuntimeError("fail"))
+        mock_svc.get_members_with_thumbnails = AsyncMock(
+            side_effect=RuntimeError("fail")
+        )
         response = client.get("/api/blogs/members-with-thumbnails?service=hinatazaka46")
         assert response.status_code == 500
 
@@ -165,13 +172,21 @@ class TestGetBlogList:
     @patch("backend.api.blogs.blog_service")
     def test_blog_list_success(self, mock_svc):
         """Returns blog list for a member."""
-        mock_svc.get_blog_list = AsyncMock(return_value={
-            "member_id": "100",
-            "member_name": "Test",
-            "blogs": [
-                {"id": "b1", "title": "Blog 1", "published_at": "2025-01-01", "url": "u1", "cached": True},
-            ],
-        })
+        mock_svc.get_blog_list = AsyncMock(
+            return_value={
+                "member_id": "100",
+                "member_name": "Test",
+                "blogs": [
+                    {
+                        "id": "b1",
+                        "title": "Blog 1",
+                        "published_at": "2025-01-01",
+                        "url": "u1",
+                        "cached": True,
+                    },
+                ],
+            }
+        )
         response = client.get("/api/blogs/list?service=hinatazaka46&member_id=100")
         assert response.status_code == 200
         data = response.json()
@@ -196,17 +211,19 @@ class TestGetBlogContent:
     @patch("backend.api.blogs.blog_service")
     def test_blog_content_success(self, mock_svc):
         """Returns blog content."""
-        mock_svc.get_blog_content = AsyncMock(return_value={
-            "meta": {
-                "id": "b1",
-                "member_name": "Member",
-                "title": "Title",
-                "published_at": "2025-01-01",
-                "url": "https://example.com",
-            },
-            "content": {"html": "<p>Hello</p>"},
-            "images": [],
-        })
+        mock_svc.get_blog_content = AsyncMock(
+            return_value={
+                "meta": {
+                    "id": "b1",
+                    "member_name": "Member",
+                    "title": "Title",
+                    "published_at": "2025-01-01",
+                    "url": "https://example.com",
+                },
+                "content": {"html": "<p>Hello</p>"},
+                "images": [],
+            }
+        )
         response = client.get("/api/blogs/content?service=hinatazaka46&blog_id=b1")
         assert response.status_code == 200
         data = response.json()
@@ -245,11 +262,13 @@ class TestCacheStats:
     @patch("backend.api.blogs.blog_service")
     def test_cache_stats_success(self, mock_svc):
         """Returns cache statistics."""
-        mock_svc.get_cache_stats = AsyncMock(return_value={
-            "total_blogs": 100,
-            "cached_blogs": 50,
-            "removed_count": 5,
-        })
+        mock_svc.get_cache_stats = AsyncMock(
+            return_value={
+                "total_blogs": 100,
+                "cached_blogs": 50,
+                "removed_count": 5,
+            }
+        )
         response = client.get("/api/blogs/cache-stats?service=hinatazaka46")
         assert response.status_code == 200
         data = response.json()
@@ -275,7 +294,9 @@ class TestBlogBackup:
         """Starts backup for specified services."""
         manager = MagicMock()
         mock_mgr.return_value = manager
-        response = client.post("/api/blogs/backup/start?services=hinatazaka46&services=sakurazaka46")
+        response = client.post(
+            "/api/blogs/backup/start?services=hinatazaka46&services=sakurazaka46"
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "started"
@@ -323,13 +344,15 @@ class TestSyncBlogMetadata:
     @patch("backend.api.blogs.blog_service")
     def test_sync_success(self, mock_svc):
         """Returns sync stats on success."""
-        mock_svc.sync_blog_metadata = AsyncMock(return_value={
-            "members": {
-                "100": {"name": "A", "blogs": [{"id": "1"}, {"id": "2"}]},
-                "101": {"name": "B", "blogs": [{"id": "3"}]},
-            },
-            "last_sync": "2025-01-01T00:00:00Z",
-        })
+        mock_svc.sync_blog_metadata = AsyncMock(
+            return_value={
+                "members": {
+                    "100": {"name": "A", "blogs": [{"id": "1"}, {"id": "2"}]},
+                    "101": {"name": "B", "blogs": [{"id": "3"}]},
+                },
+                "last_sync": "2025-01-01T00:00:00Z",
+            }
+        )
         response = client.post("/api/blogs/sync?service=hinatazaka46")
         assert response.status_code == 200
         data = response.json()
@@ -388,7 +411,9 @@ class TestServeBlogImage:
 
     def test_image_invalid_service(self):
         """Invalid service returns 400."""
-        response = client.get("/api/blogs/image?service=bad&blog_id=1&filename=img_1.jpg")
+        response = client.get(
+            "/api/blogs/image?service=bad&blog_id=1&filename=img_1.jpg"
+        )
         assert response.status_code == 400
 
     def test_image_invalid_filename(self):

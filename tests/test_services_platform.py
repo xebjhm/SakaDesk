@@ -54,6 +54,7 @@ class TestTestModeDetection:
     def test_is_test_mode_returns_bool(self):
         """is_test_mode() should return a boolean."""
         from backend.services.platform import is_test_mode
+
         result = is_test_mode()
         assert isinstance(result, bool)
 
@@ -171,6 +172,7 @@ class TestSessionDir:
     def test_session_dir_uses_pysaka_auth_dir(self):
         """get_session_dir() should use pysaka.get_auth_dir() for shared browser session."""
         from pysaka import get_auth_dir
+
         session = get_session_dir()
         pysaka_auth = get_auth_dir()
         assert session == pysaka_auth

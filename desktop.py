@@ -1,25 +1,27 @@
 import multiprocessing
+
 multiprocessing.freeze_support()
 
-import webview
-webview.settings['ALLOW_DOWNLOADS'] = True
-import threading
-import uvicorn
-import sys
-import os
-import socket
-import traceback
-import time
-import json
-import urllib.request
-import ctypes
-import platform
+import webview  # noqa: E402
+
+webview.settings["ALLOW_DOWNLOADS"] = True
+import threading  # noqa: E402
+import uvicorn  # noqa: E402
+import os  # noqa: E402
+import socket  # noqa: E402
+import traceback  # noqa: E402
+import time  # noqa: E402
+import json  # noqa: E402
+import urllib.request  # noqa: E402
+import ctypes  # noqa: E402
+import platform  # noqa: E402
+
 # Explicit imports to ensure PyInstaller finds them
-from backend.main import app
-from backend.services.platform import get_logs_dir, get_app_data_dir
+from backend.main import app  # noqa: E402
+from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 
 # Setup logging
-import structlog
+import structlog  # noqa: E402
 
 # Setup logging (structlog configured in backend.main, but we need a logger here)
 logger = structlog.get_logger()
@@ -96,7 +98,7 @@ def create_server_socket() -> tuple:
     # Try to reuse saved port
     if port_file.exists():
         try:
-            saved = int(port_file.read_text(encoding='utf-8').strip())
+            saved = int(port_file.read_text(encoding="utf-8").strip())
             if 1024 < saved < 65536:
                 # On Windows, SO_REUSEADDR lets bind() succeed even if an old
                 # process is still listening. Check with a connect() first.
@@ -113,13 +115,15 @@ def create_server_socket() -> tuple:
     sock.bind((HOST, 0))
     port = sock.getsockname()[1]
     try:
-        port_file.write_text(str(port), encoding='utf-8')
+        port_file.write_text(str(port), encoding="utf-8")
     except OSError:
         pass  # Non-fatal — app still works, just may not persist port
     return port, sock
 
 
-def wait_for_server(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT) -> bool:
+def wait_for_server(
+    host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT
+) -> bool:
     """Wait for the server to respond to HTTP requests.
 
     Uses the /health endpoint instead of raw TCP connect — this ensures
@@ -127,7 +131,7 @@ def wait_for_server(host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOU
     socket is listening. Prevents the 404 flash on second launch where
     WebView2 restores its cached session before uvicorn is ready.
     """
-    url = f'http://{host}:{port}/health'
+    url = f"http://{host}:{port}/health"
     start = time.time()
     while time.time() - start < timeout:
         try:
@@ -152,41 +156,47 @@ def start_server(sock: socket.socket) -> None:
     _uvicorn_server = uvicorn.Server(config)
     _uvicorn_server.run(sockets=[sock])
 
+
 def show_error_dialog(error_msg: str, tb: str):
     """Show a simple error dialog with traceback."""
     try:
         import tkinter as tk
         from tkinter import scrolledtext
-        
+
         root = tk.Tk()
         root.withdraw()
-        
+
         # Create a custom dialog
         dialog = tk.Toplevel(root)
         dialog.title("SakaDesk Error")
         dialog.geometry("600x400")
-        
-        tk.Label(dialog, text="An error occurred:", font=("Arial", 12, "bold")).pack(pady=10)
-        
+
+        tk.Label(dialog, text="An error occurred:", font=("Arial", 12, "bold")).pack(
+            pady=10
+        )
+
         text = scrolledtext.ScrolledText(dialog, width=70, height=20)
         text.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
         text.insert(tk.END, f"{error_msg}\n\n{tb}")
         text.config(state=tk.DISABLED)
-        
+
         def copy_to_clipboard():
             root.clipboard_clear()
             root.clipboard_append(f"{error_msg}\n\n{tb}")
-            
-        tk.Button(dialog, text="Copy to Clipboard", command=copy_to_clipboard).pack(pady=5)
+
+        tk.Button(dialog, text="Copy to Clipboard", command=copy_to_clipboard).pack(
+            pady=5
+        )
         tk.Button(dialog, text="Close", command=root.destroy).pack(pady=5)
-        
+
         dialog.mainloop()
     except Exception:
         # If tkinter fails, just print to console
-        if 'logger' in globals():
+        if "logger" in globals():
             logger.error("FATAL ERROR", error=error_msg, traceback=tb)
         else:
             print(f"FATAL ERROR: {error_msg}\n{tb}")
+
 
 def _get_window_file():
     """Path to the persisted window geometry file."""
@@ -287,7 +297,9 @@ def main() -> None:
 
         # Wait for server to be ready before creating window
         if not wait_for_server(HOST, port):
-            raise RuntimeError(f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s")
+            raise RuntimeError(
+                f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s"
+            )
 
         # Load saved window geometry
         geom = _load_window_geometry()
@@ -296,14 +308,14 @@ def main() -> None:
         # background_color matches app's bg-[#F0F2F5] to prevent white
         # showing through Windows 11 rounded corners
         window = webview.create_window(
-            title='SakaDesk',
-            url=f'http://{HOST}:{port}',
+            title="SakaDesk",
+            url=f"http://{HOST}:{port}",
             width=geom["width"],
             height=geom["height"],
             x=geom.get("x"),
             y=geom.get("y"),
             resizable=True,
-            background_color='#F0F2F5',
+            background_color="#F0F2F5",
         )
 
         # Track window geometry changes and save on close
@@ -332,7 +344,7 @@ def main() -> None:
         # storage_path: store webview data in app data dir alongside settings
         webview.start(
             private_mode=False,
-            storage_path=str(get_app_data_dir() / 'webview'),
+            storage_path=str(get_app_data_dir() / "webview"),
         )
 
         # Cleanup AFTER webview closes but BEFORE process exits.
@@ -343,6 +355,7 @@ def main() -> None:
         # joins them during shutdown(). Capturing first ensures we can
         # still kill them even after the reference is gone.
         import multiprocessing
+
         children_snapshot = list(multiprocessing.active_children())
 
         # Signal uvicorn to shut down gracefully so it releases the socket.
@@ -353,8 +366,10 @@ def main() -> None:
 
         # Fallback: if lifespan didn't finish in time, force-cleanup from here.
         import logging
+
         try:
             from backend.services.search_service import shutdown_search_service
+
             shutdown_search_service()
         except Exception:
             pass
@@ -380,7 +395,7 @@ def main() -> None:
         # Log to file
         try:
             log_file = get_logs_dir() / "crash.log"
-            with open(log_file, 'w', encoding='utf-8') as f:
+            with open(log_file, "w", encoding="utf-8") as f:
                 f.write(f"Error: {error_msg}\n\n{tb}")
             logger.error(f"Crash log saved to {log_file}")
         except Exception:
@@ -392,9 +407,10 @@ def main() -> None:
         # Kill child processes even on crash path — sys.exit() does NOT
         # terminate them, and os._exit() only kills the current process.
         import multiprocessing
+
         _kill_children(multiprocessing.active_children())
         os._exit(1)
 
-if __name__ == '__main__':
-    main()
 
+if __name__ == "__main__":
+    main()

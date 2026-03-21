@@ -4,6 +4,7 @@ Centralized settings file access with asyncio.Lock.
 All reads and writes to ~/.SakaDesk/settings.json MUST go through this module
 to prevent TOCTOU race conditions during concurrent login/sync operations.
 """
+
 import json
 import asyncio
 import tempfile
@@ -33,16 +34,16 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
 
 def _read_file(path: Path) -> dict:
     if path.exists():
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             return {**_SETTINGS_DEFAULTS, **json.load(f)}
     return dict(_SETTINGS_DEFAULTS)
 
 
 def _write_file(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix='.tmp')
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, path)
     except BaseException:

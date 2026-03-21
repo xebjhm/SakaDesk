@@ -28,21 +28,25 @@ _test_auth_dir = Path.home() / ".local" / "share" / "pysaka" / "auth_data"
 _test_auth_dir.mkdir(parents=True, exist_ok=True)
 
 # Patch pysaka.get_auth_dir at import time
-import pysaka as real_pysaka
+import pysaka as real_pysaka  # noqa: E402
+
 real_pysaka.get_auth_dir = lambda: _test_auth_dir
 
-from backend.main import app
+from backend.main import app  # noqa: E402
+
 
 @pytest.fixture
 def client():
     """Sync client for simple API tests."""
     return TestClient(app)
 
+
 @pytest.fixture
 def mock_webview():
     """Mock the pywebview module."""
     with patch("backend.main.webview") as mock:
         yield mock
+
 
 @pytest.fixture(autouse=True)
 def mock_token_manager():

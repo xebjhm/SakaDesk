@@ -5,11 +5,9 @@ pykakasi, or a full SearchService with live DB connections.
 """
 
 import sqlite3
-import unicodedata
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from backend.services.search_service import (
     SearchService,
@@ -21,6 +19,7 @@ from backend.services.search_service import (
 
 
 # ── _strip_html ──────────────────────────────────────────────────────
+
 
 class TestStripHtml:
     """Tests for the top-level _strip_html helper."""
@@ -60,6 +59,7 @@ class TestStripHtml:
 
 # ── _sanitize_for_kakasi_standalone ──────────────────────────────────
 
+
 class TestSanitizeForKakasi:
     """Tests for the standalone kakasi sanitizer."""
 
@@ -96,6 +96,7 @@ class TestSanitizeForKakasi:
 
 
 # ── SearchService._normalize_query ───────────────────────────────────
+
 
 class TestNormalizeQuery:
     """Tests for the static _normalize_query method."""
@@ -144,15 +145,15 @@ class TestNormalizeQuery:
 
 # ── SearchService._sanitize_for_kakasi ───────────────────────────────
 
+
 class TestSanitizeForKakasiMethod:
     """Tests for the static method version on SearchService."""
 
     def test_same_as_standalone(self):
         text = "hello\nworld\U0001f600"
-        assert (
-            SearchService._sanitize_for_kakasi(text)
-            == _sanitize_for_kakasi_standalone(text)
-        )
+        assert SearchService._sanitize_for_kakasi(
+            text
+        ) == _sanitize_for_kakasi_standalone(text)
 
     def test_normal_cjk_passes_through(self):
         text = "日本語テスト"
@@ -160,6 +161,7 @@ class TestSanitizeForKakasiMethod:
 
 
 # ── SearchService._build_snippet ─────────────────────────────────────
+
 
 class TestBuildSnippet:
     """Tests for the static _build_snippet method."""
@@ -185,9 +187,7 @@ class TestBuildSnippet:
 
     def test_ellipsis_when_truncated(self):
         content = "A" * 200
-        result = SearchService._build_snippet(
-            content, idx=100, match_len=5, max_len=40
-        )
+        result = SearchService._build_snippet(content, idx=100, match_len=5, max_len=40)
         # Should have ellipsis at start since match is in the middle
         assert "..." in result
 
@@ -205,6 +205,7 @@ class TestBuildSnippet:
 
 
 # ── SearchService._load_aliases ──────────────────────────────────────
+
 
 class TestLoadAliases:
     """Tests for the alias loading static method."""
@@ -225,6 +226,7 @@ class TestLoadAliases:
 
 
 # ── SearchService.__init__ ───────────────────────────────────────────
+
 
 class TestSearchServiceInit:
     """Tests for SearchService initialization (no DB connection)."""
@@ -252,6 +254,7 @@ class TestSearchServiceInit:
 
 
 # ── SearchService._needs_build ───────────────────────────────────────
+
 
 class TestNeedsBuild:
     """Tests for _needs_build method."""
@@ -285,6 +288,7 @@ class TestNeedsBuild:
 
 
 # ── SearchService._get_status_sync ───────────────────────────────────
+
 
 class TestGetStatusSync:
     """Tests for _get_status_sync via direct DB setup."""
@@ -327,6 +331,7 @@ class TestGetStatusSync:
 
 # ── SearchService._clear_db_sync ────────────────────────────────────
 
+
 class TestClearDbSync:
     """Tests for the DB cleanup method."""
 
@@ -350,6 +355,7 @@ class TestClearDbSync:
 
 # ── SearchService._expand_query ──────────────────────────────────────
 
+
 class TestExpandQuery:
     """Tests for query expansion with aliases."""
 
@@ -371,6 +377,7 @@ class TestExpandQuery:
 
 # ── SearchService._resolve_nickname ──────────────────────────────────
 
+
 class TestResolveNickname:
     """Tests for nickname resolution."""
 
@@ -383,12 +390,14 @@ class TestResolveNickname:
 
 # ── _BATCH_SIZE constant ─────────────────────────────────────────────
 
+
 def test_batch_size_is_positive():
     assert _BATCH_SIZE > 0
     assert isinstance(_BATCH_SIZE, int)
 
 
 # ── _SCHEMA_SQL constant ────────────────────────────────────────────
+
 
 def test_schema_sql_creates_tables():
     """Verify the schema SQL is valid by executing it in an in-memory DB."""
@@ -425,6 +434,7 @@ def test_schema_sql_creates_fts_tables():
 
 # ── Read states sync ─────────────────────────────────────────────────
 
+
 class TestReadStatesSync:
     """Tests for read state management via sync methods."""
 
@@ -437,9 +447,7 @@ class TestReadStatesSync:
     def test_upsert_and_get_read_state(self, tmp_path):
         db_path = tmp_path / "rs2.db"
         svc = SearchService(db_path)
-        svc._upsert_read_state_sync(
-            "hinatazaka46", 1, 100, 50, 10, [1, 2, 3]
-        )
+        svc._upsert_read_state_sync("hinatazaka46", 1, 100, 50, 10, [1, 2, 3])
         states = svc._get_all_read_states_sync()
         key = "hinatazaka46/1/100"
         assert key in states

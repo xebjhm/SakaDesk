@@ -19,7 +19,9 @@ def test_get_talk_rooms_requires_service():
 def test_get_messages_param_based():
     """GET /api/content/messages with params works."""
     # This will 404 if no data, but should not 422
-    response = client.get("/api/content/messages?service=hinatazaka46&talk_room_id=40&member_id=64")
+    response = client.get(
+        "/api/content/messages?service=hinatazaka46&talk_room_id=40&member_id=64"
+    )
     assert response.status_code in [200, 404]  # 404 is ok if no data
 
 

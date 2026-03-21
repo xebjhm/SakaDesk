@@ -3,7 +3,6 @@
 import random
 from unittest.mock import patch
 
-import pytest
 
 from backend.services.adaptive_sync import (
     JST_OFFSET,
@@ -18,11 +17,13 @@ from backend.services.adaptive_sync import (
 
 # ── JST_OFFSET constant ─────────────────────────────────────────────
 
+
 def test_jst_offset_is_9_hours():
     assert JST_OFFSET.total_seconds() == 9 * 3600
 
 
 # ── get_jst_hour ─────────────────────────────────────────────────────
+
 
 class TestGetJstHour:
     """Tests for JST hour calculation."""
@@ -38,12 +39,15 @@ class TestGetJstHour:
 
 # ── get_time_multiplier ─────────────────────────────────────────────
 
+
 class TestGetTimeMultiplier:
     """Tests for time-of-day multiplier."""
 
     def test_peak_hours_19_to_22(self):
         for hour in [19, 20, 21, 22]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 0.6
 
     def test_late_night_23(self):
@@ -52,27 +56,37 @@ class TestGetTimeMultiplier:
 
     def test_early_evening_17_18(self):
         for hour in [17, 18]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 0.7
 
     def test_daytime_9_to_16(self):
         for hour in [9, 12, 16]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 0.8
 
     def test_early_morning_7_8(self):
         for hour in [7, 8]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 0.9
 
     def test_late_night_0_1(self):
         for hour in [0, 1]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 1.2
 
     def test_dead_hours_2_to_6(self):
         for hour in [2, 3, 4, 5, 6]:
-            with patch("backend.services.adaptive_sync.get_jst_hour", return_value=hour):
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
                 assert get_time_multiplier() == 2.0
 
     def test_returns_float(self):
@@ -81,6 +95,7 @@ class TestGetTimeMultiplier:
 
 
 # ── get_activity_multiplier ──────────────────────────────────────────
+
 
 class TestGetActivityMultiplier:
     """Tests for the activity-based multiplier."""
@@ -127,6 +142,7 @@ class TestGetActivityMultiplier:
 
 # ── add_jitter ───────────────────────────────────────────────────────
 
+
 class TestAddJitter:
     """Tests for the jitter function."""
 
@@ -164,6 +180,7 @@ class TestAddJitter:
 
 # ── calculate_next_sync_interval ─────────────────────────────────────
 
+
 class TestCalculateNextSyncInterval:
     """Tests for the main interval calculation function."""
 
@@ -180,7 +197,9 @@ class TestCalculateNextSyncInterval:
 
     def test_clamped_minimum_5(self):
         # Very low base with very active member at peak time
-        with patch("backend.services.adaptive_sync.get_time_multiplier", return_value=0.6):
+        with patch(
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=0.6
+        ):
             result = calculate_next_sync_interval(
                 base_interval_minutes=1.0,
                 hours_since_last_post=0.1,
@@ -189,7 +208,9 @@ class TestCalculateNextSyncInterval:
 
     def test_clamped_maximum_60(self):
         # Very high base with inactive member at dead hours
-        with patch("backend.services.adaptive_sync.get_time_multiplier", return_value=2.0):
+        with patch(
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=2.0
+        ):
             result = calculate_next_sync_interval(
                 base_interval_minutes=100.0,
                 hours_since_last_post=200.0,
@@ -198,7 +219,9 @@ class TestCalculateNextSyncInterval:
 
     def test_with_activity_data(self):
         random.seed(42)
-        with patch("backend.services.adaptive_sync.get_time_multiplier", return_value=1.0):
+        with patch(
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
+        ):
             result = calculate_next_sync_interval(
                 base_interval_minutes=15.0,
                 hours_since_last_post=0.5,
@@ -208,7 +231,9 @@ class TestCalculateNextSyncInterval:
 
     def test_none_activity_data(self):
         random.seed(42)
-        with patch("backend.services.adaptive_sync.get_time_multiplier", return_value=1.0):
+        with patch(
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
+        ):
             result = calculate_next_sync_interval(
                 base_interval_minutes=15.0,
                 hours_since_last_post=None,
@@ -218,6 +243,7 @@ class TestCalculateNextSyncInterval:
 
 
 # ── get_sync_interval_description ────────────────────────────────────
+
 
 class TestGetSyncIntervalDescription:
     """Tests for the human-readable interval descriptions."""

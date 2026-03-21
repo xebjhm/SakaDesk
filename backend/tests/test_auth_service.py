@@ -1,4 +1,5 @@
 """Tests for AuthService multi-service support."""
+
 import asyncio
 
 import pytest
@@ -13,7 +14,7 @@ def auth_service():
 
 def test_get_all_status_returns_all_services(auth_service):
     """get_status() with no args returns status for all services."""
-    with patch('backend.services.auth_service.get_token_manager') as mock_tm:
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
         mock_tm.return_value.load_session.return_value = None
 
         result = asyncio.run(auth_service.get_status())
@@ -26,7 +27,7 @@ def test_get_all_status_returns_all_services(auth_service):
 
 def test_get_status_single_service(auth_service):
     """get_status(service) returns status for specific service only."""
-    with patch('backend.services.auth_service.get_token_manager') as mock_tm:
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
         mock_tm.return_value.load_session.return_value = None
 
         result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
@@ -67,22 +68,22 @@ def test_refresh_if_needed_requires_service(auth_service):
 
 def test_get_status_authenticated_valid_token(auth_service):
     """get_status returns authenticated=True for valid token."""
-    with patch('backend.services.auth_service.get_token_manager') as mock_tm:
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
         mock_tm.return_value.load_session.return_value = {
-            'access_token': 'test_token',
+            "access_token": "test_token",
         }
-        with patch.object(auth_service, '_is_token_expired', return_value=False):
+        with patch.object(auth_service, "_is_token_expired", return_value=False):
             result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
             assert result["authenticated"]
 
 
 def test_get_status_expired_token(auth_service):
     """get_status returns token_expired=True for expired token."""
-    with patch('backend.services.auth_service.get_token_manager') as mock_tm:
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
         mock_tm.return_value.load_session.return_value = {
-            'access_token': 'expired_token',
+            "access_token": "expired_token",
         }
-        with patch.object(auth_service, '_is_token_expired', return_value=True):
+        with patch.object(auth_service, "_is_token_expired", return_value=True):
             result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
             assert not result["authenticated"]
             assert result.get("token_expired")
@@ -90,6 +91,6 @@ def test_get_status_expired_token(auth_service):
 
 def test_logout_clears_credentials(auth_service):
     """logout calls TokenManager.delete_session with correct service."""
-    with patch('backend.services.auth_service.get_token_manager') as mock_tm:
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
         auth_service.logout(service="hinatazaka46")
         mock_tm.return_value.delete_session.assert_called_once_with("hinatazaka46")

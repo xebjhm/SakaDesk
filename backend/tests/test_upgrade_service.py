@@ -1,10 +1,7 @@
 """Tests for upgrade_service.py — installer naming, script generation, and utilities."""
 
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from backend.services.upgrade_service import (
     GITHUB_REPO,
@@ -18,12 +15,14 @@ from backend.services.upgrade_service import (
 
 # ── GITHUB_REPO constant ────────────────────────────────────────────
 
+
 def test_github_repo_is_string():
     assert isinstance(GITHUB_REPO, str)
     assert "/" in GITHUB_REPO
 
 
 # ── _installer_asset_name ───────────────────────────────────────────
+
 
 class TestInstallerAssetName:
     """Tests for the installer filename builder."""
@@ -59,6 +58,7 @@ class TestInstallerAssetName:
 
 
 # ── generate_upgrade_script ──────────────────────────────────────────
+
 
 class TestGenerateUpgradeScript:
     """Tests for batch script generation."""
@@ -114,28 +114,26 @@ class TestGenerateUpgradeScript:
 
 # ── launch_upgrade ───────────────────────────────────────────────────
 
+
 class TestLaunchUpgrade:
     """Tests for the upgrade launcher."""
 
     def test_returns_false_on_non_windows(self, tmp_path):
         script = tmp_path / "upgrade.bat"
         script.touch()
-        with patch(
-            "backend.services.upgrade_service.is_windows", return_value=False
-        ):
+        with patch("backend.services.upgrade_service.is_windows", return_value=False):
             result = launch_upgrade(script)
         assert result is False
 
     def test_returns_false_when_script_missing(self, tmp_path):
         script = tmp_path / "nonexistent.bat"
-        with patch(
-            "backend.services.upgrade_service.is_windows", return_value=True
-        ):
+        with patch("backend.services.upgrade_service.is_windows", return_value=True):
             result = launch_upgrade(script)
         assert result is False
 
 
 # ── cleanup_upgrade_files ────────────────────────────────────────────
+
 
 class TestCleanupUpgradeFiles:
     """Tests for upgrade file cleanup."""
@@ -180,17 +178,14 @@ class TestCleanupUpgradeFiles:
 
 # ── is_upgrade_supported ─────────────────────────────────────────────
 
+
 class TestIsUpgradeSupported:
     """Tests for platform support check."""
 
     def test_false_on_linux(self):
-        with patch(
-            "backend.services.upgrade_service.is_windows", return_value=False
-        ):
+        with patch("backend.services.upgrade_service.is_windows", return_value=False):
             assert is_upgrade_supported() is False
 
     def test_true_on_windows(self):
-        with patch(
-            "backend.services.upgrade_service.is_windows", return_value=True
-        ):
+        with patch("backend.services.upgrade_service.is_windows", return_value=True):
             assert is_upgrade_supported() is True

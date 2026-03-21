@@ -17,6 +17,7 @@ def test_sync_service_invalid_service_raises():
 def test_get_sync_service_returns_same_instance():
     """get_sync_service should return same instance for same service."""
     from backend.api.sync import get_sync_service, _sync_services
+
     _sync_services.clear()  # Reset for test
 
     service1 = get_sync_service("hinatazaka46")
@@ -28,6 +29,7 @@ def test_get_sync_service_returns_same_instance():
 def test_get_sync_service_returns_different_instances():
     """get_sync_service should return different instances for different services."""
     from backend.api.sync import get_sync_service, _sync_services
+
     _sync_services.clear()  # Reset for test
 
     service1 = get_sync_service("hinatazaka46")

@@ -83,6 +83,7 @@ TEST_MESSAGES = [
     },
 ]
 
+
 # Response for messages endpoint
 def get_test_messages_response(path: str, last_read_id: int = 0) -> dict:
     """Generate test messages response matching API format."""

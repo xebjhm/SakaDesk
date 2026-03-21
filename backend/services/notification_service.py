@@ -18,6 +18,7 @@ _last_notification_error: Optional[str] = None
 def is_plyer_available() -> bool:
     """Check if plyer notification is available on this system."""
     import importlib.util
+
     return importlib.util.find_spec("plyer.notification") is not None
 
 

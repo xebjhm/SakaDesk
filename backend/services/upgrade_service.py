@@ -243,7 +243,8 @@ def launch_upgrade(script_path: Path) -> bool:
         # Note: DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP are Windows-only flags
         subprocess.Popen(
             ["cmd", "/c", "start", "/MIN", "SakaDesk Upgrade", str(script_path)],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+            creationflags=subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )
 
@@ -261,6 +262,7 @@ def cleanup_upgrade_files():
     if upgrade_dir.exists():
         try:
             import shutil
+
             shutil.rmtree(upgrade_dir)
             logger.info("Cleaned up upgrade directory")
         except Exception as e:

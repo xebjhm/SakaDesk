@@ -15,7 +15,12 @@ from typing import Optional
 
 from pysaka import Client
 from pysaka.credentials import get_token_manager
-from backend.services.platform import get_settings_path, get_session_dir, is_test_mode, get_default_output_dir
+from backend.services.platform import (
+    get_settings_path,
+    get_session_dir,
+    is_test_mode,
+    get_default_output_dir,
+)
 from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
@@ -34,7 +39,7 @@ def _get_output_dir() -> Path:
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
                 path_str = settings.get("output_dir")
                 if path_str:
@@ -75,22 +80,24 @@ def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
                     continue
 
                 try:
-                    with open(msg_file, 'r', encoding='utf-8') as f:
+                    with open(msg_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
 
-                    messages = data.get('messages', [])
+                    messages = data.get("messages", [])
                     found = False
 
                     for msg in messages:
-                        if msg.get('id') == message_id:
-                            msg['is_favorite'] = is_favorite
+                        if msg.get("id") == message_id:
+                            msg["is_favorite"] = is_favorite
                             found = True
                             break
 
                     if found:
-                        with open(msg_file, 'w', encoding='utf-8') as f:
+                        with open(msg_file, "w", encoding="utf-8") as f:
                             json.dump(data, f, ensure_ascii=False, indent=2)
-                        logger.info(f"Updated local favorite: msg={message_id}, is_favorite={is_favorite}")
+                        logger.info(
+                            f"Updated local favorite: msg={message_id}, is_favorite={is_favorite}"
+                        )
                         return True
 
                 except Exception as e:
@@ -104,7 +111,9 @@ def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
 async def _get_client_and_session(service: str):
     """Get pysaka client and aiohttp session with auth for given service."""
     if is_test_mode():
-        raise HTTPException(status_code=503, detail="Favorites not available in test mode")
+        raise HTTPException(
+            status_code=503, detail="Favorites not available in test mode"
+        )
 
     # Validate service
     try:
@@ -118,7 +127,7 @@ async def _get_client_and_session(service: str):
         tm = get_token_manager()
         token_data = tm.load_session(group.value)
 
-        if not token_data or not token_data.get('access_token'):
+        if not token_data or not token_data.get("access_token"):
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         connector = aiohttp.TCPConnector(limit=5)
@@ -126,12 +135,12 @@ async def _get_client_and_session(service: str):
 
         client = Client(
             group=group,
-            access_token=token_data.get('access_token'),
-            refresh_token=token_data.get('refresh_token'),
-            cookies=token_data.get('cookies'),
-            app_id=token_data.get('x-talk-app-id'),
-            user_agent=token_data.get('user-agent'),
-            auth_dir=str(get_session_dir())
+            access_token=token_data.get("access_token"),
+            refresh_token=token_data.get("refresh_token"),
+            cookies=token_data.get("cookies"),
+            app_id=token_data.get("x-talk-app-id"),
+            user_agent=token_data.get("user-agent"),
+            auth_dir=str(get_session_dir()),
         )
 
         return client, session
@@ -161,25 +170,20 @@ async def add_favorite(message_id: int, service: str):
             # Update local cache
             _update_local_favorite(message_id, True)
             return FavoriteResponse(
-                success=True,
-                message_id=message_id,
-                is_favorite=True
+                success=True, message_id=message_id, is_favorite=True
             )
         else:
             return FavoriteResponse(
                 success=False,
                 message_id=message_id,
                 is_favorite=False,
-                error="Server returned failure"
+                error="Server returned failure",
             )
 
     except Exception as e:
         logger.error(f"Failed to add favorite: {e}")
         return FavoriteResponse(
-            success=False,
-            message_id=message_id,
-            is_favorite=False,
-            error=str(e)
+            success=False, message_id=message_id, is_favorite=False, error=str(e)
         )
     finally:
         await session.close()
@@ -203,25 +207,20 @@ async def remove_favorite(message_id: int, service: str):
             # Update local cache
             _update_local_favorite(message_id, False)
             return FavoriteResponse(
-                success=True,
-                message_id=message_id,
-                is_favorite=False
+                success=True, message_id=message_id, is_favorite=False
             )
         else:
             return FavoriteResponse(
                 success=False,
                 message_id=message_id,
                 is_favorite=True,
-                error="Server returned failure"
+                error="Server returned failure",
             )
 
     except Exception as e:
         logger.error(f"Failed to remove favorite: {e}")
         return FavoriteResponse(
-            success=False,
-            message_id=message_id,
-            is_favorite=True,
-            error=str(e)
+            success=False, message_id=message_id, is_favorite=True, error=str(e)
         )
     finally:
         await session.close()

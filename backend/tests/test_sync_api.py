@@ -1,6 +1,6 @@
 """Tests for sync API endpoints (backend/api/sync.py)."""
 
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -199,7 +199,9 @@ class TestNextInterval:
 
     def test_returns_interval(self):
         """Should return a numeric interval."""
-        with patch("backend.services.settings_store.load_config", new_callable=AsyncMock) as mock_load:
+        with patch(
+            "backend.services.settings_store.load_config", new_callable=AsyncMock
+        ) as mock_load:
             mock_load.return_value = {
                 "sync_interval_minutes": 15,
                 "adaptive_sync_enabled": False,
@@ -213,7 +215,9 @@ class TestNextInterval:
 
     def test_returns_adaptive_interval(self):
         """With adaptive sync enabled, interval should still be a number."""
-        with patch("backend.services.settings_store.load_config", new_callable=AsyncMock) as mock_load:
+        with patch(
+            "backend.services.settings_store.load_config", new_callable=AsyncMock
+        ) as mock_load:
             mock_load.return_value = {
                 "sync_interval_minutes": 15,
                 "adaptive_sync_enabled": True,
@@ -243,9 +247,9 @@ class TestCheckNew:
         """Successful check should return a list of new messages info."""
         with patch("backend.api.sync.get_sync_service") as mock_get:
             mock_svc = MagicMock()
-            mock_svc.check_new_messages = AsyncMock(return_value=[
-                {"member_name": "Test", "count": 5, "thumbnail": None}
-            ])
+            mock_svc.check_new_messages = AsyncMock(
+                return_value=[{"member_name": "Test", "count": 5, "thumbnail": None}]
+            )
             mock_get.return_value = mock_svc
 
             response = client.get("/api/sync/check?service=hinatazaka46")
@@ -289,9 +293,7 @@ class TestSyncOlder:
         assert response.status_code == 422
 
     def test_invalid_service_returns_400(self):
-        response = client.post(
-            "/api/sync/older?service=bad&group_id=34&member_id=58"
-        )
+        response = client.post("/api/sync/older?service=bad&group_id=34&member_id=58")
         assert response.status_code == 400
 
     def test_sync_older_success(self):

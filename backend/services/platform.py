@@ -2,6 +2,7 @@
 Platform Abstraction Layer for SakaDesk
 Handles cross-platform differences for Windows deployment with Linux development.
 """
+
 import os
 import platform
 import structlog
@@ -90,6 +91,7 @@ def get_session_dir() -> Path:
     - Consistent session state across both apps
     """
     from pysaka import get_auth_dir
+
     return cast(Path, get_auth_dir())
 
 
@@ -105,7 +107,7 @@ def log_platform_info():
     logger.info(f"Platform: {get_system()}")
     logger.info(f"Dev Mode: {is_dev_mode()}")
     logger.info(f"App Data Dir: {get_app_data_dir()}")
-    
+
     if is_dev_mode() and not is_windows():
         logger.warning(
             "⚠️  Running in development mode - credentials are stored in plaintext. "

@@ -22,6 +22,7 @@ def _mock_search_service():
 # GET /api/read-states
 # ------------------------------------------------------------------
 
+
 class TestGetAllReadStates:
     """Tests for GET /api/read-states."""
 
@@ -39,20 +40,22 @@ class TestGetAllReadStates:
     def test_returns_populated_states(self, mock_get_svc):
         """Returns read states keyed by service:group:member."""
         svc = _mock_search_service()
-        svc.get_all_read_states = AsyncMock(return_value={
-            "hinatazaka46:1:10": {
-                "last_read_id": 500,
-                "read_count": 42,
-                "revealed_ids": [1, 2, 3],
-                "updated_at": "2025-01-15T12:00:00+00:00",
-            },
-            "sakurazaka46:2:20": {
-                "last_read_id": 100,
-                "read_count": 5,
-                "revealed_ids": [],
-                "updated_at": "2025-02-01T00:00:00+00:00",
-            },
-        })
+        svc.get_all_read_states = AsyncMock(
+            return_value={
+                "hinatazaka46:1:10": {
+                    "last_read_id": 500,
+                    "read_count": 42,
+                    "revealed_ids": [1, 2, 3],
+                    "updated_at": "2025-01-15T12:00:00+00:00",
+                },
+                "sakurazaka46:2:20": {
+                    "last_read_id": 100,
+                    "read_count": 5,
+                    "revealed_ids": [],
+                    "updated_at": "2025-02-01T00:00:00+00:00",
+                },
+            }
+        )
         mock_get_svc.return_value = svc
         response = client.get("/api/read-states")
         assert response.status_code == 200
@@ -66,6 +69,7 @@ class TestGetAllReadStates:
 # PUT /api/read-states
 # ------------------------------------------------------------------
 
+
 class TestUpsertReadState:
     """Tests for PUT /api/read-states."""
 
@@ -74,15 +78,23 @@ class TestUpsertReadState:
         """Upsert with required fields only (defaults for optional fields)."""
         svc = _mock_search_service()
         mock_get_svc.return_value = svc
-        response = client.put("/api/read-states", json={
-            "service": "hinatazaka46",
-            "group_id": 1,
-            "member_id": 10,
-        })
+        response = client.put(
+            "/api/read-states",
+            json={
+                "service": "hinatazaka46",
+                "group_id": 1,
+                "member_id": 10,
+            },
+        )
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         svc.upsert_read_state.assert_called_once_with(
-            "hinatazaka46", 1, 10, 0, 0, [],
+            "hinatazaka46",
+            1,
+            10,
+            0,
+            0,
+            [],
         )
 
     @patch("backend.api.read_states.get_search_service")
@@ -90,25 +102,36 @@ class TestUpsertReadState:
         """Upsert with all fields specified."""
         svc = _mock_search_service()
         mock_get_svc.return_value = svc
-        response = client.put("/api/read-states", json={
-            "service": "sakurazaka46",
-            "group_id": 2,
-            "member_id": 20,
-            "last_read_id": 999,
-            "read_count": 50,
-            "revealed_ids": [10, 20, 30],
-        })
+        response = client.put(
+            "/api/read-states",
+            json={
+                "service": "sakurazaka46",
+                "group_id": 2,
+                "member_id": 20,
+                "last_read_id": 999,
+                "read_count": 50,
+                "revealed_ids": [10, 20, 30],
+            },
+        )
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
         svc.upsert_read_state.assert_called_once_with(
-            "sakurazaka46", 2, 20, 999, 50, [10, 20, 30],
+            "sakurazaka46",
+            2,
+            20,
+            999,
+            50,
+            [10, 20, 30],
         )
 
     def test_upsert_missing_required_fields(self):
         """Missing required fields returns 422."""
-        response = client.put("/api/read-states", json={
-            "service": "hinatazaka46",
-        })
+        response = client.put(
+            "/api/read-states",
+            json={
+                "service": "hinatazaka46",
+            },
+        )
         assert response.status_code == 422
 
     def test_upsert_empty_body(self):
@@ -118,17 +141,21 @@ class TestUpsertReadState:
 
     def test_upsert_invalid_types(self):
         """Wrong types for fields returns 422."""
-        response = client.put("/api/read-states", json={
-            "service": "hinatazaka46",
-            "group_id": "not_an_int",
-            "member_id": 10,
-        })
+        response = client.put(
+            "/api/read-states",
+            json={
+                "service": "hinatazaka46",
+                "group_id": "not_an_int",
+                "member_id": 10,
+            },
+        )
         assert response.status_code == 422
 
 
 # ------------------------------------------------------------------
 # POST /api/read-states/batch
 # ------------------------------------------------------------------
+
 
 class TestBatchUpsertReadStates:
     """Tests for POST /api/read-states/batch."""
@@ -151,16 +178,19 @@ class TestBatchUpsertReadStates:
         svc = _mock_search_service()
         svc.batch_upsert_read_states = AsyncMock(return_value=1)
         mock_get_svc.return_value = svc
-        response = client.post("/api/read-states/batch", json=[
-            {
-                "service": "hinatazaka46",
-                "group_id": 1,
-                "member_id": 10,
-                "last_read_id": 100,
-                "read_count": 5,
-                "revealed_ids": [1, 2],
-            },
-        ])
+        response = client.post(
+            "/api/read-states/batch",
+            json=[
+                {
+                    "service": "hinatazaka46",
+                    "group_id": 1,
+                    "member_id": 10,
+                    "last_read_id": 100,
+                    "read_count": 5,
+                    "revealed_ids": [1, 2],
+                },
+            ],
+        )
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
@@ -178,7 +208,12 @@ class TestBatchUpsertReadStates:
         svc.batch_upsert_read_states = AsyncMock(return_value=3)
         mock_get_svc.return_value = svc
         entries = [
-            {"service": "hinatazaka46", "group_id": 1, "member_id": i, "last_read_id": i * 100}
+            {
+                "service": "hinatazaka46",
+                "group_id": 1,
+                "member_id": i,
+                "last_read_id": i * 100,
+            }
             for i in range(1, 4)
         ]
         response = client.post("/api/read-states/batch", json=entries)
@@ -194,9 +229,12 @@ class TestBatchUpsertReadStates:
         svc = _mock_search_service()
         svc.batch_upsert_read_states = AsyncMock(return_value=1)
         mock_get_svc.return_value = svc
-        response = client.post("/api/read-states/batch", json=[
-            {"service": "hinatazaka46", "group_id": 1, "member_id": 10},
-        ])
+        response = client.post(
+            "/api/read-states/batch",
+            json=[
+                {"service": "hinatazaka46", "group_id": 1, "member_id": 10},
+            ],
+        )
         assert response.status_code == 200
         call_args = svc.batch_upsert_read_states.call_args[0][0]
         assert call_args[0]["last_read_id"] == 0
@@ -205,16 +243,22 @@ class TestBatchUpsertReadStates:
 
     def test_batch_invalid_entry_in_list(self):
         """Invalid entry in batch returns 422."""
-        response = client.post("/api/read-states/batch", json=[
-            {"service": "hinatazaka46"},  # missing group_id and member_id
-        ])
+        response = client.post(
+            "/api/read-states/batch",
+            json=[
+                {"service": "hinatazaka46"},  # missing group_id and member_id
+            ],
+        )
         assert response.status_code == 422
 
     def test_batch_not_a_list(self):
         """Sending a single object instead of a list returns 422."""
-        response = client.post("/api/read-states/batch", json={
-            "service": "hinatazaka46",
-            "group_id": 1,
-            "member_id": 10,
-        })
+        response = client.post(
+            "/api/read-states/batch",
+            json={
+                "service": "hinatazaka46",
+                "group_id": 1,
+                "member_id": 10,
+            },
+        )
         assert response.status_code == 422

@@ -3,6 +3,7 @@ Settings API for SakaDesk
 Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """
+
 import json
 import structlog
 from pathlib import Path
@@ -10,12 +11,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any, Optional
 
-from backend.services.platform import get_settings_path, get_default_output_dir as _platform_default_output_dir
+from backend.services.platform import (
+    get_settings_path,
+    get_default_output_dir as _platform_default_output_dir,
+)
 from backend.services.service_utils import validate_service
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
     load_config as _store_load,
-    save_config as _store_save,
     update_config as _store_update,
 )
 
@@ -25,6 +28,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 # Get settings file path from platform utilities
 SETTINGS_FILE = get_settings_path()
+
 
 def get_default_output_dir() -> str:
     """Returns the default output directory path."""
@@ -36,24 +40,41 @@ def get_default_output_dir() -> str:
 # Production code should use the async _store_* functions instead.
 # ---------------------------------------------------------------------------
 
+
 def load_config() -> dict[str, Any]:
     """Load configuration from file (sync, for tests only)."""
     if SETTINGS_FILE.exists():
         try:
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 result: dict[str, Any] = json.load(f)
-                logger.debug("Settings loaded", settings_file=str(SETTINGS_FILE), keys=list(result.keys()), is_configured=result.get("is_configured"))
+                logger.debug(
+                    "Settings loaded",
+                    settings_file=str(SETTINGS_FILE),
+                    keys=list(result.keys()),
+                    is_configured=result.get("is_configured"),
+                )
                 return result
         except Exception as e:
-            logger.error("Failed to load settings", settings_file=str(SETTINGS_FILE), error=str(e))
+            logger.error(
+                "Failed to load settings",
+                settings_file=str(SETTINGS_FILE),
+                error=str(e),
+            )
     return {}
+
 
 def save_config(config: dict):
     """Save configuration to file (sync, for tests only)."""
     SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
-    logger.debug("Settings saved", settings_file=str(SETTINGS_FILE), keys=list(config.keys()), is_configured=config.get("is_configured"))
+    logger.debug(
+        "Settings saved",
+        settings_file=str(SETTINGS_FILE),
+        keys=list(config.keys()),
+        is_configured=config.get("is_configured"),
+    )
+
 
 class SettingsResponse(BaseModel):
     output_dir: str
@@ -61,10 +82,13 @@ class SettingsResponse(BaseModel):
     sync_interval_minutes: int
     adaptive_sync_enabled: bool = True  # Randomize intervals based on activity patterns
     is_configured: bool  # True if user has set up the app
-    user_nickname: Optional[str] = None  # User's nickname for %%% placeholder replacement
+    user_nickname: Optional[str] = (
+        None  # User's nickname for %%% placeholder replacement
+    )
     notifications_enabled: bool = True  # Desktop notifications for new messages
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
+
 
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
@@ -74,6 +98,7 @@ class SettingsUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None
 
+
 class FreshCheckResponse(BaseModel):
     is_fresh: bool  # True if output folder is empty or doesn't exist
     output_dir: str
@@ -81,10 +106,12 @@ class FreshCheckResponse(BaseModel):
 
 class ServiceSettings(BaseModel):
     """Per-service settings model."""
+
     sync_enabled: bool = True
     adaptive_sync_enabled: bool = True
     last_sync: Optional[str] = None
     blogs_full_backup: bool = False
+
 
 @router.get("", response_model=SettingsResponse)
 async def get_settings():
@@ -107,9 +134,11 @@ async def get_settings():
         language=config.get("language"),
     )
 
+
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
+
     def _apply(config: dict) -> None:
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
@@ -140,25 +169,25 @@ async def update_settings(update: SettingsUpdate):
         language=config.get("language"),
     )
 
+
 @router.get("/fresh", response_model=FreshCheckResponse)
 async def check_fresh_install():
     """Check if output folder is empty (fresh install)."""
     config = await _store_load()
     output_dir = config.get("output_dir", get_default_output_dir())
     output_path = Path(output_dir)
-    
+
     # Fresh if: doesn't exist, is empty, or only has sync_metadata.json
     is_fresh = True
     if output_path.exists():
         contents = list(output_path.iterdir())
         # Filter out metadata files
-        data_contents = [c for c in contents if c.name not in ("sync_metadata.json", ".gitkeep")]
+        data_contents = [
+            c for c in contents if c.name not in ("sync_metadata.json", ".gitkeep")
+        ]
         is_fresh = len(data_contents) == 0
-    
-    return FreshCheckResponse(
-        is_fresh=is_fresh,
-        output_dir=output_dir
-    )
+
+    return FreshCheckResponse(is_fresh=is_fresh, output_dir=output_dir)
 
 
 @router.post("/select-folder")
@@ -178,7 +207,7 @@ async def select_folder():
         try:
             root = tk.Tk()
             root.withdraw()  # Hide the main window
-            root.attributes('-topmost', True)  # Bring to front
+            root.attributes("-topmost", True)  # Bring to front
 
             folder = filedialog.askdirectory(title="Select Output Folder")
             root.destroy()

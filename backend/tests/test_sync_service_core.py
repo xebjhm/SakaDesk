@@ -6,15 +6,12 @@ sync code paths.
 """
 
 import json
-from collections import defaultdict
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.services.sync_service import (
-    DEFAULT_INITIAL_MESSAGE_LIMIT,
     SyncService,
 )
 
@@ -89,9 +86,7 @@ class TestCheckNewMessages:
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_token(self):
         svc = SyncService()
-        with patch.object(
-            svc, "load_config", new_callable=AsyncMock, return_value={}
-        ):
+        with patch.object(svc, "load_config", new_callable=AsyncMock, return_value={}):
             result = await svc.check_new_messages()
         assert result == []
 
@@ -534,9 +529,7 @@ class TestStartSyncGuards:
                 new_callable=AsyncMock,
                 return_value={"is_configured": False},
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             await svc.start_sync()
@@ -566,9 +559,7 @@ class TestStartSyncGuards:
                 new_callable=AsyncMock,
                 return_value={},  # No access_token
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             await svc.start_sync()
@@ -619,9 +610,7 @@ class TestForceResync:
                 "backend.services.sync_service.get_service_display_name",
                 return_value="日向坂46",
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             await svc.start_sync(force_resync=True)
@@ -692,7 +681,7 @@ class TestFreshVsIncrementalSync:
     async def test_empty_service_dir_is_fresh(self, tmp_path):
         """When service_data_dir is empty (or non-existent), is_fresh=True."""
         svc = SyncService()
-        service_dir = tmp_path / "日向坂46"
+        tmp_path / "日向坂46"
         # Directory does not exist yet
 
         mock_progress = MagicMock()
@@ -735,12 +724,8 @@ class TestFreshVsIncrementalSync:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -803,12 +788,8 @@ class TestFreshVsIncrementalSync:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -848,7 +829,12 @@ class TestSyncPhaseProgression:
         mock_progress.error = MagicMock()
 
         groups = [
-            {"id": 100, "name": "Group1", "state": "open", "subscription": {"state": "active"}},
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
         ]
         members = [
             {"id": 1, "name": "MemberA", "thumbnail": None, "portrait": None},
@@ -886,7 +872,10 @@ class TestSyncPhaseProgression:
                 return_value={"access_token": "tok"},
             ),
             patch.object(
-                svc, "load_metadata", new_callable=AsyncMock, return_value=_make_metadata()
+                svc,
+                "load_metadata",
+                new_callable=AsyncMock,
+                return_value=_make_metadata(),
             ),
             patch.object(svc, "save_metadata", new_callable=AsyncMock),
             patch(
@@ -901,18 +890,12 @@ class TestSyncPhaseProgression:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
+            patch("backend.services.sync_service.Client", return_value=mock_client),
             patch(
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
-            patch(
-                "backend.services.sync_service.notify_sync_complete"
-            ),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+            patch("backend.services.sync_service.notify_sync_complete"),
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -939,8 +922,18 @@ class TestSyncPhaseProgression:
         mock_progress.error = MagicMock()
 
         groups = [
-            {"id": 100, "name": "OpenGroup", "state": "open", "subscription": {"state": "active"}},
-            {"id": 200, "name": "ClosedGroup", "state": "closed", "subscription": {"state": "active"}},
+            {
+                "id": 100,
+                "name": "OpenGroup",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+            {
+                "id": 200,
+                "name": "ClosedGroup",
+                "state": "closed",
+                "subscription": {"state": "active"},
+            },
         ]
         members = [
             {"id": 1, "name": "MemberA", "thumbnail": None, "portrait": None},
@@ -977,7 +970,10 @@ class TestSyncPhaseProgression:
                 return_value={"access_token": "tok"},
             ),
             patch.object(
-                svc, "load_metadata", new_callable=AsyncMock, return_value=_make_metadata()
+                svc,
+                "load_metadata",
+                new_callable=AsyncMock,
+                return_value=_make_metadata(),
             ),
             patch.object(svc, "save_metadata", new_callable=AsyncMock),
             patch(
@@ -992,18 +988,12 @@ class TestSyncPhaseProgression:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
+            patch("backend.services.sync_service.Client", return_value=mock_client),
             patch(
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
-            patch(
-                "backend.services.sync_service.notify_sync_complete"
-            ),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+            patch("backend.services.sync_service.notify_sync_complete"),
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -1032,7 +1022,12 @@ class TestSyncPhaseProgression:
         mock_progress.error = MagicMock()
 
         groups = [
-            {"id": 100, "name": "Group1", "state": "open", "subscription": {"state": "active"}},
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
         ]
         members = [
             {"id": 1, "name": "MemberA", "thumbnail": None, "portrait": None},
@@ -1083,7 +1078,12 @@ class TestSyncPhaseProgression:
                     }
                 ),
             ),
-            patch.object(svc, "save_metadata", new_callable=AsyncMock, side_effect=capture_metadata),
+            patch.object(
+                svc,
+                "save_metadata",
+                new_callable=AsyncMock,
+                side_effect=capture_metadata,
+            ),
             patch(
                 "backend.services.sync_service.get_service_display_name",
                 return_value="日向坂46",
@@ -1096,18 +1096,12 @@ class TestSyncPhaseProgression:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
+            patch("backend.services.sync_service.Client", return_value=mock_client),
             patch(
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
-            patch(
-                "backend.services.sync_service.notify_sync_complete"
-            ) as mock_notify,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+            patch("backend.services.sync_service.notify_sync_complete") as mock_notify,
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -1120,7 +1114,9 @@ class TestSyncPhaseProgression:
 
         # Metadata was saved with updated cursor values
         assert saved_metadata["groups"]["100_1"]["last_message_id"] == 999
-        assert saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
+        assert (
+            saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
+        )
         assert saved_metadata.get("last_sync") is not None
         # Notification was sent
         mock_notify.assert_called_once_with(5, 1)
@@ -1150,9 +1146,7 @@ class TestSyncErrorHandling:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("kaboom"),
             ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             await svc.start_sync()
@@ -1205,12 +1199,8 @@ class TestSyncErrorHandling:
             patch(
                 "backend.services.sync_service.aiohttp.ClientSession"
             ) as mock_sess_cls,
-            patch(
-                "backend.services.sync_service.Client", return_value=mock_client
-            ),
-            patch(
-                "backend.services.sync_service.progress_manager"
-            ) as mock_pm,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()

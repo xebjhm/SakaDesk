@@ -59,7 +59,9 @@ async def logout(service: str = Query(..., description="Service to logout from")
 
 
 @router.post("/refresh-if-needed", response_model=RefreshResult)
-async def refresh_if_needed(service: str = Query(..., description="Service to refresh")):
+async def refresh_if_needed(
+    service: str = Query(..., description="Service to refresh"),
+):
     """Proactively refresh token if it's close to expiring for a specific service."""
     try:
         validate_service(service)
