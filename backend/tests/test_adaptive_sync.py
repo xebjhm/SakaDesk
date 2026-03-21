@@ -198,32 +198,25 @@ class TestCalculateNextSyncInterval:
         assert isinstance(result, float)
 
     def test_no_randomization_returns_base(self):
-        result = calculate_next_sync_interval(
-            base_interval_minutes=15.0,
-            enable_randomization=False,
-        )
-        assert result == 15.0
+        from backend.services.adaptive_sync import _ADAPTIVE_BASE_MINUTES
+
+        result = calculate_next_sync_interval(enable_randomization=False)
+        assert result == float(_ADAPTIVE_BASE_MINUTES)
 
     def test_clamped_minimum_5(self):
-        # Very low base with very active member at peak time
+        # Very active member at peak time
         with patch(
-            "backend.services.adaptive_sync.get_time_multiplier", return_value=0.6
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=0.5
         ):
-            result = calculate_next_sync_interval(
-                base_interval_minutes=1.0,
-                hours_since_last_post=0.1,
-            )
+            result = calculate_next_sync_interval(hours_since_last_post=0.1)
         assert result >= 5.0
 
     def test_clamped_maximum_60(self):
-        # Very high base with inactive member at dead hours
+        # Inactive member at dead hours
         with patch(
-            "backend.services.adaptive_sync.get_time_multiplier", return_value=2.0
+            "backend.services.adaptive_sync.get_time_multiplier", return_value=3.0
         ):
-            result = calculate_next_sync_interval(
-                base_interval_minutes=100.0,
-                hours_since_last_post=200.0,
-            )
+            result = calculate_next_sync_interval(hours_since_last_post=200.0)
         assert result <= 60.0
 
     def test_with_activity_data(self):
@@ -231,11 +224,8 @@ class TestCalculateNextSyncInterval:
         with patch(
             "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
         ):
-            result = calculate_next_sync_interval(
-                base_interval_minutes=15.0,
-                hours_since_last_post=0.5,
-            )
-        # 15 * 1.0 * 0.5 = 7.5 + jitter, clamped to [5, 60]
+            result = calculate_next_sync_interval(hours_since_last_post=0.5)
+        # 10 * 1.0 * 0.5 = 5.0 + jitter, clamped to [5, 60]
         assert 5.0 <= result <= 60.0
 
     def test_none_activity_data(self):
@@ -243,11 +233,8 @@ class TestCalculateNextSyncInterval:
         with patch(
             "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
         ):
-            result = calculate_next_sync_interval(
-                base_interval_minutes=15.0,
-                hours_since_last_post=None,
-            )
-        # 15 * 1.0 * 1.0 = 15 + jitter
+            result = calculate_next_sync_interval(hours_since_last_post=None)
+        # 10 * 1.0 * 1.0 = 10 + jitter
         assert 5.0 <= result <= 60.0
 
 
