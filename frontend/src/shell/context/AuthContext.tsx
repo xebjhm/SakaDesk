@@ -1,5 +1,5 @@
 // frontend/src/shell/context/AuthContext.tsx
-import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from 'react';
 import type { MultiGroupAuthStatus } from '../../types';
 import { useAppStore } from '../../store/appStore';
 
@@ -266,9 +266,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const connectedServices = Object.entries(serviceAuth)
-        .filter(([_, state]) => state.connected === true)
-        .map(([serviceId]) => serviceId);
+    const connectedServices = useMemo(
+        () => Object.entries(serviceAuth)
+            .filter(([_, state]) => state.connected === true)
+            .map(([serviceId]) => serviceId),
+        [serviceAuth]
+    );
 
     // Update isAuthenticated based on serviceAuth
     useEffect(() => {

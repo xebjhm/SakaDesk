@@ -9,6 +9,8 @@ import json
 import asyncio
 import tempfile
 import os
+import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -24,7 +26,7 @@ _lock = asyncio.Lock()
 # All callers of load_config() get these automatically.
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "auto_sync_enabled": True,
-    "sync_interval_minutes": 1,
+    "sync_interval_minutes": 15,
     "adaptive_sync_enabled": True,
     "is_configured": False,
     "notifications_enabled": True,
@@ -39,13 +41,30 @@ def _read_file(path: Path) -> dict:
     return dict(_SETTINGS_DEFAULTS)
 
 
+def _replace_with_retry(src: str, dst: Path, retries: int = 3) -> None:
+    """os.replace with retry for Windows, where antivirus/indexer can
+    briefly lock the destination file causing PermissionError.
+
+    Uses time.sleep (blocking) intentionally — this function runs inside
+    an executor thread via run_in_executor, so the event loop is not blocked.
+    """
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == retries - 1 or sys.platform != "win32":
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def _write_file(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        _replace_with_retry(tmp_path, path)
     except BaseException:
         try:
             os.unlink(tmp_path)
@@ -57,13 +76,15 @@ def _write_file(path: Path, data: dict) -> None:
 async def load_config() -> dict[str, Any]:
     """Load settings.json under async lock."""
     async with _lock:
-        return _read_file(get_settings_path())
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, _read_file, get_settings_path())
 
 
 async def save_config(config: dict) -> None:
     """Save settings.json atomically under async lock."""
     async with _lock:
-        _write_file(get_settings_path(), config)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, _write_file, get_settings_path(), config)
 
 
 async def update_config(updater: Callable[[dict], None]) -> dict:
@@ -73,8 +94,9 @@ async def update_config(updater: Callable[[dict], None]) -> dict:
     entire read-modify-write cycle, preventing lost updates.
     """
     async with _lock:
+        loop = asyncio.get_running_loop()
         path = get_settings_path()
-        config = _read_file(path)
+        config = await loop.run_in_executor(None, _read_file, path)
         updater(config)
-        _write_file(path, config)
+        await loop.run_in_executor(None, _write_file, path, config)
         return config

@@ -652,11 +652,15 @@ class BlogService:
 
         connector = aiohttp.TCPConnector(limit=10)
         # Bound total in-flight image downloads across all blogs.
-        # Without this, asyncio.gather queues ALL images at once; requests
+        # With blog_sem=5, at most 5 blogs download concurrently;
+        # image_sem further caps total image fetches sharing the
+        # 10-connection TCPConnector.
+        image_sem = asyncio.Semaphore(20)
+        # Limit concurrent blog downloads to prevent mass TimeoutError.
+        # Without this, asyncio.gather queues ALL blogs at once; requests
         # waiting in the connector queue still count against aiohttp's
-        # total timeout (default 300s), causing mass TimeoutError on
-        # slower servers (e.g. sakurazaka46.com at ~50 req/s).
-        image_sem = asyncio.Semaphore(50)
+        # total timeout (default 300s), causing timeout storms.
+        blog_sem = asyncio.Semaphore(5)
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
 
@@ -664,29 +668,30 @@ class BlogService:
                 nonlocal completed
                 if cancel_event and cancel_event.is_set():
                     return
-                completed += 1
-                if progress_callback:
-                    await progress_callback(
-                        f"Downloading {item.member_name} ({completed}/{len(queue)})"
-                    )
+                async with blog_sem:
+                    completed += 1
+                    if progress_callback:
+                        await progress_callback(
+                            f"Downloading {item.member_name} ({completed}/{len(queue)})"
+                        )
 
-                try:
-                    await self._download_single_blog(
-                        session, scraper, item, download_images, image_sem
-                    )
-                    stats["downloaded"] += 1
-                except BlogGoneError:
-                    # Blog permanently removed (404/410) - mark in index
-                    self._mark_blog_removed(index, item.member_id, item.blog_id)
-                    stats["removed"] += 1
-                except Exception as e:
-                    logger.warning(
-                        "Failed to download blog",
-                        blog_id=item.blog_id,
-                        error_type=type(e).__name__,
-                        error=str(e),
-                    )
-                    stats["failed"] += 1
+                    try:
+                        await self._download_single_blog(
+                            session, scraper, item, download_images, image_sem
+                        )
+                        stats["downloaded"] += 1
+                    except BlogGoneError:
+                        # Blog permanently removed (404/410) - mark in index
+                        self._mark_blog_removed(index, item.member_id, item.blog_id)
+                        stats["removed"] += 1
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to download blog",
+                            blog_id=item.blog_id,
+                            error_type=type(e).__name__,
+                            error=str(e),
+                        )
+                        stats["failed"] += 1
 
             await asyncio.gather(*[download_item(item) for item in queue])
 

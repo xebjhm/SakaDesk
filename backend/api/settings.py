@@ -83,7 +83,10 @@ class SettingsResponse(BaseModel):
     adaptive_sync_enabled: bool = True  # Randomize intervals based on activity patterns
     is_configured: bool  # True if user has set up the app
     user_nickname: Optional[str] = (
-        None  # User's nickname for %%% placeholder replacement
+        None  # User's nickname for %%% placeholder replacement (legacy)
+    )
+    user_nicknames: Optional[dict[str, str]] = (
+        None  # Per-service nicknames for %%% placeholder replacement
     )
     notifications_enabled: bool = True  # Desktop notifications for new messages
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
@@ -129,6 +132,7 @@ async def get_settings():
         adaptive_sync_enabled=config["adaptive_sync_enabled"],
         is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
+        user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
@@ -164,6 +168,7 @@ async def update_settings(update: SettingsUpdate):
         adaptive_sync_enabled=config["adaptive_sync_enabled"],
         is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
+        user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),

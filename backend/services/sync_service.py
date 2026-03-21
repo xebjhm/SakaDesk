@@ -49,6 +49,7 @@ class SyncService:
         self.service_data_dir = (
             get_default_output_dir()
         )  # Will be updated in start_sync
+        self._profile_refreshed = False  # Only refresh nickname once per session
         self.config_dir = Path(".")
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
@@ -624,6 +625,28 @@ class SyncService:
                     new_messages=total_new_messages,
                     members_with_new=members_with_new,
                     media_downloaded=media_count,
+                )
+
+            # Cache user nickname so the frontend has it before rendering
+            # messages.  First sync of the session uses refresh_profile to pick
+            # up any nickname changes; subsequent syncs use get_profile (cached)
+            # since users rarely change nicknames mid-session.
+            try:
+                if not self._profile_refreshed:
+                    from backend.api.profile import refresh_profile
+
+                    await refresh_profile(self._service)
+                    self._profile_refreshed = True
+                else:
+                    from backend.api.profile import get_profile
+
+                    await get_profile(self._service)
+            except Exception as e:
+                logger.warning(
+                    "Profile nickname cache failed — user may see %%% placeholders",
+                    service=self._service,
+                    error_type=type(e).__name__,
+                    error=str(e),
                 )
 
             # Auto-enqueue blog backup if enabled (runs in background after modal closes)

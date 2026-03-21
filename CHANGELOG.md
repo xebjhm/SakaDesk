@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-03-22
+
+### Fixed
+- **Critical:** Sync cascade causing 164 syncs per session instead of 4 — React effect dependency chain created feedback loop where sync completion triggered immediate re-sync
+- **Critical:** Blog backup timeout storm — all blog downloads fired concurrently, overwhelming the connection pool and causing mass TimeoutError
+- Settings file contention on Windows — `os.replace()` fails when antivirus locks the file; added retry with backoff
+- User nickname (%%%) placeholder visible on app load — nicknames now cached during sync and returned in settings API response
+- Adaptive sync always hitting 5-minute floor due to `sync_interval_minutes` default of 1
+
+### Changed
+- Adaptive sync base interval hardcoded to 10 minutes, decoupled from user setting (which only applies to fixed-interval mode)
+- Time-of-day multipliers rebuilt from 13,132 actual Hinatazaka46 messages — peak hours (20:00 JST) now sync every ~5 min, dead hours (01:00-06:00) every ~30 min
+- Blog download concurrency limited to 5 concurrent blogs (was unbounded), image semaphore reduced from 50 to 20
+- Memoized `connectedServices` in AuthContext to prevent unnecessary effect re-runs
+- Nickname refresh runs once per app session (first sync), subsequent syncs use cache
+- Removed unused activity multiplier from adaptive sync (was dead code)
+
 ## [0.2.1] - 2026-03-21
 
 ### Changed
