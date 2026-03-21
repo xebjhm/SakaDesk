@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-21
+
+### Changed
+- **Breaking:** Rebranded from HakoDesk to SakaDesk across the entire codebase
+- Renamed SDK dependency from pyhako to pysaka (requires pysaka >= 0.3.0)
+- Externalized remaining hardcoded Japanese strings to i18n locale files
+- Replaced ToS acknowledgement list with official service excerpts
+- Moved BlogBackupManager to dedicated background thread
+- Centralized settings defaults in settings_store
+
+### Added
+- Pre-commit hooks (ruff, mypy, tsc, eslint) for development quality gates
+- Comprehensive backend test suites (23 new modules, 80%+ coverage)
+- Frontend test suites for SyncModal, useSettings, syncFormatters, downloads
+- Atomic file writes for blog index and sync metadata (prevents corruption)
+- Batch operations: check_new_messages, group timeline fetch, blog metadata
+- ProcessPoolExecutor for GIL-free search index builds
+- Timestamp-based sync cursor (replaces message-ID cursor)
+- Log rotation with separate error.log
+- Video player loop toggle button (replaces auto-loop)
+- Blog recent posts cache with Zustand persistence
+
+### Fixed
+- Concurrent image downloads bounded to prevent timeout
+- React effect dependency stability with useRef in BlogsFeature and useSettings
+- Conditional React hook calls in PhotoDetailModal
+- TypeScript compilation errors in BlogsFeature
+- mypy type errors in search_service, sync_service, and diagnostics
+- Flaky BlogBackupManager tests replaced time.sleep with threading.Event
+- Frontend snapshot tests compatible with pre-commit whitespace hooks
+- Prevent concurrent browser login launches
+- freeze_support() added to prevent duplicate app on Windows
+- Search indexing moved to background to unblock sync Phase 3
+
+### Security
+- CI hardened with explicit permissions per job
+- Version validation in Inno Setup to prevent command injection
+- Coverage threshold enforced at 80% for backend
+
 ## [0.2.0] - 2026-03-16
 
 ### Added
@@ -31,12 +70,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test suites: backend (83 tests), frontend (Vitest), E2E (Playwright)
 
 ### Changed
-- Auth/sync flow follows pyhako CLI pattern with TokenManager integration
+- Auth/sync flow follows pysaka CLI pattern with TokenManager integration
 - FastAPI lifecycle migrated from deprecated `on_event` to `lifespan` context manager
 - Folder picker uses async executor instead of blocking thread.join
 - PriorityPool replaced with per-operation TCPConnector limits
 - Structured logging uses keyword args instead of f-strings throughout
-- Requires pyhako >= 0.2.0
+- Requires pysaka >= 0.2.0
 
 ### Fixed
 - XSS vulnerability in search result snippets — now sanitized with DOMPurify
@@ -55,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-01-11
 
 ### Added
-- Initial HakoDesk GUI application
+- Initial SakaDesk GUI application
 - Cross-platform support (Windows production, Linux/Mac development)
 - Secure credential storage via Windows Credential Manager
 - Browser-based OAuth authentication flow
@@ -74,6 +113,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/user/hakodesk/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/user/hakodesk/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/user/hakodesk/releases/tag/v0.1.0
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/xebjhm/SakaDesk/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/xebjhm/SakaDesk/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/xebjhm/SakaDesk/releases/tag/v0.1.0

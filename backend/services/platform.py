@@ -1,7 +1,8 @@
 """
-Platform Abstraction Layer for HakoDesk
+Platform Abstraction Layer for SakaDesk
 Handles cross-platform differences for Windows deployment with Linux development.
 """
+
 import os
 import platform
 import structlog
@@ -11,10 +12,10 @@ from typing import cast
 logger = structlog.get_logger(__name__)
 
 # Environment variable to force dev mode
-DEV_MODE = os.environ.get("HAKODESK_DEV_MODE", "false").lower() == "true"
+DEV_MODE = os.environ.get("SAKADESK_DEV_MODE", "false").lower() == "true"
 
 # Environment variable to enable test mode (bypasses real auth)
-TEST_MODE = os.environ.get("HAKODESK_TEST_MODE", "false").lower() == "true"
+TEST_MODE = os.environ.get("SAKADESK_TEST_MODE", "false").lower() == "true"
 
 
 def is_test_mode() -> bool:
@@ -41,27 +42,27 @@ def get_default_output_dir() -> Path:
     """
     Get the default output directory for synced data.
 
-    Windows: %USERPROFILE%\\Documents\\HakoDesk (e.g., C:\\Users\\Name\\Documents\\HakoDesk)
-    Linux/Mac: ~/Documents/HakoDesk (development fallback)
+    Windows: %USERPROFILE%\\Documents\\SakaDesk (e.g., C:\\Users\\Name\\Documents\\SakaDesk)
+    Linux/Mac: ~/Documents/SakaDesk (development fallback)
     """
-    return Path.home() / "Documents" / "HakoDesk"
+    return Path.home() / "Documents" / "SakaDesk"
 
 
 def get_app_data_dir() -> Path:
     """
     Get the application data directory.
 
-    Windows: %LOCALAPPDATA%\\HakoDesk (e.g., C:\\Users\\Name\\AppData\\Local\\HakoDesk)
-    Linux/Mac: ~/.HakoDesk (development fallback)
+    Windows: %LOCALAPPDATA%\\SakaDesk (e.g., C:\\Users\\Name\\AppData\\Local\\SakaDesk)
+    Linux/Mac: ~/.SakaDesk (development fallback)
     """
     if is_windows():
         base = os.environ.get("LOCALAPPDATA")
         if base:
-            app_dir = Path(base) / "HakoDesk"
+            app_dir = Path(base) / "SakaDesk"
         else:
-            app_dir = Path.home() / "AppData" / "Local" / "HakoDesk"
+            app_dir = Path.home() / "AppData" / "Local" / "SakaDesk"
     else:
-        app_dir = Path.home() / ".HakoDesk"
+        app_dir = Path.home() / ".SakaDesk"
 
     app_dir.mkdir(parents=True, exist_ok=True)
     return app_dir
@@ -83,13 +84,14 @@ def get_session_dir() -> Path:
     """
     Get directory for browser session data (auth_data).
 
-    Uses pyhako.get_auth_dir() to share browser session with CLI.
+    Uses pysaka.get_auth_dir() to share browser session with CLI.
     This enables:
-    - Shared Google OAuth cookies between CLI and HakoDesk
+    - Shared Google OAuth cookies between CLI and SakaDesk
     - Auto-OAuth when re-logging in (no password re-entry)
     - Consistent session state across both apps
     """
-    from pyhako import get_auth_dir
+    from pysaka import get_auth_dir
+
     return cast(Path, get_auth_dir())
 
 
@@ -105,7 +107,7 @@ def log_platform_info():
     logger.info(f"Platform: {get_system()}")
     logger.info(f"Dev Mode: {is_dev_mode()}")
     logger.info(f"App Data Dir: {get_app_data_dir()}")
-    
+
     if is_dev_mode() and not is_windows():
         logger.warning(
             "⚠️  Running in development mode - credentials are stored in plaintext. "

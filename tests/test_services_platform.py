@@ -54,6 +54,7 @@ class TestTestModeDetection:
     def test_is_test_mode_returns_bool(self):
         """is_test_mode() should return a boolean."""
         from backend.services.platform import is_test_mode
+
         result = is_test_mode()
         assert isinstance(result, bool)
 
@@ -87,10 +88,10 @@ class TestAppDataDirectory:
         result = get_app_data_dir()
         assert isinstance(result, Path)
 
-    def test_app_data_dir_contains_hakodesk(self):
-        """get_app_data_dir() should return a path containing 'HakoDesk'."""
+    def test_app_data_dir_contains_sakadesk(self):
+        """get_app_data_dir() should return a path containing 'SakaDesk'."""
         result = get_app_data_dir()
-        assert "HakoDesk" in str(result)
+        assert "SakaDesk" in str(result)
 
     def test_app_data_dir_exists(self):
         """get_app_data_dir() should create the directory if it doesn't exist."""
@@ -99,17 +100,17 @@ class TestAppDataDirectory:
         assert result.is_dir()
 
     @patch("backend.services.platform.is_windows", return_value=False)
-    def test_linux_uses_home_hakodesk(self, mock_is_windows):
-        """Linux should use ~/.HakoDesk directory."""
+    def test_linux_uses_home_sakadesk(self, mock_is_windows):
+        """Linux should use ~/.SakaDesk directory."""
         result = get_app_data_dir()
-        assert ".HakoDesk" in str(result)
+        assert ".SakaDesk" in str(result)
 
     @patch("backend.services.platform.is_windows", return_value=True)
     @patch.dict(os.environ, {"LOCALAPPDATA": "/tmp/test_localappdata"})
     def test_windows_uses_localappdata(self, mock_is_windows):
-        """Windows should use LOCALAPPDATA\\HakoDesk."""
+        """Windows should use LOCALAPPDATA\\SakaDesk."""
         result = get_app_data_dir()
-        assert "HakoDesk" in str(result)
+        assert "SakaDesk" in str(result)
 
 
 class TestSettingsPath:
@@ -168,13 +169,14 @@ class TestSessionDir:
         assert result.exists()
         assert result.is_dir()
 
-    def test_session_dir_uses_pyhako_auth_dir(self):
-        """get_session_dir() should use pyhako.get_auth_dir() for shared browser session."""
-        from pyhako import get_auth_dir
+    def test_session_dir_uses_pysaka_auth_dir(self):
+        """get_session_dir() should use pysaka.get_auth_dir() for shared browser session."""
+        from pysaka import get_auth_dir
+
         session = get_session_dir()
-        pyhako_auth = get_auth_dir()
-        assert session == pyhako_auth
-        assert "pyhako" in str(session)
+        pysaka_auth = get_auth_dir()
+        assert session == pysaka_auth
+        assert "pysaka" in str(session)
         assert "auth_data" in str(session)
 
 

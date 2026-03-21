@@ -1,5 +1,5 @@
 """
-Chat Features API for HakoDesk.
+Chat Features API for SakaDesk.
 
 Provides endpoints for:
 - Sent letters
@@ -16,9 +16,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional, Dict
 
-from pyhako import Client
-from pyhako.credentials import get_token_manager
-from backend.services.platform import is_test_mode, get_settings_path, get_session_dir, get_default_output_dir
+from pysaka import Client
+from pysaka.credentials import get_token_manager
+from backend.services.platform import (
+    is_test_mode,
+    get_settings_path,
+    get_session_dir,
+    get_default_output_dir,
+)
 from backend.services.service_utils import get_service_enum, validate_service
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -60,7 +65,7 @@ def _get_output_dir() -> Path:
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
                 path_str = settings.get("output_dir")
                 if path_str:
@@ -71,7 +76,7 @@ def _get_output_dir() -> Path:
 
 
 async def _get_client_and_session(service: str):
-    """Get pyhako client and aiohttp session with auth for given service."""
+    """Get pysaka client and aiohttp session with auth for given service."""
     if is_test_mode():
         raise HTTPException(status_code=503, detail="Not available in test mode")
 
@@ -87,7 +92,7 @@ async def _get_client_and_session(service: str):
         tm = get_token_manager()
         token_data = tm.load_session(group.value)
 
-        if not token_data or not token_data.get('access_token'):
+        if not token_data or not token_data.get("access_token"):
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         connector = aiohttp.TCPConnector(limit=5)
@@ -95,12 +100,12 @@ async def _get_client_and_session(service: str):
 
         client = Client(
             group=group,
-            access_token=token_data.get('access_token'),
-            refresh_token=token_data.get('refresh_token'),
-            cookies=token_data.get('cookies'),
-            app_id=token_data.get('x-talk-app-id'),
-            user_agent=token_data.get('user-agent'),
-            auth_dir=str(get_session_dir())
+            access_token=token_data.get("access_token"),
+            refresh_token=token_data.get("refresh_token"),
+            cookies=token_data.get("cookies"),
+            app_id=token_data.get("x-talk-app-id"),
+            user_agent=token_data.get("user-agent"),
+            auth_dir=str(get_session_dir()),
         )
 
         return client, session
@@ -121,7 +126,7 @@ async def get_letters(group_id: int, service: str, count: int = 200):
     """
     Fetch user's sent letters to a member.
 
-    Uses pyhako.Client.get_letters() to fetch from the official API.
+    Uses pysaka.Client.get_letters() to fetch from the official API.
 
     Args:
         group_id: The member's group ID.
@@ -139,17 +144,19 @@ async def get_letters(group_id: int, service: str, count: int = 200):
         letters = []
         for letter in letters_data:
             # API uses 'text' for content and 'file' for image
-            content = letter.get('text') or letter.get('content') or ''
-            image = letter.get('file') or letter.get('image')
+            content = letter.get("text") or letter.get("content") or ""
+            image = letter.get("file") or letter.get("image")
 
-            letters.append(Letter(
-                id=letter.get('id', 0),
-                content=content,
-                created_at=letter.get('created_at', ''),
-                updated_at=letter.get('updated_at', ''),
-                image=image,
-                thumbnail=letter.get('thumbnail'),
-            ))
+            letters.append(
+                Letter(
+                    id=letter.get("id", 0),
+                    content=content,
+                    created_at=letter.get("created_at", ""),
+                    updated_at=letter.get("updated_at", ""),
+                    image=image,
+                    thumbnail=letter.get("thumbnail"),
+                )
+            )
 
         return LettersResponse(letters=letters, total=len(letters))
 
@@ -157,7 +164,9 @@ async def get_letters(group_id: int, service: str, count: int = 200):
         raise
     except Exception as e:
         logger.error(f"Failed to fetch letters for group {group_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch letters: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch letters: {str(e)}"
+        )
     finally:
         await session.close()
 
@@ -167,7 +176,7 @@ async def get_streak(group_id: int, service: str):
     """
     Fetch subscription streak for a member.
 
-    Uses pyhako.Client.get_subscription_streak() to fetch consecutive days.
+    Uses pysaka.Client.get_subscription_streak() to fetch consecutive days.
 
     Args:
         group_id: The member's group ID.
@@ -184,7 +193,7 @@ async def get_streak(group_id: int, service: str):
             return StreakResponse(days=0, is_active=False)
 
         # API uses 'current' for consecutive days and 'current_start_at_date' for start date
-        days = streak_data.get('current') or streak_data.get('consecutive_day') or 0
+        days = streak_data.get("current") or streak_data.get("consecutive_day") or 0
 
         # If current > 0, user is actively subscribed
         is_active = days > 0
@@ -192,7 +201,8 @@ async def get_streak(group_id: int, service: str):
         return StreakResponse(
             days=days,
             is_active=is_active,
-            start_date=streak_data.get('current_start_at_date') or streak_data.get('start_date'),
+            start_date=streak_data.get("current_start_at_date")
+            or streak_data.get("start_date"),
         )
 
     except HTTPException:
@@ -226,10 +236,10 @@ async def get_message_dates(member_path: str):
     if msg_file.exists():
         # Single member path
         try:
-            with open(msg_file, 'r', encoding='utf-8') as f:
+            with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                for msg in data.get('messages', []):
-                    timestamp = msg.get('timestamp', '')
+                for msg in data.get("messages", []):
+                    timestamp = msg.get("timestamp", "")
                     if timestamp:
                         # Extract date (YYYY-MM-DD) from ISO timestamp
                         date_str = timestamp[:10]
@@ -245,10 +255,10 @@ async def get_message_dates(member_path: str):
             if not member_msg_file.exists():
                 continue
             try:
-                with open(member_msg_file, 'r', encoding='utf-8') as f:
+                with open(member_msg_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    for msg in data.get('messages', []):
-                        timestamp = msg.get('timestamp', '')
+                    for msg in data.get("messages", []):
+                        timestamp = msg.get("timestamp", "")
                         if timestamp:
                             date_str = timestamp[:10]
                             date_counts[date_str] += 1

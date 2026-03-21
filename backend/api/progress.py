@@ -4,6 +4,7 @@ Mimics tqdm behavior for HTTP polling.
 
 Supports per-service progress tracking for multi-service sync.
 """
+
 import time
 from threading import Lock
 from typing import Optional
@@ -31,7 +32,14 @@ class SyncProgress:
             self._phase_start: Optional[float] = None
             self._error: Optional[str] = None
 
-    def start_phase(self, phase: str, phase_name: str, phase_number: int, total: int, speed_unit: str):
+    def start_phase(
+        self,
+        phase: str,
+        phase_name: str,
+        phase_number: int,
+        total: int,
+        speed_unit: str,
+    ):
         """Start a new phase with given parameters"""
         with self._lock:
             self._state = "running"
@@ -45,7 +53,12 @@ class SyncProgress:
             self._detail = ""
             self._detail_extra = ""
 
-    def update(self, n: int = 1, detail: Optional[str] = None, detail_extra: Optional[str] = None):
+    def update(
+        self,
+        n: int = 1,
+        detail: Optional[str] = None,
+        detail_extra: Optional[str] = None,
+    ):
         """Atomic increment like tqdm.update(n)"""
         with self._lock:
             self._completed += n
@@ -107,7 +120,7 @@ class SyncProgress:
                 "speed": speed,
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,
-                "detail_extra": self._detail_extra
+                "detail_extra": self._detail_extra,
             }
 
 
@@ -137,7 +150,8 @@ class ProgressManager:
         """Get list of services currently syncing."""
         with self._lock:
             return [
-                service for service, progress in self._progress_by_service.items()
+                service
+                for service, progress in self._progress_by_service.items()
                 if progress.get_status()["state"] == "running"
             ]
 

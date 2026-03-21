@@ -1,15 +1,16 @@
 """
-Profile API for HakoDesk
+Profile API for SakaDesk
 Handles user profile information like nickname.
 """
+
 import structlog
 import aiohttp
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional
 
-from pyhako import Client
-from pyhako.credentials import get_token_manager
+from pysaka import Client
+from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir
 from backend.services.service_utils import get_service_enum, validate_service
@@ -58,23 +59,24 @@ async def get_profile(service: str):
         group = get_service_enum(service)
         session_data = tm.load_session(group.value)
 
-        if not session_data or not session_data.get('access_token'):
+        if not session_data or not session_data.get("access_token"):
             return ProfileResponse(error="Not authenticated")
 
         client = Client(
             group=group,
-            access_token=session_data['access_token'],
-            refresh_token=session_data.get('refresh_token'),
-            cookies=session_data.get('cookies'),
-            auth_dir=str(get_session_dir())
+            access_token=session_data["access_token"],
+            refresh_token=session_data.get("refresh_token"),
+            cookies=session_data.get("cookies"),
+            auth_dir=str(get_session_dir()),
         )
 
         async with aiohttp.ClientSession() as session:
             profile = await client.get_profile(session)
 
             # API returns 'name' field, not 'nickname'
-            if profile and profile.get('name'):
-                nickname = profile['name']
+            if profile and profile.get("name"):
+                nickname = profile["name"]
+
                 # Cache in settings (per-service) via atomic update
                 def _cache_nickname(cfg: dict) -> None:
                     if "user_nicknames" not in cfg:
@@ -82,10 +84,14 @@ async def get_profile(service: str):
                     cfg["user_nicknames"][service] = nickname
 
                 await _store_update(_cache_nickname)
-                logger.info(f"Fetched and cached user nickname for {service}: {nickname}")
+                logger.info(
+                    f"Fetched and cached user nickname for {service}: {nickname}"
+                )
                 return ProfileResponse(nickname=nickname)
             else:
-                logger.warning(f"Profile API returned no name for {service}. Response: {profile}")
+                logger.warning(
+                    f"Profile API returned no name for {service}. Response: {profile}"
+                )
                 return ProfileResponse(error="No name in profile")
 
     except Exception as e:

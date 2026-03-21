@@ -40,7 +40,7 @@ describe('LoginPage component', () => {
 
     await waitFor(() => {
       expect(defaultProps.onLoginSuccess).toHaveBeenCalled()
-    })
+    }, { timeout: 3000 })
   })
 
   it('should show loading state while logging in', async () => {
@@ -117,7 +117,7 @@ describe('LoginPage component', () => {
 
   it('should render security notice', () => {
     render(<LoginPage {...defaultProps} />)
-    expect(screen.getByText(/Your credentials are saved locally/i)).toBeInTheDocument()
+    expect(screen.getByText(/Your credentials will be securely stored/i)).toBeInTheDocument()
   })
 
   describe('Snapshots', () => {

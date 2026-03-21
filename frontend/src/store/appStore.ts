@@ -8,7 +8,7 @@
  * - Blog selection mode preferences
  * - Conversation selection memory
  *
- * All state is persisted to localStorage under 'hakodesk-app-state'.
+ * All state is persisted to localStorage under 'sakadesk-app-state'.
  *
  * @example
  * ```tsx
@@ -37,6 +37,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_SERVICE_ORDER } from '../data/services';
+import type { RecentPost } from '../types';
 
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
@@ -125,6 +126,14 @@ interface AppState {
     setBlogSelectionMode: (serviceId: string, mode: BlogSelectionMode) => void;
     /** Get blog selection mode (defaults to 'all'). */
     getBlogSelectionMode: (serviceId: string) => BlogSelectionMode;
+
+    // ─── Blog Recent Posts Cache ──────────────────────────────────────────
+    /** Cached recent posts per service for instant display. */
+    blogRecentPostsCache: Record<string, RecentPost[]>;
+    /** Update cached recent posts for a service. */
+    setBlogRecentPosts: (serviceId: string, posts: RecentPost[]) => void;
+    /** Get cached recent posts for a service. */
+    getBlogRecentPosts: (serviceId: string) => RecentPost[];
 
     // ─── Conversation Memory ─────────────────────────────────────────────────
 
@@ -273,6 +282,13 @@ export const useAppStore = create<AppState>()(
                 })),
             getBlogSelectionMode: (serviceId) => get().blogSelectionModes[serviceId] || 'all',
 
+            blogRecentPostsCache: {},
+            setBlogRecentPosts: (serviceId, posts) =>
+                set((state) => ({
+                    blogRecentPostsCache: { ...state.blogRecentPostsCache, [serviceId]: posts },
+                })),
+            getBlogRecentPosts: (serviceId) => get().blogRecentPostsCache[serviceId] || [],
+
             selectedConversations: {},
             setSelectedConversation: (serviceId, conversation) =>
                 set((state) => ({
@@ -308,8 +324,8 @@ export const useAppStore = create<AppState>()(
             setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),
         }),
         {
-            name: 'hakodesk-app-state',
-            version: 3,
+            name: 'sakadesk-app-state',
+            version: 4,
             partialize: (state) => ({
                 selectedServices: state.selectedServices,
                 activeService: state.activeService,
@@ -318,6 +334,7 @@ export const useAppStore = create<AppState>()(
                 featureOrders: state.featureOrders,
                 favorites: state.favorites,
                 blogSelectionModes: state.blogSelectionModes,
+                blogRecentPostsCache: state.blogRecentPostsCache,
                 selectedConversations: state.selectedConversations,
                 goldenFingerActive: state.goldenFingerActive,
             }),

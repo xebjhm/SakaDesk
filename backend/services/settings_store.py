@@ -1,9 +1,10 @@
 """
 Centralized settings file access with asyncio.Lock.
 
-All reads and writes to ~/.HakoDesk/settings.json MUST go through this module
+All reads and writes to ~/.SakaDesk/settings.json MUST go through this module
 to prevent TOCTOU race conditions during concurrent login/sync operations.
 """
+
 import json
 import asyncio
 import tempfile
@@ -19,19 +20,30 @@ logger = structlog.get_logger(__name__)
 
 _lock = asyncio.Lock()
 
+# Single source of truth for settings defaults.
+# All callers of load_config() get these automatically.
+_SETTINGS_DEFAULTS: dict[str, Any] = {
+    "auto_sync_enabled": True,
+    "sync_interval_minutes": 1,
+    "adaptive_sync_enabled": True,
+    "is_configured": False,
+    "notifications_enabled": True,
+    "blogs_full_backup": False,
+}
+
 
 def _read_file(path: Path) -> dict:
     if path.exists():
-        with open(path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+        with open(path, "r", encoding="utf-8") as f:
+            return {**_SETTINGS_DEFAULTS, **json.load(f)}
+    return dict(_SETTINGS_DEFAULTS)
 
 
 def _write_file(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix='.tmp')
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp_path, path)
     except BaseException:

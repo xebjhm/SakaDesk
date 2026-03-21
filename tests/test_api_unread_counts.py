@@ -24,10 +24,7 @@ class TestUnreadCountsEndpoint:
         """Should return empty dict when output directory doesn't exist."""
         with patch("backend.api.content.get_output_dir") as mock:
             mock.return_value = Path("/nonexistent/path")
-            response = client.post(
-                "/api/content/unread_counts",
-                json={"some/path": 0}
-            )
+            response = client.post("/api/content/unread_counts", json={"some/path": 0})
         assert response.status_code == 200
         assert response.json() == {}
 
@@ -38,18 +35,23 @@ class TestUnreadCountsEndpoint:
             member_path = Path(temp_dir) / "test" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
-            msg_file.write_text(json.dumps({
-                "messages": [
-                    {"id": 100, "content": "msg1"},
-                    {"id": 200, "content": "msg2"},
-                    {"id": 300, "content": "msg3"},
-                ]
-            }))
+            msg_file.write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 100, "content": "msg1"},
+                            {"id": 200, "content": "msg2"},
+                            {"id": 300, "content": "msg3"},
+                        ]
+                    }
+                )
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
-                    "/api/content/unread_counts",
-                    json={"test/member": 0}
+                    "/api/content/unread_counts", json={"test/member": 0}
                 )
 
             assert response.status_code == 200
@@ -62,20 +64,26 @@ class TestUnreadCountsEndpoint:
             member_path = Path(temp_dir) / "test" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
-            msg_file.write_text(json.dumps({
-                "messages": [
-                    {"id": 100, "content": "msg1"},
-                    {"id": 200, "content": "msg2"},
-                    {"id": 300, "content": "msg3"},
-                    {"id": 400, "content": "msg4"},
-                    {"id": 500, "content": "msg5"},
-                ]
-            }))
+            msg_file.write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 100, "content": "msg1"},
+                            {"id": 200, "content": "msg2"},
+                            {"id": 300, "content": "msg3"},
+                            {"id": 400, "content": "msg4"},
+                            {"id": 500, "content": "msg5"},
+                        ]
+                    }
+                )
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"test/member": {"lastReadId": 200, "revealedIds": []}}
+                    json={"test/member": {"lastReadId": 200, "revealedIds": []}},
                 )
 
             assert response.status_code == 200
@@ -89,21 +97,29 @@ class TestUnreadCountsEndpoint:
             member_path = Path(temp_dir) / "test" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
-            msg_file.write_text(json.dumps({
-                "messages": [
-                    {"id": 100, "content": "msg1"},
-                    {"id": 200, "content": "msg2"},
-                    {"id": 300, "content": "msg3"},
-                    {"id": 400, "content": "msg4"},
-                    {"id": 500, "content": "msg5"},
-                ]
-            }))
+            msg_file.write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 100, "content": "msg1"},
+                            {"id": 200, "content": "msg2"},
+                            {"id": 300, "content": "msg3"},
+                            {"id": 400, "content": "msg4"},
+                            {"id": 500, "content": "msg5"},
+                        ]
+                    }
+                )
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 # User read up to ID 200, then revealed 300 and 500 individually
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"test/member": {"lastReadId": 200, "revealedIds": [300, 500]}}
+                    json={
+                        "test/member": {"lastReadId": 200, "revealedIds": [300, 500]}
+                    },
                 )
 
             assert response.status_code == 200
@@ -117,17 +133,23 @@ class TestUnreadCountsEndpoint:
             member_path = Path(temp_dir) / "test" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
-            msg_file.write_text(json.dumps({
-                "messages": [
-                    {"id": 100, "content": "msg1"},
-                    {"id": 200, "content": "msg2"},
-                ]
-            }))
+            msg_file.write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 100, "content": "msg1"},
+                            {"id": 200, "content": "msg2"},
+                        ]
+                    }
+                )
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"test/member": 200}  # All read
+                    json={"test/member": 200},  # All read
                 )
 
             assert response.status_code == 200
@@ -143,26 +165,36 @@ class TestUnreadCountsEndpoint:
             # Create two member directories with messages
             member1 = group_path / "member1"
             member1.mkdir()
-            (member1 / "messages.json").write_text(json.dumps({
-                "messages": [
-                    {"id": 100, "content": "m1-msg1"},
-                    {"id": 300, "content": "m1-msg2"},
-                ]
-            }))
+            (member1 / "messages.json").write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 100, "content": "m1-msg1"},
+                            {"id": 300, "content": "m1-msg2"},
+                        ]
+                    }
+                )
+            )
 
             member2 = group_path / "member2"
             member2.mkdir()
-            (member2 / "messages.json").write_text(json.dumps({
-                "messages": [
-                    {"id": 200, "content": "m2-msg1"},
-                    {"id": 400, "content": "m2-msg2"},
-                ]
-            }))
+            (member2 / "messages.json").write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"id": 200, "content": "m2-msg1"},
+                            {"id": 400, "content": "m2-msg2"},
+                        ]
+                    }
+                )
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"group": 150}  # Read up to ID 150
+                    json={"group": 150},  # Read up to ID 150
                 )
 
             assert response.status_code == 200
@@ -176,23 +208,25 @@ class TestUnreadCountsEndpoint:
             # Create two separate member paths
             path1 = Path(temp_dir) / "member1"
             path1.mkdir()
-            (path1 / "messages.json").write_text(json.dumps({
-                "messages": [{"id": 100}, {"id": 200}]
-            }))
+            (path1 / "messages.json").write_text(
+                json.dumps({"messages": [{"id": 100}, {"id": 200}]})
+            )
 
             path2 = Path(temp_dir) / "member2"
             path2.mkdir()
-            (path2 / "messages.json").write_text(json.dumps({
-                "messages": [{"id": 300}, {"id": 400}, {"id": 500}]
-            }))
+            (path2 / "messages.json").write_text(
+                json.dumps({"messages": [{"id": 300}, {"id": 400}, {"id": 500}]})
+            )
 
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
                     "/api/content/unread_counts",
                     json={
                         "member1": 100,  # 1 unread (ID 200)
-                        "member2": 400   # 1 unread (ID 500)
-                    }
+                        "member2": 400,  # 1 unread (ID 500)
+                    },
                 )
 
             assert response.status_code == 200
@@ -203,10 +237,11 @@ class TestUnreadCountsEndpoint:
     def test_handles_nonexistent_path(self, client):
         """Should return 0 for paths that don't exist."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("backend.api.content.get_output_dir", return_value=Path(temp_dir)):
+            with patch(
+                "backend.api.content.get_output_dir", return_value=Path(temp_dir)
+            ):
                 response = client.post(
-                    "/api/content/unread_counts",
-                    json={"nonexistent/path": 0}
+                    "/api/content/unread_counts", json={"nonexistent/path": 0}
                 )
 
             assert response.status_code == 200

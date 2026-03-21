@@ -7,7 +7,7 @@ from backend.services.service_utils import (
     get_service_enum,
     validate_service,
 )
-from pyhako import Group
+from pysaka import Group
 
 
 def test_get_all_services():

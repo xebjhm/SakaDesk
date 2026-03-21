@@ -4,6 +4,7 @@ import { ServiceRail } from './ServiceRail';
 import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { useAppStore } from '../../store/appStore';
+import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface LayoutProps {
@@ -27,6 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({
     syncProgressByService,
     initialSyncServices,
 }) => {
+    const { t } = useTranslation();
     const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
 
     // Sort selected services by global display order
@@ -70,8 +72,8 @@ export const Layout: React.FC<LayoutProps> = ({
             ) : (
                 <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">
                     <div className="text-center">
-                        <p className="text-lg mb-2">Welcome to HakoDesk</p>
-                        <p className="text-sm">Select a service to get started</p>
+                        <p className="text-lg mb-2">{t('landing.welcome')}</p>
+                        <p className="text-sm">{t('landing.selectService')}</p>
                     </div>
                 </div>
             )}

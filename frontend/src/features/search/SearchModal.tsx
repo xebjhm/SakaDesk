@@ -212,17 +212,9 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         }
 
         const data: SearchResponse = await response.json();
-        // If the index is still building, show the building banner
-        // and auto-retry when it finishes (via status polling).
-        if (data.is_building) {
-          setIsIndexBuilding(true);
-          setResults([]);
-          setTotalCount(0);
-          setHasMore(false);
-          setSelectedIndex(-1);
-          return;
-        }
-        setIsIndexBuilding(false);
+        // Show building banner if index is still being built, but
+        // still render whatever partial results the backend returned.
+        setIsIndexBuilding(!!data.is_building);
         setResults(data.results);
         setTotalCount(data.total_count);
         setHasMore(data.has_more);
@@ -436,10 +428,8 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
           {/* Blog backup notice — always visible when backup is running */}
           {blogBackupEnabled && blogSyncInProgress && (
-            <div className="px-4 py-2 border-b border-gray-100">
-              <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-                {t('search.blogBackupInProgress')}
-              </div>
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-xs text-amber-700">
+              <span>{t('search.blogBackupInProgress')}</span>
             </div>
           )}
 
@@ -468,7 +458,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
           {/* Index building banner */}
           {isIndexBuilding && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-100 text-xs text-amber-700">
+            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-xs text-amber-700">
               <Database className="w-3.5 h-3.5 shrink-0" />
               <span>{t('search.buildingHint')}</span>
             </div>

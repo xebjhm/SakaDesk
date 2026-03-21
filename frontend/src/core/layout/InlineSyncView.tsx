@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { getServiceTheme } from '../../config/serviceThemes';
+import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface InlineSyncViewProps {
@@ -9,33 +10,14 @@ interface InlineSyncViewProps {
     syncProgress: SyncProgress;
 }
 
-const formatTime = (seconds: number | undefined): string => {
-    if (!seconds || seconds <= 0) return '00:00';
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    if (m >= 60) {
-        const h = Math.floor(m / 60);
-        return `${h}:${String(m % 60).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-    }
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-};
-
-const formatSpeed = (speed: number | null | undefined, unit: string): string => {
-    if (!speed || speed <= 0) return '';
-    return `${speed.toFixed(2)} ${unit}/s`;
-};
-
 export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncProgress }) => {
     const { t } = useTranslation();
     const theme = getServiceTheme(service);
     const isLightHeader = theme.messages.headerStyle === 'light';
     const headerGradient = `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`;
 
-    const getUnitLabel = () => {
-        if (syncProgress.phase_number === 2) return t('sync.members');
-        if (syncProgress.phase_number === 3) return t('sync.files');
-        return t('sync.items');
-    };
+    const getPhaseName = () => getSyncPhaseName(syncProgress, t);
+    const getUnitLabel = () => getSyncUnitLabel(syncProgress, t);
 
     return (
         <div className="flex-1 flex items-center justify-center bg-[#F0F2F5]">
@@ -55,8 +37,8 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                         <div>
                             <h3 className="text-lg font-bold" style={{ color: isLightHeader ? theme.messages.headerTextColor : 'white' }}>
                                 {syncProgress.phase === 'complete'
-                                    ? syncProgress.phase_name
-                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: syncProgress.phase_name || t('sync.starting') })
+                                    ? t('sync.complete')
+                                    : t('sync.phase', { number: syncProgress.phase_number || 1, name: getPhaseName() })
                                 }
                             </h3>
                             <p className="text-sm" style={{ color: isLightHeader ? `${theme.messages.headerTextColor}cc` : 'rgba(255,255,255,0.8)' }}>
@@ -106,19 +88,19 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.elapsed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {formatTime(syncProgress.elapsed_seconds)}
+                                {formatSyncTime(syncProgress.elapsed_seconds)}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.eta')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {syncProgress.eta_seconds ? formatTime(syncProgress.eta_seconds) : '--:--'}
+                                {syncProgress.eta_seconds ? formatSyncTime(syncProgress.eta_seconds) : '--:--'}
                             </div>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-3 text-center">
                             <div className="text-xs text-gray-500 mb-1">{t('time.speed')}</div>
                             <div className="text-lg font-mono font-semibold text-gray-900">
-                                {formatSpeed(syncProgress.speed, syncProgress.speed_unit || 'it')}
+                                {formatSyncSpeed(syncProgress.speed, syncProgress.speed_unit || 'it')}
                             </div>
                         </div>
                     </div>

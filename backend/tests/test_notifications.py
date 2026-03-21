@@ -32,7 +32,7 @@ class TestNotificationService:
 
     def test_is_plyer_available_not_installed(self):
         """Test is_plyer_available when plyer not installed."""
-        with patch.dict('sys.modules', {'plyer': None}):
+        with patch.dict("sys.modules", {"plyer": None}):
             # Can't easily test this without unloading plyer
             pass
 
@@ -69,7 +69,9 @@ class TestNotificationService:
         mock_notification = MagicMock()
         mock_notification.notify = MagicMock()
 
-        with patch.dict('sys.modules', {'plyer': MagicMock(notification=mock_notification)}):
+        with patch.dict(
+            "sys.modules", {"plyer": MagicMock(notification=mock_notification)}
+        ):
             result = send_notification("Test", "Message")
             # Should succeed with mock
             assert result is True
@@ -115,28 +117,19 @@ class TestNotificationAPI:
 
     def test_update_notification_settings_enable(self, client):
         """Test enabling notifications via PUT."""
-        response = client.put(
-            "/api/notifications",
-            json={"enabled": True}
-        )
+        response = client.put("/api/notifications", json={"enabled": True})
         assert response.status_code == 200
         assert response.json()["enabled"] is True
 
     def test_update_notification_settings_disable(self, client):
         """Test disabling notifications via PUT."""
-        response = client.put(
-            "/api/notifications",
-            json={"enabled": False}
-        )
+        response = client.put("/api/notifications", json={"enabled": False})
         assert response.status_code == 200
         assert response.json()["enabled"] is False
 
     def test_update_notification_settings_invalid(self, client):
         """Test PUT with invalid body."""
-        response = client.put(
-            "/api/notifications",
-            json={}
-        )
+        response = client.put("/api/notifications", json={})
         assert response.status_code == 422  # Missing required field
 
     def test_test_notification_endpoint(self, client):

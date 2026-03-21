@@ -58,6 +58,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 { method: 'POST' }
             );
 
+            // Brief delay before advancing to prevent concurrent browser launches
+            await new Promise(resolve => setTimeout(resolve, 1500));
             onSuccess();
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : t('login.loginFailed'));

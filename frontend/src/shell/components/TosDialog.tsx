@@ -46,18 +46,24 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                         </p>
                     </div>
 
-                    {/* Terms summary */}
-                    <div className="text-sm text-gray-600 space-y-3">
-                        <p>
-                            {t('tos.acknowledgeIntro')}
-                        </p>
-                        <ul className="list-disc list-inside space-y-1 pl-2">
-                            <li>{t('tos.acknowledgeSubscription')}</li>
-                            <li>{t('tos.acknowledgeBackup')}</li>
-                            <li>{t('tos.acknowledgeNoRedistribute')}</li>
-                            <li>{t('tos.acknowledgeResponsibility')}</li>
-                        </ul>
-                    </div>
+                    {/* Official ToS excerpts (collapsible) */}
+                    <details className="bg-gray-50 rounded-xl p-4">
+                        <summary className="text-xs text-gray-600 font-medium cursor-pointer select-none">
+                            {t('tos.officialExcerpts')}
+                        </summary>
+                        <div className="mt-3 text-xs text-gray-500 space-y-3 leading-relaxed">
+                            <div>
+                                <p className="font-semibold">{t('tos.articleIpTitle')}</p>
+                                <p>当社が別に定める場合を除き、お客様が本コンテンツを複製、翻案、頒布、公衆送信等することは禁止します。</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold">{t('tos.articleProhibitedTitle')}</p>
+                                <p>(11) 当社または第三者の情報、データおよびソフトウェアを修正、改変、改ざん、リバースエンジニアリング、逆コンパイル、逆アッセンブルまたは消去等する行為</p>
+                                <p>(16) 当社が指定するアクセス方法以外の手段で本サービスにアクセスし、またはアクセスを試みる行為</p>
+                                <p>(17) 自動化された手段（クローラおよび類似の技術を含む）を用いて本サービスにアクセスし、またはアクセスを試みる行為</p>
+                            </div>
+                        </div>
+                    </details>
 
                     {/* Official ToS links */}
                     <div className="bg-gray-50 rounded-xl p-4">

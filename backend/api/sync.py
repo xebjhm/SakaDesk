@@ -2,9 +2,10 @@
 Sync API endpoints using thread-safe SyncProgress tracker.
 Supports per-service progress tracking for multi-service sync.
 """
+
 import structlog
 from fastapi import APIRouter, HTTPException, Query
-from pyhako import RefreshFailedError, SessionExpiredError
+from pysaka import RefreshFailedError, SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.api.progress import progress_manager
@@ -46,7 +47,7 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
 async def start_sync(
     service: str = Query(..., description="Service to sync"),
     include_inactive: bool = False,
-    force_resync: bool = False
+    force_resync: bool = False,
 ):
     try:
         validate_service(service)
@@ -55,7 +56,9 @@ async def start_sync(
 
     sync_service = get_sync_service(service)
     if sync_service.running:
-        raise HTTPException(status_code=400, detail=f"Sync already running for {service}")
+        raise HTTPException(
+            status_code=400, detail=f"Sync already running for {service}"
+        )
 
     # Get per-service progress tracker
     progress = progress_manager.get(service)
@@ -69,7 +72,9 @@ async def start_sync(
 
 
 @router.get("/progress")
-async def get_progress(service: str = Query(None, description="Service to get progress for")):
+async def get_progress(
+    service: str = Query(None, description="Service to get progress for"),
+):
     """Get sync progress. If service is provided, returns that service's progress.
     Otherwise returns progress for all services."""
     if service:
@@ -84,7 +89,9 @@ async def get_progress(service: str = Query(None, description="Service to get pr
 
 
 @router.post("/cancel")
-async def cancel_sync(service: str = Query(..., description="Service to cancel sync for")):
+async def cancel_sync(
+    service: str = Query(..., description="Service to cancel sync for"),
+):
     """Cancel a running sync by resetting the running flag.
 
     Note: This is a force-cancel that resets state. The actual background task
@@ -125,8 +132,8 @@ async def get_next_interval(
     from backend.services.settings_store import load_config
 
     settings = await load_config()
-    base = settings.get("sync_interval_minutes", 10)
-    adaptive = settings.get("adaptive_sync_enabled", False)
+    base = settings["sync_interval_minutes"]
+    adaptive = settings["adaptive_sync_enabled"]
 
     interval = calculate_next_sync_interval(
         base_interval_minutes=base,
@@ -157,7 +164,7 @@ async def sync_older(
     service: str = Query(..., description="Service to sync older messages"),
     group_id: str = Query(...),
     member_id: str = Query(...),
-    limit: int = 50
+    limit: int = 50,
 ):
     """Fetch older messages for a specific member."""
     try:
@@ -170,5 +177,11 @@ async def sync_older(
         count = await sync_service.sync_older_messages(group_id, member_id, limit)
         return {"count": count}
     except Exception as e:
-        logger.error("Failed to sync older messages", service=service, group_id=group_id, member_id=member_id, error=str(e))
+        logger.error(
+            "Failed to sync older messages",
+            service=service,
+            group_id=group_id,
+            member_id=member_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")

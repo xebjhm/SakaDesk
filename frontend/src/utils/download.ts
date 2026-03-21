@@ -1,22 +1,51 @@
 /**
- * Download a media file by fetching it as a blob and triggering a save dialog.
+ * Download a media file via a hidden iframe.
  *
- * For same-origin URLs (our API), fetches directly.
- * For external URLs (blog images), routes through the backend proxy to bypass CORS.
+ * pywebview ignores both `<a download>` blob URLs and `window.open()`
+ * (the latter opens the system browser).  A hidden iframe whose src
+ * points to a URL returning Content-Disposition: attachment triggers
+ * EdgeChromium's native download dialog without navigating away.
+ *
+ * Requires `webview.settings['ALLOW_DOWNLOADS'] = True` in desktop.py.
+ *
+ * Routing:
+ * - /api/content/media/...  → /api/content/download/... (local message media)
+ * - /api/blogs/image?...    → same URL + &download=filename (local cached blog image)
+ * - https://...             → /api/blogs/proxy-image?url=...&download=filename (external)
+ * - other local URLs        → append ?download=filename
  */
-export async function downloadMedia(url: string, filename: string): Promise<void> {
-    let fetchUrl = url;
-    // External URLs need to go through our proxy to bypass CORS
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-        fetchUrl = `/api/blogs/proxy-image?url=${encodeURIComponent(url)}`;
+export function downloadMedia(url: string, filename: string): void {
+    // Strip local origin so absolute URLs like http://127.0.0.1:PORT/api/...
+    // match the relative-path branches below (blog images use absolute URLs).
+    let localUrl = url;
+    if (localUrl.startsWith(window.location.origin)) {
+        localUrl = localUrl.slice(window.location.origin.length);
     }
-    const res = await fetch(fetchUrl);
-    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
-    const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(blobUrl);
+
+    let downloadUrl: string;
+
+    if (localUrl.startsWith('/api/content/media/')) {
+        // Local message media: rewrite to download endpoint
+        downloadUrl = localUrl.replace('/api/content/media/', '/api/content/download/')
+            + `?filename=${encodeURIComponent(filename)}`;
+    } else if (localUrl.startsWith('/api/blogs/image')) {
+        // Local cached blog image: add download param to existing endpoint
+        const sep = localUrl.includes('?') ? '&' : '?';
+        downloadUrl = `${localUrl}${sep}download=${encodeURIComponent(filename)}`;
+    } else if (localUrl.startsWith('http://') || localUrl.startsWith('https://')) {
+        // External URL: go through proxy
+        downloadUrl = `/api/blogs/proxy-image?url=${encodeURIComponent(localUrl)}&download=${encodeURIComponent(filename)}`;
+    } else {
+        // Other local API URLs
+        const sep = localUrl.includes('?') ? '&' : '?';
+        downloadUrl = `${localUrl}${sep}download=${encodeURIComponent(filename)}`;
+    }
+
+    // Hidden iframe triggers the webview's native download dialog
+    // without navigating away or opening the system browser.
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = downloadUrl;
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 60000);
 }

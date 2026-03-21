@@ -27,6 +27,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
+    // Optimistic toggle: local override while the API call is in flight
+    const [blogTogglePending, setBlogTogglePending] = useState<boolean | null>(null);
+    const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
+    // Clear pending state once appSettings catches up
+    React.useEffect(() => {
+        if (blogTogglePending !== null && appSettings.blogs_full_backup === blogTogglePending) {
+            setBlogTogglePending(null);
+        }
+    }, [appSettings.blogs_full_backup, blogTogglePending]);
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -115,7 +124,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
-        localStorage.setItem('hakodesk-language', lang);
+        localStorage.setItem('sakadesk-language', lang);
     };
 
     return (
@@ -264,22 +273,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 )}
                             </label>
                             <button
-                                onClick={() => onSaveSettings({ blogs_full_backup: !appSettings.blogs_full_backup })}
+                                onClick={() => {
+                                    const next = !blogBackupEnabled;
+                                    setBlogTogglePending(next);
+                                    onSaveSettings({ blogs_full_backup: next });
+                                }}
                                 className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    appSettings.blogs_full_backup ? 'bg-blue-400' : 'bg-gray-300'
+                                    blogBackupEnabled ? 'bg-blue-400' : 'bg-gray-300'
                                 }`}
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    appSettings.blogs_full_backup ? 'translate-x-7' : 'translate-x-1'
+                                    blogBackupEnabled ? 'translate-x-7' : 'translate-x-1'
                                 }`} />
                             </button>
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
-                            {appSettings.blogs_full_backup
+                            {blogBackupEnabled
                                 ? t('settings.blogFullBackupOnDesc')
                                 : t('settings.blogFullBackupOffDesc')}
                         </p>
-                        {appSettings.blogs_full_backup && (
+                        {blogBackupEnabled && (
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
                                 <div className="text-xs text-gray-500">
                                     {blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}

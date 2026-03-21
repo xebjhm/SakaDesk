@@ -23,10 +23,14 @@ export default defineConfig({
   ],
 
   // Start backend server before tests (in test mode)
+  // SAKADESK_TEST_MODE is set via env var (CI step or shell), not inline in the command
   webServer: {
-    command: 'cd .. && HAKODESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000',
+    command: process.platform === 'win32'
+      ? 'cd .. && uv run uvicorn backend.main:app --port 8000'
+      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000',
     url: 'http://localhost:8000/api/auth/status',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
+    env: { SAKADESK_TEST_MODE: 'true' },
   },
 })

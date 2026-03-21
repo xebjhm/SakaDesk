@@ -26,7 +26,7 @@
  * @module useSettings
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 import { SERVICE_FEATURES } from '../../config/features';
@@ -82,6 +82,8 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
     const [allServiceSettings, setAllServiceSettings] = useState<Record<string, ServiceSettings>>({});
+    const allServiceSettingsRef = useRef(allServiceSettings);
+    allServiceSettingsRef.current = allServiceSettings;
     const [outputDirInput, setOutputDirInput] = useState('');
     const [settingsError, setSettingsError] = useState<string | null>(null);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -113,9 +115,8 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
             setOutputDirInput(data.output_dir);
 
             // Blog backup toggle: start/stop backup on setting change.
-            // Only fires from SettingsModal (post-setup). During first-launch
-            // setup, blog backup is deferred to after sequential sync completes
-            // (handled in App.tsx handleSetupComplete).
+            // During first-launch setup, App.tsx defers saving blogs_full_backup
+            // until after sync completes, so this fires at the right time.
             if ('blogs_full_backup' in updates && data.is_configured) {
                 const { selectedServices: services } = useAppStore.getState();
                 // Filter to services that actually support blogs (excludes yodel)
@@ -137,7 +138,7 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
     }, []);
 
     const saveServiceSettings = useCallback(async (service: string, updates: Partial<ServiceSettings>) => {
-        const current = allServiceSettings[service];
+        const current = allServiceSettingsRef.current[service];
         if (!current) return;
         const merged = { ...current, ...updates };
         try {
@@ -153,7 +154,7 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
         } catch (e) {
             console.error('Failed to save service settings:', e);
         }
-    }, [allServiceSettings]);
+    }, []);
 
     const handleSelectFolder = useCallback(async () => {
         try {

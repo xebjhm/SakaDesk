@@ -2,7 +2,7 @@ import { useRef, useCallback, useMemo, useEffect } from 'react';
 import type { ListRange } from 'react-virtuoso';
 import type { Message } from '../../../types';
 
-const STORAGE_KEY_PREFIX = 'hakodesk_scroll_';
+const STORAGE_KEY_PREFIX = 'sakadesk_scroll_';
 const DEBOUNCE_MS = 500;
 
 interface UseChatScrollResult {

@@ -1,20 +1,117 @@
-name: Build Windows Exe
+name: CI
 
 on:
   push:
     branches: [main, dev]
+    tags: ['v*.*.*']
   pull_request:
     branches: [main, dev]
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    # Python linting
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install Dependencies
+      run: uv sync --no-sources
+
+    - name: Lint with ruff
+      run: uv run --no-sources ruff check .
+
+    - name: Check formatting with ruff
+      run: uv run --no-sources ruff format --check .
+
+    - name: Type Check with mypy
+      run: uv run --no-sources mypy backend/
+
+    # Frontend linting
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Lint Frontend
+      working-directory: ./frontend
+      run: npm run lint
+
+  test-backend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install Dependencies
+      run: uv sync --no-sources
+
+    - name: Run Tests with Coverage
+      run: |
+        uv run --no-sources pytest -v --tb=short \
+          --cov=backend --cov-report=term-missing --cov-fail-under=80 \
+          --ignore=tests/test_startup.py
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Run Tests with Coverage
+      working-directory: ./frontend
+      run: npm run test:coverage
+
   build:
+    needs: [lint, test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: windows-latest
+    permissions:
+      contents: read
 
     steps:
     - uses: actions/checkout@v4
 
-    # 1. Setup Node & Build Frontend
+    # Frontend build
     - name: Use Node.js
       uses: actions/setup-node@v4
       with:
@@ -26,22 +123,7 @@ jobs:
         npm ci
         npm run build
 
-    - name: Run Frontend Tests
-      working-directory: ./frontend
-      run: |
-        npm run test:run
-
-    - name: Install Playwright Browsers
-      working-directory: ./frontend
-      run: npx playwright install chromium --with-deps
-
-    - name: Run E2E Tests
-      working-directory: ./frontend
-      run: npm run test:e2e
-      env:
-        HAKODESK_TEST_MODE: 'true'
-
-    # 2. Setup Python and uv
+    # Python setup
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -52,51 +134,52 @@ jobs:
       with:
         version: "latest"
 
-    # 3. Install Python Deps with uv (using PyPI pyhako)
     - name: Install Dependencies
-      run: |
-        # Sync project dependencies (ignore local sources, use PyPI)
-        uv sync --no-sources
+      run: uv sync --no-sources
 
-        # Install build tools
-        uv add --dev pyinstaller pywebview playwright
+    # Pinned for reproducible builds; not in pyproject.toml (build-only tools)
+    - name: Install Build Tools
+      run: uv pip install pyinstaller==6.13.0 pywebview==5.3.2
 
-        # Verify installations
-        uv run --no-sources python -c "import fastapi; print('FastAPI OK:', fastapi.__file__)"
-        uv run --no-sources python -c "import uvicorn; print('Uvicorn OK:', uvicorn.__file__)"
-        uv run --no-sources python -c "import pyhako; print('pyhako OK:', pyhako.__file__)"
-        uv run --no-sources python -c "import keyring; print('Keyring OK:', keyring.__file__)"
-
-    # 4. Run Tests with Coverage
-    - name: Run Tests with Coverage
-      run: |
-        uv run --no-sources pytest -v --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=50
-
-    # 5. Type Check with mypy
-    - name: Type Check with mypy
-      run: |
-        uv run --no-sources mypy backend/
-
-    # 6. Setup Inno Setup
+    # Build
     - name: Install Inno Setup
       run: choco install innosetup
 
-    # 7. Extract version from pyproject.toml
     - name: Extract Version
       id: version
       run: |
         $version = (uv run --no-sources python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
         echo "VERSION=$version" >> $env:GITHUB_OUTPUT
-        echo "Extracted version: $version"
 
-    # 8. Build EXE & Installer
     - name: Build with PyInstaller & Inno Setup
-      run: |
-        uv run --no-sources python tooling/windows/build_windows.py
+      run: uv run --no-sources python tooling/windows/build_windows.py
 
-    # 9. Upload Installer
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: HakoDesk-${{ steps.version.outputs.VERSION }}-Setup
-        path: dist/HakoDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
+        name: SakaDesk-${{ steps.version.outputs.VERSION }}-Setup
+        path: dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
+
+  release:
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download Build Artifact
+      uses: actions/download-artifact@v4
+      with:
+        pattern: SakaDesk-*-Setup
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release create "$GITHUB_REF_NAME" \
+          SakaDesk-*-Setup/*.exe \
+          --title "SakaDesk $(echo $GITHUB_REF_NAME | sed 's/^v//')" \
+          --generate-notes

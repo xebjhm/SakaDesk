@@ -94,33 +94,35 @@
     "title": "服務條款",
     "subtitle": "繼續前請先閱讀",
     "disclaimer": "重要免責聲明",
-    "disclaimerText": "HakoDesk 是非官方的第三方備份工具。它與乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment 或其任何官方應用程式無關，亦未獲其認可。",
-    "acknowledgeIntro": "使用 HakoDesk 即表示您承認：",
-    "acknowledgeSubscription": "您擁有官方訊息服務的有效訂閱",
-    "acknowledgeBackup": "下載的內容僅供個人備份使用",
-    "acknowledgeNoRedistribute": "您不會再散佈或分享下載的內容",
-    "acknowledgeResponsibility": "您對使用本應用程式承擔全部責任",
-    "reviewOfficialTos": "請查閱官方服務條款：",
+    "disclaimerText": "SakaDesk 是非官方的第三方工具，它與乃木坂46、櫻坂46、日向坂46、Sony Music Entertainment 或其任何官方應用程式無關，亦未獲其認可。",
+    "officialExcerpts": "官方服務條款重點摘錄：",
+    "reviewOfficialTos": "查閱完整官方服務條款：",
     "hinatazakaTos": "日向坂46 服務條款",
     "sakurazakaTos": "櫻坂46 服務條款",
     "nogizakaTos": "乃木坂46 服務條款",
     "yodelTos": "Yodel 服務條款",
+    "articleIpTitle": "第3條（智慧財產權）",
+    "articleProhibitedTitle": "第8條（禁止事項）",
     "acceptCheckbox": "我了解並接受這些條款，且我已閱讀我所使用服務的官方服務條款。",
     "acceptAndContinue": "接受並繼續"
   },
   "setup": {
-    "welcome": "歡迎使用 HakoDesk",
+    "welcome": "歡迎使用 SakaDesk",
     "setupDataFolder": "設定資料儲存位置",
     "outputFolderPath": "輸出資料夾路徑",
-    "outputFolderPlaceholder": "C:\\Users\\YourName\\HakoDesk-data",
+    "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "輸入儲存訊息的完整路徑。您可以從檔案總管複製路徑。",
     "downloadBlogsOffline": "下載 Blog 以供搜尋",
     "downloadBlogsHint": "下載所有 Blog 文章以啟用全文搜尋。每個服務約使用 5-15 GB。",
-    "startUsing": "開始使用 HakoDesk"
+    "startUsing": "開始使用 SakaDesk"
   },
   "sync": {
     "phase": "階段 {{number}}：{{name}}",
     "starting": "正在開始",
+    "phaseScanning": "掃描群組",
+    "phaseDiscovering": "探索中",
+    "phaseSyncing": "取得中繼資料",
+    "phaseDownloading": "下載媒體",
     "pleaseWait": "請稍候...",
     "members": "成員",
     "files": "檔案",
@@ -211,7 +213,7 @@
   "messageList": {
     "noMessages": "沒有訊息",
     "jumpToOldestUnread": "跳至最早未讀",
-    "welcomeTitle": "歡迎使用 HakoDesk",
+    "welcomeTitle": "歡迎使用 SakaDesk",
     "welcomeSubtitle": "從側邊欄選擇一個對話開始。",
     "loadingMessages": "正在載入訊息...",
     "selectConversation": "選擇一個對話",
@@ -280,12 +282,13 @@
     "ai": "AI 助手"
   },
   "landing": {
-    "welcome": "歡迎使用 HakoDesk",
+    "welcome": "歡迎使用 SakaDesk",
     "selectGroups": "選擇您想要關注的團體",
     "selectAtLeastOne": "請至少選擇一個團體",
     "getStarted": "開始使用",
     "getStartedWith": "開始使用 {{count}} 個團體",
-    "footerNote": "Blog 可自由瀏覽。使用訊息和其他進階功能需要登入。"
+    "footerNote": "Blog 可自由瀏覽。使用訊息和其他進階功能需要登入。",
+    "selectService": "選擇服務以開始使用"
   },
   "serviceRail": {
     "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
@@ -375,7 +378,8 @@
     "post": "{{count}} 篇文章",
     "post_other": "{{count}} 篇文章",
     "syncingBlogs": "正在同步 Blog...",
-    "firstSyncHint": "首次同步可能需要一些時間"
+    "firstSyncHint": "首次同步可能需要一些時間",
+    "selectService": "請選擇服務"
   },
   "voicePlayer": {
     "speed": "播放速度",
@@ -385,7 +389,8 @@
     "unmute": "取消靜音 (M)"
   },
   "videoPlayer": {
-    "noAudio": "無音訊"
+    "noAudio": "無音訊",
+    "loop": "循環播放"
   },
   "generations": {
     "1st": "１期生",

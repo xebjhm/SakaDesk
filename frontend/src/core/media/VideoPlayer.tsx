@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 
-const VOLUME_STORAGE_KEY = 'hakodesk_video_amp';
+const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
 interface VideoPlayerProps {
     src: string;
@@ -56,6 +56,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showControls, setShowControls] = useState(true);
     const [playbackRate, setPlaybackRate] = useState(1);
+    const [loop, setLoop] = useState(false);
 
     const { volume, setVolume, isMuted, toggleMute, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
 
@@ -241,7 +242,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 className={cn("max-w-full max-h-full", isFullscreen ? "w-full h-full object-contain" : videoClassName)}
                 playsInline
                 disablePictureInPicture
-                loop
+                loop={loop}
             />
 
             {/* Big center play button when paused */}
@@ -296,6 +297,19 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
                     {/* Spacer */}
                     <div className="flex-1" />
+
+                    {/* Loop */}
+                    <button
+                        onClick={() => setLoop(l => !l)}
+                        className={cn(
+                            "p-1 transition-colors",
+                            loop ? "text-white" : "text-white/30 hover:text-white/60"
+                        )}
+                        type="button"
+                        title={t('videoPlayer.loop')}
+                    >
+                        <Repeat className="w-4 h-4" />
+                    </button>
 
                     {/* Speed */}
                     <button

@@ -91,7 +91,7 @@ export const handlers = [
   // Settings
   http.get('/api/settings', () => {
     return HttpResponse.json({
-      output_dir: '/tmp/hakodesk_test',
+      output_dir: '/tmp/sakadesk_test',
       auto_sync_enabled: false,
       sync_interval_minutes: 30,
       adaptive_sync_enabled: false,

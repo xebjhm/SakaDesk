@@ -1,8 +1,6 @@
-
 import pytest
 from unittest.mock import patch
 import json
-from pathlib import Path
 
 
 @pytest.fixture
@@ -12,7 +10,7 @@ def isolated_settings(tmp_path):
     Patches ``get_settings_path`` at every import site so that
     ``settings_store`` (which uses ``os.fdopen`` via ``tempfile.mkstemp``)
     and the ``settings`` API module both write to a throw-away file
-    instead of the real ``~/.hakodesk/settings.json``.
+    instead of the real ``~/.sakadesk/settings.json``.
     """
     settings_file = tmp_path / "settings.json"
     settings_file.write_text("{}", encoding="utf-8")

@@ -1,8 +1,8 @@
-# HakoDesk Feature Roadmap
+# SakaDesk Feature Roadmap
 
 > **Last Updated:** 2026-02-05
 
-This document tracks planned features, improvements, and technical debt for HakoDesk.
+This document tracks planned features, improvements, and technical debt for SakaDesk.
 
 ---
 
@@ -634,19 +634,19 @@ Phase 4: Post-processing (NEW)
 ---
 
 ### 23. Version in Installer Filename
-**Status:** Not Started
+**Status:** ✅ Complete
 **Category:** Build/CI
 **Complexity:** Low
 
-**Goal:** Include version number in installer filename (e.g., `HakoDesk-1.2.3-Setup.exe`).
+**Goal:** Include version number in installer filename (e.g., `SakaDesk-1.2.3-Setup.exe`).
 
 **Implementation:**
-- [ ] Update Inno Setup script to use version variable
-- [ ] Modify GitHub Actions to pass version to build
-- [ ] Output format: `HakoDesk-{version}-Setup.exe`
+- [x] Update Inno Setup script to use version variable
+- [x] Modify GitHub Actions to pass version to build
+- [x] Output format: `SakaDesk-{version}-Setup.exe`
 
 **Files:**
-- `installer/hakodesk.iss` - Inno Setup script
+- `tooling/windows/setup.iss` - Inno Setup script
 - `.github/workflows/build.yml` - CI workflow
 
 ---
