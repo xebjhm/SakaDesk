@@ -10,6 +10,7 @@ project_root = Path(SPECPATH).parent.resolve()
 
 datas = [
     (str(project_root / 'frontend' / 'dist'), 'frontend/dist'),
+    (str(project_root / 'pyproject.toml'), '.'),
 ]
 binaries = []
 hiddenimports = [
@@ -40,7 +41,7 @@ packages_to_collect = [
     'uvicorn',
     'pydantic',
     'pydantic_core',
-    'pyhako',
+    'pysaka',
     'playwright',
     'aiofiles',
     'keyring',
@@ -81,7 +82,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='HakoDesk',
+    name='SakaDesk',
     debug=True,
     bootloader_ignore_signals=False,
     strip=False,
@@ -92,7 +93,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(project_root / 'tooling' / 'windows' / 'HakoDesk.ico'),
+    icon=str(project_root / 'tooling' / 'windows' / 'SakaDesk.ico'),
 )
 coll = COLLECT(
     exe,
@@ -102,5 +103,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='HakoDesk',
+    name='SakaDesk',
 )

@@ -1,5 +1,5 @@
 """
-In-place Upgrade Service for HakoDesk.
+In-place Upgrade Service for SakaDesk.
 
 Handles downloading new versions and triggering the upgrade process on Windows.
 The upgrade flow:
@@ -21,16 +21,16 @@ from backend.services.platform import is_windows, get_app_data_dir
 logger = structlog.get_logger(__name__)
 
 # GitHub release asset pattern
-GITHUB_REPO = "xtorker/HakoDesk"
+GITHUB_REPO = "xebjhm/SakaDesk"
 
 
 def _installer_asset_name(version: str) -> str:
     """Build expected installer filename for a given version.
 
-    Matches Inno Setup OutputBaseFilename: HakoDesk-{version}-Setup
+    Matches Inno Setup OutputBaseFilename: SakaDesk-{version}-Setup
     """
     bare = version.lstrip("v")
-    return f"HakoDesk-{bare}-Setup.exe"
+    return f"SakaDesk-{bare}-Setup.exe"
 
 
 async def get_installer_download_url(version: str) -> Optional[str]:
@@ -56,7 +56,7 @@ async def get_installer_download_url(version: str) -> Optional[str]:
                 api_url,
                 headers={
                     "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": "HakoDesk-Updater",
+                    "User-Agent": "SakaDesk-Updater",
                 },
             )
 
@@ -96,8 +96,8 @@ async def download_installer(url: str, progress_callback=None) -> Optional[Path]
     upgrade_dir = cast(Path, get_app_data_dir() / "upgrade")
     upgrade_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use filename from URL (e.g., HakoDesk-0.2.0-Setup.exe)
-    filename = url.rsplit("/", 1)[-1] if "/" in url else "HakoDesk-Setup.exe"
+    # Use filename from URL (e.g., SakaDesk-0.2.0-Setup.exe)
+    filename = url.rsplit("/", 1)[-1] if "/" in url else "SakaDesk-Setup.exe"
     installer_path = upgrade_dir / filename
 
     try:
@@ -133,7 +133,7 @@ def generate_upgrade_script(installer_path: Path) -> Path:
     Generate a batch script that handles the upgrade process.
 
     The script:
-    1. Waits for HakoDesk to close
+    1. Waits for SakaDesk to close
     2. Runs the installer silently
     3. Cleans up the upgrade files
     4. Optionally restarts the app
@@ -156,20 +156,20 @@ def generate_upgrade_script(installer_path: Path) -> Path:
     script_content = f'''@echo off
 setlocal
 
-:: HakoDesk Upgrade Script
+:: SakaDesk Upgrade Script
 :: Generated automatically - do not edit
 
-echo HakoDesk Upgrade in Progress...
+echo SakaDesk Upgrade in Progress...
 echo.
 
 :: Wait for the app to close (check every second, max 30 seconds)
 set /a attempts=0
 :waitloop
-tasklist /fi "imagename eq HakoDesk.exe" 2>nul | find /i "HakoDesk.exe" >nul
+tasklist /fi "imagename eq SakaDesk.exe" 2>nul | find /i "SakaDesk.exe" >nul
 if errorlevel 1 goto :install
 set /a attempts+=1
 if %attempts% geq 30 (
-    echo Warning: HakoDesk did not close in time. Attempting to continue...
+    echo Warning: SakaDesk did not close in time. Attempting to continue...
     goto :install
 )
 timeout /t 1 /nobreak >nul
@@ -197,7 +197,7 @@ echo.
 echo Update installed successfully!
 
 :: Launch the updated app
-echo Starting HakoDesk...
+echo Starting SakaDesk...
 start "" "{app_exe}"
 
 :cleanup
@@ -221,7 +221,7 @@ def launch_upgrade(script_path: Path) -> bool:
     Launch the upgrade script and prepare for app exit.
 
     The script runs in a new process that's detached from the current app,
-    so it can continue after HakoDesk exits.
+    so it can continue after SakaDesk exits.
 
     Args:
         script_path: Path to the upgrade batch script
@@ -242,8 +242,9 @@ def launch_upgrade(script_path: Path) -> bool:
         # /MIN = start minimized (user sees progress)
         # Note: DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP are Windows-only flags
         subprocess.Popen(
-            ["cmd", "/c", "start", "/MIN", "HakoDesk Upgrade", str(script_path)],
-            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+            ["cmd", "/c", "start", "/MIN", "SakaDesk Upgrade", str(script_path)],
+            creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+            | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )
 
@@ -261,6 +262,7 @@ def cleanup_upgrade_files():
     if upgrade_dir.exists():
         try:
             import shutil
+
             shutil.rmtree(upgrade_dir)
             logger.info("Cleaned up upgrade directory")
         except Exception as e:

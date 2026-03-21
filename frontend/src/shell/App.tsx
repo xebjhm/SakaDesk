@@ -17,11 +17,6 @@ import { useSync } from './hooks/useSync'
 import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
-/** Services that support blogs (used to filter blog backup requests). */
-const BLOG_SERVICES = Object.entries(SERVICE_FEATURES)
-    .filter(([key, features]) => key !== 'default' && features.includes('blogs'))
-    .map(([key]) => key);
-
 function App() {
     const {
         activeService,
@@ -208,9 +203,10 @@ function App() {
 
     const handleSetupComplete = async () => {
         if (outputDirInput.trim()) {
+            // Save output_dir only — blogs_full_backup is deferred until after
+            // sync completes so blog downloads don't compete for bandwidth.
             const success = await saveSettings({
                 output_dir: outputDirInput.trim(),
-                blogs_full_backup: setupBlogFullBackup,
             });
             if (success) {
                 setShowSetupWizard(false);
@@ -221,13 +217,10 @@ function App() {
                 if (servicesToSync.length > 0) {
                     await startSequentialSync(servicesToSync);
                 }
-                // Start blog backup in background AFTER sync completes
+                // Now save blogs_full_backup — the useSettings hook will
+                // auto-start blog backup via /api/blogs/backup/start.
                 if (setupBlogFullBackup) {
-                    const blogServices = selectedServices.filter(s => BLOG_SERVICES.includes(s));
-                    if (blogServices.length > 0) {
-                        const params = blogServices.map(s => `services=${encodeURIComponent(s)}`).join('&');
-                        fetch(`/api/blogs/backup/start?${params}`, { method: 'POST' }).catch(console.error);
-                    }
+                    await saveSettings({ blogs_full_backup: true });
                 }
             }
         }

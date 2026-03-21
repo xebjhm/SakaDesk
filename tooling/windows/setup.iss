@@ -1,15 +1,15 @@
-; Inno Setup Script for HakoDesk
+; Inno Setup Script for SakaDesk
 ; Creates a Windows installer package
 
-#define MyAppName "HakoDesk"
+#define MyAppName "SakaDesk"
 ; Version can be overridden via command line: iscc /DAppVersion=1.2.3 setup.iss
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
 #define MyAppVersion AppVersion
-#define MyAppPublisher "xtorker"
-#define MyAppURL "https://github.com/xtorker/Project-PyHako"
-#define MyAppExeName "HakoDesk.exe"
+#define MyAppPublisher "xebjhm"
+#define MyAppURL "https://github.com/xebjhm/SakaDesk"
+#define MyAppExeName "SakaDesk.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -25,15 +25,15 @@ DisableProgramGroupPage=yes
 ; Run without admin rights (install for current user only)
 PrivilegesRequired=lowest
 OutputDir=..\..\dist
-OutputBaseFilename=HakoDesk-{#MyAppVersion}-Setup
-SetupIconFile=HakoDesk.ico
+OutputBaseFilename=SakaDesk-{#MyAppVersion}-Setup
+SetupIconFile=SakaDesk.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
 ; Show language selection dialog at install
 ShowLanguageDialog=yes
-; Close running HakoDesk before install/uninstall
+; Close running SakaDesk before install/uninstall
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
 
@@ -64,9 +64,9 @@ chinesetraditional.UninstallDataRemains=已同步的訊息和部落格資料未�
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Source from PyInstaller output (HakoDesk folder)
-Source: "..\..\dist\HakoDesk\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\..\dist\HakoDesk\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Source from PyInstaller output (SakaDesk folder)
+Source: "..\..\dist\SakaDesk\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\SakaDesk\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -83,7 +83,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    // Map Inno Setup language name to HakoDesk i18n locale code
+    // Map Inno Setup language name to SakaDesk i18n locale code
     if ActiveLanguage = 'japanese' then
       LangCode := 'ja'
     else if ActiveLanguage = 'chinesesimplified' then
@@ -93,7 +93,7 @@ begin
     else
       LangCode := 'en';
 
-    SettingsDir := ExpandConstant('{localappdata}\HakoDesk');
+    SettingsDir := ExpandConstant('{localappdata}\SakaDesk');
     if not DirExists(SettingsDir) then
       ForceDirectories(SettingsDir);
 
@@ -152,7 +152,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
-  PyHakoDir: String;
+  pyzakaDir: String;
   OutputDir: String;
   SettingsFile: String;
 begin
@@ -163,34 +163,34 @@ begin
     begin
       // 1. Delete ALL credentials from Windows Credential Manager
       //
-      // PyHako SDK credentials (pyhako/credentials.py, SERVICE_NAME="pyhako"):
+      // pyzaka SDK credentials (pyzaka/credentials.py, SERVICE_NAME="pyzaka"):
       //   keyring v25+ WinVaultKeyring: target="{username}@{service}"
-      DeleteCredential('hinatazaka46@pyhako');
-      DeleteCredential('sakurazaka46@pyhako');
-      DeleteCredential('nogizaka46@pyhako');
-      DeleteCredential('yodel@pyhako');
+      DeleteCredential('hinatazaka46@pyzaka');
+      DeleteCredential('sakurazaka46@pyzaka');
+      DeleteCredential('nogizaka46@pyzaka');
+      DeleteCredential('yodel@pyzaka');
       //   Old keyring: target="{service}" (username stored internally)
-      DeleteCredential('pyhako');
+      DeleteCredential('pyzaka');
       //
-      // HakoDesk credentials (credential_store.py, KEYRING_SERVICE="hakodesk"):
+      // SakaDesk credentials (credential_store.py, KEYRING_SERVICE="zakadesk"):
       //   These may exist from older app versions that used a separate credential store.
-      //   keyring v25+: target="{key}@hakodesk"
-      DeleteCredential('access_token@hakodesk');
-      DeleteCredential('app_id@hakodesk');
-      DeleteCredential('config_json@hakodesk');
-      DeleteCredential('config_chunks@hakodesk');
+      //   keyring v25+: target="{key}@zakadesk"
+      DeleteCredential('access_token@zakadesk');
+      DeleteCredential('app_id@zakadesk');
+      DeleteCredential('config_json@zakadesk');
+      DeleteCredential('config_chunks@zakadesk');
       //   Old keyring: target="{service}"
-      DeleteCredential('hakodesk');
+      DeleteCredential('zakadesk');
       Log('Removed all credentials from Windows Credential Manager.');
 
       // 2. Read output_dir from settings.json BEFORE deleting app data
-      DataDir := ExpandConstant('{localappdata}\HakoDesk');
+      DataDir := ExpandConstant('{localappdata}\SakaDesk');
       if not DirExists(DataDir) then
-        DataDir := ExpandConstant('{localappdata}\hakodesk');
+        DataDir := ExpandConstant('{localappdata}\zakadesk');
       SettingsFile := DataDir + '\settings.json';
       OutputDir := ReadOutputDir(SettingsFile);
 
-      // 3. Delete HakoDesk app data directory
+      // 3. Delete SakaDesk app data directory
       //    Contains: settings.json, search_index.db, logs/, webview/
       //    desktop.py releases SQLite + log handles on window close, but
       //    allow extra time for the process to fully exit after CloseApplications.
@@ -204,22 +204,22 @@ begin
           if not DelTree(DataDir, True, True, True) then
             MsgBox(CustomMessage('UninstallCleanupFailed') + ' ' + DataDir, mbError, MB_OK)
           else
-            Log('HakoDesk app data deleted (retry): ' + DataDir);
+            Log('SakaDesk app data deleted (retry): ' + DataDir);
         end
         else
-          Log('HakoDesk app data deleted: ' + DataDir);
+          Log('SakaDesk app data deleted: ' + DataDir);
       end;
 
-      // 4. Delete PyHako shared auth data directory
+      // 4. Delete pyzaka shared auth data directory
       //    Contains: browser session data (OAuth cookies, Playwright profile)
-      //    Location: %APPDATA%\pyhako
-      PyHakoDir := ExpandConstant('{userappdata}\pyhako');
-      if DirExists(PyHakoDir) then
+      //    Location: %APPDATA%\pyzaka
+      pyzakaDir := ExpandConstant('{userappdata}\pyzaka');
+      if DirExists(pyzakaDir) then
       begin
-        if DelTree(PyHakoDir, True, True, True) then
-          Log('PyHako auth data deleted: ' + PyHakoDir)
+        if DelTree(pyzakaDir, True, True, True) then
+          Log('pyzaka auth data deleted: ' + pyzakaDir)
         else
-          Log('Failed to delete PyHako auth data at: ' + PyHakoDir);
+          Log('Failed to delete pyzaka auth data at: ' + pyzakaDir);
       end;
 
       // 5. Notify user about remaining synced data

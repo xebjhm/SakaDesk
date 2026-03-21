@@ -95,6 +95,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   const serviceOrder = useAppStore((s) => s.getServiceOrder());
 
   // Filter dropdown items based on query and already-selected chips
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredItems = useMemo(() => {
     if (!membersData) return [];
     const q = mentionQuery.toLowerCase().replace(/^@/, '');

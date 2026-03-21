@@ -54,6 +54,8 @@ async def test_check_new_messages(client, mock_sync_service):
 @pytest.mark.asyncio
 async def test_sync_older_messages(client, mock_sync_service):
     """Test older messages endpoint delegates to service."""
-    response = client.post("/api/sync/older?service=hinatazaka46&group_id=43&member_id=1")
+    response = client.post(
+        "/api/sync/older?service=hinatazaka46&group_id=43&member_id=1"
+    )
     assert response.status_code == 200
     mock_sync_service.sync_older_messages.assert_called_with("43", "1", 50)

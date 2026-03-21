@@ -14,6 +14,7 @@ interface RecentPostsFeedProps {
     loading: boolean;
     error: string | null;
     syncing?: boolean;
+    knownPostIds?: Set<string>;
     onSelectPost: (post: RecentPost) => void;
     onMemberSelect: () => void;
     onRetry: () => void;
@@ -34,6 +35,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
     loading,
     error,
     syncing = false,
+    knownPostIds,
     onSelectPost,
     onMemberSelect,
     onRetry,
@@ -161,11 +163,17 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                         <div className="portrait-grid">
                             {posts.map((post, index) => {
                                 const isHero = heroIndices.has(index);
+                                const isNew = knownPostIds && knownPostIds.size > 0 && !knownPostIds.has(post.id);
+                                // Known posts (or initial load): sequential stagger delay
+                                // New posts (from background sync): random delay for "light up" effect
+                                const delay = isNew
+                                    ? Math.random() * 400
+                                    : index * 50;
                                 return (
                                     <div
                                         key={post.id}
                                         className={`portrait-grid__item animate-card-reveal ${isHero ? 'portrait-grid__item--hero' : ''}`}
-                                        style={{ animationDelay: `${index * 50}ms` }}
+                                        style={{ animationDelay: `${delay}ms` }}
                                     >
                                         <BlogCard
                                             post={post}

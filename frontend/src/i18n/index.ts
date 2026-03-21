@@ -19,7 +19,7 @@ export const SUPPORTED_LANGUAGES = {
 
 export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
 
-const STORAGE_KEY = 'hakodesk-language';
+const STORAGE_KEY = 'sakadesk-language';
 
 // Resources object with all translations
 const resources = {

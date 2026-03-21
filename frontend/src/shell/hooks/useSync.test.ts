@@ -3,11 +3,16 @@ import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
 
 // Mock appStore
-vi.mock('../../store/appStore', () => ({
-    useAppStore: () => ({
-        activeService: 'hinatazaka46',
-    }),
+const { mockRemoveInitialSyncService } = vi.hoisted(() => ({
+    mockRemoveInitialSyncService: vi.fn(),
 }))
+vi.mock('../../store/appStore', () => {
+    const mockUseAppStore = Object.assign(
+        () => ({ activeService: 'hinatazaka46' }),
+        { getState: () => ({ removeInitialSyncService: mockRemoveInitialSyncService }) },
+    )
+    return { useAppStore: mockUseAppStore }
+})
 
 describe('useSync', () => {
     const defaultOptions = {

@@ -31,7 +31,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
       <span
         class="text-xs text-gray-400"
       >
-        2024/01/15 18:30
+        2024/01/15 10:30
       </span>
     </div>
     <div
@@ -95,7 +95,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
       <span
         class="text-xs text-gray-400"
       >
-        2024/01/15 18:30
+        2024/01/15 10:30
       </span>
     </div>
     <div
@@ -149,7 +149,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
       <span
         class="text-xs text-gray-400"
       >
-        2024/01/15 18:30
+        2024/01/15 10:30
       </span>
     </div>
     <div

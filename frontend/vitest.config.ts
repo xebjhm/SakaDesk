@@ -4,6 +4,9 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_VERSION__: JSON.stringify('test'),
+  },
   test: {
     globals: true,
     environment: 'jsdom',
@@ -14,6 +17,12 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/__tests__/**', 'src/main.tsx', 'src/vite-env.d.ts'],
+      thresholds: {
+        statements: 25,
+        branches: 25,
+        functions: 25,
+        lines: 25,
+      },
     },
   },
   resolve: {

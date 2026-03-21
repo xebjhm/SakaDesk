@@ -1,8 +1,9 @@
 """
-Notification Settings API for HakoDesk.
+Notification Settings API for SakaDesk.
 
 Provides endpoints to manage desktop notification preferences.
 """
+
 from typing import Optional
 
 from fastapi import APIRouter
@@ -19,11 +20,13 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 class NotificationSettings(BaseModel):
     """Notification settings model."""
+
     enabled: bool
 
 
 class NotificationStatus(BaseModel):
     """Notification system status."""
+
     enabled: bool
     plyer_available: bool
     last_error: Optional[str]
@@ -47,11 +50,13 @@ async def update_settings(settings: NotificationSettings):
 async def test_notification():
     """Send a test notification to verify the system works."""
     success = send_notification(
-        title="HakoDesk Test",
+        title="SakaDesk Test",
         message="Notifications are working!",
         timeout=5,
     )
     return {
         "success": success,
-        "message": "Test notification sent" if success else "Failed to send notification",
+        "message": "Test notification sent"
+        if success
+        else "Failed to send notification",
     }

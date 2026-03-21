@@ -1,8 +1,8 @@
 """
-Content API for HakoDesk
-Handles reading synced message data from PyHako output directory.
+Content API for SakaDesk
+Handles reading synced message data from pysaka output directory.
 
-PyHako directory structure:
+pysaka directory structure:
   output_dir/
     {service_name}/                    <- e.g., "日向坂46"
       messages/
@@ -15,6 +15,7 @@ PyHako directory structure:
       blogs/
         ...
 """
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -25,14 +26,22 @@ import os
 import re
 from typing import Optional, List, Dict, Any
 
-from backend.services.platform import get_settings_path, is_test_mode, get_default_output_dir
+from backend.services.platform import (
+    get_settings_path,
+    is_test_mode,
+    get_default_output_dir,
+)
 from backend.services.path_resolver import (
     resolve_service_path,
     resolve_talk_room_path,
     resolve_messages_file,
     resolve_media_path,
 )
-from backend.services.service_utils import validate_service, get_service_identifier, get_service_display_name
+from backend.services.service_utils import (
+    validate_service,
+    get_service_identifier,
+    get_service_display_name,
+)
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -43,15 +52,15 @@ DEFAULT_OUTPUT_DIR = get_default_output_dir()
 # Group IDs that should be treated as group chat (multiple members posting),
 # keyed by service identifier to avoid cross-service collisions.
 GROUP_CHAT_IDS: dict[str, set[str]] = {
-    'hinatazaka46': {'43', '78', '79', '93'},
-    'sakurazaka46': {'33', '73'},
-    'nogizaka46': {'45', '70'},  # 70 is closed but keep for if it reopens
+    "hinatazaka46": {"43", "78", "79", "93"},
+    "sakurazaka46": {"33", "73"},
+    "nogizaka46": {"45", "70"},  # 70 is closed but keep for if it reopens
 }
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     """Validate that a user-provided path stays within the base directory."""
-    if '\x00' in user_path or '\n' in user_path or '\r' in user_path:
+    if "\x00" in user_path or "\n" in user_path or "\r" in user_path:
         raise HTTPException(status_code=400, detail="Invalid path characters")
 
     base_resolved = base_dir.resolve()
@@ -65,7 +74,10 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    if not str(target_path).startswith(str(base_resolved) + os.sep) and target_path != base_resolved:
+    if (
+        not str(target_path).startswith(str(base_resolved) + os.sep)
+        and target_path != base_resolved
+    ):
         raise HTTPException(status_code=403, detail="Access denied")
 
     return target_path
@@ -76,7 +88,7 @@ def get_output_dir() -> Path:
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
                 path_str = settings.get("output_dir")
                 if path_str:
@@ -86,7 +98,9 @@ def get_output_dir() -> Path:
     return DEFAULT_OUTPUT_DIR
 
 
-def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, str]]:
+def load_sync_metadata(
+    output_dir: Path,
+) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, Any]], Dict[str, str]]:
     """
     Load sync_metadata.json from all service directories.
     Returns (member_entries, server_groups, last_sync_map) where:
@@ -108,21 +122,25 @@ def load_sync_metadata(output_dir: Path) -> tuple[Dict[str, Dict[str, Any]], Dic
         metadata_file = service_dir / "sync_metadata.json"
         if metadata_file.exists():
             try:
-                with open(metadata_file, 'r', encoding='utf-8') as f:
+                with open(metadata_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    all_members.update(data.get('groups', {}))
+                    all_members.update(data.get("groups", {}))
                     # Namespace server_groups by service directory name to
                     # prevent cross-service ID collisions (group IDs are only
                     # unique within a single service).
-                    for group_id, group_data in data.get('server_groups', {}).items():
+                    for group_id, group_data in data.get("server_groups", {}).items():
                         all_server_groups[f"{service_dir.name}:{group_id}"] = group_data
                     # Extract last_sync timestamp, keyed by service ID
-                    if 'last_sync' in data:
+                    if "last_sync" in data:
                         service_id = get_service_identifier(service_dir.name)
                         if service_id:
-                            all_last_sync[service_id] = data['last_sync']
+                            all_last_sync[service_id] = data["last_sync"]
             except Exception as e:
-                logger.warning("Failed to load sync_metadata.json", service=service_dir.name, error=str(e))
+                logger.warning(
+                    "Failed to load sync_metadata.json",
+                    service=service_dir.name,
+                    error=str(e),
+                )
 
     return all_members, all_server_groups, all_last_sync
 
@@ -132,7 +150,7 @@ def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
     Parse a folder name in format "{id} {name}" or just "{name}".
     Returns (id, name) tuple. ID may be None if not present.
     """
-    match = re.match(r'^(\d+)\s+(.+)$', folder_name)
+    match = re.match(r"^(\d+)\s+(.+)$", folder_name)
     if match:
         return match.group(1), match.group(2)
     return None, folder_name
@@ -154,11 +172,12 @@ async def get_groups():
     """
     List all groups found in the output directory.
 
-    PyHako structure:
+    pysaka structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
     """
     if is_test_mode():
         from backend.fixtures.test_data import TEST_GROUPS
+
         return TEST_GROUPS
 
     output_dir = get_output_dir()
@@ -215,34 +234,40 @@ async def get_groups():
                     "name": member_name,
                     "dir_name": member_dir.name,
                     # Relative path from output_dir to member dir
-                    "path": str(member_dir.relative_to(output_dir)).replace("\\", "/")
+                    "path": str(member_dir.relative_to(output_dir)).replace("\\", "/"),
                 }
 
                 if msg_file.exists():
                     try:
-                        with open(msg_file, 'r', encoding='utf-8') as f:
+                        with open(msg_file, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                            m_data = data.get('member', {})
-                            member_meta['thumbnail'] = m_data.get('thumbnail')
-                            member_meta['portrait'] = m_data.get('portrait')
-                            member_meta['phone_image'] = m_data.get('phone_image')
-                            member_meta['group_thumbnail'] = m_data.get('group_thumbnail')
+                            m_data = data.get("member", {})
+                            member_meta["thumbnail"] = m_data.get("thumbnail")
+                            member_meta["portrait"] = m_data.get("portrait")
+                            member_meta["phone_image"] = m_data.get("phone_image")
+                            member_meta["group_thumbnail"] = m_data.get(
+                                "group_thumbnail"
+                            )
 
-                            if m_data.get('group_thumbnail'):
-                                group_thumbnail = m_data.get('group_thumbnail')
+                            if m_data.get("group_thumbnail"):
+                                group_thumbnail = m_data.get("group_thumbnail")
 
                             # Get last message ID
-                            msgs = data.get('messages', [])
+                            msgs = data.get("messages", [])
                             if msgs:
-                                last_id = msgs[-1].get('id', 0)
+                                last_id = msgs[-1].get("id", 0)
                                 if last_id > last_message_id:
                                     last_message_id = last_id
 
                             # Count messages
-                            m_total = data.get('total_messages', len(msgs))
+                            m_total = data.get("total_messages", len(msgs))
                             total_messages += m_total
                     except Exception as e:
-                        logger.warning("Failed to read messages file", file_path=str(msg_file), error=str(e))
+                        logger.warning(
+                            "Failed to read messages file",
+                            file_path=str(msg_file),
+                            error=str(e),
+                        )
 
                 members_info.append(member_meta)
 
@@ -254,37 +279,45 @@ async def get_groups():
             # Derive status from group-level server state
             sg = server_groups.get(f"{service_display_name}:{group_id}")
             if sg:
-                is_graduated = sg.get('state') == 'closed'
-                is_active = sg.get('is_active', True) if not is_graduated else False
+                is_graduated = sg.get("state") == "closed"
+                is_active = sg.get("is_active", True) if not is_graduated else False
             else:
                 # No server data yet — need to sync first
                 is_graduated = False
                 is_active = True
 
-            groups.append({
-                "id": group_id,
-                "name": group_name,
-                "service": service_id,
-                "dir_name": group_dir.name,
-                # Path to group directory relative to output_dir
-                "group_path": str(group_dir.relative_to(output_dir)).replace("\\", "/"),
-                "member_count": member_count,
-                "is_group_chat": is_group_chat,
-                "is_active": is_active,
-                "is_graduated": is_graduated,
-                "thumbnail": group_thumbnail,
-                "last_message_id": last_message_id,
-                "total_messages": total_messages,
-                "members": members_info
-            })
+            groups.append(
+                {
+                    "id": group_id,
+                    "name": group_name,
+                    "service": service_id,
+                    "dir_name": group_dir.name,
+                    # Path to group directory relative to output_dir
+                    "group_path": str(group_dir.relative_to(output_dir)).replace(
+                        "\\", "/"
+                    ),
+                    "member_count": member_count,
+                    "is_group_chat": is_group_chat,
+                    "is_active": is_active,
+                    "is_graduated": is_graduated,
+                    "thumbnail": group_thumbnail,
+                    "last_message_id": last_message_id,
+                    "total_messages": total_messages,
+                    "members": members_info,
+                }
+            )
 
     # Sort: active first, then by group ID
-    groups.sort(key=lambda g: (not g['is_active'], g['is_group_chat'], int(str(g['id']))))
+    groups.sort(
+        key=lambda g: (not g["is_active"], g["is_group_chat"], int(str(g["id"])))
+    )
     return {"groups": groups, "last_sync": last_sync_map}
 
 
 @router.get("/messages_by_path")
-async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0):
+async def get_messages_by_path(
+    path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0
+):
     """
     Get messages using the relative path from output dir.
     Path should point to the member directory containing messages.json.
@@ -297,6 +330,7 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
     """
     if is_test_mode():
         from backend.fixtures.test_data import get_test_messages_response
+
         return get_test_messages_response(path, last_read_id)
 
     output_dir = get_output_dir()
@@ -309,12 +343,12 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
         raise HTTPException(status_code=404, detail="No messages found")
 
     try:
-        with open(msg_file, 'r', encoding='utf-8') as f:
+        with open(msg_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            messages = data.get('messages', [])
+            messages = data.get("messages", [])
 
             # Sort by timestamp
-            messages.sort(key=lambda x: x.get('timestamp', ''))
+            messages.sort(key=lambda x: x.get("timestamp", ""))
 
             total = len(messages)
 
@@ -323,7 +357,7 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
             max_message_id = 0
             if last_read_id > 0:
                 for m in messages:
-                    msg_id = m.get('id', 0)
+                    msg_id = m.get("id", 0)
                     if msg_id > max_message_id:
                         max_message_id = msg_id
                     if msg_id > last_read_id:
@@ -331,16 +365,16 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
             else:
                 unread_count = total
                 if messages:
-                    max_message_id = max(m.get('id', 0) for m in messages)
+                    max_message_id = max(m.get("id", 0) for m in messages)
 
             # Simple pagination: return latest messages
             if limit > 0:
                 messages = messages[-limit:]
 
-            data['messages'] = messages
-            data['total_count'] = total
-            data['unread_count'] = unread_count
-            data['max_message_id'] = max_message_id
+            data["messages"] = messages
+            data["total_count"] = total
+            data["unread_count"] = unread_count
+            data["max_message_id"] = max_message_id
             return data
     except Exception as e:
         logger.error("Failed to load messages", path=path, error=str(e))
@@ -348,7 +382,9 @@ async def get_messages_by_path(path: str, limit: int = 0, offset: int = 0, last_
 
 
 @router.get("/group_messages/{group_path:path}")
-async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0, last_read_id: int = 0):
+async def get_group_messages(
+    group_path: str, limit: int = 200, offset: int = 0, last_read_id: int = 0
+):
     """
     Get merged messages from all members in a group (for group chats).
 
@@ -380,26 +416,30 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
             continue
 
         try:
-            with open(msg_file, 'r', encoding='utf-8') as f:
+            with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                member_info = data.get('member', {})
+                member_info = data.get("member", {})
                 members_map[member_id] = {
                     "id": member_id,
                     "name": member_name,
-                    "thumbnail": member_info.get('thumbnail'),
-                    "portrait": member_info.get('portrait'),
-                    "phone_image": member_info.get('phone_image'),
-                    "group_thumbnail": member_info.get('group_thumbnail')
+                    "thumbnail": member_info.get("thumbnail"),
+                    "portrait": member_info.get("portrait"),
+                    "phone_image": member_info.get("phone_image"),
+                    "group_thumbnail": member_info.get("group_thumbnail"),
                 }
 
-                for msg in data.get('messages', []):
-                    msg['member_id'] = member_id
-                    msg['member_name'] = member_name
+                for msg in data.get("messages", []):
+                    msg["member_id"] = member_id
+                    msg["member_name"] = member_name
                     all_messages.append(msg)
         except Exception as e:
-            logger.warning("Failed to load member messages in group chat", member_dir=str(member_dir), error=str(e))
+            logger.warning(
+                "Failed to load member messages in group chat",
+                member_dir=str(member_dir),
+                error=str(e),
+            )
 
-    all_messages.sort(key=lambda m: m.get('timestamp', ''))
+    all_messages.sort(key=lambda m: m.get("timestamp", ""))
     total = len(all_messages)
 
     # Calculate unread count
@@ -407,7 +447,7 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
     max_message_id = 0
     if last_read_id > 0:
         for m in all_messages:
-            msg_id = m.get('id', 0)
+            msg_id = m.get("id", 0)
             if msg_id > max_message_id:
                 max_message_id = msg_id
             if msg_id > last_read_id:
@@ -415,7 +455,7 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
     else:
         unread_count = total
         if all_messages:
-            max_message_id = max(m.get('id', 0) for m in all_messages)
+            max_message_id = max(m.get("id", 0) for m in all_messages)
 
     # Simple pagination: return latest messages
     if limit > 0:
@@ -429,12 +469,13 @@ async def get_group_messages(group_path: str, limit: int = 200, offset: int = 0,
         "unread_count": unread_count,
         "max_message_id": max_message_id,
         "members": list(members_map.values()),
-        "messages": paginated
+        "messages": paginated,
     }
 
 
 class ReadStateInput(BaseModel):
     """Read state for a single conversation."""
+
     lastReadId: int = 0
     revealedIds: List[int] = []
 
@@ -468,8 +509,8 @@ async def get_unread_counts(read_states: Dict[str, Any]):
         try:
             # Parse the read state - support both old format (int) and new format (dict)
             if isinstance(state, dict):
-                last_read_id = state.get('lastReadId', 0)
-                revealed_ids = set(state.get('revealedIds', []))
+                last_read_id = state.get("lastReadId", 0)
+                revealed_ids = set(state.get("revealedIds", []))
             else:
                 # Legacy format: just lastReadId as int
                 last_read_id = int(state) if state else 0
@@ -483,13 +524,15 @@ async def get_unread_counts(read_states: Dict[str, Any]):
 
             if msg_file.exists():
                 # Individual member path
-                with open(msg_file, 'r', encoding='utf-8') as f:
+                with open(msg_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    messages = data.get('messages', [])
+                    messages = data.get("messages", [])
                     # A message is unread if: ID > lastReadId AND ID not in revealedIds
                     unread = sum(
-                        1 for m in messages
-                        if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                        1
+                        for m in messages
+                        if m.get("id", 0) > last_read_id
+                        and m.get("id", 0) not in revealed_ids
                     )
                     result[path] = unread
             elif safe_path.is_dir():
@@ -501,15 +544,21 @@ async def get_unread_counts(read_states: Dict[str, Any]):
                     member_msg_file = member_dir / "messages.json"
                     if member_msg_file.exists():
                         try:
-                            with open(member_msg_file, 'r', encoding='utf-8') as f:
+                            with open(member_msg_file, "r", encoding="utf-8") as f:
                                 data = json.load(f)
-                                messages = data.get('messages', [])
+                                messages = data.get("messages", [])
                                 total_unread += sum(
-                                    1 for m in messages
-                                    if m.get('id', 0) > last_read_id and m.get('id', 0) not in revealed_ids
+                                    1
+                                    for m in messages
+                                    if m.get("id", 0) > last_read_id
+                                    and m.get("id", 0) not in revealed_ids
                                 )
                         except Exception as e:
-                            logger.warning("Failed to calculate unread count for member", member_dir=str(member_dir), error=str(e))
+                            logger.warning(
+                                "Failed to calculate unread count for member",
+                                member_dir=str(member_dir),
+                                error=str(e),
+                            )
                 result[path] = total_unread
             else:
                 result[path] = 0
@@ -518,6 +567,28 @@ async def get_unread_counts(read_states: Dict[str, Any]):
             result[path] = 0
 
     return result
+
+
+def _resolve_media_path(file_path: str) -> Path:
+    """Resolve a media file path, translating service ID to display name.
+
+    Raises HTTPException 404 if the resolved path does not exist.
+    """
+    output_dir = get_output_dir()
+
+    parts = file_path.split("/", 1)
+    if len(parts) == 2:
+        service_part, rest = parts
+        try:
+            display_name = get_service_display_name(service_part)
+            file_path = f"{display_name}/{rest}"
+        except ValueError:
+            pass
+
+    safe_path = validate_path_within_dir(output_dir, file_path)
+    if not safe_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return safe_path
 
 
 @router.get("/media/{file_path:path}")
@@ -529,26 +600,8 @@ async def get_media(file_path: str):
 
     The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
     """
-    output_dir = get_output_dir()
-
-    # Translate service ID to display name if the first segment is a known service
-    parts = file_path.split('/', 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            # Translate romaji ID (e.g., 'sakurazaka46') to display name (e.g., '櫻坂46')
-            display_name = get_service_display_name(service_part)
-            file_path = f"{display_name}/{rest}"
-        except ValueError:
-            # Not a valid service ID, use path as-is (might already be display name)
-            pass
-
-    safe_path = validate_path_within_dir(output_dir, file_path)
-    logger.debug(f"Media request: {file_path} -> {safe_path}, exists={safe_path.exists()}")
-
-    if not safe_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
+    safe_path = _resolve_media_path(file_path)
+    logger.debug(f"Media request: {file_path} -> {safe_path}, exists=True")
     return FileResponse(safe_path)
 
 
@@ -581,27 +634,34 @@ async def get_talk_rooms(service: str = Query(..., description="Service identifi
         if not talk_room_id:
             continue
 
-        member_dirs = [d for d in talk_room_dir.iterdir() if d.is_dir() and (d / "messages.json").exists()]
+        member_dirs = [
+            d
+            for d in talk_room_dir.iterdir()
+            if d.is_dir() and (d / "messages.json").exists()
+        ]
         member_count = len(member_dirs)
         service_chat_ids = GROUP_CHAT_IDS.get(service, set())
-        room_type = "group_event" if member_count > 1 or talk_room_id in service_chat_ids else "individual"
+        room_type = (
+            "group_event"
+            if member_count > 1 or talk_room_id in service_chat_ids
+            else "individual"
+        )
 
-        talk_rooms.append({
-            "id": int(talk_room_id),
-            "name": talk_room_name,
-            "type": room_type,
-            "member_count": member_count,
-        })
+        talk_rooms.append(
+            {
+                "id": int(talk_room_id),
+                "name": talk_room_name,
+                "type": room_type,
+                "member_count": member_count,
+            }
+        )
 
     talk_rooms.sort(key=lambda r: r["id"])  # type: ignore[arg-type,return-value]
     return {"service": service, "talk_rooms": talk_rooms}
 
 
 @router.get("/members")
-async def get_members(
-    service: str = Query(...),
-    talk_room_id: int = Query(...)
-):
+async def get_members(service: str = Query(...), talk_room_id: int = Query(...)):
     """List members in a talk room (param-based)."""
     try:
         validate_service(service)
@@ -627,11 +687,11 @@ async def get_members(
         member_info = {"id": int(member_id), "name": member_name}
 
         try:
-            with open(msg_file, 'r', encoding='utf-8') as f:
+            with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                m_data = data.get('member', {})
-                member_info['thumbnail'] = m_data.get('thumbnail')
-                member_info['portrait'] = m_data.get('portrait')
+                m_data = data.get("member", {})
+                member_info["thumbnail"] = m_data.get("thumbnail")
+                member_info["portrait"] = m_data.get("portrait")
         except Exception:
             pass
 
@@ -646,7 +706,7 @@ async def get_messages_param(
     talk_room_id: int = Query(...),
     member_id: int = Query(...),
     limit: int = 0,
-    last_read_id: int = 0
+    last_read_id: int = 0,
 ):
     """Get messages for a member (param-based)."""
     try:
@@ -661,17 +721,17 @@ async def get_messages_param(
         raise HTTPException(status_code=404, detail="No messages found")
 
     try:
-        with open(msg_file, 'r', encoding='utf-8') as f:
+        with open(msg_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            messages = data.get('messages', [])
-            messages.sort(key=lambda x: x.get('timestamp', ''))
+            messages = data.get("messages", [])
+            messages.sort(key=lambda x: x.get("timestamp", ""))
 
             total = len(messages)
             unread_count = 0
             max_message_id = 0
 
             for m in messages:
-                msg_id = m.get('id', 0)
+                msg_id = m.get("id", 0)
                 if msg_id > max_message_id:
                     max_message_id = msg_id
                 if last_read_id > 0 and msg_id > last_read_id:
@@ -683,13 +743,19 @@ async def get_messages_param(
             if limit > 0:
                 messages = messages[-limit:]
 
-            data['messages'] = messages
-            data['total_count'] = total
-            data['unread_count'] = unread_count
-            data['max_message_id'] = max_message_id
+            data["messages"] = messages
+            data["total_count"] = total
+            data["unread_count"] = unread_count
+            data["max_message_id"] = max_message_id
             return data
     except Exception as e:
-        logger.error("Failed to load messages", service=service, talk_room_id=talk_room_id, member_id=member_id, error=str(e))
+        logger.error(
+            "Failed to load messages",
+            service=service,
+            talk_room_id=talk_room_id,
+            member_id=member_id,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
@@ -698,7 +764,7 @@ async def get_talk_room_messages_param(
     service: str = Query(...),
     talk_room_id: int = Query(...),
     limit: int = 200,
-    last_read_id: int = 0
+    last_read_id: int = 0,
 ):
     """Get merged messages from all members in a talk room (param-based)."""
     try:
@@ -725,27 +791,31 @@ async def get_talk_room_messages_param(
             continue
 
         try:
-            with open(msg_file, 'r', encoding='utf-8') as f:
+            with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                member_info = data.get('member', {})
+                member_info = data.get("member", {})
                 members_map[member_id] = {
                     "id": int(member_id),
                     "name": member_name,
-                    "thumbnail": member_info.get('thumbnail'),
+                    "thumbnail": member_info.get("thumbnail"),
                 }
 
-                for msg in data.get('messages', []):
-                    msg['member_id'] = member_id
-                    msg['member_name'] = member_name
+                for msg in data.get("messages", []):
+                    msg["member_id"] = member_id
+                    msg["member_name"] = member_name
                     all_messages.append(msg)
         except Exception as e:
             logger.warning(f"Failed to load messages: {e}")
 
-    all_messages.sort(key=lambda m: m.get('timestamp', ''))
+    all_messages.sort(key=lambda m: m.get("timestamp", ""))
     total = len(all_messages)
 
-    unread_count = sum(1 for m in all_messages if m.get('id', 0) > last_read_id) if last_read_id else total
-    max_message_id = max((m.get('id', 0) for m in all_messages), default=0)
+    unread_count = (
+        sum(1 for m in all_messages if m.get("id", 0) > last_read_id)
+        if last_read_id
+        else total
+    )
+    max_message_id = max((m.get("id", 0) for m in all_messages), default=0)
 
     if limit > 0:
         all_messages = all_messages[-limit:]
@@ -767,16 +837,19 @@ async def get_media_param(
     talk_room_id: int = Query(...),
     member_id: int = Query(...),
     type: str = Query(..., description="Media type: picture, video, voice"),
-    file: str = Query(..., description="Filename")
+    file: str = Query(..., description="Filename"),
 ):
     """Serve media files (param-based)."""
     # Validate media type
     ALLOWED_MEDIA_TYPES = {"picture", "video", "voice"}
     if type not in ALLOWED_MEDIA_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}",
+        )
 
     # Validate filename (no path traversal)
-    if '/' in file or '\\' in file or '..' in file or '\x00' in file:
+    if "/" in file or "\\" in file or ".." in file or "\x00" in file:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     try:
@@ -791,3 +864,23 @@ async def get_media_param(
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(media_path)
+
+
+@router.get("/download/{file_path:path}")
+async def download_media(file_path: str, filename: Optional[str] = None):
+    """Serve a media file with Content-Disposition: attachment.
+
+    Same path resolution as /media/{file_path} but forces a download
+    dialog instead of inline display.  A hidden iframe pointing at this
+    URL triggers the webview's native download handler.
+
+    Args:
+        filename: Custom download filename (e.g. with timestamp prefix).
+                  Defaults to the file's actual name on disk.
+    """
+    safe_path = _resolve_media_path(file_path)
+    return FileResponse(
+        safe_path,
+        filename=filename or safe_path.name,
+        media_type="application/octet-stream",
+    )

@@ -13,7 +13,9 @@ from backend.services.path_resolver import (
 
 def test_resolve_service_path():
     """resolve_service_path returns path with display name."""
-    with patch('backend.services.path_resolver.get_output_dir', return_value=Path("/output")):
+    with patch(
+        "backend.services.path_resolver.get_output_dir", return_value=Path("/output")
+    ):
         path = resolve_service_path("hinatazaka46")
         assert path == Path("/output/日向坂46")
 
@@ -40,10 +42,10 @@ def test_find_folder_by_id_not_found(tmp_path):
 
 def test_get_output_dir_default():
     """get_output_dir returns default when settings don't exist."""
-    with patch('backend.services.platform.get_settings_path') as mock_path:
+    with patch("backend.services.platform.get_settings_path") as mock_path:
         mock_path.return_value = Path("/nonexistent/settings.json")
         result = get_output_dir()
-        assert result == Path.home() / "Documents" / "HakoDesk"
+        assert result == Path.home() / "Documents" / "SakaDesk"
 
 
 def test_find_folder_by_id_base_path_not_exists(tmp_path):
@@ -59,8 +61,11 @@ def test_resolve_talk_room_path(tmp_path):
     messages_dir.mkdir(parents=True)
     (messages_dir / "40 松田 好花").mkdir()
 
-    with patch('backend.services.path_resolver.get_output_dir', return_value=tmp_path):
-        with patch('backend.services.path_resolver.get_service_display_name', return_value="日向坂46"):
+    with patch("backend.services.path_resolver.get_output_dir", return_value=tmp_path):
+        with patch(
+            "backend.services.path_resolver.get_service_display_name",
+            return_value="日向坂46",
+        ):
             result = resolve_talk_room_path("hinatazaka46", 40)
             assert result.name == "40 松田 好花"
 
@@ -70,8 +75,11 @@ def test_resolve_member_path(tmp_path):
     member_dir = tmp_path / "日向坂46" / "messages" / "40 松田 好花" / "64 松田 好花"
     member_dir.mkdir(parents=True)
 
-    with patch('backend.services.path_resolver.get_output_dir', return_value=tmp_path):
-        with patch('backend.services.path_resolver.get_service_display_name', return_value="日向坂46"):
+    with patch("backend.services.path_resolver.get_output_dir", return_value=tmp_path):
+        with patch(
+            "backend.services.path_resolver.get_service_display_name",
+            return_value="日向坂46",
+        ):
             result = resolve_member_path("hinatazaka46", 40, 64)
             assert result.name == "64 松田 好花"
 
@@ -81,8 +89,11 @@ def test_resolve_messages_file(tmp_path):
     member_dir = tmp_path / "日向坂46" / "messages" / "40 松田 好花" / "64 松田 好花"
     member_dir.mkdir(parents=True)
 
-    with patch('backend.services.path_resolver.get_output_dir', return_value=tmp_path):
-        with patch('backend.services.path_resolver.get_service_display_name', return_value="日向坂46"):
+    with patch("backend.services.path_resolver.get_output_dir", return_value=tmp_path):
+        with patch(
+            "backend.services.path_resolver.get_service_display_name",
+            return_value="日向坂46",
+        ):
             result = resolve_messages_file("hinatazaka46", 40, 64)
             assert result.name == "messages.json"
             assert result.parent.name == "64 松田 好花"

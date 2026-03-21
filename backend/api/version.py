@@ -1,8 +1,9 @@
 """
-Version Check API for HakoDesk.
+Version Check API for SakaDesk.
 Checks GitHub releases for updates with caching to respect rate limits.
 Also provides in-place upgrade functionality for Windows.
 """
+
 import httpx
 import structlog
 from datetime import datetime, timezone, timedelta
@@ -19,15 +20,14 @@ from backend.services.upgrade_service import (
     is_upgrade_supported,
 )
 
+from backend.version import APP_VERSION
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
-# Current app version - should match pyproject.toml
-APP_VERSION = "0.2.0"
-
 # GitHub API settings
-GITHUB_REPO = "xtorker/HakoDesk"
+GITHUB_REPO = "xebjhm/SakaDesk"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # Cache settings - check at most once per hour
@@ -45,6 +45,7 @@ _cache: dict = {
 
 class VersionInfo(BaseModel):
     """Current and latest version information."""
+
     current_version: str
     latest_version: Optional[str] = None
     update_available: bool = False
@@ -57,6 +58,7 @@ class VersionInfo(BaseModel):
 
 class UpgradeStatus(BaseModel):
     """Status of an ongoing upgrade operation."""
+
     state: str  # idle, downloading, ready, launching, error
     progress: float = 0.0  # 0-100 for download progress
     error: Optional[str] = None
@@ -77,9 +79,9 @@ _upgrade_state: dict = {
 def _parse_version(version_str: str) -> tuple:
     """Parse version string like 'v0.1.0' or '0.1.0' into tuple for comparison."""
     # Remove 'v' prefix if present
-    v = version_str.lstrip('v')
+    v = version_str.lstrip("v")
     try:
-        parts = v.split('.')
+        parts = v.split(".")
         return tuple(int(p) for p in parts[:3])
     except (ValueError, IndexError):
         return (0, 0, 0)
@@ -109,13 +111,13 @@ async def _fetch_latest_release() -> dict:
                 GITHUB_API_URL,
                 headers={
                     "Accept": "application/vnd.github.v3+json",
-                    "User-Agent": f"HakoDesk/{APP_VERSION}"
-                }
+                    "User-Agent": f"SakaDesk/{APP_VERSION}",
+                },
             )
 
             if response.status_code == 200:
                 data = response.json()
-                _cache["latest_version"] = data.get("tag_name", "").lstrip('v')
+                _cache["latest_version"] = data.get("tag_name", "").lstrip("v")
                 _cache["release_url"] = data.get("html_url")
                 _cache["release_notes"] = data.get("body", "")[:500]  # Truncate
                 _cache["error"] = None

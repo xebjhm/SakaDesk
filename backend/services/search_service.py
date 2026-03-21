@@ -1,10 +1,12 @@
 """Search service for Japanese fuzzy search over synced message content."""
+
 import asyncio
 import json
 import re
 import sqlite3
+import time
 import unicodedata
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
@@ -25,9 +27,9 @@ logger = structlog.get_logger(__name__)
 
 def _strip_html(html: str) -> str:
     """Strip HTML tags, decode entities, collapse whitespace."""
-    text = re.sub(r'<[^>]+>', ' ', html)
+    text = re.sub(r"<[^>]+>", " ", html)
     text = unescape(text)
-    return re.sub(r'\s+', ' ', text).strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
 _ALIASES_PATH = Path(__file__).parent.parent / "data" / "search_aliases.json"
@@ -147,9 +149,563 @@ def _is_romaji(term: str, normalize_fn=None) -> bool:
     """Check if term is ASCII Latin that normalizes to different hiragana."""
     if normalize_fn is None:
         normalize_fn = SearchService._normalize_query
-    return (term.isascii()
-            and any(c.isalpha() for c in term)
-            and normalize_fn(term) != term.lower())
+    return (
+        term.isascii()
+        and any(c.isalpha() for c in term)
+        and normalize_fn(term) != term.lower()
+    )
+
+
+# ------------------------------------------------------------------
+# Process-pool workers (run in a separate process, own GIL)
+# ------------------------------------------------------------------
+# These must be top-level functions (picklable) and fully self-contained:
+# they open their own DB connections and pykakasi instances.
+
+
+def _sanitize_for_kakasi_standalone(text: str) -> str:
+    """Standalone copy of _sanitize_for_kakasi for process workers."""
+    return "".join(
+        " " if (ord(ch) > 0xFFFF or unicodedata.category(ch) == "Cc") else ch
+        for ch in text
+    )
+
+
+def _normalize_with_readings_standalone(kakasi_inst: Any, text: str) -> str:
+    """Standalone copy of _normalize_with_readings for process workers."""
+    text = unicodedata.normalize("NFKC", text)
+    text = _sanitize_for_kakasi_standalone(text)
+    parts: list[str] = []
+    for item in kakasi_inst.convert(text):
+        parts.append(item["hira"])
+    return "".join(parts)
+
+
+def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
+    """Full message + blog index build. Runs in a **separate process** so
+    pykakasi CPU work cannot hold the main process's GIL.
+
+    Opens its own SQLite connection (WAL mode) and pykakasi instance.
+    Returns the number of messages indexed.
+    """
+    import pykakasi
+
+    kakasi = pykakasi.kakasi()
+    db_path = Path(db_path_str)
+    output_dir = Path(output_dir_str)
+
+    if not output_dir.exists():
+        return 0
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.executescript(_SCHEMA_SQL)
+
+    count = 0
+    batch: list[Tuple[Any, ...]] = []
+
+    for service_dir in output_dir.iterdir():
+        if not service_dir.is_dir():
+            continue
+
+        service_id = get_service_identifier(service_dir.name)
+        if service_id is None:
+            continue
+
+        messages_dir = service_dir / "messages"
+        if not messages_dir.exists():
+            continue
+
+        for group_dir in messages_dir.iterdir():
+            if not group_dir.is_dir():
+                continue
+            parts = group_dir.name.split(" ", 1)
+            if len(parts) != 2:
+                continue
+            try:
+                gid = int(parts[0])
+            except ValueError:
+                continue
+            g_name = parts[1]
+
+            for member_dir in group_dir.iterdir():
+                if not member_dir.is_dir():
+                    continue
+                m_parts = member_dir.name.split(" ", 1)
+                if len(m_parts) != 2:
+                    continue
+                try:
+                    mid = int(m_parts[0])
+                except ValueError:
+                    continue
+                m_name = m_parts[1]
+
+                msg_file = member_dir / "messages.json"
+                if not msg_file.exists():
+                    continue
+
+                try:
+                    with open(msg_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    continue
+
+                for msg in data.get("messages", []):
+                    content = msg.get("content")
+                    if content is None:
+                        continue
+                    try:
+                        normalized = _normalize_with_readings_standalone(
+                            kakasi, content
+                        )
+                    except Exception:
+                        normalized = content
+                    batch.append(
+                        (
+                            msg.get("id"),
+                            service_id,
+                            gid,
+                            g_name,
+                            mid,
+                            m_name,
+                            msg.get("timestamp"),
+                            content,
+                            normalized,
+                        )
+                    )
+                    if len(batch) >= _BATCH_SIZE:
+                        conn.executemany(
+                            "INSERT OR REPLACE INTO search_messages "
+                            "(message_id, service, group_id, group_name, member_id, member_name, "
+                            "timestamp, content, content_normalized) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            batch,
+                        )
+                        conn.commit()
+                        count += len(batch)
+                        batch.clear()
+
+    if batch:
+        conn.executemany(
+            "INSERT OR REPLACE INTO search_messages "
+            "(message_id, service, group_id, group_name, member_id, member_name, "
+            "timestamp, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            batch,
+        )
+        conn.commit()
+        count += len(batch)
+        batch.clear()
+
+    # Blog index
+    blog_count = _build_blog_index_process(conn, kakasi, output_dir)
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+        ("last_full_build", now),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+        ("index_message_count", str(count)),
+    )
+    conn.execute(
+        "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+        ("index_blog_count", str(blog_count)),
+    )
+    conn.commit()
+    conn.close()
+    return count
+
+
+def _build_blog_index_process(
+    conn: sqlite3.Connection,
+    kakasi_inst: Any,
+    output_dir: Path,
+) -> int:
+    """Blog index build inside the worker process (called by _build_full_index_process)."""
+    count = 0
+    batch: list[Tuple[Any, ...]] = []
+
+    for service_dir in output_dir.iterdir():
+        if not service_dir.is_dir():
+            continue
+
+        try:
+            service_id = get_service_identifier(service_dir.name)
+        except Exception:
+            continue
+        if service_id is None:
+            continue
+
+        blogs_dir = service_dir / "blogs"
+        index_file = blogs_dir / "index.json"
+        if not index_file.exists():
+            continue
+
+        try:
+            with open(index_file, "r", encoding="utf-8") as f:
+                index_data = json.load(f)
+        except Exception:
+            continue
+
+        for member_id_str, member_info in index_data.get("members", {}).items():
+            if member_info.get("blogs_removed", False):
+                continue
+            try:
+                member_id = int(member_id_str)
+            except ValueError:
+                continue
+
+            member_name = member_info.get("name", "")
+            for entry in member_info.get("blogs", []):
+                blog_id = entry.get("id")
+                if blog_id is None:
+                    continue
+
+                published_at = entry.get("published_at", "")
+                date_prefix = ""
+                if published_at:
+                    try:
+                        date_prefix = published_at[:10].replace("-", "")
+                    except Exception:
+                        pass
+
+                blog_json_path = (
+                    blogs_dir / member_name / f"{date_prefix}_{blog_id}" / "blog.json"
+                )
+                if not blog_json_path.exists():
+                    continue
+
+                try:
+                    with open(blog_json_path, "r", encoding="utf-8") as f:
+                        blog_data = json.load(f)
+                except Exception:
+                    continue
+
+                meta = blog_data.get("meta", {})
+                html_content = blog_data.get("content", {}).get("html", "")
+                title = meta.get("title", entry.get("title", ""))
+                blog_url = meta.get("url", entry.get("url", ""))
+                plain_content = _strip_html(html_content)
+                content_normalized = _normalize_with_readings_standalone(
+                    kakasi_inst, plain_content
+                )
+                title_normalized = (
+                    _normalize_with_readings_standalone(kakasi_inst, title)
+                    if title
+                    else ""
+                )
+
+                batch.append(
+                    (
+                        str(blog_id),
+                        service_id,
+                        member_id,
+                        member_name,
+                        title,
+                        title_normalized,
+                        published_at,
+                        blog_url,
+                        plain_content,
+                        content_normalized,
+                    )
+                )
+                if len(batch) >= _BATCH_SIZE:
+                    conn.executemany(
+                        "INSERT OR REPLACE INTO search_blogs "
+                        "(blog_id, service, member_id, member_name, title, title_normalized, "
+                        "published_at, blog_url, content, content_normalized) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        batch,
+                    )
+                    conn.commit()
+                    count += len(batch)
+                    batch.clear()
+
+    if batch:
+        conn.executemany(
+            "INSERT OR REPLACE INTO search_blogs "
+            "(blog_id, service, member_id, member_name, title, title_normalized, "
+            "published_at, blog_url, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            batch,
+        )
+        conn.commit()
+        count += len(batch)
+
+    return count
+
+
+def _index_blogs_for_service_process(
+    db_path_str: str, output_dir_str: str, service: str
+) -> int:
+    """Incremental blog index for one service. Runs in a separate process."""
+    import pykakasi
+
+    kakasi = pykakasi.kakasi()
+    db_path = Path(db_path_str)
+    output_dir = Path(output_dir_str)
+
+    if not output_dir.exists():
+        return 0
+
+    # Find the service display directory
+    service_dir = None
+    for d in output_dir.iterdir():
+        if d.is_dir():
+            try:
+                if get_service_identifier(d.name) == service:
+                    service_dir = d
+                    break
+            except Exception:
+                continue
+    if not service_dir:
+        return 0
+
+    blogs_dir = service_dir / "blogs"
+    index_path = blogs_dir / "index.json"
+    if not blogs_dir.is_dir() or not index_path.exists():
+        return 0
+
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            index_data = json.load(f)
+    except Exception:
+        return 0
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.executescript(_SCHEMA_SQL)
+
+    # Get already-indexed blog IDs for this service
+    existing_ids: set[str] = set()
+    for row in conn.execute(
+        "SELECT blog_id FROM search_blogs WHERE service = ?", (service,)
+    ):
+        existing_ids.add(row[0])
+
+    total = 0
+    batch: list[Tuple[Any, ...]] = []
+
+    for member_id_str, member_info in index_data.get("members", {}).items():
+        if member_info.get("blogs_removed", False):
+            continue
+        try:
+            member_id = int(member_id_str)
+        except ValueError:
+            continue
+
+        member_name = member_info.get("name", "")
+        member_dir = blogs_dir / member_name
+        if not member_dir.is_dir():
+            continue
+
+        for entry in member_info.get("blogs", []):
+            blog_id = entry.get("id")
+            if blog_id is None or str(blog_id) in existing_ids:
+                continue
+
+            published_at = entry.get("published_at", "")
+            date_prefix = ""
+            if published_at:
+                try:
+                    date_prefix = published_at[:10].replace("-", "")
+                except Exception:
+                    pass
+
+            blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+            if not blog_json_path.exists():
+                continue
+
+            try:
+                with open(blog_json_path, "r", encoding="utf-8") as f:
+                    blog_data = json.load(f)
+            except Exception:
+                continue
+
+            html_content = blog_data.get("content", {}).get("html", "")
+            if not html_content:
+                continue
+
+            meta = blog_data.get("meta", {})
+            title = meta.get("title", entry.get("title", ""))
+            blog_url = meta.get("url", entry.get("url", ""))
+            plain_content = _strip_html(html_content)
+            content_normalized = _normalize_with_readings_standalone(
+                kakasi, plain_content
+            )
+            title_normalized = (
+                _normalize_with_readings_standalone(kakasi, title) if title else ""
+            )
+
+            batch.append(
+                (
+                    str(blog_id),
+                    service,
+                    member_id,
+                    member_name,
+                    title,
+                    title_normalized,
+                    published_at,
+                    blog_url,
+                    plain_content,
+                    content_normalized,
+                )
+            )
+            if len(batch) >= _BATCH_SIZE:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO search_blogs "
+                    "(blog_id, service, member_id, member_name, title, title_normalized, "
+                    "published_at, blog_url, content, content_normalized) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    batch,
+                )
+                conn.commit()
+                total += len(batch)
+                batch.clear()
+
+    if batch:
+        conn.executemany(
+            "INSERT OR REPLACE INTO search_blogs "
+            "(blog_id, service, member_id, member_name, title, title_normalized, "
+            "published_at, blog_url, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            batch,
+        )
+        conn.commit()
+        total += len(batch)
+
+    conn.close()
+    return total
+
+
+def _index_members_process(
+    db_path_str: str,
+    output_dir_str: str,
+    members_json: str,
+    service: str,
+) -> int:
+    """Incremental message index for changed members. Runs in a separate process.
+
+    *members_json* is a JSON-encoded list of ``[group_dict, member_dict]`` pairs
+    (dicts cannot be passed directly to a process pool, but JSON strings can).
+    """
+    import pykakasi
+
+    kakasi = pykakasi.kakasi()
+    db_path = Path(db_path_str)
+    output_dir = Path(output_dir_str)
+
+    if not output_dir.exists():
+        return 0
+
+    members: list[list] = json.loads(members_json)
+
+    service_display = get_service_display_name(service)
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    conn.executescript(_SCHEMA_SQL)
+
+    # Batch query: max indexed message_id per member
+    max_indexed_ids: dict[tuple, int] = {}
+    for row in conn.execute(
+        "SELECT group_id, member_id, MAX(message_id) FROM search_messages "
+        "WHERE service = ? GROUP BY group_id, member_id",
+        (service,),
+    ):
+        max_indexed_ids[(row[0], row[1])] = row[2]
+
+    count = 0
+    batch: list[Tuple[Any, ...]] = []
+
+    for group_dict, member_dict in members:
+        gid = group_dict.get("id")
+        g_name = group_dict.get("name", "")
+        mid = member_dict.get("id")
+        m_name = member_dict.get("name", "")
+
+        max_indexed_id = max_indexed_ids.get((gid, mid), 0)
+
+        msg_file = (
+            output_dir
+            / service_display
+            / "messages"
+            / f"{gid} {g_name}"
+            / f"{mid} {m_name}"
+            / "messages.json"
+        )
+        if not msg_file.exists():
+            continue
+
+        try:
+            with open(msg_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+
+        for msg in data.get("messages", []):
+            msg_id = msg.get("id")
+            if msg_id is None or msg_id <= max_indexed_id:
+                continue
+            content = msg.get("content")
+            if content is None:
+                continue
+            try:
+                normalized = _normalize_with_readings_standalone(kakasi, content)
+            except Exception:
+                normalized = content
+            batch.append(
+                (
+                    msg_id,
+                    service,
+                    gid,
+                    g_name,
+                    mid,
+                    m_name,
+                    msg.get("timestamp"),
+                    content,
+                    normalized,
+                )
+            )
+            if len(batch) >= _BATCH_SIZE:
+                conn.executemany(
+                    "INSERT OR REPLACE INTO search_messages "
+                    "(message_id, service, group_id, group_name, member_id, member_name, "
+                    "timestamp, content, content_normalized) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    batch,
+                )
+                conn.commit()
+                count += len(batch)
+                batch.clear()
+
+    if batch:
+        conn.executemany(
+            "INSERT OR REPLACE INTO search_messages "
+            "(message_id, service, group_id, group_name, member_id, member_name, "
+            "timestamp, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            batch,
+        )
+        conn.commit()
+        count += len(batch)
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
+        ("last_incremental_index", f"{now} service={service} new={count}"),
+    )
+    conn.commit()
+    conn.close()
+    return count
 
 
 class SearchService:
@@ -160,11 +716,19 @@ class SearchService:
         self._conn: Optional[sqlite3.Connection] = None
         self._read_conn: Optional[sqlite3.Connection] = None
         self._building = False
+        self._build_lock = asyncio.Lock()
         # Writer executor — single-threaded (SQLite allows one writer)
-        self._write_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search-write")
+        self._write_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="search-write"
+        )
         # Reader executor — single-threaded (reads are fast, <100ms)
         # Uses a separate connection so reads never block behind writes.
-        self._read_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search-read")
+        self._read_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="search-read"
+        )
+        # Build executor — separate **process** so pykakasi CPU work runs
+        # under its own GIL and cannot block the event loop.
+        self._build_executor = ProcessPoolExecutor(max_workers=1)
         # Legacy alias kept for any code that still references _executor
         self._executor = self._write_executor
         self._kakasi: Any = None
@@ -203,6 +767,7 @@ class SearchService:
     def _get_kakasi(self) -> Any:
         if self._kakasi is None:
             import pykakasi
+
             self._kakasi = pykakasi.kakasi()
             logger.info("pykakasi initialized")
         return self._kakasi
@@ -261,7 +826,8 @@ class SearchService:
         if _ALIASES_PATH.exists():
             try:
                 with open(_ALIASES_PATH, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    result: Dict[str, Any] = json.load(f)
+                    return result
             except Exception as e:
                 logger.warning("Failed to load search aliases", error=str(e))
         return {"term_aliases": {}, "member_nicknames": {}}
@@ -291,10 +857,11 @@ class SearchService:
 
     def _resolve_nickname(self, query: str) -> Optional[Dict[str, Any]]:
         normalized = self._normalize_query(query)
-        nicknames = self._aliases.get("member_nicknames", {})
+        nicknames: Dict[str, Any] = self._aliases.get("member_nicknames", {})
         for nickname, info in nicknames.items():
             if self._normalize_query(nickname) == normalized:
-                return info
+                result: Dict[str, Any] = info
+                return result
         return None
 
     # ------------------------------------------------------------------
@@ -302,7 +869,9 @@ class SearchService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_snippet(content: str, idx: int, match_len: int, max_len: int, mark_cls: str = "") -> str:
+    def _build_snippet(
+        content: str, idx: int, match_len: int, max_len: int, mark_cls: str = ""
+    ) -> str:
         """Build a snippet with context around a match at *idx*."""
         cls_attr = f' class="{mark_cls}"' if mark_cls else ""
         ctx = max_len - match_len
@@ -313,8 +882,8 @@ class SearchService:
         suffix = "..." if end < len(content) else ""
 
         before = content[start:idx]
-        matched = content[idx:idx + match_len]
-        after = content[idx + match_len:end]
+        matched = content[idx : idx + match_len]
+        after = content[idx + match_len : end]
         return f"{prefix}{before}<mark{cls_attr}>{matched}</mark>{after}{suffix}"
 
     def _make_multi_word_snippet(
@@ -334,9 +903,11 @@ class SearchService:
         matches: List[Tuple[int, int, str]] = []
         for word in words:
             norm_word = self._normalize_query(word)
-            is_word_romaji = (word.isascii()
-                              and any(c.isalpha() for c in word)
-                              and norm_word != word.lower())
+            is_word_romaji = (
+                word.isascii()
+                and any(c.isalpha() for c in word)
+                and norm_word != word.lower()
+            )
             # Try exact match (always yellow)
             idx = lower_content.find(word.lower())
             if idx != -1:
@@ -383,8 +954,8 @@ class SearchService:
         rel_matches.sort(key=lambda m: m[0], reverse=True)
         for rel_idx, length, cls in rel_matches:
             cls_attr = f' class="{cls}"' if cls else ""
-            matched = snippet[rel_idx:rel_idx + length]
-            snippet = f"{snippet[:rel_idx]}<mark{cls_attr}>{matched}</mark>{snippet[rel_idx + length:]}"
+            matched = snippet[rel_idx : rel_idx + length]
+            snippet = f"{snippet[:rel_idx]}<mark{cls_attr}>{matched}</mark>{snippet[rel_idx + length :]}"
 
         return f"{prefix}{snippet}{suffix}"
 
@@ -483,7 +1054,9 @@ class SearchService:
             idx = lower_content.find(normalized_query)
             if idx != -1:
                 cls = "reading" if is_romaji else ""
-                return self._build_snippet(content, idx, len(normalized_query), max_len, cls)
+                return self._build_snippet(
+                    content, idx, len(normalized_query), max_len, cls
+                )
 
         # 3. Match in normalized content (kanji reading match — e.g. 好き matched by すき)
         if content_normalized and normalized_query:
@@ -492,7 +1065,9 @@ class SearchService:
                 mapping = self._map_reading_to_original(content, idx, normalized_query)
                 if mapping:
                     orig_idx, orig_len = mapping
-                    return self._build_snippet(content, orig_idx, orig_len, max_len, "reading")
+                    return self._build_snippet(
+                        content, orig_idx, orig_len, max_len, "reading"
+                    )
 
         # 4. No match found — show beginning of content
         return content[:max_len] + ("..." if len(content) > max_len else "")
@@ -523,8 +1098,12 @@ class SearchService:
         # 1. Try content body match
         if content:
             snippet = self._make_snippet(
-                content, query, content_normalized, normalized_query,
-                max_len=max_len, is_romaji=is_romaji,
+                content,
+                query,
+                content_normalized,
+                normalized_query,
+                max_len=max_len,
+                is_romaji=is_romaji,
             )
             # _make_snippet returns highlighted text with <mark> if found;
             # if it fell through to the "no match" fallback it won't have <mark>.
@@ -537,29 +1116,31 @@ class SearchService:
             lower_query = query.lower()
             idx = lower_title.find(lower_query)
             if idx != -1:
-                matched = title[idx:idx + len(query)]
+                matched = title[idx : idx + len(query)]
                 before = title[:idx]
-                after = title[idx + len(query):]
+                after = title[idx + len(query) :]
                 return f"{before}<mark>{matched}</mark>{after}"
             # Normalized match in title
             if normalized_query and normalized_query != lower_query:
                 idx = lower_title.find(normalized_query)
                 if idx != -1:
-                    matched = title[idx:idx + len(normalized_query)]
+                    matched = title[idx : idx + len(normalized_query)]
                     before = title[:idx]
-                    after = title[idx + len(normalized_query):]
+                    after = title[idx + len(normalized_query) :]
                     cls = ' class="reading"' if is_romaji else ""
                     return f"{before}<mark{cls}>{matched}</mark>{after}"
             # Reading match in title_normalized
             if title_normalized and normalized_query:
                 idx = title_normalized.find(normalized_query)
                 if idx != -1:
-                    mapping = self._map_reading_to_original(title, idx, normalized_query)
+                    mapping = self._map_reading_to_original(
+                        title, idx, normalized_query
+                    )
                     if mapping:
                         orig_idx, orig_len = mapping
-                        matched = title[orig_idx:orig_idx + orig_len]
+                        matched = title[orig_idx : orig_idx + orig_len]
                         before = title[:orig_idx]
-                        after = title[orig_idx + orig_len:]
+                        after = title[orig_idx + orig_len :]
                         return f'{before}<mark class="reading">{matched}</mark>{after}'
 
         # 3. Fallback: first max_len chars of content
@@ -593,7 +1174,11 @@ class SearchService:
         snippet computation (used by the merged "all" code path to defer
         expensive work until after pagination).
         """
-        conn = self._get_conn()
+        # NOTE: Must use read connection — this method runs in the read executor
+        # thread via _search_sync(). Using _get_conn() (write connection) causes
+        # SQLite thread-safety errors. If adding a third connection or executor,
+        # refactor to pass the connection as a parameter instead.
+        conn = self._get_read_conn()
 
         normalized_query = self._normalize_query(query)
 
@@ -648,7 +1233,7 @@ class SearchService:
                 match_expr = f'{{title content}}: "{safe_query}"'
             else:
                 match_expr = (
-                    f'{{title title_normalized content content_normalized}}: '
+                    f"{{title title_normalized content content_normalized}}: "
                     f'"{safe_normalized}"'
                 )
             data_sql = (
@@ -673,10 +1258,14 @@ class SearchService:
                     "(b.title LIKE ? OR b.title_normalized LIKE ? "
                     "OR b.content LIKE ? OR b.content_normalized LIKE ?)"
                 )
-                all_params.extend([
-                    f"%{query}%", f"%{normalized_query}%",
-                    f"%{query}%", f"%{normalized_query}%",
-                ])
+                all_params.extend(
+                    [
+                        f"%{query}%",
+                        f"%{normalized_query}%",
+                        f"%{query}%",
+                        f"%{normalized_query}%",
+                    ]
+                )
             all_params.extend(filter_params)
             data_sql = (
                 "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
@@ -726,39 +1315,45 @@ class SearchService:
 
             if raw_rows_only:
                 # Lightweight dict — skip expensive snippet computation
-                results.append({
-                    "result_type": "blog",
-                    "blog_id": r[0],
-                    "title": title,
-                    "title_normalized": title_norm,
-                    "content": content,
-                    "content_normalized": content_norm,
-                    "service": r[5],
-                    "member_id": r[6],
-                    "member_name": r[7],
-                    "published_at": r[8],
-                    "blog_url": r[9],
-                    "match_type": blog_match_type,
-                })
+                results.append(
+                    {
+                        "result_type": "blog",
+                        "blog_id": r[0],
+                        "title": title,
+                        "title_normalized": title_norm,
+                        "content": content,
+                        "content_normalized": content_norm,
+                        "service": r[5],
+                        "member_id": r[6],
+                        "member_name": r[7],
+                        "published_at": r[8],
+                        "blog_url": r[9],
+                        "match_type": blog_match_type,
+                    }
+                )
             else:
                 snippet = self._make_blog_snippet(
-                    title, content, query,
+                    title,
+                    content,
+                    query,
                     content_normalized=content_norm,
                     title_normalized=title_norm,
                 )
 
-                results.append({
-                    "result_type": "blog",
-                    "blog_id": r[0],
-                    "title": title,
-                    "snippet": snippet,
-                    "service": r[5],
-                    "member_id": r[6],
-                    "member_name": r[7],
-                    "published_at": r[8],
-                    "blog_url": r[9],
-                    "match_type": blog_match_type,
-                })
+                results.append(
+                    {
+                        "result_type": "blog",
+                        "blog_id": r[0],
+                        "title": title,
+                        "snippet": snippet,
+                        "service": r[5],
+                        "member_id": r[6],
+                        "member_name": r[7],
+                        "published_at": r[8],
+                        "blog_url": r[9],
+                        "match_type": blog_match_type,
+                    }
+                )
 
         return results, total_count
 
@@ -797,7 +1392,10 @@ class SearchService:
                 snippet = self._make_multi_word_snippet(content, words, content_norm)
             else:
                 snippet = self._make_snippet(
-                    content, first_term, content_norm, first_norm,
+                    content,
+                    first_term,
+                    content_norm,
+                    first_norm,
                     is_romaji=query_is_romaji,
                 )
             match_type = "exact"
@@ -807,7 +1405,10 @@ class SearchService:
             match_type = "exact" if all_exact else "reading"
         else:
             snippet = self._make_snippet(
-                content, first_term, content_norm, first_norm,
+                content,
+                first_term,
+                content_norm,
+                first_norm,
                 is_romaji=query_is_romaji,
             )
             has_exact = first_term.lower() in lower_content
@@ -883,11 +1484,17 @@ class SearchService:
         # --- Blog-only short circuit ---
         if content_type == "blogs":
             blog_results, blog_total = self._search_blogs_sync(
-                query, service, member_id, limit, offset,
-                services=services, member_ids=member_ids,
+                query,
+                service,
+                member_id,
+                limit,
+                offset,
+                services=services,
+                member_ids=member_ids,
                 member_filters=member_filters,
                 exact_only=exact_only,
-                date_from=date_from, date_to=date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             first_norm = self._normalize_query(query)
             return {
@@ -1147,11 +1754,17 @@ class SearchService:
                 if content_type == "all":
                     # No message results, but still search blogs
                     blog_results, blog_total = self._search_blogs_sync(
-                        query, service, member_id, limit, offset,
-                        services=services, member_ids=member_ids,
+                        query,
+                        service,
+                        member_id,
+                        limit,
+                        offset,
+                        services=services,
+                        member_ids=member_ids,
                         member_filters=member_filters,
                         exact_only=exact_only,
-                        date_from=date_from, date_to=date_to,
+                        date_from=date_from,
+                        date_to=date_to,
                     )
                     first_norm = self._normalize_query(query)
                     return {
@@ -1233,11 +1846,17 @@ class SearchService:
 
             # 1. Fetch ALL lightweight blog rows (no snippet computation)
             raw_blog_results, blog_total = self._search_blogs_sync(
-                query, service, member_id, limit=0, offset=0,
-                services=services, member_ids=member_ids,
+                query,
+                service,
+                member_id,
+                limit=0,
+                offset=0,
+                services=services,
+                member_ids=member_ids,
                 member_filters=member_filters,
                 exact_only=exact_only,
-                date_from=date_from, date_to=date_to,
+                date_from=date_from,
+                date_to=date_to,
                 raw_rows_only=True,
             )
 
@@ -1273,14 +1892,16 @@ class SearchService:
             # 4. Sort: match_type ASC (exact=0 first), then timestamp DESC
             #    Use Python's stable sort: sort by secondary key first,
             #    then primary key.
-            combined_lightweight.sort(key=lambda x: x[1], reverse=True)  # timestamp DESC
+            combined_lightweight.sort(
+                key=lambda x: x[1], reverse=True
+            )  # timestamp DESC
             combined_lightweight.sort(key=lambda x: x[0])  # match_type ASC (stable)
 
             combined_total = len(combined_lightweight)
 
             # 5. Paginate (slice)
             if limit > 0:
-                page_items = combined_lightweight[offset:offset + limit]
+                page_items = combined_lightweight[offset : offset + limit]
             else:
                 page_items = combined_lightweight
 
@@ -1301,18 +1922,20 @@ class SearchService:
                         content_normalized=blog_item.get("content_normalized", ""),
                         title_normalized=blog_item.get("title_normalized", ""),
                     )
-                    paginated.append({
-                        "result_type": "blog",
-                        "blog_id": blog_item["blog_id"],
-                        "title": blog_item["title"],
-                        "snippet": snippet,
-                        "service": blog_item["service"],
-                        "member_id": blog_item["member_id"],
-                        "member_name": blog_item["member_name"],
-                        "published_at": blog_item["published_at"],
-                        "blog_url": blog_item["blog_url"],
-                        "match_type": blog_item.get("match_type", "reading"),
-                    })
+                    paginated.append(
+                        {
+                            "result_type": "blog",
+                            "blog_id": blog_item["blog_id"],
+                            "title": blog_item["title"],
+                            "snippet": snippet,
+                            "service": blog_item["service"],
+                            "member_id": blog_item["member_id"],
+                            "member_name": blog_item["member_name"],
+                            "published_at": blog_item["published_at"],
+                            "blog_url": blog_item["blog_url"],
+                            "match_type": blog_item.get("match_type", "reading"),
+                        }
+                    )
 
             # Tag message results with is_group_chat
             msg_results = [r for r in paginated if r.get("result_type") == "message"]
@@ -1324,7 +1947,8 @@ class SearchService:
                 "normalized_query": first_norm,
                 "total_count": combined_total,
                 "results": paginated,
-                "has_more": (offset + (limit if limit > 0 else combined_total)) < combined_total,
+                "has_more": (offset + (limit if limit > 0 else combined_total))
+                < combined_total,
             }
 
         # --- Messages-only return (content_type == "messages") ---
@@ -1351,17 +1975,25 @@ class SearchService:
     # Index building (sync, runs in executor)
     # ------------------------------------------------------------------
 
+    # How often to release the GIL during CPU-bound normalization loops
+    # (every N items, call time.sleep(0) to let the event loop run).
+    _GIL_YIELD_INTERVAL = 50
+
     def _build_full_index_sync(self) -> int:
         self._building = True
         count = 0
         try:
             output_dir = get_output_dir()
             if not output_dir.exists():
-                logger.warning("Output directory does not exist, skipping index build", path=str(output_dir))
+                logger.warning(
+                    "Output directory does not exist, skipping index build",
+                    path=str(output_dir),
+                )
                 return 0
 
             conn = self._get_conn()
             batch: list[Tuple[Any, ...]] = []
+            normalize_count = 0
 
             for service_dir in output_dir.iterdir():
                 if not service_dir.is_dir():
@@ -1409,7 +2041,11 @@ class SearchService:
                             with open(msg_file, "r", encoding="utf-8") as f:
                                 data = json.load(f)
                         except Exception as e:
-                            logger.warning("Failed to read messages file for indexing", path=str(msg_file), error=str(e))
+                            logger.warning(
+                                "Failed to read messages file for indexing",
+                                path=str(msg_file),
+                                error=str(e),
+                            )
                             continue
 
                         for msg in data.get("messages", []):
@@ -1419,19 +2055,27 @@ class SearchService:
                             try:
                                 normalized = self._normalize_with_readings(content)
                             except Exception as e:
-                                logger.warning("pykakasi normalization failed, storing raw content", error=str(e))
+                                logger.warning(
+                                    "pykakasi normalization failed, storing raw content",
+                                    error=str(e),
+                                )
                                 normalized = content
-                            batch.append((
-                                msg.get("id"),
-                                service_id,
-                                gid,
-                                g_name,
-                                mid,
-                                m_name,
-                                msg.get("timestamp"),
-                                content,
-                                normalized,
-                            ))
+                            normalize_count += 1
+                            if normalize_count % self._GIL_YIELD_INTERVAL == 0:
+                                time.sleep(0)
+                            batch.append(
+                                (
+                                    msg.get("id"),
+                                    service_id,
+                                    gid,
+                                    g_name,
+                                    mid,
+                                    m_name,
+                                    msg.get("timestamp"),
+                                    content,
+                                    normalized,
+                                )
+                            )
                             if len(batch) >= _BATCH_SIZE:
                                 conn.executemany(
                                     "INSERT OR REPLACE INTO search_messages "
@@ -1443,6 +2087,9 @@ class SearchService:
                                 conn.commit()
                                 count += len(batch)
                                 batch.clear()
+                                # Release the GIL so the event loop can serve
+                                # API requests while the index build continues.
+                                time.sleep(0)
 
             if batch:
                 conn.executemany(
@@ -1486,6 +2133,7 @@ class SearchService:
         conn = self._get_conn()
         count = 0
         batch: list[Tuple[Any, ...]] = []
+        normalize_count = 0
 
         for service_dir in output_dir.iterdir():
             if not service_dir.is_dir():
@@ -1569,20 +2217,27 @@ class SearchService:
                     # Strip HTML and normalize
                     plain_content = _strip_html(html_content)
                     content_normalized = self._normalize_with_readings(plain_content)
-                    title_normalized = self._normalize_with_readings(title) if title else ""
+                    title_normalized = (
+                        self._normalize_with_readings(title) if title else ""
+                    )
+                    normalize_count += 1
+                    if normalize_count % self._GIL_YIELD_INTERVAL == 0:
+                        time.sleep(0)
 
-                    batch.append((
-                        str(blog_id),
-                        service_id,
-                        member_id,
-                        member_name,
-                        title,
-                        title_normalized,
-                        published_at,
-                        blog_url,
-                        plain_content,
-                        content_normalized,
-                    ))
+                    batch.append(
+                        (
+                            str(blog_id),
+                            service_id,
+                            member_id,
+                            member_name,
+                            title,
+                            title_normalized,
+                            published_at,
+                            blog_url,
+                            plain_content,
+                            content_normalized,
+                        )
+                    )
 
                     if len(batch) >= _BATCH_SIZE:
                         conn.executemany(
@@ -1595,6 +2250,7 @@ class SearchService:
                         conn.commit()
                         count += len(batch)
                         batch.clear()
+                        time.sleep(0)
 
         if batch:
             conn.executemany(
@@ -1611,7 +2267,9 @@ class SearchService:
         logger.info("Blog index built", blog_count=count)
         return count
 
-    def _index_members_sync(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
+    def _index_members_sync(
+        self, members: List[Tuple[Dict, Dict]], service: str
+    ) -> int:
         """Incrementally index only NEW messages for members that changed.
 
         Queries the max indexed message_id per member and only processes
@@ -1626,23 +2284,33 @@ class SearchService:
         count = 0
         batch: list[Tuple[Any, ...]] = []
 
+        # Batch query: get max indexed message_id for all members at once
+        max_indexed_ids: dict[tuple, int] = {}
+        for row in conn.execute(
+            "SELECT group_id, member_id, MAX(message_id) FROM search_messages "
+            "WHERE service = ? GROUP BY group_id, member_id",
+            (service,),
+        ):
+            max_indexed_ids[(row[0], row[1])] = row[2]
+
         for group_dict, member_dict in members:
             gid = group_dict.get("id")
             g_name = group_dict.get("name", "")
             mid = member_dict.get("id")
             m_name = member_dict.get("name", "")
 
-            # Find the highest message_id already indexed for this member
-            row = conn.execute(
-                "SELECT MAX(message_id) FROM search_messages "
-                "WHERE service = ? AND group_id = ? AND member_id = ?",
-                (service, gid, mid),
-            ).fetchone()
-            max_indexed_id = row[0] if row and row[0] is not None else 0
+            max_indexed_id = max_indexed_ids.get((gid, mid), 0)
 
             group_dir_name = f"{gid} {g_name}"
             member_dir_name = f"{mid} {m_name}"
-            msg_file = output_dir / service_display / "messages" / group_dir_name / member_dir_name / "messages.json"
+            msg_file = (
+                output_dir
+                / service_display
+                / "messages"
+                / group_dir_name
+                / member_dir_name
+                / "messages.json"
+            )
 
             if not msg_file.exists():
                 continue
@@ -1651,7 +2319,11 @@ class SearchService:
                 with open(msg_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
             except Exception as e:
-                logger.warning("Failed to read messages for incremental index", path=str(msg_file), error=str(e))
+                logger.warning(
+                    "Failed to read messages for incremental index",
+                    path=str(msg_file),
+                    error=str(e),
+                )
                 continue
 
             for msg in data.get("messages", []):
@@ -1667,19 +2339,24 @@ class SearchService:
                 try:
                     normalized = self._normalize_with_readings(content)
                 except Exception as e:
-                    logger.warning("pykakasi normalization failed, storing raw content", error=str(e))
+                    logger.warning(
+                        "pykakasi normalization failed, storing raw content",
+                        error=str(e),
+                    )
                     normalized = content
-                batch.append((
-                    msg_id,
-                    service,
-                    gid,
-                    g_name,
-                    mid,
-                    m_name,
-                    msg.get("timestamp"),
-                    content,
-                    normalized,
-                ))
+                batch.append(
+                    (
+                        msg_id,
+                        service,
+                        gid,
+                        g_name,
+                        mid,
+                        m_name,
+                        msg.get("timestamp"),
+                        content,
+                        normalized,
+                    )
+                )
                 if len(batch) >= _BATCH_SIZE:
                     conn.executemany(
                         "INSERT OR REPLACE INTO search_messages "
@@ -1691,6 +2368,7 @@ class SearchService:
                     conn.commit()
                     count += len(batch)
                     batch.clear()
+                    time.sleep(0)
 
         if batch:
             conn.executemany(
@@ -1757,6 +2435,7 @@ class SearchService:
 
         total = 0
         batch: list[Tuple[Any, ...]] = []
+        normalize_count = 0
         members = index_data.get("members", {})
 
         for member_id_str, member_info in members.items():
@@ -1809,12 +2488,24 @@ class SearchService:
                 plain_content = _strip_html(html_content)
                 content_normalized = self._normalize_with_readings(plain_content)
                 title_normalized = self._normalize_with_readings(title) if title else ""
+                normalize_count += 1
+                if normalize_count % self._GIL_YIELD_INTERVAL == 0:
+                    time.sleep(0)
 
-                batch.append((
-                    str(blog_id), service, member_id, member_name,
-                    title, title_normalized, published_at, blog_url,
-                    plain_content, content_normalized,
-                ))
+                batch.append(
+                    (
+                        str(blog_id),
+                        service,
+                        member_id,
+                        member_name,
+                        title,
+                        title_normalized,
+                        published_at,
+                        blog_url,
+                        plain_content,
+                        content_normalized,
+                    )
+                )
                 if len(batch) >= _BATCH_SIZE:
                     conn.executemany(
                         "INSERT OR REPLACE INTO search_blogs "
@@ -1826,6 +2517,7 @@ class SearchService:
                     conn.commit()
                     total += len(batch)
                     batch.clear()
+                    time.sleep(0)
 
         if batch:
             conn.executemany(
@@ -1850,7 +2542,9 @@ class SearchService:
         blog_indexed_count = row[0] if row else 0
 
         last_build = None
-        row = conn.execute("SELECT value FROM search_meta WHERE key = 'last_full_build'").fetchone()
+        row = conn.execute(
+            "SELECT value FROM search_meta WHERE key = 'last_full_build'"
+        ).fetchone()
         if row:
             last_build = row[0]
 
@@ -1866,7 +2560,8 @@ class SearchService:
             "db_size_bytes": db_size,
         }
 
-    def _rebuild_sync(self) -> None:
+    def _clear_db_sync(self) -> None:
+        """Close connections and delete the DB file. Used before rebuild."""
         if self._conn is not None:
             self._conn.close()
             self._conn = None
@@ -1875,7 +2570,6 @@ class SearchService:
             self._read_conn = None
         if self._db_path.exists():
             self._db_path.unlink()
-        self._build_full_index_sync()
 
     # ------------------------------------------------------------------
     # Read states
@@ -1918,7 +2612,15 @@ class SearchService:
             "ON CONFLICT(service, group_id, member_id) DO UPDATE SET "
             "last_read_id=excluded.last_read_id, read_count=excluded.read_count, "
             "revealed_ids=excluded.revealed_ids, updated_at=excluded.updated_at",
-            (service, group_id, member_id, last_read_id, read_count, json.dumps(revealed_ids), now),
+            (
+                service,
+                group_id,
+                member_id,
+                last_read_id,
+                read_count,
+                json.dumps(revealed_ids),
+                now,
+            ),
         )
         conn.commit()
 
@@ -2064,7 +2766,9 @@ class SearchService:
         try:
             conn = sqlite3.connect(str(self._db_path))
             try:
-                row = conn.execute("SELECT value FROM search_meta WHERE key = 'last_full_build'").fetchone()
+                row = conn.execute(
+                    "SELECT value FROM search_meta WHERE key = 'last_full_build'"
+                ).fetchone()
                 return row is None
             finally:
                 conn.close()
@@ -2093,7 +2797,9 @@ class SearchService:
         # Unlike before, we still return partial results via the read
         # executor (which uses a separate connection, not blocked by writes).
         if self._needs_build() and not self._building:
-            logger.info("Full index missing at search time, triggering background build (failsafe)")
+            logger.info(
+                "Full index missing at search time, triggering background build (failsafe)"
+            )
             asyncio.create_task(self.build_full_index())
         # If the DB doesn't exist at all yet, return empty immediately
         if not self._db_path.exists():
@@ -2109,11 +2815,19 @@ class SearchService:
         result = await loop.run_in_executor(
             self._read_executor,
             lambda: self._search_sync(
-                query, service, group_id, member_id, limit, offset,
-                services=services, member_ids=member_ids,
+                query,
+                service,
+                group_id,
+                member_id,
+                limit,
+                offset,
+                services=services,
+                member_ids=member_ids,
                 member_filters=member_filters,
-                exact_only=exact_only, exclude_unread=exclude_unread,
-                date_from=date_from, date_to=date_to,
+                exact_only=exact_only,
+                exclude_unread=exclude_unread,
+                date_from=date_from,
+                date_to=date_to,
                 content_type=content_type,
                 conn=self._get_read_conn(),
             ),
@@ -2123,49 +2837,112 @@ class SearchService:
         return result
 
     async def build_full_index(self) -> int:
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._build_full_index_sync)
+        """Run full index build in a separate **process** (own GIL)."""
+        if self._build_lock.locked():
+            logger.debug("Full index build already in progress, skipping")
+            return 0
+        async with self._build_lock:
+            self._building = True
+            loop = asyncio.get_running_loop()
+            output_dir = get_output_dir()
+            try:
+                count = await loop.run_in_executor(
+                    self._build_executor,
+                    _build_full_index_process,
+                    str(self._db_path),
+                    str(output_dir),
+                )
+                logger.info("Full search index built (process)", count=count)
+                return count
+            except Exception as e:
+                logger.error("Full index build failed", error=str(e))
+                raise
+            finally:
+                self._building = False
 
-    async def index_members(self, members: List[Tuple[Dict, Dict]], service: str) -> int:
+    async def index_members(
+        self, members: List[Tuple[Dict, Dict]], service: str
+    ) -> int:
+        """Incremental message index in a separate **process** (own GIL)."""
         loop = asyncio.get_running_loop()
-        count = await loop.run_in_executor(self._executor, self._index_members_sync, members, service)
+        output_dir = get_output_dir()
+        # Serialize member dicts to JSON for cross-process transfer
+        members_json = json.dumps([[g, m] for g, m in members])
+        count = await loop.run_in_executor(
+            self._build_executor,
+            _index_members_process,
+            str(self._db_path),
+            str(output_dir),
+            members_json,
+            service,
+        )
+        logger.info(
+            "Incremental index update (process)", service=service, new_messages=count
+        )
         # Primary trigger: if a full build has never completed (fresh install),
-        # run one now — blocking so the sync flow waits for it to finish.
-        # This is expected: on first install the user waits for the full index.
-        if self._needs_build() and not self._building:
-            logger.info("No full index found after sync, building now (blocking)")
-            await self.build_full_index()
+        # run one now in the background.
+        if self._needs_build() and not self._build_lock.locked():
+            logger.info("No full index found, triggering background build")
+            asyncio.create_task(self.build_full_index())
         return count
 
     async def index_blogs_for_service(self, service: str) -> int:
+        """Incremental blog index in a separate **process** (own GIL)."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._index_blogs_for_service_sync, service)
+        output_dir = get_output_dir()
+        count = await loop.run_in_executor(
+            self._build_executor,
+            _index_blogs_for_service_process,
+            str(self._db_path),
+            str(output_dir),
+            service,
+        )
+        logger.info("Blog index updated (process)", service=service, new_blogs=count)
+        return count
 
     async def get_status(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(self._read_executor, self._get_status_sync)
 
     async def rebuild(self) -> None:
+        # Close connections and delete DB on the write executor
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(self._executor, self._rebuild_sync)
+        await loop.run_in_executor(self._executor, self._clear_db_sync)
+        # Rebuild in process pool
+        await self.build_full_index()
 
     async def get_all_read_states(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._read_executor, self._get_all_read_states_sync)
+        return await loop.run_in_executor(
+            self._read_executor, self._get_all_read_states_sync
+        )
 
     async def upsert_read_state(
-        self, service: str, group_id: int, member_id: int,
-        last_read_id: int, read_count: int, revealed_ids: List[int],
+        self,
+        service: str,
+        group_id: int,
+        member_id: int,
+        last_read_id: int,
+        read_count: int,
+        revealed_ids: List[int],
     ) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(
-            self._executor, self._upsert_read_state_sync,
-            service, group_id, member_id, last_read_id, read_count, revealed_ids,
+            self._executor,
+            self._upsert_read_state_sync,
+            service,
+            group_id,
+            member_id,
+            last_read_id,
+            read_count,
+            revealed_ids,
         )
 
     async def batch_upsert_read_states(self, entries: List[Dict[str, Any]]) -> int:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._executor, self._batch_upsert_read_states_sync, entries)
+        return await loop.run_in_executor(
+            self._executor, self._batch_upsert_read_states_sync, entries
+        )
 
     async def get_members(self) -> Dict[str, Any]:
         # Read executor uses a separate connection, so reads never block
@@ -2201,6 +2978,9 @@ def get_search_service() -> SearchService:
     if _search_service is None:
         db_path = get_app_data_dir() / "search_index.db"
         _search_service = SearchService(db_path)
+        # Pre-initialize pykakasi so the first index/search call doesn't
+        # pay the multi-second dictionary-load cost on a hot path.
+        _search_service._get_kakasi()
     return _search_service
 
 
@@ -2208,12 +2988,31 @@ def shutdown_search_service() -> None:
     """Close DB connections and executors. Called on app shutdown."""
     global _search_service
     if _search_service is not None:
+        logger.info("search_service_shutdown_start")
         try:
             _search_service._write_executor.shutdown(wait=False)
         except Exception:
             pass
         try:
             _search_service._read_executor.shutdown(wait=False)
+        except Exception:
+            pass
+        try:
+            _search_service._build_executor.shutdown(wait=False, cancel_futures=True)
+            # ProcessPoolExecutor spawns real child processes that survive
+            # shutdown(wait=False). Force-terminate them so they don't hold
+            # file handles open (which blocks the uninstaller on Windows).
+            procs = list(
+                getattr(_search_service._build_executor, "_processes", {}).values()
+            )
+            for proc in procs:
+                if proc.is_alive():
+                    logger.debug("terminating_build_worker", pid=proc.pid)
+                    proc.terminate()
+                    proc.join(timeout=3)
+                    if proc.is_alive():
+                        logger.warning("force_killing_build_worker", pid=proc.pid)
+                        proc.kill()
         except Exception:
             pass
         try:
@@ -2229,3 +3028,4 @@ def shutdown_search_service() -> None:
         except Exception:
             pass
         _search_service = None
+        logger.info("search_service_shutdown_complete")
