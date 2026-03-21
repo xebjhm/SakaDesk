@@ -77,7 +77,7 @@ export interface UseSettingsReturn {
     openSettingsModal: () => void;
 }
 
-export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn {
+export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn {
     const { selectedServices } = useAppStore();
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
@@ -198,33 +198,9 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
         });
     }, [selectedServices, loadServiceSettings]);
 
-    // Fetch nicknames for all connected services on auth, and whenever the
-    // service list changes.  This ensures nicknames are available before
-    // messages render, so users never see the raw %%% placeholder.
-    const fetchedNicknamesRef = useRef<Set<string>>(new Set());
-    useEffect(() => {
-        if (!isAuthenticated) return;
-        const toFetch = selectedServices.filter(s => !fetchedNicknamesRef.current.has(s));
-        if (toFetch.length === 0) return;
-        toFetch.forEach(s => fetchedNicknamesRef.current.add(s));
-
-        toFetch.forEach(service => {
-            fetch(`/api/profile?service=${encodeURIComponent(service)}`)
-                .then(res => res.json())
-                .then(profileData => {
-                    if (profileData.nickname) {
-                        setAppSettings(prev => {
-                            if (!prev) return prev;
-                            return {
-                                ...prev,
-                                user_nicknames: { ...(prev.user_nicknames || {}), [service]: profileData.nickname },
-                            };
-                        });
-                    }
-                })
-                .catch(console.error);
-        });
-    }, [isAuthenticated, selectedServices]);
+    // Nicknames are cached by the backend during sync (sync_service.py) and
+    // returned in the GET /api/settings response on mount. No separate profile
+    // fetch is needed here — the nickname is available before messages render.
 
     return {
         appSettings,
