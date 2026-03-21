@@ -43,7 +43,7 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
-from backend.api import (
+from backend.api import (  # noqa: E402
     auth,
     content,
     sync,
@@ -58,7 +58,7 @@ from backend.api import (
     blogs,
     search,
     read_states,
-)  # noqa: E402
+)
 
 logger = structlog.get_logger(__name__)
 
