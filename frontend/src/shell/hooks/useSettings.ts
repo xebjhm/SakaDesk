@@ -77,8 +77,8 @@ export interface UseSettingsReturn {
     openSettingsModal: () => void;
 }
 
-export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn {
-    const { activeService, selectedServices } = useAppStore();
+export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn {
+    const { selectedServices } = useAppStore();
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
     const [allServiceSettings, setAllServiceSettings] = useState<Record<string, ServiceSettings>>({});
@@ -198,25 +198,9 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
         });
     }, [selectedServices, loadServiceSettings]);
 
-    // Fetch nickname when activeService changes (per-service nicknames)
-    useEffect(() => {
-        if (isAuthenticated && activeService) {
-            fetch(`/api/profile?service=${encodeURIComponent(activeService)}`)
-                .then(res => res.json())
-                .then(profileData => {
-                    if (profileData.nickname) {
-                        setAppSettings(prev => {
-                            if (!prev) return prev;
-                            return {
-                                ...prev,
-                                user_nicknames: { ...(prev.user_nicknames || {}), [activeService]: profileData.nickname },
-                            };
-                        });
-                    }
-                })
-                .catch(console.error);
-        }
-    }, [isAuthenticated, activeService]);
+    // Nicknames are cached by the backend during sync (sync_service.py) and
+    // returned in the GET /api/settings response on mount. No separate profile
+    // fetch is needed here — the nickname is available before messages render.
 
     return {
         appSettings,

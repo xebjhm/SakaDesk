@@ -138,6 +138,19 @@ export function useSync({
 
     useEffect(() => { syncProgressRef.current = syncProgress; }, [syncProgress]);
 
+    // --- Refs to break dependency cascades ---
+    // These allow callbacks and effects to read the latest values
+    // without including them in dependency arrays, preventing the
+    // cascading effect re-runs that cause rapid re-syncing.
+    const activeServiceRef = useRef(activeService);
+    useEffect(() => { activeServiceRef.current = activeService; }, [activeService]);
+
+    const syncProgressByServiceRef = useRef(syncProgressByService);
+    useEffect(() => { syncProgressByServiceRef.current = syncProgressByService; }, [syncProgressByService]);
+
+    const markServiceDisconnectedRef = useRef(markServiceDisconnected);
+    useEffect(() => { markServiceDisconnectedRef.current = markServiceDisconnected; }, [markServiceDisconnected]);
+
     // Update legacy syncProgress when activeService changes
     useEffect(() => {
         if (activeService && syncProgressByService[activeService]) {
@@ -179,6 +192,8 @@ export function useSync({
         }
     }, []);
 
+    // pollSyncProgress: reads activeService and syncProgressByService from refs
+    // to avoid recreating this callback on every progress tick.
     const pollSyncProgress = useCallback(async (service: string, blocking: boolean) => {
         if (isPollingRef.current[service]) return;
         isPollingRef.current[service] = true;
@@ -188,10 +203,11 @@ export function useSync({
                 const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
                 const data = await res.json();
 
+                const currentActiveService = activeServiceRef.current;
+
                 const updateProgress = (progress: SyncProgress) => {
                     setSyncProgressByService(prev => ({ ...prev, [service]: progress }));
-                    // Also update legacy if this is the active service or the current sequential sync service
-                    if (service === activeService || service === sequentialSyncServiceRef.current) {
+                    if (service === currentActiveService || service === sequentialSyncServiceRef.current) {
                         setSyncProgress(progress);
                     }
                 };
@@ -201,9 +217,9 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
-                    if (blocking && service === activeService) setShowSyncModal(false);
+                    if (blocking && service === currentActiveService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
-                    if (service === activeService) refreshUserProfile(service);
+                    if (service === currentActiveService) refreshUserProfile(service);
                 } else if (data.state === 'complete') {
                     updateProgress({
                         state: 'complete',
@@ -223,8 +239,8 @@ export function useSync({
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
-                    if (service === activeService) refreshUserProfile(service);
-                    if (blocking && service === activeService) {
+                    if (service === currentActiveService) refreshUserProfile(service);
+                    if (blocking && service === currentActiveService) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
                 } else if (data.state === 'running') {
@@ -246,10 +262,8 @@ export function useSync({
                 } else if (data.state === 'error') {
                     if (data.detail === 'SESSION_EXPIRED') {
                         log(`${service}: session expired detected`);
-                        // Mark this specific service as disconnected
-                        markServiceDisconnected?.(service, 'Session expired');
-                        // Trigger LoginModal for this service (if it's active)
-                        if (service === activeService) {
+                        markServiceDisconnectedRef.current?.(service, 'Session expired');
+                        if (service === currentActiveService) {
                             setSessionExpiredService(service);
                         }
                         updateProgress({ state: 'error', detail: i18n.t('sync.sessionExpired') });
@@ -257,10 +271,8 @@ export function useSync({
                         hasStartedSyncRef.current = false;
                     } else if (data.detail === 'REFRESH_FAILED') {
                         log(`${service}: refresh failed detected - possible bug`);
-                        // Mark this specific service as disconnected
-                        markServiceDisconnected?.(service, 'Refresh failed');
-                        // Trigger LoginModal for this service (if it's active)
-                        if (service === activeService) {
+                        markServiceDisconnectedRef.current?.(service, 'Refresh failed');
+                        if (service === currentActiveService) {
                             setSessionExpiredService(service);
                         }
                         updateProgress({ state: 'error', detail: i18n.t('sync.refreshFailed') });
@@ -272,16 +284,16 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
-                    if (blocking && service === activeService) setShowSyncModal(false);
+                    if (blocking && service === currentActiveService) setShowSyncModal(false);
                 } else {
                     updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.unknownError') });
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
-                    if (blocking && service === activeService) setShowSyncModal(false);
+                    if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             } catch {
-                const currentServiceProgress = syncProgressByService[service];
+                const currentServiceProgress = syncProgressByServiceRef.current[service];
                 if (currentServiceProgress?.state === 'running') {
                     setTimeout(check, 1000);
                 } else {
@@ -289,21 +301,24 @@ export function useSync({
                         ...prev,
                         [service]: { state: 'error', detail: i18n.t('sync.lostConnection') }
                     }));
-                    if (service === activeService) {
+                    const currentActiveService = activeServiceRef.current;
+                    if (service === currentActiveService) {
                         setSyncProgress({ state: 'error', detail: i18n.t('sync.lostConnection') });
                     }
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
-                    if (blocking && service === activeService) setShowSyncModal(false);
+                    if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             }
         };
         check();
-    }, [activeService, refreshUserProfile, markServiceDisconnected, syncProgressByService]);
+    }, [refreshUserProfile, resolveSyncCallback]);
 
+    // startSync: reads activeService and syncProgressByService from refs
+    // to avoid recreating on every progress update.
     const startSync = useCallback(async (blocking: boolean, service?: string) => {
-        const targetService = service || activeService;
+        const targetService = service || activeServiceRef.current;
 
         if (!targetService) {
             console.error('startSync: No service specified and no active service');
@@ -316,9 +331,9 @@ export function useSync({
             return;
         }
 
-        if (blocking && targetService === activeService) setShowSyncModal(true);
+        if (blocking && targetService === activeServiceRef.current) setShowSyncModal(true);
 
-        const currentProgress = syncProgressByService[targetService];
+        const currentProgress = syncProgressByServiceRef.current[targetService];
         if (currentProgress?.state !== 'running') {
             const initialProgress: SyncProgress = {
                 state: 'running',
@@ -327,7 +342,7 @@ export function useSync({
                 detail: i18n.t('sync.initializing')
             };
             setSyncProgressByService(prev => ({ ...prev, [targetService]: initialProgress }));
-            if (targetService === activeService) {
+            if (targetService === activeServiceRef.current) {
                 setSyncProgress(initialProgress);
             }
         }
@@ -348,7 +363,7 @@ export function useSync({
                 if (currentProgress?.state !== 'running') {
                     const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
                     setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
-                    if (targetService === activeService) {
+                    if (targetService === activeServiceRef.current) {
                         setSyncProgress(errorProgress);
                     }
                 }
@@ -357,12 +372,12 @@ export function useSync({
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
-                if (targetService === activeService) {
+                if (targetService === activeServiceRef.current) {
                     setSyncProgress(errorProgress);
                 }
             }
         }
-    }, [activeService, pollSyncProgress, syncProgressByService]);
+    }, [pollSyncProgress]);
 
     const startSyncAllServices = useCallback(async (blocking: boolean) => {
         if (connectedServices.length === 0) return;
@@ -414,6 +429,11 @@ export function useSync({
         setTimeout(() => setShowSyncModal(false), 2000);
     }, [startSync]);
 
+    // Stable ref for startSync so effects can call it without depending on it.
+    // This breaks the cascade: effects no longer re-run when startSync is recreated.
+    const startSyncRef = useRef(startSync);
+    useEffect(() => { startSyncRef.current = startSync; }, [startSync]);
+
     // Effect 1: Startup sync — one-time per newly connected service
     // Only fires when app is fully configured (output_dir set) to avoid premature sync
     // that triggers SESSION_EXPIRED errors during onboarding.
@@ -437,28 +457,36 @@ export function useSync({
             fetch('/api/settings/fresh')
                 .then(res => res.json())
                 .then(data => {
+                    const currentActive = activeServiceRef.current;
                     newServices.forEach(service => {
-                        startSync(data.is_fresh && service === activeService, service);
+                        startSyncRef.current(data.is_fresh && service === currentActive, service);
                     });
                 })
-                .catch(() => {
-                    newServices.forEach(service => startSync(false, service));
+                .catch((err) => {
+                    log('Failed to check fresh status, starting non-blocking sync:', err);
+                    newServices.forEach(service => startSyncRef.current(false, service));
                 });
         } else {
-            newServices.forEach(service => startSync(false, service));
+            newServices.forEach(service => startSyncRef.current(false, service));
         }
-    }, [isAuthenticated, appSettings, connectedServices, activeService, startSync]);
+    }, [isAuthenticated, appSettings, connectedServices]);
 
     // Effect 2: Auto-sync interval setup — re-runs when settings or services change.
     // Adaptive mode uses setTimeout chain with dynamic intervals from the backend;
     // fixed mode uses a plain setInterval.
+    // Uses startSyncRef to avoid re-running when startSync is recreated.
     useEffect(() => {
         if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
         if (!appSettings.auto_sync_enabled) return;
         // Don't start auto-sync until app is fully configured
         if (!appSettings.is_configured) return;
 
+        // Cancellation flag: when the effect cleans up, this prevents
+        // any in-flight fetch callbacks from setting orphaned timeouts.
+        let cancelled = false;
+
         const clearAllTimers = () => {
+            cancelled = true;
             Object.values(syncIntervalRefs.current).forEach(clearInterval);
             Object.values(syncTimeoutRefs.current).forEach(clearTimeout);
             syncIntervalRefs.current = {};
@@ -471,18 +499,23 @@ export function useSync({
                 fetch(`/api/sync/next_interval?service=${encodeURIComponent(service)}`)
                     .then(res => res.json())
                     .then(data => {
+                        if (cancelled) return;
                         const ms = (data.interval_minutes ?? appSettings.sync_interval_minutes) * 60 * 1000;
                         log(`${service}: adaptive next sync in ${(ms / 60000).toFixed(1)}m`);
                         syncTimeoutRefs.current[service] = setTimeout(() => {
-                            startSync(false, service);
+                            if (cancelled) return;
+                            startSyncRef.current(false, service);
                             scheduleNext(service);
                         }, ms);
                     })
-                    .catch(() => {
+                    .catch((err) => {
+                        if (cancelled) return;
                         // Fallback to fixed interval on error
+                        log(`${service}: adaptive interval fetch failed, using fixed interval`, err);
                         const ms = appSettings.sync_interval_minutes * 60 * 1000;
                         syncTimeoutRefs.current[service] = setTimeout(() => {
-                            startSync(false, service);
+                            if (cancelled) return;
+                            startSyncRef.current(false, service);
                             scheduleNext(service);
                         }, ms);
                     });
@@ -493,13 +526,13 @@ export function useSync({
             const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
             connectedServices.forEach(service => {
                 syncIntervalRefs.current[service] = setInterval(() => {
-                    startSync(false, service);
+                    startSyncRef.current(false, service);
                 }, intervalMs);
             });
         }
 
         return clearAllTimers;
-    }, [isAuthenticated, appSettings?.auto_sync_enabled, appSettings?.adaptive_sync_enabled, appSettings?.sync_interval_minutes, connectedServices, startSync]);
+    }, [isAuthenticated, appSettings?.auto_sync_enabled, appSettings?.adaptive_sync_enabled, appSettings?.sync_interval_minutes, connectedServices]);
 
     return {
         syncProgress,
