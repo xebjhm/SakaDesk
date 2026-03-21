@@ -826,7 +826,8 @@ class SearchService:
         if _ALIASES_PATH.exists():
             try:
                 with open(_ALIASES_PATH, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    result: Dict[str, Any] = json.load(f)
+                    return result
             except Exception as e:
                 logger.warning("Failed to load search aliases", error=str(e))
         return {"term_aliases": {}, "member_nicknames": {}}
@@ -856,10 +857,11 @@ class SearchService:
 
     def _resolve_nickname(self, query: str) -> Optional[Dict[str, Any]]:
         normalized = self._normalize_query(query)
-        nicknames = self._aliases.get("member_nicknames", {})
+        nicknames: Dict[str, Any] = self._aliases.get("member_nicknames", {})
         for nickname, info in nicknames.items():
             if self._normalize_query(nickname) == normalized:
-                return info
+                result: Dict[str, Any] = info
+                return result
         return None
 
     # ------------------------------------------------------------------

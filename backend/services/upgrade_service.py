@@ -243,7 +243,7 @@ def launch_upgrade(script_path: Path) -> bool:
         # Note: DETACHED_PROCESS and CREATE_NEW_PROCESS_GROUP are Windows-only flags
         subprocess.Popen(
             ["cmd", "/c", "start", "/MIN", "SakaDesk Upgrade", str(script_path)],
-            creationflags=subprocess.DETACHED_PROCESS
+            creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
             | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )

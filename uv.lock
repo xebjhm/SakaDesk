@@ -1335,6 +1335,7 @@ dev = [
     { name = "hatchling", specifier = ">=1.18.0" },
     { name = "hypothesis", specifier = ">=6.141.1" },
     { name = "mypy", specifier = ">=1.9.0" },
+    { name = "pre-commit", specifier = ">=4.3.0" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "pytest-benchmark", specifier = ">=5.2.3" },
