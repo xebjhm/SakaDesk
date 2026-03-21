@@ -462,7 +462,8 @@ export function useSync({
                         startSyncRef.current(data.is_fresh && service === currentActive, service);
                     });
                 })
-                .catch(() => {
+                .catch((err) => {
+                    log('Failed to check fresh status, starting non-blocking sync:', err);
                     newServices.forEach(service => startSyncRef.current(false, service));
                 });
         } else {
@@ -507,9 +508,10 @@ export function useSync({
                             scheduleNext(service);
                         }, ms);
                     })
-                    .catch(() => {
+                    .catch((err) => {
                         if (cancelled) return;
                         // Fallback to fixed interval on error
+                        log(`${service}: adaptive interval fetch failed, using fixed interval`, err);
                         const ms = appSettings.sync_interval_minutes * 60 * 1000;
                         syncTimeoutRefs.current[service] = setTimeout(() => {
                             if (cancelled) return;
