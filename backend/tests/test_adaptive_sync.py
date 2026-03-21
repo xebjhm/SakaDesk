@@ -43,51 +43,60 @@ class TestGetJstHour:
 class TestGetTimeMultiplier:
     """Tests for time-of-day multiplier."""
 
-    def test_peak_hours_19_to_22(self):
-        for hour in [19, 20, 21, 22]:
+    def test_peak_hours_20_21(self):
+        for hour in [20, 21]:
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
+                assert get_time_multiplier() == 0.5
+
+    def test_peak_shoulder_19_22(self):
+        for hour in [19, 22]:
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
+                assert get_time_multiplier() == 0.55
+
+    def test_evening_buildup_17_18(self):
+        for hour in [17, 18]:
             with patch(
                 "backend.services.adaptive_sync.get_jst_hour", return_value=hour
             ):
                 assert get_time_multiplier() == 0.6
 
+    def test_lunch_peak_12(self):
+        with patch("backend.services.adaptive_sync.get_jst_hour", return_value=12):
+            assert get_time_multiplier() == 0.6
+
+    def test_daytime_active(self):
+        for hour in [10, 11, 15, 16]:
+            with patch(
+                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
+            ):
+                assert get_time_multiplier() <= 0.8
+
     def test_late_night_23(self):
         with patch("backend.services.adaptive_sync.get_jst_hour", return_value=23):
             assert get_time_multiplier() == 0.7
 
-    def test_early_evening_17_18(self):
-        for hour in [17, 18]:
-            with patch(
-                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
-            ):
-                assert get_time_multiplier() == 0.7
+    def test_morning_ramp(self):
+        with patch("backend.services.adaptive_sync.get_jst_hour", return_value=8):
+            assert get_time_multiplier() == 1.0
 
-    def test_daytime_9_to_16(self):
-        for hour in [9, 12, 16]:
-            with patch(
-                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
-            ):
-                assert get_time_multiplier() == 0.8
+    def test_early_morning_sparse(self):
+        with patch("backend.services.adaptive_sync.get_jst_hour", return_value=7):
+            assert get_time_multiplier() == 1.5
 
-    def test_early_morning_7_8(self):
-        for hour in [7, 8]:
-            with patch(
-                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
-            ):
-                assert get_time_multiplier() == 0.9
+    def test_wind_down_0(self):
+        with patch("backend.services.adaptive_sync.get_jst_hour", return_value=0):
+            assert get_time_multiplier() == 2.0
 
-    def test_late_night_0_1(self):
-        for hour in [0, 1]:
+    def test_dead_hours_1_to_6(self):
+        for hour in [1, 2, 3, 4, 5, 6]:
             with patch(
                 "backend.services.adaptive_sync.get_jst_hour", return_value=hour
             ):
-                assert get_time_multiplier() == 1.2
-
-    def test_dead_hours_2_to_6(self):
-        for hour in [2, 3, 4, 5, 6]:
-            with patch(
-                "backend.services.adaptive_sync.get_jst_hour", return_value=hour
-            ):
-                assert get_time_multiplier() == 2.0
+                assert get_time_multiplier() == 3.0
 
     def test_returns_float(self):
         result = get_time_multiplier()
