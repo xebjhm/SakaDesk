@@ -8,7 +8,6 @@ from backend.services.adaptive_sync import (
     JST_OFFSET,
     add_jitter,
     calculate_next_sync_interval,
-    get_activity_multiplier,
     get_jst_hour,
     get_sync_interval_description,
     get_time_multiplier,
@@ -103,52 +102,6 @@ class TestGetTimeMultiplier:
         assert isinstance(result, float)
 
 
-# ── get_activity_multiplier ──────────────────────────────────────────
-
-
-class TestGetActivityMultiplier:
-    """Tests for the activity-based multiplier."""
-
-    def test_none_returns_1(self):
-        assert get_activity_multiplier(None) == 1.0
-
-    def test_very_recent_under_1h(self):
-        assert get_activity_multiplier(0.5) == 0.5
-
-    def test_recent_1_to_3h(self):
-        assert get_activity_multiplier(2.0) == 0.7
-
-    def test_moderate_3_to_6h(self):
-        assert get_activity_multiplier(4.0) == 0.9
-
-    def test_normal_6_to_24h(self):
-        assert get_activity_multiplier(12.0) == 1.0
-
-    def test_inactive_24_to_72h(self):
-        assert get_activity_multiplier(48.0) == 1.3
-
-    def test_very_inactive_over_72h(self):
-        assert get_activity_multiplier(100.0) == 1.5
-
-    def test_boundary_exactly_1(self):
-        assert get_activity_multiplier(1.0) == 0.7
-
-    def test_boundary_exactly_3(self):
-        assert get_activity_multiplier(3.0) == 0.9
-
-    def test_boundary_exactly_6(self):
-        assert get_activity_multiplier(6.0) == 1.0
-
-    def test_boundary_exactly_24(self):
-        assert get_activity_multiplier(24.0) == 1.3
-
-    def test_boundary_exactly_72(self):
-        assert get_activity_multiplier(72.0) == 1.5
-
-    def test_zero_hours(self):
-        assert get_activity_multiplier(0.0) == 0.5
-
-
 # ── add_jitter ───────────────────────────────────────────────────────
 
 
@@ -204,37 +157,26 @@ class TestCalculateNextSyncInterval:
         assert result == float(_ADAPTIVE_BASE_MINUTES)
 
     def test_clamped_minimum_5(self):
-        # Very active member at peak time
         with patch(
             "backend.services.adaptive_sync.get_time_multiplier", return_value=0.5
         ):
-            result = calculate_next_sync_interval(hours_since_last_post=0.1)
+            result = calculate_next_sync_interval()
         assert result >= 5.0
 
     def test_clamped_maximum_60(self):
-        # Inactive member at dead hours
         with patch(
             "backend.services.adaptive_sync.get_time_multiplier", return_value=3.0
         ):
-            result = calculate_next_sync_interval(hours_since_last_post=200.0)
+            result = calculate_next_sync_interval()
         assert result <= 60.0
 
-    def test_with_activity_data(self):
+    def test_time_multiplier_affects_interval(self):
         random.seed(42)
         with patch(
             "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
         ):
-            result = calculate_next_sync_interval(hours_since_last_post=0.5)
-        # 10 * 1.0 * 0.5 = 5.0 + jitter, clamped to [5, 60]
-        assert 5.0 <= result <= 60.0
-
-    def test_none_activity_data(self):
-        random.seed(42)
-        with patch(
-            "backend.services.adaptive_sync.get_time_multiplier", return_value=1.0
-        ):
-            result = calculate_next_sync_interval(hours_since_last_post=None)
-        # 10 * 1.0 * 1.0 = 10 + jitter
+            result = calculate_next_sync_interval()
+        # 10 * 1.0 = 10 + jitter
         assert 5.0 <= result <= 60.0
 
 
