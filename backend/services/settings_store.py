@@ -9,6 +9,8 @@ import json
 import asyncio
 import tempfile
 import os
+import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -39,13 +41,26 @@ def _read_file(path: Path) -> dict:
     return dict(_SETTINGS_DEFAULTS)
 
 
+def _replace_with_retry(src: str, dst: Path, retries: int = 3) -> None:
+    """os.replace with retry for Windows, where antivirus/indexer can
+    briefly lock the destination file causing PermissionError."""
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == retries - 1 or sys.platform != "win32":
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
 def _write_file(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        os.replace(tmp_path, path)
+        _replace_with_retry(tmp_path, path)
     except BaseException:
         try:
             os.unlink(tmp_path)
