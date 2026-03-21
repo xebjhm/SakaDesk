@@ -690,7 +690,7 @@ class SyncService:
 
                 # Group members by group_id for batch fetching
                 server_groups = metadata.get("server_groups", {})
-                members_by_group: dict[int, list[dict]] = defaultdict(list)
+                members_by_group: dict[str, list[dict]] = defaultdict(list)
                 for key, info in metadata["groups"].items():
                     gid = str(info.get("group_id", ""))
                     sg = server_groups.get(gid, {})
@@ -698,11 +698,12 @@ class SyncService:
                         continue
                     # Accept members with either timestamp or ID cursor
                     if info.get("last_sync_ts") or info.get("last_message_id"):
-                        members_by_group[info["group_id"]].append(info)
+                        members_by_group[gid].append(info)
 
                 # ONE API call per group instead of per member
-                for gid, member_infos in members_by_group.items():
+                for gid_str, member_infos in members_by_group.items():
                     try:
+                        gid_int = int(gid_str)
                         # Prefer timestamp cursor; fall back to ID for old state
                         ts_list = [
                             m["last_sync_ts"]
@@ -712,14 +713,14 @@ class SyncService:
                         if ts_list:
                             min_ts = min(ts_list)
                             msgs = await client.get_messages(
-                                session, gid, since_ts=min_ts
+                                session, gid_int, since_ts=min_ts
                             )
                         else:
                             min_last_id = min(
                                 m["last_message_id"] for m in member_infos
                             )
                             msgs = await client.get_messages(
-                                session, gid, since_id=min_last_id
+                                session, gid_int, since_id=min_last_id
                             )
 
                         for info in member_infos:

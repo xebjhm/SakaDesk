@@ -129,7 +129,8 @@ def _get_detailed_disk_usage(output_dir: str) -> dict:
     """Get per-service, per-category disk usage breakdown with 60-second cache."""
     now = time.time()
     if _disk_cache["data"] and now < _disk_cache["expires"]:
-        return _disk_cache["data"]
+        cached: dict = _disk_cache["data"]  # type: ignore[assignment]
+        return cached
 
     result: dict = {"total_bytes": 0, "services": []}
     output_path = Path(output_dir)
