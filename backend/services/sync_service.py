@@ -626,6 +626,18 @@ class SyncService:
                     media_downloaded=media_count,
                 )
 
+            # Cache user nickname so the frontend has it before rendering messages.
+            # This runs inside the sync flow (before progress.complete()), so the
+            # nickname is in settings.json by the time the frontend reads settings.
+            try:
+                from backend.api.profile import get_profile
+
+                await get_profile(self._service)
+            except Exception as e:
+                logger.debug(
+                    "Profile cache during sync failed (non-fatal)", error=str(e)
+                )
+
             # Auto-enqueue blog backup if enabled (runs in background after modal closes)
             try:
                 from backend.services.settings_store import load_config
