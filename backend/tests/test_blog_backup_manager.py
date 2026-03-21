@@ -1,8 +1,8 @@
 """Tests for BlogBackupManager thread isolation."""
+
 import asyncio
 import threading
 
-import pytest
 from unittest.mock import patch, AsyncMock
 
 from backend.services.blog_service import BlogBackupManager
@@ -22,7 +22,7 @@ class TestBlogBackupManagerThreading:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=mock_run_backup):
+        with patch.object(manager, "_run_backup", side_effect=mock_run_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never called"
 
@@ -43,7 +43,7 @@ class TestBlogBackupManagerThreading:
             captured_thread.append(threading.current_thread().name)
             done.set()
 
-        with patch.object(manager, '_run_backup', side_effect=fake_run_backup):
+        with patch.object(manager, "_run_backup", side_effect=fake_run_backup):
             manager.start(["hinatazaka46"])
             assert done.wait(timeout=5), "_run_backup never completed"
 
@@ -54,7 +54,7 @@ class TestBlogBackupManagerThreading:
     def test_start_is_synchronous(self):
         """start() should be a regular method, not async."""
         manager = BlogBackupManager()
-        with patch.object(manager, '_run_backup', new_callable=AsyncMock):
+        with patch.object(manager, "_run_backup", new_callable=AsyncMock):
             result = manager.start(["hinatazaka46"])
             assert not asyncio.iscoroutine(result)
         manager.shutdown()
@@ -71,7 +71,7 @@ class TestBlogBackupManagerThreading:
                 await asyncio.sleep(0.01)
             stopped.set()
 
-        with patch.object(manager, '_run_backup', side_effect=slow_backup):
+        with patch.object(manager, "_run_backup", side_effect=slow_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never entered"
             assert manager.is_running("hinatazaka46")
@@ -92,13 +92,15 @@ class TestBlogBackupManagerThreading:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=slow_backup):
+        with patch.object(manager, "_run_backup", side_effect=slow_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never entered"
 
             results = []
+
             def check():
                 results.append(manager.is_running("hinatazaka46"))
+
             threads = [threading.Thread(target=check) for _ in range(10)]
             for t in threads:
                 t.start()
@@ -122,7 +124,7 @@ class TestBlogBackupManagerThreading:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=fake_run_backup):
+        with patch.object(manager, "_run_backup", side_effect=fake_run_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never entered"
             manager.start(["hinatazaka46"])
@@ -142,7 +144,7 @@ class TestBlogBackupManagerThreading:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=mock_run_backup):
+        with patch.object(manager, "_run_backup", side_effect=mock_run_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never entered"
             assert manager._thread.is_alive()
@@ -166,7 +168,7 @@ class TestBlogBackupManagerThreading:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=slow_backup):
+        with patch.object(manager, "_run_backup", side_effect=slow_backup):
             manager.start(["hinatazaka46", "sakurazaka46"])
             assert all_entered.wait(timeout=5), "Not all backups entered"
 

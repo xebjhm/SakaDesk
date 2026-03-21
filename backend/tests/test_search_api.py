@@ -12,23 +12,29 @@ client = TestClient(app)
 def _mock_search_service():
     """Create a mock SearchService with default return values."""
     svc = MagicMock()
-    svc.search = AsyncMock(return_value={
-        "results": [],
-        "total": 0,
-        "query": "test",
-    })
-    svc.get_status = AsyncMock(return_value={
-        "indexed_messages": 100,
-        "indexed_blogs": 50,
-        "is_building": False,
-        "last_build": "2025-01-01T00:00:00Z",
-    })
+    svc.search = AsyncMock(
+        return_value={
+            "results": [],
+            "total": 0,
+            "query": "test",
+        }
+    )
+    svc.get_status = AsyncMock(
+        return_value={
+            "indexed_messages": 100,
+            "indexed_blogs": 50,
+            "is_building": False,
+            "last_build": "2025-01-01T00:00:00Z",
+        }
+    )
     svc.rebuild = AsyncMock()
-    svc.get_members = AsyncMock(return_value={
-        "members": [],
-        "services": [],
-        "is_building": False,
-    })
+    svc.get_members = AsyncMock(
+        return_value={
+            "members": [],
+            "services": [],
+            "is_building": False,
+        }
+    )
     return svc
 
 
@@ -44,10 +50,12 @@ class TestSearchEndpoint:
     def test_search_basic(self, mock_get_svc):
         """Basic search with query returns results."""
         svc = _mock_search_service()
-        svc.search = AsyncMock(return_value={
-            "results": [{"id": 1, "content": "hello"}],
-            "total": 1,
-        })
+        svc.search = AsyncMock(
+            return_value={
+                "results": [{"id": 1, "content": "hello"}],
+                "total": 1,
+            }
+        )
         mock_get_svc.return_value = svc
         response = client.get("/api/search?q=hello")
         assert response.status_code == 200
@@ -73,7 +81,7 @@ class TestSearchEndpoint:
         response = client.get("/api/search?q=test&group_id=1&member_id=10")
         assert response.status_code == 200
         call_args = svc.search.call_args
-        assert call_args[0][2] == 1   # group_id
+        assert call_args[0][2] == 1  # group_id
         assert call_args[0][3] == 10  # member_id
 
     @patch("backend.api.search.get_search_service")
@@ -106,10 +114,15 @@ class TestSearchEndpoint:
         """Search with service:member_id pair filters."""
         svc = _mock_search_service()
         mock_get_svc.return_value = svc
-        response = client.get("/api/search?q=test&member_filters=hinatazaka46:58,sakurazaka46:12")
+        response = client.get(
+            "/api/search?q=test&member_filters=hinatazaka46:58,sakurazaka46:12"
+        )
         assert response.status_code == 200
         call_kwargs = svc.search.call_args[1]
-        assert call_kwargs["member_filters"] == [("hinatazaka46", 58), ("sakurazaka46", 12)]
+        assert call_kwargs["member_filters"] == [
+            ("hinatazaka46", 58),
+            ("sakurazaka46", 12),
+        ]
 
     def test_search_invalid_member_filters(self):
         """Invalid member_filters format returns 400."""
@@ -142,7 +155,9 @@ class TestSearchEndpoint:
         """Search with date_from and date_to filters."""
         svc = _mock_search_service()
         mock_get_svc.return_value = svc
-        response = client.get("/api/search?q=test&date_from=2025-01-01&date_to=2025-12-31")
+        response = client.get(
+            "/api/search?q=test&date_from=2025-01-01&date_to=2025-12-31"
+        )
         assert response.status_code == 200
         call_kwargs = svc.search.call_args[1]
         assert call_kwargs["date_from"] == "2025-01-01"
@@ -196,11 +211,13 @@ class TestSearchMembers:
     def test_get_members(self, mock_get_svc):
         """Returns indexed members for autocomplete."""
         svc = _mock_search_service()
-        svc.get_members = AsyncMock(return_value={
-            "members": [{"id": 1, "name": "Test Member"}],
-            "services": ["hinatazaka46"],
-            "is_building": False,
-        })
+        svc.get_members = AsyncMock(
+            return_value={
+                "members": [{"id": 1, "name": "Test Member"}],
+                "services": ["hinatazaka46"],
+                "is_building": False,
+            }
+        )
         mock_get_svc.return_value = svc
         response = client.get("/api/search/members")
         assert response.status_code == 200

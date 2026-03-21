@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
@@ -197,7 +197,7 @@ class TestMessagesByPath:
 
     def test_returns_messages_with_pagination(self, tmp_path):
         msgs = [
-            {"id": i, "timestamp": f"2025-01-15T{10+i}:00:00Z", "type": "text"}
+            {"id": i, "timestamp": f"2025-01-15T{10 + i}:00:00Z", "type": "text"}
             for i in range(1, 6)
         ]
         member_dir = tmp_path / "svc" / "messages" / "34 Group" / "58 Member"
@@ -206,7 +206,9 @@ class TestMessagesByPath:
         rel_path = "svc/messages/34 Group/58 Member"
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-                response = client.get(f"/api/content/messages_by_path?path={rel_path}&limit=2")
+                response = client.get(
+                    f"/api/content/messages_by_path?path={rel_path}&limit=2"
+                )
 
         assert response.status_code == 200
         data = response.json()
@@ -214,14 +216,18 @@ class TestMessagesByPath:
         assert len(data["messages"]) == 2
 
     def test_unread_count_calculation(self, tmp_path):
-        msgs = [{"id": i, "timestamp": f"2025-01-15T{10+i}:00:00Z"} for i in range(1, 4)]
+        msgs = [
+            {"id": i, "timestamp": f"2025-01-15T{10 + i}:00:00Z"} for i in range(1, 4)
+        ]
         member_dir = tmp_path / "svc" / "messages" / "34 G" / "58 M"
         _make_messages_json(member_dir, msgs)
 
         rel_path = "svc/messages/34 G/58 M"
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-                response = client.get(f"/api/content/messages_by_path?path={rel_path}&last_read_id=1")
+                response = client.get(
+                    f"/api/content/messages_by_path?path={rel_path}&last_read_id=1"
+                )
 
         data = response.json()
         assert data["unread_count"] == 2  # ids 2 and 3 are unread
@@ -234,7 +240,9 @@ class TestMessagesByPath:
 
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-                response = client.get("/api/content/messages_by_path?path=svc/messages/34 G/58 M")
+                response = client.get(
+                    "/api/content/messages_by_path?path=svc/messages/34 G/58 M"
+                )
         assert response.status_code == 500
 
 
@@ -266,7 +274,9 @@ class TestGroupMessages:
 
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-                response = client.get("/api/content/group_messages/svc/messages/43 GroupChat")
+                response = client.get(
+                    "/api/content/group_messages/svc/messages/43 GroupChat"
+                )
 
         assert response.status_code == 200
         data = response.json()
@@ -279,12 +289,17 @@ class TestGroupMessages:
         group_dir = tmp_path / "svc" / "messages" / "43 G"
         _make_messages_json(
             group_dir / "58 M",
-            [{"id": i, "timestamp": f"2025-01-15T{10+i}:00:00Z"} for i in range(1, 4)],
+            [
+                {"id": i, "timestamp": f"2025-01-15T{10 + i}:00:00Z"}
+                for i in range(1, 4)
+            ],
         )
 
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-                response = client.get("/api/content/group_messages/svc/messages/43 G?last_read_id=2")
+                response = client.get(
+                    "/api/content/group_messages/svc/messages/43 G?last_read_id=2"
+                )
 
         data = response.json()
         assert data["unread_count"] == 1  # Only id=3 is unread
@@ -298,7 +313,9 @@ class TestGroupMessages:
 class TestUnreadCounts:
     def test_empty_output_dir(self, tmp_path):
         """If output dir doesn't exist, return empty dict."""
-        with patch("backend.api.content.get_output_dir", return_value=tmp_path / "nope"):
+        with patch(
+            "backend.api.content.get_output_dir", return_value=tmp_path / "nope"
+        ):
             response = client.post("/api/content/unread_counts", json={})
         assert response.status_code == 200
         assert response.json() == {}
@@ -379,7 +396,10 @@ class TestDownloadEndpoint:
     def test_path_traversal_blocked(self, tmp_path):
         """Path traversal via encoded segments should be blocked."""
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-            with patch("backend.api.content._resolve_media_path", side_effect=HTTPException(status_code=403, detail="Access denied")):
+            with patch(
+                "backend.api.content._resolve_media_path",
+                side_effect=HTTPException(status_code=403, detail="Access denied"),
+            ):
                 response = client.get("/api/content/download/../../../etc/passwd")
         assert response.status_code in (200, 403, 404)
         # The real protection is in _resolve_media_path; here we verify
@@ -394,7 +414,9 @@ class TestDownloadEndpoint:
         file_path.write_text("hello world", encoding="utf-8")
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-            with patch("backend.api.content._resolve_media_path", return_value=file_path):
+            with patch(
+                "backend.api.content._resolve_media_path", return_value=file_path
+            ):
                 response = client.get("/api/content/download/test.txt")
 
         assert response.status_code == 200
@@ -407,7 +429,9 @@ class TestDownloadEndpoint:
         file_path.write_text("data", encoding="utf-8")
 
         with patch("backend.api.content._resolve_media_path", return_value=file_path):
-            response = client.get("/api/content/download/original.txt?filename=custom.txt")
+            response = client.get(
+                "/api/content/download/original.txt?filename=custom.txt"
+            )
 
         assert response.status_code == 200
         disp = response.headers.get("content-disposition", "")
@@ -525,7 +549,9 @@ class TestMembersEndpoint:
         assert response.status_code == 400
 
     def test_nonexistent_talk_room_returns_404(self):
-        response = client.get("/api/content/members?service=hinatazaka46&talk_room_id=99999")
+        response = client.get(
+            "/api/content/members?service=hinatazaka46&talk_room_id=99999"
+        )
         assert response.status_code == 404
 
 
@@ -540,11 +566,15 @@ class TestMessagesParamEndpoint:
         assert response.status_code == 422
 
     def test_invalid_service_returns_400(self):
-        response = client.get("/api/content/messages?service=bad&talk_room_id=34&member_id=58")
+        response = client.get(
+            "/api/content/messages?service=bad&talk_room_id=34&member_id=58"
+        )
         assert response.status_code == 400
 
     def test_nonexistent_data_returns_404(self):
-        response = client.get("/api/content/messages?service=hinatazaka46&talk_room_id=99999&member_id=88888")
+        response = client.get(
+            "/api/content/messages?service=hinatazaka46&talk_room_id=99999&member_id=88888"
+        )
         assert response.status_code == 404
 
 
@@ -559,11 +589,15 @@ class TestTalkRoomMessagesParamEndpoint:
         assert response.status_code == 422
 
     def test_invalid_service_returns_400(self):
-        response = client.get("/api/content/talk_room_messages?service=bad&talk_room_id=34")
+        response = client.get(
+            "/api/content/talk_room_messages?service=bad&talk_room_id=34"
+        )
         assert response.status_code == 400
 
     def test_nonexistent_talk_room_returns_404(self):
-        response = client.get("/api/content/talk_room_messages?service=hinatazaka46&talk_room_id=99999")
+        response = client.get(
+            "/api/content/talk_room_messages?service=hinatazaka46&talk_room_id=99999"
+        )
         assert response.status_code == 404
 
 

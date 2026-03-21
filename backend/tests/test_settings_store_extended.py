@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +18,7 @@ from backend.services.settings_store import (
 
 
 # ── _read_file ───────────────────────────────────────────────────────
+
 
 class TestReadFile:
     """Tests for the synchronous _read_file helper."""
@@ -61,6 +61,7 @@ class TestReadFile:
 
 
 # ── _write_file ──────────────────────────────────────────────────────
+
 
 class TestWriteFile:
     """Tests for the atomic _write_file helper."""
@@ -119,6 +120,7 @@ class TestWriteFile:
 
 # ── _SETTINGS_DEFAULTS ───────────────────────────────────────────────
 
+
 class TestSettingsDefaults:
     """Tests for the defaults dictionary."""
 
@@ -147,6 +149,7 @@ class TestSettingsDefaults:
 
 
 # ── Async API (load_config, save_config, update_config) ─────────────
+
 
 class TestAsyncApi:
     """Tests for the async load_config / save_config / update_config.

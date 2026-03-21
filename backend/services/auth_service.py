@@ -6,11 +6,19 @@ This ensures consistent behavior across CLI and GUI:
 - Windows: Windows Credential Manager (WCM)
 - Linux: Plaintext fallback (development only)
 """
+
 import asyncio
 import structlog
 from typing import Any, Dict, Optional, cast
 import aiohttp
-from pysaka import BrowserAuth, Group, Client, is_jwt_expired, parse_jwt_expiry, get_jwt_remaining_seconds
+from pysaka import (
+    BrowserAuth,
+    Group,
+    Client,
+    is_jwt_expired,
+    parse_jwt_expiry,
+    get_jwt_remaining_seconds,
+)
 from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
@@ -62,8 +70,8 @@ class AuthService:
             token_data = tm.load_session(group.value)
 
             if token_data:
-                token = token_data.get('access_token')
-                cookies = token_data.get('cookies', {})
+                token = token_data.get("access_token")
+                cookies = token_data.get("cookies", {})
                 cookie_keys = list(cookies.keys()) if cookies else []
 
                 logger.debug(
@@ -77,24 +85,38 @@ class AuthService:
                 if token:
                     expires_at = self._get_token_expiry_timestamp(token)
                     if self._is_token_expired(token):
-                        logger.warning("Token is expired, returning token_expired status", service=service)
+                        logger.warning(
+                            "Token is expired, returning token_expired status",
+                            service=service,
+                        )
                         return {
                             "authenticated": False,
                             "token_expired": True,
                             "expires_at": expires_at,
-                            "message": "Token expired. Please re-login."
+                            "message": "Token expired. Please re-login.",
                         }
-                    logger.info("Auth status check: authenticated and token valid", service=service, expires_at=expires_at)
+                    logger.info(
+                        "Auth status check: authenticated and token valid",
+                        service=service,
+                        expires_at=expires_at,
+                    )
                     return {
                         "authenticated": True,
                         "expires_at": expires_at,
-                        "app_id": token_data.get('x-talk-app-id'),
-                        "storage_type": "secure" if not is_dev_mode() else "development"
+                        "app_id": token_data.get("x-talk-app-id"),
+                        "storage_type": "secure"
+                        if not is_dev_mode()
+                        else "development",
                     }
             else:
                 logger.debug("No token data found in TokenManager", service=service)
         except Exception as e:
-            logger.error("Failed to check auth status", service=service, error=str(e), exc_info=True)
+            logger.error(
+                "Failed to check auth status",
+                service=service,
+                error=str(e),
+                exc_info=True,
+            )
 
         return {"authenticated": False}
 
@@ -115,19 +137,20 @@ class AuthService:
         # Test mode: always return authenticated with test config
         if is_test_mode():
             from backend.fixtures.test_data import TEST_AUTH_CONFIG
+
             if service:
                 validate_service(service)
                 return {
                     "authenticated": True,
                     "app_id": TEST_AUTH_CONFIG.get("x-talk-app-id"),
-                    "storage_type": "test_mode"
+                    "storage_type": "test_mode",
                 }
             return {
                 "services": {
                     s: {
                         "authenticated": True,
                         "app_id": TEST_AUTH_CONFIG.get("x-talk-app-id"),
-                        "storage_type": "test_mode"
+                        "storage_type": "test_mode",
                     }
                     for s in get_all_services()
                 }
@@ -140,8 +163,7 @@ class AuthService:
         # Return status for all services
         return {
             "services": {
-                s: self._get_service_auth_status(s)
-                for s in get_all_services()
+                s: self._get_service_auth_status(s) for s in get_all_services()
             }
         }
 
@@ -156,22 +178,31 @@ class AuthService:
         group = self._get_group(service)
 
         if self._browser_lock.locked():
-            logger.warning("Browser login already in progress, queuing", service=service)
+            logger.warning(
+                "Browser login already in progress, queuing", service=service
+            )
 
         async with self._browser_lock:
             try:
-                logger.info("Starting browser login", service=service, session_dir=str(self._session_dir))
+                logger.info(
+                    "Starting browser login",
+                    service=service,
+                    session_dir=str(self._session_dir),
+                )
 
                 creds = await BrowserAuth.login(
                     group=group,
                     headless=False,
                     user_data_dir=str(self._session_dir),
-                    channel="chrome"
+                    channel="chrome",
                 )
 
                 if creds:
                     self._save_credentials(service, creds)
-                    logger.info("Login successful, credentials saved to TokenManager", service=service)
+                    logger.info(
+                        "Login successful, credentials saved to TokenManager",
+                        service=service,
+                    )
                     return True
 
             except Exception as e:
@@ -187,9 +218,9 @@ class AuthService:
             tm = get_token_manager()
             tm.save_session(
                 group.value,
-                creds.get('access_token'),
-                creds.get('refresh_token'),
-                creds.get('cookies')
+                creds.get("access_token"),
+                creds.get("refresh_token"),
+                creds.get("cookies"),
             )
             logger.info("Credentials saved to TokenManager", service=service)
         except Exception as e:
@@ -220,7 +251,9 @@ class AuthService:
             return -1  # Assume expired if can't parse
         return float(remaining)
 
-    async def refresh_if_needed(self, service: str, threshold_minutes: int = 10) -> dict:
+    async def refresh_if_needed(
+        self, service: str, threshold_minutes: int = 10
+    ) -> dict:
         """
         Check token expiry and refresh if within threshold.
 
@@ -236,20 +269,32 @@ class AuthService:
         validate_service(service)
         group = self._get_group(service)
 
-        logger.debug("refresh_if_needed called", service=service, threshold_minutes=threshold_minutes)
+        logger.debug(
+            "refresh_if_needed called",
+            service=service,
+            threshold_minutes=threshold_minutes,
+        )
 
         if is_test_mode():
-            return {"refreshed": False, "remaining_seconds": 3600, "status": "test_mode"}
+            return {
+                "refreshed": False,
+                "remaining_seconds": 3600,
+                "status": "test_mode",
+            }
 
         try:
             tm = get_token_manager()
             token_data = tm.load_session(group.value)
 
-            if not token_data or not token_data.get('access_token'):
+            if not token_data or not token_data.get("access_token"):
                 logger.warning("No token found for refresh check", service=service)
-                return {"refreshed": False, "remaining_seconds": 0, "status": "no_token"}
+                return {
+                    "refreshed": False,
+                    "remaining_seconds": 0,
+                    "status": "no_token",
+                }
 
-            token = token_data['access_token']
+            token = token_data["access_token"]
             remaining_seconds = self._get_token_remaining_seconds(token)
             threshold_seconds = threshold_minutes * 60
 
@@ -266,11 +311,15 @@ class AuthService:
                 return {
                     "refreshed": False,
                     "remaining_seconds": remaining_seconds,
-                    "status": "valid"
+                    "status": "valid",
                 }
 
             # Token is expired or within threshold - attempt refresh
-            logger.info("Token expiring soon, attempting refresh", service=service, remaining_seconds=round(remaining_seconds))
+            logger.info(
+                "Token expiring soon, attempting refresh",
+                service=service,
+                remaining_seconds=round(remaining_seconds),
+            )
 
             # Use proper API-based refresh via Client.refresh_access_token()
             # This calls /update_token endpoint with cookies - much more reliable
@@ -278,8 +327,8 @@ class AuthService:
             client = Client(
                 group=group,
                 access_token=token,
-                cookies=token_data.get('cookies'),
-                auth_dir=self._session_dir
+                cookies=token_data.get("cookies"),
+                auth_dir=self._session_dir,
             )
 
             async with aiohttp.ClientSession() as session:
@@ -295,26 +344,35 @@ class AuthService:
                         group.value,
                         new_token,
                         None,  # refresh_token (web flow doesn't use this)
-                        new_cookies
+                        new_cookies,
                     )
 
                     new_remaining = self._get_token_remaining_seconds(new_token)
-                    logger.info("Token refreshed successfully via API", service=service, new_remaining_seconds=round(new_remaining))
+                    logger.info(
+                        "Token refreshed successfully via API",
+                        service=service,
+                        new_remaining_seconds=round(new_remaining),
+                    )
                     return {
                         "refreshed": True,
                         "remaining_seconds": new_remaining,
-                        "status": "refreshed"
+                        "status": "refreshed",
                     }
                 else:
-                    logger.warning("API-based refresh failed, session may require re-login", service=service)
+                    logger.warning(
+                        "API-based refresh failed, session may require re-login",
+                        service=service,
+                    )
                     return {
                         "refreshed": False,
                         "remaining_seconds": remaining_seconds,
-                        "status": "refresh_failed"
+                        "status": "refresh_failed",
                     }
 
         except Exception as e:
-            logger.error("refresh_if_needed error", service=service, error=str(e), exc_info=True)
+            logger.error(
+                "refresh_if_needed error", service=service, error=str(e), exc_info=True
+            )
             return {"refreshed": False, "remaining_seconds": 0, "status": f"error: {e}"}
 
     def get_config(self, service: str) -> dict:
@@ -329,6 +387,7 @@ class AuthService:
 
         if is_test_mode():
             from backend.fixtures.test_data import TEST_AUTH_CONFIG
+
             return cast(Dict[Any, Any], TEST_AUTH_CONFIG)
 
         try:

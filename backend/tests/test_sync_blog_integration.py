@@ -4,10 +4,10 @@ Verifies the interaction between sync_service and BlogBackupManager:
 the sync service auto-enqueues blog backup at the end of a successful sync
 when `blogs_full_backup` is enabled in settings.
 """
+
 import asyncio
 import threading
 
-import pytest
 from unittest.mock import patch, AsyncMock
 
 from backend.services.blog_service import BlogBackupManager
@@ -19,7 +19,7 @@ class TestBlogBackupAutoEnqueue:
     def test_manager_start_is_synchronous(self):
         """start() must be a regular function, not a coroutine."""
         manager = BlogBackupManager()
-        with patch.object(manager, '_run_backup', new_callable=AsyncMock):
+        with patch.object(manager, "_run_backup", new_callable=AsyncMock):
             result = manager.start(["hinatazaka46"])
             assert not asyncio.iscoroutine(result)
         manager.shutdown()
@@ -31,7 +31,7 @@ class TestBlogBackupAutoEnqueue:
 
         def call_start():
             try:
-                with patch.object(manager, '_run_backup', new_callable=AsyncMock):
+                with patch.object(manager, "_run_backup", new_callable=AsyncMock):
                     manager.start(["hinatazaka46"])
             except Exception as e:
                 errors.append(e)
@@ -68,7 +68,7 @@ class TestBlogBackupAutoEnqueue:
             while not cancel_event.is_set():
                 await asyncio.sleep(0.01)
 
-        with patch.object(manager, '_run_backup', side_effect=mock_run_backup):
+        with patch.object(manager, "_run_backup", side_effect=mock_run_backup):
             manager.start(["hinatazaka46"])
             assert entered.wait(timeout=5), "_run_backup was never entered"
             assert manager._thread is not None

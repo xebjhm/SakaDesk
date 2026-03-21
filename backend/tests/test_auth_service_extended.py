@@ -1,7 +1,7 @@
 """Extended tests for AuthService — session management, concurrency, credentials, error handling."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -28,7 +28,9 @@ class TestSessionPersistence:
             result = auth_service._get_service_auth_status("hinatazaka46")
             assert result == {"authenticated": False}
 
-    def test_token_data_without_access_token_returns_unauthenticated(self, auth_service):
+    def test_token_data_without_access_token_returns_unauthenticated(
+        self, auth_service
+    ):
         """Session data present but missing access_token should be unauthenticated."""
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
             mock_tm.return_value.load_session.return_value = {
@@ -47,7 +49,9 @@ class TestSessionPersistence:
                 "cookies": {"sid": "abc"},
             }
             with patch.object(auth_service, "_is_token_expired", return_value=False):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=9999999999):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=9999999999
+                ):
                     result = auth_service._get_service_auth_status("hinatazaka46")
 
         assert result["authenticated"] is True
@@ -61,7 +65,9 @@ class TestSessionPersistence:
                 "access_token": "expired.jwt.token",
             }
             with patch.object(auth_service, "_is_token_expired", return_value=True):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=1000):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=1000
+                ):
                     result = auth_service._get_service_auth_status("hinatazaka46")
 
         assert result["authenticated"] is False
@@ -77,7 +83,9 @@ class TestSessionPersistence:
                 "cookies": {},
             }
             with patch.object(auth_service, "_is_token_expired", return_value=False):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=None):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=None
+                ):
                     result = auth_service._get_service_auth_status("hinatazaka46")
         assert result["authenticated"] is True
 
@@ -88,7 +96,9 @@ class TestSessionPersistence:
                 "access_token": "tok",
             }
             with patch.object(auth_service, "_is_token_expired", return_value=False):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=None):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=None
+                ):
                     result = auth_service._get_service_auth_status("hinatazaka46")
         assert result["authenticated"] is True
 
@@ -103,30 +113,50 @@ class TestTokenExpiryHelpers:
 
     def test_is_token_expired_delegates_to_pysaka(self, auth_service):
         """_is_token_expired should call pysaka's is_jwt_expired."""
-        with patch("backend.services.auth_service.is_jwt_expired", return_value=True) as mock_exp:
-            with patch("backend.services.auth_service.get_jwt_remaining_seconds", return_value=0):
-                with patch("backend.services.auth_service.parse_jwt_expiry", return_value=100):
+        with patch(
+            "backend.services.auth_service.is_jwt_expired", return_value=True
+        ) as mock_exp:
+            with patch(
+                "backend.services.auth_service.get_jwt_remaining_seconds",
+                return_value=0,
+            ):
+                with patch(
+                    "backend.services.auth_service.parse_jwt_expiry", return_value=100
+                ):
                     result = auth_service._is_token_expired("some.token")
         assert result is True
         mock_exp.assert_called_once_with("some.token")
 
     def test_is_token_expired_false_when_valid(self, auth_service):
         with patch("backend.services.auth_service.is_jwt_expired", return_value=False):
-            with patch("backend.services.auth_service.get_jwt_remaining_seconds", return_value=3600):
-                with patch("backend.services.auth_service.parse_jwt_expiry", return_value=9999999):
+            with patch(
+                "backend.services.auth_service.get_jwt_remaining_seconds",
+                return_value=3600,
+            ):
+                with patch(
+                    "backend.services.auth_service.parse_jwt_expiry",
+                    return_value=9999999,
+                ):
                     result = auth_service._is_token_expired("valid.token")
         assert result is False
 
     def test_is_token_expired_handles_none_remaining(self, auth_service):
         """When get_jwt_remaining_seconds returns None, warning is logged but still works."""
         with patch("backend.services.auth_service.is_jwt_expired", return_value=True):
-            with patch("backend.services.auth_service.get_jwt_remaining_seconds", return_value=None):
-                with patch("backend.services.auth_service.parse_jwt_expiry", return_value=None):
+            with patch(
+                "backend.services.auth_service.get_jwt_remaining_seconds",
+                return_value=None,
+            ):
+                with patch(
+                    "backend.services.auth_service.parse_jwt_expiry", return_value=None
+                ):
                     result = auth_service._is_token_expired("malformed.token")
         assert result is True
 
     def test_get_token_expiry_timestamp_delegates(self, auth_service):
-        with patch("backend.services.auth_service.parse_jwt_expiry", return_value=1717200000) as mock_parse:
+        with patch(
+            "backend.services.auth_service.parse_jwt_expiry", return_value=1717200000
+        ) as mock_parse:
             result = auth_service._get_token_expiry_timestamp("some.jwt")
         assert result == 1717200000
         mock_parse.assert_called_once_with("some.jwt")
@@ -136,13 +166,17 @@ class TestTokenExpiryHelpers:
             assert auth_service._get_token_expiry_timestamp("bad.jwt") is None
 
     def test_get_token_remaining_seconds_positive(self, auth_service):
-        with patch("backend.services.auth_service.get_jwt_remaining_seconds", return_value=1800):
+        with patch(
+            "backend.services.auth_service.get_jwt_remaining_seconds", return_value=1800
+        ):
             result = auth_service._get_token_remaining_seconds("tok")
         assert result == 1800.0
 
     def test_get_token_remaining_seconds_none_returns_neg1(self, auth_service):
         """If pysaka cannot parse the token, return -1 (assume expired)."""
-        with patch("backend.services.auth_service.get_jwt_remaining_seconds", return_value=None):
+        with patch(
+            "backend.services.auth_service.get_jwt_remaining_seconds", return_value=None
+        ):
             result = auth_service._get_token_remaining_seconds("bad")
         assert result == -1
 
@@ -169,10 +203,14 @@ class TestConcurrentLoginPrevention:
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(side_effect=fake_login)
                 with patch.object(auth_service, "_save_credentials"):
-                    task1 = asyncio.create_task(auth_service.login_with_browser("hinatazaka46"))
+                    task1 = asyncio.create_task(
+                        auth_service.login_with_browser("hinatazaka46")
+                    )
                     # Small delay to ensure task1 acquires the lock first
                     await asyncio.sleep(0.01)
-                    task2 = asyncio.create_task(auth_service.login_with_browser("hinatazaka46"))
+                    task2 = asyncio.create_task(
+                        auth_service.login_with_browser("hinatazaka46")
+                    )
                     await asyncio.gather(task1, task2)
 
         asyncio.run(run())
@@ -181,6 +219,7 @@ class TestConcurrentLoginPrevention:
 
     def test_browser_lock_locked_check(self, auth_service):
         """When lock is held, login_with_browser logs a warning but still proceeds."""
+
         async def run():
             # Manually acquire lock to simulate a login in progress
             async with auth_service._browser_lock:
@@ -222,7 +261,10 @@ class TestCredentialStorage:
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
             auth_service._save_credentials("sakurazaka46", {})
             mock_tm.return_value.save_session.assert_called_once_with(
-                "sakurazaka46", None, None, None,
+                "sakurazaka46",
+                None,
+                None,
+                None,
             )
 
     def test_save_credentials_raises_on_tm_error(self, auth_service):
@@ -287,7 +329,9 @@ class TestAuthStatusErrorHandling:
     def test_token_manager_exception_returns_unauthenticated(self, auth_service):
         """If TokenManager raises, _get_service_auth_status returns authenticated=False."""
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
-            mock_tm.return_value.load_session.side_effect = RuntimeError("keyring unavailable")
+            mock_tm.return_value.load_session.side_effect = RuntimeError(
+                "keyring unavailable"
+            )
             result = auth_service._get_service_auth_status("hinatazaka46")
         assert result == {"authenticated": False}
 
@@ -316,6 +360,7 @@ class TestLoginWithBrowser:
 
     def test_login_success_saves_credentials(self, auth_service):
         """Successful browser login should save creds and return True."""
+
         async def run():
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(return_value={"access_token": "tok"})
@@ -328,6 +373,7 @@ class TestLoginWithBrowser:
 
     def test_login_returns_false_when_no_creds(self, auth_service):
         """If BrowserAuth returns None/falsy, login returns False."""
+
         async def run():
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(return_value=None)
@@ -338,6 +384,7 @@ class TestLoginWithBrowser:
 
     def test_login_returns_false_on_exception(self, auth_service):
         """If BrowserAuth raises, login catches it and returns False."""
+
         async def run():
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(side_effect=RuntimeError("chrome crash"))
@@ -361,6 +408,7 @@ class TestRefreshIfNeeded:
 
     def test_no_token_returns_no_token_status(self, auth_service):
         """Missing token data should return status='no_token'."""
+
         async def run():
             with patch("backend.services.auth_service.get_token_manager") as mock_tm:
                 mock_tm.return_value.load_session.return_value = None
@@ -382,13 +430,18 @@ class TestRefreshIfNeeded:
 
     def test_valid_token_above_threshold_no_refresh(self, auth_service):
         """Token with plenty of time left should not refresh."""
+
         async def run():
             with patch("backend.services.auth_service.get_token_manager") as mock_tm:
                 mock_tm.return_value.load_session.return_value = {
                     "access_token": "valid.tok",
                 }
-                with patch.object(auth_service, "_get_token_remaining_seconds", return_value=7200.0):
-                    return await auth_service.refresh_if_needed("hinatazaka46", threshold_minutes=10)
+                with patch.object(
+                    auth_service, "_get_token_remaining_seconds", return_value=7200.0
+                ):
+                    return await auth_service.refresh_if_needed(
+                        "hinatazaka46", threshold_minutes=10
+                    )
 
         result = asyncio.run(run())
         assert result["status"] == "valid"
@@ -397,27 +450,40 @@ class TestRefreshIfNeeded:
 
     def test_token_within_threshold_attempts_refresh(self, auth_service):
         """Token expiring soon should trigger refresh via Client API."""
+
         async def run():
             with patch("backend.services.auth_service.get_token_manager") as mock_tm:
                 mock_tm.return_value.load_session.return_value = {
                     "access_token": "old.tok",
                     "cookies": {"s": "v"},
                 }
-                with patch.object(auth_service, "_get_token_remaining_seconds") as mock_rem:
+                with patch.object(
+                    auth_service, "_get_token_remaining_seconds"
+                ) as mock_rem:
                     # First call: expiring soon; second call: refreshed token has more time
                     mock_rem.side_effect = [300.0, 3600.0]
-                    with patch("backend.services.auth_service.Client") as mock_client_cls:
+                    with patch(
+                        "backend.services.auth_service.Client"
+                    ) as mock_client_cls:
                         mock_client = MagicMock()
                         mock_client.access_token = "new.tok"
                         mock_client.cookies = {"s": "v2"}
                         mock_client.refresh_access_token = AsyncMock(return_value=True)
                         mock_client_cls.return_value = mock_client
 
-                        with patch("backend.services.auth_service.aiohttp.ClientSession") as mock_session_cls:
+                        with patch(
+                            "backend.services.auth_service.aiohttp.ClientSession"
+                        ) as mock_session_cls:
                             mock_session = AsyncMock()
-                            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-                            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-                            return await auth_service.refresh_if_needed("hinatazaka46", threshold_minutes=10)
+                            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                                return_value=mock_session
+                            )
+                            mock_session_cls.return_value.__aexit__ = AsyncMock(
+                                return_value=False
+                            )
+                            return await auth_service.refresh_if_needed(
+                                "hinatazaka46", threshold_minutes=10
+                            )
 
         result = asyncio.run(run())
         assert result["refreshed"] is True
@@ -426,22 +492,33 @@ class TestRefreshIfNeeded:
 
     def test_token_refresh_fails_returns_refresh_failed(self, auth_service):
         """When Client.refresh_access_token returns False, status is refresh_failed."""
+
         async def run():
             with patch("backend.services.auth_service.get_token_manager") as mock_tm:
                 mock_tm.return_value.load_session.return_value = {
                     "access_token": "old.tok",
                     "cookies": {},
                 }
-                with patch.object(auth_service, "_get_token_remaining_seconds", return_value=100.0):
-                    with patch("backend.services.auth_service.Client") as mock_client_cls:
+                with patch.object(
+                    auth_service, "_get_token_remaining_seconds", return_value=100.0
+                ):
+                    with patch(
+                        "backend.services.auth_service.Client"
+                    ) as mock_client_cls:
                         mock_client = MagicMock()
                         mock_client.refresh_access_token = AsyncMock(return_value=False)
                         mock_client_cls.return_value = mock_client
 
-                        with patch("backend.services.auth_service.aiohttp.ClientSession") as mock_session_cls:
+                        with patch(
+                            "backend.services.auth_service.aiohttp.ClientSession"
+                        ) as mock_session_cls:
                             mock_session = AsyncMock()
-                            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-                            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+                            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                                return_value=mock_session
+                            )
+                            mock_session_cls.return_value.__aexit__ = AsyncMock(
+                                return_value=False
+                            )
                             return await auth_service.refresh_if_needed("hinatazaka46")
 
         result = asyncio.run(run())
@@ -450,6 +527,7 @@ class TestRefreshIfNeeded:
 
     def test_refresh_exception_returns_error(self, auth_service):
         """An unexpected error during refresh returns an error status."""
+
         async def run():
             with patch("backend.services.auth_service.get_token_manager") as mock_tm:
                 mock_tm.return_value.load_session.side_effect = RuntimeError("kaboom")
@@ -507,8 +585,12 @@ class TestStorageType:
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
             mock_tm.return_value.load_session.return_value = {"access_token": "tok"}
             with patch.object(auth_service, "_is_token_expired", return_value=False):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=None):
-                    with patch("backend.services.auth_service.is_dev_mode", return_value=True):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=None
+                ):
+                    with patch(
+                        "backend.services.auth_service.is_dev_mode", return_value=True
+                    ):
                         result = auth_service._get_service_auth_status("hinatazaka46")
         assert result["storage_type"] == "development"
 
@@ -516,7 +598,11 @@ class TestStorageType:
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
             mock_tm.return_value.load_session.return_value = {"access_token": "tok"}
             with patch.object(auth_service, "_is_token_expired", return_value=False):
-                with patch.object(auth_service, "_get_token_expiry_timestamp", return_value=None):
-                    with patch("backend.services.auth_service.is_dev_mode", return_value=False):
+                with patch.object(
+                    auth_service, "_get_token_expiry_timestamp", return_value=None
+                ):
+                    with patch(
+                        "backend.services.auth_service.is_dev_mode", return_value=False
+                    ):
                         result = auth_service._get_service_auth_status("hinatazaka46")
         assert result["storage_type"] == "secure"

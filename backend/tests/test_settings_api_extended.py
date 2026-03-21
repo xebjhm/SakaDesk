@@ -7,12 +7,8 @@ This file covers the remaining untested routes and branches.
 
 import asyncio
 import contextlib
-import json
-import tempfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -23,6 +19,7 @@ client = TestClient(app)
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _default_config(**overrides):
     """Return a settings dict that satisfies SettingsResponse fields."""
@@ -69,6 +66,7 @@ def _patch_store(load_return=None, update_side_effect=None):
 # ===========================================================================
 # GET /api/settings
 # ===========================================================================
+
 
 class TestGetSettings:
     """Tests for GET /api/settings (global settings retrieval)."""
@@ -132,6 +130,7 @@ class TestGetSettings:
 # POST /api/settings
 # ===========================================================================
 
+
 class TestUpdateSettings:
     """Tests for POST /api/settings (global settings update)."""
 
@@ -144,9 +143,12 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "output_dir": "/new/output",
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "output_dir": "/new/output",
+                },
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["output_dir"] == "/new/output"
@@ -161,9 +163,12 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "auto_sync_enabled": False,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "auto_sync_enabled": False,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["auto_sync_enabled"] is False
 
@@ -176,9 +181,12 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "sync_interval_minutes": 30,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "sync_interval_minutes": 30,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["sync_interval_minutes"] == 30
 
@@ -191,9 +199,12 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "adaptive_sync_enabled": False,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "adaptive_sync_enabled": False,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["adaptive_sync_enabled"] is False
 
@@ -210,9 +221,12 @@ class TestUpdateSettings:
             patch("backend.api.settings._store_update", AsyncMock(side_effect=_update)),
             patch("backend.api.settings.set_notifications_enabled") as mock_notify,
         ):
-            response = client.post("/api/settings", json={
-                "notifications_enabled": False,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "notifications_enabled": False,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["notifications_enabled"] is False
         # Called once during _apply inside update_settings
@@ -227,9 +241,12 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "blogs_full_backup": True,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "blogs_full_backup": True,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["blogs_full_backup"] is True
 
@@ -242,12 +259,15 @@ class TestUpdateSettings:
             return cfg
 
         with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post("/api/settings", json={
-                "output_dir": "/multi/update",
-                "auto_sync_enabled": False,
-                "sync_interval_minutes": 60,
-                "blogs_full_backup": True,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "output_dir": "/multi/update",
+                    "auto_sync_enabled": False,
+                    "sync_interval_minutes": 60,
+                    "blogs_full_backup": True,
+                },
+            )
         assert response.status_code == 200
         data = response.json()
         assert data["output_dir"] == "/multi/update"
@@ -285,9 +305,12 @@ class TestUpdateSettings:
                 return_value="/platform/default",
             ),
         ):
-            response = client.post("/api/settings", json={
-                "auto_sync_enabled": False,
-            })
+            response = client.post(
+                "/api/settings",
+                json={
+                    "auto_sync_enabled": False,
+                },
+            )
         assert response.status_code == 200
         assert response.json()["output_dir"] == "/platform/default"
 
@@ -295,6 +318,7 @@ class TestUpdateSettings:
 # ===========================================================================
 # GET /api/settings/fresh
 # ===========================================================================
+
 
 class TestFreshInstallCheck:
     """Tests for GET /api/settings/fresh."""
@@ -367,11 +391,13 @@ class TestFreshInstallCheck:
 # POST /api/settings/select-folder
 # ===========================================================================
 
+
 class TestSelectFolder:
     """Tests for POST /api/settings/select-folder."""
 
     def test_returns_selected_path(self):
         """Returns the path chosen by the user."""
+
         async def fake_wait_for(coro, *, timeout=None):
             return "/selected/folder"
 
@@ -396,6 +422,7 @@ class TestSelectFolder:
 
     def test_returns_none_when_user_cancels(self):
         """Returns path=None when user cancels the dialog."""
+
         async def fake_wait_for(coro, *, timeout=None):
             return None
 
@@ -412,6 +439,7 @@ class TestSelectFolder:
 
     def test_returns_error_on_timeout(self):
         """Returns path=None with error message on timeout."""
+
         async def fake_wait_for(coro, *, timeout=None):
             raise asyncio.TimeoutError()
 
@@ -430,6 +458,7 @@ class TestSelectFolder:
 
     def test_returns_error_on_executor_exception(self):
         """Returns path=None with error on executor failure."""
+
         async def fake_wait_for(coro, *, timeout=None):
             raise RuntimeError("executor crashed")
 
@@ -450,6 +479,7 @@ class TestSelectFolder:
 # ===========================================================================
 # POST /api/settings/service/{service}/init
 # ===========================================================================
+
 
 class TestInitServiceSettings:
     """Tests for POST /api/settings/service/{service}/init."""

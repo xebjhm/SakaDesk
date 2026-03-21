@@ -2,6 +2,7 @@
 Path resolver for multi-service content API.
 Converts API parameters to disk paths, decoupling API from disk structure.
 """
+
 from pathlib import Path
 import re
 from typing import cast
@@ -17,7 +18,7 @@ def get_output_dir() -> Path:
     settings_path = get_settings_path()
     if settings_path.exists():
         try:
-            with open(settings_path, 'r', encoding='utf-8') as f:
+            with open(settings_path, "r", encoding="utf-8") as f:
                 settings = json.load(f)
                 path_str = settings.get("output_dir")
                 if path_str:
@@ -71,11 +72,7 @@ def resolve_messages_file(service: str, talk_room_id: int, member_id: int) -> Pa
 
 
 def resolve_media_path(
-    service: str,
-    talk_room_id: int,
-    member_id: int,
-    media_type: str,
-    filename: str
+    service: str, talk_room_id: int, member_id: int, media_type: str, filename: str
 ) -> Path:
     """Resolve path to a media file."""
     member_path = resolve_member_path(service, talk_room_id, member_id)

@@ -6,7 +6,6 @@ member name sanitization, removed-blog tracking, and service validation.
 
 import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -560,7 +559,7 @@ class TestDownloadImages:
         current_concurrent = 0
         lock = asyncio.Lock()
 
-        original_get = MagicMock()
+        MagicMock()
 
         async def tracked_fetch(*args, **kwargs):
             nonlocal max_concurrent, current_concurrent
@@ -711,8 +710,7 @@ class TestRewriteLocalImages:
         content = {
             "content": {
                 "html": (
-                    '<img src="https://a.com/1.jpg">'
-                    '<img src="https://b.com/2.png">'
+                    '<img src="https://a.com/1.jpg"><img src="https://b.com/2.png">'
                 ),
             },
             "images": [
@@ -766,7 +764,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46", limit=10)
         assert posts[0]["id"] == "b2"
         assert posts[1]["id"] == "b1"
@@ -777,7 +777,7 @@ class TestGetRecentPosts:
             {
                 "id": f"b{i}",
                 "title": f"T{i}",
-                "published_at": f"2025-01-{i+1:02d}",
+                "published_at": f"2025-01-{i + 1:02d}",
                 "url": f"http://u{i}",
             }
             for i in range(30)
@@ -787,7 +787,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46", limit=5)
         assert len(posts) == 5
 
@@ -821,7 +823,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46", member_ids=["m1"])
         assert len(posts) == 1
         assert posts[0]["member_name"] == "Keep"
@@ -852,7 +856,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46")
         assert len(posts) == 1
         assert posts[0]["id"] == "b2"
@@ -877,7 +883,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46")
         assert len(posts) == 0
 
@@ -912,7 +920,9 @@ class TestGetRecentPosts:
             "last_sync": None,
             "last_download": None,
         }
-        with patch.object(svc, "load_blog_index", new_callable=AsyncMock, return_value=index):
+        with patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value=index
+        ):
             posts = await svc.get_recent_posts("hinatazaka46")
         assert len(posts) == 1
 

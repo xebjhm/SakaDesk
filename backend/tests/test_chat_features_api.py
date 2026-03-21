@@ -35,16 +35,18 @@ class TestGetLetters:
         """Returns letters on success."""
         mock_session = AsyncMock()
         mock_client = MagicMock()
-        mock_client.get_letters = AsyncMock(return_value=[
-            {
-                "id": 1,
-                "text": "Hello!",
-                "created_at": "2025-01-01T00:00:00Z",
-                "updated_at": "2025-01-01T00:00:00Z",
-                "file": "https://example.com/img.jpg",
-                "thumbnail": None,
-            },
-        ])
+        mock_client.get_letters = AsyncMock(
+            return_value=[
+                {
+                    "id": 1,
+                    "text": "Hello!",
+                    "created_at": "2025-01-01T00:00:00Z",
+                    "updated_at": "2025-01-01T00:00:00Z",
+                    "file": "https://example.com/img.jpg",
+                    "thumbnail": None,
+                },
+            ]
+        )
         mock_get_client.return_value = (mock_client, mock_session)
         response = client.get("/api/chat/letters/40?service=hinatazaka46")
         assert response.status_code == 200
@@ -97,10 +99,12 @@ class TestGetStreak:
         """Returns streak data on success."""
         mock_session = AsyncMock()
         mock_client = MagicMock()
-        mock_client.get_subscription_streak = AsyncMock(return_value={
-            "current": 15,
-            "current_start_at_date": "2024-12-15",
-        })
+        mock_client.get_subscription_streak = AsyncMock(
+            return_value={
+                "current": 15,
+                "current_start_at_date": "2024-12-15",
+            }
+        )
         mock_get_client.return_value = (mock_client, mock_session)
         response = client.get("/api/chat/streak/40?service=hinatazaka46")
         assert response.status_code == 200
@@ -128,7 +132,9 @@ class TestGetStreak:
         """Returns 500 on API error."""
         mock_session = AsyncMock()
         mock_client = MagicMock()
-        mock_client.get_subscription_streak = AsyncMock(side_effect=RuntimeError("fail"))
+        mock_client.get_subscription_streak = AsyncMock(
+            side_effect=RuntimeError("fail")
+        )
         mock_get_client.return_value = (mock_client, mock_session)
         response = client.get("/api/chat/streak/40?service=hinatazaka46")
         assert response.status_code == 500
@@ -156,7 +162,9 @@ class TestGetMessageDates:
                 {"id": 3, "timestamp": "2025-01-16T09:00:00Z", "text": "c"},
             ]
         }
-        (member_dir / "messages.json").write_text(json.dumps(messages), encoding="utf-8")
+        (member_dir / "messages.json").write_text(
+            json.dumps(messages), encoding="utf-8"
+        )
         mock_output.return_value = tmp_path
         response = client.get("/api/chat/message_dates/hinatazaka46/member1")
         assert response.status_code == 200
@@ -206,18 +214,25 @@ class TestGetOutputDir:
 
     def test_output_dir_from_settings(self, tmp_path):
         from backend.api.chat_features import _get_output_dir
+
         settings_path = tmp_path / "settings.json"
         settings_path.write_text(
             json.dumps({"output_dir": "/custom/path"}),
             encoding="utf-8",
         )
-        with patch("backend.api.chat_features.get_settings_path", return_value=settings_path):
+        with patch(
+            "backend.api.chat_features.get_settings_path", return_value=settings_path
+        ):
             result = _get_output_dir()
         assert result == Path("/custom/path")
 
     def test_output_dir_default(self, tmp_path):
         from backend.api.chat_features import _get_output_dir
-        with patch("backend.api.chat_features.get_settings_path", return_value=tmp_path / "missing.json"):
+
+        with patch(
+            "backend.api.chat_features.get_settings_path",
+            return_value=tmp_path / "missing.json",
+        ):
             result = _get_output_dir()
         assert "SakaDesk" in str(result)
 

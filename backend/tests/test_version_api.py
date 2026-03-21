@@ -1,8 +1,7 @@
 """Tests for version API endpoints (GET /api/version, upgrade lifecycle)."""
 
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
-from pathlib import Path
+from datetime import datetime, timezone
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -14,6 +13,7 @@ client = TestClient(app)
 def _reset_version_cache():
     """Reset the module-level cache and upgrade state between tests."""
     import backend.api.version as v
+
     v._cache = {
         "last_check": None,
         "latest_version": None,
@@ -53,6 +53,7 @@ class TestCheckVersion:
     def test_check_version_no_update(self, mock_fetch):
         """Returns no update when latest == current."""
         from backend.version import APP_VERSION
+
         mock_fetch.return_value = {
             "last_check": datetime.now(timezone.utc),
             "latest_version": APP_VERSION.lstrip("v"),
@@ -117,6 +118,7 @@ class TestUpgradeStatus:
     def test_upgrade_status_reflects_state(self):
         """Returns current upgrade state."""
         import backend.api.version as v
+
         v._upgrade_state["state"] = "downloading"
         v._upgrade_state["progress"] = 50.0
         v._upgrade_state["version"] = "1.0.0"
@@ -161,6 +163,7 @@ class TestStartUpgrade:
     def test_start_upgrade_already_downloading(self, mock_supported):
         """Returns error when upgrade is already in progress."""
         import backend.api.version as v
+
         v._upgrade_state["state"] = "downloading"
         response = client.post("/api/version/upgrade/start")
         data = response.json()
@@ -200,6 +203,7 @@ class TestLaunchUpgrade:
     def test_launch_upgrade_no_script(self):
         """Returns error when script path is missing."""
         import backend.api.version as v
+
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["script_path"] = None
         response = client.post("/api/version/upgrade/launch")
@@ -211,6 +215,7 @@ class TestLaunchUpgrade:
     def test_launch_upgrade_success(self, mock_launch, tmp_path):
         """Successfully launches upgrade when ready."""
         import backend.api.version as v
+
         script = tmp_path / "upgrade.bat"
         script.touch()
         v._upgrade_state["state"] = "ready"
@@ -223,6 +228,7 @@ class TestLaunchUpgrade:
     def test_launch_upgrade_failure(self, mock_launch, tmp_path):
         """Returns error when launch fails."""
         import backend.api.version as v
+
         script = tmp_path / "upgrade.bat"
         script.touch()
         v._upgrade_state["state"] = "ready"
@@ -242,6 +248,7 @@ class TestCancelUpgrade:
     def test_cancel_upgrade(self, mock_cleanup):
         """Cancelling resets state to idle."""
         import backend.api.version as v
+
         v._upgrade_state["state"] = "downloading"
         v._upgrade_state["progress"] = 50.0
         response = client.post("/api/version/upgrade/cancel")
@@ -257,24 +264,30 @@ class TestParseVersion:
 
     def test_parse_version_with_v_prefix(self):
         from backend.api.version import _parse_version
+
         assert _parse_version("v1.2.3") == (1, 2, 3)
 
     def test_parse_version_without_prefix(self):
         from backend.api.version import _parse_version
+
         assert _parse_version("0.5.1") == (0, 5, 1)
 
     def test_parse_version_invalid(self):
         from backend.api.version import _parse_version
+
         assert _parse_version("invalid") == (0, 0, 0)
 
     def test_is_newer_true(self):
         from backend.api.version import _is_newer
+
         assert _is_newer("1.1.0", "1.0.0") is True
 
     def test_is_newer_false_same(self):
         from backend.api.version import _is_newer
+
         assert _is_newer("1.0.0", "1.0.0") is False
 
     def test_is_newer_false_older(self):
         from backend.api.version import _is_newer
+
         assert _is_newer("0.9.0", "1.0.0") is False

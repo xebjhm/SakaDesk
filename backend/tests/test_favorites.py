@@ -50,7 +50,7 @@ class TestLocalFavoriteUpdate:
             settings = {"output_dir": "/custom/output"}
             settings_path.write_text(json.dumps(settings), encoding="utf-8")
 
-            with patch('api.favorites.get_settings_path', return_value=settings_path):
+            with patch("api.favorites.get_settings_path", return_value=settings_path):
                 result = _get_output_dir()
                 assert result == Path("/custom/output")
 
@@ -58,7 +58,7 @@ class TestLocalFavoriteUpdate:
         """Test default output_dir when settings missing."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             nonexistent = Path(tmp_dir) / "nonexistent.json"
-            with patch('api.favorites.get_settings_path', return_value=nonexistent):
+            with patch("api.favorites.get_settings_path", return_value=nonexistent):
                 result = _get_output_dir()
                 assert result == Path.home() / "Documents" / "SakaDesk"
 
@@ -66,7 +66,9 @@ class TestLocalFavoriteUpdate:
         """Test updating favorite in local messages.json."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create test directory structure
-            member_dir = Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            member_dir = (
+                Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            )
             member_dir.mkdir(parents=True)
 
             messages_data = {
@@ -78,7 +80,7 @@ class TestLocalFavoriteUpdate:
             msg_file = member_dir / "messages.json"
             msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
 
-            with patch('api.favorites._get_output_dir', return_value=Path(tmp_dir)):
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
                 result = _update_local_favorite(12345, True)
 
             assert result is True
@@ -92,7 +94,9 @@ class TestLocalFavoriteUpdate:
         """Test updating favorite when message doesn't exist."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create test directory structure with different message
-            member_dir = Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            member_dir = (
+                Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            )
             member_dir.mkdir(parents=True)
 
             messages_data = {
@@ -103,7 +107,7 @@ class TestLocalFavoriteUpdate:
             msg_file = member_dir / "messages.json"
             msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
 
-            with patch('api.favorites._get_output_dir', return_value=Path(tmp_dir)):
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
                 result = _update_local_favorite(12345, True)
 
             assert result is False
@@ -111,7 +115,7 @@ class TestLocalFavoriteUpdate:
     def test_update_local_favorite_no_messages_dir(self):
         """Test updating favorite when output dir is empty."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            with patch('api.favorites._get_output_dir', return_value=Path(tmp_dir)):
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
                 result = _update_local_favorite(12345, True)
             assert result is False
 
@@ -120,27 +124,40 @@ class TestLocalFavoriteUpdate:
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Create test directories for multiple services
             for service in ["日向坂46", "櫻坂46"]:
-                member_dir = Path(tmp_dir) / service / "messages" / "1 Group" / "40 Member"
+                member_dir = (
+                    Path(tmp_dir) / service / "messages" / "1 Group" / "40 Member"
+                )
                 member_dir.mkdir(parents=True)
                 msg_file = member_dir / "messages.json"
 
                 if service == "櫻坂46":
                     # Put target message in second service
                     messages_data = {
-                        "messages": [{"id": 12345, "text": "Found", "is_favorite": False}]
+                        "messages": [
+                            {"id": 12345, "text": "Found", "is_favorite": False}
+                        ]
                     }
                 else:
                     messages_data = {
-                        "messages": [{"id": 99999, "text": "Other", "is_favorite": False}]
+                        "messages": [
+                            {"id": 99999, "text": "Other", "is_favorite": False}
+                        ]
                     }
                 msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
 
-            with patch('api.favorites._get_output_dir', return_value=Path(tmp_dir)):
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
                 result = _update_local_favorite(12345, True)
 
             assert result is True
 
             # Verify only the correct file was updated
-            sakura_file = Path(tmp_dir) / "櫻坂46" / "messages" / "1 Group" / "40 Member" / "messages.json"
+            sakura_file = (
+                Path(tmp_dir)
+                / "櫻坂46"
+                / "messages"
+                / "1 Group"
+                / "40 Member"
+                / "messages.json"
+            )
             updated = json.loads(sakura_file.read_text(encoding="utf-8"))
             assert updated["messages"][0]["is_favorite"] is True

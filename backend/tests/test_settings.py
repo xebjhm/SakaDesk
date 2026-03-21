@@ -1,4 +1,5 @@
 """Tests for settings API - global and per-service settings."""
+
 import contextlib
 import pytest
 import tempfile
@@ -14,7 +15,7 @@ client = TestClient(app)
 @pytest.fixture
 def temp_settings_file():
     """Create a temporary settings file for isolated testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
         settings_path = Path(f.name)
     # Write empty initial config
     settings_path.write_text("{}")
@@ -28,8 +29,10 @@ def temp_settings_file():
 def patch_settings_file(temp_path: Path):
     """Patch settings file path in both the API module and the centralized store."""
     with (
-        patch('backend.api.settings.SETTINGS_FILE', temp_path),
-        patch('backend.services.settings_store.get_settings_path', return_value=temp_path),
+        patch("backend.api.settings.SETTINGS_FILE", temp_path),
+        patch(
+            "backend.services.settings_store.get_settings_path", return_value=temp_path
+        ),
     ):
         yield
 
@@ -40,20 +43,22 @@ def test_settings_has_global_and_services_structure(temp_settings_file):
 
     with patch_settings_file(temp_settings_file):
         # Save new structure
-        save_config({
-            "global": {
-                "theme": "dark",
-                "notifications_enabled": True,
-            },
-            "services": {
-                "hinatazaka46": {
-                    "sync_enabled": True,
-                    "blogs_full_backup": False,
-                }
-            },
-            "is_configured": True,
-            "output_dir": "/tmp/output",
-        })
+        save_config(
+            {
+                "global": {
+                    "theme": "dark",
+                    "notifications_enabled": True,
+                },
+                "services": {
+                    "hinatazaka46": {
+                        "sync_enabled": True,
+                        "blogs_full_backup": False,
+                    }
+                },
+                "is_configured": True,
+                "output_dir": "/tmp/output",
+            }
+        )
 
         config = load_config()
         assert "is_configured" in config  # Backward compat
@@ -87,7 +92,7 @@ def test_update_service_settings(temp_settings_file):
                 "adaptive_sync_enabled": True,
                 "last_sync": "2024-01-01T00:00:00Z",
                 "blogs_full_backup": True,
-            }
+            },
         )
         assert response.status_code == 200
         data = response.json()
@@ -104,7 +109,7 @@ def test_update_service_settings_invalid_service(temp_settings_file):
                 "sync_enabled": True,
                 "adaptive_sync_enabled": True,
                 "blogs_full_backup": False,
-            }
+            },
         )
         assert response.status_code == 400
 
@@ -120,7 +125,7 @@ def test_update_service_settings_persists(temp_settings_file):
                 "adaptive_sync_enabled": False,
                 "last_sync": "2024-01-15T12:00:00Z",
                 "blogs_full_backup": True,
-            }
+            },
         )
         assert response.status_code == 200
 

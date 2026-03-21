@@ -2,6 +2,7 @@
 Bug Report API for SakaDesk.
 Collects diagnostics with smart log filtering and redaction.
 """
+
 import json
 import os
 import platform
@@ -26,6 +27,7 @@ router = APIRouter(prefix="/api/report", tags=["report"])
 # Try to get pysaka version
 try:
     import pysaka
+
     PYSAKA_VERSION = getattr(pysaka, "__version__", "unknown")
 except Exception:
     PYSAKA_VERSION = "unknown"
@@ -33,6 +35,7 @@ except Exception:
 
 class ReportContext(BaseModel):
     """Context passed from frontend about current view."""
+
     category: str  # sync_data, playback, login, other
     member_path: Optional[str] = None
     message_id: Optional[int] = None
@@ -42,6 +45,7 @@ class ReportContext(BaseModel):
 
 class ReportResponse(BaseModel):
     """Response with diagnostics and GitHub URL."""
+
     diagnostics: dict
     github_url: str
 
@@ -118,7 +122,9 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
         for line in error_lines:
             if _is_error_or_warning(line):
-                redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
+                redacted = _redact_path(
+                    _redact_nickname(line.strip(), nickname), username
+                )
                 errors.append(redacted)
 
         # Deduplicate (errors that appear in recent don't need to be in both)
@@ -127,7 +133,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
         # Cap total at 150
         if len(errors) + len(recent) > 150:
-            errors = errors[-(150 - len(recent)):]
+            errors = errors[-(150 - len(recent)) :]
 
     except Exception as e:
         return {"errors": [], "recent": [f"Error reading logs: {e}"]}
@@ -148,13 +154,17 @@ def _get_token_expiry() -> dict:
 
                 if remaining is not None:
                     if remaining < 0:
-                        return {"has_token": True, "token_expires_in": "expired", "groups_configured": [group.value]}
+                        return {
+                            "has_token": True,
+                            "token_expires_in": "expired",
+                            "groups_configured": [group.value],
+                        }
                     hours = remaining // 3600
                     mins = (remaining % 3600) // 60
                     return {
                         "has_token": True,
                         "token_expires_in": f"{hours}h {mins}m",
-                        "groups_configured": [group.value]
+                        "groups_configured": [group.value],
                     }
 
         return {"has_token": False, "token_expires_in": None, "groups_configured": []}
@@ -186,7 +196,10 @@ def _get_sync_state() -> dict:
                                     metadata = json.load(mf)
                                     utc_sync = metadata.get("last_sync")
                                     if utc_sync:
-                                        if latest_sync is None or utc_sync > latest_sync:
+                                        if (
+                                            latest_sync is None
+                                            or utc_sync > latest_sync
+                                        ):
                                             latest_sync = utc_sync
                                     if metadata.get("last_error"):
                                         last_error = metadata.get("last_error")
@@ -215,10 +228,7 @@ def _get_nickname() -> Optional[str]:
 
 
 def _build_github_url(
-    category: str,
-    what_doing: str,
-    what_wrong: str,
-    diagnostics: dict
+    category: str, what_doing: str, what_wrong: str, diagnostics: dict
 ) -> str:
     """Build GitHub issue URL with pre-filled content.
 
@@ -229,7 +239,7 @@ def _build_github_url(
         "sync_data": "Sync / Data",
         "playback": "Playback",
         "login": "Login",
-        "other": "Other"
+        "other": "Other",
     }
 
     title = f"[Bug] {category_labels.get(category, 'Other')}: {what_wrong[:50]}"
@@ -240,7 +250,7 @@ def _build_github_url(
 
     body = f"""## Bug Report
 
-**Category:** {category_labels.get(category, 'Other')}
+**Category:** {category_labels.get(category, "Other")}
 **What I was doing:** {what_doing}
 **What went wrong:** {what_wrong}
 
@@ -273,7 +283,9 @@ PASTE_HERE
 
 
 @router.post("", response_model=ReportResponse)
-async def generate_report(context: ReportContext, what_doing: str = "", what_wrong: str = ""):
+async def generate_report(
+    context: ReportContext, what_doing: str = "", what_wrong: str = ""
+):
     """Generate bug report diagnostics and GitHub URL."""
 
     username = _get_username()
@@ -318,7 +330,9 @@ async def generate_report(context: ReportContext, what_doing: str = "", what_wro
     diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
 
     # Build GitHub URL
-    github_url = _build_github_url(context.category, what_doing, what_wrong, diagnostics)
+    github_url = _build_github_url(
+        context.category, what_doing, what_wrong, diagnostics
+    )
 
     return ReportResponse(diagnostics=diagnostics, github_url=github_url)
 

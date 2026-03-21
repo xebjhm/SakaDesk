@@ -112,15 +112,20 @@ class TestDiagnosticsWithMockedFiles:
         """Should read config from settings file when it exists."""
         # Create a temporary settings file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
-            json.dump({
-                "output_dir": "/test/output",
-                "auto_sync_enabled": True,
-                "is_configured": True
-            }, f)
+            json.dump(
+                {
+                    "output_dir": "/test/output",
+                    "auto_sync_enabled": True,
+                    "is_configured": True,
+                },
+                f,
+            )
             temp_path = Path(f.name)
 
         try:
-            with patch("backend.api.diagnostics.get_settings_path", return_value=temp_path):
+            with patch(
+                "backend.api.diagnostics.get_settings_path", return_value=temp_path
+            ):
                 response = client.get("/api/diagnostics")
                 data = response.json()
 
@@ -139,7 +144,9 @@ class TestDiagnosticsWithMockedFiles:
             temp_path = Path(f.name)
 
         try:
-            with patch("backend.api.diagnostics.get_settings_path", return_value=temp_path):
+            with patch(
+                "backend.api.diagnostics.get_settings_path", return_value=temp_path
+            ):
                 response = client.get("/api/diagnostics")
                 data = response.json()
 
@@ -220,8 +227,13 @@ class TestDiagnosticsResponseModel:
         # System should have all SystemInfo fields
         system = data["system"]
         required_system_fields = [
-            "os", "os_release", "python_version", "app_version",
-            "app_data_dir", "settings_path", "is_windows"
+            "os",
+            "os_release",
+            "python_version",
+            "app_version",
+            "app_data_dir",
+            "settings_path",
+            "is_windows",
         ]
         for field in required_system_fields:
             assert field in system, f"Missing field: {field}"

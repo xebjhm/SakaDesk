@@ -14,12 +14,14 @@ from backend.services.sync_service import (
 
 # ── Constants ────────────────────────────────────────────────────────
 
+
 def test_default_initial_message_limit():
     assert isinstance(DEFAULT_INITIAL_MESSAGE_LIMIT, int)
     assert DEFAULT_INITIAL_MESSAGE_LIMIT > 0
 
 
 # ── SyncService.__init__ ────────────────────────────────────────────
+
 
 class TestSyncServiceInit:
     """Tests for SyncService initialization and properties."""
@@ -59,6 +61,7 @@ class TestSyncServiceInit:
 
 # ── SyncService._get_group ──────────────────────────────────────────
 
+
 class TestGetGroup:
     """Tests for the _get_group method (Group enum lookup)."""
 
@@ -82,6 +85,7 @@ class TestGetGroup:
 
 
 # ── SyncService.load_metadata ───────────────────────────────────────
+
 
 class TestLoadMetadata:
     """Tests for loading sync metadata from JSON files."""
@@ -140,6 +144,7 @@ class TestLoadMetadata:
 
 # ── SyncService.save_metadata ───────────────────────────────────────
 
+
 class TestSaveMetadata:
     """Tests for saving sync metadata atomically."""
 
@@ -147,7 +152,9 @@ class TestSaveMetadata:
     async def test_save_raises_when_no_metadata_file(self):
         svc = SyncService()
         # metadata_file is None before start_sync
-        with pytest.raises(RuntimeError, match="save_metadata called before start_sync"):
+        with pytest.raises(
+            RuntimeError, match="save_metadata called before start_sync"
+        ):
             await svc.save_metadata({"test": True})
 
     @pytest.mark.asyncio
@@ -185,6 +192,7 @@ class TestSaveMetadata:
 
 # ── SyncService.get_output_dir ──────────────────────────────────────
 
+
 class TestGetOutputDir:
     """Tests for output directory resolution."""
 
@@ -214,6 +222,7 @@ class TestGetOutputDir:
 
 
 # ── SyncService.start_sync guard ────────────────────────────────────
+
 
 class TestStartSyncGuard:
     """Tests for the running-state guard in start_sync."""

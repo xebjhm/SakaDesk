@@ -21,7 +21,11 @@ class TestProfileEndpoint:
         """Endpoint should return cached nickname from settings (per-service)."""
         mock_config = {"user_nicknames": {"hinatazaka46": "TestUser"}}
 
-        with patch("backend.api.profile._store_load", new_callable=AsyncMock, return_value=mock_config):
+        with patch(
+            "backend.api.profile._store_load",
+            new_callable=AsyncMock,
+            return_value=mock_config,
+        ):
             response = client.get("/api/profile?service=hinatazaka46")
 
         assert response.status_code == 200
@@ -33,7 +37,9 @@ class TestProfileEndpoint:
         mock_tm = MagicMock()
         mock_tm.load_session.return_value = None
 
-        with patch("backend.api.profile._store_load", new_callable=AsyncMock, return_value={}):
+        with patch(
+            "backend.api.profile._store_load", new_callable=AsyncMock, return_value={}
+        ):
             with patch("backend.api.profile.get_token_manager", return_value=mock_tm):
                 response = client.get("/api/profile?service=hinatazaka46")
 
@@ -62,12 +68,18 @@ class TestProfileRefresh:
 
     def test_refresh_clears_cache(self, client):
         """Refresh should clear cached nickname for the specific service."""
-        original_config = {"user_nicknames": {"hinatazaka46": "OldNickname", "sakurazaka46": "OtherNickname"}}
+        original_config = {
+            "user_nicknames": {
+                "hinatazaka46": "OldNickname",
+                "sakurazaka46": "OtherNickname",
+            }
+        }
         captured_config = {}
 
         async def mock_update(updater):
             """Simulate atomic read-modify-write."""
             import copy
+
             config = copy.deepcopy(original_config)
             updater(config)
             captured_config.update(config)
@@ -78,8 +90,14 @@ class TestProfileRefresh:
 
         with patch("backend.api.profile._store_update", side_effect=mock_update):
             # After clearing, _store_load returns the updated config (no hinatazaka46)
-            with patch("backend.api.profile._store_load", new_callable=AsyncMock, return_value={"user_nicknames": {"sakurazaka46": "OtherNickname"}}):
-                with patch("backend.api.profile.get_token_manager", return_value=mock_tm):
+            with patch(
+                "backend.api.profile._store_load",
+                new_callable=AsyncMock,
+                return_value={"user_nicknames": {"sakurazaka46": "OtherNickname"}},
+            ):
+                with patch(
+                    "backend.api.profile.get_token_manager", return_value=mock_tm
+                ):
                     response = client.post("/api/profile/refresh?service=hinatazaka46")
 
         assert response.status_code == 200

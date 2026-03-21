@@ -19,7 +19,6 @@ Does NOT modify the existing test_search_service_units.py.
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -119,9 +118,21 @@ def output_dir(tmp_path: Path) -> Path:
     _write_messages_json(
         g1m1 / "messages.json",
         [
-            {"id": 1, "content": "こんにちは、今日は天気がいいですね", "timestamp": "2026-01-01T10:00:00+09:00"},
-            {"id": 2, "content": "お昼ごはんを食べました！美味しかった", "timestamp": "2026-01-01T12:00:00+09:00"},
-            {"id": 3, "content": "おやすみなさい。明日も頑張ります", "timestamp": "2026-01-01T22:00:00+09:00"},
+            {
+                "id": 1,
+                "content": "こんにちは、今日は天気がいいですね",
+                "timestamp": "2026-01-01T10:00:00+09:00",
+            },
+            {
+                "id": 2,
+                "content": "お昼ごはんを食べました！美味しかった",
+                "timestamp": "2026-01-01T12:00:00+09:00",
+            },
+            {
+                "id": 3,
+                "content": "おやすみなさい。明日も頑張ります",
+                "timestamp": "2026-01-01T22:00:00+09:00",
+            },
         ],
     )
 
@@ -130,8 +141,16 @@ def output_dir(tmp_path: Path) -> Path:
     _write_messages_json(
         g1m2 / "messages.json",
         [
-            {"id": 10, "content": "今日のライブ楽しかったです！", "timestamp": "2026-01-02T20:00:00+09:00"},
-            {"id": 11, "content": "ファンのみんな、ありがとう", "timestamp": "2026-01-02T21:00:00+09:00"},
+            {
+                "id": 10,
+                "content": "今日のライブ楽しかったです！",
+                "timestamp": "2026-01-02T20:00:00+09:00",
+            },
+            {
+                "id": 11,
+                "content": "ファンのみんな、ありがとう",
+                "timestamp": "2026-01-02T21:00:00+09:00",
+            },
         ],
     )
 
@@ -140,7 +159,11 @@ def output_dir(tmp_path: Path) -> Path:
     _write_messages_json(
         g2m3 / "messages.json",
         [
-            {"id": 20, "content": "新曲のレコーディングが終わりました", "timestamp": "2026-01-03T15:00:00+09:00"},
+            {
+                "id": 20,
+                "content": "新曲のレコーディングが終わりました",
+                "timestamp": "2026-01-03T15:00:00+09:00",
+            },
         ],
     )
 
@@ -310,7 +333,9 @@ class TestMessageIndexing:
     def test_index_members_sync_inserts_messages(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -324,7 +349,9 @@ class TestMessageIndexing:
     def test_index_members_sync_stores_correct_data(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -347,10 +374,15 @@ class TestMessageIndexing:
     def test_index_members_sync_multiple_members(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
-                ({"id": 1, "name": "テストグループ"}, {"id": 200, "name": "佐々木久美"}),
+                (
+                    {"id": 1, "name": "テストグループ"},
+                    {"id": 200, "name": "佐々木久美"},
+                ),
                 ({"id": 2, "name": "別グループ"}, {"id": 300, "name": "金村美玖"}),
             ]
             count = service._index_members_sync(members, _SERVICE_ID)
@@ -361,7 +393,9 @@ class TestMessageIndexing:
     def test_build_full_index_sync_indexes_all(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             count = service._build_full_index_sync()
 
         assert count == 6  # 3 + 2 + 1 messages across all members
@@ -372,7 +406,9 @@ class TestMessageIndexing:
     def test_build_full_index_sync_sets_metadata(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         conn = service._get_conn()
@@ -392,14 +428,18 @@ class TestMessageIndexing:
         self, service: SearchService, tmp_path: Path
     ):
         missing = tmp_path / "nonexistent"
-        with patch("backend.services.search_service.get_output_dir", return_value=missing):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=missing
+        ):
             count = service._build_full_index_sync()
         assert count == 0
 
     def test_index_members_sync_records_incremental_meta(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -416,9 +456,14 @@ class TestMessageIndexing:
     def test_index_members_skips_missing_file(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
-                ({"id": 999, "name": "存在しないグループ"}, {"id": 888, "name": "誰か"}),
+                (
+                    {"id": 999, "name": "存在しないグループ"},
+                    {"id": 888, "name": "誰か"},
+                ),
             ]
             count = service._index_members_sync(members, _SERVICE_ID)
         assert count == 0
@@ -436,7 +481,9 @@ class TestIncrementalIndexing:
     def test_second_run_indexes_only_new_messages(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -459,7 +506,9 @@ class TestIncrementalIndexing:
             / "100 田中美久"
             / "messages.json"
         )
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -470,7 +519,11 @@ class TestIncrementalIndexing:
             with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
             data["messages"].append(
-                {"id": 50, "content": "新しいメッセージです", "timestamp": "2026-01-04T10:00:00+09:00"}
+                {
+                    "id": 50,
+                    "content": "新しいメッセージです",
+                    "timestamp": "2026-01-04T10:00:00+09:00",
+                }
             )
             with open(msg_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False)
@@ -491,10 +544,10 @@ class TestIncrementalIndexing:
 class TestBlogIndexing:
     """Test _build_blog_index_sync and _index_blogs_for_service_sync."""
 
-    def test_build_blog_index_sync(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_build_blog_index_sync(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             count = service._build_blog_index_sync()
 
         assert count == 1
@@ -513,7 +566,9 @@ class TestBlogIndexing:
     def test_index_blogs_for_service_sync(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             count = service._index_blogs_for_service_sync(_SERVICE_ID)
 
         assert count == 1
@@ -521,7 +576,9 @@ class TestBlogIndexing:
     def test_index_blogs_for_service_sync_skips_already_indexed(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             first = service._index_blogs_for_service_sync(_SERVICE_ID)
             second = service._index_blogs_for_service_sync(_SERVICE_ID)
 
@@ -531,7 +588,9 @@ class TestBlogIndexing:
     def test_build_full_index_sync_includes_blogs(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         conn = service._get_conn()
@@ -545,15 +604,17 @@ class TestBlogIndexing:
         self, service: SearchService, tmp_path: Path
     ):
         missing = tmp_path / "nonexistent"
-        with patch("backend.services.search_service.get_output_dir", return_value=missing):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=missing
+        ):
             count = service._build_blog_index_sync()
         assert count == 0
 
-    def test_blog_strips_html(
-        self, service: SearchService, output_dir: Path
-    ):
+    def test_blog_strips_html(self, service: SearchService, output_dir: Path):
         """Verify that HTML tags are stripped from blog content before indexing."""
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_blog_index_sync()
 
         conn = service._get_conn()
@@ -576,7 +637,9 @@ class TestSearchSync:
     @pytest.fixture(autouse=True)
     def _index_data(self, service: SearchService, output_dir: Path):
         """Build the full index before each search test."""
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
         self.svc = service
 
@@ -639,8 +702,14 @@ class TestSearchSync:
     def test_search_with_no_results(self):
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
-            "存在しないキーワードxyz", None, None, None, 50, 0,
-            content_type="messages", conn=conn,
+            "存在しないキーワードxyz",
+            None,
+            None,
+            None,
+            50,
+            0,
+            content_type="messages",
+            conn=conn,
         )
         assert result["total_count"] == 0
         assert result["results"] == []
@@ -680,8 +749,15 @@ class TestSearchSync:
     def test_search_exact_only_mode(self):
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
-            "こんにちは", None, None, None, 50, 0,
-            exact_only=True, content_type="messages", conn=conn,
+            "こんにちは",
+            None,
+            None,
+            None,
+            50,
+            0,
+            exact_only=True,
+            content_type="messages",
+            conn=conn,
         )
         assert result["total_count"] >= 1
 
@@ -689,10 +765,16 @@ class TestSearchSync:
         conn = self.svc._get_read_conn()
         # Only messages on 2026-01-01
         result = self.svc._search_sync(
-            "です", None, None, None, 50, 0,
+            "です",
+            None,
+            None,
+            None,
+            50,
+            0,
             date_from="2026-01-01T00:00:00",
             date_to="2026-01-01T23:59:59+09:00",
-            content_type="messages", conn=conn,
+            content_type="messages",
+            conn=conn,
         )
         for r in result["results"]:
             assert r["timestamp"] >= "2026-01-01"
@@ -701,9 +783,15 @@ class TestSearchSync:
     def test_search_multi_service_filter(self):
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
-            "ライブ", None, None, None, 50, 0,
+            "ライブ",
+            None,
+            None,
+            None,
+            50,
+            0,
             services=[_SERVICE_ID],
-            content_type="messages", conn=conn,
+            content_type="messages",
+            conn=conn,
         )
         for r in result["results"]:
             assert r["service"] == _SERVICE_ID
@@ -741,8 +829,12 @@ class TestReadStates:
 
     def test_upsert_and_retrieve(self, service: SearchService):
         service._upsert_read_state_sync(
-            _SERVICE_ID, group_id=1, member_id=100,
-            last_read_id=5, read_count=10, revealed_ids=[],
+            _SERVICE_ID,
+            group_id=1,
+            member_id=100,
+            last_read_id=5,
+            read_count=10,
+            revealed_ids=[],
         )
         states = service._get_all_read_states_sync()
         key = f"{_SERVICE_ID}/1/100"
@@ -753,10 +845,20 @@ class TestReadStates:
 
     def test_upsert_updates_existing(self, service: SearchService):
         service._upsert_read_state_sync(
-            _SERVICE_ID, 1, 100, last_read_id=5, read_count=10, revealed_ids=[],
+            _SERVICE_ID,
+            1,
+            100,
+            last_read_id=5,
+            read_count=10,
+            revealed_ids=[],
         )
         service._upsert_read_state_sync(
-            _SERVICE_ID, 1, 100, last_read_id=15, read_count=20, revealed_ids=[7, 8],
+            _SERVICE_ID,
+            1,
+            100,
+            last_read_id=15,
+            read_count=20,
+            revealed_ids=[7, 8],
         )
         states = service._get_all_read_states_sync()
         key = f"{_SERVICE_ID}/1/100"
@@ -766,9 +868,30 @@ class TestReadStates:
 
     def test_batch_upsert_read_states(self, service: SearchService):
         entries = [
-            {"service": _SERVICE_ID, "group_id": 1, "member_id": 100, "last_read_id": 5, "read_count": 3, "revealed_ids": []},
-            {"service": _SERVICE_ID, "group_id": 1, "member_id": 200, "last_read_id": 10, "read_count": 7, "revealed_ids": [1]},
-            {"service": _SERVICE_ID, "group_id": 2, "member_id": 300, "last_read_id": 20, "read_count": 1, "revealed_ids": []},
+            {
+                "service": _SERVICE_ID,
+                "group_id": 1,
+                "member_id": 100,
+                "last_read_id": 5,
+                "read_count": 3,
+                "revealed_ids": [],
+            },
+            {
+                "service": _SERVICE_ID,
+                "group_id": 1,
+                "member_id": 200,
+                "last_read_id": 10,
+                "read_count": 7,
+                "revealed_ids": [1],
+            },
+            {
+                "service": _SERVICE_ID,
+                "group_id": 2,
+                "member_id": 300,
+                "last_read_id": 20,
+                "read_count": 1,
+                "revealed_ids": [],
+            },
         ]
         count = service._batch_upsert_read_states_sync(entries)
         assert count == 3
@@ -783,7 +906,12 @@ class TestReadStates:
 
     def test_read_state_has_updated_at(self, service: SearchService):
         service._upsert_read_state_sync(
-            _SERVICE_ID, 1, 100, last_read_id=1, read_count=1, revealed_ids=[],
+            _SERVICE_ID,
+            1,
+            100,
+            last_read_id=1,
+            read_count=1,
+            revealed_ids=[],
         )
         states = service._get_all_read_states_sync()
         key = f"{_SERVICE_ID}/1/100"
@@ -810,10 +938,10 @@ class TestStatusTracking:
         assert status["last_build"] is None
         assert status["is_building"] is False
 
-    def test_status_after_indexing(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_status_after_indexing(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         status = service._get_status_sync()
@@ -827,11 +955,11 @@ class TestStatusTracking:
         status = service._get_status_sync()
         assert status["is_building"] is True
 
-    def test_status_partially_built(
-        self, service: SearchService, output_dir: Path
-    ):
+    def test_status_partially_built(self, service: SearchService, output_dir: Path):
         """Index only some members, verify partial count."""
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
@@ -853,7 +981,9 @@ class TestClearDb:
     def test_clear_removes_database_file(
         self, service: SearchService, db_path: Path, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         assert db_path.exists()
@@ -861,7 +991,9 @@ class TestClearDb:
         assert not db_path.exists()
 
     def test_clear_resets_connections(self, service: SearchService, output_dir: Path):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         service._clear_db_sync()
@@ -875,7 +1007,9 @@ class TestClearDb:
     def test_rebuild_after_clear(
         self, service: SearchService, db_path: Path, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
             service._clear_db_sync()
             assert not db_path.exists()
@@ -900,7 +1034,9 @@ class TestNeedsBuild:
     def test_needs_build_after_full_build(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
         assert service._needs_build() is False
 
@@ -908,17 +1044,19 @@ class TestNeedsBuild:
         self, service: SearchService, output_dir: Path
     ):
         """Incremental index without a full build still needs a build."""
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             members = [
                 ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}),
             ]
             service._index_members_sync(members, _SERVICE_ID)
         assert service._needs_build() is True
 
-    def test_needs_build_after_clear(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_needs_build_after_clear(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
         service._clear_db_sync()
         assert service._needs_build() is True
@@ -946,9 +1084,7 @@ class TestProcessLevelFunctions:
         mock_module.kakasi.return_value = mock_instance
         return mock_module
 
-    def test_build_full_index_process(
-        self, db_path: Path, output_dir: Path
-    ):
+    def test_build_full_index_process(self, db_path: Path, output_dir: Path):
         mock_pykakasi = self._make_mock_pykakasi()
         with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
             count = _build_full_index_process(str(db_path), str(output_dir))
@@ -979,16 +1115,19 @@ class TestProcessLevelFunctions:
             count = _build_full_index_process(str(db_path), str(missing))
         assert count == 0
 
-    def test_index_members_process(
-        self, db_path: Path, output_dir: Path
-    ):
+    def test_index_members_process(self, db_path: Path, output_dir: Path):
         # Ensure the schema exists first
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        members_json = json.dumps([
-            [{"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}],
-            [{"id": 1, "name": "テストグループ"}, {"id": 200, "name": "佐々木久美"}],
-        ])
+        members_json = json.dumps(
+            [
+                [{"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}],
+                [
+                    {"id": 1, "name": "テストグループ"},
+                    {"id": 200, "name": "佐々木久美"},
+                ],
+            ]
+        )
         mock_pykakasi = self._make_mock_pykakasi()
         with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
             count = _index_members_process(
@@ -997,14 +1136,14 @@ class TestProcessLevelFunctions:
 
         assert count == 5  # 3 from member 100 + 2 from member 200
 
-    def test_index_members_process_incremental(
-        self, db_path: Path, output_dir: Path
-    ):
+    def test_index_members_process_incremental(self, db_path: Path, output_dir: Path):
         """Second call should index 0 new messages."""
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        members_json = json.dumps([
-            [{"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}],
-        ])
+        members_json = json.dumps(
+            [
+                [{"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}],
+            ]
+        )
         mock_pykakasi = self._make_mock_pykakasi()
         with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
             first = _index_members_process(
@@ -1016,9 +1155,7 @@ class TestProcessLevelFunctions:
         assert first == 3
         assert second == 0
 
-    def test_index_blogs_for_service_process(
-        self, db_path: Path, output_dir: Path
-    ):
+    def test_index_blogs_for_service_process(self, db_path: Path, output_dir: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
         mock_pykakasi = self._make_mock_pykakasi()
         with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
@@ -1070,7 +1207,17 @@ class TestFts5Integration:
             "(message_id, service, group_id, group_name, member_id, member_name, "
             "timestamp, content, content_normalized) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (999, "test_svc", 1, "grp", 1, "mem", "2026-01-01", "テスト内容", "テスト内容"),
+            (
+                999,
+                "test_svc",
+                1,
+                "grp",
+                1,
+                "mem",
+                "2026-01-01",
+                "テスト内容",
+                "テスト内容",
+            ),
         )
         conn.commit()
 
@@ -1079,10 +1226,10 @@ class TestFts5Integration:
         ).fetchone()
         assert row[0] >= 1
 
-    def test_fts5_match_query_works(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_fts5_match_query_works(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         conn = service._get_conn()
@@ -1092,10 +1239,10 @@ class TestFts5Integration:
         ).fetchone()
         assert rows[0] >= 1
 
-    def test_blogs_fts5_populated(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_blogs_fts5_populated(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_blog_index_sync()
 
         conn = service._get_conn()
@@ -1111,7 +1258,17 @@ class TestFts5Integration:
             "(message_id, service, group_id, group_name, member_id, member_name, "
             "timestamp, content, content_normalized) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (888, "test_svc", 1, "grp", 1, "mem", "2026-01-01", "削除テスト", "削除テスト"),
+            (
+                888,
+                "test_svc",
+                1,
+                "grp",
+                1,
+                "mem",
+                "2026-01-01",
+                "削除テスト",
+                "削除テスト",
+            ),
         )
         conn.commit()
 
@@ -1140,7 +1297,9 @@ class TestTagIsGroupChat:
     """Test _tag_is_group_chat static method."""
 
     def test_tags_multi_member_group(self, service: SearchService, output_dir: Path):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         conn = service._get_conn()
@@ -1167,10 +1326,10 @@ class TestTagIsGroupChat:
 class TestGetMembers:
     """Test _get_members_sync with indexed data."""
 
-    def test_get_members_returns_all(
-        self, service: SearchService, output_dir: Path
-    ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+    def test_get_members_returns_all(self, service: SearchService, output_dir: Path):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         result = service._get_members_sync()
@@ -1187,7 +1346,9 @@ class TestGetMembers:
     def test_get_members_service_has_counts(
         self, service: SearchService, output_dir: Path
     ):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
 
         result = service._get_members_sync()
@@ -1207,19 +1368,33 @@ class TestExcludeUnreadFilter:
 
     @pytest.fixture(autouse=True)
     def _setup(self, service: SearchService, output_dir: Path):
-        with patch("backend.services.search_service.get_output_dir", return_value=output_dir):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
             service._build_full_index_sync()
         self.svc = service
 
     def test_exclude_unread_hides_unread_messages(self):
         # Mark up to message_id=1 as read for group 1
         self.svc._upsert_read_state_sync(
-            _SERVICE_ID, 1, 100, last_read_id=1, read_count=1, revealed_ids=[],
+            _SERVICE_ID,
+            1,
+            100,
+            last_read_id=1,
+            read_count=1,
+            revealed_ids=[],
         )
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
-            "です", None, None, None, 50, 0,
-            exclude_unread=True, content_type="messages", conn=conn,
+            "です",
+            None,
+            None,
+            None,
+            50,
+            0,
+            exclude_unread=True,
+            content_type="messages",
+            conn=conn,
         )
         # Messages with id > 1 from group 1 member 100 should be hidden
         for r in result["results"]:
@@ -1229,12 +1404,24 @@ class TestExcludeUnreadFilter:
     def test_exclude_unread_with_revealed_ids(self):
         # Mark up to message_id=1 as read, but reveal message 3
         self.svc._upsert_read_state_sync(
-            _SERVICE_ID, 1, 100, last_read_id=1, read_count=1, revealed_ids=[3],
+            _SERVICE_ID,
+            1,
+            100,
+            last_read_id=1,
+            read_count=1,
+            revealed_ids=[3],
         )
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
-            "頑張ります", None, None, None, 50, 0,
-            exclude_unread=True, content_type="messages", conn=conn,
+            "頑張ります",
+            None,
+            None,
+            None,
+            50,
+            0,
+            exclude_unread=True,
+            content_type="messages",
+            conn=conn,
         )
         # Message 3 should be visible despite being past the read boundary
         msg_ids = [r["message_id"] for r in result["results"]]

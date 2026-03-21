@@ -9,13 +9,13 @@ import os
 
 # Force UTF-8 for stdout/stderr to prevent encoding errors on Windows
 # This keeps 'print()' calls in dependencies (like pymsg) safe even if console is hidden/CP1252
-if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
-if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8')  # type: ignore[union-attr]
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
 # Determine log directory (inline to avoid importing platform module yet)
-if os.name == 'nt':  # Windows
+if os.name == "nt":  # Windows
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     _app_dir = Path(base) / "SakaDesk"
 else:  # Linux/Mac (dev)
@@ -26,6 +26,7 @@ log_file = log_dir / "debug.log"
 
 # Configure pysaka's unified logging system (structlog-based)
 from pysaka.logging import configure_logging  # noqa: E402
+
 configure_logging(
     log_file=log_file,
     log_level=logging.DEBUG,
@@ -42,7 +43,22 @@ from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
-from backend.api import auth, content, sync, settings, diagnostics, profile, report, version, notifications, favorites, chat_features, blogs, search, read_states  # noqa: E402
+from backend.api import (
+    auth,
+    content,
+    sync,
+    settings,
+    diagnostics,
+    profile,
+    report,
+    version,
+    notifications,
+    favorites,
+    chat_features,
+    blogs,
+    search,
+    read_states,
+)  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -66,12 +82,14 @@ async def lifespan(app: FastAPI):
 
     # Stop any running blog backup tasks so their asyncio Tasks end cleanly
     from backend.services.blog_service import get_blog_backup_manager
+
     try:
         get_blog_backup_manager().shutdown()
     except Exception:
         pass
 
     from backend.services.search_service import shutdown_search_service
+
     shutdown_search_service()
     # Flush and close all log file handlers so the uninstaller can delete the data directory
     for handler in logging.root.handlers[:]:
@@ -109,7 +127,8 @@ async def _deferred_blog_backup():
         manager = get_blog_backup_manager()
         tm = get_token_manager()
         services = [
-            g.value for g in Group
+            g.value
+            for g in Group
             if tm.load_session(g.value) and _is_blog_supported(g.value)
         ]
         if services:
@@ -126,9 +145,9 @@ app = FastAPI(title="SakaDesk", lifespan=lifespan)
 # In production, frontend is served from same origin (no CORS needed).
 # These origins are for development mode when Vite runs on a separate port.
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",      # Vite dev server default
+    "http://localhost:5173",  # Vite dev server default
     "http://127.0.0.1:5173",
-    "http://localhost:3000",      # Common alternative
+    "http://localhost:3000",  # Common alternative
     "http://127.0.0.1:3000",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
@@ -162,6 +181,7 @@ app.include_router(read_states.router, prefix="/api/read-states", tags=["read-st
 async def health():
     return {"status": "ok"}
 
+
 # Serve Frontend (Production Mode)
 frontend_dist = Path("frontend/dist")
 if not frontend_dist.exists():
@@ -177,4 +197,6 @@ if frontend_dist.exists():
             return FileResponse(path)
         return FileResponse(frontend_dist / "index.html")
 else:
-    logger.warning("Frontend build not found. Run 'npm run build' in frontend directory.")
+    logger.warning(
+        "Frontend build not found. Run 'npm run build' in frontend directory."
+    )

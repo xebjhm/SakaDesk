@@ -20,6 +20,7 @@ Tests:
     3. pytest tests pass
     4. Application health endpoint responds
 """
+
 import subprocess
 import platform
 import sys
@@ -63,11 +64,7 @@ def run_windows_build_from_wsl() -> int:
 
     # Run the batch script
     try:
-        result = subprocess.run(
-            [str(batch_script)],
-            shell=True,
-            cwd=str(project_root)
-        )
+        result = subprocess.run([str(batch_script)], shell=True, cwd=str(project_root))
         return result.returncode
     except Exception as e:
         print(f"ERROR: Failed to run build script: {e}")
@@ -92,10 +89,7 @@ def check_environment() -> bool:
 
 
 def run_command(
-    cmd: list[str],
-    cwd: Path | None = None,
-    timeout: int = 120,
-    check: bool = True
+    cmd: list[str], cwd: Path | None = None, timeout: int = 120, check: bool = True
 ) -> tuple[int, str, str]:
     """Run command and return (returncode, stdout, stderr)."""
     try:
@@ -103,10 +97,10 @@ def run_command(
             cmd,
             capture_output=True,
             text=True,
-            encoding='utf-8',
-            errors='replace',
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
-            cwd=cwd
+            cwd=cwd,
         )
         if check and result.returncode != 0:
             print(f"   Command failed: {' '.join(cmd)}")
@@ -147,7 +141,9 @@ def test_frontend_build() -> bool:
 
     # Build frontend
     print("   🔨 Building frontend...")
-    code, _, stderr = run_command(["npm", "run", "build"], cwd=frontend_dir, timeout=120)
+    code, _, stderr = run_command(
+        ["npm", "run", "build"], cwd=frontend_dir, timeout=120
+    )
     if code != 0:
         print("   ❌ Frontend build failed")
         return False
@@ -185,9 +181,7 @@ def test_python_imports() -> bool:
     failed = []
     for module in imports_to_test:
         code, _, stderr = run_command(
-            [sys.executable, "-c", f"import {module}"],
-            cwd=project_root,
-            check=False
+            [sys.executable, "-c", f"import {module}"], cwd=project_root, check=False
         )
         if code != 0:
             failed.append(module)
@@ -209,13 +203,13 @@ def test_pytest() -> bool:
         [sys.executable, "-m", "pytest", "-v", "--tb=short"],
         cwd=project_root,
         timeout=300,
-        check=False
+        check=False,
     )
 
     # Count passed/failed from output
     if "passed" in stdout:
         # Extract summary line
-        for line in stdout.split('\n'):
+        for line in stdout.split("\n"):
             if "passed" in line or "failed" in line:
                 print(f"   {line.strip()}")
                 break
@@ -238,12 +232,22 @@ def test_health_endpoint() -> bool:
 
     # Start the server in background
     server_process = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "backend.main:app",
-         "--host", "127.0.0.1", "--port", str(port), "--log-level", "error"],
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "backend.main:app",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+            "--log-level",
+            "error",
+        ],
         cwd=project_root,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True
+        text=True,
     )
 
     try:
@@ -258,6 +262,7 @@ def test_health_endpoint() -> bool:
 
         # Try to connect
         import http.client
+
         try:
             conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
             conn.request("GET", "/health")
@@ -301,10 +306,7 @@ def build_windows_installer() -> bool:
         return False
 
     code, stdout, stderr = run_command(
-        [sys.executable, str(build_script)],
-        cwd=project_root,
-        timeout=600,
-        check=False
+        [sys.executable, str(build_script)], cwd=project_root, timeout=600, check=False
     )
 
     if code != 0:
@@ -313,6 +315,7 @@ def build_windows_installer() -> bool:
 
     # Check if installer was created (name matches setup.iss OutputBaseFilename)
     import tomllib
+
     try:
         with open(project_root / "pyproject.toml", "rb") as f:
             version = tomllib.load(f)["project"]["version"]

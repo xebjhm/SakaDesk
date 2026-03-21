@@ -1229,6 +1229,54 @@ wheels = [
 ]
 
 [[package]]
+name = "pysaka"
+version = "0.3.0"
+source = { editable = "../pysaka" }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "aiohttp" },
+    { name = "beautifulsoup4" },
+    { name = "keyring" },
+    { name = "pillow" },
+    { name = "playwright" },
+    { name = "pymediainfo" },
+    { name = "structlog" },
+    { name = "tzdata" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles", specifier = ">=23.0.0" },
+    { name = "aiohttp", specifier = ">=3.9.0" },
+    { name = "beautifulsoup4", specifier = ">=4.14.3" },
+    { name = "keyring", specifier = ">=24.0.0" },
+    { name = "keyrings-alt", marker = "extra == 'headless'", specifier = ">=4.0" },
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "playwright", specifier = ">=1.40.0" },
+    { name = "pymediainfo", specifier = ">=6.0.0" },
+    { name = "structlog", specifier = ">=24.1.0" },
+    { name = "tzdata", specifier = ">=2025.3" },
+]
+provides-extras = ["headless"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "build", specifier = ">=1.0.0" },
+    { name = "hatchling", specifier = ">=1.18.0" },
+    { name = "hypothesis", specifier = ">=6.141.1" },
+    { name = "mypy", specifier = ">=1.9.0" },
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.0" },
+    { name = "pytest-benchmark", specifier = ">=5.2.3" },
+    { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "ruff", specifier = ">=0.3.0" },
+    { name = "syrupy", specifier = ">=4.9.1" },
+    { name = "time-machine", specifier = ">=2.19.0" },
+    { name = "twine", specifier = ">=4.0.0" },
+    { name = "types-aiofiles", specifier = ">=23.1.0" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1345,54 +1393,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pysaka"
-version = "0.2.0"
-source = { editable = "../pysaka" }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "aiohttp" },
-    { name = "beautifulsoup4" },
-    { name = "keyring" },
-    { name = "pillow" },
-    { name = "playwright" },
-    { name = "pymediainfo" },
-    { name = "structlog" },
-    { name = "tzdata" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles", specifier = ">=23.0.0" },
-    { name = "aiohttp", specifier = ">=3.9.0" },
-    { name = "beautifulsoup4", specifier = ">=4.14.3" },
-    { name = "keyring", specifier = ">=24.0.0" },
-    { name = "keyrings-alt", marker = "extra == 'headless'", specifier = ">=4.0" },
-    { name = "pillow", specifier = ">=10.0.0" },
-    { name = "playwright", specifier = ">=1.40.0" },
-    { name = "pymediainfo", specifier = ">=6.0.0" },
-    { name = "structlog", specifier = ">=24.1.0" },
-    { name = "tzdata", specifier = ">=2025.3" },
-]
-provides-extras = ["headless"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "build", specifier = ">=1.0.0" },
-    { name = "hatchling", specifier = ">=1.18.0" },
-    { name = "hypothesis", specifier = ">=6.141.1" },
-    { name = "mypy", specifier = ">=1.9.0" },
-    { name = "pytest", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23.0" },
-    { name = "pytest-benchmark", specifier = ">=5.2.3" },
-    { name = "pytest-cov", specifier = ">=4.1.0" },
-    { name = "ruff", specifier = ">=0.3.0" },
-    { name = "syrupy", specifier = ">=4.9.1" },
-    { name = "time-machine", specifier = ">=2.19.0" },
-    { name = "twine", specifier = ">=4.0.0" },
-    { name = "types-aiofiles", specifier = ">=23.1.0" },
-]
-
-[[package]]
 name = "ruff"
 version = "0.14.13"
 source = { registry = "https://pypi.org/simple" }
@@ -1416,6 +1416,61 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/6a/c5/abd840d4132fd51a12f594934af5eba1d5d27298a6f5b5d6c3be45301caf/ruff-0.14.13-py3-none-win32.whl", hash = "sha256:ef720f529aec113968b45dfdb838ac8934e519711da53a0456038a0efecbd680", size = 12919024, upload-time = "2026-01-15T20:14:43.647Z" },
     { url = "https://files.pythonhosted.org/packages/c2/55/6384b0b8ce731b6e2ade2b5449bf07c0e4c31e8a2e68ea65b3bafadcecc5/ruff-0.14.13-py3-none-win_amd64.whl", hash = "sha256:6070bd026e409734b9257e03e3ef18c6e1a216f0435c6751d7a8ec69cb59abef", size = 14097887, upload-time = "2026-01-15T20:15:01.48Z" },
     { url = "https://files.pythonhosted.org/packages/4d/e1/7348090988095e4e39560cfc2f7555b1b2a7357deba19167b600fdf5215d/ruff-0.14.13-py3-none-win_arm64.whl", hash = "sha256:7ab819e14f1ad9fe39f246cfcc435880ef7a9390d81a2b6ac7e01039083dd247", size = 13080224, upload-time = "2026-01-15T20:14:45.853Z" },
+]
+
+[[package]]
+name = "sakadesk"
+version = "0.2.1"
+source = { virtual = "." }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "fastapi" },
+    { name = "jaconv" },
+    { name = "keyring" },
+    { name = "keyrings-alt" },
+    { name = "plyer" },
+    { name = "pykakasi" },
+    { name = "pysaka" },
+    { name = "python-multipart" },
+    { name = "structlog" },
+    { name = "tk" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles" },
+    { name = "fastapi" },
+    { name = "jaconv", specifier = ">=0.5.0" },
+    { name = "keyring" },
+    { name = "keyrings-alt", specifier = ">=5.0.2" },
+    { name = "plyer", specifier = ">=2.1.0" },
+    { name = "pykakasi", specifier = ">=2.3.0" },
+    { name = "pysaka", editable = "../pysaka" },
+    { name = "python-multipart" },
+    { name = "structlog", specifier = ">=25.5.0" },
+    { name = "tk", specifier = ">=0.1.0" },
+    { name = "uvicorn", extras = ["standard"] },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "mypy", specifier = ">=1.14.0" },
+    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-asyncio", specifier = ">=1.2.0" },
+    { name = "pytest-cov", specifier = ">=6.0.0" },
+    { name = "ruff", specifier = ">=0.14.13" },
 ]
 
 [[package]]
@@ -1804,59 +1859,4 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f9/86/0f0dccb6e59a9e7f122c5afd43568b1d31b8ab7dda5f1b01fb5c7025c9a9/yarl-1.22.0-cp314-cp314t-win_amd64.whl", hash = "sha256:9fb17ea16e972c63d25d4a97f016d235c78dd2344820eb35bc034bc32012ee27", size = 96292, upload-time = "2025-10-06T14:12:15.398Z" },
     { url = "https://files.pythonhosted.org/packages/48/b7/503c98092fb3b344a179579f55814b613c1fbb1c23b3ec14a7b008a66a6e/yarl-1.22.0-cp314-cp314t-win_arm64.whl", hash = "sha256:9f6d73c1436b934e3f01df1e1b21ff765cd1d28c77dfb9ace207f746d4610ee1", size = 85171, upload-time = "2025-10-06T14:12:16.935Z" },
     { url = "https://files.pythonhosted.org/packages/73/ae/b48f95715333080afb75a4504487cbe142cae1268afc482d06692d605ae6/yarl-1.22.0-py3-none-any.whl", hash = "sha256:1380560bdba02b6b6c90de54133c81c9f2a453dee9912fe58c1dcced1edb7cff", size = 46814, upload-time = "2025-10-06T14:12:53.872Z" },
-]
-
-[[package]]
-name = "sakadesk"
-version = "0.2.1"
-source = { virtual = "." }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "fastapi" },
-    { name = "jaconv" },
-    { name = "keyring" },
-    { name = "keyrings-alt" },
-    { name = "plyer" },
-    { name = "pykakasi" },
-    { name = "python-multipart" },
-    { name = "pysaka" },
-    { name = "structlog" },
-    { name = "tk" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiofiles" },
-    { name = "fastapi" },
-    { name = "jaconv", specifier = ">=0.5.0" },
-    { name = "keyring" },
-    { name = "keyrings-alt", specifier = ">=5.0.2" },
-    { name = "plyer", specifier = ">=2.1.0" },
-    { name = "pykakasi", specifier = ">=2.3.0" },
-    { name = "python-multipart" },
-    { name = "pysaka", editable = "../pysaka" },
-    { name = "structlog", specifier = ">=25.5.0" },
-    { name = "tk", specifier = ">=0.1.0" },
-    { name = "uvicorn", extras = ["standard"] },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "mypy", specifier = ">=1.14.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
-    { name = "pytest-asyncio", specifier = ">=1.2.0" },
-    { name = "pytest-cov", specifier = ">=6.0.0" },
-    { name = "ruff", specifier = ">=0.14.13" },
 ]
