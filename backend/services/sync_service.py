@@ -642,8 +642,11 @@ class SyncService:
 
                     await get_profile(self._service)
             except Exception as e:
-                logger.debug(
-                    "Profile cache during sync failed (non-fatal)", error=str(e)
+                logger.warning(
+                    "Profile nickname cache failed — user may see %%% placeholders",
+                    service=self._service,
+                    error_type=type(e).__name__,
+                    error=str(e),
                 )
 
             # Auto-enqueue blog backup if enabled (runs in background after modal closes)
