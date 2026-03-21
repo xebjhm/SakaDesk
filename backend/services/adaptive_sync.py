@@ -141,8 +141,17 @@ def add_jitter(interval_minutes: float, jitter_pct: float = 0.2) -> float:
     return max(1, interval_minutes + jitter)  # Minimum 1 minute
 
 
+_ADAPTIVE_BASE_MINUTES = 10
+"""Fixed base interval for adaptive sync.
+
+Hardcoded rather than derived from user settings.  The multipliers are
+calibrated against this base to produce sensible intervals (5-60 min).
+The user setting ``sync_interval_minutes`` is only used for fixed-interval
+mode (when adaptive sync is disabled).
+"""
+
+
 def calculate_next_sync_interval(
-    base_interval_minutes: float = 15.0,
     hours_since_last_post: Optional[float] = None,
     enable_randomization: bool = True,
 ) -> float:
@@ -150,18 +159,17 @@ def calculate_next_sync_interval(
     Calculate the next sync interval with adaptive timing.
 
     Algorithm:
-    1. Start with base interval (default 15 minutes)
+    1. Start with fixed base interval (10 minutes)
     2. Apply time-of-day multiplier (peak hours = more frequent)
     3. Apply activity multiplier (recent posts = more frequent)
     4. Add jitter (±20%) to avoid predictable patterns
 
-    With base=15:
-      Peak (20:00 JST, recent post):  15 × 0.5 × 0.5 = ~5 min
-      Daytime (10:00, normal):         15 × 0.8 × 1.0 = ~12 min
-      Dead hours (03:00, inactive):    15 × 3.0 × 1.3 = ~58 min
+    Resulting intervals:
+      Peak (20:00 JST, recent post):  10 × 0.5 × 0.5 = ~5 min
+      Daytime (10:00, normal):         10 × 0.8 × 1.0 = ~8 min
+      Dead hours (03:00, inactive):    10 × 3.0 × 1.3 = ~39 min
 
     Args:
-        base_interval_minutes: Base sync interval in minutes
         hours_since_last_post: Hours since most recent member posted
         enable_randomization: Whether to apply adaptive timing
 
@@ -169,9 +177,9 @@ def calculate_next_sync_interval(
         Next sync interval in minutes
     """
     if not enable_randomization:
-        return base_interval_minutes
+        return float(_ADAPTIVE_BASE_MINUTES)
 
-    interval = base_interval_minutes
+    interval = float(_ADAPTIVE_BASE_MINUTES)
 
     # Apply time-of-day multiplier
     time_mult = get_time_multiplier()
@@ -192,7 +200,7 @@ def calculate_next_sync_interval(
     logger.debug(
         "Calculated sync interval",
         interval_minutes=round(interval, 1),
-        base=base_interval_minutes,
+        base=_ADAPTIVE_BASE_MINUTES,
         time_mult=time_mult,
         activity_mult=activity_mult,
     )
@@ -245,7 +253,7 @@ if __name__ == "__main__":
     ]
 
     for hours, desc in scenarios:
-        intervals = [calculate_next_sync_interval(15, hours) for _ in range(5)]
+        intervals = [calculate_next_sync_interval(hours) for _ in range(5)]
         avg = sum(intervals) / len(intervals)
         test_logger.info(
             desc, avg_minutes=f"{avg:.1f}", samples=[f"{i:.1f}" for i in intervals]
