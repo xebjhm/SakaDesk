@@ -4,11 +4,22 @@ Adaptive Sync Scheduler for SakaDesk.
 Implements randomized sync intervals based on observed posting patterns.
 Designed to avoid detection patterns while efficiently catching new messages.
 
-Based on analysis of 19,873 messages from 24 members:
-- Peak hours (JST): 19:00-23:00 (40% of messages)
-- Low activity: 02:00-06:00 (almost zero)
-- Most active members post every 1.5-3.5 hours
-- Overall median interval: 4.7 hours
+Based on analysis of 13,132 messages from 21 active Hinatazaka46 members
+over the past year (2025-03 to 2026-03):
+
+Hourly distribution (JST):
+  - Dead:       01:00-06:00  (<0.1% of messages)
+  - Wake-up:    07:00-08:00  (4% combined)
+  - Daytime:    09:00-14:00  (29%, with lunch peak at 12:00)
+  - Afternoon:  15:00-18:00  (25%, building toward evening)
+  - Peak:       19:00-22:00  (37%, with 20:00 at 13% alone)
+  - Wind-down:  23:00-00:00  (6%)
+
+Inter-message gap P90: 74 min overall, 43 min during peak, 97 min daytime.
+Day-of-week distribution is flat (13-15% each), no adjustment needed.
+
+All time calculations use JST (UTC+9) regardless of the user's timezone,
+because the idols post on a Japan schedule.
 """
 
 import random
@@ -29,6 +40,38 @@ def get_jst_hour() -> int:
     return now_jst.hour
 
 
+# Time-of-day multipliers derived from actual posting data.
+# Lower = more frequent syncs (high activity), higher = less frequent.
+# Computed as: avg_hourly_messages / this_hour_messages, then smoothed
+# and clamped to [0.5, 3.0].
+_TIME_MULTIPLIERS = {
+    0: 2.0,  # wind-down, very few posts
+    1: 3.0,  # near-zero activity
+    2: 3.0,  # dead
+    3: 3.0,  # dead
+    4: 3.0,  # dead
+    5: 3.0,  # dead
+    6: 3.0,  # dead
+    7: 1.5,  # wake-up, sparse
+    8: 1.0,  # morning ramp-up
+    9: 0.9,  # daytime active
+    10: 0.8,  # daytime active
+    11: 0.7,  # approaching lunch peak
+    12: 0.6,  # lunch peak
+    13: 0.7,  # post-lunch
+    14: 1.0,  # afternoon dip
+    15: 0.7,  # afternoon active
+    16: 0.7,  # afternoon active
+    17: 0.6,  # evening build-up
+    18: 0.6,  # evening build-up
+    19: 0.55,  # peak starts
+    20: 0.5,  # highest peak (13% of all messages)
+    21: 0.5,  # peak
+    22: 0.55,  # peak winding down
+    23: 0.7,  # late night active
+}
+
+
 def get_time_multiplier() -> float:
     """
     Get sync frequency multiplier based on current time of day (JST).
@@ -37,44 +80,10 @@ def get_time_multiplier() -> float:
     - Lower values = more frequent syncs (peak hours)
     - Higher values = less frequent syncs (off-hours)
 
-    Based on observed posting patterns:
-    - Peak: 19:00-23:00 (40% of messages) -> 0.6x
-    - Active: 09:00-18:00 -> 0.8x
-    - Quiet: 00:00-01:00 -> 1.2x
-    - Dead: 02:00-06:00 -> 2.0x
+    Uses JST regardless of user's timezone because the idols post
+    on a Japan schedule.
     """
-    hour = get_jst_hour()
-
-    # Peak hours: 19:00-23:00
-    if 19 <= hour <= 22:
-        return 0.6
-
-    # Late night active: 23:00
-    if hour == 23:
-        return 0.7
-
-    # Early evening: 17:00-18:00
-    if 17 <= hour <= 18:
-        return 0.7
-
-    # Daytime active: 09:00-16:00
-    if 9 <= hour <= 16:
-        return 0.8
-
-    # Early morning start: 07:00-08:00
-    if 7 <= hour <= 8:
-        return 0.9
-
-    # Late night wind-down: 00:00-01:00
-    if hour in (0, 1):
-        return 1.2
-
-    # Dead hours: 02:00-06:00
-    if 2 <= hour <= 6:
-        return 2.0
-
-    # Default
-    return 1.0
+    return _TIME_MULTIPLIERS.get(get_jst_hour(), 1.0)
 
 
 def get_activity_multiplier(hours_since_last_post: Optional[float]) -> float:
@@ -145,6 +154,11 @@ def calculate_next_sync_interval(
     2. Apply time-of-day multiplier (peak hours = more frequent)
     3. Apply activity multiplier (recent posts = more frequent)
     4. Add jitter (±20%) to avoid predictable patterns
+
+    With base=15:
+      Peak (20:00 JST, recent post):  15 × 0.5 × 0.5 = ~5 min
+      Daytime (10:00, normal):         15 × 0.8 × 1.0 = ~12 min
+      Dead hours (03:00, inactive):    15 × 3.0 × 1.3 = ~58 min
 
     Args:
         base_interval_minutes: Base sync interval in minutes

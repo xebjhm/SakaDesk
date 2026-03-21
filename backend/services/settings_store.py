@@ -26,7 +26,7 @@ _lock = asyncio.Lock()
 # All callers of load_config() get these automatically.
 _SETTINGS_DEFAULTS: dict[str, Any] = {
     "auto_sync_enabled": True,
-    "sync_interval_minutes": 1,
+    "sync_interval_minutes": 15,
     "adaptive_sync_enabled": True,
     "is_configured": False,
     "notifications_enabled": True,
