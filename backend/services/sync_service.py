@@ -626,16 +626,16 @@ class SyncService:
                     media_downloaded=media_count,
                 )
 
-            # Cache user nickname so the frontend has it before rendering messages.
-            # This runs inside the sync flow (before progress.complete()), so the
-            # nickname is in settings.json by the time the frontend reads settings.
+            # Refresh user nickname so the frontend has it before rendering
+            # messages.  Uses refresh_profile (not get_profile) to pick up any
+            # nickname changes the user made on the fan club website.
             try:
-                from backend.api.profile import get_profile
+                from backend.api.profile import refresh_profile
 
-                await get_profile(self._service)
+                await refresh_profile(self._service)
             except Exception as e:
                 logger.debug(
-                    "Profile cache during sync failed (non-fatal)", error=str(e)
+                    "Profile refresh during sync failed (non-fatal)", error=str(e)
                 )
 
             # Auto-enqueue blog backup if enabled (runs in background after modal closes)
