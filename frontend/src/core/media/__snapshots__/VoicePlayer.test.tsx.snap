@@ -111,7 +111,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         class="text-xs text-gray-500 whitespace-nowrap"
       >
         0:00
-         /
+         / 
         0:00
       </div>
       <button
