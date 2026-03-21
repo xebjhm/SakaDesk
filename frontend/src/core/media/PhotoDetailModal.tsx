@@ -48,7 +48,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const [zoom, setZoom] = useState(1);
 
     const item = mediaItems[currentIndex];
-    if (!item) return null;
 
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
@@ -64,6 +63,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     }, [currentIndex]);
 
     const handleDownload = useCallback(() => {
+        if (!item) return;
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
@@ -86,18 +86,20 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                if (item.type === 'picture') {
+                if (item?.type === 'picture') {
                     setZoom(z => Math.min(z + 0.25, 4));
                 }
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                if (item.type === 'picture') {
+                if (item?.type === 'picture') {
                     setZoom(z => Math.max(z - 0.25, 1));
                 }
                 break;
         }
-    }, [onClose, hasPrev, hasNext, currentIndex, onNavigate, item.type]);
+    }, [onClose, hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
+
+    if (!item) return null;
 
     return (
         <div
