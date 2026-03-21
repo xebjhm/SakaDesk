@@ -78,7 +78,7 @@ export interface UseSettingsReturn {
 }
 
 export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn {
-    const { activeService, selectedServices } = useAppStore();
+    const { selectedServices } = useAppStore();
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
     const [allServiceSettings, setAllServiceSettings] = useState<Record<string, ServiceSettings>>({});
@@ -198,10 +198,18 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
         });
     }, [selectedServices, loadServiceSettings]);
 
-    // Fetch nickname when activeService changes (per-service nicknames)
+    // Fetch nicknames for all connected services on auth, and whenever the
+    // service list changes.  This ensures nicknames are available before
+    // messages render, so users never see the raw %%% placeholder.
+    const fetchedNicknamesRef = useRef<Set<string>>(new Set());
     useEffect(() => {
-        if (isAuthenticated && activeService) {
-            fetch(`/api/profile?service=${encodeURIComponent(activeService)}`)
+        if (!isAuthenticated) return;
+        const toFetch = selectedServices.filter(s => !fetchedNicknamesRef.current.has(s));
+        if (toFetch.length === 0) return;
+        toFetch.forEach(s => fetchedNicknamesRef.current.add(s));
+
+        toFetch.forEach(service => {
+            fetch(`/api/profile?service=${encodeURIComponent(service)}`)
                 .then(res => res.json())
                 .then(profileData => {
                     if (profileData.nickname) {
@@ -209,14 +217,14 @@ export function useSettings(isAuthenticated: boolean | null): UseSettingsReturn 
                             if (!prev) return prev;
                             return {
                                 ...prev,
-                                user_nicknames: { ...(prev.user_nicknames || {}), [activeService]: profileData.nickname },
+                                user_nicknames: { ...(prev.user_nicknames || {}), [service]: profileData.nickname },
                             };
                         });
                     }
                 })
                 .catch(console.error);
-        }
-    }, [isAuthenticated, activeService]);
+        });
+    }, [isAuthenticated, selectedServices]);
 
     return {
         appSettings,
