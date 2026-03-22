@@ -1,9 +1,9 @@
 /**
- * App version, read from pyproject.toml at build time.
- * This is the single source of truth — no hardcoded versions elsewhere.
+ * App version, parsed from pyproject.toml at build time
+ * so it stays in sync with the Python project.
  */
 
-// Vite imports raw text with ?raw suffix
+// Astro (via Vite) imports file contents as a string with the ?raw suffix
 import pyproject from '../../pyproject.toml?raw';
 
 const match = pyproject.match(/^version\s*=\s*"([^"]+)"/m);
