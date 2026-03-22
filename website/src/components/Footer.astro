@@ -4,7 +4,7 @@ import { APP_VERSION } from '../config';
 
 const lang = getLangFromUrl(Astro.url);
 const githubRepo = 'https://github.com/xebjhm/SakaDesk';
-const year = new Date().getFullYear();
+const year = new Date().getUTCFullYear();
 ---
 
 <footer class="border-t border-gray-200/50 px-4 py-12 sm:px-6 lg:px-8">
@@ -41,7 +41,7 @@ const year = new Date().getFullYear();
     </div>
 
     <div class="mt-8 text-center text-xs text-text-muted">
-      © {year} SakaDesk. Open source under GPL-3.0 License.
+      © {year} SakaDesk. {t(lang, 'footer.copyright')}
     </div>
   </div>
 </footer>
