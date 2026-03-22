@@ -672,6 +672,29 @@ https://github.com/{owner}/{repo}/issues/new?template=feature_request.md&title=F
 
 ---
 
+### 25. Refresh Token Login (Bypass Browser)
+**Status:** Not Started
+**Category:** Feature
+**Complexity:** Low
+
+**Goal:** Allow users to provide their own `refresh_token` to authenticate without browser login.
+
+**Use case:** Users who obtain a `refresh_token` from mobile app traffic capture or API exploration can bypass the interactive browser-based OAuth flow entirely.
+
+**Existing Infrastructure:**
+- `Client.__init__` already accepts a `refresh_token` parameter
+- `refresh_access_token()` Plan A already handles `refresh_token`-based refresh (currently unused in web flow)
+- `TokenManager` already stores/loads `refresh_token` in keyring
+
+**Tasks:**
+- [ ] Add `--refresh-token` CLI flag to saka-cli for direct token input
+- [ ] Add refresh token input field in SakaDesk login UI
+- [ ] Validate refresh token works by attempting a token refresh before saving
+- [ ] Update pysaka `BrowserAuth` or add a `TokenAuth` alternative class
+- [ ] Documentation for how users can obtain refresh tokens
+
+---
+
 ## Implementation Order Suggestion
 
 Based on dependencies and value:
@@ -708,6 +731,7 @@ Based on dependencies and value:
 ### Deferred
 - P2.9: Staged rollout (when user base grows)
 - P3.16: Fan club (blocked on core)
+- P3.25: Refresh token login (bypass browser)
 
 ---
 
@@ -724,6 +748,7 @@ Based on dependencies and value:
 
 | Date | Changes |
 |------|---------|
+| 2026-03-22 | Added P3.25: Refresh Token Login - bypass browser auth with user-provided refresh_token |
 | 2026-02-05 | Completed P3.14: Blog Support - Full blog browsing with auto-sync, race condition handling, member selection/timeline |
 | 2026-02-05 | Fixed message sync: newly connected services now sync automatically (useSync refactor) |
 | 2026-02-05 | Completed P1.4 backend: Multi-service auth, per-service sync, token refresh scheduling |
