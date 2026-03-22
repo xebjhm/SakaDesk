@@ -2,6 +2,7 @@
 import '../styles/global.css';
 import AmbientOrbs from '../components/AmbientOrbs.astro';
 import { getLangFromUrl } from '../i18n/utils';
+import Analytics from '@vercel/analytics/astro';
 
 interface Props {
   title: string;
@@ -27,6 +28,7 @@ const lang = getLangFromUrl(Astro.url);
       rel="stylesheet"
     />
     <title>{title}</title>
+    <Analytics />
   </head>
   <body class="relative min-h-screen overflow-x-hidden">
     <AmbientOrbs />
