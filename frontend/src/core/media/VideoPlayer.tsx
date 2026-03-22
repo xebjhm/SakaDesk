@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
@@ -57,6 +58,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [showControls, setShowControls] = useState(true);
     const [playbackRate, setPlaybackRate] = useState(1);
     const [loop, setLoop] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
+    const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
+    const menuPortalRef = useRef<HTMLDivElement>(null);
 
     const { volume, setVolume, isMuted, toggleMute, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
 
@@ -173,11 +178,57 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, []);
 
-    const cyclePlaybackRate = useCallback(() => {
-        const rates = [1, 1.5, 2, 0.5];
-        const idx = rates.indexOf(playbackRate);
-        setPlaybackRate(rates[(idx + 1) % rates.length]);
-    }, [playbackRate]);
+    const handleMenuToggle = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setShowMenu(prev => {
+            if (!prev && menuButtonRef.current) {
+                const rect = menuButtonRef.current.getBoundingClientRect();
+                setMenuStyle({
+                    position: 'fixed' as const,
+                    bottom: `${window.innerHeight - rect.top + 8}px`,
+                    right: `${window.innerWidth - rect.right}px`,
+                });
+            }
+            return !prev;
+        });
+    }, []);
+
+    const handleMenuDownload = useCallback(() => {
+        handleDownload();
+        setShowMenu(false);
+    }, [handleDownload]);
+
+    const handleMenuPlaybackRate = useCallback((rate: number) => {
+        setPlaybackRate(rate);
+        if (videoRef.current) videoRef.current.playbackRate = rate;
+        setShowMenu(false);
+    }, []);
+
+    // Close menu on click outside or Escape
+    useEffect(() => {
+        if (!showMenu) return;
+
+        const handleClickOutside = (e: MouseEvent) => {
+            const target = e.target as Node;
+            if (
+                menuButtonRef.current && !menuButtonRef.current.contains(target) &&
+                menuPortalRef.current && !menuPortalRef.current.contains(target)
+            ) {
+                setShowMenu(false);
+            }
+        };
+        const handleEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowMenu(false);
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleEsc);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleEsc);
+        };
+    }, [showMenu]);
 
     // Viewer-mode keyboard shortcuts (window-level, no focus required)
     useEffect(() => {
@@ -298,29 +349,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     {/* Spacer */}
                     <div className="flex-1" />
 
-                    {/* Loop */}
-                    <button
-                        onClick={() => setLoop(l => !l)}
-                        className={cn(
-                            "p-1 transition-colors",
-                            loop ? "text-white" : "text-white/30 hover:text-white/60"
-                        )}
-                        type="button"
-                        title={t('videoPlayer.loop')}
-                    >
-                        <Repeat className="w-4 h-4" />
-                    </button>
-
-                    {/* Speed */}
-                    <button
-                        onClick={cyclePlaybackRate}
-                        className="text-white/80 hover:text-white text-xs px-1.5 py-0.5 rounded border border-white/30 hover:border-white/50 transition-colors"
-                        type="button"
-                        title={t('voicePlayer.speed')}
-                    >
-                        {playbackRate}x
-                    </button>
-
                     {/* Volume / No Audio indicator */}
                     {noAudio ? (
                         <div className="p-1 text-white/30" title={t('videoPlayer.noAudio')}>
@@ -346,12 +374,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </div>
                     )}
 
-                    {/* Download */}
-                    {goldenFingerActive && (
-                        <button onClick={handleDownload} className="text-white/80 hover:text-white p-1" type="button">
-                            <Download className="w-4 h-4" />
-                        </button>
-                    )}
+                    {/* Three-dot menu (Loop, Speed, Download) */}
+                    <button
+                        ref={menuButtonRef}
+                        onClick={handleMenuToggle}
+                        className="text-white/60 hover:text-white p-1 transition-colors"
+                        type="button"
+                    >
+                        <MoreVertical className="w-4 h-4" />
+                    </button>
 
                     {/* Fullscreen */}
                     <button onClick={toggleFullscreen} className="text-white/80 hover:text-white p-1" type="button">
@@ -359,6 +390,58 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     </button>
                 </div>
             </div>
+
+            {/* Menu portal */}
+            {showMenu && createPortal(
+                <div
+                    ref={menuPortalRef}
+                    style={menuStyle}
+                    className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                >
+                    {/* Loop toggle */}
+                    <button
+                        onClick={() => { setLoop(l => !l); setShowMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        type="button"
+                    >
+                        <Repeat className={cn("w-4 h-4", loop && "text-blue-500")} />
+                        {t('videoPlayer.loop')}
+                        {loop && <span className="ml-auto text-xs text-blue-500">ON</span>}
+                    </button>
+
+                    <div className="border-t border-gray-200 my-1" />
+
+                    {/* Playback speed */}
+                    <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
+                    {[0.5, 1, 1.5, 2].map(rate => (
+                        <button
+                            key={rate}
+                            onClick={() => handleMenuPlaybackRate(rate)}
+                            className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
+                            style={{ color: playbackRate === rate ? '#3b82f6' : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
+                            type="button"
+                        >
+                            {rate}x
+                        </button>
+                    ))}
+
+                    {/* Download (golden finger only) */}
+                    {goldenFingerActive && (
+                        <>
+                            <div className="border-t border-gray-200 my-1" />
+                            <button
+                                onClick={handleMenuDownload}
+                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                                type="button"
+                            >
+                                <Download className="w-4 h-4" />
+                                {t('common.download')}
+                            </button>
+                        </>
+                    )}
+                </div>,
+                document.body
+            )}
         </div>
     );
 };
