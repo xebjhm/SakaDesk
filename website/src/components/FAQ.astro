@@ -1,0 +1,64 @@
+---
+import { getLangFromUrl, t } from '../i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+
+const faqs = [
+  { q: 'faq.auth.q', a: 'faq.auth.a' },
+  { q: 'faq.tos.q', a: 'faq.tos.a' },
+  { q: 'faq.security.q', a: 'faq.security.a' },
+  { q: 'faq.data.q', a: 'faq.data.a' },
+  { q: 'faq.free.q', a: 'faq.free.a' },
+];
+---
+
+<section id="faq" class="px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+  <div class="mx-auto max-w-3xl">
+    <h2 class="text-center text-3xl font-bold text-text-primary sm:text-4xl">
+      {t(lang, 'faq.title')}
+    </h2>
+
+    <div class="mt-12 space-y-4">
+      {faqs.map(({ q, a }, i) => (
+        <div class="glass overflow-hidden rounded-2xl transition-all duration-300">
+          <button
+            class="faq-toggle flex w-full items-center justify-between px-6 py-5 text-left"
+            aria-expanded="false"
+            data-faq-index={i}
+          >
+            <span class="pr-4 text-base font-semibold text-text-primary">
+              {t(lang, q)}
+            </span>
+            <svg
+              class="faq-chevron h-5 w-5 flex-shrink-0 text-text-muted transition-transform duration-300"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <div class="faq-content hidden px-6 pb-5">
+            <p class="text-sm leading-relaxed text-text-secondary">
+              {t(lang, a)}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<script>
+  document.querySelectorAll('.faq-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const content = btn.nextElementSibling as HTMLElement;
+      const chevron = btn.querySelector('.faq-chevron') as HTMLElement;
+      const isOpen = btn.getAttribute('aria-expanded') === 'true';
+
+      btn.setAttribute('aria-expanded', String(!isOpen));
+      content.classList.toggle('hidden');
+      chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+    });
+  });
+</script>
