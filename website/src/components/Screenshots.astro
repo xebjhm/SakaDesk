@@ -1,0 +1,179 @@
+---
+import { getLangFromUrl, t } from '../i18n/utils';
+
+const lang = getLangFromUrl(Astro.url);
+
+const screenshots = [
+  { src: '/screenshots/messages.png', altKey: 'screenshots.alt.messages' },
+  { src: '/screenshots/blogs.png', altKey: 'screenshots.alt.blogs' },
+  { src: '/screenshots/search.png', altKey: 'screenshots.alt.search' },
+];
+---
+
+<section id="screenshots" class="px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+  <div class="mx-auto max-w-5xl">
+    <div class="text-center">
+      <h2 class="text-3xl font-bold text-text-primary sm:text-4xl">
+        {t(lang, 'screenshots.title')}
+      </h2>
+      <p class="mx-auto mt-4 max-w-2xl text-lg text-text-secondary">
+        {t(lang, 'screenshots.subtitle')}
+      </p>
+    </div>
+
+    <!-- Carousel -->
+    <div class="relative mt-16" id="screenshot-carousel">
+      <!-- Slides container — viewport-relative height with min/max bounds, images centered -->
+      <div class="relative" id="carousel-track" style="height: 60vh; min-height: 300px; max-height: 700px;">
+        {screenshots.map(({ src, altKey }, i) => (
+          <div
+            class:list={[
+              'carousel-slide absolute inset-0 flex items-center justify-center transition-opacity duration-500',
+              i === 0 ? 'opacity-100' : 'opacity-0 pointer-events-none',
+            ]}
+            data-slide={i}
+          >
+            <img
+              src={src}
+              alt={t(lang, altKey)}
+              class="h-full max-w-full object-contain rounded-2xl shadow-2xl shadow-black/15 ring-1 ring-black/5"
+              loading={i === 0 ? 'eager' : 'lazy'}
+            />
+          </div>
+        ))}
+      </div>
+
+      <!-- Navigation arrows -->
+      <button
+        id="carousel-prev"
+        class="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 shadow-lg shadow-black/10 backdrop-blur-sm transition-all hover:bg-white hover:scale-110"
+        aria-label={t(lang, 'screenshots.carousel.prev')}
+      >
+        <svg class="h-5 w-5 text-text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+      </button>
+      <button
+        id="carousel-next"
+        class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-2 shadow-lg shadow-black/10 backdrop-blur-sm transition-all hover:bg-white hover:scale-110"
+        aria-label={t(lang, 'screenshots.carousel.next')}
+      >
+        <svg class="h-5 w-5 text-text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+
+      <!-- Progress bar -->
+      <div class="mt-4 mx-auto max-w-xs h-1 rounded-full bg-gray-200/60 overflow-hidden">
+        <div
+          id="carousel-progress"
+          class="h-full rounded-full bg-white/90 shadow-sm"
+          style="width: 0%; transition: width 5s linear;"
+        ></div>
+      </div>
+
+      <!-- Dots -->
+      <div class="mt-4 flex justify-center gap-2">
+        {screenshots.map((_, i) => (
+          <button
+            class:list={[
+              'carousel-dot h-2 rounded-full transition-all duration-300',
+              i === 0 ? 'w-6 bg-primary' : 'w-2 bg-gray-300',
+            ]}
+            data-dot={i}
+            aria-label={`Slide ${i + 1}`}
+          />
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const slides = document.querySelectorAll<HTMLElement>('.carousel-slide');
+  const dots = document.querySelectorAll<HTMLElement>('.carousel-dot');
+  const progress = document.getElementById('carousel-progress') as HTMLElement;
+  const INTERVAL = 5000;
+  const total = slides.length;
+  let current = 0;
+  let autoTimer: ReturnType<typeof setTimeout>;
+
+  function startProgress() {
+    // Reset to 0 instantly, then animate to 100% over INTERVAL
+    progress.style.transition = 'none';
+    progress.style.width = '0%';
+    // Force reflow so the reset takes effect before the animation
+    progress.offsetWidth;
+    progress.style.transition = `width ${INTERVAL}ms linear`;
+    progress.style.width = '100%';
+  }
+
+  function goTo(index: number) {
+    slides[current].classList.remove('opacity-100');
+    slides[current].classList.add('opacity-0', 'pointer-events-none');
+    dots[current].classList.remove('w-6', 'bg-primary');
+    dots[current].classList.add('w-2', 'bg-gray-300');
+
+    current = ((index % total) + total) % total;
+
+    slides[current].classList.remove('opacity-0', 'pointer-events-none');
+    slides[current].classList.add('opacity-100');
+    dots[current].classList.remove('w-2', 'bg-gray-300');
+    dots[current].classList.add('w-6', 'bg-primary');
+  }
+
+  function scheduleNext() {
+    startProgress();
+    autoTimer = setTimeout(() => {
+      goTo(current + 1);
+      scheduleNext();
+    }, INTERVAL);
+  }
+
+  function resetAuto() {
+    clearTimeout(autoTimer);
+    scheduleNext();
+  }
+
+  document.getElementById('carousel-prev')?.addEventListener('click', () => {
+    goTo(current - 1);
+    resetAuto();
+  });
+
+  document.getElementById('carousel-next')?.addEventListener('click', () => {
+    goTo(current + 1);
+    resetAuto();
+  });
+
+  dots.forEach((dot, i) => {
+    dot.addEventListener('click', () => {
+      goTo(i);
+      resetAuto();
+    });
+  });
+
+  // Touch swipe support
+  const carousel = document.getElementById('screenshot-carousel') as HTMLElement;
+  let touchStartX = 0;
+  let touchEndX = 0;
+  const SWIPE_THRESHOLD = 50;
+
+  carousel.addEventListener('touchstart', (e) => {
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+
+  carousel.addEventListener('touchend', (e) => {
+    touchEndX = e.changedTouches[0].screenX;
+    const diff = touchStartX - touchEndX;
+    if (Math.abs(diff) > SWIPE_THRESHOLD) {
+      if (diff > 0) {
+        goTo(current + 1);
+      } else {
+        goTo(current - 1);
+      }
+      resetAuto();
+    }
+  }, { passive: true });
+
+  scheduleNext();
+</script>

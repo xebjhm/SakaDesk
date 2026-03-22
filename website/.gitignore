@@ -1,0 +1,8 @@
+
+# Astro generated
+.astro/
+
+# Build output
+dist/
+.vercel/
+node_modules/

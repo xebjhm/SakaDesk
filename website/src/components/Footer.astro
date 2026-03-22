@@ -1,0 +1,47 @@
+---
+import { getLangFromUrl, t } from '../i18n/utils';
+import { APP_VERSION } from '../config';
+
+const lang = getLangFromUrl(Astro.url);
+const githubRepo = 'https://github.com/xebjhm/SakaDesk';
+const year = new Date().getUTCFullYear();
+---
+
+<footer class="border-t border-gray-200/50 px-4 py-12 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl">
+    <div class="flex flex-col items-center gap-4 sm:flex-row sm:justify-between">
+      <div class="flex items-center gap-4">
+        <img src="/logo-192.png" alt="" class="h-6 w-6" />
+        <span class="text-lg font-bold text-text-primary">SakaDesk</span>
+        <span class="text-sm text-text-muted">v{APP_VERSION}</span>
+      </div>
+
+      <p class="text-sm text-text-muted">
+        {t(lang, 'footer.tagline')}
+      </p>
+
+      <div class="flex items-center gap-6">
+        <a
+          href={githubRepo}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-sm text-text-muted transition-colors hover:text-primary"
+        >
+          {t(lang, 'footer.github')}
+        </a>
+        <a
+          href={`${githubRepo}/blob/main/LICENSE`}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-sm text-text-muted transition-colors hover:text-primary"
+        >
+          {t(lang, 'footer.license')}
+        </a>
+      </div>
+    </div>
+
+    <div class="mt-8 text-center text-xs text-text-muted">
+      © {year} SakaDesk. {t(lang, 'footer.copyright')}
+    </div>
+  </div>
+</footer>
