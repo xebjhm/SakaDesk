@@ -1,6 +1,6 @@
 [project]
 name = "sakadesk"
-version = "0.2.2"
+version = "0.2.3"
 description = "SakaDesk GUI Application"
 license = { text = "GPL-3.0-only" }
 requires-python = ">=3.12"
