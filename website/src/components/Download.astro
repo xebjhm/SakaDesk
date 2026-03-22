@@ -1,0 +1,48 @@
+---
+import { getLangFromUrl, t } from '../i18n/utils';
+import { APP_VERSION } from '../config';
+
+const lang = getLangFromUrl(Astro.url);
+const downloadUrl = `https://github.com/xebjhm/SakaDesk/releases/download/v${APP_VERSION}/SakaDesk-${APP_VERSION}-Setup.exe`;
+const releaseNotes = 'https://github.com/xebjhm/SakaDesk/blob/main/CHANGELOG.md';
+---
+
+<section id="download" class="px-4 py-20 sm:px-6 sm:py-28 lg:px-8">
+  <div class="mx-auto max-w-2xl text-center">
+    <h2 class="text-3xl font-bold text-text-primary sm:text-4xl">
+      {t(lang, 'download.title')}
+    </h2>
+    <p class="mt-4 text-lg text-text-secondary">
+      {t(lang, 'download.subtitle')}
+    </p>
+
+    <div class="mt-10">
+      <a
+        href={downloadUrl}
+        class="inline-flex items-center gap-3 rounded-2xl bg-primary px-10 py-5 text-lg font-semibold text-white shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/30"
+      >
+        <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        {t(lang, 'download.windows')}
+      </a>
+    </div>
+
+    <div class="mt-6 flex flex-col items-center gap-2">
+      <span class="rounded-full bg-primary/10 px-4 py-1 text-sm font-medium text-primary">
+        {t(lang, 'download.version')} v{APP_VERSION}
+      </span>
+      <a
+        href={releaseNotes}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-text-muted transition-colors hover:text-primary"
+      >
+        {t(lang, 'download.release_notes')} →
+      </a>
+      <p class="mt-2 text-sm text-text-muted">
+        {t(lang, 'download.other_platforms')}
+      </p>
+    </div>
+  </div>
+</section>
