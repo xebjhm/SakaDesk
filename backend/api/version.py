@@ -30,8 +30,9 @@ router = APIRouter(prefix="/api/version", tags=["version"])
 GITHUB_REPO = "xebjhm/SakaDesk"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
-# Cache settings - check at most once per hour
+# Cache settings
 CACHE_DURATION = timedelta(hours=1)
+ERROR_CACHE_DURATION = timedelta(minutes=5)
 
 # In-memory cache
 _cache: dict = {
@@ -98,10 +99,11 @@ async def _fetch_latest_release() -> dict:
 
     now = datetime.now(timezone.utc)
 
-    # Check cache first
+    # Check cache first — use shorter TTL for errors so transient failures retry sooner
     if _cache["last_check"]:
         cache_age = now - _cache["last_check"]
-        if cache_age < CACHE_DURATION:
+        ttl = ERROR_CACHE_DURATION if _cache["error"] else CACHE_DURATION
+        if cache_age < ttl:
             return _cache
 
     # Fetch from GitHub
@@ -201,6 +203,9 @@ async def start_upgrade(background_tasks: BackgroundTasks):
         return {"success": False, "error": cache["error"] or "No version available"}
 
     version = cache["latest_version"]
+
+    if not _is_newer(version, APP_VERSION):
+        return {"success": False, "error": "Already up to date"}
 
     # Reset state
     _upgrade_state = {
