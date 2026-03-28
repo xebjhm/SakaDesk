@@ -31,10 +31,8 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
     const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
     const [isUpgrading, setIsUpgrading] = useState(false);
 
-    // Check version on mount
+    // Check version on mount and periodically (every hour)
     useEffect(() => {
-        const dismissedVersion = localStorage.getItem('sakadesk_dismissed_update');
-
         const checkVersion = async () => {
             try {
                 const res = await fetch('/api/version');
@@ -42,8 +40,11 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
                     const data: VersionInfo = await res.json();
                     setVersionInfo(data);
 
+                    const dismissedVersion = localStorage.getItem('sakadesk_dismissed_update');
                     if (dismissedVersion === data.latest_version) {
                         setDismissed(true);
+                    } else if (data.update_available) {
+                        setDismissed(false);
                     }
                 }
             } catch {
@@ -54,6 +55,8 @@ export function UpdateBanner({ onDismiss }: UpdateBannerProps) {
         };
 
         checkVersion();
+        const interval = setInterval(checkVersion, 60 * 60 * 1000); // Re-check every hour
+        return () => clearInterval(interval);
     }, []);
 
     // Poll upgrade status when upgrading

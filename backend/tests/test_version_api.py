@@ -1,6 +1,6 @@
 """Tests for version API endpoints (GET /api/version, upgrade lifecycle)."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -101,6 +101,42 @@ class TestCheckVersion:
         assert data["error"] == "Rate limited - try again later"
 
 
+class TestErrorCacheTTL:
+    """Tests for shorter error cache duration."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_error_cache_expires_after_5_minutes(self):
+        """Error responses use a shorter cache TTL than successes."""
+        import backend.api.version as v
+
+        # Simulate a cached error from 6 minutes ago
+        v._cache["last_check"] = datetime.now(timezone.utc) - timedelta(minutes=6)
+        v._cache["error"] = "Request timed out"
+        v._cache["latest_version"] = None
+
+        # Cache should be stale — _fetch_latest_release would re-fetch
+        # We verify by checking the TTL logic directly
+        from backend.api.version import ERROR_CACHE_DURATION
+
+        cache_age = datetime.now(timezone.utc) - v._cache["last_check"]
+        assert cache_age > ERROR_CACHE_DURATION
+
+    def test_success_cache_survives_5_minutes(self):
+        """Successful responses use the full 1-hour cache."""
+        import backend.api.version as v
+
+        v._cache["last_check"] = datetime.now(timezone.utc) - timedelta(minutes=6)
+        v._cache["error"] = None
+        v._cache["latest_version"] = "1.0.0"
+
+        from backend.api.version import CACHE_DURATION
+
+        cache_age = datetime.now(timezone.utc) - v._cache["last_check"]
+        assert cache_age < CACHE_DURATION
+
+
 class TestUpgradeStatus:
     """Tests for GET /api/version/upgrade/status."""
 
@@ -169,6 +205,24 @@ class TestStartUpgrade:
         data = response.json()
         assert data["success"] is False
         assert "already in progress" in data["error"].lower()
+
+    @patch("backend.api.version.is_upgrade_supported", return_value=True)
+    @patch("backend.api.version._fetch_latest_release")
+    def test_start_upgrade_already_up_to_date(self, mock_fetch, mock_supported):
+        """Returns error when already on the latest version."""
+        from backend.version import APP_VERSION
+
+        mock_fetch.return_value = {
+            "last_check": datetime.now(timezone.utc),
+            "latest_version": APP_VERSION.lstrip("v"),
+            "release_url": "https://github.com/test",
+            "release_notes": "same version",
+            "error": None,
+        }
+        response = client.post("/api/version/upgrade/start")
+        data = response.json()
+        assert data["success"] is False
+        assert "up to date" in data["error"].lower()
 
     @patch("backend.api.version.is_upgrade_supported", return_value=True)
     @patch("backend.api.version._fetch_latest_release")

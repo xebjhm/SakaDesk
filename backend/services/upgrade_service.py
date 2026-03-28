@@ -117,6 +117,12 @@ async def download_installer(url: str, progress_callback=None) -> Optional[Path]
                         if progress_callback:
                             progress_callback(downloaded, total)
 
+        # Verify download integrity — size must match content-length
+        if total > 0 and downloaded != total:
+            logger.error(f"Download incomplete: {downloaded}/{total} bytes")
+            installer_path.unlink(missing_ok=True)
+            return None
+
         logger.info(f"Installer downloaded to: {installer_path}")
         return installer_path
 
