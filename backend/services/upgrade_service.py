@@ -24,6 +24,9 @@ logger = structlog.get_logger(__name__)
 # GitHub release asset pattern
 GITHUB_REPO = "xebjhm/SakaDesk"
 
+# Maximum installer size (500 MB) — abort download if exceeded
+MAX_INSTALLER_SIZE = 500 * 1024 * 1024
+
 
 @dataclass
 class InstallerInfo:
@@ -115,8 +118,12 @@ async def download_installer(
     upgrade_dir = cast(Path, get_app_data_dir() / "upgrade")
     upgrade_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use filename from URL (e.g., SakaDesk-0.2.0-Setup.exe)
-    filename = info.url.rsplit("/", 1)[-1] if "/" in info.url else "SakaDesk-Setup.exe"
+    # Extract and sanitize filename — use only the basename to prevent path traversal
+    raw_name = info.url.rsplit("/", 1)[-1] if "/" in info.url else "SakaDesk-Setup.exe"
+    filename = Path(raw_name).name  # strips any directory components including ..
+    if not filename.lower().endswith(".exe") or ".." in filename:
+        logger.error(f"Suspicious installer filename from URL: {raw_name!r}")
+        return None
     installer_path = upgrade_dir / filename
 
     try:
@@ -136,6 +143,13 @@ async def download_installer(
                         f.write(chunk)
                         sha256.update(chunk)
                         downloaded += len(chunk)
+                        if downloaded > MAX_INSTALLER_SIZE:
+                            logger.error(
+                                f"Download exceeded {MAX_INSTALLER_SIZE} bytes — aborting"
+                            )
+                            f.close()
+                            installer_path.unlink(missing_ok=True)
+                            return None
                         if progress_callback:
                             progress_callback(downloaded, total)
 
@@ -151,18 +165,24 @@ async def download_installer(
             installer_path.unlink(missing_ok=True)
             return None
 
-        # Verify SHA-256 against GitHub asset digest
-        if info.digest:
-            expected_hex = info.digest.removeprefix("sha256:")
-            actual_hex = sha256.hexdigest()
-            if actual_hex != expected_hex:
-                logger.error(
-                    "SHA-256 mismatch",
-                    expected=expected_hex[:16] + "...",
-                    actual=actual_hex[:16] + "...",
-                )
-                installer_path.unlink(missing_ok=True)
-                return None
+        # Verify SHA-256 against GitHub asset digest (mandatory)
+        if not info.digest:
+            logger.error(
+                "No SHA-256 digest from GitHub — refusing unverified installer"
+            )
+            installer_path.unlink(missing_ok=True)
+            return None
+
+        expected_hex = info.digest.removeprefix("sha256:")
+        actual_hex = sha256.hexdigest()
+        if actual_hex != expected_hex:
+            logger.error(
+                "SHA-256 mismatch",
+                expected=expected_hex[:16] + "...",
+                actual=actual_hex[:16] + "...",
+            )
+            installer_path.unlink(missing_ok=True)
+            return None
             logger.info("SHA-256 verified OK")
 
         logger.info(f"Installer downloaded to: {installer_path}")
