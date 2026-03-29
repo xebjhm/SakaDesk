@@ -31,6 +31,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "is_configured": False,
     "notifications_enabled": True,
     "blogs_full_backup": False,
+    "auto_download_updates": False,
 }
 
 

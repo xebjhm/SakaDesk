@@ -365,7 +365,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
-                <audio ref={audioRef} src={src} preload="metadata" loop />
+                <audio ref={audioRef} src={src} preload="metadata" />
 
                 {/* Row 1: Avatar + Info + Menu */}
                 <div className="flex items-center gap-3 mb-2">
@@ -561,7 +561,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
         >
             {/* Hidden audio element */}
-            <audio ref={audioRef} src={src} preload="metadata" loop />
+            <audio ref={audioRef} src={src} preload="metadata" />
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">

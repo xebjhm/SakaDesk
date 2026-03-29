@@ -21,7 +21,8 @@
     "reportIssue": "Report Issue",
     "featureRequest": "Feature Request",
     "moreOptions": "More options",
-    "removeService": "Remove Service"
+    "removeService": "Remove Service",
+    "on": "ON"
   },
   "settings": {
     "title": "Settings",
@@ -49,7 +50,13 @@
     "serviceSettings": "Service Settings",
     "syncCurrentOff": "Currently: Manual sync only",
     "syncCurrentFixed": "Currently: Every {{minutes}} minutes",
-    "syncCurrentSmart": "Currently: Smart Timing"
+    "syncCurrentSmart": "Currently: Smart Timing",
+    "autoDownloadUpdates": "Auto-Download Updates",
+    "autoDownloadUpdatesDesc": "Automatically download new versions in the background",
+    "checkForUpdates": "Check Now",
+    "updateFound": "v{{version}} available!",
+    "upToDate": "You're up to date",
+    "updateCheckFailed": "Check failed"
   },
   "time": {
     "minute": "{{count}} minute",
@@ -189,7 +196,8 @@
     "upgradeFailed": "Upgrade failed:",
     "installNow": "Install Now",
     "updateAvailable": "Update available!",
-    "upgradeNow": "Update Now"
+    "upgradeNow": "Update Now",
+    "skipVersion": "Skip this version"
   },
   "memberList": {
     "title": "Talk",

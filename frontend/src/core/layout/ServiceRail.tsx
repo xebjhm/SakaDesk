@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
 import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
+import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
 
@@ -217,7 +218,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
             {/* Separator line */}
             <div className="w-8 h-px bg-gray-300 my-2" />
 
-            {/* Bottom actions: Add Service + Settings */}
+            {/* Bottom actions */}
             <div className="flex flex-col items-center gap-2">
                 {/* Add Service Button - only show if not all services selected */}
                 {!allServicesSelected && (
@@ -231,6 +232,9 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                         </div>
                     </button>
                 )}
+
+                {/* Upgrade Icon — appears when an update is available */}
+                <UpgradeIcon />
 
                 {/* Search Button */}
                 <button

@@ -67,6 +67,11 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown lifecycle for the application."""
     # --- Startup ---
+    # Remove leftover upgrade files from a previous cancelled/failed upgrade
+    from backend.services.upgrade_service import cleanup_upgrade_files
+
+    cleanup_upgrade_files()
+
     background_task = asyncio.create_task(_deferred_blog_backup())
 
     yield

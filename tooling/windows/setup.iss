@@ -73,9 +73,17 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; Interactive install: checkbox to launch after install (skipped in silent mode)
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+; Silent install (/SILENT): always relaunch after upgrade completes
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall; Check: IsSilentInstall
 
 [Code]
+function IsSilentInstall: Boolean;
+begin
+  Result := WizardSilent;
+end;
+
 // Write installer language choice to settings.json so the app uses it as default
 procedure CurStepChanged(CurStep: TSetupStep);
 var

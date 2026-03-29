@@ -60,6 +60,7 @@ export interface AppSettings {
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
+    auto_download_updates?: boolean;
 }
 
 // Parse path into API params. Handles both:

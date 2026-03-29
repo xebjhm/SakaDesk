@@ -7,7 +7,6 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
   tabindex="0"
 >
   <audio
-    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />
@@ -159,7 +158,6 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   tabindex="0"
 >
   <audio
-    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />
@@ -419,7 +417,6 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   tabindex="0"
 >
   <audio
-    loop=""
     preload="metadata"
     src="/api/media/voice.m4a"
   />

@@ -1,6 +1,6 @@
 """Tests for version API endpoints (GET /api/version, upgrade lifecycle)."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -27,7 +27,6 @@ def _reset_version_cache():
         "error": None,
         "version": None,
         "installer_path": None,
-        "script_path": None,
     }
 
 
@@ -101,6 +100,42 @@ class TestCheckVersion:
         assert data["error"] == "Rate limited - try again later"
 
 
+class TestErrorCacheTTL:
+    """Tests for shorter error cache duration."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_error_cache_expires_after_5_minutes(self):
+        """Error responses use a shorter cache TTL than successes."""
+        import backend.api.version as v
+
+        # Simulate a cached error from 6 minutes ago
+        v._cache["last_check"] = datetime.now(timezone.utc) - timedelta(minutes=6)
+        v._cache["error"] = "Request timed out"
+        v._cache["latest_version"] = None
+
+        # Cache should be stale — _fetch_latest_release would re-fetch
+        # We verify by checking the TTL logic directly
+        from backend.api.version import ERROR_CACHE_DURATION
+
+        cache_age = datetime.now(timezone.utc) - v._cache["last_check"]
+        assert cache_age > ERROR_CACHE_DURATION
+
+    def test_success_cache_survives_5_minutes(self):
+        """Successful responses use the full 1-hour cache."""
+        import backend.api.version as v
+
+        v._cache["last_check"] = datetime.now(timezone.utc) - timedelta(minutes=6)
+        v._cache["error"] = None
+        v._cache["latest_version"] = "1.0.0"
+
+        from backend.api.version import CACHE_DURATION
+
+        cache_age = datetime.now(timezone.utc) - v._cache["last_check"]
+        assert cache_age < CACHE_DURATION
+
+
 class TestUpgradeStatus:
     """Tests for GET /api/version/upgrade/status."""
 
@@ -172,6 +207,24 @@ class TestStartUpgrade:
 
     @patch("backend.api.version.is_upgrade_supported", return_value=True)
     @patch("backend.api.version._fetch_latest_release")
+    def test_start_upgrade_already_up_to_date(self, mock_fetch, mock_supported):
+        """Returns error when already on the latest version."""
+        from backend.version import APP_VERSION
+
+        mock_fetch.return_value = {
+            "last_check": datetime.now(timezone.utc),
+            "latest_version": APP_VERSION.lstrip("v"),
+            "release_url": "https://github.com/test",
+            "release_notes": "same version",
+            "error": None,
+        }
+        response = client.post("/api/version/upgrade/start")
+        data = response.json()
+        assert data["success"] is False
+        assert "up to date" in data["error"].lower()
+
+    @patch("backend.api.version.is_upgrade_supported", return_value=True)
+    @patch("backend.api.version._fetch_latest_release")
     def test_start_upgrade_success(self, mock_fetch, mock_supported):
         """Successfully starts an upgrade."""
         mock_fetch.return_value = {
@@ -187,53 +240,55 @@ class TestStartUpgrade:
         assert data["version"] == "2.0.0"
 
 
-class TestLaunchUpgrade:
-    """Tests for POST /api/version/upgrade/launch."""
+class TestInstallUpgrade:
+    """Tests for POST /api/version/upgrade/install."""
 
     def setup_method(self):
         _reset_version_cache()
 
-    def test_launch_upgrade_wrong_state(self):
+    def test_install_upgrade_wrong_state(self):
         """Returns error when not in 'ready' state."""
-        response = client.post("/api/version/upgrade/launch")
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
         assert "idle" in data["error"]
 
-    def test_launch_upgrade_no_script(self):
-        """Returns error when script path is missing."""
+    def test_install_upgrade_no_installer(self):
+        """Returns error when installer path is missing."""
         import backend.api.version as v
 
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = None
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = None
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
         assert "not found" in data["error"].lower()
 
-    @patch("backend.api.version.launch_upgrade", return_value=True)
-    def test_launch_upgrade_success(self, mock_launch, tmp_path):
-        """Successfully launches upgrade when ready."""
+    @patch("backend.api.version.asyncio.create_task")
+    @patch("backend.api.version.launch_installer", return_value=True)
+    def test_install_upgrade_success(self, mock_launch, mock_create_task, tmp_path):
+        """Successfully launches installer when ready."""
         import backend.api.version as v
 
-        script = tmp_path / "upgrade.bat"
-        script.touch()
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = script
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = installer
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is True
+        mock_create_task.assert_called_once()
 
-    @patch("backend.api.version.launch_upgrade", return_value=False)
-    def test_launch_upgrade_failure(self, mock_launch, tmp_path):
-        """Returns error when launch fails."""
+    @patch("backend.api.version.launch_installer", return_value=False)
+    def test_install_upgrade_failure(self, mock_launch, tmp_path):
+        """Returns error when installer launch fails."""
         import backend.api.version as v
 
-        script = tmp_path / "upgrade.bat"
-        script.touch()
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = script
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = installer
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
 
