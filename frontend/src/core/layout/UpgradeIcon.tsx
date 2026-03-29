@@ -3,6 +3,10 @@ import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 
+// SVG progress ring constants (hoisted to avoid recomputation on every render)
+const RING_RADIUS = 18;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
 interface VersionInfo {
     current_version: string;
     latest_version: string | null;
@@ -36,7 +40,6 @@ export function UpgradeIcon() {
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
     const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
     const [dismissed, setDismissed] = useState(false);
-    const [isPolling, setIsPolling] = useState(false);
     const [autoDownload, setAutoDownload] = useState(true);
     const autoDownloadTriggered = useRef(false);
 
@@ -101,9 +104,10 @@ export function UpgradeIcon() {
         }
     }, [autoDownload, stage, versionInfo?.upgrade_supported]);
 
-    // Poll upgrade status while downloading/launching
+    // Poll upgrade status while downloading
+    const shouldPoll = upgradeStatus?.state === 'downloading';
     useEffect(() => {
-        if (!isPolling) return;
+        if (!shouldPoll) return;
 
         const poll = async () => {
             try {
@@ -111,9 +115,6 @@ export function UpgradeIcon() {
                 if (res.ok) {
                     const status: UpgradeStatus = await res.json();
                     setUpgradeStatus(status);
-                    if (status.state === 'ready' || status.state === 'error' || status.state === 'idle') {
-                        setIsPolling(false);
-                    }
                 }
             } catch {
                 // Continue polling
@@ -122,14 +123,13 @@ export function UpgradeIcon() {
 
         const interval = setInterval(poll, 500);
         return () => clearInterval(interval);
-    }, [isPolling]);
+    }, [shouldPoll]);
 
     const handleStartDownload = useCallback(async () => {
         try {
             const res = await fetch('/api/version/upgrade/start', { method: 'POST' });
             const data = await res.json();
             if (data.success) {
-                setIsPolling(true);
                 setUpgradeStatus({ state: 'downloading', progress: 0, error: null, version: data.version });
             } else {
                 setUpgradeStatus({ state: 'error', progress: 0, error: data.error, version: null });
@@ -176,7 +176,6 @@ export function UpgradeIcon() {
             // Ignore
         }
         setUpgradeStatus(null);
-        setIsPolling(false);
         autoDownloadTriggered.current = false;
     }, []);
 
@@ -193,9 +192,7 @@ export function UpgradeIcon() {
     const version = upgradeStatus?.version || versionInfo?.latest_version || '';
 
     // SVG progress ring constants
-    const ringRadius = 18;
-    const ringCircumference = 2 * Math.PI * ringRadius;
-    const ringOffset = ringCircumference - (progress / 100) * ringCircumference;
+    const ringOffset = RING_CIRCUMFERENCE - (progress / 100) * RING_CIRCUMFERENCE;
 
     const tooltip = (() => {
         switch (stage) {
@@ -248,9 +245,9 @@ export function UpgradeIcon() {
                 {stage === 'downloading' && (
                     <svg className="absolute inset-0 w-11 h-11 -rotate-90" viewBox="0 0 44 44">
                         <circle
-                            cx="22" cy="22" r={ringRadius}
+                            cx="22" cy="22" r={RING_RADIUS}
                             fill="none" stroke="currentColor" strokeWidth="2.5"
-                            strokeDasharray={ringCircumference}
+                            strokeDasharray={RING_CIRCUMFERENCE}
                             strokeDashoffset={ringOffset}
                             className="text-blue-500 transition-[stroke-dashoffset] duration-300"
                             strokeLinecap="round"
