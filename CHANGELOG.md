@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-03-29
+
+### Added
+- **Upgrade system redesign** — replaced fragile batch script with direct Inno Setup `/SILENT` invocation; two-stage upgrade icon in service rail replaces top gradient banner
+- SHA-256 verification for downloaded installers (mandatory, refuses unverified files)
+- Download integrity checks: file size validation + 500 MB download cap
+- `auto_download_updates` setting with toggle in Settings (default: OFF, opt-in)
+- "Check for Updates" button in Settings for manual version checks
+- Auto-relaunch after silent install via Inno Setup `[Run]` section
+- Graceful app shutdown before installer launch
+- Shorter 5-minute cache TTL for failed GitHub release checks (vs 1 hour for success)
+- Download button click tracking via Vercel Analytics custom events on website
+- i18n keys for upgrade UI in all 5 locales (EN, JA, ZH-CN, ZH-TW, YUE)
+
+### Changed
+- Upgrade icon uses ArrowUpCircle (ready) and Loader2 (launching) icons
+- Voice player no longer auto-repeats by default
+- Video player: loop, speed, and download controls moved into three-dot menu
+- Website screenshots replaced with high-res WebP format
+
+### Security
+- Installer filename sanitized to prevent path traversal via crafted API response
+- `release_url` validated against `github.com` origin before opening
+- Auto-download defaults to OFF — requires explicit user opt-in for silent downloads
+
+### Removed
+- `UpdateBanner.tsx` — replaced by `UpgradeIcon` in service rail
+- Batch script upgrade mechanism (`generate_upgrade_script`, `launch_upgrade`)
+- `/upgrade/launch` API endpoint — replaced by `/upgrade/install`
+
 ## [0.2.3] - 2026-03-22
 
 ### Added
