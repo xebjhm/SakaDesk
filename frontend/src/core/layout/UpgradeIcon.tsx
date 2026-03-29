@@ -156,7 +156,7 @@ export function UpgradeIcon() {
         } catch {
             setUpgradeStatus({ state: 'error', progress: 100, error: t('update.upgradeFailed'), version: upgradeStatus?.version || null });
         }
-    }, [upgradeStatus?.version, t]);
+    }, [upgradeStatus, t]);
 
     const handleDismiss = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
@@ -171,7 +171,7 @@ export function UpgradeIcon() {
             });
             setUpgradeStatus(null);
         }
-    }, [stage, versionInfo?.latest_version]);
+    }, [stage, versionInfo]);
 
     const handleCancel = useCallback(async () => {
         try {
