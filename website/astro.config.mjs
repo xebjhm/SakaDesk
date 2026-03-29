@@ -6,7 +6,11 @@ import sitemap from '@astrojs/sitemap';
 export default defineConfig({
   site: 'https://sakadesk.vercel.app',
   output: 'static',
-  adapter: vercel(),
+  adapter: vercel({
+    webAnalytics: {
+      enabled: true,
+    },
+  }),
   integrations: [tailwind(), sitemap()],
   i18n: {
     defaultLocale: 'en',
