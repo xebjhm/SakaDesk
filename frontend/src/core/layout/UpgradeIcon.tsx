@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, RotateCcw, X, AlertCircle } from 'lucide-react';
+import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 
@@ -145,6 +145,9 @@ export function UpgradeIcon() {
             const data = await res.json();
             if (data.success) {
                 setUpgradeStatus(prev => prev ? { ...prev, state: 'launching' } : null);
+                // Close the window after a short delay to let the installer start.
+                // The backend also schedules os._exit(2s) as a fallback.
+                setTimeout(() => window.close(), 1500);
             } else {
                 setUpgradeStatus({ state: 'error', progress: 100, error: data.error, version: upgradeStatus?.version || null });
             }
@@ -258,8 +261,10 @@ export function UpgradeIcon() {
                 {/* Icon */}
                 {stage === 'error' ? (
                     <AlertCircle className="w-5 h-5" />
-                ) : stage === 'ready' || stage === 'launching' ? (
-                    <RotateCcw className={cn("w-5 h-5", stage === 'launching' && "animate-spin")} />
+                ) : stage === 'launching' ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                ) : stage === 'ready' ? (
+                    <ArrowUpCircle className="w-5 h-5" />
                 ) : (
                     <Download className="w-5 h-5" />
                 )}

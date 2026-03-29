@@ -282,6 +282,20 @@ async def install_upgrade():
 
     if success:
         _upgrade_state["state"] = "launching"
+
+        # Schedule graceful app exit after a short delay so the response
+        # reaches the frontend first. The frontend also closes its window.
+        import asyncio
+
+        async def _delayed_exit():
+            await asyncio.sleep(2)
+            logger.info("Shutting down for upgrade...")
+            import os
+
+            os._exit(0)
+
+        asyncio.get_event_loop().create_task(_delayed_exit())
+
         return {
             "success": True,
             "message": "Installer launched. The app will close and restart automatically.",
