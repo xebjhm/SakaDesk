@@ -218,7 +218,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
             {/* Separator line */}
             <div className="w-8 h-px bg-gray-300 my-2" />
 
-            {/* Bottom actions: Add Service + Upgrade + Search + Settings */}
+            {/* Bottom actions */}
             <div className="flex flex-col items-center gap-2">
                 {/* Add Service Button - only show if not all services selected */}
                 {!allServicesSelected && (

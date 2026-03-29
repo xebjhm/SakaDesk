@@ -4,6 +4,9 @@ Checks GitHub releases for updates with caching to respect rate limits.
 Also provides in-place upgrade functionality for Windows.
 """
 
+import asyncio
+import os
+
 import httpx
 import structlog
 from datetime import datetime, timezone, timedelta
@@ -12,6 +15,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from backend.services.upgrade_service import (
+    GITHUB_REPO,
     get_installer_info,
     download_installer,
     launch_installer,
@@ -25,8 +29,7 @@ logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/version", tags=["version"])
 
-# GitHub API settings
-GITHUB_REPO = "xebjhm/SakaDesk"
+# GitHub API settings (GITHUB_REPO imported from upgrade_service)
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 # Cache settings
@@ -285,16 +288,12 @@ async def install_upgrade():
 
         # Schedule graceful app exit after a short delay so the response
         # reaches the frontend first. The frontend also closes its window.
-        import asyncio
-
         async def _delayed_exit():
             await asyncio.sleep(2)
             logger.info("Shutting down for upgrade...")
-            import os
-
             os._exit(0)
 
-        asyncio.get_event_loop().create_task(_delayed_exit())
+        asyncio.create_task(_delayed_exit())
 
         return {
             "success": True,
