@@ -62,7 +62,9 @@ export function UpgradeIcon() {
                     setAutoDownload(data.auto_download_updates);
                 }
             })
-            .catch(() => {});
+            .catch((err) => {
+                console.warn('[UpgradeIcon] Failed to fetch auto-download setting:', err);
+            });
     }, []);
 
     // Check version on mount and periodically
@@ -81,8 +83,8 @@ export function UpgradeIcon() {
                         setDismissed(false);
                     }
                 }
-            } catch {
-                // Silent fail — will retry next interval
+            } catch (err) {
+                console.warn('[UpgradeIcon] Version check failed:', err);
             }
         };
 
@@ -90,40 +92,6 @@ export function UpgradeIcon() {
         const interval = setInterval(checkVersion, 60 * 60 * 1000);
         return () => clearInterval(interval);
     }, []);
-
-    // Auto-download when enabled and update is available
-    useEffect(() => {
-        if (
-            autoDownload &&
-            stage === 'available' &&
-            versionInfo?.upgrade_supported &&
-            !autoDownloadTriggered.current
-        ) {
-            autoDownloadTriggered.current = true;
-            handleStartDownload();
-        }
-    }, [autoDownload, stage, versionInfo?.upgrade_supported]);
-
-    // Poll upgrade status while downloading
-    const shouldPoll = upgradeStatus?.state === 'downloading';
-    useEffect(() => {
-        if (!shouldPoll) return;
-
-        const poll = async () => {
-            try {
-                const res = await fetch('/api/version/upgrade/status');
-                if (res.ok) {
-                    const status: UpgradeStatus = await res.json();
-                    setUpgradeStatus(status);
-                }
-            } catch {
-                // Continue polling
-            }
-        };
-
-        const interval = setInterval(poll, 500);
-        return () => clearInterval(interval);
-    }, [shouldPoll]);
 
     const handleStartDownload = useCallback(async () => {
         try {
@@ -139,6 +107,40 @@ export function UpgradeIcon() {
         }
     }, [t]);
 
+    // Auto-download when enabled and update is available
+    useEffect(() => {
+        if (
+            autoDownload &&
+            stage === 'available' &&
+            versionInfo?.upgrade_supported &&
+            !autoDownloadTriggered.current
+        ) {
+            autoDownloadTriggered.current = true;
+            handleStartDownload();
+        }
+    }, [autoDownload, stage, versionInfo?.upgrade_supported, handleStartDownload]);
+
+    // Poll upgrade status while downloading
+    const shouldPoll = upgradeStatus?.state === 'downloading';
+    useEffect(() => {
+        if (!shouldPoll) return;
+
+        const poll = async () => {
+            try {
+                const res = await fetch('/api/version/upgrade/status');
+                if (res.ok) {
+                    const status: UpgradeStatus = await res.json();
+                    setUpgradeStatus(status);
+                }
+            } catch (err) {
+                console.warn('[UpgradeIcon] Status poll failed:', err);
+            }
+        };
+
+        const interval = setInterval(poll, 500);
+        return () => clearInterval(interval);
+    }, [shouldPoll]);
+
     const handleInstall = useCallback(async () => {
         try {
             const res = await fetch('/api/version/upgrade/install', { method: 'POST' });
@@ -146,7 +148,7 @@ export function UpgradeIcon() {
             if (data.success) {
                 setUpgradeStatus(prev => prev ? { ...prev, state: 'launching' } : null);
                 // Close the window after a short delay to let the installer start.
-                // The backend also schedules os._exit(2s) as a fallback.
+                // The backend also exits after ~2 seconds as a fallback.
                 setTimeout(() => window.close(), 1500);
             } else {
                 setUpgradeStatus({ state: 'error', progress: 100, error: data.error, version: upgradeStatus?.version || null });
@@ -164,7 +166,9 @@ export function UpgradeIcon() {
         }
         if (stage === 'error') {
             // Cancel on error dismiss
-            fetch('/api/version/upgrade/cancel', { method: 'POST' }).catch(() => {});
+            fetch('/api/version/upgrade/cancel', { method: 'POST' }).catch((err) => {
+                console.warn('[UpgradeIcon] Cancel on dismiss failed:', err);
+            });
             setUpgradeStatus(null);
         }
     }, [stage, versionInfo?.latest_version]);
@@ -172,8 +176,8 @@ export function UpgradeIcon() {
     const handleCancel = useCallback(async () => {
         try {
             await fetch('/api/version/upgrade/cancel', { method: 'POST' });
-        } catch {
-            // Ignore
+        } catch (err) {
+            console.warn('[UpgradeIcon] Cancel request failed:', err);
         }
         setUpgradeStatus(null);
         autoDownloadTriggered.current = false;
@@ -192,7 +196,7 @@ export function UpgradeIcon() {
     const progress = upgradeStatus?.progress ?? 0;
     const version = upgradeStatus?.version || versionInfo?.latest_version || '';
 
-    // SVG progress ring constants
+    // Compute ring offset from current progress
     const ringOffset = RING_CIRCUMFERENCE - (progress / 100) * RING_CIRCUMFERENCE;
 
     const tooltip = (() => {

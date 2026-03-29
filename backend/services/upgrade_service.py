@@ -5,7 +5,7 @@ Handles downloading new versions and triggering the upgrade process on Windows.
 The upgrade flow:
 1. Download new installer to upgrade directory
 2. Verify SHA-256 digest against GitHub release asset
-3. Launch installer directly with /SILENT flag (Inno Setup handles close + relaunch)
+3. Launch installer with /SILENT /SUPPRESSMSGBOXES /NORESTART (Inno Setup closes running app + relaunches)
 """
 
 import hashlib
@@ -96,8 +96,8 @@ async def get_installer_info(version: str) -> Optional[InstallerInfo]:
             logger.error(f"Installer asset '{expected_name}' not found in release")
             return None
 
-    except Exception as e:
-        logger.error(f"Error fetching installer info: {e}")
+    except (httpx.HTTPError, httpx.TimeoutException, KeyError, ValueError) as e:
+        logger.error("Error fetching installer info", error=str(e), version=version)
         return None
 
 
@@ -183,13 +183,13 @@ async def download_installer(
             )
             installer_path.unlink(missing_ok=True)
             return None
-            logger.info("SHA-256 verified OK")
 
+        logger.info("SHA-256 verified OK")
         logger.info(f"Installer downloaded to: {installer_path}")
         return installer_path
 
-    except Exception as e:
-        logger.error(f"Error downloading installer: {e}")
+    except (httpx.HTTPError, httpx.StreamError, OSError) as e:
+        logger.error("Error downloading installer", error=str(e), url=info.url)
         # Clean up partial download
         if installer_path.exists():
             installer_path.unlink()

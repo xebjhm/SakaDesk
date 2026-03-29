@@ -21,7 +21,8 @@
     "reportIssue": "回報問題",
     "featureRequest": "功能請求",
     "moreOptions": "更多選項",
-    "removeService": "移除服務"
+    "removeService": "移除服務",
+    "on": "開"
   },
   "settings": {
     "title": "設定",

@@ -264,8 +264,9 @@ class TestInstallUpgrade:
         assert data["success"] is False
         assert "not found" in data["error"].lower()
 
+    @patch("backend.api.version.asyncio.create_task")
     @patch("backend.api.version.launch_installer", return_value=True)
-    def test_install_upgrade_success(self, mock_launch, tmp_path):
+    def test_install_upgrade_success(self, mock_launch, mock_create_task, tmp_path):
         """Successfully launches installer when ready."""
         import backend.api.version as v
 
@@ -276,6 +277,7 @@ class TestInstallUpgrade:
         response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is True
+        mock_create_task.assert_called_once()
 
     @patch("backend.api.version.launch_installer", return_value=False)
     def test_install_upgrade_failure(self, mock_launch, tmp_path):
