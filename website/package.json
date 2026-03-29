@@ -14,7 +14,8 @@
     "@astrojs/tailwind": "^6.0.2",
     "@astrojs/vercel": "^8.1.4",
     "@astrojs/sitemap": "^3.3.1",
-    "tailwindcss": "^3.4.17"
+    "tailwindcss": "^3.4.17",
+    "@vercel/analytics": "^1.5.0"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

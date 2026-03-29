@@ -21,7 +21,8 @@
     "reportIssue": "不具合報告",
     "featureRequest": "機能リクエスト",
     "moreOptions": "その他のオプション",
-    "removeService": "サービスを削除"
+    "removeService": "サービスを削除",
+    "on": "ON"
   },
   "settings": {
     "title": "設定",
@@ -49,7 +50,13 @@
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
-    "syncCurrentSmart": "現在: スマートタイミング"
+    "syncCurrentSmart": "現在: スマートタイミング",
+    "autoDownloadUpdates": "自動ダウンロード更新",
+    "autoDownloadUpdatesDesc": "新しいバージョンをバックグラウンドで自動ダウンロード",
+    "checkForUpdates": "今すぐ確認",
+    "updateFound": "v{{version}} が利用可能です！",
+    "upToDate": "最新版です",
+    "updateCheckFailed": "確認に失敗しました"
   },
   "time": {
     "minute": "{{count}}分",
@@ -189,7 +196,8 @@
     "upgradeFailed": "更新失敗:",
     "installNow": "今すぐインストール",
     "updateAvailable": "アップデートがあります",
-    "upgradeNow": "今すぐ更新"
+    "upgradeNow": "今すぐ更新",
+    "skipVersion": "このバージョンをスキップ"
   },
   "memberList": {
     "title": "トーク",
