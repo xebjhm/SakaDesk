@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
@@ -308,10 +308,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                     </div>
 
-                    {/* Desktop Notifications — hidden until feature is stable */}
+                    {/* Updates */}
+                    <UpdatesSection
+                        autoDownload={appSettings.auto_download_updates ?? false}
+                        onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
+                    />
 
                 </div>
             </div>
         </div>
     );
 };
+
+
+function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
+    autoDownload: boolean;
+    onToggleAutoDownload: (val: boolean) => void;
+}) {
+    const { t } = useTranslation();
+    const [checking, setChecking] = useState(false);
+    const [result, setResult] = useState<string | null>(null);
+
+    const handleCheckNow = async () => {
+        setChecking(true);
+        setResult(null);
+        try {
+            const res = await fetch('/api/version');
+            if (res.ok) {
+                const data = await res.json();
+                if (data.update_available) {
+                    setResult(t('settings.updateFound', { version: data.latest_version }));
+                } else {
+                    setResult(t('settings.upToDate'));
+                }
+            } else {
+                setResult(t('settings.updateCheckFailed'));
+            }
+        } catch {
+            setResult(t('settings.updateCheckFailed'));
+        } finally {
+            setChecking(false);
+        }
+    };
+
+    return (
+        <div>
+            <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700">
+                    {t('settings.autoDownloadUpdates')}
+                </label>
+                <button
+                    onClick={() => onToggleAutoDownload(!autoDownload)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                        autoDownload ? 'bg-blue-400' : 'bg-gray-300'
+                    }`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        autoDownload ? 'translate-x-7' : 'translate-x-1'
+                    }`} />
+                </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+                {t('settings.autoDownloadUpdatesDesc')}
+            </p>
+            <div className="mt-3 flex items-center gap-3">
+                <button
+                    onClick={handleCheckNow}
+                    disabled={checking}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                >
+                    {checking
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <RefreshCw className="w-3.5 h-3.5" />
+                    }
+                    {t('settings.checkForUpdates')}
+                </button>
+                {result && (
+                    <span className="text-xs text-gray-500">{result}</span>
+                )}
+            </div>
+        </div>
+    );
+}
