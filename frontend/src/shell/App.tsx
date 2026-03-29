@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
 import { Loader2 } from 'lucide-react'
-import { DiagnosticsModal, ReportIssueModal, AboutModal, UpdateBanner } from '../core/modals'
+import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
@@ -232,8 +232,6 @@ function App() {
 
     return (
         <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
-            {/* Update Banner */}
-            <UpdateBanner />
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}

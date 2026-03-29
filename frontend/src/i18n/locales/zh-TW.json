@@ -189,7 +189,8 @@
     "upgradeFailed": "升級失敗：",
     "installNow": "立即安裝",
     "updateAvailable": "有可用更新！",
-    "upgradeNow": "立即更新"
+    "upgradeNow": "立即更新",
+    "skipVersion": "跳過此版本"
   },
   "memberList": {
     "title": "聊天",

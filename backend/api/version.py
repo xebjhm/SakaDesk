@@ -12,10 +12,9 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 
 from backend.services.upgrade_service import (
-    get_installer_download_url,
+    get_installer_info,
     download_installer,
-    generate_upgrade_script,
-    launch_upgrade,
+    launch_installer,
     cleanup_upgrade_files,
     is_upgrade_supported,
 )
@@ -73,7 +72,6 @@ _upgrade_state: dict = {
     "error": None,
     "version": None,
     "installer_path": None,
-    "script_path": None,
 }
 
 
@@ -214,7 +212,6 @@ async def start_upgrade(background_tasks: BackgroundTasks):
         "error": None,
         "version": version,
         "installer_path": None,
-        "script_path": None,
     }
 
     # Start download in background
@@ -224,13 +221,13 @@ async def start_upgrade(background_tasks: BackgroundTasks):
 
 
 async def _download_and_prepare_upgrade(version: str):
-    """Background task to download installer and prepare upgrade."""
+    """Background task to download and verify the installer."""
     global _upgrade_state
 
     try:
-        # Get download URL
-        url = await get_installer_download_url(version)
-        if not url:
+        # Get installer info (URL, size, SHA-256 digest)
+        info = await get_installer_info(version)
+        if not info:
             _upgrade_state["state"] = "error"
             _upgrade_state["error"] = "Could not find installer for this version"
             return
@@ -240,18 +237,14 @@ async def _download_and_prepare_upgrade(version: str):
             if total > 0:
                 _upgrade_state["progress"] = (downloaded / total) * 100
 
-        installer_path = await download_installer(url, progress_callback)
+        installer_path = await download_installer(info, progress_callback)
 
         if not installer_path:
             _upgrade_state["state"] = "error"
-            _upgrade_state["error"] = "Failed to download installer"
+            _upgrade_state["error"] = "Failed to download or verify installer"
             return
 
-        # Generate upgrade script
-        script_path = generate_upgrade_script(installer_path)
-
         _upgrade_state["installer_path"] = installer_path
-        _upgrade_state["script_path"] = script_path
         _upgrade_state["state"] = "ready"
         _upgrade_state["progress"] = 100.0
 
@@ -263,15 +256,13 @@ async def _download_and_prepare_upgrade(version: str):
         _upgrade_state["error"] = str(e)
 
 
-@router.post("/upgrade/launch")
-async def launch_upgrade_process():
+@router.post("/upgrade/install")
+async def install_upgrade():
     """
-    Launch the upgrade process.
+    Launch the installer directly.
 
-    This will:
-    1. Launch the upgrade script
-    2. Return success - the app should then exit
-    3. The upgrade script will wait for app to close, then run installer
+    Inno Setup handles closing the running app (CloseApplications=yes)
+    and relaunching after install ([Run] section).
 
     Call this only after /upgrade/status shows state="ready".
     """
@@ -280,25 +271,25 @@ async def launch_upgrade_process():
     if _upgrade_state["state"] != "ready":
         return {
             "success": False,
-            "error": f"Cannot launch upgrade in state: {_upgrade_state['state']}",
+            "error": f"Cannot install in state: {_upgrade_state['state']}",
         }
 
-    script_path = _upgrade_state.get("script_path")
-    if not script_path or not script_path.exists():
-        return {"success": False, "error": "Upgrade script not found"}
+    installer_path = _upgrade_state.get("installer_path")
+    if not installer_path or not installer_path.exists():
+        return {"success": False, "error": "Installer not found"}
 
-    success = launch_upgrade(script_path)
+    success = launch_installer(installer_path)
 
     if success:
         _upgrade_state["state"] = "launching"
         return {
             "success": True,
-            "message": "Upgrade launched. Please close the application to complete the upgrade.",
+            "message": "Installer launched. The app will close and restart automatically.",
         }
     else:
         _upgrade_state["state"] = "error"
-        _upgrade_state["error"] = "Failed to launch upgrade script"
-        return {"success": False, "error": "Failed to launch upgrade script"}
+        _upgrade_state["error"] = "Failed to launch installer"
+        return {"success": False, "error": "Failed to launch installer"}
 
 
 @router.post("/upgrade/cancel")
@@ -314,7 +305,6 @@ async def cancel_upgrade():
         "error": None,
         "version": None,
         "installer_path": None,
-        "script_path": None,
     }
 
     return {"success": True, "message": "Upgrade cancelled"}

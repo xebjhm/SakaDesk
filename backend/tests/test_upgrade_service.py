@@ -1,15 +1,15 @@
-"""Tests for upgrade_service.py — installer naming, script generation, and utilities."""
+"""Tests for upgrade_service.py — installer naming, launch, and utilities."""
 
 from unittest.mock import patch
 
 
 from backend.services.upgrade_service import (
     GITHUB_REPO,
+    InstallerInfo,
     _installer_asset_name,
     cleanup_upgrade_files,
-    generate_upgrade_script,
     is_upgrade_supported,
-    launch_upgrade,
+    launch_installer,
 )
 
 
@@ -57,78 +57,48 @@ class TestInstallerAssetName:
         assert "-Setup" in result
 
 
-# ── generate_upgrade_script ──────────────────────────────────────────
+# ── InstallerInfo ───────────────────────────────────────────────────
 
 
-class TestGenerateUpgradeScript:
-    """Tests for batch script generation."""
+class TestInstallerInfo:
+    """Tests for the InstallerInfo dataclass."""
 
-    def test_creates_script_file(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        assert script_path.exists()
-        assert script_path.name == "upgrade.bat"
+    def test_creates_with_digest(self):
+        info = InstallerInfo(
+            url="https://example.com/setup.exe",
+            size=1024,
+            digest="sha256:abc123",
+        )
+        assert info.url == "https://example.com/setup.exe"
+        assert info.size == 1024
+        assert info.digest == "sha256:abc123"
 
-    def test_script_in_same_dir_as_installer(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        assert script_path.parent == installer.parent
-
-    def test_script_contains_installer_path(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        content = script_path.read_text(encoding="utf-8")
-        assert str(installer) in content
-
-    def test_script_contains_verysilent_flag(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        content = script_path.read_text(encoding="utf-8")
-        assert "/VERYSILENT" in content
-
-    def test_script_is_batch_file(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        content = script_path.read_text(encoding="utf-8")
-        assert content.startswith("@echo off")
-
-    def test_script_contains_waitloop(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        content = script_path.read_text(encoding="utf-8")
-        assert ":waitloop" in content
-
-    def test_script_contains_cleanup(self, tmp_path):
-        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
-        installer.touch()
-        script_path = generate_upgrade_script(installer)
-        content = script_path.read_text(encoding="utf-8")
-        assert ":cleanup" in content
+    def test_creates_without_digest(self):
+        info = InstallerInfo(
+            url="https://example.com/setup.exe",
+            size=0,
+            digest=None,
+        )
+        assert info.digest is None
 
 
-# ── launch_upgrade ───────────────────────────────────────────────────
+# ── launch_installer ────────────────────────────────────────────────
 
 
-class TestLaunchUpgrade:
-    """Tests for the upgrade launcher."""
+class TestLaunchInstaller:
+    """Tests for the direct installer launcher."""
 
     def test_returns_false_on_non_windows(self, tmp_path):
-        script = tmp_path / "upgrade.bat"
-        script.touch()
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
         with patch("backend.services.upgrade_service.is_windows", return_value=False):
-            result = launch_upgrade(script)
+            result = launch_installer(installer)
         assert result is False
 
-    def test_returns_false_when_script_missing(self, tmp_path):
-        script = tmp_path / "nonexistent.bat"
+    def test_returns_false_when_installer_missing(self, tmp_path):
+        installer = tmp_path / "nonexistent.exe"
         with patch("backend.services.upgrade_service.is_windows", return_value=True):
-            result = launch_upgrade(script)
+            result = launch_installer(installer)
         assert result is False
 
 
@@ -142,7 +112,6 @@ class TestCleanupUpgradeFiles:
         upgrade_dir = tmp_path / "upgrade"
         upgrade_dir.mkdir()
         (upgrade_dir / "installer.exe").touch()
-        (upgrade_dir / "upgrade.bat").touch()
 
         with patch(
             "backend.services.upgrade_service.get_app_data_dir",

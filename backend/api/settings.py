@@ -91,6 +91,7 @@ class SettingsResponse(BaseModel):
     notifications_enabled: bool = True  # Desktop notifications for new messages
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
+    auto_download_updates: bool = True  # Auto-download new versions in background
 
 
 class SettingsUpdate(BaseModel):
@@ -100,6 +101,7 @@ class SettingsUpdate(BaseModel):
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None
+    auto_download_updates: Optional[bool] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -136,6 +138,7 @@ async def get_settings():
         notifications_enabled=config["notifications_enabled"],
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
+        auto_download_updates=config["auto_download_updates"],
     )
 
 
@@ -158,6 +161,8 @@ async def update_settings(update: SettingsUpdate):
             set_notifications_enabled(update.notifications_enabled)
         if update.blogs_full_backup is not None:
             config["blogs_full_backup"] = update.blogs_full_backup
+        if update.auto_download_updates is not None:
+            config["auto_download_updates"] = update.auto_download_updates
 
     config = await _store_update(_apply)
 
@@ -172,6 +177,7 @@ async def update_settings(update: SettingsUpdate):
         notifications_enabled=config["notifications_enabled"],
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
+        auto_download_updates=config["auto_download_updates"],
     )
 
 
