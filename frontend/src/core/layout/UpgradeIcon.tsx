@@ -40,7 +40,7 @@ export function UpgradeIcon() {
     const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
     const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
     const [dismissed, setDismissed] = useState(false);
-    const [autoDownload, setAutoDownload] = useState(true);
+    const [autoDownload, setAutoDownload] = useState(false);
     const autoDownloadTriggered = useRef(false);
 
     // Determine current stage
@@ -181,8 +181,9 @@ export function UpgradeIcon() {
 
     // For non-Windows: open release page in browser
     const handleOpenRelease = useCallback(() => {
-        if (versionInfo?.release_url) {
-            window.open(versionInfo.release_url, '_blank');
+        const url = versionInfo?.release_url;
+        if (url && /^https:\/\/github\.com\//.test(url)) {
+            window.open(url, '_blank');
         }
     }, [versionInfo?.release_url]);
 

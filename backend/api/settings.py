@@ -91,7 +91,7 @@ class SettingsResponse(BaseModel):
     notifications_enabled: bool = True  # Desktop notifications for new messages
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
-    auto_download_updates: bool = True  # Auto-download new versions in background
+    auto_download_updates: bool = False  # Auto-download new versions in background
 
 
 class SettingsUpdate(BaseModel):
