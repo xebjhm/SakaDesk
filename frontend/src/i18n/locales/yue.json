@@ -189,7 +189,8 @@
         "upgradeFailed": "更新失敗：",
         "installNow": "即刻安裝",
         "updateAvailable": "有更新！",
-        "upgradeNow": "即刻更新"
+        "upgradeNow": "即刻更新",
+        "skipVersion": "跳過呢個版本"
     },
     "memberList": {
         "title": "Talk",

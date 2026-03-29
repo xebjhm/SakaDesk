@@ -31,6 +31,7 @@ def _default_config(**overrides):
         "is_configured": True,
         "notifications_enabled": True,
         "blogs_full_backup": False,
+        "auto_download_updates": True,
     }
     base.update(overrides)
     return base

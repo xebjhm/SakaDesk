@@ -189,7 +189,8 @@
     "upgradeFailed": "更新失敗:",
     "installNow": "今すぐインストール",
     "updateAvailable": "アップデートがあります",
-    "upgradeNow": "今すぐ更新"
+    "upgradeNow": "今すぐ更新",
+    "skipVersion": "このバージョンをスキップ"
   },
   "memberList": {
     "title": "トーク",

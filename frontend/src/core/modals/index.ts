@@ -6,4 +6,3 @@ export { BackgroundModal } from './BackgroundModal';
 export { ReportIssueModal } from './ReportIssueModal';
 export { DiagnosticsModal } from './DiagnosticsModal';
 export { AboutModal } from './AboutModal';
-export { UpdateBanner } from './UpdateBanner';

@@ -27,7 +27,6 @@ def _reset_version_cache():
         "error": None,
         "version": None,
         "installer_path": None,
-        "script_path": None,
     }
 
 
@@ -241,53 +240,53 @@ class TestStartUpgrade:
         assert data["version"] == "2.0.0"
 
 
-class TestLaunchUpgrade:
-    """Tests for POST /api/version/upgrade/launch."""
+class TestInstallUpgrade:
+    """Tests for POST /api/version/upgrade/install."""
 
     def setup_method(self):
         _reset_version_cache()
 
-    def test_launch_upgrade_wrong_state(self):
+    def test_install_upgrade_wrong_state(self):
         """Returns error when not in 'ready' state."""
-        response = client.post("/api/version/upgrade/launch")
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
         assert "idle" in data["error"]
 
-    def test_launch_upgrade_no_script(self):
-        """Returns error when script path is missing."""
+    def test_install_upgrade_no_installer(self):
+        """Returns error when installer path is missing."""
         import backend.api.version as v
 
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = None
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = None
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
         assert "not found" in data["error"].lower()
 
-    @patch("backend.api.version.launch_upgrade", return_value=True)
-    def test_launch_upgrade_success(self, mock_launch, tmp_path):
-        """Successfully launches upgrade when ready."""
+    @patch("backend.api.version.launch_installer", return_value=True)
+    def test_install_upgrade_success(self, mock_launch, tmp_path):
+        """Successfully launches installer when ready."""
         import backend.api.version as v
 
-        script = tmp_path / "upgrade.bat"
-        script.touch()
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = script
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = installer
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is True
 
-    @patch("backend.api.version.launch_upgrade", return_value=False)
-    def test_launch_upgrade_failure(self, mock_launch, tmp_path):
-        """Returns error when launch fails."""
+    @patch("backend.api.version.launch_installer", return_value=False)
+    def test_install_upgrade_failure(self, mock_launch, tmp_path):
+        """Returns error when installer launch fails."""
         import backend.api.version as v
 
-        script = tmp_path / "upgrade.bat"
-        script.touch()
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
         v._upgrade_state["state"] = "ready"
-        v._upgrade_state["script_path"] = script
-        response = client.post("/api/version/upgrade/launch")
+        v._upgrade_state["installer_path"] = installer
+        response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
 

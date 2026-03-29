@@ -189,7 +189,8 @@
     "upgradeFailed": "Upgrade failed:",
     "installNow": "Install Now",
     "updateAvailable": "Update available!",
-    "upgradeNow": "Update Now"
+    "upgradeNow": "Update Now",
+    "skipVersion": "Skip this version"
   },
   "memberList": {
     "title": "Talk",
