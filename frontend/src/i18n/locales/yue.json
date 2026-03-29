@@ -49,7 +49,13 @@
         "serviceSettings": "服務設定",
         "syncCurrentOff": "而家: 手動同步",
         "syncCurrentFixed": "而家: 每 {{minutes}} 分鐘",
-        "syncCurrentSmart": "而家: 智慧排程"
+        "syncCurrentSmart": "而家: 智慧排程",
+        "autoDownloadUpdates": "自動下載更新",
+        "autoDownloadUpdatesDesc": "喺背景自動下載新版本",
+        "checkForUpdates": "即刻檢查",
+        "updateFound": "v{{version}} 有得更新！",
+        "upToDate": "已經係最新版本",
+        "updateCheckFailed": "檢查失敗"
     },
     "time": {
         "minute": "{{count}} 分鐘",

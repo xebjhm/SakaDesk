@@ -49,7 +49,13 @@
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
-    "syncCurrentSmart": "目前: 智能排程"
+    "syncCurrentSmart": "目前: 智能排程",
+    "autoDownloadUpdates": "自动下载更新",
+    "autoDownloadUpdatesDesc": "在后台自动下载新版本",
+    "checkForUpdates": "立即检查",
+    "updateFound": "v{{version}} 可用！",
+    "upToDate": "已是最新版本",
+    "updateCheckFailed": "检查失败"
   },
   "time": {
     "minute": "{{count}} 分钟",

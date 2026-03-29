@@ -49,7 +49,13 @@
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
-    "syncCurrentSmart": "現在: スマートタイミング"
+    "syncCurrentSmart": "現在: スマートタイミング",
+    "autoDownloadUpdates": "自動ダウンロード更新",
+    "autoDownloadUpdatesDesc": "新しいバージョンをバックグラウンドで自動ダウンロード",
+    "checkForUpdates": "今すぐ確認",
+    "updateFound": "v{{version}} が利用可能です！",
+    "upToDate": "最新版です",
+    "updateCheckFailed": "確認に失敗しました"
   },
   "time": {
     "minute": "{{count}}分",
