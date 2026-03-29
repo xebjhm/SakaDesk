@@ -344,7 +344,8 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
             } else {
                 setResult(t('settings.updateCheckFailed'));
             }
-        } catch {
+        } catch (err) {
+            console.error('[Settings] Update check failed:', err);
             setResult(t('settings.updateCheckFailed'));
         } finally {
             setChecking(false);

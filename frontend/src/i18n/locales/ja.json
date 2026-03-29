@@ -21,7 +21,8 @@
     "reportIssue": "不具合報告",
     "featureRequest": "機能リクエスト",
     "moreOptions": "その他のオプション",
-    "removeService": "サービスを削除"
+    "removeService": "サービスを削除",
+    "on": "ON"
   },
   "settings": {
     "title": "設定",

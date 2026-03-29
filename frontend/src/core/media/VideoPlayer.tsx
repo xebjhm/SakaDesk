@@ -406,7 +406,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     >
                         <Repeat className={cn("w-4 h-4", loop && "text-blue-500")} />
                         {t('videoPlayer.loop')}
-                        {loop && <span className="ml-auto text-xs text-blue-500">ON</span>}
+                        {loop && <span className="ml-auto text-xs text-blue-500">{t('common.on')}</span>}
                     </button>
 
                     <div className="border-t border-gray-200 my-1" />

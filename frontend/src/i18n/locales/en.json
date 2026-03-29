@@ -21,7 +21,8 @@
     "reportIssue": "Report Issue",
     "featureRequest": "Feature Request",
     "moreOptions": "More options",
-    "removeService": "Remove Service"
+    "removeService": "Remove Service",
+    "on": "ON"
   },
   "settings": {
     "title": "Settings",

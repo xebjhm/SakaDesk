@@ -286,12 +286,18 @@ async def install_upgrade():
     if success:
         _upgrade_state["state"] = "launching"
 
-        # Schedule graceful app exit after a short delay so the response
-        # reaches the frontend first. The frontend also closes its window.
+        # Schedule hard app exit after a short delay so the response reaches
+        # the frontend first. os._exit bypasses finalizers intentionally —
+        # sys.exit can hang during async shutdown, and the installer is
+        # already waiting to take over the process.
         async def _delayed_exit():
-            await asyncio.sleep(2)
-            logger.info("Shutting down for upgrade...")
-            os._exit(0)
+            try:
+                await asyncio.sleep(2)
+                logger.info("Shutting down for upgrade...")
+            except Exception as e:
+                logger.error(f"Error during delayed exit: {e}")
+            finally:
+                os._exit(0)
 
         asyncio.create_task(_delayed_exit())
 

@@ -251,6 +251,24 @@ class TestUpdateSettings:
         assert response.status_code == 200
         assert response.json()["blogs_full_backup"] is True
 
+    def test_update_auto_download_updates(self):
+        """Toggle auto_download_updates."""
+        cfg = _default_config(auto_download_updates=False)
+
+        async def _update(updater_fn):
+            updater_fn(cfg)
+            return cfg
+
+        with _patch_store(load_return=cfg, update_side_effect=_update):
+            response = client.post(
+                "/api/settings",
+                json={
+                    "auto_download_updates": True,
+                },
+            )
+        assert response.status_code == 200
+        assert response.json()["auto_download_updates"] is True
+
     def test_update_multiple_fields(self):
         """Update several fields at once."""
         cfg = _default_config()
