@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import { formatDownloadFilename } from '../../utils/classnames';
+import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
@@ -18,6 +18,10 @@ export interface MediaViewerItem {
     memberName?: string;
     /** Whether the video has no audio track (from sync metadata). */
     isMuted?: boolean;
+    /** Source context label (e.g. blog post title, message preview). */
+    sourceLabel?: string;
+    /** Called when sourceLabel is clicked — jumps to the source (blog post, message, etc). */
+    onSourceJump?: () => void;
 }
 
 interface MediaViewerModalProps {
@@ -154,7 +158,10 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             {goldenFingerActive && item.type === 'picture' && (
                 <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-                    className="absolute bottom-6 right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors"
+                    className={cn(
+                        "absolute right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors",
+                        item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
+                    )}
                 >
                     <Download className="w-4 h-4" />
                     {t('common.download')}
@@ -163,9 +170,22 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
             {/* Navigation counter */}
             {mediaItems.length > 1 && (
-                <div className="absolute bottom-6 left-6 text-white/60 text-sm">
+                <div className={cn(
+                    "absolute left-6 text-white/60 text-sm",
+                    item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
+                )}>
                     {currentIndex + 1} / {mediaItems.length}
                 </div>
+            )}
+
+            {/* Source label */}
+            {item.sourceLabel && item.onSourceJump && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); item.onSourceJump!(); }}
+                    className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 hover:text-white text-sm max-w-[60vw] truncate transition-colors underline underline-offset-2 decoration-white/30 hover:decoration-white/60"
+                >
+                    {item.sourceLabel}
+                </button>
             )}
         </div>
     );
