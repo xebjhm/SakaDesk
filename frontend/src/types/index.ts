@@ -115,6 +115,7 @@ export interface BlogContentResponse {
     images: Array<{
         original_url: string;
         local_path: string | null;
+        local_url?: string;
     }>;
 }
 
