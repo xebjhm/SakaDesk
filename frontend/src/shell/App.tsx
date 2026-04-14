@@ -381,6 +381,7 @@ function App() {
                         onOpenSearch={openSearch}
                         syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
+                        blogBackupEnabled={appSettings?.blogs_full_backup}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}

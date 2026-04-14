@@ -16,6 +16,7 @@ interface LayoutProps {
     onOpenSearch: () => void;
     syncProgressByService?: Record<string, SyncProgress>;
     initialSyncServices?: Record<string, true>;
+    blogBackupEnabled?: boolean;
 }
 
 export const Layout: React.FC<LayoutProps> = ({
@@ -27,6 +28,7 @@ export const Layout: React.FC<LayoutProps> = ({
     onOpenSearch,
     syncProgressByService,
     initialSyncServices,
+    blogBackupEnabled,
 }) => {
     const { t } = useTranslation();
     const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
@@ -68,6 +70,7 @@ export const Layout: React.FC<LayoutProps> = ({
                     messagesContent={messagesContent}
                     syncProgress={syncProgressByService?.[activeService]}
                     isInitialSyncing={!!initialSyncServices?.[activeService]}
+                    blogBackupEnabled={blogBackupEnabled}
                 />
             ) : (
                 <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">
