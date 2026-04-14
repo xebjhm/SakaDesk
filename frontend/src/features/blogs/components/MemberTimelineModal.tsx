@@ -1,5 +1,6 @@
 // frontend/src/features/blogs/components/MemberTimelineModal.tsx
 import React, { useMemo, useEffect, useState, useRef } from 'react';
+import { Image } from 'lucide-react';
 import type { BlogMember, BlogMeta } from '../../../types';
 import { getMemberNameKanji } from '../../../data/memberData';
 import { useBlogTheme } from '../hooks';
@@ -16,6 +17,7 @@ interface MemberTimelineModalProps {
     error: string | null;
     onSelectBlog: (blog: BlogMeta) => void;
     onRetry: () => void;
+    onOpenPhotoGallery?: () => void;
 }
 
 interface MonthGroup {
@@ -33,6 +35,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
     error,
     onSelectBlog,
     onRetry,
+    onOpenPhotoGallery,
 }) => {
     const theme = useBlogTheme();
     const { t } = useTranslation();
@@ -134,11 +137,27 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                         >
                             {memberNameJp}
                         </h2>
-                        {blogs.length > 0 && (
-                            <span className="text-sm text-gray-400">
-                                {t('blogs.post', { count: blogs.length })}
-                            </span>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {onOpenPhotoGallery && (
+                                <button
+                                    onClick={onOpenPhotoGallery}
+                                    className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full transition-all duration-200 hover:scale-105"
+                                    style={{
+                                        color: theme.primaryColor,
+                                        background: `${theme.primaryColor}15`,
+                                    }}
+                                    title={t('blogGallery.button')}
+                                >
+                                    <Image className="w-4 h-4" />
+                                    {t('blogGallery.button')}
+                                </button>
+                            )}
+                            {blogs.length > 0 && (
+                                <span className="text-sm text-gray-400">
+                                    {t('blogs.post', { count: blogs.length })}
+                                </span>
+                            )}
+                        </div>
                     </div>
                 </div>
 
