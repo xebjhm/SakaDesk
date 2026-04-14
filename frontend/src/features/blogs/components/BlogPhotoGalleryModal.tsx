@@ -5,7 +5,7 @@ import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import type { DateCount } from '../../../core/modals/CalendarModal';
-import type { BlogMeta, BlogContentResponse } from '../../../types';
+import type { BlogMeta } from '../../../types';
 import { useBlogTheme } from '../hooks';
 import { getBlogContent } from '../api';
 import { useTranslation } from '../../../i18n';
@@ -27,8 +27,6 @@ interface MonthGroup {
 interface BlogPhotoGalleryModalProps {
     isOpen: boolean;
     onClose: () => void;
-    memberName: string;
-    memberId: string;
     blogs: BlogMeta[];
     serviceId: string;
     backupEnabled: boolean;
@@ -38,8 +36,6 @@ interface BlogPhotoGalleryModalProps {
 export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
     isOpen,
     onClose,
-    memberName: _memberName,
-    memberId: _memberId,
     blogs,
     serviceId,
     backupEnabled,
@@ -56,53 +52,59 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
 
-    // Load photos from cached blog content on open
     useEffect(() => {
         if (!isOpen || !backupEnabled) return;
 
         let cancelled = false;
         const loadPhotos = async () => {
             setLoading(true);
-            const allPhotos: BlogPhotoItem[] = [];
+            monthRefs.current.clear();
+            itemRefs.current.clear();
 
             const cachedBlogs = blogs.filter((b) => b.cached);
-            for (const blog of cachedBlogs) {
-                try {
-                    const content: BlogContentResponse = await getBlogContent(serviceId, blog.id);
-                    content.images.forEach((img, idx) => {
-                        const src = img.local_url ?? null;
-                        if (src) {
-                            allPhotos.push({
-                                src,
-                                blogId: blog.id,
-                                blogTitle: blog.title,
-                                publishedAt: blog.published_at,
-                                imageIndex: idx,
-                            });
-                        }
-                    });
-                } catch {
-                    // Skip blogs that fail to load — non-critical
-                }
+            const results = await Promise.allSettled(
+                cachedBlogs.map((blog) => getBlogContent(serviceId, blog.id).then((content) => ({ blog, content })))
+            );
+
+            if (cancelled) return;
+
+            const allPhotos: BlogPhotoItem[] = [];
+            for (const result of results) {
+                if (result.status !== 'fulfilled') continue;
+                const { blog, content } = result.value;
+                content.images.forEach((img, idx) => {
+                    if (img.local_url) {
+                        allPhotos.push({
+                            src: img.local_url,
+                            blogId: blog.id,
+                            blogTitle: blog.title,
+                            publishedAt: blog.published_at,
+                            imageIndex: idx,
+                        });
+                    }
+                });
             }
 
-            if (!cancelled) {
-                // Sort: newest blog first, then by image order within blog
-                allPhotos.sort((a, b) => {
-                    const dateDiff = new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
-                    if (dateDiff !== 0) return dateDiff;
-                    return a.imageIndex - b.imageIndex;
-                });
-                setPhotos(allPhotos);
-                setLoading(false);
-            }
+            allPhotos.sort((a, b) => {
+                const dateDiff = new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+                if (dateDiff !== 0) return dateDiff;
+                return a.imageIndex - b.imageIndex;
+            });
+            setPhotos(allPhotos);
+            setLoading(false);
         };
 
         loadPhotos();
         return () => { cancelled = true; };
     }, [isOpen, backupEnabled, blogs, serviceId]);
 
-    // Group photos by month
+    // Pre-built index for O(1) flat-array lookups in the grid
+    const photoIndexMap = useMemo(() => {
+        const map = new Map<BlogPhotoItem, number>();
+        photos.forEach((item, idx) => map.set(item, idx));
+        return map;
+    }, [photos]);
+
     const groupedPhotos = useMemo(() => {
         const groups: Map<string, BlogPhotoItem[]> = new Map();
         photos.forEach((item) => {
@@ -127,7 +129,6 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
         return result;
     }, [photos]);
 
-    // Date counts for calendar
     const dateCounts = useMemo((): DateCount[] => {
         const counts = new Map<string, number>();
         photos.forEach((item) => {
@@ -138,13 +139,11 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
         return Array.from(counts.entries()).map(([date, count]) => ({ date, count }));
     }, [photos]);
 
-    // Format date to YYYY-MM-DD for item refs
     const formatDateKey = (timestamp: string) => {
         const date = new Date(timestamp);
         return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     };
 
-    // Handle calendar date selection
     const handleCalendarDateSelect = useCallback((date: Date) => {
         const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
         const itemElement = itemRefs.current.get(dateKey);
@@ -161,7 +160,6 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
         }
     }, []);
 
-    // Map photos to MediaViewerItems for the viewer
     const viewerItems = useMemo((): MediaViewerItem[] => {
         return photos.map((photo) => ({
             src: photo.src,
@@ -178,7 +176,6 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
         }));
     }, [photos, blogs, onClose, onJumpToBlog]);
 
-    // Render backup-not-enabled state
     if (isOpen && !backupEnabled) {
         return (
             <BaseModal
@@ -199,7 +196,6 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
         );
     }
 
-    // Track which dates we've seen for item refs
     const seenDates = new Set<string>();
 
     return (
@@ -263,13 +259,12 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
 
                                 {/* Grid */}
                                 <div className="grid grid-cols-4 gap-0.5 px-1">
-                                    {group.items.map((item, _itemIdx) => {
+                                    {group.items.map((item) => {
                                         const dateKey = formatDateKey(item.publishedAt);
                                         const isFirstOfDate = !seenDates.has(dateKey);
                                         if (isFirstOfDate) seenDates.add(dateKey);
 
-                                        // Find the index in the flat photos array for viewer navigation
-                                        const flatIndex = photos.indexOf(item);
+                                        const flatIndex = photoIndexMap.get(item) ?? 0;
 
                                         return (
                                             <button
