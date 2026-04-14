@@ -6,6 +6,7 @@ import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { RecentPostsFeed, MemberTimelineModal, BlogReader } from './components';
 import { MemberSelectModal } from './components/MemberSelectModal';
+import { BlogPhotoGalleryModal } from './components/BlogPhotoGalleryModal';
 
 type ViewState =
     | { view: 'recent' }
@@ -21,7 +22,11 @@ const POKA_MEMBER: BlogMemberWithThumbnail = {
     thumbnail: null, // Will use fallback/placeholder
 };
 
-export const BlogsFeature: React.FC = () => {
+interface BlogsFeatureProps {
+    blogBackupEnabled?: boolean;
+}
+
+export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = false }) => {
     const { t } = useTranslation();
     const activeService = useAppStore((state) => state.activeService);
     const favorites = useAppStore((state) => state.favorites[activeService ?? ''] || EMPTY_FAVORITES);
@@ -50,6 +55,7 @@ export const BlogsFeature: React.FC = () => {
 
     // Modal state for member timeline
     const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+    const [isPhotoGalleryOpen, setIsPhotoGalleryOpen] = useState(false);
     const [timelineMember, setTimelineMember] = useState<BlogMember | null>(null);
     const [timelineBlogs, setTimelineBlogs] = useState<BlogMeta[]>([]);
     const [timelineLoading, setTimelineLoading] = useState(false);
@@ -412,6 +418,20 @@ export const BlogsFeature: React.FC = () => {
         }
     };
 
+    // Handle opening the photo gallery modal
+    const handleOpenPhotoGallery = () => {
+        setIsPhotoGalleryOpen(true);
+    };
+
+    // Handle jump-to-blog from the photo gallery
+    const handleJumpToBlogFromGallery = (blog: BlogMeta) => {
+        if (timelineMember) {
+            setIsPhotoGalleryOpen(false);
+            setIsTimelineModalOpen(false);
+            setViewState({ view: 'reader', blog, member: timelineMember, content: null, fromView: 'timeline' });
+        }
+    };
+
     // Handle back navigation
     const handleBack = () => {
         if (viewState.view === 'reader') {
@@ -487,6 +507,21 @@ export const BlogsFeature: React.FC = () => {
                     error={timelineError}
                     onSelectBlog={handleSelectBlogFromTimeline}
                     onRetry={handleTimelineRetry}
+                    onOpenPhotoGallery={handleOpenPhotoGallery}
+                />
+            )}
+
+            {/* Blog Photo Gallery Modal */}
+            {timelineMember && (
+                <BlogPhotoGalleryModal
+                    isOpen={isPhotoGalleryOpen}
+                    onClose={() => setIsPhotoGalleryOpen(false)}
+                    memberName={timelineMember.name}
+                    memberId={timelineMember.id}
+                    blogs={timelineBlogs}
+                    serviceId={activeService ?? ''}
+                    backupEnabled={blogBackupEnabled}
+                    onJumpToBlog={handleJumpToBlogFromGallery}
                 />
             )}
 

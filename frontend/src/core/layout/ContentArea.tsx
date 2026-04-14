@@ -10,6 +10,7 @@ interface ContentAreaProps {
     messagesContent: React.ReactNode;
     syncProgress?: SyncProgress;
     isInitialSyncing?: boolean;
+    blogBackupEnabled?: boolean;
 }
 
 export const ContentArea: React.FC<ContentAreaProps> = ({
@@ -17,6 +18,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     messagesContent,
     syncProgress,
     isInitialSyncing,
+    blogBackupEnabled,
 }) => {
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
@@ -26,7 +28,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
             case 'messages':
                 return messagesContent;
             case 'blogs':
-                return <BlogsFeature />;
+                return <BlogsFeature blogBackupEnabled={blogBackupEnabled} />;
             case 'news':
                 return (
                     <div className="flex-1 flex items-center justify-center text-gray-500">
