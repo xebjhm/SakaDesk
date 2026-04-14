@@ -408,5 +408,14 @@
     "5th": "5TH GEN",
     "6th": "6TH GEN",
     "7th": "7TH GEN"
+  },
+  "blogGallery": {
+    "title": "Photo Gallery",
+    "button": "Photo Gallery",
+    "loading": "Loading photos...",
+    "emptyNoBackup": "Enable full blog backup in Settings to browse photos",
+    "emptyNoPhotos": "No photos found",
+    "count": "{{count}} photos",
+    "jumpToDate": "Jump to Date"
   }
 }

@@ -408,5 +408,14 @@
     "5th": "５期生",
     "6th": "６期生",
     "7th": "７期生"
+  },
+  "blogGallery": {
+    "title": "相簿",
+    "button": "相簿",
+    "loading": "載入相片中...",
+    "emptyNoBackup": "請在設定中啟用完整部落格備份以瀏覽相片",
+    "emptyNoPhotos": "找不到相片",
+    "count": "{{count}} 張相片",
+    "jumpToDate": "跳至日期"
   }
 }
