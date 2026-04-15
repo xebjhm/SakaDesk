@@ -409,6 +409,12 @@
     "6th": "6TH GEN",
     "7th": "7TH GEN"
   },
+  "memberProfile": {
+    "subscribedFor": "Subscribed for",
+    "days": "days!",
+    "startSubscription": "Start your subscription!",
+    "retry": "Retry"
+  },
   "blogGallery": {
     "title": "Photo Gallery",
     "button": "Photo Gallery",

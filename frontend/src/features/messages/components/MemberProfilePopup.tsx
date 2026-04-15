@@ -4,6 +4,7 @@ import { Portal } from '../../../core/common/Portal';
 import { Z_CLASS } from '../../../constants/zIndex';
 import type { BaseModalProps } from '../../../types/modal';
 import { getServiceTheme } from '../../../config/serviceThemes';
+import { useTranslation } from '../../../i18n';
 
 interface StreakData {
     days: number;
@@ -30,6 +31,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     groupId,
     activeService,
 }) => {
+    const { t } = useTranslation();
     const [streak, setStreak] = useState<StreakData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -187,16 +189,16 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                                     onClick={fetchStreak}
                                     className="text-xs text-red-500 hover:underline mt-1"
                                 >
-                                    Retry
+                                    {t('memberProfile.retry')}
                                 </button>
                             </div>
                         ) : streak && streak.days > 0 ? (
                             <p className="text-lg text-gray-700">
-                                Subscribed for <span className="font-bold text-2xl text-gray-900">{streak.days}</span> days!
+                                {t('memberProfile.subscribedFor')} <span className="font-bold text-2xl text-gray-900">{streak.days}</span> {t('memberProfile.days')}
                             </p>
                         ) : (
                             <p className="text-lg text-gray-500">
-                                Start your subscription!
+                                {t('memberProfile.startSubscription')}
                             </p>
                         )}
                     </div>

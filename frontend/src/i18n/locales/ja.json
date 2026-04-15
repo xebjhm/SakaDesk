@@ -409,6 +409,12 @@
     "6th": "六期生",
     "7th": "七期生"
   },
+  "memberProfile": {
+    "subscribedFor": "メンバーシップ継続",
+    "days": "日！",
+    "startSubscription": "メンバーシップを始めよう！",
+    "retry": "再試行"
+  },
   "blogGallery": {
     "title": "フォトギャラリー",
     "button": "フォトギャラリー",

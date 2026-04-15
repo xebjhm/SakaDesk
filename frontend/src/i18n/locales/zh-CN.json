@@ -409,6 +409,12 @@
     "6th": "６期生",
     "7th": "７期生"
   },
+  "memberProfile": {
+    "subscribedFor": "已订阅",
+    "days": "天！",
+    "startSubscription": "开始订阅吧！",
+    "retry": "重试"
+  },
   "blogGallery": {
     "title": "相册",
     "button": "相册",
