@@ -75,7 +75,7 @@ export interface UseSyncReturn {
     /** Service ID that triggered session expiry (shows LoginModal) */
     sessionExpiredService: string | null;
     /** Clear the session expiry state */
-    clearSessionExpired: () => void;
+    clearSessionExpired: (reconnectedService?: string) => void;
 }
 
 /** Options for the useSync hook. */
@@ -118,8 +118,16 @@ export function useSync({
     // Track which service triggered session expiry (for showing LoginModal)
     const [sessionExpiredService, setSessionExpiredService] = useState<string | null>(null);
 
-    const clearSessionExpired = useCallback(() => {
+    // Cooldown: suppress SESSION_EXPIRED re-trigger for services that just reconnected.
+    // Maps service ID → timestamp of successful reconnection.
+    const recentlyReconnectedRef = useRef<Record<string, number>>({});
+    const RECONNECT_COOLDOWN_MS = 10_000; // 10 seconds
+
+    const clearSessionExpired = useCallback((reconnectedService?: string) => {
         setSessionExpiredService(null);
+        if (reconnectedService) {
+            recentlyReconnectedRef.current[reconnectedService] = Date.now();
+        }
     }, []);
 
     // Sequential sync state (for onboarding multi-service sync)
@@ -260,20 +268,31 @@ export function useSync({
                     });
                     setTimeout(check, 1000);
                 } else if (data.state === 'error') {
+                    // Check cooldown: if the service was recently reconnected,
+                    // suppress re-triggering the login modal to avoid a race
+                    // where the sync started immediately after login picks up
+                    // a stale session state.
+                    const reconnectedAt = recentlyReconnectedRef.current[service];
+                    const inCooldown = reconnectedAt && (Date.now() - reconnectedAt) < RECONNECT_COOLDOWN_MS;
+
                     if (data.detail === 'SESSION_EXPIRED') {
-                        log(`${service}: session expired detected`);
-                        markServiceDisconnectedRef.current?.(service, 'Session expired');
-                        if (service === currentActiveService) {
-                            setSessionExpiredService(service);
+                        log(`${service}: session expired detected${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
+                        if (!inCooldown) {
+                            markServiceDisconnectedRef.current?.(service, 'Session expired');
+                            if (service === currentActiveService) {
+                                setSessionExpiredService(service);
+                            }
                         }
                         updateProgress({ state: 'error', detail: i18n.t('sync.sessionExpired') });
                         useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
                     } else if (data.detail === 'REFRESH_FAILED') {
-                        log(`${service}: refresh failed detected - possible bug`);
-                        markServiceDisconnectedRef.current?.(service, 'Refresh failed');
-                        if (service === currentActiveService) {
-                            setSessionExpiredService(service);
+                        log(`${service}: refresh failed detected - possible bug${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
+                        if (!inCooldown) {
+                            markServiceDisconnectedRef.current?.(service, 'Refresh failed');
+                            if (service === currentActiveService) {
+                                setSessionExpiredService(service);
+                            }
                         }
                         updateProgress({ state: 'error', detail: i18n.t('sync.refreshFailed') });
                         useAppStore.getState().removeInitialSyncService(service);
