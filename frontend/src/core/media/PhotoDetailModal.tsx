@@ -4,6 +4,8 @@ import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
+import { Z_CLASS } from '../../constants/zIndex';
+import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 
@@ -52,6 +54,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const [zoom, setZoom] = useState(1);
 
     const item = mediaItems[currentIndex];
+
+    // Clipboard shortcut — window-level Ctrl+C listener
+    const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
 
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
@@ -109,7 +114,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         <div
             ref={modalRef}
             tabIndex={-1}
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center outline-none"
+            className={cn("fixed inset-0 bg-black/90 flex items-center justify-center outline-none", Z_CLASS.MODAL_DETAIL)}
             onClick={onClose}
             onKeyDown={handleKeyDown}
         >
@@ -186,6 +191,13 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 >
                     {item.sourceLabel}
                 </button>
+            )}
+
+            {/* Clipboard toast */}
+            {toastMessage && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-20">
+                    {toastMessage}
+                </div>
             )}
         </div>
     );

@@ -162,7 +162,9 @@
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "Download button enabled ✨",
-    "goldenFingerDisabled": "Download button disabled"
+    "goldenFingerDisabled": "Download button disabled",
+    "goldenFingerCopied": "Copied to clipboard",
+    "goldenFingerCopyFailed": "Failed to copy"
   },
   "report": {
     "title": "Report an Issue",
@@ -416,8 +418,8 @@
     "retry": "Retry"
   },
   "blogGallery": {
-    "title": "Photo Gallery",
-    "button": "Photo Gallery",
+    "title": "Photo Album",
+    "button": "Photo Album",
     "loading": "Loading photos...",
     "emptyNoBackup": "Enable full blog backup in Settings to browse photos",
     "emptyNoPhotos": "No photos found",
