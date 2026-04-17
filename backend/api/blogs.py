@@ -45,6 +45,7 @@ class BlogContentMeta(BaseModel):
 class BlogImage(BaseModel):
     original_url: str
     local_path: Optional[str] = None
+    local_url: Optional[str] = None
 
 
 class BlogContent(BaseModel):

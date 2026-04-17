@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Image, Calendar } from 'lucide-react';
 import { BaseModal, SafeImage, ModalEmptyState } from '../../../core/common';
+import { formatDateTime } from '../../../utils/classnames';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
@@ -165,7 +166,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
             src: photo.src,
             type: 'picture' as const,
             timestamp: photo.publishedAt,
-            sourceLabel: photo.blogTitle,
+            sourceLabel: `${formatDateTime(photo.publishedAt)} — ${photo.blogTitle}`,
             onSourceJump: () => {
                 // Close viewer and gallery, then jump to the blog post
                 setViewerIndex(null);
