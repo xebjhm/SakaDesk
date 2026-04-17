@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
+import { copyVideoToClipboard } from '../../utils/clipboard';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
@@ -272,6 +273,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewerMode, togglePlay, toggleMute, volume, setVolume, toggleFullscreen, goldenFingerActive, handleDownload]);
 
+    // Ctrl+C clipboard copy for inline (non-viewer) video players.
+    // In viewerMode, the parent modal's useClipboardShortcut handles this.
+    // For inline players, we listen on the container when it has focus.
+    const [clipboardToast, setClipboardToast] = useState<string | null>(null);
+    const clipboardToastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(() => {
+        return () => { if (clipboardToastTimeout.current) clearTimeout(clipboardToastTimeout.current); };
+    }, []);
+
+    const handleClipboardCopy = useCallback(() => {
+        if (!goldenFingerActive || viewerMode) return;
+        copyVideoToClipboard(src)
+            .then(() => {
+                if (clipboardToastTimeout.current) clearTimeout(clipboardToastTimeout.current);
+                setClipboardToast(t('about.goldenFingerCopied'));
+                clipboardToastTimeout.current = setTimeout(() => setClipboardToast(null), 2000);
+            })
+            .catch(() => {
+                if (clipboardToastTimeout.current) clearTimeout(clipboardToastTimeout.current);
+                setClipboardToast(t('about.goldenFingerCopyFailed'));
+                clipboardToastTimeout.current = setTimeout(() => setClipboardToast(null), 2000);
+            });
+    }, [goldenFingerActive, viewerMode, src, t]);
+
+    useEffect(() => {
+        if (viewerMode || !goldenFingerActive) return;
+
+        const handleCtrlC = (e: KeyboardEvent) => {
+            // Only handle Ctrl+C when this video's container is in fullscreen
+            // (inline chat bubble → user pressed F to go fullscreen).
+            // When not fullscreen, don't intercept Ctrl+C (user might be copying text).
+            if (!e.ctrlKey || e.key !== 'c') return;
+            if (document.fullscreenElement !== containerRef.current) return;
+            e.preventDefault();
+            handleClipboardCopy();
+        };
+
+        window.addEventListener('keydown', handleCtrlC);
+        return () => window.removeEventListener('keydown', handleCtrlC);
+    }, [viewerMode, goldenFingerActive, handleClipboardCopy]);
+
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     return (
@@ -392,6 +435,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             {/* Menu portal */}
+            {/* Clipboard toast (inline fullscreen only) */}
+            {clipboardToast && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg z-50">
+                    {clipboardToast}
+                </div>
+            )}
+
             {showMenu && createPortal(
                 <div
                     ref={menuPortalRef}

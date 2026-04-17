@@ -12,6 +12,7 @@ import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
+import { useClipboardShortcut } from './useClipboardShortcut';
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -57,6 +58,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
+
+    // Clipboard shortcut for detail view — active when a photo/video is selected
+    const selectedMediaUrl = selectedMedia?.media_file
+        ? (serviceId
+            ? `/api/content/media/${encodeURIComponent(serviceId)}/${selectedMedia.media_file.split('/').map(encodeURIComponent).join('/')}`
+            : `/api/content/media/${selectedMedia.media_file.split('/').map(encodeURIComponent).join('/')}`)
+        : undefined;
+    const { toastMessage: clipboardToast } = useClipboardShortcut(
+        selectedMediaUrl,
+        selectedMedia?.type as 'picture' | 'video' | 'voice' | undefined,
+    );
 
     // Filter messages by media type
     const mediaItems = useMemo(() => {
@@ -238,6 +250,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         viewerMode
                         videoClassName="max-w-full max-h-[80vh]"
                     />
+                )}
+                {/* Clipboard toast */}
+                {clipboardToast && (
+                    <div className="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-[60]">
+                        {clipboardToast}
+                    </div>
                 )}
             </DetailModal>
         );
