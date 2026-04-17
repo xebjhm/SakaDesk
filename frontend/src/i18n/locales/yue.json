@@ -162,7 +162,9 @@
         "madeWith": "Made with",
         "by": "by",
         "goldenFingerEnabled": "下載掣啟用咗 ✨",
-        "goldenFingerDisabled": "下載掣停用咗"
+        "goldenFingerDisabled": "下載掣停用咗",
+        "goldenFingerCopied": "已複製到剪貼簿",
+        "goldenFingerCopyFailed": "複製失敗"
     },
     "report": {
         "title": "報告問題",
