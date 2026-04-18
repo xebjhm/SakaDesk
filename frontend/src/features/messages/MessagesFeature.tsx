@@ -61,6 +61,7 @@ export interface AppSettings {
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
+    transcription_device?: string;  // "cpu" or "cuda"
 }
 
 // Parse path into API params. Handles both:
@@ -510,6 +511,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         };
     }, [isGroupChat, membersMap, selectedName]);
 
+    /**
+     * Resolve the member directory path for a message (used by transcription API).
+     * For individual chats, selectedGroupDir is the member directory path.
+     * For group chats, each message sender has their own path via membersMap.
+     */
+    const getMemberPath = useCallback((msg: GroupMessage): string | undefined => {
+        if (isGroupChat && msg.member_id) {
+            return membersMap[msg.member_id]?.path ?? undefined;
+        }
+        return selectedGroupDir;
+    }, [isGroupChat, membersMap, selectedGroupDir]);
+
     const scrollToFirstUnread = useCallback(() => {
         const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
         if (index !== -1) {
@@ -539,9 +552,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     avatarUrl: sender.avatar,
                     memberName: sender.name,
                     isMuted: m.is_muted,
+                    messageId: m.id,
+                    service: messagesService,
+                    memberPath: getMemberPath(m),
                 };
             });
-    }, [messages, messagesService, getSenderInfo]);
+    }, [messages, messagesService, getSenderInfo, getMemberPath]);
 
     const handleMediaClick = useCallback((mediaUrl: string, _type: string, _timestamp?: string) => {
         const idx = mediaItems.findIndex(item => item.src === mediaUrl);
@@ -723,6 +739,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             service={messagesService}
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
+                            getMemberPath={getMemberPath}
                         />
                     )}
                 </div>

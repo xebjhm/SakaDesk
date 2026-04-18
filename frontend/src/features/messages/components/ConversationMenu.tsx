@@ -130,6 +130,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 memberName={memberName}
                 memberAvatar={memberAvatar}
                 serviceId={activeService}
+                memberPath={conversationPath}
             />
 
             <CalendarModal

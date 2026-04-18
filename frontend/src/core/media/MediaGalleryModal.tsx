@@ -13,12 +13,16 @@ import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
+import { TranscriptPanel } from './TranscriptPanel';
+import { TranscribeButton } from './TranscribeButton';
+import { useTranscription } from '../../hooks/useTranscription';
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
     memberName: string;
     memberAvatar?: string;
     serviceId?: string;  // Service ID for building correct media URLs
+    memberPath?: string; // Relative path to member directory for transcription
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
@@ -44,6 +48,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     memberName,
     memberAvatar,
     serviceId,
+    memberPath,
 }) => {
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
@@ -55,6 +60,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
+
+    // Transcription for currently selected/playing voice message
+    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
+        serviceId,
+        selectedVoice?.id,
+        memberPath,
+    );
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
@@ -470,12 +482,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                                 )}
                                             </div>
 
-                                            {/* Name */}
+                                            {/* Name + transcript preview */}
                                             <div className="flex-1 min-w-0">
                                                 <p
                                                     className="text-sm font-medium"
                                                     style={{ color: isSelected ? theme.modals.accentColor : '#111827' }}
                                                 >{memberName}</p>
+                                                {isSelected ? (
+                                                    transcription?.full_text ? (
+                                                        <p className="text-xs text-gray-400 truncate mt-0.5">{transcription.full_text}</p>
+                                                    ) : (
+                                                        <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
+                                                    )
+                                                ) : null}
                                             </div>
 
                                             {/* Date and duration */}
@@ -523,6 +542,26 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
                             />
+                            {/* Transcript panel + transcribe button for the selected voice */}
+                            {currentVoice && memberPath && (
+                                <div className="mt-2">
+                                    {transcriptionState === 'done' && transcription ? (
+                                        <TranscriptPanel
+                                            segments={transcription.segments}
+                                            accentColor={theme.modals.accentColor}
+                                            variant="dark"
+                                            defaultExpanded={false}
+                                        />
+                                    ) : (
+                                        <TranscribeButton
+                                            state={transcriptionState}
+                                            onClick={triggerTranscription}
+                                            accentColor={theme.modals.accentColor}
+                                            variant="dark"
+                                        />
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

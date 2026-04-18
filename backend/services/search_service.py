@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS search_messages (
     timestamp TEXT,
     content TEXT,
     content_normalized TEXT,
+    type TEXT DEFAULT 'text',
     UNIQUE(message_id, service)
 );
 
@@ -145,6 +146,16 @@ CREATE INDEX IF NOT EXISTS idx_search_blogs_published ON search_blogs(published_
 _BATCH_SIZE = 500
 
 
+def _migrate_add_type_column(conn: sqlite3.Connection) -> None:
+    """Add 'type' column to search_messages if it doesn't exist."""
+    cursor = conn.execute("PRAGMA table_info(search_messages)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "type" not in columns:
+        conn.execute("ALTER TABLE search_messages ADD COLUMN type TEXT DEFAULT 'text'")
+        conn.commit()
+        logger.info("Migrated search_messages: added type column")
+
+
 def _is_romaji(term: str, normalize_fn=None) -> bool:
     """Check if term is ASCII Latin that normalizes to different hiragana."""
     if normalize_fn is None:
@@ -202,6 +213,7 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(_SCHEMA_SQL)
+    _migrate_add_type_column(conn)
 
     count = 0
     batch: list[Tuple[Any, ...]] = []
@@ -273,14 +285,15 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
                             msg.get("timestamp"),
                             content,
                             normalized,
+                            msg.get("type", "text"),
                         )
                     )
                     if len(batch) >= _BATCH_SIZE:
                         conn.executemany(
                             "INSERT OR REPLACE INTO search_messages "
                             "(message_id, service, group_id, group_name, member_id, member_name, "
-                            "timestamp, content, content_normalized) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            "timestamp, content, content_normalized, type) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                             batch,
                         )
                         conn.commit()
@@ -291,8 +304,8 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
         conn.executemany(
             "INSERT OR REPLACE INTO search_messages "
             "(message_id, service, group_id, group_name, member_id, member_name, "
-            "timestamp, content, content_normalized) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "timestamp, content, content_normalized, type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             batch,
         )
         conn.commit()
@@ -481,6 +494,7 @@ def _index_blogs_for_service_process(
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(_SCHEMA_SQL)
+    _migrate_add_type_column(conn)
 
     # Get already-indexed blog IDs for this service
     existing_ids: set[str] = set()
@@ -613,6 +627,7 @@ def _index_members_process(
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
     conn.executescript(_SCHEMA_SQL)
+    _migrate_add_type_column(conn)
 
     # Batch query: max indexed message_id per member
     max_indexed_ids: dict[tuple, int] = {}
@@ -673,14 +688,15 @@ def _index_members_process(
                     msg.get("timestamp"),
                     content,
                     normalized,
+                    msg.get("type", "text"),
                 )
             )
             if len(batch) >= _BATCH_SIZE:
                 conn.executemany(
                     "INSERT OR REPLACE INTO search_messages "
                     "(message_id, service, group_id, group_name, member_id, member_name, "
-                    "timestamp, content, content_normalized) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "timestamp, content, content_normalized, type) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     batch,
                 )
                 conn.commit()
@@ -691,8 +707,8 @@ def _index_members_process(
         conn.executemany(
             "INSERT OR REPLACE INTO search_messages "
             "(message_id, service, group_id, group_name, member_id, member_name, "
-            "timestamp, content, content_normalized) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "timestamp, content, content_normalized, type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             batch,
         )
         conn.commit()
@@ -745,6 +761,7 @@ class SearchService:
             self._conn = sqlite3.connect(str(self._db_path))
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.executescript(_SCHEMA_SQL)
+            _migrate_add_type_column(self._conn)
         return self._conn
 
     def _get_read_conn(self) -> sqlite3.Connection:
@@ -758,6 +775,7 @@ class SearchService:
             self._read_conn = sqlite3.connect(str(self._db_path))
             self._read_conn.execute("PRAGMA journal_mode=WAL")
             self._read_conn.executescript(_SCHEMA_SQL)
+            _migrate_add_type_column(self._read_conn)
         return self._read_conn
 
     # ------------------------------------------------------------------
@@ -1370,7 +1388,7 @@ class SearchService:
 
         *row* is a DB row with columns:
             (message_id, content, content_normalized, service, group_id,
-             group_name, member_id, member_name, timestamp, match_type)
+             group_name, member_id, member_name, timestamp, type, match_type)
 
         *query_info* bundles the pre-computed search query metadata:
             first_term, first_norm, query_is_romaji, is_multi_word, words,
@@ -1425,7 +1443,7 @@ class SearchService:
             "member_id": row[6],
             "member_name": row[7],
             "timestamp": row[8],
-            "type": "text",
+            "type": row[9] if len(row) > 9 and row[9] else "text",
             "match_type": match_type,
         }
 
@@ -1650,7 +1668,7 @@ class SearchService:
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
                     "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                    "m.timestamp, 0 as match_type "
+                    "m.timestamp, m.type, 0 as match_type "
                     "FROM search_fts f "
                     "JOIN search_messages m ON f.rowid = m.rowid "
                     f"{unread_join_sql}"
@@ -1676,7 +1694,7 @@ class SearchService:
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
                     "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                    "m.timestamp, 0 as match_type "
+                    "m.timestamp, m.type, 0 as match_type "
                     f"FROM search_messages m {unread_join_sql} "
                     f"WHERE {' AND '.join(like_clauses)} {filter_sql} "
                     "ORDER BY m.timestamp DESC"
@@ -1704,7 +1722,7 @@ class SearchService:
                     sq = (
                         "SELECT m.message_id, m.content, m.content_normalized, "
                         "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                        f"m.timestamp, {sq_mt} as match_type "
+                        f"m.timestamp, m.type, {sq_mt} as match_type "
                         "FROM search_fts f "
                         f"JOIN search_messages m ON f.rowid = m.rowid {unread_join_sql} "
                         f"WHERE search_fts MATCH ? {filter_sql}"
@@ -1719,7 +1737,7 @@ class SearchService:
                         sq_en = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                            "m.timestamp, 0 as match_type "
+                            "m.timestamp, m.type, 0 as match_type "
                             "FROM search_fts f "
                             f"JOIN search_messages m ON f.rowid = m.rowid {unread_join_sql} "
                             f"WHERE search_fts MATCH ? {filter_sql}"
@@ -1732,7 +1750,7 @@ class SearchService:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                            "m.timestamp, 0 as match_type "
+                            "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
                             f"WHERE m.content LIKE ? {filter_sql}"
                         )
@@ -1741,7 +1759,7 @@ class SearchService:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
-                            "m.timestamp, 0 as match_type "
+                            "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
                             f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
                         )
@@ -1785,7 +1803,7 @@ class SearchService:
             union_sql = " UNION ALL ".join(sub_queries)
             data_sql = (
                 f"SELECT message_id, content, content_normalized, service, group_id, group_name, "
-                f"member_id, member_name, timestamp, MIN(match_type) as match_type "
+                f"member_id, member_name, timestamp, type, MIN(match_type) as match_type "
                 f"FROM ({union_sql}) "
                 f"GROUP BY message_id "
                 f"ORDER BY match_type, timestamp DESC"
@@ -2074,14 +2092,15 @@ class SearchService:
                                     msg.get("timestamp"),
                                     content,
                                     normalized,
+                                    msg.get("type", "text"),
                                 )
                             )
                             if len(batch) >= _BATCH_SIZE:
                                 conn.executemany(
                                     "INSERT OR REPLACE INTO search_messages "
                                     "(message_id, service, group_id, group_name, member_id, member_name, "
-                                    "timestamp, content, content_normalized) "
-                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    "timestamp, content, content_normalized, type) "
+                                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                                     batch,
                                 )
                                 conn.commit()
@@ -2095,8 +2114,8 @@ class SearchService:
                 conn.executemany(
                     "INSERT OR REPLACE INTO search_messages "
                     "(message_id, service, group_id, group_name, member_id, member_name, "
-                    "timestamp, content, content_normalized) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "timestamp, content, content_normalized, type) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     batch,
                 )
                 conn.commit()
@@ -2355,14 +2374,15 @@ class SearchService:
                         msg.get("timestamp"),
                         content,
                         normalized,
+                        msg.get("type", "text"),
                     )
                 )
                 if len(batch) >= _BATCH_SIZE:
                     conn.executemany(
                         "INSERT OR REPLACE INTO search_messages "
                         "(message_id, service, group_id, group_name, member_id, member_name, "
-                        "timestamp, content, content_normalized) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        "timestamp, content, content_normalized, type) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         batch,
                     )
                     conn.commit()
@@ -2374,8 +2394,8 @@ class SearchService:
             conn.executemany(
                 "INSERT OR REPLACE INTO search_messages "
                 "(message_id, service, group_id, group_name, member_id, member_name, "
-                "timestamp, content, content_normalized) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "timestamp, content, content_normalized, type) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 batch,
             )
             conn.commit()

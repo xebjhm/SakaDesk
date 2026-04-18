@@ -8,6 +8,9 @@ import { Z_CLASS } from '../../constants/zIndex';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
+import { TranscribeButton } from './TranscribeButton';
+import { TranscriptPanel } from './TranscriptPanel';
+import { useTranscription } from '../../hooks/useTranscription';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -24,6 +27,12 @@ export interface MediaViewerItem {
     sourceLabel?: string;
     /** Called when sourceLabel is clicked — jumps to the source (blog post, message, etc). */
     onSourceJump?: () => void;
+    /** Message ID for transcription lookup. */
+    messageId?: number;
+    /** Service ID for transcription API. */
+    service?: string;
+    /** Relative path to member directory for transcription. */
+    memberPath?: string;
 }
 
 interface MediaViewerModalProps {
@@ -54,6 +63,14 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const [zoom, setZoom] = useState(1);
 
     const item = mediaItems[currentIndex];
+
+    // Transcription — active for voice and non-muted video items with messageId
+    const isTranscribable = item?.messageId != null && (item?.type === 'voice' || (item?.type === 'video' && !item?.isMuted));
+    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
+        isTranscribable ? item?.service : undefined,
+        isTranscribable ? item?.messageId : undefined,
+        isTranscribable ? item?.memberPath : undefined,
+    );
 
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
@@ -135,17 +152,35 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                     />
                 )}
                 {item.type === 'video' && (
-                    <VideoPlayer
-                        src={item.src}
-                        autoPlay
-                        messageTimestamp={item.timestamp}
-                        noAudio={item.isMuted}
-                        viewerMode
-                        videoClassName="max-w-[90vw] max-h-[90vh]"
-                    />
+                    <div className="flex flex-col items-center gap-3">
+                        <VideoPlayer
+                            src={item.src}
+                            autoPlay
+                            messageTimestamp={item.timestamp}
+                            noAudio={item.isMuted}
+                            viewerMode
+                            videoClassName="max-w-[90vw] max-h-[90vh]"
+                        />
+                        {isTranscribable && (
+                            <div className="w-full px-2">
+                                <TranscribeButton
+                                    state={transcriptionState}
+                                    onClick={triggerTranscription}
+                                    variant="light"
+                                />
+                                {transcriptionState === 'done' && transcription && (
+                                    <TranscriptPanel
+                                        segments={transcription.segments}
+                                        variant="light"
+                                        defaultExpanded
+                                    />
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
                 {item.type === 'voice' && (
-                    <div className="w-96">
+                    <div className="w-96 flex flex-col gap-3">
                         <VoicePlayer
                             src={item.src}
                             variant="premium"
@@ -155,6 +190,22 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                             autoPlay
                             viewerMode
                         />
+                        {isTranscribable && (
+                            <div>
+                                <TranscribeButton
+                                    state={transcriptionState}
+                                    onClick={triggerTranscription}
+                                    variant="light"
+                                />
+                                {transcriptionState === 'done' && transcription && (
+                                    <TranscriptPanel
+                                        segments={transcription.segments}
+                                        variant="light"
+                                        defaultExpanded
+                                    />
+                                )}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
