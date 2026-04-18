@@ -1,6 +1,6 @@
 import React from 'react';
 import DOMPurify from 'dompurify';
-import { MessageSquare, FileText } from 'lucide-react';
+import { MessageSquare, FileText, Volume2, Video } from 'lucide-react';
 import { cn } from '../../../utils/classnames';
 import { formatName } from '../../../utils';
 import { getServicePrimaryColor } from '../../../data/services';
@@ -26,6 +26,20 @@ function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + '...';
 }
 
+function formatSegmentTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return `[${m}:${s}]`;
+}
+
+function getMessageIcon(type: string) {
+  switch (type) {
+    case 'voice': return Volume2;
+    case 'video': return Video;
+    default: return MessageSquare;
+  }
+}
+
 export const SearchResultItem: React.FC<SearchResultItemProps> = ({
   result,
   isSelected,
@@ -47,10 +61,26 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
     ? rawContent.replace(placeholderRegex, userNickname)
     : rawContent;
 
+  const isVoiceOrVideo =
+    result.result_type === 'message' &&
+    (result.type === 'voice' || result.type === 'video');
+
+  const segmentPrefix =
+    isVoiceOrVideo && result.segment_start != null
+      ? formatSegmentTime(result.segment_start) + ' '
+      : '';
+
   const displayContent =
     result.result_type === 'message'
-      ? (processedSnippet ?? (processedContent ? truncate(processedContent, 100) : ''))
+      ? (processedSnippet != null
+          ? segmentPrefix + processedSnippet
+          : processedContent
+            ? segmentPrefix + truncate(processedContent, 100)
+            : '')
       : processedSnippet ?? '';
+
+  const MessageIcon =
+    result.result_type === 'message' ? getMessageIcon(result.type) : null;
 
   const formattedDate =
     result.result_type === 'message'
@@ -109,8 +139,8 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
       </div>
 
       {/* Type badge icon */}
-      {result.result_type === 'message' ? (
-        <MessageSquare className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+      {MessageIcon ? (
+        <MessageIcon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
       ) : (
         <FileText className="w-3.5 h-3.5 text-gray-400 shrink-0" />
       )}

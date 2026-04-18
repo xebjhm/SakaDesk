@@ -308,6 +308,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                     </div>
 
+                    {/* Transcription */}
+                    <TranscriptionDeviceSection
+                        device={appSettings.transcription_device ?? 'cpu'}
+                        onChangeDevice={(device) => onSaveSettings({ transcription_device: device })}
+                    />
+
                     {/* Updates */}
                     <UpdatesSection
                         autoDownload={appSettings.auto_download_updates ?? false}
@@ -388,6 +394,88 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
                     <span className="text-xs text-gray-500">{result}</span>
                 )}
             </div>
+        </div>
+    );
+}
+
+
+function TranscriptionDeviceSection({ device, onChangeDevice }: {
+    device: string;
+    onChangeDevice: (device: string) => void;
+}) {
+    const { t } = useTranslation();
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<string | null>(null);
+
+    const handleDeviceChange = async (newDevice: string) => {
+        if (newDevice === 'cuda') {
+            // Test GPU before switching
+            setTesting(true);
+            setTestResult(null);
+            try {
+                const res = await fetch('/api/transcription/test-gpu', { method: 'POST' });
+                const data = await res.json();
+                if (data.ok) {
+                    onChangeDevice('cuda');
+                    setTestResult(t('settings.transcriptionGpuSuccess'));
+                } else {
+                    setTestResult(t('settings.transcriptionGpuFailed') + ': ' + (data.error || ''));
+                }
+            } catch {
+                setTestResult(t('settings.transcriptionGpuFailed'));
+            } finally {
+                setTesting(false);
+            }
+        } else {
+            onChangeDevice('cpu');
+            setTestResult(null);
+        }
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+                {t('settings.transcriptionDevice')}
+            </label>
+            <div className="space-y-1">
+                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                    <input
+                        type="radio"
+                        name="transcriptionDevice"
+                        checked={device === 'cpu'}
+                        onChange={() => handleDeviceChange('cpu')}
+                        disabled={testing}
+                        className="w-4 h-4 text-blue-500"
+                    />
+                    <div>
+                        <span className="text-sm text-gray-700">CPU</span>
+                        <p className="text-xs text-gray-400">{t('settings.transcriptionCpuDesc')}</p>
+                    </div>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                    <input
+                        type="radio"
+                        name="transcriptionDevice"
+                        checked={device === 'cuda'}
+                        onChange={() => handleDeviceChange('cuda')}
+                        disabled={testing}
+                        className="w-4 h-4 text-blue-500"
+                    />
+                    <div>
+                        <span className="text-sm text-gray-700">GPU (CUDA)</span>
+                        <p className="text-xs text-gray-400">{t('settings.transcriptionGpuDesc')}</p>
+                    </div>
+                </label>
+            </div>
+            {testing && (
+                <div className="flex items-center gap-2 mt-2 text-xs text-blue-500">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {t('settings.transcriptionGpuTesting')}
+                </div>
+            )}
+            {testResult && (
+                <p className="text-xs mt-2 text-gray-500">{testResult}</p>
+            )}
         </div>
     );
 }

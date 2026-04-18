@@ -36,6 +36,8 @@ interface ChatListProps {
     onTargetMessageConsumed?: () => void;
     /** Callback when a media item is clicked (for media viewer modal) */
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
+    /** Function to resolve the member directory path for a message (for transcription) */
+    getMemberPath?: (msg: Message) => string | undefined;
 }
 
 const DEFAULT_ITEM_HEIGHT = 80;
@@ -56,6 +58,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     targetMessageId,
     onTargetMessageConsumed,
     onMediaClick,
+    getMemberPath,
 }) => {
     const virtuosoKey = `virtuoso-${memberId}`;
     const internalRef = useRef<VirtuosoHandle>(null);
@@ -158,6 +161,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             onMediaClick={onMediaClick}
                             theme={bubbleTheme}
                             service={service}
+                            memberPath={getMemberPath?.(msg)}
                         />
                     </div>
                 );

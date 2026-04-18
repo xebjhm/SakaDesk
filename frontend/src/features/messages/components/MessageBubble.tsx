@@ -7,6 +7,9 @@ import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-
 import { MessageContextMenu } from './MessageContextMenu';
 import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
+import { TranscribeButton } from '../../../core/media/TranscribeButton';
+import { TranscriptPanel } from '../../../core/media/TranscriptPanel';
+import { useTranscription } from '../../../hooks/useTranscription';
 
 interface ShelterColors {
     picture: string;
@@ -39,6 +42,8 @@ interface MessageBubbleProps {
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     theme?: MessageBubbleTheme;
     service?: string;
+    /** Relative path from output_dir to the member directory (for transcription API) */
+    memberPath?: string;
 }
 
 const SHELTER_ICONS = {
@@ -147,6 +152,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onMediaClick,
     theme,
     service,
+    memberPath,
 }) => {
     const { t } = useTranslation();
     const date = new Date(message.timestamp);
@@ -191,6 +197,22 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const mediaUrl = message.media_file && service
         ? `${api_base}/${encodeURIComponent(service)}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
         : null;
+
+    // Transcription — only active for voice and non-muted video messages
+    const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);
+    const {
+        transcription,
+        state: transcriptionState,
+        trigger: triggerTranscription,
+    } = useTranscription(
+        isTranscribable ? service : undefined,
+        isTranscribable ? message.id : undefined,
+        isTranscribable ? memberPath : undefined,
+    );
+
+    // Playback time sync between player and transcript panel
+    const [playerTime, setPlayerTime] = useState(0);
+    const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
 
     // Long press timer for shelter overlay - use ref to persist across renders
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -329,13 +351,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     noAudio={message.is_muted}
                                     className="w-full h-full"
                                     videoClassName="w-full h-full object-contain"
+                                    onTimeUpdate={setPlayerTime}
+                                    seekTo={seekTarget}
                                 />
                             </MediaContainer>
                         )}
 
                         {/* Voice */}
                         {message.type === 'voice' && mediaUrl && (
-                            <VoicePlayer src={mediaUrl} accentColor={theme?.voicePlayerAccent} messageTimestamp={message.timestamp} />
+                            <VoicePlayer
+                                src={mediaUrl}
+                                accentColor={theme?.voicePlayerAccent}
+                                messageTimestamp={message.timestamp}
+                                onTimeUpdate={setPlayerTime}
+                                seekTo={seekTarget}
+                            />
                         )}
 
                         {/* Text */}
@@ -356,6 +386,37 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         )}
                     </div>
                 </div>
+
+                {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
+                {isTranscribable && !isUnread && (
+                    <div
+                        className="rounded-b-xl border-t-0 border px-3 py-1.5 -mt-1"
+                        style={{
+                            borderColor: `${theme?.voicePlayerAccent || '#6da0d4'}30`,
+                            background: `${theme?.voicePlayerAccent || '#6da0d4'}05`,
+                        }}
+                    >
+                        {transcriptionState !== 'done' ? (
+                            <TranscribeButton
+                                state={transcriptionState}
+                                onClick={triggerTranscription}
+                                accentColor={theme?.voicePlayerAccent}
+                                variant="dark"
+                            />
+                        ) : (
+                            transcription && (
+                                <TranscriptPanel
+                                    segments={transcription.segments}
+                                    currentTime={playerTime}
+                                    onSeek={setSeekTarget}
+                                    accentColor={theme?.voicePlayerAccent}
+                                    variant="dark"
+                                    defaultExpanded={false}
+                                />
+                            )
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
