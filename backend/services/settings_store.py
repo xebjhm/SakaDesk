@@ -32,6 +32,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "notifications_enabled": True,
     "blogs_full_backup": False,
     "auto_download_updates": False,
+    "transcription_device": "cpu",  # "cpu" or "cuda"
 }
 
 
