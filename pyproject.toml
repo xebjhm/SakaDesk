@@ -17,6 +17,7 @@ dependencies = [
     "plyer>=2.1.0",
     "pykakasi>=2.3.0",
     "jaconv>=0.5.0",
+    "faster-whisper>=1.2.1",
 ]
 
 [tool.uv.sources]

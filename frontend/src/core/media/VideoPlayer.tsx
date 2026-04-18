@@ -7,6 +7,8 @@ import { copyVideoToClipboard } from '../../utils/clipboard';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { SubtitleOverlay } from './SubtitleOverlay';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
@@ -24,6 +26,12 @@ interface VideoPlayerProps {
     className?: string;
     /** Max height/width constraints for the video element */
     videoClassName?: string;
+    /** Transcription segments for subtitle display */
+    transcriptionSegments?: TranscriptionSegment[];
+    /** Called on each time update with current playback time in seconds */
+    onTimeUpdate?: (time: number) => void;
+    /** Called externally to seek to a specific time */
+    seekTo?: number;
 }
 
 const formatTime = (seconds: number): string => {
@@ -45,6 +53,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     viewerMode,
     className,
     videoClassName,
+    transcriptionSegments,
+    onTimeUpdate,
+    seekTo,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -53,6 +64,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const controlsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [isPlaying, setIsPlaying] = useState(false);
+    const [showSubtitles, setShowSubtitles] = useState(true);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
@@ -71,7 +83,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const video = videoRef.current;
         if (!video) return;
 
-        const handleTimeUpdate = () => setCurrentTime(video.currentTime);
+        const handleTimeUpdate = () => {
+            setCurrentTime(video.currentTime);
+            onTimeUpdate?.(video.currentTime);
+        };
         const handleLoadedMetadata = () => setDuration(video.duration);
         const handleEnded = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
@@ -108,6 +123,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             videoRef.current.playbackRate = playbackRate;
         }
     }, [playbackRate]);
+
+    // External seek request
+    useEffect(() => {
+        if (seekTo != null && videoRef.current) {
+            videoRef.current.currentTime = seekTo;
+            setCurrentTime(seekTo);
+        }
+    }, [seekTo]);
 
     // Track fullscreen changes and restore focus after exit
     useEffect(() => {
@@ -339,6 +362,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 loop={loop}
             />
 
+            {/* Subtitle overlay */}
+            {transcriptionSegments && (
+                <SubtitleOverlay
+                    segments={transcriptionSegments}
+                    currentTime={currentTime}
+                    visible={showSubtitles}
+                />
+            )}
+
             {/* Big center play button when paused */}
             {!isPlaying && (
                 <button
@@ -426,6 +458,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     >
                         <MoreVertical className="w-4 h-4" />
                     </button>
+
+                    {/* CC toggle */}
+                    {transcriptionSegments && (
+                        <button
+                            onClick={() => setShowSubtitles(s => !s)}
+                            className={cn("text-xs px-1.5 py-0.5 rounded transition-colors", showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
+                            title={t('transcription.cc')}
+                            type="button"
+                        >
+                            CC
+                        </button>
+                    )}
 
                     {/* Fullscreen */}
                     <button onClick={toggleFullscreen} className="text-white/80 hover:text-white p-1" type="button">

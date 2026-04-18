@@ -56,7 +56,13 @@
     "checkForUpdates": "Check Now",
     "updateFound": "v{{version}} available!",
     "upToDate": "You're up to date",
-    "updateCheckFailed": "Check failed"
+    "updateCheckFailed": "Check failed",
+    "transcriptionDevice": "Transcription Device",
+    "transcriptionCpuDesc": "Works on all machines, slower",
+    "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
+    "transcriptionGpuTesting": "Testing GPU...",
+    "transcriptionGpuSuccess": "GPU is available and working",
+    "transcriptionGpuFailed": "GPU test failed"
   },
   "time": {
     "minute": "{{count}} minute",
@@ -425,5 +431,14 @@
     "emptyNoPhotos": "No photos found",
     "count": "{{count}} photos",
     "jumpToDate": "Jump to Date"
+  },
+  "transcription": {
+    "transcribe": "Show text",
+    "transcribing": "Recognizing...",
+    "transcript": "Voice Content",
+    "noTranscript": "No text",
+    "clickToJump": "click to jump",
+    "failed": "Error",
+    "cc": "Subtitles"
   }
 }

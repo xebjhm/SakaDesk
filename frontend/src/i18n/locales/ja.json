@@ -56,7 +56,13 @@
     "checkForUpdates": "今すぐ確認",
     "updateFound": "v{{version}} が利用可能です！",
     "upToDate": "最新版です",
-    "updateCheckFailed": "確認に失敗しました"
+    "updateCheckFailed": "確認に失敗しました",
+    "transcriptionDevice": "文字起こしデバイス",
+    "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
+    "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
+    "transcriptionGpuTesting": "GPUをテスト中...",
+    "transcriptionGpuSuccess": "GPUが利用可能です",
+    "transcriptionGpuFailed": "GPUテストに失敗しました"
   },
   "time": {
     "minute": "{{count}}分",
@@ -425,5 +431,14 @@
     "emptyNoPhotos": "写真が見つかりませんでした",
     "count": "{{count}}枚の写真",
     "jumpToDate": "日付にジャンプ"
+  },
+  "transcription": {
+    "transcribe": "文字にする",
+    "transcribing": "聞き取り中...",
+    "transcript": "語音內容",
+    "noTranscript": "記録なし",
+    "clickToJump": "クリックでジャンプ",
+    "failed": "失敗しました",
+    "cc": "字幕"
   }
 }
