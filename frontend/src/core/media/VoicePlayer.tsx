@@ -32,6 +32,10 @@ interface VoicePlayerProps {
     autoPlay?: boolean;
     /** Enable keyboard shortcuts at window level (skip focus check). Only for viewer/modal, not chat bubbles. */
     viewerMode?: boolean;
+    /** Called on each time update with current playback time in seconds */
+    onTimeUpdate?: (time: number) => void;
+    /** Called externally to seek to a specific time */
+    seekTo?: number;
 }
 
 /**
@@ -80,6 +84,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     messageTimestamp,
     autoPlay,
     viewerMode,
+    onTimeUpdate,
+    seekTo,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -107,7 +113,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         const audio = audioRef.current;
         if (!audio) return;
 
-        const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+        const handleTimeUpdate = () => {
+            setCurrentTime(audio.currentTime);
+            onTimeUpdate?.(audio.currentTime);
+        };
         const handleLoadedMetadata = () => setDuration(audio.duration);
         const handleEnded = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
@@ -148,6 +157,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             audioRef.current.playbackRate = playbackRate;
         }
     }, [playbackRate]);
+
+    // External seek request
+    useEffect(() => {
+        if (seekTo != null && audioRef.current) {
+            audioRef.current.currentTime = seekTo;
+            setCurrentTime(seekTo);
+        }
+    }, [seekTo]);
 
     // Smooth progress animation
     useEffect(() => {

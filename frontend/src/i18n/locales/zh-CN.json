@@ -56,7 +56,13 @@
     "checkForUpdates": "立即检查",
     "updateFound": "v{{version}} 可用！",
     "upToDate": "已是最新版本",
-    "updateCheckFailed": "检查失败"
+    "updateCheckFailed": "检查失败",
+    "transcriptionDevice": "转录设备",
+    "transcriptionCpuDesc": "适用所有电脑，速度较慢",
+    "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
+    "transcriptionGpuTesting": "测试 GPU 中...",
+    "transcriptionGpuSuccess": "GPU 可用且运行正常",
+    "transcriptionGpuFailed": "GPU 测试失败"
   },
   "time": {
     "minute": "{{count}} 分钟",
@@ -425,5 +431,14 @@
     "emptyNoPhotos": "未找到照片",
     "count": "{{count}} 张照片",
     "jumpToDate": "跳至日期"
+  },
+  "transcription": {
+    "transcribe": "显示文字",
+    "transcribing": "辨识中...",
+    "transcript": "语音内容",
+    "noTranscript": "暂无文字",
+    "clickToJump": "点击跳转",
+    "failed": "辨识失败",
+    "cc": "字幕"
   }
 }
