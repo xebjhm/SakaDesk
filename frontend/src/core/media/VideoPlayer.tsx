@@ -208,15 +208,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setShowMenu(prev => {
             if (!prev && menuButtonRef.current) {
                 const rect = menuButtonRef.current.getBoundingClientRect();
-                setMenuStyle({
-                    position: 'fixed' as const,
-                    bottom: `${window.innerHeight - rect.top + 8}px`,
-                    right: `${window.innerWidth - rect.right}px`,
-                });
+                if (isFullscreen && containerRef.current) {
+                    // In fullscreen, position relative to the container
+                    const containerRect = containerRef.current.getBoundingClientRect();
+                    setMenuStyle({
+                        position: 'absolute' as const,
+                        bottom: `${containerRect.bottom - rect.top + 8}px`,
+                        right: `${containerRect.right - rect.right}px`,
+                    });
+                } else {
+                    setMenuStyle({
+                        position: 'fixed' as const,
+                        bottom: `${window.innerHeight - rect.top + 8}px`,
+                        right: `${window.innerWidth - rect.right}px`,
+                    });
+                }
             }
             return !prev;
         });
-    }, []);
+    }, [isFullscreen]);
 
     const handleMenuDownload = useCallback(() => {
         handleDownload();
@@ -534,7 +544,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </>
                     )}
                 </div>,
-                document.body
+                isFullscreen && containerRef.current ? containerRef.current : document.body
             )}
         </div>
     );
