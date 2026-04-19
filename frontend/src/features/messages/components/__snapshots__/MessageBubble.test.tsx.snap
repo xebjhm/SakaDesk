@@ -18,7 +18,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%]"
+    class="flex flex-col max-w-[80%] group/bubble"
   >
     <div
       class="flex items-center gap-2 mb-1"
@@ -82,7 +82,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%]"
+    class="flex flex-col max-w-[80%] group/bubble"
   >
     <div
       class="flex items-center gap-2 mb-1"
@@ -136,7 +136,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%]"
+    class="flex flex-col max-w-[80%] group/bubble"
   >
     <div
       class="flex items-center gap-2 mb-1"

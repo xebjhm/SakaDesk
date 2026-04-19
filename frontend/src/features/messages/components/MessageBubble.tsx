@@ -460,7 +460,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     onSeek={setSeekTarget}
                                     accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
-                                    defaultExpanded={false}
+                                    defaultExpanded
                                 />
                             )
                         )}

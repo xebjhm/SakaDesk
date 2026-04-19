@@ -62,6 +62,20 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         userScrolledRef.current = false;
     }, [activeIndex]);
 
+    // Auto-collapse when scrolled out of view
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!expanded || !wrapperRef.current) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (!entry.isIntersecting) setExpanded(false);
+            },
+            { threshold: 0 }
+        );
+        observer.observe(wrapperRef.current);
+        return () => observer.disconnect();
+    }, [expanded]);
+
     const isLight = variant === 'light';
 
     const formatTimestamp = (seconds: number) => {
@@ -73,7 +87,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     const Chevron = expanded ? ChevronDown : ChevronRight;
 
     return (
-        <div>
+        <div ref={wrapperRef}>
             {/* Toggle header */}
             <button
                 onClick={() => setExpanded(!expanded)}
