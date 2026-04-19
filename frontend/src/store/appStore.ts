@@ -184,6 +184,30 @@ interface AppState {
     goldenFingerActive: boolean;
     /** Toggle golden finger mode. */
     setGoldenFingerActive: (active: boolean) => void;
+
+    // ─── Translation ──────────────────────────────────────────────────────
+    /** Target language for translations (defaults to UI language). */
+    translationTargetLanguage: string | null;
+    /** Set target language for translations. */
+    setTranslationTargetLanguage: (lang: string | null) => void;
+    /** Global translation toggle for messages. */
+    translationGlobalMessages: boolean;
+    /** Global translation toggle for blogs. */
+    translationGlobalBlogs: boolean;
+    /** Set global translation toggle for messages. */
+    setTranslationGlobalMessages: (enabled: boolean) => void;
+    /** Set global translation toggle for blogs. */
+    setTranslationGlobalBlogs: (enabled: boolean) => void;
+
+    // ─── Feature Toggles ──────────────────────────────────────────────────
+    /** Top-level toggle: enable/disable the translation feature. */
+    translationEnabled: boolean;
+    /** Set the top-level translation feature toggle. */
+    setTranslationEnabled: (enabled: boolean) => void;
+    /** Top-level toggle: enable/disable the transcription feature. */
+    transcriptionEnabled: boolean;
+    /** Set the top-level transcription feature toggle. */
+    setTranscriptionEnabled: (enabled: boolean) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -322,6 +346,18 @@ export const useAppStore = create<AppState>()(
 
             goldenFingerActive: false,
             setGoldenFingerActive: (active) => set({ goldenFingerActive: active }),
+
+            translationTargetLanguage: null,
+            setTranslationTargetLanguage: (lang) => set({ translationTargetLanguage: lang }),
+            translationGlobalMessages: false,
+            setTranslationGlobalMessages: (enabled) => set({ translationGlobalMessages: enabled }),
+            translationGlobalBlogs: false,
+            setTranslationGlobalBlogs: (enabled) => set({ translationGlobalBlogs: enabled }),
+
+            translationEnabled: false,
+            setTranslationEnabled: (enabled) => set({ translationEnabled: enabled }),
+            transcriptionEnabled: true,
+            setTranscriptionEnabled: (enabled) => set({ transcriptionEnabled: enabled }),
         }),
         {
             name: 'sakadesk-app-state',
@@ -337,6 +373,11 @@ export const useAppStore = create<AppState>()(
                 blogRecentPostsCache: state.blogRecentPostsCache,
                 selectedConversations: state.selectedConversations,
                 goldenFingerActive: state.goldenFingerActive,
+                translationTargetLanguage: state.translationTargetLanguage,
+                translationGlobalMessages: state.translationGlobalMessages,
+                translationGlobalBlogs: state.translationGlobalBlogs,
+                translationEnabled: state.translationEnabled,
+                transcriptionEnabled: state.transcriptionEnabled,
             }),
         }
     )

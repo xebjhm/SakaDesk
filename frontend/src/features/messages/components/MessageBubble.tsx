@@ -10,6 +10,11 @@ import { useTranslation } from '../../../i18n';
 import { TranscribeButton } from '../../../core/media/TranscribeButton';
 import { TranscriptPanel } from '../../../core/media/TranscriptPanel';
 import { useTranscription } from '../../../hooks/useTranscription';
+import { useMessageTranslation } from '../../../hooks/useMessageTranslation';
+import { TranslateButton } from '../../../core/common/TranslateButton';
+import { InlineTranslation } from '../../../core/common/InlineTranslation';
+import { useAppStore } from '../../../store/appStore';
+import { getServiceTheme } from '../../../config/serviceThemes';
 
 interface ShelterColors {
     picture: string;
@@ -44,6 +49,8 @@ interface MessageBubbleProps {
     service?: string;
     /** Relative path from output_dir to the member directory (for transcription API) */
     memberPath?: string;
+    /** User's nickname for %%% placeholder replacement in translations */
+    userNickname?: string;
 }
 
 const SHELTER_ICONS = {
@@ -153,6 +160,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     theme,
     service,
     memberPath,
+    userNickname,
 }) => {
     const { t } = useTranslation();
     const date = new Date(message.timestamp);
@@ -204,11 +212,31 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         transcription,
         state: transcriptionState,
         trigger: triggerTranscription,
+        error: transcriptionError,
     } = useTranscription(
         isTranscribable ? service : undefined,
         isTranscribable ? message.id : undefined,
         isTranscribable ? memberPath : undefined,
     );
+
+    // Feature toggles
+    const translationEnabled = useAppStore(s => s.translationEnabled);
+    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+
+    // Translation — active for messages with text content
+    const hasTextContent = !!message.content && message.content.trim().length > 0;
+    const translationTargetLanguage = useAppStore(s => s.translationTargetLanguage) ?? 'en';
+    const {
+        translation,
+        state: translationState,
+        trigger: triggerTranslation,
+    } = useMessageTranslation({
+        service: hasTextContent && !isUnread ? service : undefined,
+        messageId: hasTextContent && !isUnread ? message.id : undefined,
+        memberPath: hasTextContent && !isUnread ? memberPath : undefined,
+        targetLanguage: translationTargetLanguage,
+        userNickname,
+    });
 
     // Playback time sync between player and transcript panel
     const [playerTime, setPlayerTime] = useState(0);
@@ -302,8 +330,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 </button>
             </div>
 
-            <div className="flex flex-col max-w-[80%]">
-                {/* Metadata */}
+            <div className="flex flex-col max-w-[80%] group/bubble">
+                {/* Metadata row — name, time, favorite star, translate button (right-aligned) */}
                 <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm text-gray-700 font-medium">{member_name}</span>
                     <span className="text-xs text-gray-400">{dateStr}</span>
@@ -312,6 +340,18 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             className="w-3.5 h-3.5"
                             style={{ color: theme?.favoriteColor || '#3b82f6', fill: theme?.favoriteColor || '#3b82f6' }}
                         />
+                    )}
+                    {translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
+                        <div className={cn(
+                            "ml-auto transition-opacity",
+                            translationState === 'loading' ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100"
+                        )}>
+                            <TranslateButton
+                                state={translationState}
+                                onClick={triggerTranslation}
+                                accentColor={service ? getServiceTheme(service).primaryColor : undefined}
+                            />
+                        </div>
                     )}
                 </div>
 
@@ -378,6 +418,14 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             </div>
                         )}
 
+                        {/* Inline translation display */}
+                        {translationEnabled && hasTextContent && !isUnread && translation && (
+                            <InlineTranslation
+                                translation={translation}
+                                variant="message"
+                            />
+                        )}
+
                         {/* Fallback for missing content */}
                         {!message.content && !mediaUrl && (
                             <div className="text-gray-400 italic text-sm">
@@ -388,7 +436,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 </div>
 
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
-                {isTranscribable && !isUnread && (
+                {transcriptionEnabled && isTranscribable && !isUnread && (
                     <div
                         className="rounded-b-xl border-t-0 border px-3 py-1.5 -mt-1"
                         style={{
@@ -400,6 +448,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <TranscribeButton
                                 state={transcriptionState}
                                 onClick={triggerTranscription}
+                                error={transcriptionError}
                                 accentColor={theme?.voicePlayerAccent}
                                 variant="dark"
                             />
