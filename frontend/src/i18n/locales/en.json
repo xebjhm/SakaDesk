@@ -440,5 +440,34 @@
     "clickToJump": "click to jump",
     "failed": "Error",
     "cc": "Subtitles"
+  },
+  "translation": {
+    "translate": "Translate",
+    "translating": "Translating...",
+    "settings": {
+      "title": "Translation",
+      "provider": "Provider",
+      "model": "Model",
+      "apiKey": "API Key",
+      "testConnection": "Test Connection",
+      "testSuccess": "Connection successful",
+      "testFailed": "Connection failed",
+      "targetLanguage": "Target Language",
+      "globalMessages": "Translate all messages",
+      "globalBlogs": "Translate all blog posts",
+      "experimental": "Experimental",
+      "clearCache": "Clear Translation Cache",
+      "cacheClearedMsg": "Translation cache cleared"
+    },
+    "error": {
+      "noProvider": "Please configure a translation provider in settings",
+      "failed": "Translation failed",
+      "rateLimited": "Rate limit reached, try again later"
+    },
+    "dataPolicy": {
+      "geminiFree": "Free tier: data may be used by Google to improve products",
+      "geminiPaid": "Paid tier: data not used for training",
+      "openai": "API data not used for training"
+    }
   }
 }

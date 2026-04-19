@@ -440,5 +440,34 @@
         "clickToJump": "撳嚟跳轉",
         "failed": "辨認失敗",
         "cc": "字幕"
+    },
+    "translation": {
+        "translate": "翻譯",
+        "translating": "翻譯緊...",
+        "settings": {
+            "title": "翻譯",
+            "provider": "服務提供者",
+            "model": "模型",
+            "apiKey": "API 密鑰",
+            "testConnection": "測試連接",
+            "testSuccess": "連接成功",
+            "testFailed": "連接失敗",
+            "targetLanguage": "目標語言",
+            "globalMessages": "翻譯所有訊息",
+            "globalBlogs": "翻譯所有網誌文章",
+            "experimental": "實驗性功能",
+            "clearCache": "清除翻譯緩存",
+            "cacheClearedMsg": "翻譯緩存已清除"
+        },
+        "error": {
+            "noProvider": "請喺設定入面配置翻譯服務提供者",
+            "failed": "翻譯失敗",
+            "rateLimited": "已達速率限制，請遲啲再試"
+        },
+        "dataPolicy": {
+            "geminiFree": "免費方案：數據可能俾 Google 用嚟改善產品",
+            "geminiPaid": "付費方案：數據唔會用嚟訓練",
+            "openai": "API 數據唔會用嚟訓練"
+        }
     }
 }
