@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, ChevronDown } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
@@ -23,6 +23,19 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
 
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (!expanded || !wrapperRef.current) return;
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (!entry.isIntersecting) setExpanded(false);
+            },
+            { threshold: 0 }
+        );
+        observer.observe(wrapperRef.current);
+        return () => observer.disconnect();
+    }, [expanded]);
+
     if (!translation) return null;
 
     const Chevron = expanded ? ChevronDown : ChevronRight;
@@ -30,7 +43,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     if (variant === 'message') {
         // Style G: small muted gray, minimal
         return (
-            <div className="mt-2 pt-1.5" style={{ borderTop: '1px dashed #e2e8f0' }}>
+            <div ref={wrapperRef} className="mt-2 pt-1.5" style={{ borderTop: '1px dashed #e2e8f0' }}>
                 <button
                     onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
                     className="flex items-center gap-0.5 text-xs py-0.5 text-slate-400"
@@ -53,7 +66,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
 
     // Style F2: italic + subtle left line
     return (
-        <div className="mt-1 mb-3">
+        <div ref={wrapperRef} className="mt-1 mb-3">
             <button
                 onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
                 className="flex items-center gap-0.5 text-xs py-0.5 text-slate-400"
