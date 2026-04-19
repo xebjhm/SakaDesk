@@ -61,7 +61,10 @@ export interface AppSettings {
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
-    transcription_device?: string;  // "cpu" or "cuda"
+    translation_provider?: string | null;
+    translation_model?: string | null;
+    translation_api_key?: string | null;
+    translation_target_language?: string | null;
 }
 
 // Parse path into API params. Handles both:

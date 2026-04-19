@@ -162,6 +162,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             theme={bubbleTheme}
                             service={service}
                             memberPath={getMemberPath?.(msg)}
+                            userNickname={userNickname}
                         />
                     </div>
                 );
