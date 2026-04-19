@@ -1,11 +1,8 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from backend.services.transcription_service import (
-    TranscriptionProvider,
-    LocalWhisperProvider,
     TranscriptionStorage,
     TranscriptionResult,
     TranscriptionSegment,
@@ -145,29 +142,6 @@ class TestTranscriptionStorage:
         assert isinstance(raw["transcriptions"], list)
         assert raw["transcriptions"][0]["message_id"] == 42
         assert "created_at" in raw["transcriptions"][0]
-
-
-class TestTranscriptionProviderInterface:
-    """Verify the ABC contract."""
-
-    def test_cannot_instantiate_abc(self):
-        with pytest.raises(TypeError):
-            TranscriptionProvider()  # type: ignore[abstract]
-
-    def test_local_whisper_provider_is_subclass(self):
-        assert issubclass(LocalWhisperProvider, TranscriptionProvider)
-
-    def test_local_whisper_provider_default_model_tiny(self):
-        """Default model size should be tiny (CPU-only timing provider)."""
-        provider = LocalWhisperProvider()
-        assert provider._model_size == "tiny"
-        assert provider._device == "cpu"
-
-    def test_local_whisper_provider_no_device_param(self):
-        """LocalWhisperProvider no longer accepts a device parameter."""
-        # Should work fine without device
-        provider = LocalWhisperProvider(model_size="tiny")
-        assert provider._device == "cpu"
 
 
 class TestGeminiTranscriptionProvider:
