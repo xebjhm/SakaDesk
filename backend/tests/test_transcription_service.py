@@ -9,6 +9,8 @@ from backend.services.transcription_service import (
     TranscriptionStorage,
     TranscriptionResult,
     TranscriptionSegment,
+    GeminiTranscriptionProvider,
+    _clean_cjk_spaces,
 )
 
 
@@ -154,3 +156,48 @@ class TestTranscriptionProviderInterface:
 
     def test_local_whisper_provider_is_subclass(self):
         assert issubclass(LocalWhisperProvider, TranscriptionProvider)
+
+    def test_local_whisper_provider_default_model_tiny(self):
+        """Default model size should be tiny (CPU-only timing provider)."""
+        provider = LocalWhisperProvider()
+        assert provider._model_size == "tiny"
+        assert provider._device == "cpu"
+
+    def test_local_whisper_provider_no_device_param(self):
+        """LocalWhisperProvider no longer accepts a device parameter."""
+        # Should work fine without device
+        provider = LocalWhisperProvider(model_size="tiny")
+        assert provider._device == "cpu"
+
+
+class TestGeminiTranscriptionProvider:
+    """Verify GeminiTranscriptionProvider construction."""
+
+    def test_instantiates_with_api_key(self):
+        provider = GeminiTranscriptionProvider(api_key="test-key")
+        assert provider._api_key == "test-key"
+        assert provider._model == "gemini-2.5-flash"
+
+    def test_custom_model(self):
+        provider = GeminiTranscriptionProvider(
+            api_key="test-key", model="gemini-3-flash-preview"
+        )
+        assert provider._model == "gemini-3-flash-preview"
+
+
+class TestCleanCjkSpaces:
+    """Tests for CJK space cleanup."""
+
+    def test_removes_spaces_between_cjk(self):
+        assert _clean_cjk_spaces("皆 さん こんばんは") == "皆さんこんばんは"
+
+    def test_keeps_spaces_between_cjk_and_ascii(self):
+        assert _clean_cjk_spaces("日向坂 46") == "日向坂 46"
+
+    def test_keeps_ascii_spaces(self):
+        assert _clean_cjk_spaces("hello world") == "hello world"
+
+    def test_mixed_content(self):
+        result = _clean_cjk_spaces("日向坂 46 の メンバー です")
+        assert "日向坂 46" in result
+        assert "のメンバーです" in result

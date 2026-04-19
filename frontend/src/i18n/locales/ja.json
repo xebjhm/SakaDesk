@@ -440,5 +440,34 @@
     "clickToJump": "クリックでジャンプ",
     "failed": "失敗しました",
     "cc": "字幕"
+  },
+  "translation": {
+    "translate": "翻訳",
+    "translating": "翻訳中...",
+    "settings": {
+      "title": "翻訳",
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "apiKey": "APIキー",
+      "testConnection": "接続テスト",
+      "testSuccess": "接続成功",
+      "testFailed": "接続失敗",
+      "targetLanguage": "翻訳先の言語",
+      "globalMessages": "すべてのメッセージを翻訳",
+      "globalBlogs": "すべてのブログ記事を翻訳",
+      "experimental": "実験的機能",
+      "clearCache": "翻訳キャッシュをクリア",
+      "cacheClearedMsg": "翻訳キャッシュをクリアしました"
+    },
+    "error": {
+      "noProvider": "設定で翻訳プロバイダーを設定してください",
+      "failed": "翻訳に失敗しました",
+      "rateLimited": "レート制限に達しました。後でもう一度お試しください"
+    },
+    "dataPolicy": {
+      "geminiFree": "無料枠：データがGoogleの製品改善に使用される場合があります",
+      "geminiPaid": "有料枠：データはトレーニングに使用されません",
+      "openai": "APIデータはトレーニングに使用されません"
+    }
   }
 }

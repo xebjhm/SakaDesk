@@ -32,7 +32,10 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "notifications_enabled": True,
     "blogs_full_backup": False,
     "auto_download_updates": False,
-    "transcription_device": "cpu",  # "cpu" or "cuda"
+    "translation_provider": None,  # "gemini" or "openai"
+    "translation_model": None,  # e.g., "gemini-3.1-flash-lite-preview", "gpt-4o-mini"
+    "translation_target_language": None,  # Defaults to UI language at runtime
+    # Note: translation API key stored in OS credential manager, not here
 }
 
 
