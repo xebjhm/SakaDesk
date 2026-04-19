@@ -8,9 +8,6 @@ Hybrid pipeline:
 - Falls back to Whisper tiny only when no API key is present
 """
 
-import asyncio
-from pathlib import Path
-
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -19,10 +16,8 @@ import structlog
 from backend.services.transcription_service import (
     TranscriptionStorage,
     TranscriptionResult,
-    LocalWhisperProvider,
     GeminiTranscriptionProvider,
 )
-from backend.services.platform import get_app_data_dir
 from backend.api.content import get_output_dir, validate_path_within_dir
 from backend.services.service_utils import validate_service, get_service_display_name
 
@@ -30,24 +25,6 @@ router = APIRouter()
 logger = structlog.get_logger(__name__)
 
 storage = TranscriptionStorage()
-
-# Singleton Whisper tiny provider — loaded once, used only for timing
-_whisper_provider: LocalWhisperProvider | None = None
-
-
-def _get_model_dir() -> Path:
-    model_dir = get_app_data_dir() / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    return model_dir
-
-
-def _get_whisper_provider() -> LocalWhisperProvider:
-    global _whisper_provider
-    if _whisper_provider is None:
-        _whisper_provider = LocalWhisperProvider(
-            model_size="tiny", model_dir=_get_model_dir()
-        )
-    return _whisper_provider
 
 
 def _get_gemini_api_key() -> str | None:
@@ -140,67 +117,62 @@ async def transcribe(request: TranscribeRequest):
         except (ValueError, KeyError):
             group_display = request.service
 
-        if api_key:
-            # Gemini: text + timestamps in one API call
-            gemini_provider = GeminiTranscriptionProvider(api_key=api_key)
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="No API key configured. Please set up a provider in Translation settings.",
+            )
 
-            try:
-                gemini_text, segments = await gemini_provider.transcribe(
-                    media_path, member_name=member_name, group_name=group_display
+        gemini_provider = GeminiTranscriptionProvider(api_key=api_key)
+
+        try:
+            gemini_text, segments = await gemini_provider.transcribe(
+                media_path, member_name=member_name, group_name=group_display
+            )
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit reached. Please wait a moment and try again.",
                 )
-            except httpx.HTTPStatusError as e:
-                status = e.response.status_code
-                if status == 429:
-                    raise HTTPException(
-                        status_code=429,
-                        detail="Rate limit reached. Please wait a moment and try again.",
-                    )
-                elif status == 503:
-                    raise HTTPException(
-                        status_code=503,
-                        detail="Gemini API is temporarily unavailable. Please try again later.",
-                    )
-                elif status == 404:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Gemini model '{gemini_provider._model}' not found. Check settings.",
-                    )
-                else:
-                    raise HTTPException(
-                        status_code=502,
-                        detail=f"Gemini API error ({status}). Please try again.",
-                    )
-            except httpx.ConnectError:
+            elif status == 503:
                 raise HTTPException(
                     status_code=503,
-                    detail="Cannot reach Gemini API. Check your internet connection.",
+                    detail="Gemini API is temporarily unavailable. Please try again later.",
                 )
-            except httpx.TimeoutException:
+            elif status == 404:
                 raise HTTPException(
-                    status_code=504,
-                    detail="Gemini API timed out. The audio may be too long. Please try again.",
+                    status_code=502,
+                    detail=f"Gemini model '{gemini_provider._model}' not found. Check settings.",
                 )
-
-            # Estimate duration from last segment
-            duration = segments[-1].end if segments else 0.0
-
-            result = TranscriptionResult(
-                message_id=request.message_id,
-                media_type=media_type,
-                language="ja",
-                model=f"gemini-{gemini_provider._model}",
-                duration_seconds=round(duration, 2),
-                full_text=gemini_text,
-                segments=segments,
+            else:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Gemini API error ({status}). Please try again.",
+                )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach Gemini API. Check your internet connection.",
             )
-        else:
-            # Fallback: Whisper tiny only (no API key configured)
-            whisper_provider = _get_whisper_provider()
-            result = await asyncio.to_thread(
-                whisper_provider.transcribe, media_path, "ja"
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="Gemini API timed out. The audio may be too long. Please try again.",
             )
-            result.message_id = request.message_id
-            result.media_type = media_type
+
+        duration = segments[-1].end if segments else 0.0
+
+        result = TranscriptionResult(
+            message_id=request.message_id,
+            media_type=media_type,
+            language="ja",
+            model=f"gemini-{gemini_provider._model}",
+            duration_seconds=round(duration, 2),
+            full_text=gemini_text,
+            segments=segments,
+        )
 
         # Save to JSON sidecar
         storage.save(member_dir, result)

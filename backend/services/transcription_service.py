@@ -11,7 +11,6 @@ Storage: JSON sidecar files (transcriptions.json) alongside messages.json.
 
 import json
 import structlog
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,119 +80,6 @@ class TranscriptionResult:
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
-
-
-class TranscriptionProvider(ABC):
-    """Abstract base for transcription engines."""
-
-    @abstractmethod
-    def transcribe(self, audio_path: Path, language: str = "ja") -> TranscriptionResult:
-        """Transcribe an audio file and return timestamped segments."""
-        ...
-
-    @abstractmethod
-    def is_available(self) -> bool:
-        """Check if the provider is ready (model downloaded, API key set, etc.)."""
-        ...
-
-
-class LocalWhisperProvider(TranscriptionProvider):
-    """Local timing provider using faster-whisper tiny (CPU-only).
-
-    This provider is used exclusively for segment timestamps in the hybrid
-    pipeline. Gemini provides the high-quality text; this provides the time
-    boundaries to align against.
-    """
-
-    def __init__(
-        self,
-        model_size: str = "tiny",
-        model_dir: Optional[Path] = None,
-    ):
-        self._model_size = model_size
-        self._model_dir = model_dir
-        # Always CPU — GPU support removed; this model is for timing only
-        self._device = "cpu"
-        self._model = None
-
-    def _ensure_model(self):
-        if self._model is not None:
-            return
-        from faster_whisper import WhisperModel
-
-        # CPU-only: use int8 compute type
-        kwargs: dict = {"device": self._device, "compute_type": "int8"}
-        if self._model_dir:
-            kwargs["download_root"] = str(self._model_dir)
-
-        logger.info(
-            "Loading whisper model", model=self._model_size, device=self._device
-        )
-        self._model = WhisperModel(self._model_size, **kwargs)
-        logger.info("Whisper model loaded", model=self._model_size, device=self._device)
-
-    def is_available(self) -> bool:
-        try:
-            self._ensure_model()
-            return True
-        except Exception:
-            return False
-
-    def _run_transcribe(self, audio_path: Path, language: str):
-        """Run the actual transcription. Returns (segments_iter, info)."""
-        # vad_filter=False: Silero VAD requires an ONNX model file that
-        # is not bundled with the PyInstaller package. Voice messages are
-        # short enough that VAD filtering isn't necessary.
-        return self._model.transcribe(
-            str(audio_path),
-            language=language,
-            beam_size=5,
-            vad_filter=False,
-        )
-
-    def transcribe(self, audio_path: Path, language: str = "ja") -> TranscriptionResult:
-        """Transcribe audio for timing data. Text quality is secondary here."""
-        if not audio_path.exists():
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-        self._ensure_model()
-
-        segments_iter, info = self._run_transcribe(audio_path, language)
-        segments, full_text_parts = self._collect_segments(segments_iter)
-
-        return TranscriptionResult(
-            message_id=0,  # Caller sets this
-            media_type="voice",  # Caller sets this
-            language=info.language,
-            model=f"faster-whisper-{self._model_size}",
-            duration_seconds=round(info.duration, 2),
-            full_text="".join(full_text_parts),
-            segments=segments,
-        )
-
-    @staticmethod
-    def _collect_segments(segments_iter):
-        """Consume segment iterator and build segment list + full text."""
-        import math
-
-        segments = []
-        full_text_parts = []
-        for seg in segments_iter:
-            # avg_logprob is a negative log probability (e.g., -0.3).
-            # Convert to 0-1 scale: exp(-0.3) ≈ 0.74
-            raw_log_prob = seg.avg_logprob if hasattr(seg, "avg_logprob") else -1.0
-            confidence = round(math.exp(raw_log_prob), 3)
-
-            segments.append(
-                TranscriptionSegment(
-                    start=round(seg.start, 2),
-                    end=round(seg.end, 2),
-                    text=seg.text.strip(),
-                    confidence=confidence,
-                )
-            )
-            full_text_parts.append(seg.text.strip())
-        return segments, full_text_parts
 
 
 class GeminiTranscriptionProvider:

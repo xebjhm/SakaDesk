@@ -42,17 +42,25 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             (i === segments.length - 1 || currentTime < segments[i + 1].start)
     );
 
-    // Auto-scroll to active segment
+    // Auto-scroll active segment to center (music app dynamic lyrics style)
     useEffect(() => {
-        if (expanded && activeRef.current && !userScrolledRef.current) {
-            activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (expanded && activeRef.current && containerRef.current && !userScrolledRef.current) {
+            const container = containerRef.current;
+            const element = activeRef.current;
+            const containerHeight = container.clientHeight;
+            const elementTop = element.offsetTop - container.offsetTop;
+            const elementHeight = element.clientHeight;
+            // Center the active element in the container
+            const scrollTarget = elementTop - (containerHeight / 2) + (elementHeight / 2);
+            container.scrollTo({ top: scrollTarget, behavior: 'smooth' });
         }
     }, [activeIndex, expanded]);
 
-    // Reset user scroll flag when playback resumes
+    // Reset user scroll flag when active segment changes
+    // (user scrolled away, but when a new segment becomes active, resume auto-scroll)
     useEffect(() => {
         userScrolledRef.current = false;
-    }, [Math.floor(currentTime / 5)]); // Reset every ~5 seconds
+    }, [activeIndex]);
 
     const isLight = variant === 'light';
 
