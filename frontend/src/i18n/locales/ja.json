@@ -57,7 +57,7 @@
     "updateFound": "v{{version}} が利用可能です！",
     "upToDate": "最新版です",
     "updateCheckFailed": "確認に失敗しました",
-    "transcriptionDevice": "文字起こしデバイス",
+    "transcriptionDevice": "文字起こし",
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",

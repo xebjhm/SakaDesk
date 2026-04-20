@@ -57,7 +57,7 @@
     "updateFound": "v{{version}} available!",
     "upToDate": "You're up to date",
     "updateCheckFailed": "Check failed",
-    "transcriptionDevice": "Transcription Device",
+    "transcriptionDevice": "Transcription",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",

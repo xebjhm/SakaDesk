@@ -57,7 +57,7 @@
     "updateFound": "v{{version}} 可用！",
     "upToDate": "已是最新版本",
     "updateCheckFailed": "檢查失敗",
-    "transcriptionDevice": "轉錄裝置",
+    "transcriptionDevice": "語音轉文字",
     "transcriptionCpuDesc": "適用所有電腦，速度較慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "測試 GPU 中...",
