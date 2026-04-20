@@ -354,22 +354,29 @@ def main() -> None:
             background_color="#F0F2F5",
         )
 
-        # Track window geometry changes and save on close
-        _current_geom = {"width": geom["width"], "height": geom["height"]}
-        if "x" in geom:
-            _current_geom["x"] = geom["x"]
-            _current_geom["y"] = geom["y"]
+        # Track window geometry changes and save on close.
+        # IMPORTANT: Only save if events actually fired. The loaded geom is in
+        # logical coordinates, but _save_window_geometry expects physical values
+        # (from pywebview events) and divides by DPI scale. Saving un-updated
+        # logical values would cause the window to shrink on every restart.
+        _current_geom: dict = {}
+        _geom_updated = False
 
         def on_resized(width, height):
+            nonlocal _geom_updated
             _current_geom["width"] = width
             _current_geom["height"] = height
+            _geom_updated = True
 
         def on_moved(x, y):
+            nonlocal _geom_updated
             _current_geom["x"] = x
             _current_geom["y"] = y
+            _geom_updated = True
 
         def on_closing():
-            _save_window_geometry(_current_geom)
+            if _geom_updated:
+                _save_window_geometry(_current_geom)
 
         window.events.resized += on_resized
         window.events.moved += on_moved
