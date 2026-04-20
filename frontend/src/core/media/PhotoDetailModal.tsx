@@ -160,6 +160,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                             noAudio={item.isMuted}
                             viewerMode
                             videoClassName="max-w-[90vw] max-h-[90vh]"
+                            transcriptionSegments={transcriptionState === 'done' && transcription ? transcription.segments : undefined}
                         />
                         {isTranscribable && (
                             <div className="w-full px-2">
