@@ -30,7 +30,7 @@ _PLACEHOLDER_RE = re.compile(r"%%%|％％％")
 # ---------------------------------------------------------------------------
 # System instruction for idol group translation
 # ---------------------------------------------------------------------------
-# Gemini uses this via `systemInstruction` (higher priority than user message).
+# Gemini uses this via `system_instruction` (higher priority than user message).
 # OpenAI uses it as the `system` message. Organized by category.
 
 _SYSTEM_INSTRUCTION = """You are a specialist translator for Japanese idol group content (坂道シリーズ: 日向坂46, 櫻坂46, 乃木坂46).
@@ -161,13 +161,17 @@ class GeminiProvider(TranslationProvider):
     ) -> str:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
         payload: dict = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3},
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 1.0},
         }
         if system_instruction:
-            payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
+            payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(url, params={"key": self._api_key}, json=payload)
+            resp = await client.post(
+                url,
+                headers={"x-goog-api-key": self._api_key},
+                json=payload,
+            )
             resp.raise_for_status()
             data = resp.json()
             return data["candidates"][0]["content"]["parts"][0]["text"]
@@ -178,7 +182,7 @@ class GeminiProvider(TranslationProvider):
                 f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}"
             )
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url, params={"key": self._api_key})
+                resp = await client.get(url, headers={"x-goog-api-key": self._api_key})
                 return resp.status_code == 200
         except Exception:
             return False
