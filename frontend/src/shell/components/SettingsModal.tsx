@@ -494,12 +494,23 @@ function TranslationSettingsSection() {
         { value: 'gemini', label: 'Google Gemini' },
     ];
 
-    const MODELS: Record<string, { value: string; label: string }[]> = {
-        gemini: [
-            { value: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite — 500 free RPD (recommended)' },
-            { value: 'gemini-3-flash-preview', label: 'Gemini 3 Flash — 20 free RPD (higher quality)' },
-        ],
-    };
+    const [modelOptions, setModelOptions] = useState<Record<string, { value: string; label: string }[]>>({});
+
+    useEffect(() => {
+        fetch('/api/translation/models')
+            .then(res => res.json())
+            .then(data => {
+                // Transform backend format {gemini: [{id, label}]} to {gemini: [{value, label}]}
+                const opts: Record<string, { value: string; label: string }[]> = {};
+                for (const [prov, models] of Object.entries(data)) {
+                    opts[prov] = (models as { id: string; label: string }[]).map(m => ({ value: m.id, label: m.label }));
+                }
+                setModelOptions(opts);
+            })
+            .catch(() => {});
+    }, []);
+
+    const MODELS = modelOptions;
 
     const TARGET_LANGUAGES = [
         { value: 'en', label: 'English' },

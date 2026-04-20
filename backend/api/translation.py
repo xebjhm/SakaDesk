@@ -29,6 +29,22 @@ from backend.services.translation_service import (
 router = APIRouter()
 logger = structlog.get_logger(__name__)
 
+# Canonical model list — the single source of truth for available models.
+# Frontend reads this via /api/translation/models endpoint.
+GEMINI_MODELS = [
+    {
+        "id": "gemini-3.1-flash-lite-preview",
+        "label": "Gemini 3.1 Flash Lite — fast, free tier (recommended)",
+    },
+    {
+        "id": "gemini-3.1-flash-preview",
+        "label": "Gemini 3.1 Flash — higher quality",
+    },
+]
+
+DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0]["id"]
+
+
 # --- Request models ---
 
 
@@ -234,6 +250,7 @@ async def get_config():
     knows one is set without exposing the raw value.
     """
     config = await load_config()
+
     api_key = _load_api_key()
     masked_key = None
     if api_key:
@@ -247,6 +264,14 @@ async def get_config():
         "api_key_masked": masked_key,
         "has_api_key": api_key is not None,
         "target_language": config.get("translation_target_language"),
+    }
+
+
+@router.get("/models")
+async def get_models():
+    """Return available models per provider. Frontend uses this as the source of truth."""
+    return {
+        "gemini": GEMINI_MODELS,
     }
 
 
