@@ -110,12 +110,15 @@ class GeminiTranscriptionProvider:
 
         suffix = audio_path.suffix.lower()
         mime_types = {
-            ".m4a": "audio/mp4",
-            ".mp4": "audio/mp4",
-            ".mp3": "audio/mpeg",
+            ".m4a": "audio/aac",
+            ".mp4": "audio/aac",
+            ".mp3": "audio/mp3",
             ".wav": "audio/wav",
+            ".ogg": "audio/ogg",
+            ".flac": "audio/flac",
+            ".aac": "audio/aac",
         }
-        mime_type = mime_types.get(suffix, "audio/mp4")
+        mime_type = mime_types.get(suffix, "audio/aac")
 
         system_instruction = _build_transcription_system_instruction(
             member_name=member_name, group_name=group_name
@@ -134,20 +137,25 @@ class GeminiTranscriptionProvider:
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
         payload = {
-            "systemInstruction": {"parts": [{"text": system_instruction}]},
+            "system_instruction": {"parts": [{"text": system_instruction}]},
             "contents": [
                 {
+                    "role": "user",
                     "parts": [
-                        {"inlineData": {"mimeType": mime_type, "data": audio_b64}},
+                        {"inline_data": {"mime_type": mime_type, "data": audio_b64}},
                         {"text": user_prompt},
-                    ]
+                    ],
                 }
             ],
-            "generationConfig": {"temperature": 0.1},
+            "generationConfig": {"temperature": 1.0},
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(url, params={"key": self._api_key}, json=payload)
+            resp = await client.post(
+                url,
+                headers={"x-goog-api-key": self._api_key},
+                json=payload,
+            )
             resp.raise_for_status()
             data = resp.json()
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
