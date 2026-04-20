@@ -103,7 +103,6 @@ class GeminiTranscriptionProvider:
     ) -> tuple[str, list[TranscriptionSegment]]:
         """Send audio to Gemini and return (full_text, segments) with timestamps."""
         import base64
-        import re
 
         audio_bytes = audio_path.read_bytes()
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
@@ -126,14 +125,38 @@ class GeminiTranscriptionProvider:
 
         user_prompt = (
             "Transcribe this audio with fine-grained timestamps.\n\n"
-            "Format each line as:\n"
-            "[MM:SS] transcribed text\n\n"
             "IMPORTANT segmentation rules:\n"
-            "- Each line should be 1-2 sentences MAX (roughly 5-15 seconds of speech).\n"
-            "- If a speaker talks for 20+ seconds, split into multiple timestamped lines.\n"
+            "- Each segment should be 1-2 sentences MAX (roughly 5-15 seconds of speech).\n"
+            "- If a speaker talks for 20+ seconds, split into multiple segments.\n"
             "- Cut at natural pauses, sentence boundaries, or clause breaks (て/けど/から/し).\n"
-            "- Prefer too many segments over too few. Short lines are better for subtitles."
+            "- Prefer too many segments over too few. Short segments are better for subtitles.\n"
+            "- start_seconds is the time in seconds when the segment begins."
         )
+
+        # Structured output schema — Gemini returns validated JSON directly
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "segments": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "start_seconds": {
+                                "type": "number",
+                                "description": "Start time in seconds",
+                            },
+                            "text": {
+                                "type": "string",
+                                "description": "Transcribed text for this segment",
+                            },
+                        },
+                        "required": ["start_seconds", "text"],
+                    },
+                },
+            },
+            "required": ["segments"],
+        }
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
         payload = {
@@ -147,7 +170,11 @@ class GeminiTranscriptionProvider:
                     ],
                 }
             ],
-            "generationConfig": {"temperature": 1.0},
+            "generationConfig": {
+                "temperature": 1.0,
+                "responseMimeType": "application/json",
+                "responseJsonSchema": response_schema,
+            },
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -160,35 +187,28 @@ class GeminiTranscriptionProvider:
             data = resp.json()
             raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
 
-        # Parse [MM:SS] lines into segments
+        # Parse structured JSON response
+        import json as _json
+
+        parsed = _json.loads(raw_text)
+        raw_segments = parsed.get("segments", [])
+
         segments: list[TranscriptionSegment] = []
         full_text_parts: list[str] = []
 
-        for line in raw_text.strip().split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Match [MM:SS] or [ MM:SS ] patterns
-            m = re.match(r"\[?\s*(\d{1,2}):(\d{2})\s*\]?\s*(.*)", line)
-            if not m:
-                continue
-
-            minutes = int(m.group(1))
-            seconds = int(m.group(2))
-            text = m.group(3).strip()
-
+        for seg in raw_segments:
+            text = seg.get("text", "").strip()
             if not text:
                 continue
 
             # Clean tokenized spaces between CJK characters
             text = _clean_cjk_spaces(text)
 
-            start_time = minutes * 60 + seconds
+            start_time = float(seg.get("start_seconds", 0))
             full_text_parts.append(text)
             segments.append(
                 TranscriptionSegment(
-                    start=float(start_time),
+                    start=start_time,
                     end=0.0,  # filled below
                     text=text,
                     confidence=1.0,
