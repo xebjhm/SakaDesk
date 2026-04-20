@@ -95,6 +95,47 @@ class GeminiTranscriptionProvider:
         self._api_key = api_key
         self._model = model
 
+    # Inline data limit: use File API if audio + prompt exceeds ~15MB
+    # (total request limit is 20MB, leaving headroom for prompt/schema)
+    _INLINE_SIZE_LIMIT = 15 * 1024 * 1024  # 15MB
+
+    async def _upload_file(
+        self, audio_bytes: bytes, mime_type: str, client: httpx.AsyncClient
+    ) -> str:
+        """Upload audio via Gemini Files API. Returns the file URI."""
+        # Step 1: Initiate resumable upload
+        metadata = {"file": {"display_name": "transcription_audio"}}
+        init_resp = await client.post(
+            "https://generativelanguage.googleapis.com/upload/v1beta/files",
+            headers={
+                "x-goog-api-key": self._api_key,
+                "X-Goog-Upload-Protocol": "resumable",
+                "X-Goog-Upload-Command": "start",
+                "X-Goog-Upload-Header-Content-Length": str(len(audio_bytes)),
+                "X-Goog-Upload-Header-Content-Type": mime_type,
+                "Content-Type": "application/json",
+            },
+            json=metadata,
+        )
+        init_resp.raise_for_status()
+        upload_url = init_resp.headers["X-Goog-Upload-URL"]
+
+        # Step 2: Upload bytes
+        upload_resp = await client.post(
+            upload_url,
+            headers={
+                "X-Goog-Upload-Offset": "0",
+                "X-Goog-Upload-Command": "upload, finalize",
+                "Content-Type": mime_type,
+            },
+            content=audio_bytes,
+        )
+        upload_resp.raise_for_status()
+        file_info = upload_resp.json()
+        file_uri = file_info["file"]["uri"]
+        logger.info("Audio uploaded via Files API", uri=file_uri, size=len(audio_bytes))
+        return file_uri
+
     async def transcribe(
         self,
         audio_path: Path,
@@ -105,7 +146,6 @@ class GeminiTranscriptionProvider:
         import base64
 
         audio_bytes = audio_path.read_bytes()
-        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
 
         suffix = audio_path.suffix.lower()
         mime_types = {
@@ -159,25 +199,35 @@ class GeminiTranscriptionProvider:
         }
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
-        payload = {
-            "system_instruction": {"parts": [{"text": system_instruction}]},
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [
-                        {"inline_data": {"mime_type": mime_type, "data": audio_b64}},
-                        {"text": user_prompt},
-                    ],
-                }
-            ],
-            "generationConfig": {
-                "temperature": 1.0,
-                "responseMimeType": "application/json",
-                "responseJsonSchema": response_schema,
-            },
-        }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            # Choose inline_data or File API based on audio size
+            if len(audio_bytes) <= self._INLINE_SIZE_LIMIT:
+                audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+                audio_part = {
+                    "inline_data": {"mime_type": mime_type, "data": audio_b64}
+                }
+            else:
+                file_uri = await self._upload_file(audio_bytes, mime_type, client)
+                audio_part = {
+                    "file_data": {"mime_type": mime_type, "file_uri": file_uri}
+                }
+
+            payload = {
+                "system_instruction": {"parts": [{"text": system_instruction}]},
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [audio_part, {"text": user_prompt}],
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 1.0,
+                    "responseMimeType": "application/json",
+                    "responseJsonSchema": response_schema,
+                },
+            }
+
             resp = await client.post(
                 url,
                 headers={"x-goog-api-key": self._api_key},
@@ -185,7 +235,26 @@ class GeminiTranscriptionProvider:
             )
             resp.raise_for_status()
             data = resp.json()
-            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+
+        # Check for safety filter blocks
+        candidates = data.get("candidates", [])
+        if not candidates:
+            raise RuntimeError("Gemini returned no candidates")
+
+        candidate = candidates[0]
+        finish_reason = candidate.get("finishReason", "")
+        if finish_reason == "SAFETY":
+            safety_ratings = candidate.get("safetyRatings", [])
+            blocked_cats = [r["category"] for r in safety_ratings if r.get("blocked")]
+            raise RuntimeError(
+                f"Content blocked by safety filter: {', '.join(blocked_cats) or 'unknown'}"
+            )
+        if "content" not in candidate or not candidate["content"].get("parts"):
+            raise RuntimeError(
+                f"Gemini returned no content (finishReason: {finish_reason})"
+            )
+
+        raw_text = candidate["content"]["parts"][0]["text"]
 
         # Parse structured JSON response
         import json as _json

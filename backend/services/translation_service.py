@@ -174,7 +174,21 @@ class GeminiProvider(TranslationProvider):
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise RuntimeError("Gemini returned no candidates")
+
+            candidate = candidates[0]
+            finish_reason = candidate.get("finishReason", "")
+            if finish_reason == "SAFETY":
+                raise RuntimeError("Translation blocked by Gemini safety filter")
+            if "content" not in candidate or not candidate["content"].get("parts"):
+                raise RuntimeError(
+                    f"Gemini returned no content (finishReason: {finish_reason})"
+                )
+
+            return candidate["content"]["parts"][0]["text"]
 
     async def is_available(self) -> bool:
         try:
