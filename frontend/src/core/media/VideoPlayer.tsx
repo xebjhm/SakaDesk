@@ -372,12 +372,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 loop={loop}
             />
 
-            {/* Subtitle overlay */}
-            {transcriptionSegments && (
+            {/* Subtitle overlay — only shown in fullscreen */}
+            {transcriptionSegments && isFullscreen && (
                 <SubtitleOverlay
                     segments={transcriptionSegments}
                     currentTime={currentTime}
                     visible={showSubtitles}
+                    fullscreen
                 />
             )}
 

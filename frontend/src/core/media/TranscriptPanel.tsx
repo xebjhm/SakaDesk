@@ -31,9 +31,19 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
+    const hasAutoExpanded = useRef(false);
     const activeRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const userScrolledRef = useRef(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    // Auto-expand once when defaultExpanded is true (content just became ready)
+    useEffect(() => {
+        if (defaultExpanded && !hasAutoExpanded.current) {
+            setExpanded(true);
+            hasAutoExpanded.current = true;
+        }
+    }, [defaultExpanded]);
 
     // Find active segment
     const activeIndex = segments.findIndex(
@@ -62,8 +72,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         userScrolledRef.current = false;
     }, [activeIndex]);
 
-    // Auto-collapse when scrolled out of view
-    const wrapperRef = useRef<HTMLDivElement>(null);
+    // Auto-collapse when scrolled out of view (one-way: collapse only, no re-expand)
     useEffect(() => {
         if (!expanded || !wrapperRef.current) return;
         const observer = new IntersectionObserver(

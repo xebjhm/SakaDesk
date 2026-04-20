@@ -22,8 +22,18 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
-
+    const hasAutoExpanded = useRef(false);
     const wrapperRef = useRef<HTMLDivElement>(null);
+
+    // Auto-expand once when defaultExpanded is true (translation just arrived)
+    useEffect(() => {
+        if (defaultExpanded && !hasAutoExpanded.current) {
+            setExpanded(true);
+            hasAutoExpanded.current = true;
+        }
+    }, [defaultExpanded]);
+
+    // Auto-collapse when scrolled out of view (one-way: collapse only, no re-expand)
     useEffect(() => {
         if (!expanded || !wrapperRef.current) return;
         const observer = new IntersectionObserver(
