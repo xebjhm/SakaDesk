@@ -123,7 +123,13 @@ async def transcribe(request: TranscribeRequest):
                 detail="No API key configured. Please set up a provider in Translation settings.",
             )
 
-        gemini_provider = GeminiTranscriptionProvider(api_key=api_key)
+        # Read model from settings (shared with translation)
+        from backend.services.settings_store import load_config
+
+        config = await load_config()
+        model = config.get("translation_model") or "gemini-3.1-flash-lite-preview"
+
+        gemini_provider = GeminiTranscriptionProvider(api_key=api_key, model=model)
 
         try:
             gemini_text, segments = await gemini_provider.transcribe(
