@@ -86,7 +86,6 @@ class GeminiTranscriptionProvider:
     """Gemini-based transcription with timestamps via multimodal audio input.
 
     Returns timestamped segments directly — no Whisper alignment needed.
-    Uses gemini-3.1-flash-lite-preview (shared with translation for cost efficiency).
     """
 
     def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite-preview"):

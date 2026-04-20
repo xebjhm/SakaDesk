@@ -339,6 +339,7 @@ def main() -> None:
 
         # Load saved window geometry
         geom = _load_window_geometry()
+        logger.info("Window geometry loaded", geom=geom)
 
         # Create window
         # background_color matches app's bg-[#F0F2F5] to prevent white
@@ -367,16 +368,25 @@ def main() -> None:
             _current_geom["width"] = width
             _current_geom["height"] = height
             _geom_updated = True
+            logger.debug("Window resized", width=width, height=height)
 
         def on_moved(x, y):
             nonlocal _geom_updated
             _current_geom["x"] = x
             _current_geom["y"] = y
             _geom_updated = True
+            logger.debug("Window moved", x=x, y=y)
 
         def on_closing():
+            logger.info(
+                "Window closing", geom_updated=_geom_updated, current_geom=_current_geom
+            )
             if _geom_updated:
                 _save_window_geometry(_current_geom)
+            else:
+                logger.warning(
+                    "Window geometry NOT saved — no resize/move events received"
+                )
 
         window.events.resized += on_resized
         window.events.moved += on_moved
