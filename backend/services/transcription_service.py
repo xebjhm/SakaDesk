@@ -31,6 +31,9 @@ _TRANSCRIPTION_SYSTEM_INSTRUCTION = """You are transcribing audio from 坂道シ
   use the official kanji spellings (e.g., 片山紗希 not 片山咲, 石塚瑶季 not 石塚陽季).
 - Keep all proper nouns accurate: member names, group names, song/single titles,
   concert names (ひな誕祭, W-KEYAKI FES.), show names (ひなあい, そこさく, 乃木坂工事中).
+- **Use common-sense kanji.** Prefer everyday words over obscure homophone kanji:
+  後半戦 (not 孤帆線), 本番 (not 本盤), 前半 (not 全般 unless contextually correct),
+  楽屋 (not 額谷), 衣装 (not 異相), 収録 (not 就六), リハーサル, 打ち合わせ, etc.
 - Preserve casual speech exactly as spoken. Do NOT formalize.
 - Keep filler words and interjections: えーと, あのー, うーん, ふふ, えへへ, etc.
 - Keep industry terms in their standard form: 選抜, フォーメーション, センター,
@@ -119,10 +122,14 @@ class GeminiTranscriptionProvider:
         )
 
         user_prompt = (
-            "Transcribe this audio with timestamps for each sentence or clause.\n\n"
+            "Transcribe this audio with fine-grained timestamps.\n\n"
             "Format each line as:\n"
             "[MM:SS] transcribed text\n\n"
-            "One timestamp per natural sentence or clause break."
+            "IMPORTANT segmentation rules:\n"
+            "- Each line should be 1-2 sentences MAX (roughly 5-15 seconds of speech).\n"
+            "- If a speaker talks for 20+ seconds, split into multiple timestamped lines.\n"
+            "- Cut at natural pauses, sentence boundaries, or clause breaks (て/けど/から/し).\n"
+            "- Prefer too many segments over too few. Short lines are better for subtitles."
         )
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
