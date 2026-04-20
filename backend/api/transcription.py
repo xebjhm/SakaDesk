@@ -125,7 +125,7 @@ async def transcribe(request: TranscribeRequest):
 
         # Read provider and model from settings (shared with translation)
         from backend.services.settings_store import load_config
-        from backend.api.translation import DEFAULT_GEMINI_MODEL
+        from backend.api.translation import DEFAULT_GEMINI_MODEL, _valid_model_ids
 
         config = await load_config()
         provider = config.get("translation_provider")
@@ -136,7 +136,9 @@ async def transcribe(request: TranscribeRequest):
                 detail="Transcription requires Gemini (multimodal audio). Please switch provider to Gemini in Translation settings.",
             )
 
-        model = config.get("translation_model") or DEFAULT_GEMINI_MODEL
+        model = config.get("translation_model")
+        if not model or model not in _valid_model_ids():
+            model = DEFAULT_GEMINI_MODEL
 
         gemini_provider = GeminiTranscriptionProvider(api_key=api_key, model=model)
 

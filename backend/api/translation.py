@@ -149,6 +149,9 @@ async def _get_provider_from_config() -> TranslationProvider:
     config = await load_config()
     provider_name = config.get("translation_provider")
     model = config.get("translation_model")
+    # Reset stale model to default
+    if model and model not in _valid_model_ids():
+        model = DEFAULT_GEMINI_MODEL
     api_key = _load_api_key()
 
     if not provider_name:
@@ -242,14 +245,39 @@ def _parse_paragraphs_from_html(html: str) -> list[str]:
 # --- Endpoints ---
 
 
+def _valid_model_ids() -> set[str]:
+    """Return the set of currently valid model IDs across all providers."""
+    ids: set[str] = set()
+    for models in (GEMINI_MODELS,):
+        for m in models:
+            ids.add(m["id"])
+    return ids
+
+
 @router.get("/config")
 async def get_config():
     """Get current translation provider configuration.
 
     API key is returned as a masked string (e.g., 'AIza...xQ') so the frontend
     knows one is set without exposing the raw value.
+    If the stored model is not in the current valid list, reset to default.
     """
     config = await load_config()
+
+    # Auto-fix stale model names (e.g., preview suffix changes)
+    stored_model = config.get("translation_model")
+    if stored_model and stored_model not in _valid_model_ids():
+        logger.info(
+            "Resetting unknown model to default",
+            old=stored_model,
+            new=DEFAULT_GEMINI_MODEL,
+        )
+        stored_model = DEFAULT_GEMINI_MODEL
+
+        async def _fix(c: dict) -> None:
+            c["translation_model"] = DEFAULT_GEMINI_MODEL
+
+        await update_config(_fix)
 
     api_key = _load_api_key()
     masked_key = None
@@ -260,7 +288,7 @@ async def get_config():
             masked_key = "****"
     return {
         "provider": config.get("translation_provider"),
-        "model": config.get("translation_model"),
+        "model": stored_model,
         "api_key_masked": masked_key,
         "has_api_key": api_key is not None,
         "target_language": config.get("translation_target_language"),
