@@ -67,6 +67,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         selectedVoice?.id,
         memberPath,
     );
+    // Transcription for selected video (subtitles in detail view)
+    const isSelectedVideo = selectedMedia?.type === 'video' && !selectedMedia?.is_muted;
+    const { transcription: videoTranscription } = useTranscription(
+        isSelectedVideo ? serviceId : undefined,
+        isSelectedVideo ? selectedMedia?.id : undefined,
+        isSelectedVideo ? memberPath : undefined,
+    );
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
@@ -261,6 +268,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         noAudio={selectedMedia.is_muted}
                         viewerMode
                         videoClassName="max-w-full max-h-[80vh]"
+                        transcriptionSegments={videoTranscription?.segments}
                     />
                 )}
                 {/* Clipboard toast */}
