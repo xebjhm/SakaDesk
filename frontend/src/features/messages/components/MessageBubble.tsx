@@ -230,6 +230,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         translation,
         state: translationState,
         trigger: triggerTranslation,
+        error: translationError,
     } = useMessageTranslation({
         service: hasTextContent && !isUnread ? service : undefined,
         messageId: hasTextContent && !isUnread ? message.id : undefined,
@@ -344,11 +345,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     {translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
                         <div className={cn(
                             "ml-auto transition-opacity",
-                            translationState === 'loading' ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100"
+                            translationState === 'loading' || translationState === 'error' ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100"
                         )}>
                             <TranslateButton
                                 state={translationState}
                                 onClick={triggerTranslation}
+                                error={translationError}
                                 accentColor={service ? getServiceTheme(service).primaryColor : undefined}
                             />
                         </div>
