@@ -72,11 +72,15 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         userScrolledRef.current = false;
     }, [activeIndex]);
 
-    // Auto-collapse when scrolled out of view (one-way: collapse only, no re-expand)
+    // Auto-collapse when scrolled out of view.
+    // Skip the initial IntersectionObserver callback (fires immediately with
+    // current state — would collapse panels that haven't scrolled into view yet).
     useEffect(() => {
         if (!expanded || !wrapperRef.current) return;
+        let initialFire = true;
         const observer = new IntersectionObserver(
             ([entry]) => {
+                if (initialFire) { initialFire = false; return; }
                 if (!entry.isIntersecting) setExpanded(false);
             },
             { threshold: 0 }
