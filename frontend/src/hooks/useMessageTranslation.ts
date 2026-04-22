@@ -6,6 +6,8 @@ interface UseMessageTranslationReturn {
     translation: string | null;
     state: TranslationState;
     trigger: () => Promise<void>;
+    /** Re-translate: clears cache and calls API fresh */
+    retrigger: () => Promise<void>;
     error: string | null;
     clear: () => void;
 }
@@ -117,13 +119,57 @@ export function useMessageTranslation(params: {
         }
     }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey]);
 
+    const retrigger = useCallback(async () => {
+        // Clear cache so trigger doesn't short-circuit
+        if (cacheKey) {
+            try { localStorage.removeItem(cacheKey); } catch {}
+        }
+        setTranslation(null);
+        setState('idle');
+        setError(null);
+        // Call trigger logic directly (can't call trigger since it reads stale cache)
+        if (!service || !messageId || !memberPath) return;
+
+        setState('loading');
+        try {
+            const res = await fetch('/api/translation/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'message',
+                    message_id: messageId,
+                    service,
+                    member_path: memberPath,
+                    context_message_ids: contextMessageIds,
+                    target_language: targetLanguage,
+                    user_nickname: userNickname || undefined,
+                }),
+            });
+            if (!res.ok) {
+                const detail = await res.json().catch(() => ({}));
+                throw new Error(detail.detail || `Request failed: ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.ok) {
+                setTranslation(data.translation);
+                setState('done');
+                setCachedTranslation(cacheKey, data.translation);
+            } else {
+                throw new Error('Translation returned not ok');
+            }
+        } catch (e) {
+            setState('error');
+            setError(e instanceof Error ? e.message : 'Translation failed');
+        }
+    }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey]);
+
     const clear = useCallback(() => {
         setTranslation(null);
         setState('idle');
         setError(null);
     }, []);
 
-    return { translation, state, trigger, error, clear };
+    return { translation, state, trigger, retrigger, error, clear };
 }
 
 /**

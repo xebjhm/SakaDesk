@@ -230,6 +230,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         translation,
         state: translationState,
         trigger: triggerTranslation,
+        retrigger: retriggerTranslation,
         error: translationError,
     } = useMessageTranslation({
         service: hasTextContent && !isUnread ? service : undefined,
@@ -425,6 +426,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <InlineTranslation
                                 translation={translation}
                                 variant="message"
+                                onRerun={retriggerTranslation}
                             />
                         )}
 
@@ -460,6 +462,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     segments={transcription.segments}
                                     currentTime={playerTime}
                                     onSeek={setSeekTarget}
+                                    onRerun={triggerTranscription}
                                     accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
                                     defaultExpanded

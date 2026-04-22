@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { TranscriptionSegment } from '../../hooks/useTranscription';
 
@@ -9,6 +9,8 @@ interface TranscriptPanelProps {
     currentTime?: number;
     /** Called when user clicks a segment timestamp to seek */
     onSeek?: (time: number) => void;
+    /** Called when user clicks the rerun button to re-transcribe */
+    onRerun?: () => void;
     /** Accent color for active segment highlight */
     accentColor?: string;
     /** 'light' for dark backgrounds, 'dark' for light backgrounds */
@@ -25,6 +27,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     segments,
     currentTime = 0,
     onSeek,
+    onRerun,
     accentColor = '#6da0d4',
     variant = 'dark',
     defaultExpanded = false,
@@ -102,15 +105,28 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     return (
         <div ref={wrapperRef}>
             {/* Toggle header */}
-            <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-1 text-xs w-full text-left py-1"
-                style={{ color: isLight ? 'rgba(255,255,255,0.5)' : accentColor }}
-                type="button"
-            >
-                <Chevron className="w-3 h-3" />
-                {t('transcription.transcript')}
-            </button>
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex items-center gap-1 text-xs text-left py-1"
+                    style={{ color: isLight ? 'rgba(255,255,255,0.5)' : accentColor }}
+                    type="button"
+                >
+                    <Chevron className="w-3 h-3" />
+                    {t('transcription.transcript')}
+                </button>
+                {onRerun && (
+                    <button
+                        onClick={onRerun}
+                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
+                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        type="button"
+                        title={t('common.refresh')}
+                    >
+                        <RefreshCw className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
 
             {/* Segments */}
             {expanded && (
