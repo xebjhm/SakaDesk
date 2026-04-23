@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
 
 interface InlineTranslationProps {
     translation: string;
@@ -8,6 +9,11 @@ interface InlineTranslationProps {
     defaultExpanded?: boolean;
     /** Called when user clicks the rerun button to re-translate */
     onRerun?: () => void;
+    /**
+     * Message ID for auto-collapse when scrolled out of the visible range.
+     * Omit for non-virtualized usages (modals, blog reader).
+     */
+    messageId?: number;
 }
 
 /**
@@ -20,38 +26,16 @@ interface InlineTranslationProps {
 export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     translation,
     variant,
-    defaultExpanded = true,
+    defaultExpanded = false,
     onRerun,
+    messageId,
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
-    const hasAutoExpanded = useRef(false);
-    const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // Auto-expand once when defaultExpanded is true (translation just arrived)
-    useEffect(() => {
-        if (defaultExpanded && !hasAutoExpanded.current) {
-            setExpanded(true);
-            hasAutoExpanded.current = true;
-        }
-    }, [defaultExpanded]);
-
-    // Auto-collapse when scrolled out of view.
-    // Skip the initial IntersectionObserver callback (fires immediately with
-    // current state — would collapse panels that haven't scrolled into view yet).
-    useEffect(() => {
-        if (!expanded || !wrapperRef.current) return;
-        let initialFire = true;
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (initialFire) { initialFire = false; return; }
-                if (!entry.isIntersecting) setExpanded(false);
-            },
-            { threshold: 0 }
-        );
-        observer.observe(wrapperRef.current);
-        return () => observer.disconnect();
-    }, [expanded]);
+    // Auto-collapse when message leaves the virtualized visible range.
+    const collapse = useCallback(() => setExpanded(false), []);
+    useCollapseOnOutOfView(messageId, expanded, collapse);
 
     if (!translation) return null;
 
@@ -71,7 +55,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     if (variant === 'message') {
         // Style G: small muted gray, minimal
         return (
-            <div ref={wrapperRef} className="mt-2 pt-1.5" style={{ borderTop: '1px dashed #e2e8f0' }}>
+            <div className="mt-2 pt-1.5" style={{ borderTop: '1px dashed #e2e8f0' }}>
                 <div className="flex items-center gap-0.5">
                     <button
                         onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
@@ -97,7 +81,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
 
     // Style F2: italic + subtle left line
     return (
-        <div ref={wrapperRef} className="mt-1 mb-3">
+        <div className="mt-1 mb-3">
             <div className="flex items-center gap-0.5">
                 <button
                     onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
