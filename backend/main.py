@@ -201,12 +201,22 @@ if not frontend_dist.exists():
 if frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
 
+    # index.html must never be cached — it references hashed asset filenames
+    # that change on every build. A cached index.html would keep pointing at
+    # an old (missing or stale) bundle after an upgrade. Hashed /assets/*.js
+    # files are safe to cache because their name changes when content changes.
+    _NO_CACHE_HEADERS = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         path = frontend_dist / full_path
         if path.exists() and path.is_file():
             return FileResponse(path)
-        return FileResponse(frontend_dist / "index.html")
+        return FileResponse(frontend_dist / "index.html", headers=_NO_CACHE_HEADERS)
 else:
     logger.warning(
         "Frontend build not found. Run 'npm run build' in frontend directory."
