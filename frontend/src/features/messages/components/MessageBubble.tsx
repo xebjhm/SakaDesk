@@ -409,6 +409,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     videoClassName="w-full h-full object-contain"
                                     onTimeUpdate={setPlayerTime}
                                     seekTo={seekTarget}
+                                    transcriptionSegments={transcription?.segments}
                                 />
                             </MediaContainer>
                         )}
