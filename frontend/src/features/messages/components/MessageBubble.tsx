@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
@@ -244,6 +244,18 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [playerTime, setPlayerTime] = useState(0);
     const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
 
+    // Auto-expand only on user-triggered completions (loading → done transition).
+    // Prevents Virtuoso remounts from re-expanding cached panels as messages
+    // scroll back into view.
+    const prevTranscriptionState = useRef(transcriptionState);
+    const prevTranslationState = useRef(translationState);
+    const transcriptionJustCompleted =
+        prevTranscriptionState.current === 'loading' && transcriptionState === 'done';
+    const translationJustCompleted =
+        prevTranslationState.current === 'loading' && translationState === 'done';
+    useEffect(() => { prevTranscriptionState.current = transcriptionState; }, [transcriptionState]);
+    useEffect(() => { prevTranslationState.current = translationState; }, [translationState]);
+
     // Long press timer for shelter overlay - use ref to persist across renders
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const handleTouchStart = useCallback(() => {
@@ -427,6 +439,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 translation={translation}
                                 variant="message"
                                 onRerun={retriggerTranslation}
+                                defaultExpanded={translationJustCompleted}
+                                messageId={message.id}
                             />
                         )}
 
@@ -465,7 +479,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     onRerun={triggerTranscription}
                                     accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
-                                    defaultExpanded
+                                    defaultExpanded={transcriptionJustCompleted}
+                                    messageId={message.id}
                                 />
                             )
                         )}

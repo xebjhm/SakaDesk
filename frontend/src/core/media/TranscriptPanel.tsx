@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -17,6 +18,11 @@ interface TranscriptPanelProps {
     variant?: 'light' | 'dark';
     /** Start expanded or collapsed */
     defaultExpanded?: boolean;
+    /**
+     * Message ID for auto-collapse when scrolled out of the visible range.
+     * Omit for non-virtualized usages (modals).
+     */
+    messageId?: number;
 }
 
 /**
@@ -31,22 +37,17 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     accentColor = '#6da0d4',
     variant = 'dark',
     defaultExpanded = false,
+    messageId,
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
-    const hasAutoExpanded = useRef(false);
     const activeRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const userScrolledRef = useRef(false);
-    const wrapperRef = useRef<HTMLDivElement>(null);
 
-    // Auto-expand once when defaultExpanded is true (content just became ready)
-    useEffect(() => {
-        if (defaultExpanded && !hasAutoExpanded.current) {
-            setExpanded(true);
-            hasAutoExpanded.current = true;
-        }
-    }, [defaultExpanded]);
+    // Auto-collapse when message leaves the virtualized visible range.
+    const collapse = useCallback(() => setExpanded(false), []);
+    useCollapseOnOutOfView(messageId, expanded, collapse);
 
     // Find active segment
     const activeIndex = segments.findIndex(
@@ -75,23 +76,6 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         userScrolledRef.current = false;
     }, [activeIndex]);
 
-    // Auto-collapse when scrolled out of view.
-    // Skip the initial IntersectionObserver callback (fires immediately with
-    // current state — would collapse panels that haven't scrolled into view yet).
-    useEffect(() => {
-        if (!expanded || !wrapperRef.current) return;
-        let initialFire = true;
-        const observer = new IntersectionObserver(
-            ([entry]) => {
-                if (initialFire) { initialFire = false; return; }
-                if (!entry.isIntersecting) setExpanded(false);
-            },
-            { threshold: 0 }
-        );
-        observer.observe(wrapperRef.current);
-        return () => observer.disconnect();
-    }, [expanded]);
-
     const isLight = variant === 'light';
 
     const formatTimestamp = (seconds: number) => {
@@ -103,7 +87,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     const Chevron = expanded ? ChevronDown : ChevronRight;
 
     return (
-        <div ref={wrapperRef}>
+        <div>
             {/* Toggle header */}
             <div className="flex items-center gap-1">
                 <button
