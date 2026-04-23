@@ -583,9 +583,31 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     <div
                         className="absolute inset-0 bg-gradient-to-b from-transparent to-white pointer-events-none"
                     />
-                    {/* Content */}
+                    {/* Content — transcript ABOVE player so the sticky bottom
+                        container grows upward when transcript expands, keeping
+                        the player anchored at the bottom of the viewport. */}
                     <div className="relative px-4 py-4">
                         <div className="max-w-lg mx-auto">
+                            {currentVoice && memberPath && (
+                                <div className="mb-2">
+                                    {transcriptionState === 'done' && transcription ? (
+                                        <TranscriptPanel
+                                            key={currentVoice.id}
+                                            segments={transcription.segments}
+                                            accentColor={theme.modals.accentColor}
+                                            variant="dark"
+                                            defaultExpanded
+                                        />
+                                    ) : (
+                                        <TranscribeButton
+                                            state={transcriptionState}
+                                            onClick={triggerTranscription}
+                                            accentColor={theme.modals.accentColor}
+                                            variant="dark"
+                                        />
+                                    )}
+                                </div>
+                            )}
                             <VoicePlayer
                                 key={currentVoice?.id}
                                 src={currentVoiceUrl}
@@ -598,26 +620,6 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
                             />
-                            {/* Transcript panel + transcribe button for the selected voice */}
-                            {currentVoice && memberPath && (
-                                <div className="mt-2">
-                                    {transcriptionState === 'done' && transcription ? (
-                                        <TranscriptPanel
-                                            segments={transcription.segments}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                            defaultExpanded={false}
-                                        />
-                                    ) : (
-                                        <TranscribeButton
-                                            state={transcriptionState}
-                                            onClick={triggerTranscription}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                        />
-                                    )}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
