@@ -27,6 +27,86 @@ interface MediaGalleryModalProps extends BaseModalProps {
 
 type MediaTab = 'photos' | 'videos' | 'voice';
 
+interface VoiceRowProps {
+    item: Message;
+    isSelected: boolean;
+    onSelect: () => void;
+    memberName: string;
+    memberAvatar?: string;
+    serviceId?: string;
+    memberPath?: string;
+    accentColor: string;
+    accentColorLight: string;
+    dateAnchorRef?: (el: HTMLButtonElement | null) => void;
+}
+
+/**
+ * A single row in the voice list. Fetches its own cached transcription so the
+ * preview text stays paired with its owning message instead of sliding to
+ * whichever row was last clicked.
+ */
+const VoiceRow: React.FC<VoiceRowProps> = ({
+    item,
+    isSelected,
+    onSelect,
+    memberName,
+    memberAvatar,
+    serviceId,
+    memberPath,
+    accentColor,
+    accentColorLight,
+    dateAnchorRef,
+}) => {
+    const { t } = useTranslation();
+    const { transcription } = useTranscription(serviceId, item.id, memberPath);
+    const previewText = transcription?.full_text;
+
+    return (
+        <button
+            ref={dateAnchorRef}
+            onClick={onSelect}
+            className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
+                !isSelected && "hover:bg-gray-50"
+            )}
+            style={isSelected ? { backgroundColor: accentColorLight } : undefined}
+        >
+            {/* Avatar */}
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
+                {memberAvatar ? (
+                    <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
+                        {memberName.substring(0, 2)}
+                    </div>
+                )}
+            </div>
+
+            {/* Name + transcript preview */}
+            <div className="flex-1 min-w-0">
+                <p
+                    className="text-sm font-medium"
+                    style={{ color: isSelected ? accentColor : '#111827' }}
+                >{memberName}</p>
+                {previewText ? (
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{previewText}</p>
+                ) : isSelected ? (
+                    <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
+                ) : null}
+            </div>
+
+            {/* Date and duration */}
+            <div className="text-right shrink-0">
+                <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
+                <p
+                    className="text-sm"
+                    style={{ color: isSelected ? accentColor : '#9ca3af' }}
+                >{formatDuration(item.media_duration)}</p>
+            </div>
+        </button>
+    );
+};
+
 // Tab configuration - module level constant to avoid recreation on each render
 const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; labelKey: string }[] = [
     { id: 'photos', icon: Image, labelKey: 'media.tabs.photos' },
@@ -467,53 +547,21 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                     if (isFirstOfDate) seenDates.add(dateKey);
 
                                     return (
-                                        <button
+                                        <VoiceRow
                                             key={item.id}
-                                            ref={isFirstOfDate ? (el) => {
+                                            item={item}
+                                            isSelected={isSelected}
+                                            onSelect={() => setSelectedVoice(item)}
+                                            memberName={memberName}
+                                            memberAvatar={memberAvatar}
+                                            serviceId={serviceId}
+                                            memberPath={memberPath}
+                                            accentColor={theme.modals.accentColor}
+                                            accentColorLight={theme.modals.accentColorLight}
+                                            dateAnchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
                                             } : undefined}
-                                            onClick={() => setSelectedVoice(item)}
-                                            className={cn(
-                                                "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
-                                                !isSelected && "hover:bg-gray-50"
-                                            )}
-                                            style={isSelected ? { backgroundColor: theme.modals.accentColorLight } : undefined}
-                                        >
-                                            {/* Avatar */}
-                                            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
-                                                {memberAvatar ? (
-                                                    <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                                                        {memberName.substring(0, 2)}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Name + transcript preview */}
-                                            <div className="flex-1 min-w-0">
-                                                <p
-                                                    className="text-sm font-medium"
-                                                    style={{ color: isSelected ? theme.modals.accentColor : '#111827' }}
-                                                >{memberName}</p>
-                                                {isSelected ? (
-                                                    transcription?.full_text ? (
-                                                        <p className="text-xs text-gray-400 truncate mt-0.5">{transcription.full_text}</p>
-                                                    ) : (
-                                                        <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
-                                                    )
-                                                ) : null}
-                                            </div>
-
-                                            {/* Date and duration */}
-                                            <div className="text-right shrink-0">
-                                                <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
-                                                <p
-                                                    className="text-sm"
-                                                    style={{ color: isSelected ? theme.modals.accentColor : '#9ca3af' }}
-                                                >{formatDuration(item.media_duration)}</p>
-                                            </div>
-                                        </button>
+                                        />
                                     );
                                 })}
                             </div>
