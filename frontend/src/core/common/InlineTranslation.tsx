@@ -46,7 +46,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
             onClick={(e) => { e.stopPropagation(); onRerun(); }}
             className="p-0.5 rounded hover:opacity-70 transition-opacity text-slate-300"
             type="button"
-            title={t('common.refresh')}
+            title={t('translation.rerun')}
         >
             <RefreshCw className="w-3 h-3" />
         </button>

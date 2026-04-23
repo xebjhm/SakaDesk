@@ -439,11 +439,13 @@
     "noTranscript": "暂无文字",
     "clickToJump": "点击跳转",
     "failed": "辨识失败",
-    "cc": "字幕"
+    "cc": "字幕",
+    "rerun": "重新辨识"
   },
   "translation": {
     "translate": "翻译",
     "translating": "翻译中...",
+    "rerun": "重新翻译",
     "settings": {
       "title": "翻译",
       "provider": "服务提供商",

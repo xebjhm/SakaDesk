@@ -439,11 +439,13 @@
     "noTranscript": "記録なし",
     "clickToJump": "クリックでジャンプ",
     "failed": "失敗しました",
-    "cc": "字幕"
+    "cc": "字幕",
+    "rerun": "再度文字起こし"
   },
   "translation": {
     "translate": "翻訳",
     "translating": "翻訳中...",
+    "rerun": "再翻訳",
     "settings": {
       "title": "翻訳",
       "provider": "プロバイダー",

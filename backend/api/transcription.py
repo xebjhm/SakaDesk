@@ -42,11 +42,17 @@ class TranscribeRequest(BaseModel):
     message_id: int
     service: str
     member_path: str  # Relative path to member dir from output dir
+    force: bool = False  # If true, ignore cache and re-run the AI
 
 
 @router.post("/transcribe")
 async def transcribe(request: TranscribeRequest):
-    """On-demand transcription of a single message."""
+    """On-demand transcription of a single message.
+
+    When ``force`` is true, the cached transcription is ignored and a new AI
+    call is made. The previous cached file is overwritten by storage.save()
+    on success.
+    """
     try:
         validate_service(request.service)
     except ValueError as e:
@@ -58,10 +64,11 @@ async def transcribe(request: TranscribeRequest):
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")
 
-    # Check cache first
-    cached = storage.load(member_dir, request.message_id)
-    if cached:
-        return {"ok": True, "transcription": _result_to_dict(cached)}
+    # Check cache first (unless caller explicitly requested a rerun)
+    if not request.force:
+        cached = storage.load(member_dir, request.message_id)
+        if cached:
+            return {"ok": True, "transcription": _result_to_dict(cached)}
 
     # Find the media file for this message
     messages_file = member_dir / "messages.json"

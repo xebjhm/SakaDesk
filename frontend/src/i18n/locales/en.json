@@ -439,11 +439,13 @@
     "noTranscript": "No text",
     "clickToJump": "click to jump",
     "failed": "Error",
-    "cc": "Subtitles"
+    "cc": "Subtitles",
+    "rerun": "Re-transcribe"
   },
   "translation": {
     "translate": "Translate",
     "translating": "Translating...",
+    "rerun": "Re-translate",
     "settings": {
       "title": "Translation",
       "provider": "Provider",

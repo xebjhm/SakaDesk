@@ -105,7 +105,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                         className="p-0.5 rounded hover:opacity-70 transition-opacity"
                         style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
                         type="button"
-                        title={t('common.refresh')}
+                        title={t('transcription.rerun')}
                     >
                         <RefreshCw className="w-3 h-3" />
                     </button>

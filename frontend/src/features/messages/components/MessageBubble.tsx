@@ -212,6 +212,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         transcription,
         state: transcriptionState,
         trigger: triggerTranscription,
+        retrigger: retriggerTranscription,
         error: transcriptionError,
     } = useTranscription(
         isTranscribable ? service : undefined,
@@ -476,7 +477,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     segments={transcription.segments}
                                     currentTime={playerTime}
                                     onSeek={setSeekTarget}
-                                    onRerun={triggerTranscription}
+                                    onRerun={retriggerTranscription}
                                     accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
                                     defaultExpanded={transcriptionJustCompleted}
