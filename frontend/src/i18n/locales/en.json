@@ -446,6 +446,8 @@
     "translate": "Translate",
     "translating": "Translating...",
     "rerun": "Re-translate",
+    "translated": "✓ translated",
+    "translatedPartial": "✓ translated (partial)",
     "settings": {
       "title": "Translation",
       "provider": "Provider",

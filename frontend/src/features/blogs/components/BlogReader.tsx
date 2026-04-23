@@ -12,6 +12,8 @@ import { TimelineRail } from './TimelineRail';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
+import { TranslateButton } from '../../../core/common/TranslateButton';
+import { useTranslation } from '../../../i18n';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -59,6 +61,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const [blogTranslations, setBlogTranslations] = useState<string[]>([]);
     const [isTranslating, setIsTranslating] = useState(false);
     const [translationPartial, setTranslationPartial] = useState(false);
+    const [translationError, setTranslationError] = useState<string | null>(null);
+    const { t } = useTranslation();
 
     // Get group ID for correct member data lookup
     const groupId = toGroupId(serviceId);
@@ -136,6 +140,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
         setIsTranslating(true);
         setTranslationPartial(false);
+        setTranslationError(null);
 
         try {
             const res = await fetch('/api/translation/translate', {
@@ -148,18 +153,22 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     target_language: translationTargetLanguage,
                 }),
             });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.ok && data.translations) {
-                    setBlogTranslations(data.translations);
-                    setTranslationPartial(data.partial ?? false);
-                    try {
-                        localStorage.setItem(cacheKey, JSON.stringify(data.translations));
-                    } catch { /* full */ }
-                }
+            if (!res.ok) {
+                const detail = await res.json().catch(() => ({}));
+                throw new Error(detail.detail || `Request failed: ${res.status}`);
             }
-        } catch {
-            // User can retry
+            const data = await res.json();
+            if (data.ok && data.translations) {
+                setBlogTranslations(data.translations);
+                setTranslationPartial(data.partial ?? false);
+                try {
+                    localStorage.setItem(cacheKey, JSON.stringify(data.translations));
+                } catch { /* full */ }
+            } else {
+                throw new Error('Translation returned not ok');
+            }
+        } catch (e) {
+            setTranslationError(e instanceof Error ? e.message : 'Translation failed');
         } finally {
             setIsTranslating(false);
         }
@@ -473,32 +482,18 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                     </time>
                                     {translationEnabled && (
                                         <span className="ml-auto">
-                                            {blogTranslations.length > 0 ? (
-                                                <span className="text-xs text-gray-400">
-                                                    ✓ translated{translationPartial ? ' (partial)' : ''}
-                                                </span>
-                                            ) : (
-                                                <button
-                                                    onClick={handleTranslateAll}
-                                                    disabled={isTranslating}
-                                                    className="flex items-center gap-1 px-2.5 py-0.5 text-xs rounded-full border border-gray-200 text-gray-500 bg-white hover:bg-gray-50 transition-colors disabled:cursor-wait disabled:opacity-60"
-                                                >
-                                                    {isTranslating ? (
-                                                        <>
-                                                            <span className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
-                                                            翻訳中...
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                <circle cx="12" cy="12" r="10" />
-                                                                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-                                                            </svg>
-                                                            翻訳
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
+                                            <TranslateButton
+                                                state={
+                                                    isTranslating ? 'loading'
+                                                        : translationError ? 'error'
+                                                        : blogTranslations.length > 0 ? 'done'
+                                                        : 'idle'
+                                                }
+                                                onClick={handleTranslateAll}
+                                                error={translationError}
+                                                accentColor="#6b7280"
+                                                doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
+                                            />
                                         </span>
                                     )}
                                 </div>
