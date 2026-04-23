@@ -1,9 +1,25 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
 import { useModalClose } from '../common/useModalClose';
+
+/**
+ * Returns the hashed filename of the currently-loaded frontend bundle
+ * (e.g., "index-DRnvKcfw.js"), or "dev" when running the Vite dev server.
+ * Useful for confirming which build is actually executing after upgrades —
+ * compare against the file on disk in _internal/frontend/dist/assets/.
+ */
+function getFrontendBundle(): string {
+    const scripts = Array.from(document.querySelectorAll<HTMLScriptElement>('script[src]'));
+    const bundleSrc = scripts
+        .map(s => s.src)
+        .find(src => /\/assets\/index-[A-Za-z0-9_-]+\.js(\?|$)/.test(src));
+    if (!bundleSrc) return 'dev';
+    const filename = bundleSrc.split('/').pop() ?? '';
+    return filename.split('?')[0] || 'unknown';
+}
 
 interface SystemInfo {
     os: string;
@@ -119,6 +135,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [logTab, setLogTab] = useState<LogTab>('recent');
+    const frontendBundle = useMemo(() => getFrontendBundle(), []);
 
     // Get live auth status from context
     const { connectedServices, disconnectedServices, isServiceConnected, isServiceDisconnected, getServiceExpiresAt, getScheduledRefreshServices } = useAuth();
@@ -175,7 +192,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
 
     const handleCopy = () => {
         if (!data) return;
-        const text = JSON.stringify(data, null, 2);
+        const text = JSON.stringify({ ...data, frontend_bundle: frontendBundle }, null, 2);
         navigator.clipboard.writeText(text);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
@@ -246,6 +263,12 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             <span className="text-gray-500">pysaka</span>
                                             <span className="font-mono text-gray-900">
                                                 {data.system.pysaka_version === 'unknown' ? 'unknown' : `v${data.system.pysaka_version}`}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-gray-500 shrink-0">Frontend</span>
+                                            <span className="font-mono text-gray-900 text-xs truncate" title={frontendBundle}>
+                                                {frontendBundle}
                                             </span>
                                         </div>
                                     </div>
