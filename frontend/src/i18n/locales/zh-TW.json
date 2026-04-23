@@ -446,6 +446,8 @@
     "translate": "翻譯",
     "translating": "翻譯中...",
     "rerun": "重新翻譯",
+    "translated": "✓ 已翻譯",
+    "translatedPartial": "✓ 已翻譯 (部分)",
     "settings": {
       "title": "翻譯",
       "provider": "服務提供者",
