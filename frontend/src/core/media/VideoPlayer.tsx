@@ -372,13 +372,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 loop={loop}
             />
 
-            {/* Subtitle overlay — only shown in fullscreen */}
-            {transcriptionSegments && isFullscreen && (
+            {/* Subtitle overlay — shown in fullscreen and in the media gallery
+                detail view (viewerMode). Hidden in inline chat bubble to keep
+                the thumbnail uncluttered; fullscreening the bubble still works. */}
+            {transcriptionSegments && (isFullscreen || viewerMode) && (
                 <SubtitleOverlay
                     segments={transcriptionSegments}
                     currentTime={currentTime}
                     visible={showSubtitles}
-                    fullscreen
+                    fullscreen={isFullscreen}
                 />
             )}
 
@@ -470,8 +472,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <MoreVertical className="w-4 h-4" />
                     </button>
 
-                    {/* CC toggle */}
-                    {transcriptionSegments && (
+                    {/* CC toggle — only surface where subtitles can actually render */}
+                    {transcriptionSegments && (isFullscreen || viewerMode) && (
                         <button
                             onClick={() => setShowSubtitles(s => !s)}
                             className={cn("text-xs px-1.5 py-0.5 rounded transition-colors", showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
