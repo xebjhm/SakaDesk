@@ -6,23 +6,38 @@ import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { useTranscription } from '../../hooks/useTranscription';
+import { TranscriptPanel } from './TranscriptPanel';
+import { TranscribeButton } from './TranscribeButton';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;
     /**
-     * 'compact' - Default bubble style for chat messages
-     * 'premium' - Music app style for gallery/modal views
+     * Single source of truth for how this voice message is displayed.
+     *  - `compact`    — chat bubble (default).
+     *  - `premium`    — standalone premium card, no transcription.
+     *  - `gallery`    — premium card anchored at the bottom of the media
+     *                   gallery voice tab; internal transcription above
+     *                   with a translucent backdrop so it stays readable
+     *                   over the blurred player bar.
+     *  - `fullscreen` — premium card inside MediaViewerModal; internal
+     *                   transcription below.
+     *
+     * `gallery` and `fullscreen` own their transcription: pass
+     * `messageId`, `service`, `memberPath` and the component will wire
+     * `useTranscription` + playerTime/seek internally. Callers don't need
+     * to render `TranscribeButton` / `TranscriptPanel` separately.
      */
-    variant?: 'compact' | 'premium';
-    /** Avatar URL for premium variant */
+    variant?: 'compact' | 'premium' | 'gallery' | 'fullscreen';
+    /** Avatar URL for premium-family variants */
     avatarUrl?: string;
-    /** Member name for premium variant */
+    /** Member name for premium-family variants */
     memberName?: string;
-    /** Timestamp for premium variant */
+    /** Timestamp display string for premium-family variants */
     timestamp?: string;
-    /** Duration string for premium variant */
+    /** Duration string for premium-family variants */
     durationText?: string;
     /** Theme accent color for buttons and progress bar */
     accentColor?: string;
@@ -42,6 +57,12 @@ interface VoicePlayerProps {
      * chat message.
      */
     onTimestampClick?: () => void;
+    /** Message id — required for the gallery/fullscreen variants to fetch transcription */
+    messageId?: number;
+    /** Service id — required for the gallery/fullscreen variants to fetch transcription */
+    service?: string;
+    /** Member dir path — required for the gallery/fullscreen variants to fetch transcription */
+    memberPath?: string;
 }
 
 /**
@@ -93,6 +114,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     onTimeUpdate,
     seekTo,
     onTimestampClick,
+    messageId,
+    service,
+    memberPath,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -101,6 +125,30 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const menuButtonRef = useRef<HTMLButtonElement>(null);
     const menuPortalRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Internal transcription wiring for gallery/fullscreen variants.
+    // `useTranscription` tolerates undefined ids; it just returns idle state.
+    const ownsTranscription = (variant === 'gallery' || variant === 'fullscreen')
+        && messageId !== undefined && service !== undefined && memberPath !== undefined;
+    const {
+        transcription,
+        state: transcriptionState,
+        trigger: triggerTranscription,
+        retrigger: retriggerTranscription,
+        error: transcriptionError,
+    } = useTranscription(
+        ownsTranscription ? service : undefined,
+        ownsTranscription ? messageId : undefined,
+        ownsTranscription ? memberPath : undefined,
+    );
+    // Detect fresh loading→done to auto-expand the transcript once per run.
+    const prevTranscriptionState = useRef(transcriptionState);
+    const transcriptionJustCompleted =
+        prevTranscriptionState.current === 'loading' && transcriptionState === 'done';
+    useEffect(() => { prevTranscriptionState.current = transcriptionState; }, [transcriptionState]);
+    // External seek bridge for the internal TranscriptPanel (click-to-seek).
+    const [internalSeek, setInternalSeek] = useState<number | undefined>(undefined);
+    const effectiveSeekTo = seekTo ?? internalSeek;
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
@@ -165,13 +213,13 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         }
     }, [playbackRate]);
 
-    // External seek request
+    // External / internal seek request
     useEffect(() => {
-        if (seekTo != null && audioRef.current) {
-            audioRef.current.currentTime = seekTo;
-            setCurrentTime(seekTo);
+        if (effectiveSeekTo != null && audioRef.current) {
+            audioRef.current.currentTime = effectiveSeekTo;
+            setCurrentTime(effectiveSeekTo);
         }
-    }, [seekTo]);
+    }, [effectiveSeekTo]);
 
     // Smooth progress animation
     useEffect(() => {
@@ -375,9 +423,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         setShowVolume(false);
     }, []);
 
-    // Premium variant - Modern card style with glassmorphism
-    if (variant === 'premium') {
-        return (
+    // Premium-family variants share the same glassmorphism card. `gallery`
+    // and `fullscreen` wrap it with internal transcription UI (above/below).
+    if (variant === 'premium' || variant === 'gallery' || variant === 'fullscreen') {
+        const premiumCard = (
             <div
                 ref={containerRef}
                 tabIndex={0}
@@ -585,6 +634,52 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     document.body
                 )}
             </div>
+        );
+
+        if (variant === 'premium') return premiumCard;
+
+        // gallery / fullscreen: render internal transcription UI when caller
+        // supplied messageId+service+memberPath. Otherwise fall back to the
+        // bare card so the component still works for simple viewer usage.
+        const panelTheme = variant === 'gallery' ? 'dark' : 'light';
+        const transcriptBlock = ownsTranscription ? (
+            transcriptionState === 'done' && transcription ? (
+                <TranscriptPanel
+                    key={messageId}
+                    segments={transcription.segments}
+                    currentTime={currentTime}
+                    onSeek={setInternalSeek}
+                    onRerun={retriggerTranscription}
+                    accentColor={accentColor}
+                    variant={panelTheme}
+                    defaultExpanded={variant === 'fullscreen' || transcriptionJustCompleted || !!transcription}
+                    withBackdrop={variant === 'gallery'}
+                />
+            ) : (
+                <TranscribeButton
+                    state={transcriptionState}
+                    onClick={triggerTranscription}
+                    error={transcriptionError}
+                    accentColor={accentColor}
+                    variant={panelTheme}
+                />
+            )
+        ) : null;
+
+        if (variant === 'gallery') {
+            return (
+                <>
+                    {transcriptBlock && <div className="mb-2">{transcriptBlock}</div>}
+                    {premiumCard}
+                </>
+            );
+        }
+        // fullscreen
+        return (
+            <>
+                {premiumCard}
+                {transcriptBlock && <div className="mt-3">{transcriptBlock}</div>}
+            </>
         );
     }
 
