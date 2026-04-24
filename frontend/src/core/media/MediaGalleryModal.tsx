@@ -633,6 +633,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                             accentColor={theme.modals.accentColor}
                                             variant="dark"
                                             defaultExpanded
+                                            withBackdrop
                                         />
                                     ) : (
                                         <TranscribeButton
