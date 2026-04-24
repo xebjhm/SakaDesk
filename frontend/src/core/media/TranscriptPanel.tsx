@@ -64,17 +64,24 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             (i === segments.length - 1 || currentTime < segments[i + 1].start)
     );
 
-    // Auto-scroll active segment to center (music app dynamic lyrics style)
+    // Auto-scroll active segment to center (music app dynamic lyrics style).
+    // Use getBoundingClientRect rather than offsetTop — the latter depends on
+    // the offsetParent chain (positioned ancestors), which can differ when
+    // the panel is nested inside variants that add positioned wrappers
+    // (e.g. the gallery voice card). Rects + the container's current
+    // scrollTop give the element's true position within the scrollable
+    // content regardless of positioning context.
     useEffect(() => {
         if (expanded && activeRef.current && containerRef.current && !userScrolledRef.current) {
             const container = containerRef.current;
             const element = activeRef.current;
-            const containerHeight = container.clientHeight;
-            const elementTop = element.offsetTop - container.offsetTop;
-            const elementHeight = element.clientHeight;
-            // Center the active element in the container
-            const scrollTarget = elementTop - (containerHeight / 2) + (elementHeight / 2);
-            container.scrollTo({ top: scrollTarget, behavior: 'smooth' });
+            const containerRect = container.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            const elementTopWithinScroll =
+                elementRect.top - containerRect.top + container.scrollTop;
+            const scrollTarget =
+                elementTopWithinScroll - container.clientHeight / 2 + element.clientHeight / 2;
+            container.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
         }
     }, [activeIndex, expanded]);
 
