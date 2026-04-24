@@ -346,6 +346,7 @@
   "media": {
     "title": "媒体",
     "jumpToDate": "跳转到日期",
+    "jumpToMessage": "跳转到消息",
     "cached": "已缓存",
     "publishedRecently": "24小时内发布",
     "checkingUpdates": "正在检查更新...",

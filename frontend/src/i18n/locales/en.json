@@ -346,6 +346,7 @@
   "media": {
     "title": "Media",
     "jumpToDate": "Jump to Date",
+    "jumpToMessage": "Jump to message",
     "cached": "Cached",
     "publishedRecently": "Published within 24 hours",
     "checkingUpdates": "Checking for updates...",

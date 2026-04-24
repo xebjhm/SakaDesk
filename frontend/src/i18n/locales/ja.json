@@ -346,6 +346,7 @@
   "media": {
     "title": "メディア",
     "jumpToDate": "日付へ移動",
+    "jumpToMessage": "メッセージへ移動",
     "cached": "保存済み",
     "publishedRecently": "24時間以内に公開",
     "checkingUpdates": "更新を確認中...",
