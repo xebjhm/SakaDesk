@@ -36,6 +36,12 @@ interface VoicePlayerProps {
     onTimeUpdate?: (time: number) => void;
     /** Called externally to seek to a specific time */
     seekTo?: number;
+    /**
+     * When provided, the timestamp label becomes a clickable link that calls
+     * this handler. Used in the media gallery to jump back to the owning
+     * chat message.
+     */
+    onTimestampClick?: () => void;
 }
 
 /**
@@ -86,6 +92,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     viewerMode,
     onTimeUpdate,
     seekTo,
+    onTimestampClick,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -408,7 +415,19 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         )}
                         {(timestamp || durationText) && (
                             <p className="text-xs text-gray-500">
-                                {timestamp}
+                                {timestamp && (
+                                    onTimestampClick ? (
+                                        <button
+                                            type="button"
+                                            onClick={onTimestampClick}
+                                            className="hover:text-gray-700 underline underline-offset-2 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+                                        >
+                                            {timestamp}
+                                        </button>
+                                    ) : (
+                                        <span>{timestamp}</span>
+                                    )
+                                )}
                                 {timestamp && durationText && <span className="mx-1 text-gray-300">•</span>}
                                 {durationText}
                             </p>

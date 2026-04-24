@@ -189,7 +189,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       <p
         class="text-xs text-gray-500"
       >
-        2024/06/15 14:30
+        <span>
+          2024/06/15 14:30
+        </span>
         <span
           class="mx-1 text-gray-300"
         >
@@ -448,7 +450,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       <p
         class="text-xs text-gray-500"
       >
-        2024/06/15 14:30
+        <span>
+          2024/06/15 14:30
+        </span>
       </p>
     </div>
     <button

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Image, Film, Volume2, Calendar, VolumeX, Download, CornerUpLeft } from 'lucide-react';
+import { Image, Film, Volume2, Calendar, VolumeX, Download } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
@@ -320,7 +320,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         <div>
                             <span>{memberName}</span>
                             <span className="mx-2">•</span>
-                            <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                            {onSourceJump ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); onSourceJump(selectedMedia.id); }}
+                                    className="underline underline-offset-2 decoration-white/30 hover:decoration-white/60 hover:text-white transition-colors"
+                                    title={t('media.jumpToMessage')}
+                                >
+                                    {formatDateTime(selectedMedia.timestamp)}
+                                </button>
+                            ) : (
+                                <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                            )}
                             {currentTabItems.length > 1 && (
                                 <>
                                     <span className="mx-2">•</span>
@@ -328,27 +339,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 </>
                             )}
                         </div>
-                        <div className="flex items-center gap-2">
-                            {onSourceJump && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onSourceJump(selectedMedia.id); }}
-                                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
-                                    title={t('media.jumpToMessage')}
-                                >
-                                    <CornerUpLeft className="w-4 h-4" />
-                                    {t('media.jumpToMessage')}
-                                </button>
-                            )}
-                            {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
-                                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    {t('common.download')}
-                                </button>
-                            )}
-                        </div>
+                        {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
+                                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
+                            >
+                                <Download className="w-4 h-4" />
+                                {t('common.download')}
+                            </button>
+                        )}
                     </div>
                 }
             >
@@ -638,24 +637,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
+                                onTimestampClick={currentVoice && onSourceJump ? () => onSourceJump(currentVoice.id) : undefined}
                             />
-                            {currentVoice && onSourceJump && (
-                                <div className="mt-2 flex justify-end">
-                                    <button
-                                        onClick={() => onSourceJump(currentVoice.id)}
-                                        className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80"
-                                        style={{
-                                            borderColor: `${theme.modals.accentColor}40`,
-                                            color: theme.modals.accentColor,
-                                            background: `${theme.modals.accentColor}08`,
-                                        }}
-                                        title={t('media.jumpToMessage')}
-                                    >
-                                        <CornerUpLeft className="w-3 h-3" />
-                                        {t('media.jumpToMessage')}
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>
