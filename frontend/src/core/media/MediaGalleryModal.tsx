@@ -147,6 +147,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
+    // Playback time sync between the premium voice player and its transcript
+    // panel so the active segment highlight tracks audio position.
+    const [voicePlayerTime, setVoicePlayerTime] = useState(0);
+    const [voiceSeekTarget, setVoiceSeekTarget] = useState<number | undefined>(undefined);
 
     // Clicking a timestamp should reset local state (close the photo/video
     // detail view, stop voice playback) BEFORE bubbling up — the detail
@@ -624,6 +628,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                         <TranscriptPanel
                                             key={currentVoice.id}
                                             segments={transcription.segments}
+                                            currentTime={voicePlayerTime}
+                                            onSeek={setVoiceSeekTarget}
                                             accentColor={theme.modals.accentColor}
                                             variant="dark"
                                             defaultExpanded
@@ -649,6 +655,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
+                                onTimeUpdate={setVoicePlayerTime}
+                                seekTo={voiceSeekTarget}
                                 onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
                             />
                         </div>
