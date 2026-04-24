@@ -112,11 +112,14 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 )}
             </div>
 
-            {/* Segments */}
+            {/* Segments — translucent backdrop keeps text readable over
+                gradients / background imagery (e.g. voice gallery player bar) */}
             {expanded && (
                 <div
                     ref={containerRef}
-                    className="max-h-32 overflow-y-auto text-xs leading-relaxed mt-1"
+                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1 rounded-md px-2 py-1.5 backdrop-blur-sm ${
+                        isLight ? 'bg-black/40' : 'bg-white/85'
+                    }`}
                     onScroll={() => { userScrolledRef.current = true; }}
                 >
                     {segments.map((seg, i) => {
