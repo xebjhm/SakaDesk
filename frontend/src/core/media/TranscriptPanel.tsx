@@ -23,6 +23,13 @@ interface TranscriptPanelProps {
      * Omit for non-virtualized usages (modals).
      */
     messageId?: number;
+    /**
+     * When true, render the segment list with a translucent backdrop + padding.
+     * Intended for the media gallery's premium voice player where the panel
+     * sits over a gradient-blur bar and raw text would be hard to read.
+     * Off by default so chat bubbles and other contexts keep their flat look.
+     */
+    withBackdrop?: boolean;
 }
 
 /**
@@ -38,6 +45,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     variant = 'dark',
     defaultExpanded = false,
     messageId,
+    withBackdrop = false,
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
@@ -112,13 +120,16 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 )}
             </div>
 
-            {/* Segments — translucent backdrop keeps text readable over
-                gradients / background imagery (e.g. voice gallery player bar) */}
+            {/* Segments — optional translucent backdrop (withBackdrop) keeps
+                text readable over gradients / backdrop-blur bars. Off by
+                default for chat bubbles and other flat surfaces. */}
             {expanded && (
                 <div
                     ref={containerRef}
-                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1 rounded-md px-2 py-1.5 backdrop-blur-sm ${
-                        isLight ? 'bg-black/40' : 'bg-white/85'
+                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
+                        withBackdrop
+                            ? ` rounded-md px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
+                            : ''
                     }`}
                     onScroll={() => { userScrolledRef.current = true; }}
                 >
