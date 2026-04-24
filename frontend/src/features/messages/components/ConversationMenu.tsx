@@ -49,6 +49,13 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     // Get per-service theme colors
     const currentService = useAppStore((state) => state.activeService);
     const theme = getServiceTheme(currentService);
+    const setTargetMessageId = useAppStore((state) => state.setTargetMessageId);
+
+    const handleJumpToMessage = (messageId: number) => {
+        setActiveModal(null);
+        setShowMenu(false);
+        setTargetMessageId(messageId);
+    };
 
     const menuItems = [
         { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), enabled: true },
@@ -131,6 +138,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 memberAvatar={memberAvatar}
                 serviceId={activeService}
                 memberPath={conversationPath}
+                onSourceJump={handleJumpToMessage}
             />
 
             <CalendarModal

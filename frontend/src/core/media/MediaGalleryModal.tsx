@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Image, Film, Volume2, Calendar, VolumeX, Download } from 'lucide-react';
+import { Image, Film, Volume2, Calendar, VolumeX, Download, CornerUpLeft } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
@@ -23,6 +23,12 @@ interface MediaGalleryModalProps extends BaseModalProps {
     memberAvatar?: string;
     serviceId?: string;  // Service ID for building correct media URLs
     memberPath?: string; // Relative path to member directory for transcription
+    /**
+     * Called when the user clicks "jump to message" on any media item. The
+     * host is responsible for closing the gallery (and any wrapping menu)
+     * and scrolling the message list to the target message.
+     */
+    onSourceJump?: (messageId: number) => void;
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
@@ -129,6 +135,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     memberAvatar,
     serviceId,
     memberPath,
+    onSourceJump,
 }) => {
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
@@ -321,15 +328,27 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 </>
                             )}
                         </div>
-                        {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
-                                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
-                            >
-                                <Download className="w-4 h-4" />
-                                {t('common.download')}
-                            </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {onSourceJump && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onSourceJump(selectedMedia.id); }}
+                                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
+                                    title={t('media.jumpToMessage')}
+                                >
+                                    <CornerUpLeft className="w-4 h-4" />
+                                    {t('media.jumpToMessage')}
+                                </button>
+                            )}
+                            {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
+                                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    {t('common.download')}
+                                </button>
+                            )}
+                        </div>
                     </div>
                 }
             >
@@ -620,6 +639,23 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
                             />
+                            {currentVoice && onSourceJump && (
+                                <div className="mt-2 flex justify-end">
+                                    <button
+                                        onClick={() => onSourceJump(currentVoice.id)}
+                                        className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80"
+                                        style={{
+                                            borderColor: `${theme.modals.accentColor}40`,
+                                            color: theme.modals.accentColor,
+                                            background: `${theme.modals.accentColor}08`,
+                                        }}
+                                        title={t('media.jumpToMessage')}
+                                    >
+                                        <CornerUpLeft className="w-3 h-3" />
+                                        {t('media.jumpToMessage')}
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

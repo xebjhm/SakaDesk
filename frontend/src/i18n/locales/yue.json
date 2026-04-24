@@ -346,6 +346,7 @@
     "media": {
         "title": "媒體",
         "jumpToDate": "跳去邊日",
+        "jumpToMessage": "跳去個訊息",
         "cached": "已 Cache",
         "publishedRecently": "24小時內出",
         "checkingUpdates": "檢查緊更新...",
