@@ -195,33 +195,16 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                     <div className="w-96 flex flex-col gap-3">
                         <VoicePlayer
                             src={item.src}
-                            variant="premium"
+                            variant="fullscreen"
                             avatarUrl={item.avatarUrl}
                             memberName={item.memberName}
                             messageTimestamp={item.timestamp}
                             autoPlay
                             viewerMode
-                            onTimeUpdate={setPlayerTime}
-                            seekTo={seekTarget}
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
                         />
-                        {isTranscribable && (
-                            <div>
-                                <TranscribeButton
-                                    state={transcriptionState}
-                                    onClick={triggerTranscription}
-                                    variant="light"
-                                />
-                                {transcriptionState === 'done' && transcription && (
-                                    <TranscriptPanel
-                                        segments={transcription.segments}
-                                        currentTime={playerTime}
-                                        onSeek={setSeekTarget}
-                                        variant="light"
-                                        defaultExpanded
-                                    />
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
             </div>

@@ -13,8 +13,6 @@ import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
-import { TranscriptPanel } from './TranscriptPanel';
-import { TranscribeButton } from './TranscribeButton';
 import { useTranscription } from '../../hooks/useTranscription';
 
 interface MediaGalleryModalProps extends BaseModalProps {
@@ -147,11 +145,6 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
-    // Playback time sync between the premium voice player and its transcript
-    // panel so the active segment highlight tracks audio position.
-    const [voicePlayerTime, setVoicePlayerTime] = useState(0);
-    const [voiceSeekTarget, setVoiceSeekTarget] = useState<number | undefined>(undefined);
-
     // Clicking a timestamp should reset local state (close the photo/video
     // detail view, stop voice playback) BEFORE bubbling up — the detail
     // modal is a sibling of the gallery's main modal so wouldn't close
@@ -164,13 +157,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
         : undefined;
 
-    // Transcription for currently selected/playing voice message
-    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
-        serviceId,
-        selectedVoice?.id,
-        memberPath,
-    );
-    // Transcription for selected video (subtitles in detail view)
+    // Transcription for selected video (subtitles in detail view).
+    // (Voice transcription is owned by VoicePlayer variant="gallery".)
     const isSelectedVideo = selectedMedia?.type === 'video' && !selectedMedia?.is_muted;
     const { transcription: videoTranscription } = useTranscription(
         isSelectedVideo ? serviceId : undefined,
@@ -617,38 +605,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     <div
                         className="absolute inset-0 bg-gradient-to-b from-transparent to-white pointer-events-none"
                     />
-                    {/* Content — transcript ABOVE player so the sticky bottom
-                        container grows upward when transcript expands, keeping
-                        the player anchored at the bottom of the viewport. */}
+                    {/* Content — VoicePlayer variant="gallery" renders its
+                        own transcript above the player card, so the sticky
+                        bottom container grows upward when transcript expands,
+                        keeping the player anchored at the bottom. */}
                     <div className="relative px-4 py-4">
                         <div className="max-w-lg mx-auto">
-                            {currentVoice && memberPath && (
-                                <div className="mb-2">
-                                    {transcriptionState === 'done' && transcription ? (
-                                        <TranscriptPanel
-                                            key={currentVoice.id}
-                                            segments={transcription.segments}
-                                            currentTime={voicePlayerTime}
-                                            onSeek={setVoiceSeekTarget}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                            defaultExpanded
-                                            withBackdrop
-                                        />
-                                    ) : (
-                                        <TranscribeButton
-                                            state={transcriptionState}
-                                            onClick={triggerTranscription}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                        />
-                                    )}
-                                </div>
-                            )}
                             <VoicePlayer
                                 key={currentVoice?.id}
                                 src={currentVoiceUrl}
-                                variant="premium"
+                                variant="gallery"
                                 avatarUrl={memberAvatar}
                                 memberName={memberName}
                                 timestamp={currentVoice ? formatDateTime(currentVoice.timestamp) : undefined}
@@ -656,9 +622,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
-                                onTimeUpdate={setVoicePlayerTime}
-                                seekTo={voiceSeekTarget}
                                 onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
+                                messageId={currentVoice?.id}
+                                service={serviceId}
+                                memberPath={memberPath}
                             />
                         </div>
                     </div>
