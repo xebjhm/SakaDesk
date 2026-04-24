@@ -148,6 +148,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
 
+    // Clicking a timestamp should reset local state (close the photo/video
+    // detail view, stop voice playback) BEFORE bubbling up — the detail
+    // modal is a sibling of the gallery's main modal so wouldn't close
+    // otherwise, and leaving audio playing after navigating away is jarring.
+    const handleSourceJump = onSourceJump
+        ? (messageId: number) => {
+            setSelectedMedia(null);
+            setSelectedVoice(null);
+            onSourceJump(messageId);
+        }
+        : undefined;
+
     // Transcription for currently selected/playing voice message
     const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
         serviceId,
@@ -320,10 +332,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         <div>
                             <span>{memberName}</span>
                             <span className="mx-2">•</span>
-                            {onSourceJump ? (
+                            {handleSourceJump ? (
                                 <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); onSourceJump(selectedMedia.id); }}
+                                    onClick={(e) => { e.stopPropagation(); handleSourceJump(selectedMedia.id); }}
                                     className="underline underline-offset-2 decoration-white/30 hover:decoration-white/60 hover:text-white transition-colors"
                                     title={t('media.jumpToMessage')}
                                 >
@@ -637,7 +649,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
-                                onTimestampClick={currentVoice && onSourceJump ? () => onSourceJump(currentVoice.id) : undefined}
+                                onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
                             />
                         </div>
                     </div>
