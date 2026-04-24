@@ -61,6 +61,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const modalRef = useRef<HTMLDivElement>(null);
 
     const [zoom, setZoom] = useState(1);
+    // Playback time sync between voice player and its transcript panel so the
+    // active segment highlight tracks audio position (matches the in-chat
+    // MessageBubble pattern).
+    const [playerTime, setPlayerTime] = useState(0);
+    const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
 
     const item = mediaItems[currentIndex];
 
@@ -78,9 +83,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
 
-    // Reset zoom when navigating to a new item
+    // Reset zoom and playback-derived state when navigating to a new item
     useEffect(() => {
         setZoom(1);
+        setPlayerTime(0);
+        setSeekTarget(undefined);
     }, [currentIndex]);
 
     // Focus modal for keyboard capture
@@ -161,6 +168,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                             viewerMode
                             videoClassName="max-w-[90vw] max-h-[90vh]"
                             transcriptionSegments={transcriptionState === 'done' && transcription ? transcription.segments : undefined}
+                            onTimeUpdate={setPlayerTime}
+                            seekTo={seekTarget}
                         />
                         {isTranscribable && (
                             <div className="w-full px-2">
@@ -172,6 +181,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                                 {transcriptionState === 'done' && transcription && (
                                     <TranscriptPanel
                                         segments={transcription.segments}
+                                        currentTime={playerTime}
+                                        onSeek={setSeekTarget}
                                         variant="light"
                                         defaultExpanded
                                     />
@@ -190,6 +201,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                             messageTimestamp={item.timestamp}
                             autoPlay
                             viewerMode
+                            onTimeUpdate={setPlayerTime}
+                            seekTo={seekTarget}
                         />
                         {isTranscribable && (
                             <div>
@@ -201,6 +214,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                                 {transcriptionState === 'done' && transcription && (
                                     <TranscriptPanel
                                         segments={transcription.segments}
+                                        currentTime={playerTime}
+                                        onSeek={setSeekTarget}
                                         variant="light"
                                         defaultExpanded
                                     />
