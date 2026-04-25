@@ -8,9 +8,6 @@ import { Z_CLASS } from '../../constants/zIndex';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
-import { TranscribeButton } from './TranscribeButton';
-import { TranscriptPanel } from './TranscriptPanel';
-import { useTranscription } from '../../hooks/useTranscription';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -61,21 +58,8 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const modalRef = useRef<HTMLDivElement>(null);
 
     const [zoom, setZoom] = useState(1);
-    // Playback time sync between voice player and its transcript panel so the
-    // active segment highlight tracks audio position (matches the in-chat
-    // MessageBubble pattern).
-    const [playerTime, setPlayerTime] = useState(0);
-    const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
 
     const item = mediaItems[currentIndex];
-
-    // Transcription — active for voice and non-muted video items with messageId
-    const isTranscribable = item?.messageId != null && (item?.type === 'voice' || (item?.type === 'video' && !item?.isMuted));
-    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
-        isTranscribable ? item?.service : undefined,
-        isTranscribable ? item?.messageId : undefined,
-        isTranscribable ? item?.memberPath : undefined,
-    );
 
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
@@ -83,11 +67,10 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
 
-    // Reset zoom and playback-derived state when navigating to a new item
+    // Reset zoom when navigating to a new item. (Video/voice transcription
+    // state is owned by the player components themselves via messageId.)
     useEffect(() => {
         setZoom(1);
-        setPlayerTime(0);
-        setSeekTarget(undefined);
     }, [currentIndex]);
 
     // Focus modal for keyboard capture
@@ -162,33 +145,15 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                     <div className="flex flex-col items-center gap-3">
                         <VideoPlayer
                             src={item.src}
+                            variant="fullscreen"
                             autoPlay
                             messageTimestamp={item.timestamp}
                             noAudio={item.isMuted}
-                            viewerMode
                             videoClassName="max-w-[90vw] max-h-[90vh]"
-                            transcriptionSegments={transcriptionState === 'done' && transcription ? transcription.segments : undefined}
-                            onTimeUpdate={setPlayerTime}
-                            seekTo={seekTarget}
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
                         />
-                        {isTranscribable && (
-                            <div className="w-full px-2">
-                                <TranscribeButton
-                                    state={transcriptionState}
-                                    onClick={triggerTranscription}
-                                    variant="light"
-                                />
-                                {transcriptionState === 'done' && transcription && (
-                                    <TranscriptPanel
-                                        segments={transcription.segments}
-                                        currentTime={playerTime}
-                                        onSeek={setSeekTarget}
-                                        variant="light"
-                                        defaultExpanded
-                                    />
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
                 {item.type === 'voice' && (
