@@ -8,6 +8,7 @@ import { Z_CLASS } from '../../constants/zIndex';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
+import { PhotoPlayer } from './PhotoPlayer';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -133,13 +134,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             {/* Media content */}
             <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
                 {item.type === 'picture' && (
-                    <img
-                        src={item.src}
-                        alt="Media"
-                        className="max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-150"
-                        style={{ transform: `scale(${zoom})` }}
-                        draggable={false}
-                    />
+                    <PhotoPlayer variant="fullscreen" src={item.src} alt="Media" zoom={zoom} />
                 )}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
