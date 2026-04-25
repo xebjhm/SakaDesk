@@ -1,14 +1,13 @@
 import json
 from pathlib import Path
 
-import pytest
 
 from backend.services.transcription_service import (
-    TranscriptionProvider,
-    LocalWhisperProvider,
     TranscriptionStorage,
     TranscriptionResult,
     TranscriptionSegment,
+    GeminiTranscriptionProvider,
+    _clean_cjk_spaces,
 )
 
 
@@ -145,12 +144,34 @@ class TestTranscriptionStorage:
         assert "created_at" in raw["transcriptions"][0]
 
 
-class TestTranscriptionProviderInterface:
-    """Verify the ABC contract."""
+class TestGeminiTranscriptionProvider:
+    """Verify GeminiTranscriptionProvider construction."""
 
-    def test_cannot_instantiate_abc(self):
-        with pytest.raises(TypeError):
-            TranscriptionProvider()  # type: ignore[abstract]
+    def test_instantiates_with_api_key(self):
+        provider = GeminiTranscriptionProvider(api_key="test-key")
+        assert provider._api_key == "test-key"
+        assert provider._model == "gemini-3.1-flash-lite-preview"
 
-    def test_local_whisper_provider_is_subclass(self):
-        assert issubclass(LocalWhisperProvider, TranscriptionProvider)
+    def test_custom_model(self):
+        provider = GeminiTranscriptionProvider(
+            api_key="test-key", model="gemini-3-flash-preview"
+        )
+        assert provider._model == "gemini-3-flash-preview"
+
+
+class TestCleanCjkSpaces:
+    """Tests for CJK space cleanup."""
+
+    def test_removes_spaces_between_cjk(self):
+        assert _clean_cjk_spaces("皆 さん こんばんは") == "皆さんこんばんは"
+
+    def test_keeps_spaces_between_cjk_and_ascii(self):
+        assert _clean_cjk_spaces("日向坂 46") == "日向坂 46"
+
+    def test_keeps_ascii_spaces(self):
+        assert _clean_cjk_spaces("hello world") == "hello world"
+
+    def test_mixed_content(self):
+        result = _clean_cjk_spaces("日向坂 46 の メンバー です")
+        assert "日向坂 46" in result
+        assert "のメンバーです" in result

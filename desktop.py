@@ -15,6 +15,7 @@ import json  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
@@ -198,11 +199,6 @@ def show_error_dialog(error_msg: str, tb: str):
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 
-def _get_window_file():
-    """Path to the persisted window geometry file."""
-    return get_app_data_dir() / "window.json"
-
-
 def _get_dpi_scale() -> float:
     """Get the Windows DPI scale factor (e.g. 1.5 for 150%).
 
@@ -223,19 +219,44 @@ def _get_dpi_scale() -> float:
 
 
 def _load_window_geometry() -> dict:
-    """Load saved window size/position, or return defaults.
+    """Load saved window size/position from settings.json, or return defaults.
 
-    Saved values are in logical (DPI-independent) coordinates, matching
-    what pywebview's create_window() expects.  Old files (without the
-    ``"format": "logical"`` marker) contain physical coordinates from
-    before the DPI fix — these are converted on the fly.
+    Window geometry is stored under the ``"window"`` key in settings.json.
+    Values are in logical (DPI-independent) coordinates, matching what
+    pywebview's create_window() expects.
+
+    Migrates from the legacy ``window.json`` file on first run after upgrade.
     """
     defaults = {"width": 1200, "height": 800}
-    path = _get_window_file()
-    if not path.exists():
+    settings_path = get_app_data_dir() / "settings.json"
+    legacy_path = get_app_data_dir() / "window.json"
+
+    # --- Try loading from settings.json ---
+    data = None
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+            data = settings.get("window")
+        except Exception:
+            logger.warning("Failed to read window geometry from settings.json")
+
+    # --- Migrate from legacy window.json if no window key in settings ---
+    if data is None and legacy_path.exists():
+        try:
+            data = json.loads(legacy_path.read_text(encoding="utf-8"))
+            logger.info("Migrating window geometry from window.json to settings.json")
+            # Save into settings.json immediately
+            _save_window_data_to_settings(data, settings_path)
+            # Remove legacy file
+            legacy_path.unlink(missing_ok=True)
+        except Exception:
+            logger.warning("Failed to migrate window.json", exc_info=True)
+            data = None
+
+    if data is None:
         return defaults
+
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
         w = int(data.get("width", 0))
         h = int(data.get("height", 0))
         if w < 400 or h < 300 or w > 7680 or h > 4320:
@@ -258,31 +279,43 @@ def _load_window_geometry() -> dict:
             result["y"] = y
         return result
     except Exception:
+        logger.warning("Failed to parse window geometry", exc_info=True)
         return defaults
 
 
-def _save_window_geometry(geometry: dict) -> None:
-    """Save window geometry to disk in logical (DPI-independent) coordinates.
+def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
+    """Write the window data dict into settings.json under the 'window' key."""
+    settings: dict = {}
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    settings["window"] = window_data
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
-    pywebview's moved/resized events report physical pixel values, but
-    create_window() expects logical values (WinForms multiplies both
-    position and size by the DPI scale factor internally).  Dividing
-    by the scale factor on save prevents drift on every restart.
+
+def _save_window_geometry(geometry: dict) -> None:
+    """Save window geometry to settings.json.
+
+    Values from window.width/height/x/y are in the same coordinate system
+    as create_window() expects — save them directly without transformation.
     """
     try:
-        scale = _get_dpi_scale()
-        logical: dict = {
-            "width": round(geometry["width"] / scale),
-            "height": round(geometry["height"] / scale),
+        data: dict = {
+            "width": int(geometry["width"]),
+            "height": int(geometry["height"]),
             "format": "logical",
         }
         if "x" in geometry and "y" in geometry:
-            logical["x"] = round(geometry["x"] / scale)
-            logical["y"] = round(geometry["y"] / scale)
-        path = _get_window_file()
-        path.write_text(json.dumps(logical), encoding="utf-8")
+            data["x"] = int(geometry["x"])
+            data["y"] = int(geometry["y"])
+        settings_path = get_app_data_dir() / "settings.json"
+        _save_window_data_to_settings(data, settings_path)
+        logger.debug("Window geometry saved", geometry=data)
     except Exception:
-        pass
+        logger.warning("Failed to save window geometry", exc_info=True)
 
 
 def main() -> None:
@@ -303,6 +336,7 @@ def main() -> None:
 
         # Load saved window geometry
         geom = _load_window_geometry()
+        logger.info("Window geometry loaded", geom=geom)
 
         # Create window
         # background_color matches app's bg-[#F0F2F5] to prevent white
@@ -318,25 +352,20 @@ def main() -> None:
             background_color="#F0F2F5",
         )
 
-        # Track window geometry changes and save on close
-        _current_geom = {"width": geom["width"], "height": geom["height"]}
-        if "x" in geom:
-            _current_geom["x"] = geom["x"]
-            _current_geom["y"] = geom["y"]
-
-        def on_resized(width, height):
-            _current_geom["width"] = width
-            _current_geom["height"] = height
-
-        def on_moved(x, y):
-            _current_geom["x"] = x
-            _current_geom["y"] = y
-
+        # Save window geometry on close by reading current dimensions directly.
+        # We read window.width/height/x/y properties instead of relying on
+        # resize/move events — pywebview events only fire during initial
+        # creation (DPI scaling), not for user-initiated resizes.
         def on_closing():
-            _save_window_geometry(_current_geom)
+            geom = {
+                "width": window.width,
+                "height": window.height,
+                "x": window.x,
+                "y": window.y,
+            }
+            logger.info("Window closing", geometry=geom)
+            _save_window_geometry(geom)
 
-        window.events.resized += on_resized
-        window.events.moved += on_moved
         window.events.closing += on_closing
 
         # Start native GUI loop

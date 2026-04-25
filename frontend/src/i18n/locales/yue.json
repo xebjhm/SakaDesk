@@ -57,7 +57,7 @@
         "updateFound": "v{{version}} 有得更新！",
         "upToDate": "已經係最新版本",
         "updateCheckFailed": "檢查失敗",
-        "transcriptionDevice": "轉錄裝置",
+        "transcriptionDevice": "語音轉文字",
         "transcriptionCpuDesc": "所有電腦都用得，速度慢啲",
         "transcriptionGpuDesc": "要 NVIDIA GPU（CUDA），快好多",
         "transcriptionGpuTesting": "測試緊 GPU...",
@@ -346,6 +346,7 @@
     "media": {
         "title": "媒體",
         "jumpToDate": "跳去邊日",
+        "jumpToMessage": "跳去個訊息",
         "cached": "已 Cache",
         "publishedRecently": "24小時內出",
         "checkingUpdates": "檢查緊更新...",
@@ -439,6 +440,39 @@
         "noTranscript": "未有文字",
         "clickToJump": "撳嚟跳轉",
         "failed": "辨認失敗",
-        "cc": "字幕"
+        "cc": "字幕",
+        "rerun": "再辨認一次"
+    },
+    "translation": {
+        "translate": "翻譯",
+        "translating": "翻譯緊...",
+        "rerun": "再翻譯一次",
+        "translated": "✓ 翻譯咗",
+        "translatedPartial": "✓ 翻譯咗 (部分)",
+        "settings": {
+            "title": "翻譯",
+            "provider": "服務提供者",
+            "model": "模型",
+            "apiKey": "API 密鑰",
+            "testConnection": "測試連接",
+            "testSuccess": "連接成功",
+            "testFailed": "連接失敗",
+            "targetLanguage": "目標語言",
+            "globalMessages": "翻譯所有訊息",
+            "globalBlogs": "翻譯所有網誌文章",
+            "experimental": "實驗性功能",
+            "clearCache": "清除翻譯緩存",
+            "cacheClearedMsg": "翻譯緩存已清除"
+        },
+        "error": {
+            "noProvider": "請喺設定入面配置翻譯服務提供者",
+            "failed": "翻譯失敗",
+            "rateLimited": "已達速率限制，請遲啲再試"
+        },
+        "dataPolicy": {
+            "geminiFree": "免費方案：數據可能俾 Google 用嚟改善產品",
+            "geminiPaid": "付費方案：數據唔會用嚟訓練",
+            "openai": "API 數據唔會用嚟訓練"
+        }
     }
 }

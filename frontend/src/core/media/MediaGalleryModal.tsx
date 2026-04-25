@@ -6,15 +6,14 @@ import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { LazyVideo } from './LazyVideo';
-import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
+import { PhotoPlayer } from './PhotoPlayer';
+import { BaseModal, DetailModal, ModalEmptyState } from '../common';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
-import { TranscriptPanel } from './TranscriptPanel';
-import { TranscribeButton } from './TranscribeButton';
 import { useTranscription } from '../../hooks/useTranscription';
 
 interface MediaGalleryModalProps extends BaseModalProps {
@@ -23,9 +22,95 @@ interface MediaGalleryModalProps extends BaseModalProps {
     memberAvatar?: string;
     serviceId?: string;  // Service ID for building correct media URLs
     memberPath?: string; // Relative path to member directory for transcription
+    /**
+     * Called when the user clicks "jump to message" on any media item. The
+     * host is responsible for closing the gallery (and any wrapping menu)
+     * and scrolling the message list to the target message.
+     */
+    onSourceJump?: (messageId: number) => void;
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
+
+interface VoiceRowProps {
+    item: Message;
+    isSelected: boolean;
+    onSelect: () => void;
+    memberName: string;
+    memberAvatar?: string;
+    serviceId?: string;
+    memberPath?: string;
+    accentColor: string;
+    accentColorLight: string;
+    dateAnchorRef?: (el: HTMLButtonElement | null) => void;
+}
+
+/**
+ * A single row in the voice list. Fetches its own cached transcription so the
+ * preview text stays paired with its owning message instead of sliding to
+ * whichever row was last clicked.
+ */
+const VoiceRow: React.FC<VoiceRowProps> = ({
+    item,
+    isSelected,
+    onSelect,
+    memberName,
+    memberAvatar,
+    serviceId,
+    memberPath,
+    accentColor,
+    accentColorLight,
+    dateAnchorRef,
+}) => {
+    const { t } = useTranslation();
+    const { transcription } = useTranscription(serviceId, item.id, memberPath);
+    const previewText = transcription?.full_text;
+
+    return (
+        <button
+            ref={dateAnchorRef}
+            onClick={onSelect}
+            className={cn(
+                "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
+                !isSelected && "hover:bg-gray-50"
+            )}
+            style={isSelected ? { backgroundColor: accentColorLight } : undefined}
+        >
+            {/* Avatar */}
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
+                {memberAvatar ? (
+                    <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
+                        {memberName.substring(0, 2)}
+                    </div>
+                )}
+            </div>
+
+            {/* Name + transcript preview */}
+            <div className="flex-1 min-w-0">
+                <p
+                    className="text-sm font-medium"
+                    style={{ color: isSelected ? accentColor : '#111827' }}
+                >{memberName}</p>
+                {previewText ? (
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{previewText}</p>
+                ) : isSelected ? (
+                    <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
+                ) : null}
+            </div>
+
+            {/* Date and duration */}
+            <div className="text-right shrink-0">
+                <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
+                <p
+                    className="text-sm"
+                    style={{ color: isSelected ? accentColor : '#9ca3af' }}
+                >{formatDuration(item.media_duration)}</p>
+            </div>
+        </button>
+    );
+};
 
 // Tab configuration - module level constant to avoid recreation on each render
 const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; labelKey: string }[] = [
@@ -49,6 +134,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     memberAvatar,
     serviceId,
     memberPath,
+    onSourceJump,
 }) => {
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
@@ -60,13 +146,22 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
+    // Closing detail/voice state must happen BEFORE bubbling up — the
+    // photo/video DetailModal is a sibling of the gallery's main modal
+    // so it wouldn't auto-close on parent state change, and leaving
+    // audio running after navigating away is jarring. Memoised so
+    // VoiceRow prop identity stays stable across renders.
+    const handleSourceJump = useMemo(() => {
+        if (!onSourceJump) return undefined;
+        return (messageId: number) => {
+            setSelectedMedia(null);
+            setSelectedVoice(null);
+            onSourceJump(messageId);
+        };
+    }, [onSourceJump]);
 
-    // Transcription for currently selected/playing voice message
-    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
-        serviceId,
-        selectedVoice?.id,
-        memberPath,
-    );
+    // Voice/video transcription is owned by the player components themselves
+    // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
@@ -226,7 +321,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         <div>
                             <span>{memberName}</span>
                             <span className="mx-2">•</span>
-                            <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                            {handleSourceJump ? (
+                                <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleSourceJump(selectedMedia.id); }}
+                                    className="underline underline-offset-2 decoration-white/30 hover:decoration-white/60 hover:text-white transition-colors"
+                                    title={t('media.jumpToMessage')}
+                                >
+                                    {formatDateTime(selectedMedia.timestamp)}
+                                </button>
+                            ) : (
+                                <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                            )}
                             {currentTabItems.length > 1 && (
                                 <>
                                     <span className="mx-2">•</span>
@@ -247,20 +353,24 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 }
             >
                 {selectedMedia.type === 'picture' && mediaUrl && (
-                    <SafeImage
+                    <PhotoPlayer
+                        variant="fullscreen"
                         src={mediaUrl}
                         alt="Media"
-                        className="max-w-full max-h-[80vh] object-contain"
+                        className="max-h-[80vh]"
                     />
                 )}
                 {selectedMedia.type === 'video' && mediaUrl && (
                     <VideoPlayer
                         src={mediaUrl}
+                        variant="gallery"
                         autoPlay
                         messageTimestamp={selectedMedia.timestamp}
                         noAudio={selectedMedia.is_muted}
-                        viewerMode
                         videoClassName="max-w-full max-h-[80vh]"
+                        messageId={selectedMedia.id}
+                        service={serviceId}
+                        memberPath={memberPath}
                     />
                 )}
                 {/* Clipboard toast */}
@@ -355,24 +465,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 const isFirstOfDate = !seenDates.has(dateKey);
                                 if (isFirstOfDate) seenDates.add(dateKey);
 
-                                // Photos use button wrapper, videos use LazyVideo's built-in button
+                                // Photos use PhotoPlayer's gallery-thumb (own button),
+                                // videos use LazyVideo's built-in button.
                                 if (activeTab === 'photos') {
                                     return (
-                                        <button
+                                        <PhotoPlayer
                                             key={item.id}
-                                            ref={isFirstOfDate ? (el) => {
+                                            variant="gallery-thumb"
+                                            src={mediaUrl}
+                                            onClick={() => setSelectedMedia(item)}
+                                            anchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
                                             } : undefined}
-                                            onClick={() => setSelectedMedia(item)}
-                                            className="aspect-square relative bg-gray-100"
-                                        >
-                                            <SafeImage
-                                                src={mediaUrl}
-                                                alt=""
-                                                className="w-full h-full object-cover"
-                                                loading="lazy"
-                                            />
-                                        </button>
+                                        />
                                     );
                                 }
 
@@ -459,53 +564,21 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                     if (isFirstOfDate) seenDates.add(dateKey);
 
                                     return (
-                                        <button
+                                        <VoiceRow
                                             key={item.id}
-                                            ref={isFirstOfDate ? (el) => {
+                                            item={item}
+                                            isSelected={isSelected}
+                                            onSelect={() => setSelectedVoice(item)}
+                                            memberName={memberName}
+                                            memberAvatar={memberAvatar}
+                                            serviceId={serviceId}
+                                            memberPath={memberPath}
+                                            accentColor={theme.modals.accentColor}
+                                            accentColorLight={theme.modals.accentColorLight}
+                                            dateAnchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
                                             } : undefined}
-                                            onClick={() => setSelectedVoice(item)}
-                                            className={cn(
-                                                "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
-                                                !isSelected && "hover:bg-gray-50"
-                                            )}
-                                            style={isSelected ? { backgroundColor: theme.modals.accentColorLight } : undefined}
-                                        >
-                                            {/* Avatar */}
-                                            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
-                                                {memberAvatar ? (
-                                                    <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                                                        {memberName.substring(0, 2)}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Name + transcript preview */}
-                                            <div className="flex-1 min-w-0">
-                                                <p
-                                                    className="text-sm font-medium"
-                                                    style={{ color: isSelected ? theme.modals.accentColor : '#111827' }}
-                                                >{memberName}</p>
-                                                {isSelected ? (
-                                                    transcription?.full_text ? (
-                                                        <p className="text-xs text-gray-400 truncate mt-0.5">{transcription.full_text}</p>
-                                                    ) : (
-                                                        <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
-                                                    )
-                                                ) : null}
-                                            </div>
-
-                                            {/* Date and duration */}
-                                            <div className="text-right shrink-0">
-                                                <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
-                                                <p
-                                                    className="text-sm"
-                                                    style={{ color: isSelected ? theme.modals.accentColor : '#9ca3af' }}
-                                                >{formatDuration(item.media_duration)}</p>
-                                            </div>
-                                        </button>
+                                        />
                                     );
                                 })}
                             </div>
@@ -527,13 +600,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     <div
                         className="absolute inset-0 bg-gradient-to-b from-transparent to-white pointer-events-none"
                     />
-                    {/* Content */}
+                    {/* Content — VoicePlayer variant="gallery" renders its
+                        own transcript above the player card, so the sticky
+                        bottom container grows upward when transcript expands,
+                        keeping the player anchored at the bottom. */}
                     <div className="relative px-4 py-4">
                         <div className="max-w-lg mx-auto">
                             <VoicePlayer
                                 key={currentVoice?.id}
                                 src={currentVoiceUrl}
-                                variant="premium"
+                                variant="gallery"
                                 avatarUrl={memberAvatar}
                                 memberName={memberName}
                                 timestamp={currentVoice ? formatDateTime(currentVoice.timestamp) : undefined}
@@ -541,27 +617,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 accentColor={theme.modals.accentColor}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
+                                onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
+                                messageId={currentVoice?.id}
+                                service={serviceId}
+                                memberPath={memberPath}
                             />
-                            {/* Transcript panel + transcribe button for the selected voice */}
-                            {currentVoice && memberPath && (
-                                <div className="mt-2">
-                                    {transcriptionState === 'done' && transcription ? (
-                                        <TranscriptPanel
-                                            segments={transcription.segments}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                            defaultExpanded={false}
-                                        />
-                                    ) : (
-                                        <TranscribeButton
-                                            state={transcriptionState}
-                                            onClick={triggerTranscription}
-                                            accentColor={theme.modals.accentColor}
-                                            variant="dark"
-                                        />
-                                    )}
-                                </div>
-                            )}
                         </div>
                     </div>
                 </div>

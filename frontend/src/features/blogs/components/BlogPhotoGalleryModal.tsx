@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Image, Calendar } from 'lucide-react';
-import { BaseModal, SafeImage, ModalEmptyState } from '../../../core/common';
+import { BaseModal, ModalEmptyState } from '../../../core/common';
+import { PhotoPlayer } from '../../../core/media/PhotoPlayer';
 import { formatDateTime } from '../../../utils/classnames';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
@@ -268,21 +269,15 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                                         const flatIndex = photoIndexMap.get(item) ?? 0;
 
                                         return (
-                                            <button
+                                            <PhotoPlayer
                                                 key={`${item.blogId}-${item.imageIndex}`}
-                                                ref={isFirstOfDate ? (el) => {
+                                                variant="gallery-thumb"
+                                                src={item.src}
+                                                onClick={() => setViewerIndex(flatIndex)}
+                                                anchorRef={isFirstOfDate ? (el) => {
                                                     if (el) itemRefs.current.set(dateKey, el);
                                                 } : undefined}
-                                                onClick={() => setViewerIndex(flatIndex)}
-                                                className="aspect-square relative bg-gray-100"
-                                            >
-                                                <SafeImage
-                                                    src={item.src}
-                                                    alt=""
-                                                    className="w-full h-full object-cover"
-                                                    loading="lazy"
-                                                />
-                                            </button>
+                                            />
                                         );
                                     })}
                                 </div>

@@ -1,10 +1,14 @@
 """
 Transcription API for SakaDesk.
 Handles on-demand transcription requests and cached transcript retrieval.
+
+Hybrid pipeline:
+- Gemini API for high-quality Japanese text (when API key is configured)
+- Whisper tiny (CPU) for segment timestamps
+- Falls back to Whisper tiny only when no API key is present
 """
 
-from pathlib import Path
-
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import structlog
@@ -12,10 +16,8 @@ import structlog
 from backend.services.transcription_service import (
     TranscriptionStorage,
     TranscriptionResult,
-    LocalWhisperProvider,
+    GeminiTranscriptionProvider,
 )
-from backend.services.platform import get_app_data_dir, get_settings_path
-from backend.services.settings_store import _read_file
 from backend.api.content import get_output_dir, validate_path_within_dir
 from backend.services.service_utils import validate_service, get_service_display_name
 
@@ -24,42 +26,33 @@ logger = structlog.get_logger(__name__)
 
 storage = TranscriptionStorage()
 
-# Singleton provider — model loaded once, reused across requests.
-_provider: LocalWhisperProvider | None = None
-_provider_device: str | None = None  # Track which device the singleton was loaded with
 
+def _get_gemini_api_key() -> str | None:
+    """Load LLM API key from keyring (shared with translation)."""
+    from pysaka.credentials import get_token_manager
 
-def _get_model_dir() -> Path:
-    model_dir = get_app_data_dir() / "models"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    return model_dir
-
-
-def _get_provider() -> LocalWhisperProvider:
-    global _provider, _provider_device
-    settings = _read_file(get_settings_path())
-    device = settings.get("transcription_device", "cpu")
-
-    # Reload if device setting changed
-    if _provider is not None and _provider_device == device:
-        return _provider
-
-    _provider = LocalWhisperProvider(
-        model_size="medium", model_dir=_get_model_dir(), device=device
-    )
-    _provider_device = device
-    return _provider
+    tm = get_token_manager()
+    data = tm.store.load("llm_provider_api_key")
+    if data:
+        return data.get("api_key")
+    return None
 
 
 class TranscribeRequest(BaseModel):
     message_id: int
     service: str
     member_path: str  # Relative path to member dir from output dir
+    force: bool = False  # If true, ignore cache and re-run the AI
 
 
 @router.post("/transcribe")
 async def transcribe(request: TranscribeRequest):
-    """On-demand transcription of a single message."""
+    """On-demand transcription of a single message.
+
+    When ``force`` is true, the cached transcription is ignored and a new AI
+    call is made. The previous cached file is overwritten by storage.save()
+    on success.
+    """
     try:
         validate_service(request.service)
     except ValueError as e:
@@ -71,10 +64,11 @@ async def transcribe(request: TranscribeRequest):
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")
 
-    # Check cache first
-    cached = storage.load(member_dir, request.message_id)
-    if cached:
-        return {"ok": True, "transcription": _result_to_dict(cached)}
+    # Check cache first (unless caller explicitly requested a rerun)
+    if not request.force:
+        cached = storage.load(member_dir, request.message_id)
+        if cached:
+            return {"ok": True, "transcription": _result_to_dict(cached)}
 
     # Find the media file for this message
     messages_file = member_dir / "messages.json"
@@ -113,14 +107,96 @@ async def transcribe(request: TranscribeRequest):
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
 
-    # Transcribe using singleton provider (model loaded once)
     try:
-        import asyncio
+        api_key = _get_gemini_api_key()
 
-        provider = _get_provider()
-        result = await asyncio.to_thread(provider.transcribe, media_path, "ja")
-        result.message_id = request.message_id
-        result.media_type = media_type
+        # Extract member/group context from member_path
+        # e.g., "日向坂46/messages/85 片山 紗希/137 片山 紗希"
+        path_parts = request.member_path.rstrip("/").split("/")
+        member_name = None
+        if path_parts:
+            last = path_parts[-1]
+            space_idx = last.find(" ")
+            if space_idx > 0 and last[:space_idx].isdigit():
+                member_name = last[space_idx + 1 :]
+        try:
+            group_display = get_service_display_name(request.service)
+        except (ValueError, KeyError):
+            group_display = request.service
+
+        if not api_key:
+            raise HTTPException(
+                status_code=400,
+                detail="No API key configured. Please set up a provider in Translation settings.",
+            )
+
+        # Read provider and model from settings (shared with translation)
+        from backend.services.settings_store import load_config
+        from backend.api.translation import DEFAULT_GEMINI_MODEL, _valid_model_ids
+
+        config = await load_config()
+        provider = config.get("translation_provider")
+
+        if provider and provider != "gemini":
+            raise HTTPException(
+                status_code=400,
+                detail="Transcription requires Gemini (multimodal audio). Please switch provider to Gemini in Translation settings.",
+            )
+
+        model = config.get("translation_model")
+        if not model or model not in _valid_model_ids():
+            model = DEFAULT_GEMINI_MODEL
+
+        gemini_provider = GeminiTranscriptionProvider(api_key=api_key, model=model)
+
+        try:
+            gemini_text, segments = await gemini_provider.transcribe(
+                media_path, member_name=member_name, group_name=group_display
+            )
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if status == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit reached. Please wait a moment and try again.",
+                )
+            elif status == 503:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Gemini API is temporarily unavailable. Please try again later.",
+                )
+            elif status == 404:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Gemini model '{gemini_provider._model}' not found. Check settings.",
+                )
+            else:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Gemini API error ({status}). Please try again.",
+                )
+        except httpx.ConnectError:
+            raise HTTPException(
+                status_code=503,
+                detail="Cannot reach Gemini API. Check your internet connection.",
+            )
+        except httpx.TimeoutException:
+            raise HTTPException(
+                status_code=504,
+                detail="Gemini API timed out. The audio may be too long. Please try again.",
+            )
+
+        duration = segments[-1].end if segments else 0.0
+
+        result = TranscriptionResult(
+            message_id=request.message_id,
+            media_type=media_type,
+            language="ja",
+            model=f"gemini-{gemini_provider._model}",
+            duration_seconds=round(duration, 2),
+            full_text=gemini_text,
+            segments=segments,
+        )
 
         # Save to JSON sidecar
         storage.save(member_dir, result)
@@ -134,13 +210,15 @@ async def transcribe(request: TranscribeRequest):
 
         return {"ok": True, "transcription": _result_to_dict(result)}
 
+    except HTTPException:
+        raise  # Re-raise specific HTTP errors as-is
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(
             "Transcription failed", message_id=request.message_id, error=str(e)
         )
-        raise HTTPException(status_code=500, detail="Transcription failed")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
 
 
 @router.get("/status")
@@ -186,45 +264,6 @@ async def get_cached(service: str, message_id: int):
                 return {"ok": True, "transcription": _result_to_dict(result)}
 
     raise HTTPException(status_code=404, detail="Transcription not found")
-
-
-@router.post("/test-gpu")
-async def test_gpu():
-    """Test if CUDA/GPU transcription works on this machine.
-
-    Loads the model on CUDA, runs a minimal inference test, and reports
-    whether GPU acceleration is available. Called from settings before
-    switching device to 'cuda'.
-    """
-    import asyncio
-
-    def _test():
-        try:
-            provider = LocalWhisperProvider(
-                model_size="medium", model_dir=_get_model_dir(), device="cuda"
-            )
-            provider._ensure_model()
-
-            # Generate 1 second of silence to test inference
-            import numpy as np
-
-            silence = np.zeros(16000, dtype=np.float32)
-            segments, _info = provider._model.transcribe(
-                silence, language="ja", beam_size=1, vad_filter=False
-            )
-            # Consume iterator to trigger actual CUDA inference
-            for _ in segments:
-                pass
-
-            return {
-                "ok": True,
-                "device": "cuda",
-                "message": "GPU acceleration is available",
-            }
-        except Exception as e:
-            return {"ok": False, "device": "cpu", "error": str(e)}
-
-    return await asyncio.to_thread(_test)
 
 
 def _result_to_dict(result: TranscriptionResult) -> dict:

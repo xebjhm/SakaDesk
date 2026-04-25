@@ -7,27 +7,57 @@ import { copyVideoToClipboard } from '../../utils/clipboard';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { useTranscription, type TranscriptionSegment } from '../../hooks/useTranscription';
+import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
+import { TranscriptPanel } from './TranscriptPanel';
+import { TranscribeButton } from './TranscribeButton';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
 interface VideoPlayerProps {
     src: string;
+    /**
+     * Single source of truth for how this video is displayed.
+     *  - `bubble`     — inline chat bubble (default). No CC button; subtitles
+     *                   appear only when the user fullscreens the video.
+     *  - `gallery`    — media-gallery detail view. Subtitles + CC visible.
+     *  - `fullscreen` — MediaViewerModal. Subtitles + CC visible and a
+     *                   TranscriptPanel renders below the video.
+     *
+     * `gallery` and `fullscreen` own transcription internally when the
+     * caller passes `messageId` + `service` + `memberPath`; otherwise they
+     * fall back to the external `transcriptionSegments` prop.
+     */
+    variant?: 'bubble' | 'gallery' | 'fullscreen';
     /** Auto-start playing when component mounts */
     autoPlay?: boolean;
     /** Raw ISO timestamp of the message, used for download filename prefix */
     messageTimestamp?: string;
     /** Whether the video has no audio track (detected during sync) */
     noAudio?: boolean;
-    /** Enable keyboard shortcuts (Space, M, Up/Down, F, D). Only for viewer/modal, not chat bubbles. */
+    /**
+     * Force viewer-mode keyboard shortcuts (Space, M, Up/Down, F, D) and
+     * always-on subtitles/CC button. Gallery/fullscreen variants enable
+     * this automatically; use this prop only for unusual cases.
+     */
     viewerMode?: boolean;
     /** CSS class for the outer container */
     className?: string;
     /** Max height/width constraints for the video element */
     videoClassName?: string;
-    /** Transcription segments for subtitle display */
+    /**
+     * External subtitle segments. Used by the `bubble` variant (MessageBubble
+     * fetches transcription once and shares with its footer). For
+     * `gallery` / `fullscreen`, prefer `messageId` + `service` + `memberPath`.
+     */
     transcriptionSegments?: TranscriptionSegment[];
+    /** Message id — enables internal transcription in gallery/fullscreen */
+    messageId?: number;
+    /** Service id — enables internal transcription in gallery/fullscreen */
+    service?: string;
+    /** Member dir path — enables internal transcription in gallery/fullscreen */
+    memberPath?: string;
     /** Called on each time update with current playback time in seconds */
     onTimeUpdate?: (time: number) => void;
     /** Called externally to seek to a specific time */
@@ -47,6 +77,7 @@ const formatTime = (seconds: number): string => {
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     src,
+    variant = 'bubble',
     autoPlay,
     messageTimestamp,
     noAudio,
@@ -54,9 +85,39 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     className,
     videoClassName,
     transcriptionSegments,
+    messageId,
+    service,
+    memberPath,
     onTimeUpdate,
     seekTo,
 }) => {
+    // Gallery + fullscreen behave as viewer mode by default (keyboard +
+    // always-visible subtitles). Explicit `viewerMode` prop wins so unusual
+    // call sites can still override.
+    const isViewerVariant = variant === 'gallery' || variant === 'fullscreen';
+    const effectiveViewerMode = viewerMode ?? isViewerVariant;
+    // Gallery/fullscreen can own transcription when caller provides id+service+path.
+    const ownsTranscription = isViewerVariant
+        && messageId !== undefined && service !== undefined && memberPath !== undefined;
+    const {
+        transcription,
+        state: transcriptionState,
+        trigger: triggerTranscription,
+        retrigger: retriggerTranscription,
+        error: transcriptionError,
+    } = useTranscription(
+        ownsTranscription ? service : undefined,
+        ownsTranscription ? messageId : undefined,
+        ownsTranscription ? memberPath : undefined,
+    );
+    // Effective subtitle segments: internal (gallery/fullscreen) or external.
+    const effectiveSegments = ownsTranscription
+        ? transcription?.segments
+        : transcriptionSegments;
+    const transcriptionJustCompleted = useJustBecame(transcriptionState, 'done', 'loading');
+    // Bridge click-to-seek from the below-player TranscriptPanel into the video element.
+    const [internalSeek, setInternalSeek] = useState<number | undefined>(undefined);
+    const effectiveSeekTo = seekTo ?? internalSeek;
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -124,13 +185,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [playbackRate]);
 
-    // External seek request
+    // External / internal seek request
     useEffect(() => {
-        if (seekTo != null && videoRef.current) {
-            videoRef.current.currentTime = seekTo;
-            setCurrentTime(seekTo);
+        if (effectiveSeekTo != null && videoRef.current) {
+            videoRef.current.currentTime = effectiveSeekTo;
+            setCurrentTime(effectiveSeekTo);
         }
-    }, [seekTo]);
+    }, [effectiveSeekTo]);
 
     // Track fullscreen changes and restore focus after exit
     useEffect(() => {
@@ -139,14 +200,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             // After exiting fullscreen, focus drifts to body (VideoPlayer container
             // has no tabIndex). Re-focus the closest parent modal so keyboard events
             // bubble through it for navigation (ArrowLeft/Right) and zoom (ArrowUp/Down).
-            if (!document.fullscreenElement && viewerMode) {
+            if (!document.fullscreenElement && effectiveViewerMode) {
                 const modal = containerRef.current?.closest<HTMLElement>('[tabindex]');
                 if (modal) modal.focus();
             }
         };
         document.addEventListener('fullscreenchange', handleFullscreenChange);
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    }, [viewerMode]);
+    }, [effectiveViewerMode]);
 
     // Auto-hide controls shortly after mouse stops moving
     const resetControlsTimeout = useCallback(() => {
@@ -208,15 +269,25 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setShowMenu(prev => {
             if (!prev && menuButtonRef.current) {
                 const rect = menuButtonRef.current.getBoundingClientRect();
-                setMenuStyle({
-                    position: 'fixed' as const,
-                    bottom: `${window.innerHeight - rect.top + 8}px`,
-                    right: `${window.innerWidth - rect.right}px`,
-                });
+                if (isFullscreen && containerRef.current) {
+                    // In fullscreen, position relative to the container
+                    const containerRect = containerRef.current.getBoundingClientRect();
+                    setMenuStyle({
+                        position: 'absolute' as const,
+                        bottom: `${containerRect.bottom - rect.top + 8}px`,
+                        right: `${containerRect.right - rect.right}px`,
+                    });
+                } else {
+                    setMenuStyle({
+                        position: 'fixed' as const,
+                        bottom: `${window.innerHeight - rect.top + 8}px`,
+                        right: `${window.innerWidth - rect.right}px`,
+                    });
+                }
             }
             return !prev;
         });
-    }, []);
+    }, [isFullscreen]);
 
     const handleMenuDownload = useCallback(() => {
         handleDownload();
@@ -256,7 +327,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // Viewer-mode keyboard shortcuts (window-level, no focus required)
     useEffect(() => {
-        if (!viewerMode) return;
+        if (!effectiveViewerMode) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             switch (e.key) {
@@ -294,7 +365,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [viewerMode, togglePlay, toggleMute, volume, setVolume, toggleFullscreen, goldenFingerActive, handleDownload]);
+    }, [effectiveViewerMode, togglePlay, toggleMute, volume, setVolume, toggleFullscreen, goldenFingerActive, handleDownload]);
 
     // Ctrl+C clipboard copy for inline (non-viewer) video players.
     // In viewerMode, the parent modal's useClipboardShortcut handles this.
@@ -307,7 +378,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }, []);
 
     const handleClipboardCopy = useCallback(() => {
-        if (!goldenFingerActive || viewerMode) return;
+        if (!goldenFingerActive || effectiveViewerMode) return;
         copyVideoToClipboard(src)
             .then(() => {
                 if (clipboardToastTimeout.current) clearTimeout(clipboardToastTimeout.current);
@@ -319,10 +390,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 setClipboardToast(t('about.goldenFingerCopyFailed'));
                 clipboardToastTimeout.current = setTimeout(() => setClipboardToast(null), 2000);
             });
-    }, [goldenFingerActive, viewerMode, src, t]);
+    }, [goldenFingerActive, effectiveViewerMode, src, t]);
 
     useEffect(() => {
-        if (viewerMode || !goldenFingerActive) return;
+        if (effectiveViewerMode || !goldenFingerActive) return;
 
         const handleCtrlC = (e: KeyboardEvent) => {
             // Only handle Ctrl+C when this video's container is in fullscreen
@@ -336,11 +407,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         window.addEventListener('keydown', handleCtrlC);
         return () => window.removeEventListener('keydown', handleCtrlC);
-    }, [viewerMode, goldenFingerActive, handleClipboardCopy]);
+    }, [effectiveViewerMode, goldenFingerActive, handleClipboardCopy]);
 
     const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-    return (
+    const playerNode = (
         <div
             ref={containerRef}
             className={cn("relative group bg-black flex items-center justify-center", className)}
@@ -362,12 +433,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 loop={loop}
             />
 
-            {/* Subtitle overlay */}
-            {transcriptionSegments && (
+            {/* Subtitle overlay — shown in fullscreen and in the media gallery
+                detail view (viewer variants). Hidden in inline chat bubble to
+                keep the thumbnail uncluttered; fullscreening the bubble still
+                works because `isFullscreen` flips on. */}
+            {effectiveSegments && (isFullscreen || effectiveViewerMode) && (
                 <SubtitleOverlay
-                    segments={transcriptionSegments}
+                    segments={effectiveSegments}
                     currentTime={currentTime}
                     visible={showSubtitles}
+                    fullscreen={isFullscreen}
                 />
             )}
 
@@ -459,8 +534,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <MoreVertical className="w-4 h-4" />
                     </button>
 
-                    {/* CC toggle */}
-                    {transcriptionSegments && (
+                    {/* CC toggle — only surface where subtitles can actually render */}
+                    {effectiveSegments && (isFullscreen || effectiveViewerMode) && (
                         <button
                             onClick={() => setShowSubtitles(s => !s)}
                             className={cn("text-xs px-1.5 py-0.5 rounded transition-colors", showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
@@ -534,8 +609,40 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         </>
                     )}
                 </div>,
-                document.body
+                isFullscreen && containerRef.current ? containerRef.current : document.body
             )}
         </div>
+    );
+
+    // Fullscreen variant appends an internal TranscriptPanel (or the
+    // TranscribeButton when transcription hasn't started yet) below the
+    // player. Other variants just return the player.
+    if (variant !== 'fullscreen' || !ownsTranscription) {
+        return playerNode;
+    }
+    return (
+        <>
+            {playerNode}
+            <div className="w-full px-2">
+                {transcriptionState === 'done' && transcription ? (
+                    <TranscriptPanel
+                        key={messageId}
+                        segments={transcription.segments}
+                        currentTime={currentTime}
+                        onSeek={setInternalSeek}
+                        onRerun={retriggerTranscription}
+                        variant="light"
+                        defaultExpanded={transcriptionJustCompleted || !!transcription}
+                    />
+                ) : (
+                    <TranscribeButton
+                        state={transcriptionState}
+                        onClick={triggerTranscription}
+                        error={transcriptionError}
+                        variant="light"
+                    />
+                )}
+            </div>
+        </>
     );
 };

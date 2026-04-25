@@ -11,6 +11,9 @@ import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
+import { useAppStore } from '../../../store/appStore';
+import { TranslateButton } from '../../../core/common/TranslateButton';
+import { useTranslation } from '../../../i18n';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -52,6 +55,15 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const [blogPhotoIndex, setBlogPhotoIndex] = useState<number | null>(null);
     const [blogPhotoItems, setBlogPhotoItems] = useState<MediaViewerItem[]>([]);
 
+    // Translation state — immersive paragraph-by-paragraph display
+    const translationEnabled = useAppStore(s => s.translationEnabled);
+    const translationTargetLanguage = useAppStore(s => s.translationTargetLanguage) ?? 'en';
+    const [blogTranslations, setBlogTranslations] = useState<string[]>([]);
+    const [isTranslating, setIsTranslating] = useState(false);
+    const [translationPartial, setTranslationPartial] = useState(false);
+    const [translationError, setTranslationError] = useState<string | null>(null);
+    const { t } = useTranslation();
+
     // Get group ID for correct member data lookup
     const groupId = toGroupId(serviceId);
 
@@ -67,6 +79,100 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const memberColors = memberData ? getMemberPenlightHex(memberData, groupId) : null;
     const oshiColor1 = memberColors?.[0] ?? '#ffffff';
     const oshiColor2 = memberColors?.[1] ?? '#ffffff';
+
+    /**
+     * Split the blog content DOM into logical paragraph segments.
+     * Walks child nodes of the blog container, grouping text/inline nodes
+     * between runs of 2+ <br> elements.
+     */
+    const extractParagraphSegments = (): string[] => {
+        const container = blogContentRef.current;
+        if (!container) return [];
+
+        const segments: string[] = [];
+        // Find the main <p> or use the container itself
+        const root = container.querySelector('p') ?? container;
+        const nodes = Array.from(root.childNodes);
+
+        let currentText: string[] = [];
+        let brCount = 0;
+
+        for (const node of nodes) {
+            if (node.nodeName === 'BR') {
+                brCount++;
+                if (brCount >= 2 && currentText.length > 0) {
+                    const text = currentText.join('').trim();
+                    if (text) segments.push(text);
+                    currentText = [];
+                    brCount = 0;
+                }
+            } else {
+                brCount = 0;
+                const text = node.textContent ?? '';
+                if (text) currentText.push(text);
+            }
+        }
+        // Flush remaining
+        const remaining = currentText.join('').trim();
+        if (remaining) segments.push(remaining);
+
+        return segments;
+    };
+
+    const handleTranslateAll = async () => {
+        if (!content || isTranslating) return;
+
+        // Check cache first
+        const cacheKey = `translation:blog:${blog.id}:${translationTargetLanguage}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed)) {
+                    setBlogTranslations(parsed);
+                    return;
+                }
+            } catch { /* invalid cache, re-translate */ }
+        }
+
+        const paragraphs = extractParagraphSegments();
+        if (paragraphs.length === 0) return;
+
+        setIsTranslating(true);
+        setTranslationPartial(false);
+        setTranslationError(null);
+
+        try {
+            const res = await fetch('/api/translation/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'blog_full',
+                    service: serviceId,
+                    paragraphs,
+                    target_language: translationTargetLanguage,
+                }),
+            });
+            if (!res.ok) {
+                const detail = await res.json().catch(() => ({}));
+                throw new Error(detail.detail || `Request failed: ${res.status}`);
+            }
+            const data = await res.json();
+            if (data.ok && data.translations) {
+                setBlogTranslations(data.translations);
+                setTranslationPartial(data.partial ?? false);
+                try {
+                    localStorage.setItem(cacheKey, JSON.stringify(data.translations));
+                } catch { /* full */ }
+            } else {
+                throw new Error('Translation returned not ok');
+            }
+        } catch (e) {
+            setTranslationError(e instanceof Error ? e.message : 'Translation failed');
+        } finally {
+            setIsTranslating(false);
+        }
+    };
 
     // Navigation helpers (index 0 = newest, higher index = older)
     // "Prev" goes to older posts (higher index), "Next" goes to newer posts (lower index)
@@ -187,6 +293,93 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         return () => container.removeEventListener('click', handleImgClick);
     }, [content, blog.published_at]);
 
+    // Inject translations into blog DOM — immersive style.
+    // Walks the <p> child nodes, finds the same <br>-run boundaries used
+    // during extraction, and inserts translation text + <br> after each segment.
+    // Uses only inline elements and <br> to avoid breaking the <p> flow.
+    useEffect(() => {
+        const container = blogContentRef.current;
+        if (!container || blogTranslations.length === 0) return;
+
+        // Remove previous injections
+        container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
+
+        const root = container.querySelector('p') ?? container;
+        const nodes = Array.from(root.childNodes);
+
+        let segmentIndex = 0;
+        let brCount = 0;
+        let hasText = false;
+
+        let lastContentNode: ChildNode | null = null;
+
+        const injectTranslation = (afterNode: ChildNode, text: string) => {
+            // Insert: <br><span class="blog-translation-inline" style="D">text</span>
+            const br = document.createElement('br');
+            br.className = 'blog-translation-inline';
+            const span = document.createElement('span');
+            span.className = 'blog-translation-inline';
+            span.style.cssText = `
+                color: #555;
+                font-style: italic;
+                font-size: 14px;
+                line-height: 1.65;
+                padding-left: 12px;
+                border-left: 1.5px solid #d1d5db;
+                display: inline-block;
+            `;
+            span.textContent = text;
+            const ref = afterNode.nextSibling;
+            root.insertBefore(br, ref);
+            root.insertBefore(span, ref);
+        };
+
+        for (let i = 0; i < nodes.length; i++) {
+            const node = nodes[i];
+
+            if (node.nodeName === 'BR') {
+                brCount++;
+                if (brCount >= 2 && hasText && lastContentNode) {
+                    // End of a segment — inject translation right after the
+                    // last text node (before the <br> spacing run)
+                    const translation = blogTranslations[segmentIndex];
+                    if (translation) {
+                        injectTranslation(lastContentNode, translation);
+                    }
+                    segmentIndex++;
+                    hasText = false;
+                    lastContentNode = null;
+                }
+            } else {
+                brCount = 0;
+                const text = node.textContent?.trim();
+                if (text) {
+                    hasText = true;
+                    lastContentNode = node;
+                }
+            }
+        }
+
+        // Flush final segment
+        if (hasText && lastContentNode && segmentIndex < blogTranslations.length) {
+            const translation = blogTranslations[segmentIndex];
+            if (translation) {
+                injectTranslation(lastContentNode, translation);
+            }
+        }
+
+        return () => {
+            container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
+        };
+    }, [blogTranslations]);
+
+    // Reset translations when blog changes
+    useEffect(() => {
+        setBlogTranslations([]);
+        setIsTranslating(false);
+        setTranslationPartial(false);
+    }, [blog.id]);
+
     return (
         <div className="flex flex-col h-full relative bg-white">
             {/* Two-color oshi background - top-left and bottom-right corners */}
@@ -261,7 +454,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
                     {/* Blog Content */}
                     {!loading && !error && content && (
-                        <article className="max-w-3xl mx-auto px-4 py-6 pr-16">
+                        <article className="max-w-3xl mx-auto px-4 py-6 pr-16 relative">
                             <header className="mb-6">
                                 <h1
                                     className="text-2xl font-bold text-gray-900 mb-2"
@@ -287,6 +480,22 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                             minute: '2-digit',
                                         })}
                                     </time>
+                                    {translationEnabled && (
+                                        <span className="ml-auto">
+                                            <TranslateButton
+                                                state={
+                                                    isTranslating ? 'loading'
+                                                        : translationError ? 'error'
+                                                        : blogTranslations.length > 0 ? 'done'
+                                                        : 'idle'
+                                                }
+                                                onClick={handleTranslateAll}
+                                                error={translationError}
+                                                accentColor="#6b7280"
+                                                doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
+                                            />
+                                        </span>
+                                    )}
                                 </div>
                             </header>
 
