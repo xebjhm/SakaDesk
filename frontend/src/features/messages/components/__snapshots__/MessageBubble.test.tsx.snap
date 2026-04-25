@@ -48,6 +48,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
           <img
             alt="Attachment"
             class="w-full h-full object-contain cursor-pointer"
+            loading="eager"
             src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
           />
         </div>

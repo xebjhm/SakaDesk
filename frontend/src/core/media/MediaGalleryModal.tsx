@@ -6,7 +6,8 @@ import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { LazyVideo } from './LazyVideo';
-import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
+import { PhotoPlayer } from './PhotoPlayer';
+import { BaseModal, DetailModal, ModalEmptyState } from '../common';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
@@ -350,10 +351,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 }
             >
                 {selectedMedia.type === 'picture' && mediaUrl && (
-                    <SafeImage
+                    <PhotoPlayer
+                        variant="fullscreen"
                         src={mediaUrl}
                         alt="Media"
-                        className="max-w-full max-h-[80vh] object-contain"
+                        className="max-h-[80vh]"
                     />
                 )}
                 {selectedMedia.type === 'video' && mediaUrl && (
@@ -461,24 +463,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 const isFirstOfDate = !seenDates.has(dateKey);
                                 if (isFirstOfDate) seenDates.add(dateKey);
 
-                                // Photos use button wrapper, videos use LazyVideo's built-in button
+                                // Photos use PhotoPlayer's gallery-thumb (own button),
+                                // videos use LazyVideo's built-in button.
                                 if (activeTab === 'photos') {
                                     return (
-                                        <button
+                                        <PhotoPlayer
                                             key={item.id}
-                                            ref={isFirstOfDate ? (el) => {
+                                            variant="gallery-thumb"
+                                            src={mediaUrl}
+                                            onClick={() => setSelectedMedia(item)}
+                                            anchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
                                             } : undefined}
-                                            onClick={() => setSelectedMedia(item)}
-                                            className="aspect-square relative bg-gray-100"
-                                        >
-                                            <SafeImage
-                                                src={mediaUrl}
-                                                alt=""
-                                                className="w-full h-full object-cover"
-                                                loading="lazy"
-                                            />
-                                        </button>
+                                        />
                                     );
                                 }
 

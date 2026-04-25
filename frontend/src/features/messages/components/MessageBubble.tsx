@@ -3,6 +3,7 @@ import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
 import { VideoPlayer } from '../../../core/media/VideoPlayer';
+import { PhotoPlayer } from '../../../core/media/PhotoPlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
 import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
@@ -389,10 +390,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
                             <MediaContainer message={message}>
-                                <img
+                                <PhotoPlayer
+                                    variant="bubble"
                                     src={mediaUrl}
                                     alt={t('messageList.attachment')}
-                                    className="w-full h-full object-contain cursor-pointer"
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
                                 />
                             </MediaContainer>
