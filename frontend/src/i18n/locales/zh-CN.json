@@ -57,7 +57,7 @@
     "updateFound": "v{{version}} 可用！",
     "upToDate": "已是最新版本",
     "updateCheckFailed": "检查失败",
-    "transcriptionDevice": "转录设备",
+    "transcriptionDevice": "语音转文字",
     "transcriptionCpuDesc": "适用所有电脑，速度较慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",
@@ -346,6 +346,7 @@
   "media": {
     "title": "媒体",
     "jumpToDate": "跳转到日期",
+    "jumpToMessage": "跳转到消息",
     "cached": "已缓存",
     "publishedRecently": "24小时内发布",
     "checkingUpdates": "正在检查更新...",
@@ -439,6 +440,39 @@
     "noTranscript": "暂无文字",
     "clickToJump": "点击跳转",
     "failed": "辨识失败",
-    "cc": "字幕"
+    "cc": "字幕",
+    "rerun": "重新辨识"
+  },
+  "translation": {
+    "translate": "翻译",
+    "translating": "翻译中...",
+    "rerun": "重新翻译",
+    "translated": "✓ 已翻译",
+    "translatedPartial": "✓ 已翻译 (部分)",
+    "settings": {
+      "title": "翻译",
+      "provider": "服务提供商",
+      "model": "模型",
+      "apiKey": "API 密钥",
+      "testConnection": "测试连接",
+      "testSuccess": "连接成功",
+      "testFailed": "连接失败",
+      "targetLanguage": "目标语言",
+      "globalMessages": "翻译所有消息",
+      "globalBlogs": "翻译所有博客文章",
+      "experimental": "实验性功能",
+      "clearCache": "清除翻译缓存",
+      "cacheClearedMsg": "翻译缓存已清除"
+    },
+    "error": {
+      "noProvider": "请在设置中配置翻译服务提供商",
+      "failed": "翻译失败",
+      "rateLimited": "已达速率限制，请稍后再试"
+    },
+    "dataPolicy": {
+      "geminiFree": "免费方案：数据可能被 Google 用于改善产品",
+      "geminiPaid": "付费方案：数据不会用于训练",
+      "openai": "API 数据不会用于训练"
+    }
   }
 }

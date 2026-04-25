@@ -5,6 +5,8 @@ import { useTranslation } from '../../i18n';
 interface TranscribeButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
     onClick: () => void;
+    /** Error message to display when state is 'error' */
+    error?: string | null;
     /** Accent color for button border/text (service theme) */
     accentColor?: string;
     /** 'light' for dark backgrounds (media viewer), 'dark' for light backgrounds (chat bubble) */
@@ -18,6 +20,7 @@ interface TranscribeButtonProps {
 export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
     state,
     onClick,
+    error,
     accentColor = '#6da0d4',
     variant = 'dark',
 }) => {
@@ -37,17 +40,32 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
     }
 
     return (
-        <button
-            onClick={onClick}
-            className="text-xs py-1 px-2 rounded-md border transition-colors flex items-center gap-1"
-            style={{
-                color: isLight ? 'rgba(255,255,255,0.7)' : accentColor,
-                borderColor: isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`,
-                background: isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`,
-            }}
-            type="button"
-        >
-            {t(state === 'error' ? 'transcription.transcribe' : 'transcription.transcribe')}
-        </button>
+        <div>
+            <button
+                onClick={onClick}
+                className="text-xs py-1 px-2 rounded-md border transition-colors flex items-center gap-1"
+                style={{
+                    color: state === 'error'
+                        ? (isLight ? '#fca5a5' : '#ef4444')
+                        : (isLight ? 'rgba(255,255,255,0.7)' : accentColor),
+                    borderColor: state === 'error'
+                        ? (isLight ? 'rgba(239,68,68,0.3)' : '#fca5a540')
+                        : (isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`),
+                    background: state === 'error'
+                        ? (isLight ? 'rgba(239,68,68,0.08)' : '#fef2f208')
+                        : (isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`),
+                }}
+                type="button"
+            >
+                {state === 'error' ? t('transcription.failed') : t('transcription.transcribe')}
+            </button>
+            {state === 'error' && error && (
+                <p className="text-[10px] mt-0.5 max-w-[250px]" style={{
+                    color: isLight ? '#fca5a5' : '#94a3b8',
+                }}>
+                    {error}
+                </p>
+            )}
+        </div>
     );
 };

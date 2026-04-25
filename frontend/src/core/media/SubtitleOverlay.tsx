@@ -5,6 +5,8 @@ interface SubtitleOverlayProps {
     segments: TranscriptionSegment[];
     currentTime: number;
     visible: boolean;
+    /** Use larger font for fullscreen mode */
+    fullscreen?: boolean;
 }
 
 /**
@@ -15,6 +17,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
     segments,
     currentTime,
     visible,
+    fullscreen,
 }) => {
     if (!visible) return null;
 
@@ -27,8 +30,8 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
     if (!activeSegment) return null;
 
     return (
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10 pointer-events-none max-w-[80%]">
-            <span className="bg-black/75 text-white text-sm px-3 py-1 rounded">
+        <div className={`absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none max-w-[80%] ${fullscreen ? 'bottom-16' : 'bottom-10'}`}>
+            <span className={`bg-black/75 text-white rounded ${fullscreen ? 'text-xl px-5 py-2' : 'text-sm px-3 py-1'}`}>
                 {activeSegment.text}
             </span>
         </div>

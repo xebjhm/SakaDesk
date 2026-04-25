@@ -8,9 +8,7 @@ import { Z_CLASS } from '../../constants/zIndex';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
-import { TranscribeButton } from './TranscribeButton';
-import { TranscriptPanel } from './TranscriptPanel';
-import { useTranscription } from '../../hooks/useTranscription';
+import { PhotoPlayer } from './PhotoPlayer';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -64,21 +62,14 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
     const item = mediaItems[currentIndex];
 
-    // Transcription — active for voice and non-muted video items with messageId
-    const isTranscribable = item?.messageId != null && (item?.type === 'voice' || (item?.type === 'video' && !item?.isMuted));
-    const { transcription, state: transcriptionState, trigger: triggerTranscription } = useTranscription(
-        isTranscribable ? item?.service : undefined,
-        isTranscribable ? item?.messageId : undefined,
-        isTranscribable ? item?.memberPath : undefined,
-    );
-
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
 
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
 
-    // Reset zoom when navigating to a new item
+    // Reset zoom when navigating to a new item. (Video/voice transcription
+    // state is owned by the player components themselves via messageId.)
     useEffect(() => {
         setZoom(1);
     }, [currentIndex]);
@@ -143,69 +134,37 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             {/* Media content */}
             <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
                 {item.type === 'picture' && (
-                    <img
-                        src={item.src}
-                        alt="Media"
-                        className="max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-150"
-                        style={{ transform: `scale(${zoom})` }}
-                        draggable={false}
-                    />
+                    <PhotoPlayer variant="fullscreen" src={item.src} alt="Media" zoom={zoom} />
                 )}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
                         <VideoPlayer
                             src={item.src}
+                            variant="fullscreen"
                             autoPlay
                             messageTimestamp={item.timestamp}
                             noAudio={item.isMuted}
-                            viewerMode
                             videoClassName="max-w-[90vw] max-h-[90vh]"
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
                         />
-                        {isTranscribable && (
-                            <div className="w-full px-2">
-                                <TranscribeButton
-                                    state={transcriptionState}
-                                    onClick={triggerTranscription}
-                                    variant="light"
-                                />
-                                {transcriptionState === 'done' && transcription && (
-                                    <TranscriptPanel
-                                        segments={transcription.segments}
-                                        variant="light"
-                                        defaultExpanded
-                                    />
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
                 {item.type === 'voice' && (
                     <div className="w-96 flex flex-col gap-3">
                         <VoicePlayer
                             src={item.src}
-                            variant="premium"
+                            variant="fullscreen"
                             avatarUrl={item.avatarUrl}
                             memberName={item.memberName}
                             messageTimestamp={item.timestamp}
                             autoPlay
                             viewerMode
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
                         />
-                        {isTranscribable && (
-                            <div>
-                                <TranscribeButton
-                                    state={transcriptionState}
-                                    onClick={triggerTranscription}
-                                    variant="light"
-                                />
-                                {transcriptionState === 'done' && transcription && (
-                                    <TranscriptPanel
-                                        segments={transcription.segments}
-                                        variant="light"
-                                        defaultExpanded
-                                    />
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
             </div>

@@ -23,7 +23,10 @@ type TranscriptionState = 'idle' | 'loading' | 'done' | 'error';
 interface UseTranscriptionReturn {
     transcription: Transcription | null;
     state: TranscriptionState;
+    /** Run transcription. Short-circuits on a cached result server-side. */
     trigger: () => Promise<void>;
+    /** Force a fresh AI run, ignoring any cached result. */
+    retrigger: () => Promise<void>;
     error: string | null;
 }
 
@@ -40,8 +43,13 @@ export function useTranscription(
     const [state, setState] = useState<TranscriptionState>('idle');
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch cached transcription on mount
+    // Fetch cached transcription on mount, and reset state whenever the
+    // target message changes so a previous message's transcription does
+    // not momentarily appear under a newly-selected one.
     useEffect(() => {
+        setTranscription(null);
+        setState('idle');
+        setError(null);
         if (!service || !messageId) return;
 
         let cancelled = false;
@@ -67,8 +75,7 @@ export function useTranscription(
         return () => { cancelled = true; };
     }, [service, messageId]);
 
-    // Trigger on-demand transcription
-    const trigger = useCallback(async () => {
+    const runTranscribe = useCallback(async (force: boolean) => {
         if (!service || !messageId || !memberPath) return;
         setState('loading');
         setError(null);
@@ -81,6 +88,7 @@ export function useTranscription(
                     message_id: messageId,
                     service,
                     member_path: memberPath,
+                    force,
                 }),
             });
 
@@ -102,5 +110,8 @@ export function useTranscription(
         }
     }, [service, messageId, memberPath]);
 
-    return { transcription, state, trigger, error };
+    const trigger = useCallback(() => runTranscribe(false), [runTranscribe]);
+    const retrigger = useCallback(() => runTranscribe(true), [runTranscribe]);
+
+    return { transcription, state, trigger, retrigger, error };
 }

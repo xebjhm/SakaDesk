@@ -4,6 +4,7 @@ import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
+import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 
 interface ChatListProps {
     /** Unique identifier for the current room/member */
@@ -119,11 +120,16 @@ export const MessageList: React.FC<ChatListProps> = ({
     // Falls back to savedScrollIndex when no search navigation is active.
     const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
 
-    // Combined range change handler
+    // Combined range change handler — also notifies auto-collapse registry.
     const onRangeChange = useCallback((range: { startIndex: number; endIndex: number }) => {
         handleRangeChanged(range);
         onRangeChanged?.(range);
-    }, [handleRangeChanged, onRangeChanged]);
+        const visibleIds = new Set<number>();
+        for (let i = range.startIndex; i <= range.endIndex && i < processedMessages.length; i++) {
+            visibleIds.add(processedMessages[i].id);
+        }
+        notifyVisibleMessages(visibleIds);
+    }, [handleRangeChanged, onRangeChanged, processedMessages]);
 
     if (!processedMessages || processedMessages.length === 0) {
         return (
@@ -162,6 +168,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             theme={bubbleTheme}
                             service={service}
                             memberPath={getMemberPath?.(msg)}
+                            userNickname={userNickname}
                         />
                     </div>
                 );

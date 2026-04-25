@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
+import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -309,10 +310,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
 
                     {/* Transcription */}
-                    <TranscriptionDeviceSection
-                        device={appSettings.transcription_device ?? 'cpu'}
-                        onChangeDevice={(device) => onSaveSettings({ transcription_device: device })}
-                    />
+                    <TranscriptionSection />
+
+                    {/* Translation */}
+                    <TranslationSection />
 
                     {/* Updates */}
                     <UpdatesSection
@@ -399,83 +400,289 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
 }
 
 
-function TranscriptionDeviceSection({ device, onChangeDevice }: {
-    device: string;
-    onChangeDevice: (device: string) => void;
-}) {
+function TranslationSection() {
     const { t } = useTranslation();
+    const translationEnabled = useAppStore(s => s.translationEnabled);
+    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                    {t('translation.settings.title')}
+                    <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
+                        {t('translation.settings.experimental')}
+                    </span>
+                </label>
+                <button
+                    onClick={() => setTranslationEnabled(!translationEnabled)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                        translationEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                    }`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        translationEnabled ? 'translate-x-7' : 'translate-x-1'
+                    }`} />
+                </button>
+            </div>
+            {translationEnabled && <TranslationSettingsSection />}
+        </div>
+    );
+}
+
+
+function TranscriptionSection() {
+    const { t } = useTranslation();
+    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
+
+    return (
+        <div>
+            <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">
+                    {t('settings.transcriptionDevice')}
+                </label>
+                <button
+                    onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${
+                        transcriptionEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                    }`}
+                >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        transcriptionEnabled ? 'translate-x-7' : 'translate-x-1'
+                    }`} />
+                </button>
+            </div>
+        </div>
+    );
+}
+
+
+function TranslationSettingsSection() {
+    const { t } = useTranslation();
+    const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<string | null>(null);
 
-    const handleDeviceChange = async (newDevice: string) => {
-        if (newDevice === 'cuda') {
-            // Test GPU before switching
-            setTesting(true);
-            setTestResult(null);
-            try {
-                const res = await fetch('/api/transcription/test-gpu', { method: 'POST' });
-                const data = await res.json();
-                if (data.ok) {
-                    onChangeDevice('cuda');
-                    setTestResult(t('settings.transcriptionGpuSuccess'));
-                } else {
-                    setTestResult(t('settings.transcriptionGpuFailed') + ': ' + (data.error || ''));
+    // Own state loaded from /api/translation/config (not from appSettings)
+    const [provider, setProvider] = useState<string | null>(null);
+    const [model, setModel] = useState<string | null>(null);
+    const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
+    const [hasApiKey, setHasApiKey] = useState(false);    // Whether a key is stored in keyring
+    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(null);  // e.g. "AIza...xQ"
+    const [targetLang, setTargetLang] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetch('/api/translation/config')
+            .then(res => res.json())
+            .then(data => {
+                setProvider(data.provider ?? null);
+                setModel(data.model ?? null);
+                setHasApiKey(data.has_api_key ?? false);
+                setApiKeyMasked(data.api_key_masked ?? null);
+                setTargetLang(data.target_language ?? null);
+                if (data.target_language) {
+                    setTranslationTargetLanguage(data.target_language);
                 }
-            } catch {
-                setTestResult(t('settings.transcriptionGpuFailed'));
-            } finally {
-                setTesting(false);
-            }
-        } else {
-            onChangeDevice('cpu');
-            setTestResult(null);
+            })
+            .catch(() => {});
+    }, [setTranslationTargetLanguage]);
+
+    // Providers available in the UI. Backend supports OpenAI too (OpenAIProvider)
+    // but it's hidden for now — add back when needed.
+    const PROVIDERS = [
+        { value: 'gemini', label: 'Google Gemini' },
+    ];
+
+    const [modelOptions, setModelOptions] = useState<Record<string, { value: string; label: string }[]>>({});
+
+    useEffect(() => {
+        fetch('/api/translation/models')
+            .then(res => res.json())
+            .then(data => {
+                // Transform backend format {gemini: [{id, label}]} to {gemini: [{value, label}]}
+                const opts: Record<string, { value: string; label: string }[]> = {};
+                for (const [prov, models] of Object.entries(data)) {
+                    opts[prov] = (models as { id: string; label: string }[]).map(m => ({ value: m.id, label: m.label }));
+                }
+                setModelOptions(opts);
+            })
+            .catch(() => {});
+    }, []);
+
+    const MODELS = modelOptions;
+
+    const TARGET_LANGUAGES = [
+        { value: 'en', label: 'English' },
+        { value: 'ja', label: '日本語' },
+        { value: 'zh-TW', label: '繁體中文' },
+        { value: 'zh-CN', label: '简体中文' },
+        { value: 'yue', label: '廣東話' },
+    ];
+
+    const handleTestConnection = async () => {
+        if (!provider || !model || (!apiKeyInput && !hasApiKey)) return;
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/translation/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, model, api_key: apiKeyInput || undefined }),
+            });
+            const data = await res.json();
+            setTestResult(data.ok
+                ? t('translation.settings.testSuccess')
+                : t('translation.settings.testFailed') + (data.detail ? `: ${data.detail}` : '')
+            );
+        } catch {
+            setTestResult(t('translation.settings.testFailed'));
+        } finally {
+            setTesting(false);
         }
+    };
+
+    const handleClearCache = () => {
+        clearTranslationCache();
+        setTestResult(t('translation.settings.cacheClearedMsg'));
+    };
+
+    const saveConfig = (updates: { provider?: string | null; model?: string | null; api_key?: string | null; target_language?: string | null }) => {
+        const newProvider = updates.provider !== undefined ? updates.provider : provider;
+        const newModel = updates.model !== undefined ? updates.model : model;
+        const newTargetLang = updates.target_language !== undefined ? updates.target_language : targetLang;
+
+        // Update local state
+        if (updates.provider !== undefined) setProvider(updates.provider);
+        if (updates.model !== undefined) setModel(updates.model);
+        if (updates.api_key !== undefined) {
+            setApiKeyInput(updates.api_key ?? '');
+            if (updates.api_key) setHasApiKey(true);
+        }
+        if (updates.target_language !== undefined) {
+            setTargetLang(updates.target_language);
+            setTranslationTargetLanguage(updates.target_language);
+        }
+
+        // Persist to backend (API key stored in keyring, not settings.json)
+        // Only send api_key if user typed a new one
+        const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        fetch('/api/translation/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider: newProvider,
+                model: newModel,
+                api_key: apiKeyToSend ?? null,
+                target_language: newTargetLang,
+            }),
+        });
+    };
+
+    const handleProviderChange = (value: string | null) => {
+        const newModels = MODELS[value ?? ''] ?? [];
+        const newModel = newModels[0]?.value ?? null;
+        saveConfig({ provider: value, model: newModel });
     };
 
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('settings.transcriptionDevice')}
-            </label>
-            <div className="space-y-1">
-                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
-                    <input
-                        type="radio"
-                        name="transcriptionDevice"
-                        checked={device === 'cpu'}
-                        onChange={() => handleDeviceChange('cpu')}
-                        disabled={testing}
-                        className="w-4 h-4 text-blue-500"
-                    />
-                    <div>
-                        <span className="text-sm text-gray-700">CPU</span>
-                        <p className="text-xs text-gray-400">{t('settings.transcriptionCpuDesc')}</p>
-                    </div>
-                </label>
-                <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
-                    <input
-                        type="radio"
-                        name="transcriptionDevice"
-                        checked={device === 'cuda'}
-                        onChange={() => handleDeviceChange('cuda')}
-                        disabled={testing}
-                        className="w-4 h-4 text-blue-500"
-                    />
-                    <div>
-                        <span className="text-sm text-gray-700">GPU (CUDA)</span>
-                        <p className="text-xs text-gray-400">{t('settings.transcriptionGpuDesc')}</p>
-                    </div>
-                </label>
-            </div>
-            {testing && (
-                <div className="flex items-center gap-2 mt-2 text-xs text-blue-500">
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    {t('settings.transcriptionGpuTesting')}
+            <div className="space-y-3">
+                {/* Provider */}
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
+                    <select
+                        value={provider ?? ''}
+                        onChange={(e) => handleProviderChange(e.target.value || null)}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">—</option>
+                        {PROVIDERS.map(p => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                    </select>
+                    {provider && (
+                        <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
+                            {provider === 'gemini' && (
+                                <>
+                                    <p>Free tier: Flash Lite 500 RPD / Flash 20 RPD. Data may be used by Google to improve products.</p>
+                                    <p>Paid tier: 100 translations ≈ US$0.01. Data not used for training.</p>
+                                </>
+                            )}
+                        </div>
+                    )}
                 </div>
-            )}
-            {testResult && (
-                <p className="text-xs mt-2 text-gray-500">{testResult}</p>
-            )}
+
+                {/* Model */}
+                {provider && MODELS[provider] && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
+                        <select
+                            value={model ?? ''}
+                            onChange={(e) => saveConfig({ model: e.target.value || null })}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            {MODELS[provider].map(m => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {/* API Key */}
+                {provider && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="password"
+                                value={apiKeyInput}
+                                onChange={(e) => setApiKeyInput(e.target.value)}
+                                onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                            />
+                            <button
+                                onClick={handleTestConnection}
+                                disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {testing && <Loader2 className="w-3 h-3 animate-spin" />}
+                                {t('translation.settings.testConnection')}
+                            </button>
+                        </div>
+                        {hasApiKey && !apiKeyInput && (
+                            <p className="text-xs mt-0.5 text-green-600">Saved securely in credential manager</p>
+                        )}
+                        {testResult && (
+                            <p className="text-xs mt-1 text-gray-500">{testResult}</p>
+                        )}
+                    </div>
+                )}
+
+                {/* Target Language */}
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.targetLanguage')}</label>
+                    <select
+                        value={targetLang ?? ''}
+                        onChange={(e) => saveConfig({ target_language: e.target.value || null })}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">—</option>
+                        {TARGET_LANGUAGES.map(l => (
+                            <option key={l.value} value={l.value}>{l.label}</option>
+                        ))}
+                    </select>
+                </div>
+
+                {/* Clear Cache */}
+                <button
+                    onClick={handleClearCache}
+                    className="text-xs text-red-500 hover:text-red-700 font-medium"
+                >
+                    {t('translation.settings.clearCache')}
+                </button>
+            </div>
         </div>
     );
 }

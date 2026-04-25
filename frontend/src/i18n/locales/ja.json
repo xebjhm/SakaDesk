@@ -57,7 +57,7 @@
     "updateFound": "v{{version}} が利用可能です！",
     "upToDate": "最新版です",
     "updateCheckFailed": "確認に失敗しました",
-    "transcriptionDevice": "文字起こしデバイス",
+    "transcriptionDevice": "文字起こし",
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",
@@ -346,6 +346,7 @@
   "media": {
     "title": "メディア",
     "jumpToDate": "日付へ移動",
+    "jumpToMessage": "メッセージへ移動",
     "cached": "保存済み",
     "publishedRecently": "24時間以内に公開",
     "checkingUpdates": "更新を確認中...",
@@ -418,8 +419,8 @@
     "7th": "七期生"
   },
   "memberProfile": {
-    "subscribedFor": "メンバーシップ継続",
-    "days": "日！",
+    "subscribedFor": "購読して",
+    "days": "日間！",
     "startSubscription": "メンバーシップを始めよう！",
     "retry": "再試行"
   },
@@ -439,6 +440,39 @@
     "noTranscript": "記録なし",
     "clickToJump": "クリックでジャンプ",
     "failed": "失敗しました",
-    "cc": "字幕"
+    "cc": "字幕",
+    "rerun": "再度文字起こし"
+  },
+  "translation": {
+    "translate": "翻訳",
+    "translating": "翻訳中...",
+    "rerun": "再翻訳",
+    "translated": "✓ 翻訳済み",
+    "translatedPartial": "✓ 翻訳済み (一部)",
+    "settings": {
+      "title": "翻訳",
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "apiKey": "APIキー",
+      "testConnection": "接続テスト",
+      "testSuccess": "接続成功",
+      "testFailed": "接続失敗",
+      "targetLanguage": "翻訳先の言語",
+      "globalMessages": "すべてのメッセージを翻訳",
+      "globalBlogs": "すべてのブログ記事を翻訳",
+      "experimental": "実験的機能",
+      "clearCache": "翻訳キャッシュをクリア",
+      "cacheClearedMsg": "翻訳キャッシュをクリアしました"
+    },
+    "error": {
+      "noProvider": "設定で翻訳プロバイダーを設定してください",
+      "failed": "翻訳に失敗しました",
+      "rateLimited": "レート制限に達しました。後でもう一度お試しください"
+    },
+    "dataPolicy": {
+      "geminiFree": "無料枠：データがGoogleの製品改善に使用される場合があります",
+      "geminiPaid": "有料枠：データはトレーニングに使用されません",
+      "openai": "APIデータはトレーニングに使用されません"
+    }
   }
 }

@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ChevronRight, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -9,12 +10,26 @@ interface TranscriptPanelProps {
     currentTime?: number;
     /** Called when user clicks a segment timestamp to seek */
     onSeek?: (time: number) => void;
+    /** Called when user clicks the rerun button to re-transcribe */
+    onRerun?: () => void;
     /** Accent color for active segment highlight */
     accentColor?: string;
     /** 'light' for dark backgrounds, 'dark' for light backgrounds */
     variant?: 'light' | 'dark';
     /** Start expanded or collapsed */
     defaultExpanded?: boolean;
+    /**
+     * Message ID for auto-collapse when scrolled out of the visible range.
+     * Omit for non-virtualized usages (modals).
+     */
+    messageId?: number;
+    /**
+     * When true, render the segment list with a translucent backdrop + padding.
+     * Intended for the media gallery's premium voice player where the panel
+     * sits over a gradient-blur bar and raw text would be hard to read.
+     * Off by default so chat bubbles and other contexts keep their flat look.
+     */
+    withBackdrop?: boolean;
 }
 
 /**
@@ -25,15 +40,22 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     segments,
     currentTime = 0,
     onSeek,
+    onRerun,
     accentColor = '#6da0d4',
     variant = 'dark',
     defaultExpanded = false,
+    messageId,
+    withBackdrop = false,
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
     const activeRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const userScrolledRef = useRef(false);
+
+    // Auto-collapse when message leaves the virtualized visible range.
+    const collapse = useCallback(() => setExpanded(false), []);
+    useCollapseOnOutOfView(messageId, expanded, collapse);
 
     // Find active segment
     const activeIndex = segments.findIndex(
@@ -42,17 +64,32 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             (i === segments.length - 1 || currentTime < segments[i + 1].start)
     );
 
-    // Auto-scroll to active segment
+    // Auto-scroll active segment to center (music app dynamic lyrics style).
+    // Use getBoundingClientRect rather than offsetTop — the latter depends on
+    // the offsetParent chain (positioned ancestors), which can differ when
+    // the panel is nested inside variants that add positioned wrappers
+    // (e.g. the gallery voice card). Rects + the container's current
+    // scrollTop give the element's true position within the scrollable
+    // content regardless of positioning context.
     useEffect(() => {
-        if (expanded && activeRef.current && !userScrolledRef.current) {
-            activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        if (expanded && activeRef.current && containerRef.current && !userScrolledRef.current) {
+            const container = containerRef.current;
+            const element = activeRef.current;
+            const containerRect = container.getBoundingClientRect();
+            const elementRect = element.getBoundingClientRect();
+            const elementTopWithinScroll =
+                elementRect.top - containerRect.top + container.scrollTop;
+            const scrollTarget =
+                elementTopWithinScroll - container.clientHeight / 2 + element.clientHeight / 2;
+            container.scrollTo({ top: Math.max(0, scrollTarget), behavior: 'smooth' });
         }
     }, [activeIndex, expanded]);
 
-    // Reset user scroll flag when playback resumes
+    // Reset user scroll flag when active segment changes
+    // (user scrolled away, but when a new segment becomes active, resume auto-scroll)
     useEffect(() => {
         userScrolledRef.current = false;
-    }, [Math.floor(currentTime / 5)]); // Reset every ~5 seconds
+    }, [activeIndex]);
 
     const isLight = variant === 'light';
 
@@ -67,21 +104,40 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     return (
         <div>
             {/* Toggle header */}
-            <button
-                onClick={() => setExpanded(!expanded)}
-                className="flex items-center gap-1 text-xs w-full text-left py-1"
-                style={{ color: isLight ? 'rgba(255,255,255,0.5)' : accentColor }}
-                type="button"
-            >
-                <Chevron className="w-3 h-3" />
-                {t('transcription.transcript')}
-            </button>
+            <div className="flex items-center gap-1">
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="flex items-center gap-1 text-xs text-left py-1"
+                    style={{ color: isLight ? 'rgba(255,255,255,0.5)' : accentColor }}
+                    type="button"
+                >
+                    <Chevron className="w-3 h-3" />
+                    {t('transcription.transcript')}
+                </button>
+                {onRerun && (
+                    <button
+                        onClick={onRerun}
+                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
+                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        type="button"
+                        title={t('transcription.rerun')}
+                    >
+                        <RefreshCw className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
 
-            {/* Segments */}
+            {/* Segments — optional translucent backdrop (withBackdrop) keeps
+                text readable over gradients / backdrop-blur bars. Off by
+                default for chat bubbles and other flat surfaces. */}
             {expanded && (
                 <div
                     ref={containerRef}
-                    className="max-h-32 overflow-y-auto text-xs leading-relaxed mt-1"
+                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
+                        withBackdrop
+                            ? ` rounded-md px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
+                            : ''
+                    }`}
                     onScroll={() => { userScrolledRef.current = true; }}
                 >
                     {segments.map((seg, i) => {
