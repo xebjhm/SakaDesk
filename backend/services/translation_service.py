@@ -10,7 +10,7 @@ Translations are cached client-side in localStorage — no server-side storage.
 import re
 import structlog
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, cast
 
 import httpx
 
@@ -188,7 +188,7 @@ class GeminiProvider(TranslationProvider):
                     f"Gemini returned no content (finishReason: {finish_reason})"
                 )
 
-            return candidate["content"]["parts"][0]["text"]
+            return cast(str, candidate["content"]["parts"][0]["text"])
 
     async def is_available(self) -> bool:
         try:
@@ -231,7 +231,7 @@ class OpenAIProvider(TranslationProvider):
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            return cast(str, data["choices"][0]["message"]["content"])
 
     async def is_available(self) -> bool:
         try:

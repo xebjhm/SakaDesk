@@ -158,8 +158,8 @@ def copy_file_to_clipboard(file_path: Path) -> None:
     CF_HDROP = 15
     GMEM_MOVEABLE = 0x0002
 
-    kernel32 = ctypes.windll.kernel32
-    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]  # Windows-only
+    user32 = ctypes.windll.user32  # type: ignore[attr-defined]  # Windows-only
 
     # Set correct return/arg types for 64-bit Windows.
     # Without this, ctypes defaults to c_int (32-bit) which truncates
