@@ -157,14 +157,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
         : undefined;
 
-    // Transcription for selected video (subtitles in detail view).
-    // (Voice transcription is owned by VoicePlayer variant="gallery".)
-    const isSelectedVideo = selectedMedia?.type === 'video' && !selectedMedia?.is_muted;
-    const { transcription: videoTranscription } = useTranscription(
-        isSelectedVideo ? serviceId : undefined,
-        isSelectedVideo ? selectedMedia?.id : undefined,
-        isSelectedVideo ? memberPath : undefined,
-    );
+    // Voice/video transcription is owned by the player components themselves
+    // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
@@ -365,12 +359,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 {selectedMedia.type === 'video' && mediaUrl && (
                     <VideoPlayer
                         src={mediaUrl}
+                        variant="gallery"
                         autoPlay
                         messageTimestamp={selectedMedia.timestamp}
                         noAudio={selectedMedia.is_muted}
-                        viewerMode
                         videoClassName="max-w-full max-h-[80vh]"
-                        transcriptionSegments={videoTranscription?.segments}
+                        messageId={selectedMedia.id}
+                        service={serviceId}
+                        memberPath={memberPath}
                     />
                 )}
                 {/* Clipboard toast */}
