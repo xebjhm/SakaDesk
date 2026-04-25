@@ -8,6 +8,8 @@ Hybrid pipeline:
 - Falls back to Whisper tiny only when no API key is present
 """
 
+from typing import Optional, cast
+
 import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -34,7 +36,7 @@ def _get_gemini_api_key() -> str | None:
     tm = get_token_manager()
     data = tm.store.load("llm_provider_api_key")
     if data:
-        return data.get("api_key")
+        return cast(Optional[str], data.get("api_key"))
     return None
 
 

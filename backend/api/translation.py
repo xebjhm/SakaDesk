@@ -6,7 +6,7 @@ Handles on-demand translation requests using cloud LLM providers (Gemini, OpenAI
 import json
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import httpx
 import structlog
@@ -106,7 +106,7 @@ def _load_api_key() -> Optional[str]:
     tm = get_token_manager()
     data = tm.store.load(_API_KEY_CREDENTIAL_GROUP)
     if data:
-        return data.get("api_key")
+        return cast(Optional[str], data.get("api_key"))
     return None
 
 
@@ -274,7 +274,7 @@ async def get_config():
         )
         stored_model = DEFAULT_GEMINI_MODEL
 
-        async def _fix(c: dict) -> None:
+        def _fix(c: dict) -> None:
             c["translation_model"] = DEFAULT_GEMINI_MODEL
 
         await update_config(_fix)
@@ -473,17 +473,17 @@ async def translate(request: TranslateRequest):
 
     elif request.type == "blog_paragraph":
         # --- Blog paragraph translation ---
-        text = request.text
-        if not text or not text.strip():
+        if not request.text or not request.text.strip():
             raise HTTPException(
                 status_code=422, detail="text required for type 'blog_paragraph'"
             )
+        text = request.text
 
-        context_texts: list[str] = []
+        blog_context_texts: list[str] = []
         if request.blog_html:
             # Use surrounding paragraphs as context (first few only)
             paragraphs = _parse_paragraphs_from_html(request.blog_html)
-            context_texts = [p for p in paragraphs[:3] if p != text]
+            blog_context_texts = [p for p in paragraphs[:3] if p != text]
 
         try:
             group_name = get_service_display_name(request.service)
@@ -493,7 +493,7 @@ async def translate(request: TranslateRequest):
         prompt, system_instruction = build_translation_prompt(
             text=text,
             target_language=request.target_language,
-            context_texts=context_texts if context_texts else None,
+            context_texts=blog_context_texts if blog_context_texts else None,
             group_name=group_name,
             content_type="blog post",
         )

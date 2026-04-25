@@ -14,7 +14,7 @@ import structlog
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 import httpx
 
@@ -132,7 +132,7 @@ class GeminiTranscriptionProvider:
         )
         upload_resp.raise_for_status()
         file_info = upload_resp.json()
-        file_uri = file_info["file"]["uri"]
+        file_uri = cast(str, file_info["file"]["uri"])
         logger.info("Audio uploaded via Files API", uri=file_uri, size=len(audio_bytes))
         return file_uri
 
@@ -402,7 +402,7 @@ class TranscriptionStorage:
     def _load_raw(self, file_path: Path) -> dict:
         if file_path.exists():
             try:
-                return json.loads(file_path.read_text(encoding="utf-8"))
+                return cast(dict, json.loads(file_path.read_text(encoding="utf-8")))
             except (json.JSONDecodeError, KeyError):
                 logger.warning(
                     "Corrupt transcriptions.json, starting fresh", path=str(file_path)
