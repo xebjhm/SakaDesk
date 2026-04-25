@@ -51,6 +51,12 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
 
     const isLoading = state === 'loading';
     const isError = state === 'error';
+    const palette = buttonPalette(isError, isLight, accentColor);
+    const label = isLoading
+        ? t('translation.translating')
+        : isError
+            ? t('translation.error.failed')
+            : t('translation.translate');
 
     return (
         <div>
@@ -62,25 +68,16 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                 disabled={isLoading}
                 className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80 disabled:cursor-wait"
                 style={{
-                    borderColor: isError
-                        ? (isLight ? 'rgba(239,68,68,0.3)' : '#fca5a540')
-                        : (isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`),
-                    color: isError
-                        ? (isLight ? '#fca5a5' : '#ef4444')
-                        : (isLight ? 'rgba(255,255,255,0.7)' : accentColor),
-                    background: isError
-                        ? (isLight ? 'rgba(239,68,68,0.08)' : '#fef2f208')
-                        : (isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`),
+                    borderColor: palette.border,
+                    color: palette.text,
+                    background: palette.background,
                 }}
             >
-                {isLoading ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                    <Globe className="w-3 h-3" />
-                )}
-                <span>
-                    {isLoading ? t('translation.translating') : isError ? t('translation.error.failed') : t('translation.translate')}
-                </span>
+                {isLoading
+                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    : <Globe className="w-3 h-3" />
+                }
+                <span>{label}</span>
             </button>
             {isError && error && (
                 <p
@@ -93,3 +90,14 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
         </div>
     );
 };
+
+function buttonPalette(isError: boolean, isLight: boolean, accentColor: string) {
+    if (isError) {
+        return isLight
+            ? { border: 'rgba(239,68,68,0.3)', text: '#fca5a5', background: 'rgba(239,68,68,0.08)' }
+            : { border: '#fca5a540',            text: '#ef4444', background: '#fef2f208' };
+    }
+    return isLight
+        ? { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' }
+        : { border: `${accentColor}40`,        text: accentColor,            background: `${accentColor}08` };
+}

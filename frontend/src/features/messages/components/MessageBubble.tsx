@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
@@ -16,6 +16,7 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { getServiceTheme } from '../../../config/serviceThemes';
+import { useJustBecame } from '../../../hooks/useJustBecame';
 
 interface ShelterColors {
     picture: string;
@@ -246,17 +247,11 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const [playerTime, setPlayerTime] = useState(0);
     const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
 
-    // Auto-expand only on user-triggered completions (loading → done transition).
-    // Prevents Virtuoso remounts from re-expanding cached panels as messages
-    // scroll back into view.
-    const prevTranscriptionState = useRef(transcriptionState);
-    const prevTranslationState = useRef(translationState);
-    const transcriptionJustCompleted =
-        prevTranscriptionState.current === 'loading' && transcriptionState === 'done';
-    const translationJustCompleted =
-        prevTranslationState.current === 'loading' && translationState === 'done';
-    useEffect(() => { prevTranscriptionState.current = transcriptionState; }, [transcriptionState]);
-    useEffect(() => { prevTranslationState.current = translationState; }, [translationState]);
+    // Auto-expand only on user-triggered completions (loading → done
+    // transition). Prevents Virtuoso remounts from re-expanding cached
+    // panels as messages scroll back into view.
+    const transcriptionJustCompleted = useJustBecame(transcriptionState, 'done', 'loading');
+    const translationJustCompleted = useJustBecame(translationState, 'done', 'loading');
 
     // Long press timer for shelter overlay - use ref to persist across renders
     const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

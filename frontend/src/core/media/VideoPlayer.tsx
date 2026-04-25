@@ -8,6 +8,7 @@ import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription, type TranscriptionSegment } from '../../hooks/useTranscription';
+import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
@@ -113,12 +114,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const effectiveSegments = ownsTranscription
         ? transcription?.segments
         : transcriptionSegments;
-    // Detect loading→done for auto-expanding the fullscreen transcript panel.
-    const prevTranscriptionState = useRef(transcriptionState);
-    const transcriptionJustCompleted =
-        prevTranscriptionState.current === 'loading' && transcriptionState === 'done';
-    useEffect(() => { prevTranscriptionState.current = transcriptionState; }, [transcriptionState]);
-    // Internal seek bridge for the below-player TranscriptPanel (click-to-seek).
+    const transcriptionJustCompleted = useJustBecame(transcriptionState, 'done', 'loading');
+    // Bridge click-to-seek from the below-player TranscriptPanel into the video element.
     const [internalSeek, setInternalSeek] = useState<number | undefined>(undefined);
     const effectiveSeekTo = seekTo ?? internalSeek;
     const { t } = useTranslation();
