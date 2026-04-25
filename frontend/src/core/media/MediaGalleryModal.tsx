@@ -146,17 +146,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
-    // Clicking a timestamp should reset local state (close the photo/video
-    // detail view, stop voice playback) BEFORE bubbling up — the detail
-    // modal is a sibling of the gallery's main modal so wouldn't close
-    // otherwise, and leaving audio playing after navigating away is jarring.
-    const handleSourceJump = onSourceJump
-        ? (messageId: number) => {
+    // Closing detail/voice state must happen BEFORE bubbling up — the
+    // photo/video DetailModal is a sibling of the gallery's main modal
+    // so it wouldn't auto-close on parent state change, and leaving
+    // audio running after navigating away is jarring. Memoised so
+    // VoiceRow prop identity stays stable across renders.
+    const handleSourceJump = useMemo(() => {
+        if (!onSourceJump) return undefined;
+        return (messageId: number) => {
             setSelectedMedia(null);
             setSelectedVoice(null);
             onSourceJump(messageId);
-        }
-        : undefined;
+        };
+    }, [onSourceJump]);
 
     // Voice/video transcription is owned by the player components themselves
     // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").

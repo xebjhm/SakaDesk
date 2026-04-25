@@ -7,6 +7,7 @@ import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription } from '../../hooks/useTranscription';
+import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
 
@@ -126,8 +127,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const menuPortalRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Internal transcription wiring for gallery/fullscreen variants.
-    // `useTranscription` tolerates undefined ids; it just returns idle state.
+    // Only gallery/fullscreen own transcription; callers must supply all
+    // three ids or none.
     const ownsTranscription = (variant === 'gallery' || variant === 'fullscreen')
         && messageId !== undefined && service !== undefined && memberPath !== undefined;
     const {
@@ -141,12 +142,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         ownsTranscription ? messageId : undefined,
         ownsTranscription ? memberPath : undefined,
     );
-    // Detect fresh loading→done to auto-expand the transcript once per run.
-    const prevTranscriptionState = useRef(transcriptionState);
-    const transcriptionJustCompleted =
-        prevTranscriptionState.current === 'loading' && transcriptionState === 'done';
-    useEffect(() => { prevTranscriptionState.current = transcriptionState; }, [transcriptionState]);
-    // External seek bridge for the internal TranscriptPanel (click-to-seek).
+    const transcriptionJustCompleted = useJustBecame(transcriptionState, 'done', 'loading');
+    // Bridge click-to-seek from the internal TranscriptPanel into the audio element.
     const [internalSeek, setInternalSeek] = useState<number | undefined>(undefined);
     const effectiveSeekTo = seekTo ?? internalSeek;
 

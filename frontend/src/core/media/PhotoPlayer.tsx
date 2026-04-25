@@ -53,6 +53,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     className,
 }) => {
     const [hasError, setHasError] = useState(false);
+    const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
 
     const fallback = (extraClasses?: string) => (
         <div className={cn('flex items-center justify-center bg-gray-200', extraClasses)}>
@@ -61,7 +62,6 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     );
 
     if (variant === 'gallery-thumb') {
-        const effectiveLoading = loading ?? 'lazy';
         return (
             <button
                 ref={anchorRef}
@@ -85,7 +85,6 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     }
 
     if (variant === 'fullscreen') {
-        const effectiveLoading = loading ?? 'eager';
         if (hasError) return fallback('max-w-[90vw] max-h-[90vh] aspect-video');
         return (
             <img
@@ -101,7 +100,6 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     }
 
     // bubble (default for in-chat thumbnails)
-    const effectiveLoading = loading ?? 'eager';
     if (hasError) return fallback(cn('w-full h-full', className));
     return (
         <img
