@@ -61,3 +61,23 @@ def get_service_config(service: str) -> Dict[str, Any]:
     """Get full config for a service."""
     group = get_service_enum(service)
     return cast(Dict[str, Any], GROUP_CONFIG[group])
+
+
+def client_auth_params(
+    auth_mode: str, session_dir: Any, token_data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Choose the Client refresh strategy AND request profile for the auth mode.
+
+    - "mobile": long-lived ``refresh_token`` refresh, no browser fallback, and the
+      ``android`` request profile (Dart UA, mobile host, x-talk-app-platform=android)
+      so traffic mimics the official app.
+    - "web" (default): cookie/session refresh with headless-browser fallback and the
+      ``web`` request profile — behaves like the official web client.
+    """
+    if auth_mode == "mobile":
+        return {
+            "refresh_token": token_data.get("refresh_token"),
+            "auth_dir": None,
+            "platform": "android",
+        }
+    return {"refresh_token": None, "auth_dir": session_dir, "platform": "web"}

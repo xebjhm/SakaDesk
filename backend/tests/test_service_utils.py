@@ -58,3 +58,30 @@ def test_get_service_display_name_invalid():
     """Test get_service_display_name raises ValueError for invalid service."""
     with pytest.raises(ValueError, match="Unknown service"):
         get_service_display_name("invalid_service")
+
+
+# ---------------------------------------------------------------------------
+# client_auth_params — selects refresh strategy by auth mode
+# ---------------------------------------------------------------------------
+from backend.services.service_utils import client_auth_params  # noqa: E402
+
+
+def test_client_auth_params_web_uses_cookies_and_browser_fallback():
+    p = client_auth_params("web", "/sess", {"refresh_token": "RT", "cookies": {}})
+    assert p == {"refresh_token": None, "auth_dir": "/sess", "platform": "web"}
+
+
+def test_client_auth_params_mobile_uses_token_and_no_browser():
+    p = client_auth_params("mobile", "/sess", {"refresh_token": "RT"})
+    assert p == {"refresh_token": "RT", "auth_dir": None, "platform": "android"}
+
+
+def test_client_auth_params_unknown_mode_defaults_to_web():
+    p = client_auth_params("bogus", "/sess", {"refresh_token": "RT"})
+    assert p == {"refresh_token": None, "auth_dir": "/sess", "platform": "web"}
+
+
+def test_client_auth_params_mobile_sets_android_platform():
+    # Mobile mode must carry the android profile so pysaka emits app headers.
+    p = client_auth_params("mobile", "/sess", {"refresh_token": "RT"})
+    assert p["platform"] == "android"
