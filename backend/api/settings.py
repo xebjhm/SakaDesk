@@ -92,6 +92,9 @@ class SettingsResponse(BaseModel):
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
     auto_download_updates: bool = False  # Auto-download new versions in background
+    auth_mode: str = (
+        "web"  # "web" (browser headers + cookie refresh) or "mobile" (android app headers + refresh_token)
+    )
 
 
 class SettingsUpdate(BaseModel):
@@ -102,6 +105,7 @@ class SettingsUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None
     auto_download_updates: Optional[bool] = None
+    auth_mode: Optional[str] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -139,6 +143,7 @@ async def get_settings():
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
+        auth_mode=config.get("auth_mode", "web"),
     )
 
 
@@ -163,6 +168,12 @@ async def update_settings(update: SettingsUpdate):
             config["blogs_full_backup"] = update.blogs_full_backup
         if update.auto_download_updates is not None:
             config["auto_download_updates"] = update.auto_download_updates
+        if update.auth_mode is not None:
+            if update.auth_mode not in ("web", "mobile"):
+                raise HTTPException(
+                    status_code=400, detail="auth_mode must be 'web' or 'mobile'"
+                )
+            config["auth_mode"] = update.auth_mode
 
     config = await _store_update(_apply)
 
@@ -178,6 +189,7 @@ async def update_settings(update: SettingsUpdate):
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
+        auth_mode=config.get("auth_mode", "web"),
     )
 
 
