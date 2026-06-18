@@ -375,7 +375,7 @@ class AuthService:
                     tm.save_session(
                         group.value,
                         new_token,
-                        None,  # refresh_token (web flow doesn't use this)
+                        client.refresh_token,  # persist rotated refresh_token (mobile flow); parity with sync_service
                         new_cookies,
                     )
 

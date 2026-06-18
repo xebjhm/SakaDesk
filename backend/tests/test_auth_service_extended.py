@@ -513,6 +513,50 @@ class TestRefreshIfNeeded:
         assert result["status"] == "refreshed"
         assert result["remaining_seconds"] == 3600.0
 
+    def test_refresh_persists_rotated_refresh_token(self, auth_service):
+        """After a successful refresh, the client's (possibly rotated) refresh_token
+        must be persisted — not hardcoded None (parity with sync_service)."""
+
+        async def run():
+            with patch("backend.services.auth_service.get_token_manager") as mock_tm:
+                mock_tm.return_value.load_session.return_value = {
+                    "access_token": "old.tok",
+                    "refresh_token": "old.rt",
+                }
+                with patch.object(
+                    auth_service, "_get_token_remaining_seconds"
+                ) as mock_rem:
+                    mock_rem.side_effect = [300.0, 3600.0]
+                    with patch(
+                        "backend.services.auth_service.Client"
+                    ) as mock_client_cls:
+                        mock_client = MagicMock()
+                        mock_client.access_token = "new.tok"
+                        mock_client.refresh_token = "new.rt"
+                        mock_client.cookies = {"s": "v2"}
+                        mock_client.refresh_access_token = AsyncMock(return_value=True)
+                        mock_client_cls.return_value = mock_client
+
+                        with patch(
+                            "backend.services.auth_service.aiohttp.ClientSession"
+                        ) as mock_session_cls:
+                            mock_session = AsyncMock()
+                            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                                return_value=mock_session
+                            )
+                            mock_session_cls.return_value.__aexit__ = AsyncMock(
+                                return_value=False
+                            )
+                            await auth_service.refresh_if_needed(
+                                "hinatazaka46", threshold_minutes=10
+                            )
+                            return mock_tm.return_value.save_session.call_args
+
+        save_args = asyncio.run(run())
+        # save_session(service, access_token, refresh_token, cookies) — 3rd positional arg
+        assert save_args is not None
+        assert save_args[0][2] == "new.rt"
+
     def test_token_refresh_fails_returns_refresh_failed(self, auth_service):
         """When Client.refresh_access_token returns False, status is refresh_failed."""
 
