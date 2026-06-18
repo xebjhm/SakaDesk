@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
@@ -321,6 +321,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
                     />
 
+                    {/* Authentication mode */}
+                    <AuthModeSection
+                        authMode={appSettings.auth_mode ?? 'web'}
+                        onChange={(val) => onSaveSettings({ auth_mode: val })}
+                    />
+
                 </div>
             </div>
         </div>
@@ -395,6 +401,47 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
                     <span className="text-xs text-gray-500">{result}</span>
                 )}
             </div>
+        </div>
+    );
+}
+
+
+function AuthModeSection({ authMode, onChange }: {
+    authMode: 'web' | 'mobile';
+    onChange: (val: 'web' | 'mobile') => void;
+}) {
+    const { t } = useTranslation();
+    const isMobile = authMode === 'mobile';
+
+    return (
+        <div>
+            <label className="text-sm font-medium text-gray-700">
+                {t('settings.authMode')}
+            </label>
+            <div className="mt-2 inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+                {(['web', 'mobile'] as const).map((mode) => (
+                    <button
+                        key={mode}
+                        onClick={() => onChange(mode)}
+                        className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                            authMode === mode
+                                ? 'bg-white shadow text-gray-800 font-medium'
+                                : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                    >
+                        {t(mode === 'web' ? 'settings.authModeWeb' : 'settings.authModeMobile')}
+                    </button>
+                ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+                {t(isMobile ? 'settings.authModeMobileDesc' : 'settings.authModeWebDesc')}
+            </p>
+            {isMobile && (
+                <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                    <p className="text-xs text-amber-700">{t('settings.authModeMobileWarning')}</p>
+                </div>
+            )}
         </div>
     );
 }

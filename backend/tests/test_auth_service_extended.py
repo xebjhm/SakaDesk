@@ -1,6 +1,7 @@
 """Extended tests for AuthService — session management, concurrency, credentials, error handling."""
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -186,36 +187,58 @@ class TestTokenExpiryHelpers:
 # ---------------------------------------------------------------------------
 
 
-class TestConcurrentLoginPrevention:
-    """Test that _browser_lock serialises concurrent login_with_browser calls."""
+class TestConcurrentLoginSupersede:
+    """A new login_with_browser supersedes (cancels) any in-progress one instead
+    of silently queueing behind it. Queueing previously caused a multi-minute
+    deadlock when a stuck/abandoned login kept holding the browser lock."""
 
-    def test_second_login_waits_for_first(self, auth_service):
-        """Two concurrent logins should not overlap: the lock serialises them."""
-        call_order = []
-
-        async def fake_login(group, headless, user_data_dir, channel):
-            call_order.append("start")
-            await asyncio.sleep(0.05)
-            call_order.append("end")
-            return {"access_token": "tok"}
+    def test_second_login_supersedes_first(self, auth_service):
+        """Starting a login for a new service cancels the in-progress one and
+        proceeds, rather than blocking until the first finishes."""
+        events = []
 
         async def run():
+            entered = asyncio.Event()
+
+            async def fake_login(group, headless, user_data_dir, channel):
+                events.append(("start", group.value))
+                entered.set()
+                try:
+                    await asyncio.sleep(10)  # simulate an open browser awaiting the user
+                    return {"access_token": "tok"}
+                except asyncio.CancelledError:
+                    events.append(("cancelled", group.value))
+                    raise
+
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(side_effect=fake_login)
                 with patch.object(auth_service, "_save_credentials"):
                     task1 = asyncio.create_task(
                         auth_service.login_with_browser("hinatazaka46")
                     )
-                    # Small delay to ensure task1 acquires the lock first
-                    await asyncio.sleep(0.01)
+                    await asyncio.wait_for(entered.wait(), timeout=2)  # task1 is inside login
+                    entered.clear()
+
                     task2 = asyncio.create_task(
-                        auth_service.login_with_browser("hinatazaka46")
+                        auth_service.login_with_browser("nogizaka46")
                     )
-                    await asyncio.gather(task1, task2)
+                    # If the second login queued (old behaviour), task2 never
+                    # starts and this times out.
+                    await asyncio.wait_for(entered.wait(), timeout=2)
+
+                    # The first login must have been cancelled by the supersede.
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task1
+                    assert task1.cancelled()
+
+                    task2.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task2
 
         asyncio.run(run())
-        # Verify serialised execution: start-end-start-end, not start-start-end-end
-        assert call_order == ["start", "end", "start", "end"]
+        assert ("start", "hinatazaka46") in events
+        assert ("cancelled", "hinatazaka46") in events
+        assert ("start", "nogizaka46") in events
 
     def test_browser_lock_locked_check(self, auth_service):
         """When lock is held, login_with_browser logs a warning but still proceeds."""

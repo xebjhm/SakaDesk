@@ -8,6 +8,7 @@ This ensures consistent behavior across CLI and GUI:
 """
 
 import asyncio
+import contextlib
 import structlog
 from typing import Any, Dict, Optional, cast
 import aiohttp
@@ -23,6 +24,7 @@ from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
+    client_auth_params,
     get_all_services,
     get_service_enum,
     validate_service,
@@ -35,6 +37,8 @@ class AuthService:
     def __init__(self):
         self._session_dir = get_session_dir()
         self._browser_lock = asyncio.Lock()
+        # The in-progress browser-login task, so a newer login can supersede it.
+        self._active_login_task: Optional["asyncio.Task[Any]"] = None
 
     def _get_group(self, service: str) -> Group:
         """Convert service string to Group enum."""
@@ -177,12 +181,14 @@ class AuthService:
         validate_service(service)
         group = self._get_group(service)
 
-        if self._browser_lock.locked():
-            logger.warning(
-                "Browser login already in progress, queuing", service=service
-            )
+        # Supersede any in-progress browser login (e.g. the user switched
+        # services, or a previous window was abandoned). Cancelling closes the
+        # old browser and releases the lock, instead of silently queueing behind
+        # it — which previously deadlocked until the 5-minute login timeout.
+        await self._supersede_active_login(service)
 
         async with self._browser_lock:
+            self._active_login_task = asyncio.current_task()
             try:
                 logger.info(
                     "Starting browser login",
@@ -205,11 +211,31 @@ class AuthService:
                     )
                     return True
 
+            except asyncio.CancelledError:
+                logger.info(
+                    "Browser login superseded by a newer request", service=service
+                )
+                raise
             except Exception as e:
                 logger.error("Login error", service=service, error=str(e))
                 return False
+            finally:
+                if self._active_login_task is asyncio.current_task():
+                    self._active_login_task = None
 
         return False
+
+    async def _supersede_active_login(self, new_service: str) -> None:
+        """Cancel any in-progress browser login so a newer one can take over."""
+        task = self._active_login_task
+        if task is not None and not task.done():
+            logger.info(
+                "Superseding in-progress browser login", new_service=new_service
+            )
+            task.cancel()
+            # Wait for it to unwind (closing its browser, releasing the lock).
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
 
     def _save_credentials(self, service: str, creds: dict):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
@@ -321,14 +347,20 @@ class AuthService:
                 remaining_seconds=round(remaining_seconds),
             )
 
-            # Use proper API-based refresh via Client.refresh_access_token()
-            # This calls /update_token endpoint with cookies - much more reliable
-            # than headless browser scraping
+            # Use proper API-based refresh via Client.refresh_access_token().
+            # Auth mode decides the strategy: web = cookie/browser fallback,
+            # mobile = refresh_token grant (no browser).
+            from backend.services.settings_store import load_config as load_app_config
+
+            app_settings = await load_app_config()
+            auth_params = client_auth_params(
+                app_settings.get("auth_mode", "web"), self._session_dir, token_data
+            )
             client = Client(
                 group=group,
                 access_token=token,
                 cookies=token_data.get("cookies"),
-                auth_dir=self._session_dir,
+                **auth_params,
             )
 
             async with aiohttp.ClientSession() as session:

@@ -9,6 +9,8 @@ import asyncio
 import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -413,6 +415,18 @@ class TestFreshInstallCheck:
 
 class TestSelectFolder:
     """Tests for POST /api/settings/select-folder."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_tkinter(self):
+        """Stub the tkinter modules the endpoint imports so its import
+        succeeds on platforms without _tkinter (e.g. macOS dev). The dialog
+        itself never runs here because asyncio is mocked. The
+        tkinter-missing test overrides sys.modules['tkinter'] = None itself."""
+        with patch.dict(
+            "sys.modules",
+            {"tkinter": MagicMock(), "tkinter.filedialog": MagicMock()},
+        ):
+            yield
 
     def test_returns_selected_path(self):
         """Returns the path chosen by the user."""
