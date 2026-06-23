@@ -8,13 +8,24 @@ FRONTEND_PORT=5173
 BACKEND_LOG="/tmp/sakadesk-backend.log"
 FRONTEND_LOG="/tmp/sakadesk-frontend.log"
 
+# Cross-platform port helpers (lsof works on macOS and Linux; fuser is Linux-only)
+kill_port() {
+    local pids
+    pids=$(lsof -ti "tcp:$1" 2>/dev/null)
+    [ -n "$pids" ] && echo "$pids" | xargs kill 2>/dev/null || true
+}
+
+port_in_use() {
+    lsof -ti "tcp:$1" >/dev/null 2>&1
+}
+
 start_backend() {
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
     nohup uv run uvicorn backend.main:app --port $BACKEND_PORT --reload > "$BACKEND_LOG" 2>&1 &
     echo $! > /tmp/sakadesk-backend.pid
     sleep 2
-    if curl -s "http://localhost:$BACKEND_PORT/api/health" > /dev/null 2>&1; then
+    if curl -s "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
         echo "Backend started successfully"
     else
         echo "Backend starting... (check $BACKEND_LOG for details)"
@@ -32,7 +43,7 @@ start_frontend() {
 
 stop_backend() {
     echo "Stopping backend..."
-    fuser -k $BACKEND_PORT/tcp 2>/dev/null || true
+    kill_port $BACKEND_PORT
     [ -f /tmp/sakadesk-backend.pid ] && kill $(cat /tmp/sakadesk-backend.pid) 2>/dev/null
     rm -f /tmp/sakadesk-backend.pid
     echo "Backend stopped"
@@ -40,7 +51,7 @@ stop_backend() {
 
 stop_frontend() {
     echo "Stopping frontend..."
-    fuser -k $FRONTEND_PORT/tcp 2>/dev/null || true
+    kill_port $FRONTEND_PORT
     [ -f /tmp/sakadesk-frontend.pid ] && kill $(cat /tmp/sakadesk-frontend.pid) 2>/dev/null
     rm -f /tmp/sakadesk-frontend.pid
     echo "Frontend stopped"
@@ -48,12 +59,12 @@ stop_frontend() {
 
 status() {
     echo "=== SakaDesk Dev Server Status ==="
-    if fuser $BACKEND_PORT/tcp 2>/dev/null | grep -q .; then
+    if port_in_use $BACKEND_PORT; then
         echo "Backend:  RUNNING on port $BACKEND_PORT"
     else
         echo "Backend:  STOPPED"
     fi
-    if fuser $FRONTEND_PORT/tcp 2>/dev/null | grep -q .; then
+    if port_in_use $FRONTEND_PORT; then
         echo "Frontend: RUNNING on port $FRONTEND_PORT"
     else
         echo "Frontend: STOPPED"
