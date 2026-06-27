@@ -55,7 +55,7 @@
 - [ ] **Step 1: Add the dependency**
 
 ```bash
-cd ~/repos/Project-PyHako/SakaDesk && uv add faster-whisper
+cd ~/repos/Project-Saka/SakaDesk && uv add faster-whisper
 ```
 
 - [ ] **Step 2: Verify it installed**
@@ -214,7 +214,7 @@ class TestTranscriptionProviderInterface:
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_transcription_service.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_transcription_service.py -v`
 Expected: FAIL — ImportError
 
 - [ ] **Step 3: Write the implementation**
@@ -424,7 +424,7 @@ class TranscriptionStorage:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_transcription_service.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_transcription_service.py -v`
 Expected: All tests PASS
 
 - [ ] **Step 5: Commit**
@@ -486,7 +486,7 @@ def test_status_returns_queue_info():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_transcription_api.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_transcription_api.py -v`
 Expected: FAIL — routes not registered
 
 - [ ] **Step 3: Write the API**
@@ -690,12 +690,12 @@ app.include_router(transcription.router, prefix="/api/transcription", tags=["tra
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_transcription_api.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_transcription_api.py -v`
 Expected: All 4 tests PASS
 
 - [ ] **Step 6: Run all backend tests for regressions**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/ -v --timeout=30`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/ -v --timeout=30`
 Expected: All existing tests PASS
 
 - [ ] **Step 7: Commit**
@@ -803,7 +803,7 @@ def test_result_returns_real_type():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_search_migration.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_search_migration.py -v`
 Expected: FAIL — `_migrate_add_type_column` not found, result test fails because type is hardcoded "text"
 
 - [ ] **Step 3: Add migration function to search_service.py**
@@ -848,12 +848,12 @@ In the batch INSERT statements, add `type` to the columns and values. The messag
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_search_migration.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_search_migration.py -v`
 Expected: All 3 tests PASS
 
 - [ ] **Step 9: Run existing search tests for regressions**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_search_api.py backend/tests/test_search_service_units.py backend/tests/test_search_service_core.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_search_api.py backend/tests/test_search_service_units.py backend/tests/test_search_service_core.py -v`
 Expected: All existing tests PASS
 
 - [ ] **Step 10: Commit**
@@ -1070,7 +1070,7 @@ export function useTranscription(
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit`
 
 - [ ] **Step 3: Commit**
 
@@ -1146,7 +1146,7 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit`
 
 - [ ] **Step 3: Commit**
 
@@ -1301,7 +1301,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit`
 
 - [ ] **Step 3: Commit**
 
@@ -1360,7 +1360,7 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
 
 - [ ] **Step 2: Verify TypeScript compiles**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit`
 
 - [ ] **Step 3: Commit**
 
@@ -1447,7 +1447,7 @@ After the bubble content div (the one with `rounded-2xl` class), add:
 
 - [ ] **Step 5: Verify TypeScript compiles and tests pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit && npx vitest run`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit && npx vitest run`
 
 - [ ] **Step 6: Commit**
 
@@ -1492,7 +1492,7 @@ After the voice player `<div className="w-96">` block and after the VideoPlayer 
 
 - [ ] **Step 4: Verify TypeScript compiles and tests pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit && npx vitest run`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit && npx vitest run`
 
 - [ ] **Step 5: Commit**
 

@@ -247,7 +247,7 @@ def _save_window_geometry(geometry: dict) -> None:
 - [ ] **Step 2: Run existing tests to verify no regressions**
 
 ```bash
-cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/ -x -q
+cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/ -x -q
 ```
 
 Expected: All pass (desktop.py has no dedicated tests; settings tests should be unaffected since we're writing to settings.json directly, not through the async settings_store).
@@ -374,7 +374,7 @@ to:
 - [ ] **Step 4: Run frontend type check**
 
 ```bash
-cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit
+cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit
 ```
 
 Expected: No type errors.
@@ -382,7 +382,7 @@ Expected: No type errors.
 - [ ] **Step 5: Run frontend tests**
 
 ```bash
-cd ~/repos/Project-PyHako/SakaDesk/frontend && npx vitest run
+cd ~/repos/Project-Saka/SakaDesk/frontend && npx vitest run
 ```
 
 Expected: All existing tests pass.

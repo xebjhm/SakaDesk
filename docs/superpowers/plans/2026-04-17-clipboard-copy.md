@@ -63,7 +63,7 @@ def test_build_dropfiles_struct():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_platform_clipboard.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_platform_clipboard.py -v`
 Expected: FAIL — `ImportError` for `copy_file_to_clipboard` and `_build_dropfiles_data`
 
 - [ ] **Step 3: Write the implementation**
@@ -154,7 +154,7 @@ def copy_file_to_clipboard(file_path: Path) -> None:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_platform_clipboard.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_platform_clipboard.py -v`
 Expected: `test_copy_file_to_clipboard_not_windows` PASS (we're on Linux), `test_build_dropfiles_struct` PASS
 
 - [ ] **Step 5: Commit**
@@ -218,7 +218,7 @@ def test_clipboard_file_not_found(tmp_path):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_content_clipboard.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_content_clipboard.py -v`
 Expected: FAIL — 404 on the POST route (route doesn't exist yet)
 
 - [ ] **Step 3: Write the implementation**
@@ -276,12 +276,12 @@ async def copy_to_clipboard(request: ClipboardRequest):
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_content_clipboard.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_content_clipboard.py -v`
 Expected: All 3 tests PASS
 
 - [ ] **Step 5: Run existing content tests to check for regressions**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run pytest backend/tests/test_content_api.py backend/tests/test_content_api_extended.py -v`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run pytest backend/tests/test_content_api.py backend/tests/test_content_api_extended.py -v`
 Expected: All existing tests PASS
 
 - [ ] **Step 6: Commit**
@@ -397,7 +397,7 @@ describe('copyVideoToClipboard', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run vitest run frontend/src/utils/clipboard.test.ts`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run vitest run frontend/src/utils/clipboard.test.ts`
 Expected: FAIL — module `./clipboard` not found
 
 - [ ] **Step 3: Write the implementation**
@@ -499,7 +499,7 @@ function convertToPng(blob: Blob): Promise<Blob> {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run vitest run frontend/src/utils/clipboard.test.ts`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run vitest run frontend/src/utils/clipboard.test.ts`
 Expected: All tests PASS
 
 - [ ] **Step 5: Commit**
@@ -653,12 +653,12 @@ Inside the JSX return, after the source label button (after line 188) and before
 
 - [ ] **Step 5: Verify the app compiles**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk/frontend && npx tsc --noEmit`
+Run: `cd ~/repos/Project-Saka/SakaDesk/frontend && npx tsc --noEmit`
 Expected: No type errors
 
 - [ ] **Step 6: Run all frontend tests to check for regressions**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run vitest run`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run vitest run`
 Expected: All tests PASS
 
 - [ ] **Step 7: Commit**
@@ -676,7 +676,7 @@ git commit -m "feat(clipboard): add Ctrl+C copy handler to MediaViewerModal"
 
 - [ ] **Step 1: Start the dev server**
 
-Run: `cd ~/repos/Project-PyHako/SakaDesk && uv run uvicorn backend.main:app --reload --port 39281`
+Run: `cd ~/repos/Project-Saka/SakaDesk && uv run uvicorn backend.main:app --reload --port 39281`
 
 Open browser at `http://localhost:5173` (Vite dev server).
 
