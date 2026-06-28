@@ -61,7 +61,7 @@
     "authMode": "登入方式",
     "authModeWeb": "網頁",
     "authModeMobile": "手機 App",
-    "authModeWebDesc": "以官方網站相同的方式登入，相容性最高、最安全。可能定期會需要重新登入。",
+    "authModeWebDesc": "以官方網站相同的方式登入，相容性最高、最安全。可能需要定期重新登入。",
     "authModeMobileDesc": "像手機 App 一樣登入。只要登入過一次，就會自動保持登入。",
     "authModeMobileWarning": "進階功能，請自行承擔風險。此模式會讓程式表現得像手機 App 而非官方網站，帳號被標記或停權的風險大於網頁模式。",
     "checkForUpdates": "立即檢查",
