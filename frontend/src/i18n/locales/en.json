@@ -70,6 +70,8 @@
     "updateCheckFailed": "Check failed",
     "transcriptionDevice": "Transcription",
     "aiProvider": "AI Provider",
+    "resetDefaults": "Reset to defaults",
+    "resetConfirm": "Reset settings to defaults? Your data folder, saved API key, and language are kept.",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",
@@ -474,6 +476,8 @@
       "globalBlogs": "Translate all blog posts",
       "experimental": "Experimental",
       "clearCache": "Clear Translation Cache",
+      "clearApiKey": "Clear API key",
+      "clearApiKeyConfirm": "Remove the saved API key from this device?",
       "cacheClearedMsg": "Translation cache cleared"
     },
     "error": {

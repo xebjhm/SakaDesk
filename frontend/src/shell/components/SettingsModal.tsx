@@ -34,6 +34,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
+    const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
+    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
+    const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
@@ -137,6 +140,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
         localStorage.setItem('sakadesk-language', lang);
+    };
+
+    // Restore behavioural preferences to defaults. Non-destructive: keeps the
+    // data folder, the saved API key, and the chosen language.
+    const handleResetDefaults = async () => {
+        if (!window.confirm(t('settings.resetConfirm'))) return;
+        await onSaveSettings({
+            auto_sync_enabled: true,
+            adaptive_sync_enabled: true,
+            sync_interval_minutes: 15,
+            blogs_full_backup: false,
+            auto_download_updates: false,
+            auth_mode: 'web',
+        });
+        setTranscriptionEnabled(true);
+        setTranslationEnabled(false);
+        setTranslationTargetLanguage(null);
     };
 
     return (
@@ -360,6 +380,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     )}
                     </div>
                 </div>
+                <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-3 flex justify-end">
+                    <button
+                        onClick={handleResetDefaults}
+                        className="text-xs font-medium text-gray-500 hover:text-red-600"
+                    >
+                        {t('settings.resetDefaults')}
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -572,6 +600,15 @@ function AiTab() {
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 
+    const handleClearApiKey = async () => {
+        if (!window.confirm(t('translation.settings.clearApiKeyConfirm'))) return;
+        await fetch('/api/translation/clear-api-key', { method: 'POST' });
+        setApiKeyInput('');
+        setHasApiKey(false);
+        setApiKeyMasked(null);
+        setTestResult(null);
+    };
+
     const saveConfig = (updates: { provider?: string | null; model?: string | null; api_key?: string | null; target_language?: string | null }) => {
         const newProvider = updates.provider !== undefined ? updates.provider : provider;
         const newModel = updates.model !== undefined ? updates.model : model;
@@ -744,7 +781,15 @@ function AiTab() {
                                 </button>
                             </div>
                             {hasApiKey && !apiKeyInput && (
-                                <p className="text-xs mt-0.5 text-green-600">Saved securely in credential manager</p>
+                                <div className="flex items-center justify-between mt-0.5">
+                                    <p className="text-xs text-green-600">Saved securely in credential manager</p>
+                                    <button
+                                        onClick={handleClearApiKey}
+                                        className="text-xs font-medium text-red-500 hover:text-red-700"
+                                    >
+                                        {t('translation.settings.clearApiKey')}
+                                    </button>
+                                </div>
                             )}
                             {testResult && (
                                 <p className="text-xs mt-1 text-gray-500">{testResult}</p>

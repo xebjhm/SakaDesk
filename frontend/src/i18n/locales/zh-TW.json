@@ -70,6 +70,8 @@
     "updateCheckFailed": "檢查失敗",
     "transcriptionDevice": "語音轉文字",
     "aiProvider": "AI 服務商",
+    "resetDefaults": "重設為預設值",
+    "resetConfirm": "要將設定重設為預設值嗎？資料夾、已儲存的 API 金鑰與語言會保留。",
     "transcriptionCpuDesc": "適用所有電腦，速度較慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "測試 GPU 中...",
@@ -474,6 +476,8 @@
       "globalBlogs": "翻譯所有部落格文章",
       "experimental": "實驗性功能",
       "clearCache": "清除翻譯快取",
+      "clearApiKey": "清除 API 金鑰",
+      "clearApiKeyConfirm": "要從此裝置移除已儲存的 API 金鑰嗎？",
       "cacheClearedMsg": "翻譯快取已清除"
     },
     "error": {

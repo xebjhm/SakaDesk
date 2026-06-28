@@ -70,6 +70,8 @@
     "updateCheckFailed": "確認に失敗しました",
     "transcriptionDevice": "文字起こし",
     "aiProvider": "AIプロバイダー",
+    "resetDefaults": "デフォルトに戻す",
+    "resetConfirm": "設定をデフォルトに戻しますか？データフォルダ・保存済みのAPIキー・言語は保持されます。",
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",
@@ -474,6 +476,8 @@
       "globalBlogs": "すべてのブログ記事を翻訳",
       "experimental": "実験的機能",
       "clearCache": "翻訳キャッシュをクリア",
+      "clearApiKey": "APIキーを削除",
+      "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
       "cacheClearedMsg": "翻訳キャッシュをクリアしました"
     },
     "error": {

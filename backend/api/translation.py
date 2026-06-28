@@ -331,6 +331,18 @@ async def configure(request: ConfigureRequest):
     return {"ok": True}
 
 
+@router.post("/clear-api-key")
+async def clear_api_key():
+    """Delete the stored LLM API key from the OS credential manager.
+
+    Provider/model settings are left intact; only the secret is removed. Used by
+    the settings "Clear API key" action for users who want to wipe the key.
+    """
+    _delete_api_key()
+    logger.info("Cleared stored LLM API key")
+    return {"ok": True}
+
+
 @router.post("/test-connection")
 async def test_connection(request: TestConnectionRequest):
     """Test if the API key is valid by pinging the provider."""

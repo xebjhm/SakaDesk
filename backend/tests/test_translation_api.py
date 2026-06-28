@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -17,6 +19,15 @@ def test_translation_routes_registered():
         },
     )
     assert response.status_code == 200
+
+
+def test_clear_api_key_endpoint():
+    """POST /api/translation/clear-api-key removes the stored key and returns ok."""
+    with patch("backend.api.translation._delete_api_key") as mock_delete:
+        response = client.post("/api/translation/clear-api-key")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
+        mock_delete.assert_called_once()
 
 
 def test_translate_requires_fields():

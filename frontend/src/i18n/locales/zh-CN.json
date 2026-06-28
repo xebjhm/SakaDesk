@@ -70,6 +70,8 @@
     "updateCheckFailed": "检查失败",
     "transcriptionDevice": "语音转文字",
     "aiProvider": "AI 服务商",
+    "resetDefaults": "重置为默认值",
+    "resetConfirm": "要将设置重置为默认值吗？数据文件夹、已保存的 API 密钥与语言会保留。",
     "transcriptionCpuDesc": "适用所有电脑，速度较慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",
@@ -474,6 +476,8 @@
       "globalBlogs": "翻译所有博客文章",
       "experimental": "实验性功能",
       "clearCache": "清除翻译缓存",
+      "clearApiKey": "清除 API 密钥",
+      "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除"
     },
     "error": {
