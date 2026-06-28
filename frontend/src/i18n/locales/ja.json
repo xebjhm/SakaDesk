@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "設定",
+    "tabGeneral": "一般",
+    "tabSync": "同期",
+    "tabAi": "AI",
+    "tabAccount": "アカウント",
+    "tabUpdates": "アップデート",
     "outputFolder": "保存先フォルダ",
     "autoSync": "自動同期",
     "syncEvery": "同期間隔",

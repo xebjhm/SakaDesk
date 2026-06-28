@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, KeyRound, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
@@ -14,6 +14,16 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
+type SettingsTab = 'general' | 'sync' | 'ai' | 'account' | 'updates';
+
+const SETTINGS_TABS: { id: SettingsTab; labelKey: string; Icon: typeof SlidersHorizontal }[] = [
+    { id: 'general', labelKey: 'settings.tabGeneral', Icon: SlidersHorizontal },
+    { id: 'sync', labelKey: 'settings.tabSync', Icon: RefreshCw },
+    { id: 'ai', labelKey: 'settings.tabAi', Icon: Sparkles },
+    { id: 'account', labelKey: 'settings.tabAccount', Icon: KeyRound },
+    { id: 'updates', labelKey: 'settings.tabUpdates', Icon: Download },
+];
+
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
     outputDirInput,
@@ -24,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
+    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
@@ -130,7 +141,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
                     <h3 className="text-lg font-bold text-gray-800">{t('settings.title')}</h3>
                     <button
@@ -140,7 +151,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         X
                     </button>
                 </div>
-                <div className="p-6 space-y-6 overflow-y-auto">
+                <div className="flex flex-1 min-h-0">
+                    {/* Category nav */}
+                    <nav className="w-44 flex-shrink-0 border-r bg-gray-50 p-2 space-y-0.5 overflow-y-auto">
+                        {SETTINGS_TABS.map(({ id, labelKey, Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => setActiveTab(id)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                                    activeTab === id
+                                        ? 'bg-white shadow-sm text-gray-800 font-medium'
+                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                <Icon className="w-4 h-4 shrink-0" />
+                                {t(labelKey)}
+                            </button>
+                        ))}
+                    </nav>
+                    {/* Active category content */}
+                    <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto">
+                    {activeTab === 'general' && (<>
                     {/* Language Selector */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -180,7 +211,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </button>
                         </div>
                     </div>
+                    </>)}
 
+                    {activeTab === 'sync' && (<>
                     {/* Sync Mode */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -308,25 +341,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                         )}
                     </div>
+                    </>)}
 
+                    {activeTab === 'ai' && (<>
                     {/* Transcription */}
                     <TranscriptionSection />
 
                     {/* Translation */}
                     <TranslationSection />
+                    </>)}
 
-                    {/* Updates */}
-                    <UpdatesSection
-                        autoDownload={appSettings.auto_download_updates ?? false}
-                        onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
-                    />
+                    {activeTab === 'account' && (
+                        <AuthModeSection
+                            authMode={appSettings.auth_mode ?? 'web'}
+                            onChange={(val) => onSaveSettings({ auth_mode: val })}
+                        />
+                    )}
 
-                    {/* Authentication mode */}
-                    <AuthModeSection
-                        authMode={appSettings.auth_mode ?? 'web'}
-                        onChange={(val) => onSaveSettings({ auth_mode: val })}
-                    />
-
+                    {activeTab === 'updates' && (
+                        <UpdatesSection
+                            autoDownload={appSettings.auto_download_updates ?? false}
+                            onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
+                        />
+                    )}
+                    </div>
                 </div>
             </div>
         </div>

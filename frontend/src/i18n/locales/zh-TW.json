@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "設定",
+    "tabGeneral": "一般",
+    "tabSync": "同步",
+    "tabAi": "AI",
+    "tabAccount": "帳號",
+    "tabUpdates": "更新",
     "outputFolder": "輸出資料夾",
     "autoSync": "自動同步",
     "syncEvery": "同步間隔",

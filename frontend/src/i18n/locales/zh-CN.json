@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "设置",
+    "tabGeneral": "常规",
+    "tabSync": "同步",
+    "tabAi": "AI",
+    "tabAccount": "账号",
+    "tabUpdates": "更新",
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",

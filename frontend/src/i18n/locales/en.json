@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "Settings",
+    "tabGeneral": "General",
+    "tabSync": "Sync",
+    "tabAi": "AI",
+    "tabAccount": "Account",
+    "tabUpdates": "Updates",
     "outputFolder": "Output Folder",
     "autoSync": "Auto-Sync",
     "syncEvery": "Sync every",
