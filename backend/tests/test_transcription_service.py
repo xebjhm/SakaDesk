@@ -150,7 +150,7 @@ class TestGeminiTranscriptionProvider:
     def test_instantiates_with_api_key(self):
         provider = GeminiTranscriptionProvider(api_key="test-key")
         assert provider._api_key == "test-key"
-        assert provider._model == "gemini-3.1-flash-lite-preview"
+        assert provider._model == "gemini-3.1-flash-lite"
 
     def test_custom_model(self):
         provider = GeminiTranscriptionProvider(

@@ -476,8 +476,8 @@
       "rateLimited": "已达速率限制，请稍后再试"
     },
     "dataPolicy": {
-      "geminiFree": "免费方案：数据可能被 Google 用于改善产品",
-      "geminiPaid": "付费方案：数据不会用于训练",
+      "geminiFree": "免费方案 — Flash Lite（推荐）：每日约 500 次；Flash：每日约 20 次。数据可能被 Google 用于改善产品。",
+      "geminiPaid": "付费方案 — 每 100 次翻译约 US$0.01。数据不会用于训练。",
       "openai": "API 数据不会用于训练"
     }
   }

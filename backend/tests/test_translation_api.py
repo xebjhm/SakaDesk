@@ -11,7 +11,7 @@ def test_translation_routes_registered():
         "/api/translation/configure",
         json={
             "provider": "gemini",
-            "model": "gemini-3.1-flash-lite-preview",
+            "model": "gemini-3.1-flash-lite",
             "api_key": "test-key",
             "target_language": "en",
         },

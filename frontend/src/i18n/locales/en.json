@@ -476,8 +476,8 @@
       "rateLimited": "Rate limit reached, try again later"
     },
     "dataPolicy": {
-      "geminiFree": "Free tier: data may be used by Google to improve products",
-      "geminiPaid": "Paid tier: data not used for training",
+      "geminiFree": "Free tier — Flash Lite (recommended): ~500 requests/day; Flash: ~20/day. Your data may be used by Google to improve its products.",
+      "geminiPaid": "Paid tier — about US$0.01 per 100 translations. Your data isn't used for training.",
       "openai": "API data not used for training"
     }
   }

@@ -152,7 +152,7 @@ class TranslationProvider(ABC):
 class GeminiProvider(TranslationProvider):
     """Google Gemini translation provider."""
 
-    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite-preview"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite"):
         self._api_key = api_key
         self._model = model
 

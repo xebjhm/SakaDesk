@@ -33,12 +33,12 @@ logger = structlog.get_logger(__name__)
 # Frontend reads this via /api/translation/models endpoint.
 GEMINI_MODELS = [
     {
-        "id": "gemini-3.1-flash-lite-preview",
-        "label": "Gemini 3.1 Flash Lite — fast, free tier (recommended)",
+        "id": "gemini-3.1-flash-lite",
+        "label": "Gemini 3.1 Flash Lite",
     },
     {
-        "id": "gemini-3.1-flash-preview",
-        "label": "Gemini 3.1 Flash — higher quality",
+        "id": "gemini-3.5-flash",
+        "label": "Gemini 3.5 Flash",
     },
 ]
 

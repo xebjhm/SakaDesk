@@ -652,8 +652,8 @@ function TranslationSettingsSection() {
                         <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
                             {provider === 'gemini' && (
                                 <>
-                                    <p>Free tier: Flash Lite 500 RPD / Flash 20 RPD. Data may be used by Google to improve products.</p>
-                                    <p>Paid tier: 100 translations ≈ US$0.01. Data not used for training.</p>
+                                    <p>{t('translation.settings.geminiFree')}</p>
+                                    <p>{t('translation.settings.geminiPaid')}</p>
                                 </>
                             )}
                         </div>
