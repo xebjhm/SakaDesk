@@ -652,8 +652,8 @@ function TranslationSettingsSection() {
                         <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
                             {provider === 'gemini' && (
                                 <>
-                                    <p>{t('translation.settings.geminiFree')}</p>
-                                    <p>{t('translation.settings.geminiPaid')}</p>
+                                    <p>{t('translation.dataPolicy.geminiFree')}</p>
+                                    <p>{t('translation.dataPolicy.geminiPaid')}</p>
                                 </>
                             )}
                         </div>
