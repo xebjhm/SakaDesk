@@ -141,7 +141,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl overflow-hidden h-[600px] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
                     <h3 className="text-lg font-bold text-gray-800">{t('settings.title')}</h3>
                     <button
@@ -537,9 +537,9 @@ function AiTab() {
 
     const MODELS = modelOptions;
 
+    // Source content is Japanese, so Japanese is not offered as a target.
     const TARGET_LANGUAGES = [
         { value: 'en', label: 'English' },
-        { value: 'ja', label: '日本語' },
         { value: 'zh-TW', label: '繁體中文' },
         { value: 'zh-CN', label: '简体中文' },
         { value: 'yue', label: '廣東話' },
