@@ -61,7 +61,7 @@
     "authMode": "Sign-in method",
     "authModeWeb": "Web",
     "authModeMobile": "Mobile app",
-    "authModeWebDesc": "Signs in the same way as the official website — the most compatible and safest choice. Keeping you signed in may occasionally reopen the browser.",
+    "authModeWebDesc": "Signs in the same way as the official website — the most compatible and safest choice. May periodically require signing in again.",
     "authModeMobileDesc": "Signs in like the phone app. Once you've signed in, it stays signed in on its own.",
     "authModeMobileWarning": "Advanced — use at your own risk. This makes the app behave like the phone app instead of the official website; the risk of your account being flagged or suspended is higher than in web mode.",
     "checkForUpdates": "Check Now",

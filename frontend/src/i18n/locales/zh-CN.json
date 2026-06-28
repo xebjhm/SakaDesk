@@ -61,7 +61,7 @@
     "authMode": "登录方式",
     "authModeWeb": "网页",
     "authModeMobile": "手机 App",
-    "authModeWebDesc": "以官方网站相同的方式登录，兼容性最高、最安全。保持登录时可能偶尔会重新打开浏览器。",
+    "authModeWebDesc": "以官方网站相同的方式登录，兼容性最高、最安全。可能需要定期重新登录。",
     "authModeMobileDesc": "像手机 App 一样登录。只要登录过一次，就会自动保持登录。",
     "authModeMobileWarning": "高级功能，请自行承担风险。此模式会让程序表现得像手机 App 而非官方网站，账号被标记或封禁的风险高于网页模式。",
     "checkForUpdates": "立即检查",
