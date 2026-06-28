@@ -447,10 +447,10 @@ function AuthModeSection({ authMode, onChange }: {
 
     return (
         <div>
-            <label className="text-sm font-medium text-gray-700">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
                 {t('settings.authMode')}
             </label>
-            <div className="mt-2 inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+            <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
                 {(['web', 'mobile'] as const).map((mode) => (
                     <button
                         key={mode}
