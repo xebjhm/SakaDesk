@@ -343,13 +343,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     </>)}
 
-                    {activeTab === 'ai' && (<>
-                    {/* Transcription */}
-                    <TranscriptionSection />
-
-                    {/* Translation */}
-                    <TranslationSection />
-                    </>)}
+                    {activeTab === 'ai' && <AiTab />}
 
                     {activeTab === 'account' && (
                         <AuthModeSection
@@ -485,66 +479,12 @@ function AuthModeSection({ authMode, onChange }: {
 }
 
 
-function TranslationSection() {
-    const { t } = useTranslation();
-    const translationEnabled = useAppStore(s => s.translationEnabled);
-    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
-
-    return (
-        <div>
-            <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    {t('translation.settings.title')}
-                    <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
-                        {t('translation.settings.experimental')}
-                    </span>
-                </label>
-                <button
-                    onClick={() => setTranslationEnabled(!translationEnabled)}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                        translationEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                    }`}
-                >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        translationEnabled ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                </button>
-            </div>
-            {translationEnabled && <TranslationSettingsSection />}
-        </div>
-    );
-}
-
-
-function TranscriptionSection() {
+function AiTab() {
     const { t } = useTranslation();
     const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
     const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
-
-    return (
-        <div>
-            <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">
-                    {t('settings.transcriptionDevice')}
-                </label>
-                <button
-                    onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                        transcriptionEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                    }`}
-                >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        transcriptionEnabled ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                </button>
-            </div>
-        </div>
-    );
-}
-
-
-function TranslationSettingsSection() {
-    const { t } = useTranslation();
+    const translationEnabled = useAppStore(s => s.translationEnabled);
+    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<string | null>(null);
@@ -670,104 +610,149 @@ function TranslationSettingsSection() {
         saveConfig({ provider: value, model: newModel });
     };
 
+    const showProvider = transcriptionEnabled || translationEnabled;
+
     return (
-        <div>
-            <div className="space-y-3">
-                {/* Provider */}
-                <div>
-                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
-                    <select
-                        value={provider ?? ''}
-                        onChange={(e) => handleProviderChange(e.target.value || null)}
-                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <>
+            {/* Transcription */}
+            <div>
+                <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                        {t('settings.transcriptionDevice')}
+                    </label>
+                    <button
+                        onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${
+                            transcriptionEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                        }`}
                     >
-                        <option value="">—</option>
-                        {PROVIDERS.map(p => (
-                            <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                    </select>
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            transcriptionEnabled ? 'translate-x-7' : 'translate-x-1'
+                        }`} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Translation */}
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        {t('translation.settings.title')}
+                        <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
+                            {t('translation.settings.experimental')}
+                        </span>
+                    </label>
+                    <button
+                        onClick={() => setTranslationEnabled(!translationEnabled)}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${
+                            translationEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                        }`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            translationEnabled ? 'translate-x-7' : 'translate-x-1'
+                        }`} />
+                    </button>
+                </div>
+                {translationEnabled && (
+                    <div className="space-y-3">
+                        {/* Target Language */}
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.targetLanguage')}</label>
+                            <select
+                                value={targetLang ?? ''}
+                                onChange={(e) => saveConfig({ target_language: e.target.value || null })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">—</option>
+                                {TARGET_LANGUAGES.map(l => (
+                                    <option key={l.value} value={l.value}>{l.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {/* Clear Cache */}
+                        <button
+                            onClick={handleClearCache}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                            {t('translation.settings.clearCache')}
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Shared AI provider — used by both Transcription and Translation */}
+            {showProvider && (
+                <div className="pt-4 border-t border-gray-100 space-y-3">
+                    <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    {/* Provider */}
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
+                        <select
+                            value={provider ?? ''}
+                            onChange={(e) => handleProviderChange(e.target.value || null)}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">—</option>
+                            {PROVIDERS.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                        {provider === 'gemini' && (
+                            <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
+                                <p>{t('translation.dataPolicy.geminiFree')}</p>
+                                <p>{t('translation.dataPolicy.geminiPaid')}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Model */}
+                    {provider && MODELS[provider] && (
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
+                            <select
+                                value={model ?? ''}
+                                onChange={(e) => saveConfig({ model: e.target.value || null })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                {MODELS[provider].map(m => (
+                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* API Key */}
                     {provider && (
-                        <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
-                            {provider === 'gemini' && (
-                                <>
-                                    <p>{t('translation.dataPolicy.geminiFree')}</p>
-                                    <p>{t('translation.dataPolicy.geminiPaid')}</p>
-                                </>
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="password"
+                                    value={apiKeyInput}
+                                    onChange={(e) => setApiKeyInput(e.target.value)}
+                                    onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                                />
+                                <button
+                                    onClick={handleTestConnection}
+                                    disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    {testing && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    {t('translation.settings.testConnection')}
+                                </button>
+                            </div>
+                            {hasApiKey && !apiKeyInput && (
+                                <p className="text-xs mt-0.5 text-green-600">Saved securely in credential manager</p>
+                            )}
+                            {testResult && (
+                                <p className="text-xs mt-1 text-gray-500">{testResult}</p>
                             )}
                         </div>
                     )}
                 </div>
-
-                {/* Model */}
-                {provider && MODELS[provider] && (
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
-                        <select
-                            value={model ?? ''}
-                            onChange={(e) => saveConfig({ model: e.target.value || null })}
-                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            {MODELS[provider].map(m => (
-                                <option key={m.value} value={m.value}>{m.label}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-
-                {/* API Key */}
-                {provider && (
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
-                        <div className="flex gap-2">
-                            <input
-                                type="password"
-                                value={apiKeyInput}
-                                onChange={(e) => setApiKeyInput(e.target.value)}
-                                onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
-                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
-                            />
-                            <button
-                                onClick={handleTestConnection}
-                                disabled={testing || (!apiKeyInput && !hasApiKey)}
-                                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
-                            >
-                                {testing && <Loader2 className="w-3 h-3 animate-spin" />}
-                                {t('translation.settings.testConnection')}
-                            </button>
-                        </div>
-                        {hasApiKey && !apiKeyInput && (
-                            <p className="text-xs mt-0.5 text-green-600">Saved securely in credential manager</p>
-                        )}
-                        {testResult && (
-                            <p className="text-xs mt-1 text-gray-500">{testResult}</p>
-                        )}
-                    </div>
-                )}
-
-                {/* Target Language */}
-                <div>
-                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.targetLanguage')}</label>
-                    <select
-                        value={targetLang ?? ''}
-                        onChange={(e) => saveConfig({ target_language: e.target.value || null })}
-                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="">—</option>
-                        {TARGET_LANGUAGES.map(l => (
-                            <option key={l.value} value={l.value}>{l.label}</option>
-                        ))}
-                    </select>
-                </div>
-
-                {/* Clear Cache */}
-                <button
-                    onClick={handleClearCache}
-                    className="text-xs text-red-500 hover:text-red-700 font-medium"
-                >
-                    {t('translation.settings.clearCache')}
-                </button>
-            </div>
-        </div>
+            )}
+        </>
     );
 }

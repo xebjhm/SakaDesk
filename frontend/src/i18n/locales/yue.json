@@ -69,6 +69,7 @@
         "upToDate": "已經係最新版本",
         "updateCheckFailed": "檢查失敗",
         "transcriptionDevice": "語音轉文字",
+        "aiProvider": "AI 服務商",
         "transcriptionCpuDesc": "所有電腦都用得，速度慢啲",
         "transcriptionGpuDesc": "要 NVIDIA GPU（CUDA），快好多",
         "transcriptionGpuTesting": "測試緊 GPU...",

@@ -69,6 +69,7 @@
     "upToDate": "You're up to date",
     "updateCheckFailed": "Check failed",
     "transcriptionDevice": "Transcription",
+    "aiProvider": "AI Provider",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",
