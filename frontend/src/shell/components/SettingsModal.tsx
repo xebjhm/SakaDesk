@@ -433,13 +433,13 @@ function AuthModeSection({ authMode, onChange }: {
                     </button>
                 ))}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="mt-2.5 max-w-md text-xs leading-relaxed text-gray-500">
                 {t(isMobile ? 'settings.authModeMobileDesc' : 'settings.authModeWebDesc')}
             </p>
             {isMobile && (
-                <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-                    <p className="text-xs text-amber-700">{t('settings.authModeMobileWarning')}</p>
+                <div className="mt-2.5 flex max-w-md items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                    <p className="text-xs leading-relaxed text-amber-700">{t('settings.authModeMobileWarning')}</p>
                 </div>
             )}
         </div>
