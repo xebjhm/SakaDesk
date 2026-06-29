@@ -27,7 +27,7 @@ Completed items have been archived — see git history for details.
 | **Audio/Video Transcription** (was P3.6) | Implemented via **Gemini API** (structured output → timestamps/segments), not the originally-researched local whisper. Backend `transcription_service.py` + `/api/transcription`; frontend `TranscribeButton`/`TranscriptPanel`/`SubtitleOverlay`; transcripts are searchable. Background job-queue intentionally deferred (see P4.8). |
 | **Translation** (new, was untracked) | DeepL-based. Backend `translation_service.py` + `/api/translate`; unified translate button + immersive blog translation. |
 | **Clipboard Copy** (new, was untracked) | Ctrl+C to copy media (photo/video/voice) from the media viewer. |
-| **Mobile Auth Mode** (part of P2.3) | pysaka `platform="android"` profile (mobile host, Dart UA, app headers) + `refresh_token` refresh; SakaDesk `auth_mode` web/mobile toggle. Merged to pysaka `dev` 2026-06-28. ⚠️ End-to-end testing still pending. |
+| **Mobile Auth Mode** (part of P2.3) | pysaka mobile request profile + `refresh_token` refresh; SakaDesk `auth_mode` web/mobile toggle. Merged to pysaka `dev` 2026-06-28. ⚠️ End-to-end testing still pending. |
 
 ---
 
@@ -95,7 +95,7 @@ Completed items have been archived — see git history for details.
 
 **Goal:** Allow users to provide their own `refresh_token` to authenticate without browser login.
 
-**Use case:** Users who obtain a `refresh_token` from mobile app traffic capture can bypass the interactive browser-based OAuth flow.
+**Use case:** Users who already have a `refresh_token` can bypass the interactive browser-based OAuth flow.
 
 **Already implemented:**
 - [x] `Client.__init__` accepts `refresh_token` + `platform` params (pysaka)
