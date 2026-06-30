@@ -5,6 +5,7 @@ import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
+import { SERVICES } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -524,6 +525,83 @@ function AuthModeSection({ authMode, onChange }: {
                     <p className="text-xs leading-relaxed text-amber-700">{t('settings.authModeMobileWarning')}</p>
                 </div>
             )}
+            {isMobile && <ManualTokenForm />}
+        </div>
+    );
+}
+
+
+function ManualTokenForm() {
+    const { t } = useTranslation();
+    const [service, setService] = useState(SERVICES[0]?.id ?? '');
+    const [token, setToken] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+    const handleSave = async () => {
+        if (!token.trim()) return;
+        setSaving(true);
+        setResult(null);
+        try {
+            const res = await fetch('/api/auth/manual-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service, refresh_token: token.trim() }),
+            });
+            if (res.ok) {
+                const name = SERVICES.find((s) => s.id === service)?.displayName ?? service;
+                setResult({ ok: true, msg: t('settings.manualTokenSuccess', { service: name }) });
+                setToken('');
+            } else {
+                setResult({ ok: false, msg: t('settings.manualTokenError') });
+            }
+        } catch {
+            setResult({ ok: false, msg: t('settings.manualTokenError') });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="mt-3 max-w-md rounded-lg border border-gray-200 p-3">
+            <p className="text-sm font-medium text-gray-700">{t('settings.manualTokenTitle')}</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">{t('settings.manualTokenDesc')}</p>
+            <div className="mt-3 space-y-2">
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('settings.manualTokenService')}</label>
+                    <select
+                        value={service}
+                        onChange={(e) => { setService(e.target.value); setResult(null); }}
+                        className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm bg-white"
+                    >
+                        {SERVICES.map((s) => (
+                            <option key={s.id} value={s.id}>{s.displayName}</option>
+                        ))}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('settings.manualTokenLabel')}</label>
+                    <input
+                        type="password"
+                        value={token}
+                        onChange={(e) => { setToken(e.target.value); setResult(null); }}
+                        placeholder={t('settings.manualTokenPlaceholder')}
+                        className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm font-mono"
+                        autoComplete="off"
+                    />
+                </div>
+                <button
+                    onClick={handleSave}
+                    disabled={saving || !token.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                >
+                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {saving ? t('settings.manualTokenSaving') : t('settings.manualTokenSave')}
+                </button>
+                {result && (
+                    <p className={`text-xs ${result.ok ? 'text-green-600' : 'text-red-600'}`}>{result.msg}</p>
+                )}
+            </div>
         </div>
     );
 }

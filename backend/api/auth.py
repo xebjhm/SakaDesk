@@ -26,6 +26,11 @@ class RefreshResult(BaseModel):
     status: str
 
 
+class ManualTokenRequest(BaseModel):
+    service: str
+    refresh_token: str
+
+
 @router.get("/status", response_model=AllServicesStatus)
 async def get_status():
     """Get authentication status for all services."""
@@ -44,6 +49,32 @@ async def login(service: str = Query(..., description="Service to login to")):
     if not success:
         raise HTTPException(status_code=401, detail="Login failed")
     return {"status": "ok", "service": service}
+
+
+@router.post("/manual-token")
+async def manual_token(req: ManualTokenRequest):
+    """Store a user-supplied refresh_token for mobile mode.
+
+    Mobile mode reuses a stored session and cannot bootstrap from the web login
+    anymore (its response no longer carries the refresh_token). This lets the user
+    paste a refresh_token captured from the official app; we validate it by minting
+    an access_token via /update_token, then persist the session.
+    """
+    try:
+        validate_service(req.service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {req.service}")
+
+    if not req.refresh_token or not req.refresh_token.strip():
+        raise HTTPException(status_code=422, detail="refresh_token is required")
+
+    ok = await auth_service.set_manual_token(req.service, req.refresh_token.strip())
+    if not ok:
+        raise HTTPException(
+            status_code=401,
+            detail="Token rejected. Double-check the refresh token and try again.",
+        )
+    return {"status": "ok", "service": req.service}
 
 
 @router.post("/logout")

@@ -237,6 +237,49 @@ class AuthService:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
+    async def set_manual_token(self, service: str, refresh_token: str) -> bool:
+        """Bootstrap a session from a user-supplied refresh_token (for mobile mode).
+
+        The refresh_token is the only long-lived credential the user can capture from
+        the official app. We mint a fresh access_token from it via ``/update_token``
+        (android profile) — which both validates the token and yields the access_token
+        — then persist the session. Returns False if the refresh_token is rejected.
+        The token itself is never logged.
+        """
+        validate_service(service)
+        group = self._get_group(service)
+
+        client = Client(
+            group=group,
+            refresh_token=refresh_token,
+            platform="android",
+        )
+        try:
+            async with aiohttp.ClientSession() as session:
+                ok = await client.refresh_access_token(session)
+        except Exception as e:
+            logger.error(
+                "Manual token validation failed", service=service, error=str(e)
+            )
+            return False
+
+        if not ok or not client.access_token:
+            logger.warning("Manual token rejected by server", service=service)
+            return False
+
+        # Persist the freshly minted access_token + (possibly rotated) refresh_token.
+        # No web cookies in mobile mode.
+        self._save_credentials(
+            service,
+            {
+                "access_token": client.access_token,
+                "refresh_token": client.refresh_token,
+                "cookies": {},
+            },
+        )
+        logger.info("Manual mobile token stored", service=service)
+        return True
+
     def _save_credentials(self, service: str, creds: dict):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
