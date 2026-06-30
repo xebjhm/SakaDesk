@@ -13,7 +13,7 @@ import aiohttp
 from collections import defaultdict
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 
 from pysaka import Client
@@ -277,7 +277,7 @@ async def get_message_dates(member_path: str):
 
 class MarkRoomReadRemoteRequest(BaseModel):
     service: str
-    group_id: int
+    group_id: int = Field(gt=0)
 
 
 @router.post("/mark-room-read-remote")
@@ -290,12 +290,23 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
     """
     from backend.services.settings_store import load_config
 
+    # Test mode must never fire a live mutation against the official app.
+    if is_test_mode():
+        return {"ok": True, "skipped": True}
+
     config = await load_config()
     if not config.get("sync_read_to_phone"):
         return {"ok": True, "skipped": True}
 
+    # Validate up front so a bad service id surfaces as a 400 rather than being
+    # swallowed into a success-shaped {"ok": false} by the catch-all below.
     try:
-        group = get_service_enum(req.service)
+        validate_service(req.service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    group = get_service_enum(req.service)
+
+    try:
         token_data = get_token_manager().load_session(group.value)
         if not token_data or not token_data.get("access_token"):
             return {"ok": False}

@@ -367,6 +367,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // mobile app, mirroring tapping into the room there. Gated on the setting here so
     // the off-by-default majority skips the round-trip entirely; the backend re-checks
     // the setting authoritatively. Fire-and-forget — never blocks opening the room.
+    // Keyed on selectedGroupDir only: the setting is read at fire time but is NOT a
+    // trigger, so toggling it on while already viewing a room does not clear that room.
     useEffect(() => {
         if (!selectedGroupDir || !appSettings?.sync_read_to_phone) return;
         const parsedOpen = parseReadStatePath(selectedGroupDir);
@@ -376,7 +378,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
         }).catch(() => {});
-    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on room open, not on setting toggle
+    }, [selectedGroupDir]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
