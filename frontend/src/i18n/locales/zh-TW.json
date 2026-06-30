@@ -67,6 +67,7 @@
     "authModeMobileDesc": "像手機 App 一樣登入。只要登入過一次，就會自動保持登入。",
     "authModeMobileWarning": "進階功能，請自行承擔風險。此模式會讓 SakaDesk 表現得像官方 App 而非官方網站，帳號被標記或停權的風險大於網頁模式。",
     "authModeIntro": "SakaDesk 預設使用網頁登入，可能需要不時重新登入。手機 App 模式改用 refresh_token，因此不需要登入。",
+    "authModeNoAccounts": "請先登入某個服務，才能選擇它的登入方式。",
     "manualTokenStorageNote": "你的 refresh_token 會安全地儲存在你的裝置上。",
     "manualTokenPlaceholder": "貼上你的 refresh_token",
     "manualTokenSave": "驗證並儲存",

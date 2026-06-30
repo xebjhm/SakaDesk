@@ -67,6 +67,7 @@
     "authModeMobileDesc": "スマホアプリのようにログインします。一度ログインすれば、ログイン状態を自動で保ちます。",
     "authModeMobileWarning": "上級者向け・自己責任です。SakaDesk が公式サイトではなく公式アプリのように動作するため、アカウントが制限・停止されるリスクはウェブモードより高くなります。",
     "authModeIntro": "SakaDesk は既定でウェブログインを使います（ときどき再ログインが必要になります）。スマホアプリモードは代わりに refresh_token を使うため、ログインは不要です。",
+    "authModeNoAccounts": "ログイン方式を選ぶには、まずサービスにサインインしてください。",
     "manualTokenStorageNote": "refresh_token は端末内に安全に保存されます。",
     "manualTokenPlaceholder": "refresh_token を貼り付け",
     "manualTokenSave": "確認して保存",

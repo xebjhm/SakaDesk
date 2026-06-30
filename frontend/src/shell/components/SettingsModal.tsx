@@ -486,23 +486,40 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
 function AuthModeSection() {
     const { t } = useTranslation();
     const [modes, setModes] = useState<Record<string, 'web' | 'mobile'>>({});
+    const [visible, setVisible] = useState<typeof SERVICES>([]);
+    const [loaded, setLoaded] = useState(false);
 
-    const loadModes = useCallback(async () => {
+    const load = useCallback(async () => {
+        // Only services you're signed into AND that support mobile (excludes Yodel,
+        // which has no mobile host).
+        let connected: Record<string, boolean> = {};
+        try {
+            const res = await fetch('/api/auth/status');
+            const data = await res.json();
+            connected = Object.fromEntries(
+                Object.entries(data.services ?? {}).map(
+                    ([k, v]) => [k, !!(v as { authenticated?: boolean })?.authenticated] as const
+                )
+            );
+        } catch { /* ignore */ }
+        const vis = SERVICES.filter((s) => s.supportsMobile && connected[s.id]);
+        setVisible(vis);
         const entries = await Promise.all(
-            SERVICES.map(async (s) => {
+            vis.map(async (s) => {
                 try {
                     const res = await fetch(`/api/settings/service/${encodeURIComponent(s.id)}`);
-                    const data = await res.json();
-                    return [s.id, data.auth_mode === 'mobile' ? 'mobile' : 'web'] as const;
+                    const d = await res.json();
+                    return [s.id, d.auth_mode === 'mobile' ? 'mobile' : 'web'] as const;
                 } catch {
                     return [s.id, 'web'] as const;
                 }
             })
         );
         setModes(Object.fromEntries(entries));
+        setLoaded(true);
     }, []);
 
-    useEffect(() => { loadModes(); }, [loadModes]);
+    useEffect(() => { load(); }, [load]);
 
     // Switch a service to web: fetch its current settings and re-post with auth_mode=web
     // (merge so we don't clobber sync/blog fields).
@@ -530,17 +547,21 @@ function AuthModeSection() {
                     {t('settings.authModeIntro')}
                 </p>
             </div>
-            <div className="max-w-md divide-y divide-gray-100 rounded-lg border border-gray-200">
-                {SERVICES.map((s) => (
-                    <ServiceAuthRow
-                        key={s.id}
-                        service={s}
-                        mode={modes[s.id] ?? 'web'}
-                        onSetWeb={() => setWeb(s.id)}
-                        onMobileActivated={loadModes}
-                    />
-                ))}
-            </div>
+            {!loaded ? null : visible.length === 0 ? (
+                <p className="max-w-md text-xs text-gray-400">{t('settings.authModeNoAccounts')}</p>
+            ) : (
+                <div className="max-w-md divide-y divide-gray-100 rounded-lg border border-gray-200">
+                    {visible.map((s) => (
+                        <ServiceAuthRow
+                            key={s.id}
+                            service={s}
+                            mode={modes[s.id] ?? 'web'}
+                            onSetWeb={() => setWeb(s.id)}
+                            onMobileActivated={load}
+                        />
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

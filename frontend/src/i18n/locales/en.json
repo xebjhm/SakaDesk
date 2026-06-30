@@ -67,6 +67,7 @@
     "authModeMobileDesc": "Signs in like the phone app. Once you've signed in, it stays signed in on its own.",
     "authModeMobileWarning": "Advanced — use at your own risk. This makes SakaDesk behave like the official app instead of the official website; the risk of your account being flagged or suspended is higher than web mode.",
     "authModeIntro": "SakaDesk uses web sign-in by default, which may ask you to sign in again from time to time. Mobile mode uses a refresh_token instead, so it never asks you to sign in.",
+    "authModeNoAccounts": "Sign in to a service to choose its sign-in method.",
     "manualTokenStorageNote": "Your refresh_token is stored securely on your device.",
     "manualTokenPlaceholder": "Paste your refresh_token",
     "manualTokenSave": "Validate & save",
