@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
 
 interface TranscriptPanelProps {
@@ -36,7 +36,7 @@ interface TranscriptPanelProps {
  * Collapsible transcript panel showing timeline-synced segments.
  * Active segment highlights during playback. Click timestamps to seek.
  */
-export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
+const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     segments,
     currentTime = 0,
     onSeek,
@@ -57,11 +57,11 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     const collapse = useCallback(() => setExpanded(false), []);
     useCollapseOnOutOfView(messageId, expanded, collapse);
 
-    // Find active segment
-    const activeIndex = segments.findIndex(
-        (seg, i) =>
-            currentTime >= seg.start &&
-            (i === segments.length - 1 || currentTime < segments[i + 1].start)
+    // Find active segment (memoized — recomputes only when time/segments change, not on
+    // every parent render).
+    const activeIndex = useMemo(
+        () => findActiveSegmentIndex(segments, currentTime),
+        [segments, currentTime]
     );
 
     // Auto-scroll active segment to center (music app dynamic lyrics style).
@@ -194,3 +194,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         </div>
     );
 };
+
+// Memoized: parents (VoicePlayer/VideoPlayer) re-render at playback frame rate; this
+// only needs to re-render when its own props (segments/currentTime/...) change.
+export const TranscriptPanel = React.memo(TranscriptPanelInner);

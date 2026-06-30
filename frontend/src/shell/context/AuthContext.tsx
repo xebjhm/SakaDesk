@@ -67,7 +67,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const { activeService, setActiveService } = useAppStore();
 
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authCheckComplete, setAuthCheckComplete] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
@@ -133,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAuthStatus(data.services);
 
             // Compute authenticated services from backend response for activeService fallback.
-            // isAuthenticated is handled by the serviceAuth-watching useEffect.
+            // isAuthenticated is derived from serviceAuth below (useMemo).
             const authenticatedServices = Object.entries(data.services)
                 .filter(([_, s]) => s.authenticated === true)
                 .map(([id]) => id);
@@ -146,7 +145,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             log(`Auth check complete: ${authenticatedServices.length} service(s) authenticated (backend)`);
         } catch (e) {
             console.error('[Auth] Auth check failed:', e);  // Keep error logging
-            setIsAuthenticated(false);
         } finally {
             setAuthCheckComplete(true);
         }
@@ -298,11 +296,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         [serviceAuth]
     );
 
-    // Update isAuthenticated based on serviceAuth
-    useEffect(() => {
-        const anyConnected = Object.values(serviceAuth).some(s => s.connected);
-        setIsAuthenticated(anyConnected);
-    }, [serviceAuth]);
+    // isAuthenticated: null until the first auth check completes, then derived from
+    // serviceAuth (no separate state/effect — avoids an extra render pass).
+    const isAuthenticated = useMemo(
+        () => (authCheckComplete ? Object.values(serviceAuth).some(s => s.connected === true) : null),
+        [serviceAuth, authCheckComplete]
+    );
 
     const isServiceConnected = useCallback(
         (serviceId: string) => serviceAuth[serviceId]?.connected === true,
@@ -345,27 +344,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         []
     );
 
-    const disconnectedServices = Object.entries(serviceAuth)
-        .filter(([_, state]) => state.wasEverConnected && !state.connected)
-        .map(([serviceId]) => serviceId);
+    const disconnectedServices = useMemo(
+        () => Object.entries(serviceAuth)
+            .filter(([_, state]) => state.wasEverConnected && !state.connected)
+            .map(([serviceId]) => serviceId),
+        [serviceAuth]
+    );
 
-    const value: AuthContextValue = {
-        isAuthenticated,
-        authCheckComplete,
-        authStatus,
-        authError,
-        setAuthError,
-        checkAuth,
-        connectedServices,
-        isServiceConnected,
-        isServiceDisconnected,
-        getServiceError,
-        clearServiceError,
-        disconnectedServices,
-        markServiceDisconnected,
-        getServiceExpiresAt,
-        getScheduledRefreshServices,
-    };
+    const value: AuthContextValue = useMemo(
+        () => ({
+            isAuthenticated,
+            authCheckComplete,
+            authStatus,
+            authError,
+            setAuthError,
+            checkAuth,
+            connectedServices,
+            isServiceConnected,
+            isServiceDisconnected,
+            getServiceError,
+            clearServiceError,
+            disconnectedServices,
+            markServiceDisconnected,
+            getServiceExpiresAt,
+            getScheduledRefreshServices,
+        }),
+        [
+            isAuthenticated, authCheckComplete, authStatus, authError, setAuthError,
+            checkAuth, connectedServices, isServiceConnected, isServiceDisconnected,
+            getServiceError, clearServiceError, disconnectedServices,
+            markServiceDisconnected, getServiceExpiresAt, getScheduledRefreshServices,
+        ]
+    );
 
     return (
         <AuthContext.Provider value={value}>

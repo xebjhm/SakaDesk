@@ -1,5 +1,5 @@
 import React from 'react';
-import type { TranscriptionSegment } from '../../hooks/useTranscription';
+import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 
 interface SubtitleOverlayProps {
     segments: TranscriptionSegment[];
@@ -21,13 +21,9 @@ export const SubtitleOverlay: React.FC<SubtitleOverlayProps> = ({
 }) => {
     if (!visible) return null;
 
-    const activeSegment = segments.find(
-        (seg, i) =>
-            currentTime >= seg.start &&
-            (i === segments.length - 1 || currentTime < segments[i + 1].start)
-    );
-
-    if (!activeSegment) return null;
+    const activeIndex = findActiveSegmentIndex(segments, currentTime);
+    if (activeIndex < 0) return null;
+    const activeSegment = segments[activeIndex];
 
     return (
         <div className={`absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none max-w-[80%] ${fullscreen ? 'bottom-16' : 'bottom-10'}`}>

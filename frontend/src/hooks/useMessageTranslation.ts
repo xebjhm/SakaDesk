@@ -55,11 +55,13 @@ export function useMessageTranslation(params: {
         ? getCacheKey('message', messageId, targetLanguage)
         : '';
 
-    // Check cache on init
-    const cached = cacheKey ? getCachedTranslation(cacheKey) : null;
-
-    const [translation, setTranslation] = useState<string | null>(cached);
-    const [state, setState] = useState<TranslationState>(cached ? 'done' : 'idle');
+    // Lazy init from cache so we don't do a blocking localStorage read on every render.
+    const [translation, setTranslation] = useState<string | null>(
+        () => (cacheKey ? getCachedTranslation(cacheKey) : null)
+    );
+    const [state, setState] = useState<TranslationState>(
+        () => ((cacheKey ? getCachedTranslation(cacheKey) : null) ? 'done' : 'idle')
+    );
     const [error, setError] = useState<string | null>(null);
 
     // Re-sync state when cacheKey changes (e.g., target language or provider changed)
@@ -70,20 +72,12 @@ export function useMessageTranslation(params: {
         setError(null);
     }, [cacheKey]);
 
-    const trigger = useCallback(async () => {
+    // Shared fetch+persist path for both trigger (cache-miss) and retrigger (forced).
+    const doTranslate = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;
-
-        // Check cache first
-        const cachedValue = getCachedTranslation(cacheKey);
-        if (cachedValue) {
-            setTranslation(cachedValue);
-            setState('done');
-            return;
-        }
 
         setState('loading');
         setError(null);
-
         try {
             const res = await fetch('/api/translation/translate', {
                 method: 'POST',
@@ -104,51 +98,6 @@ export function useMessageTranslation(params: {
                 throw new Error(detail.detail || `Request failed: ${res.status}`);
             }
 
-            const data = await res.json();
-            if (data.ok) {
-                const translatedText = data.translation;
-                setTranslation(translatedText);
-                setState('done');
-                setCachedTranslation(cacheKey, translatedText);
-            } else {
-                throw new Error('Translation returned not ok');
-            }
-        } catch (e) {
-            setState('error');
-            setError(e instanceof Error ? e.message : 'Translation failed');
-        }
-    }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey]);
-
-    const retrigger = useCallback(async () => {
-        // Clear cache so trigger doesn't short-circuit
-        if (cacheKey) {
-            try { localStorage.removeItem(cacheKey); } catch {}
-        }
-        setTranslation(null);
-        setState('idle');
-        setError(null);
-        // Call trigger logic directly (can't call trigger since it reads stale cache)
-        if (!service || !messageId || !memberPath) return;
-
-        setState('loading');
-        try {
-            const res = await fetch('/api/translation/translate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    type: 'message',
-                    message_id: messageId,
-                    service,
-                    member_path: memberPath,
-                    context_message_ids: contextMessageIds,
-                    target_language: targetLanguage,
-                    user_nickname: userNickname || undefined,
-                }),
-            });
-            if (!res.ok) {
-                const detail = await res.json().catch(() => ({}));
-                throw new Error(detail.detail || `Request failed: ${res.status}`);
-            }
             const data = await res.json();
             if (data.ok) {
                 setTranslation(data.translation);
@@ -162,6 +111,26 @@ export function useMessageTranslation(params: {
             setError(e instanceof Error ? e.message : 'Translation failed');
         }
     }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey]);
+
+    const trigger = useCallback(async () => {
+        if (!service || !messageId || !memberPath) return;
+        const cachedValue = getCachedTranslation(cacheKey);
+        if (cachedValue) {
+            setTranslation(cachedValue);
+            setState('done');
+            return;
+        }
+        await doTranslate();
+    }, [service, messageId, memberPath, cacheKey, doTranslate]);
+
+    const retrigger = useCallback(async () => {
+        // Clear cache first so the forced re-run doesn't short-circuit.
+        if (cacheKey) {
+            try { localStorage.removeItem(cacheKey); } catch {}
+        }
+        setTranslation(null);
+        await doTranslate();
+    }, [cacheKey, doTranslate]);
 
     const clear = useCallback(() => {
         setTranslation(null);

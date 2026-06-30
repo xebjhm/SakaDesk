@@ -3,8 +3,10 @@ Translation API for SakaDesk.
 Handles on-demand translation requests using cloud LLM providers (Gemini, OpenAI).
 """
 
+import asyncio
 import json
 import re
+from pathlib import Path
 from typing import Optional, cast
 
 import httpx
@@ -27,6 +29,13 @@ from backend.services.translation_service import (
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
+
+
+def _read_json_file(path: Path) -> dict:
+    """Blocking read+parse of a JSON file (offload via asyncio.to_thread on the async path)."""
+    with open(path, "r", encoding="utf-8") as f:
+        return cast(dict, json.load(f))
+
 
 # Canonical model list — the single source of truth for available models.
 # Frontend reads this via /api/translation/models endpoint.
@@ -371,8 +380,7 @@ async def translate(request: TranslateRequest):
         if not messages_file.exists():
             raise HTTPException(status_code=404, detail="messages.json not found")
 
-        with open(messages_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        data = await asyncio.to_thread(_read_json_file, messages_file)
 
         messages = data.get("messages", [])
         message_map: dict[int, dict] = {m["id"]: m for m in messages if "id" in m}
@@ -507,8 +515,7 @@ async def translate_batch(request: TranslateBatchRequest):
     if not messages_file.exists():
         raise HTTPException(status_code=404, detail="messages.json not found")
 
-    with open(messages_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = await asyncio.to_thread(_read_json_file, messages_file)
 
     messages = data.get("messages", [])
     message_map: dict[int, dict] = {m["id"]: m for m in messages if "id" in m}

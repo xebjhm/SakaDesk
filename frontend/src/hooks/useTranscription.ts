@@ -7,6 +7,18 @@ export interface TranscriptionSegment {
     confidence: number;
 }
 
+/** Index of the segment covering `currentTime`, or -1. Segments must be sorted by start. */
+export function findActiveSegmentIndex(
+    segments: TranscriptionSegment[],
+    currentTime: number,
+): number {
+    return segments.findIndex(
+        (seg, i) =>
+            currentTime >= seg.start &&
+            (i === segments.length - 1 || currentTime < segments[i + 1].start)
+    );
+}
+
 export interface Transcription {
     message_id: number;
     media_type: string;
