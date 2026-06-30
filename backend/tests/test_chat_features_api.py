@@ -258,7 +258,8 @@ class TestGetClientAndSession:
 class TestMarkRoomReadRemote:
     """Tests for POST /api/chat/mark-room-read-remote (opt-in sync read to phone)."""
 
-    def test_noop_when_setting_off(self):
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_noop_when_setting_off(self, _mock_test):
         """Default: sync_read_to_phone off → no-op (never touches the official app)."""
         with patch(
             "backend.services.settings_store.load_config",

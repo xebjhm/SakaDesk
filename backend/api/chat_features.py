@@ -298,13 +298,12 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
     if not config.get("sync_read_to_phone"):
         return {"ok": True, "skipped": True}
 
-    # Validate up front so a bad service id surfaces as a 400 rather than being
+    # Resolve the service up front so a bad id surfaces as a 400 rather than being
     # swallowed into a success-shaped {"ok": false} by the catch-all below.
     try:
-        validate_service(req.service)
+        group = get_service_enum(req.service)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    group = get_service_enum(req.service)
 
     try:
         token_data = get_token_manager().load_session(group.value)

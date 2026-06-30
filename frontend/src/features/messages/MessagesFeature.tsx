@@ -367,10 +367,25 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // mobile app, mirroring tapping into the room there. Gated on the setting here so
     // the off-by-default majority skips the round-trip entirely; the backend re-checks
     // the setting authoritatively. Fire-and-forget — never blocks opening the room.
-    // Keyed on selectedGroupDir only: the setting is read at fire time but is NOT a
-    // trigger, so toggling it on while already viewing a room does not clear that room.
+    //
+    // Fire only when the user genuinely opens a room, or when settings finish loading
+    // with the flag already on while a room is open (cold start) — but NOT when the
+    // user flips the setting on while sitting in a room (that would clear a room they
+    // didn't just open). We compare the previous (room, flag) to tell a real
+    // room-open / initial settings load apart from a pure toggle. undefined flag means
+    // settings haven't loaded yet; false means explicitly off.
+    const syncReadPrevRef = useRef<{ dir: string | undefined; on: boolean | undefined }>({
+        dir: undefined,
+        on: undefined,
+    });
     useEffect(() => {
-        if (!selectedGroupDir || !appSettings?.sync_read_to_phone) return;
+        const on = appSettings?.sync_read_to_phone;
+        const prev = syncReadPrevRef.current;
+        syncReadPrevRef.current = { dir: selectedGroupDir, on };
+        if (!selectedGroupDir || !on) return;
+        const roomOpened = selectedGroupDir !== prev.dir;
+        const settingsJustLoaded = prev.on === undefined; // null → loaded transition
+        if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
         const parsedOpen = parseReadStatePath(selectedGroupDir);
         if (!parsedOpen) return;
         fetch('/api/chat/mark-room-read-remote', {
@@ -378,8 +393,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
         }).catch(() => {});
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- only trigger on room open, not on setting toggle
-    }, [selectedGroupDir]);
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
