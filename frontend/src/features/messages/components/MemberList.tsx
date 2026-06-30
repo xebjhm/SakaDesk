@@ -7,6 +7,7 @@ import { getGroupChatIds } from '../../../config/groupConfig';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
+import { capUnreadToServer } from '../utils/unreadCap';
 
 interface GroupInfo {
     id: string;
@@ -18,6 +19,7 @@ interface GroupInfo {
     is_group_chat: boolean;
     is_active?: boolean;
     is_graduated?: boolean;
+    server_unread_count?: number | null; // Server's last-synced unread (phone -> Windows); null = unknown
     thumbnail?: string; // Group thumbnail
     last_message_id?: number;
     total_messages?: number;
@@ -114,7 +116,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const counts: Record<string, number> = {};
             groupList.forEach(g => {
                 const info = getGroupDisplayInfo(g);
-                const unread = backendCounts[info.path] || 0;
+                // Cap the local count by the server's snapshot so reads done on the
+                // official mobile app clear the badge here too (phone -> Windows).
+                const unread = capUnreadToServer(backendCounts[info.path] || 0, g.server_unread_count);
                 if (unread > 0) {
                     counts[g.id] = unread;
                 }

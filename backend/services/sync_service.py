@@ -340,6 +340,9 @@ class SyncService:
                         "is_active": sub_state in ("active", "cancelled")
                         if g.get("state") != "closed"
                         else False,
+                        # Server-side unread count (phone -> Windows signal). The API
+                        # omits the field when zero, so a missing value means 0 here.
+                        "unread_count": int(g.get("unread_count", 0)),
                     }
 
                 for g in groups:

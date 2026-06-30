@@ -283,10 +283,14 @@ async def get_groups():
             if sg:
                 is_graduated = sg.get("state") == "closed"
                 is_active = sg.get("is_active", True) if not is_graduated else False
+                # Server-side unread snapshot for the phone -> Windows badge cap.
+                # None when absent (old metadata) → caller must not cap on it.
+                server_unread_count = sg.get("unread_count")
             else:
                 # No server data yet — need to sync first
                 is_graduated = False
                 is_active = True
+                server_unread_count = None
 
             groups.append(
                 {
@@ -302,6 +306,7 @@ async def get_groups():
                     "is_group_chat": is_group_chat,
                     "is_active": is_active,
                     "is_graduated": is_graduated,
+                    "server_unread_count": server_unread_count,
                     "thumbnail": group_thumbnail,
                     "last_message_id": last_message_id,
                     "total_messages": total_messages,
