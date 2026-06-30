@@ -5,7 +5,6 @@ Handles on-demand translation requests using cloud LLM providers (Gemini, OpenAI
 
 import json
 import re
-from pathlib import Path
 from typing import Optional, cast
 
 import httpx
@@ -62,13 +61,11 @@ class TestConnectionRequest(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    type: str  # "message", "blog_paragraph", or "blog_full"
+    type: str  # "message" or "blog_full"
     message_id: Optional[int] = None
     service: str
     member_path: Optional[str] = None
     context_message_ids: Optional[list[int]] = None
-    text: Optional[str] = None
-    blog_html: Optional[str] = None
     paragraphs: Optional[list[str]] = None  # For blog_full: pre-split paragraphs
     target_language: str
     user_nickname: Optional[str] = None  # Replace %%% placeholders before translation
@@ -80,13 +77,6 @@ class TranslateBatchRequest(BaseModel):
     service: str
     member_path: str
     target_language: str
-
-
-class TranslateBlogRequest(BaseModel):
-    blog_id: str
-    service: str
-    target_language: str
-    mode: str = "full"
 
 
 # --- Provider helpers ---
@@ -128,6 +118,43 @@ def _replace_placeholders_with_token(text: str) -> str:
 def _replace_token_with_nickname(text: str, nickname: str) -> str:
     """Replace {{NICKNAME}} token back to user's actual nickname after translation."""
     return text.replace(_NICKNAME_TOKEN, nickname)
+
+
+def _provider_http_error(exc: Exception) -> HTTPException:
+    """Map a provider/transport exception to an HTTPException.
+
+    Provider-agnostic (works for any LLM backend, not just Gemini) and never
+    leaks the raw exception text to the client — details go to the logs instead.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        if status == 429:
+            return HTTPException(
+                status_code=429,
+                detail="Rate limit reached. Please wait a moment and try again.",
+            )
+        if status == 503:
+            return HTTPException(
+                status_code=503,
+                detail="Translation service is temporarily unavailable. Please try again later.",
+            )
+        return HTTPException(
+            status_code=502,
+            detail=f"Translation provider error ({status}). Please try again.",
+        )
+    if isinstance(exc, httpx.ConnectError):
+        return HTTPException(
+            status_code=503,
+            detail="Cannot reach the translation provider. Check your internet connection.",
+        )
+    if isinstance(exc, httpx.TimeoutException):
+        return HTTPException(
+            status_code=504,
+            detail="The translation provider timed out. Please try again.",
+        )
+    return HTTPException(
+        status_code=500, detail="Translation failed. Please try again."
+    )
 
 
 def _instantiate_provider(
@@ -197,49 +224,6 @@ def _strip_markdown_fences(text: str) -> str:
     # Remove closing fence
     text = re.sub(r"\n?```\s*$", "", text)
     return text.strip()
-
-
-def _parse_paragraphs_from_html(html: str) -> list[str]:
-    """Extract non-empty text paragraphs from blog HTML."""
-    # Try to use html.parser via stdlib; fall back to regex if unavailable
-    try:
-        from html.parser import HTMLParser
-
-        class _ParagraphExtractor(HTMLParser):
-            def __init__(self) -> None:
-                super().__init__()
-                self._paragraphs: list[str] = []
-                self._current: list[str] = []
-                self._in_block = False
-
-            def handle_starttag(self, tag: str, attrs: object) -> None:
-                if tag in ("p", "br"):
-                    self._in_block = True
-
-            def handle_endtag(self, tag: str) -> None:
-                if tag == "p":
-                    text = "".join(self._current).strip()
-                    if text:
-                        self._paragraphs.append(text)
-                    self._current = []
-                    self._in_block = False
-
-            def handle_data(self, data: str) -> None:
-                self._current.append(data)
-
-        parser = _ParagraphExtractor()
-        parser.feed(html)
-        # Also flush any remaining text
-        remaining = "".join(parser._current).strip()
-        if remaining:
-            parser._paragraphs.append(remaining)
-        paragraphs = parser._paragraphs
-    except Exception:
-        # Fallback: strip all tags
-        plain = re.sub(r"<[^>]+>", " ", html)
-        paragraphs = [p.strip() for p in plain.split("\n") if p.strip()]
-
-    return [p for p in paragraphs if p]
 
 
 # --- Endpoints ---
@@ -439,37 +423,11 @@ async def translate(request: TranslateRequest):
 
         try:
             translation = await provider.translate(prompt, system_instruction)
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code
-            if status == 429:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit reached. Please wait a moment and try again.",
-                )
-            elif status == 503:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Gemini API is temporarily unavailable. Please try again later.",
-                )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Gemini API error ({status}). Please try again.",
-            )
-        except httpx.ConnectError:
-            raise HTTPException(
-                status_code=503,
-                detail="Cannot reach Gemini API. Check your internet connection.",
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="Gemini API timed out. Please try again.",
-            )
         except Exception as e:
             logger.error(
                 "Translation failed", message_id=request.message_id, error=str(e)
             )
-            raise HTTPException(status_code=500, detail=f"Translation failed: {e}")
+            raise _provider_http_error(e) from e
 
         # Replace {{NICKNAME}} token back to actual nickname
         result = translation.strip()
@@ -482,48 +440,6 @@ async def translate(request: TranslateRequest):
             target_language=request.target_language,
         )
         return {"ok": True, "translation": result}
-
-    elif request.type == "blog_paragraph":
-        # --- Blog paragraph translation ---
-        if not request.text or not request.text.strip():
-            raise HTTPException(
-                status_code=422, detail="text required for type 'blog_paragraph'"
-            )
-        text = request.text
-
-        blog_context_texts: list[str] = []
-        if request.blog_html:
-            # Use surrounding paragraphs as context (first few only)
-            paragraphs = _parse_paragraphs_from_html(request.blog_html)
-            blog_context_texts = [p for p in paragraphs[:3] if p != text]
-
-        try:
-            group_name = get_service_display_name(request.service)
-        except (ValueError, KeyError):
-            group_name = request.service
-
-        prompt, system_instruction = build_translation_prompt(
-            text=text,
-            target_language=request.target_language,
-            context_texts=blog_context_texts if blog_context_texts else None,
-            group_name=group_name,
-            content_type="blog post",
-        )
-
-        try:
-            translation = await provider.translate(prompt, system_instruction)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Provider error: {e.response.status_code}",
-            )
-        except Exception as e:
-            logger.error("Blog paragraph translation failed", error=str(e))
-            raise HTTPException(status_code=500, detail="Translation failed")
-
-        return {"ok": True, "translation": translation.strip()}
 
     elif request.type == "blog_full":
         # --- Full blog translation with paragraph-level output ---
@@ -546,35 +462,24 @@ async def translate(request: TranslateRequest):
 
         try:
             raw = await provider.translate(prompt, system_instruction)
-            # Split by the ===PARAGRAPH=== delimiter
-            translated_paragraphs = raw.strip().split("===PARAGRAPH===")
-            # Clean whitespace from each
-            translated_paragraphs = [p.strip() for p in translated_paragraphs]
-            # Remove empty entries
-            translated_paragraphs = [p for p in translated_paragraphs if p]
-
-            logger.info(
-                "Blog translated",
-                original_count=len(request.paragraphs),
-                translated_count=len(translated_paragraphs),
-            )
-
-            return {
-                "ok": True,
-                "translations": translated_paragraphs,
-                "partial": len(translated_paragraphs) != len(request.paragraphs),
-            }
-
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Provider error: {e.response.status_code}",
-            )
         except Exception as e:
             logger.error("Blog full translation failed", error=str(e))
-            raise HTTPException(status_code=500, detail="Translation failed")
+            raise _provider_http_error(e) from e
+
+        # Split by the ===PARAGRAPH=== delimiter, dropping empties
+        translated_paragraphs = [
+            p.strip() for p in raw.strip().split("===PARAGRAPH===") if p.strip()
+        ]
+        logger.info(
+            "Blog translated",
+            original_count=len(request.paragraphs),
+            translated_count=len(translated_paragraphs),
+        )
+        return {
+            "ok": True,
+            "translations": translated_paragraphs,
+            "partial": len(translated_paragraphs) != len(request.paragraphs),
+        }
 
     else:
         raise HTTPException(
@@ -635,15 +540,9 @@ async def translate_batch(request: TranslateBatchRequest):
 
     try:
         raw_response = await provider.translate(prompt, system_instruction)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 429:
-            raise HTTPException(status_code=429, detail="Rate limit exceeded")
-        raise HTTPException(
-            status_code=502, detail=f"Provider error: {e.response.status_code}"
-        )
     except Exception as e:
         logger.error("Batch translation failed", error=str(e))
-        raise HTTPException(status_code=500, detail="Batch translation failed")
+        raise _provider_http_error(e) from e
 
     # Parse JSON from LLM response (strip markdown fences if present)
     cleaned = _strip_markdown_fences(raw_response)
@@ -666,105 +565,3 @@ async def translate_batch(request: TranslateBatchRequest):
         target_language=request.target_language,
     )
     return {"ok": True, "translations": translations}
-
-
-@router.post("/translate-blog")
-async def translate_blog(request: TranslateBlogRequest):
-    """Translate a full blog post by loading its cached HTML."""
-    try:
-        validate_service(request.service)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    provider = await _get_provider_from_config()
-
-    # Locate the blog JSON file.
-    # Blog cache lives at: {output_dir}/{service_display}/blogs/{member_name}/{date}_{blog_id}/blog.json
-    # We search by blog_id since we don't have member_name or date here.
-    from backend.services.service_utils import get_service_display_name
-
-    try:
-        display_name = get_service_display_name(request.service)
-    except ValueError:
-        raise HTTPException(
-            status_code=400, detail=f"Unknown service: {request.service}"
-        )
-
-    output_dir = get_output_dir()
-    blogs_base = output_dir / display_name / "blogs"
-
-    # Search for the blog cache file
-    blog_json_path: Optional[Path] = None
-    if blogs_base.exists():
-        for member_dir in blogs_base.iterdir():
-            if not member_dir.is_dir():
-                continue
-            for entry_dir in member_dir.iterdir():
-                if not entry_dir.is_dir():
-                    continue
-                # Folder name format: {date}_{blog_id}
-                if (
-                    entry_dir.name.endswith(f"_{request.blog_id}")
-                    or entry_dir.name == request.blog_id
-                ):
-                    candidate = entry_dir / "blog.json"
-                    if candidate.exists():
-                        blog_json_path = candidate
-                        break
-            if blog_json_path:
-                break
-
-    if not blog_json_path:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Blog {request.blog_id} not found in cache for {request.service}",
-        )
-
-    with open(blog_json_path, "r", encoding="utf-8") as f:
-        blog_data = json.load(f)
-
-    html = blog_data.get("content", {}).get("html", "")
-    if not html:
-        raise HTTPException(status_code=404, detail="Blog has no HTML content in cache")
-
-    paragraphs = _parse_paragraphs_from_html(html)
-    if not paragraphs:
-        raise HTTPException(
-            status_code=404, detail="No translatable paragraphs found in blog"
-        )
-
-    # Translate paragraph by paragraph (sequential to respect rate limits)
-    results: list[dict] = []
-    for idx, para in enumerate(paragraphs):
-        prompt, system_instruction = build_translation_prompt(
-            text=para,
-            target_language=request.target_language,
-        )
-        try:
-            translation = await provider.translate(prompt, system_instruction)
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded")
-            raise HTTPException(
-                status_code=502,
-                detail=f"Provider error: {e.response.status_code}",
-            )
-        except Exception as e:
-            logger.error("Blog paragraph translation failed", index=idx, error=str(e))
-            raise HTTPException(status_code=500, detail="Translation failed")
-
-        results.append(
-            {
-                "index": idx,
-                "original": para,
-                "translation": translation.strip(),
-            }
-        )
-
-    logger.info(
-        "Blog translation complete",
-        blog_id=request.blog_id,
-        paragraphs=len(results),
-        target_language=request.target_language,
-    )
-    return {"ok": True, "translations": results}

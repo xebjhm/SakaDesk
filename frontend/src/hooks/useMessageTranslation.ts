@@ -14,7 +14,7 @@ interface UseMessageTranslationReturn {
 
 // localStorage cache key format: translation:{type}:{id}:{lang}
 function getCacheKey(
-    type: 'message' | 'blog_paragraph',
+    type: 'message',
     contentId: string | number,
     targetLanguage: string,
 ): string {
