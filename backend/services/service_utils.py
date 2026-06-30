@@ -63,6 +63,19 @@ def get_service_config(service: str) -> Dict[str, Any]:
     return cast(Dict[str, Any], GROUP_CONFIG[group])
 
 
+def resolve_auth_mode(stored_mode: str, token_data: Optional[Dict[str, Any]]) -> str:
+    """Effective auth mode for a service.
+
+    "mobile" downgrades to "web" unless a ``refresh_token`` is stored: mobile mode
+    refreshes via ``/update_token`` with that token, so without one it cannot work
+    and falls back to web (the per-service toggle "snaps back" until a valid token
+    is provided). Anything other than a token-backed "mobile" resolves to "web".
+    """
+    if stored_mode == "mobile" and (token_data or {}).get("refresh_token"):
+        return "mobile"
+    return "web"
+
+
 def client_auth_params(
     auth_mode: str, session_dir: Any, token_data: Dict[str, Any]
 ) -> Dict[str, Any]:

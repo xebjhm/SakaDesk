@@ -27,6 +27,7 @@ from backend.services.service_utils import (
     client_auth_params,
     get_all_services,
     get_service_enum,
+    resolve_auth_mode,
     validate_service,
 )
 
@@ -277,6 +278,15 @@ class AuthService:
                 "cookies": {},
             },
         )
+        # A valid token is what makes mobile mode "stick" — activate it for this service.
+        from backend.services.settings_store import update_config
+
+        def _set_mobile(config: dict) -> None:
+            config.setdefault("services", {}).setdefault(service, {})["auth_mode"] = (
+                "mobile"
+            )
+
+        await update_config(_set_mobile)
         logger.info("Manual mobile token stored", service=service)
         return True
 
@@ -396,8 +406,15 @@ class AuthService:
             from backend.services.settings_store import load_config as load_app_config
 
             app_settings = await load_app_config()
+            stored_mode = (
+                app_settings.get("services", {})
+                .get(service, {})
+                .get("auth_mode", "web")
+            )
             auth_params = client_auth_params(
-                app_settings.get("auth_mode", "web"), self._session_dir, token_data
+                resolve_auth_mode(stored_mode, token_data),
+                self._session_dir,
+                token_data,
             )
             client = Client(
                 group=group,

@@ -28,6 +28,7 @@ from backend.services.service_utils import (
     get_service_enum,
     validate_service,
     client_auth_params,
+    resolve_auth_mode,
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -310,8 +311,13 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
         if not token_data or not token_data.get("access_token"):
             return {"ok": False}
 
+        stored_mode = (
+            config.get("services", {}).get(req.service, {}).get("auth_mode", "web")
+        )
         auth_params = client_auth_params(
-            config.get("auth_mode", "web"), str(get_session_dir()), token_data
+            resolve_auth_mode(stored_mode, token_data),
+            str(get_session_dir()),
+            token_data,
         )
         client = Client(
             group=group,

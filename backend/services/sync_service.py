@@ -23,6 +23,7 @@ from backend.services.service_utils import (
     client_auth_params,
     get_service_enum,
     get_service_display_name,
+    resolve_auth_mode,
     validate_service,
 )
 import structlog
@@ -217,8 +218,13 @@ class SyncService:
 
             # Auth mode decides refresh strategy: web = cookie/browser, mobile = refresh_token
             app_settings = await self.load_app_settings()
+            stored_mode = (
+                app_settings.get("services", {})
+                .get(self._service, {})
+                .get("auth_mode", "web")
+            )
             auth_params = client_auth_params(
-                app_settings.get("auth_mode", "web"), auth_dir, config
+                resolve_auth_mode(stored_mode, config), auth_dir, config
             )
 
             connector = aiohttp.TCPConnector(limit=20)
@@ -707,8 +713,13 @@ class SyncService:
             # auth_dir for fallback headless refresh if needed
             auth_dir = str(get_session_dir())
             app_settings = await self.load_app_settings()
+            stored_mode = (
+                app_settings.get("services", {})
+                .get(self._service, {})
+                .get("auth_mode", "web")
+            )
             auth_params = client_auth_params(
-                app_settings.get("auth_mode", "web"), auth_dir, config
+                resolve_auth_mode(stored_mode, config), auth_dir, config
             )
 
             connector = aiohttp.TCPConnector(limit=10)

@@ -61,7 +61,6 @@ export interface AppSettings {
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
-    auth_mode?: 'web' | 'mobile';  // 'web' (default) or 'mobile' (refresh_token, no browser)
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
     translation_provider?: string | null;
     translation_model?: string | null;

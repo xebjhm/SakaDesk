@@ -9,10 +9,13 @@ client = TestClient(app)
 class TestManualToken:
     """POST /api/auth/manual-token — bootstrap a mobile session from a refresh_token."""
 
-    def test_validates_via_refresh_then_saves_session(self):
+    def test_validates_via_refresh_then_saves_session_and_activates_mobile(self):
         with (
             patch("backend.services.auth_service.Client") as MockClient,
             patch("backend.services.auth_service.get_token_manager") as mock_tm,
+            patch(
+                "backend.services.settings_store.update_config", new_callable=AsyncMock
+            ) as mock_update,
         ):
             inst = MockClient.return_value
             inst.refresh_access_token = AsyncMock(return_value=True)
@@ -30,6 +33,8 @@ class TestManualToken:
             assert args[1] == "fresh-AT"
             assert args[2] == "rotated-RT"
             assert args[3] == {}  # no web cookies in mobile mode
+            # A valid token activates mobile mode for the service.
+            mock_update.assert_called_once()
 
     def test_rejects_invalid_refresh_without_saving(self):
         with (

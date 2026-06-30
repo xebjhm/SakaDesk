@@ -85,3 +85,25 @@ def test_client_auth_params_mobile_sets_android_platform():
     # Mobile mode must carry the android profile so pysaka emits app headers.
     p = client_auth_params("mobile", "/sess", {"refresh_token": "RT"})
     assert p["platform"] == "android"
+
+
+# resolve_auth_mode — effective mode with mobile->web fallback when no refresh_token
+from backend.services.service_utils import resolve_auth_mode  # noqa: E402
+
+
+def test_resolve_auth_mode_mobile_with_refresh_token_stays_mobile():
+    assert resolve_auth_mode("mobile", {"refresh_token": "RT"}) == "mobile"
+
+
+def test_resolve_auth_mode_mobile_without_refresh_token_falls_back_to_web():
+    assert resolve_auth_mode("mobile", {"refresh_token": None}) == "web"
+    assert resolve_auth_mode("mobile", {}) == "web"
+    assert resolve_auth_mode("mobile", None) == "web"
+
+
+def test_resolve_auth_mode_web_stays_web_even_with_refresh_token():
+    assert resolve_auth_mode("web", {"refresh_token": "RT"}) == "web"
+
+
+def test_resolve_auth_mode_unknown_defaults_to_web():
+    assert resolve_auth_mode("bogus", {"refresh_token": "RT"}) == "web"
