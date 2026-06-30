@@ -24,7 +24,11 @@ from backend.services.platform import (
     get_session_dir,
     get_default_output_dir,
 )
-from backend.services.service_utils import get_service_enum, validate_service
+from backend.services.service_utils import (
+    get_service_enum,
+    validate_service,
+    client_auth_params,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -269,3 +273,56 @@ async def get_message_dates(member_path: str):
     dates = [DateCount(date=d, count=c) for d, c in sorted(date_counts.items())]
 
     return MessageDatesResponse(dates=dates, total_dates=len(dates))
+
+
+class MarkRoomReadRemoteRequest(BaseModel):
+    service: str
+    group_id: int
+
+
+@router.post("/mark-room-read-remote")
+async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
+    """Clear a room's unread on the OFFICIAL mobile app — opt-in 'sync read to phone'.
+
+    Fire-and-forget: a no-op unless the ``sync_read_to_phone`` setting is on, and
+    any error is swallowed so it never blocks opening a conversation. Triggered
+    only when the user opens a room (background sync never calls this).
+    """
+    from backend.services.settings_store import load_config
+
+    config = await load_config()
+    if not config.get("sync_read_to_phone"):
+        return {"ok": True, "skipped": True}
+
+    try:
+        group = get_service_enum(req.service)
+        token_data = get_token_manager().load_session(group.value)
+        if not token_data or not token_data.get("access_token"):
+            return {"ok": False}
+
+        auth_params = client_auth_params(
+            config.get("auth_mode", "web"), str(get_session_dir()), token_data
+        )
+        client = Client(
+            group=group,
+            access_token=token_data["access_token"],
+            cookies=token_data.get("cookies"),
+            **auth_params,
+        )
+        async with aiohttp.ClientSession() as session:
+            ok = await client.mark_group_read(session, req.group_id)
+        logger.info(
+            "Marked room read on official app",
+            service=req.service,
+            group_id=req.group_id,
+            ok=ok,
+        )
+        return {"ok": ok}
+    except Exception as e:
+        logger.warning(
+            "mark_room_read_remote failed",
+            service=req.service,
+            group_id=req.group_id,
+            error=str(e),
+        )
+        return {"ok": False}

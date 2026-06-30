@@ -253,3 +253,47 @@ class TestGetClientAndSession:
         mock_tm.return_value = MagicMock(load_session=MagicMock(return_value=None))
         response = client.get("/api/chat/streak/40?service=hinatazaka46")
         assert response.status_code == 401
+
+
+class TestMarkRoomReadRemote:
+    """Tests for POST /api/chat/mark-room-read-remote (opt-in sync read to phone)."""
+
+    def test_noop_when_setting_off(self):
+        """Default: sync_read_to_phone off → no-op (never touches the official app)."""
+        with patch(
+            "backend.services.settings_store.load_config",
+            new=AsyncMock(return_value={"sync_read_to_phone": False}),
+        ):
+            with patch("backend.api.chat_features.get_token_manager") as mock_tm:
+                res = client.post(
+                    "/api/chat/mark-room-read-remote",
+                    json={"service": "hinatazaka46", "group_id": 70},
+                )
+                assert res.status_code == 200
+                assert res.json() == {"ok": True, "skipped": True}
+                mock_tm.assert_not_called()  # never even looked up credentials
+
+    def test_marks_when_setting_on(self):
+        """When sync_read_to_phone on, it clears the room via mark_group_read."""
+        with (
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={"sync_read_to_phone": True, "auth_mode": "web"}
+                ),
+            ),
+            patch("backend.api.chat_features.get_token_manager") as mock_tm,
+            patch("backend.api.chat_features.Client") as MockClient,
+        ):
+            mock_tm.return_value.load_session.return_value = {
+                "access_token": "tok",
+                "cookies": {},
+            }
+            MockClient.return_value.mark_group_read = AsyncMock(return_value=True)
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "hinatazaka46", "group_id": 70},
+            )
+            assert res.status_code == 200
+            assert res.json() == {"ok": True}
+            MockClient.return_value.mark_group_read.assert_awaited_once()

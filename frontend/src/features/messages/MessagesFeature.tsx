@@ -360,20 +360,23 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
-
-            // Opt-in "sync read to phone": opening a room clears its unread on the
-            // official mobile app, mirroring tapping into the room there. The backend
-            // no-ops unless the user enabled the setting. Fire-and-forget.
-            const parsedOpen = parseReadStatePath(selectedGroupDir);
-            if (parsedOpen) {
-                fetch('/api/content/mark-room-read-remote', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
-                }).catch(() => {});
-            }
         }
     }, [selectedGroupDir, isGroupChat]);
+
+    // Opt-in "sync read to phone": opening a room clears its unread on the official
+    // mobile app, mirroring tapping into the room there. Gated on the setting here so
+    // the off-by-default majority skips the round-trip entirely; the backend re-checks
+    // the setting authoritatively. Fire-and-forget — never blocks opening the room.
+    useEffect(() => {
+        if (!selectedGroupDir || !appSettings?.sync_read_to_phone) return;
+        const parsedOpen = parseReadStatePath(selectedGroupDir);
+        if (!parsedOpen) return;
+        fetch('/api/chat/mark-room-read-remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
+        }).catch(() => {});
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {

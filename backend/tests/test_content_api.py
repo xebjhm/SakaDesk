@@ -1,5 +1,4 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -9,48 +8,6 @@ from backend.api.content import validate_path_within_dir
 from backend.main import app
 
 client = TestClient(app)
-
-
-def test_mark_room_read_remote_noop_when_setting_off():
-    """Default: sync_read_to_phone off → no-op (never touches the official app)."""
-    with patch(
-        "backend.services.settings_store.load_config",
-        new=AsyncMock(return_value={"sync_read_to_phone": False}),
-    ):
-        with patch("pysaka.credentials.get_token_manager") as mock_tm:
-            res = client.post(
-                "/api/content/mark-room-read-remote",
-                json={"service": "hinatazaka46", "group_id": 70},
-            )
-            assert res.status_code == 200
-            assert res.json() == {"ok": True, "skipped": True}
-            mock_tm.assert_not_called()  # never even looked up credentials
-
-
-def test_mark_room_read_remote_marks_when_setting_on():
-    """When sync_read_to_phone on, it clears the room on the server via mark_group_read."""
-    with (
-        patch(
-            "backend.services.settings_store.load_config",
-            new=AsyncMock(
-                return_value={"sync_read_to_phone": True, "auth_mode": "web"}
-            ),
-        ),
-        patch("pysaka.credentials.get_token_manager") as mock_tm,
-        patch("pysaka.Client") as MockClient,
-    ):
-        mock_tm.return_value.load_session.return_value = {
-            "access_token": "tok",
-            "cookies": {},
-        }
-        MockClient.return_value.mark_group_read = AsyncMock(return_value=True)
-        res = client.post(
-            "/api/content/mark-room-read-remote",
-            json={"service": "hinatazaka46", "group_id": 70},
-        )
-        assert res.status_code == 200
-        assert res.json() == {"ok": True}
-        MockClient.return_value.mark_group_read.assert_awaited_once()
 
 
 def test_get_talk_rooms_requires_service():
