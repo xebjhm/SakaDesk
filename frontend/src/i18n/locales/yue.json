@@ -52,6 +52,8 @@
         "syncFixed": "固定間隔",
         "syncFixedDesc": "以固定間隔自動同步",
         "syncSmart": "智慧排程",
+        "syncReadToPhone": "同手機同步已讀",
+        "syncReadToPhoneDesc": "喺呢度開個 chat 嗰陣，會清除官方手機 App 入面嗰個 chat 嘅未讀（就好似喺官方 App 開咗一樣）。背景同步唔會郁手機嘅未讀。預設係關。",
         "serviceSettings": "服務設定",
         "syncCurrentOff": "而家: 手動同步",
         "syncCurrentFixed": "而家: 每 {{minutes}} 分鐘",

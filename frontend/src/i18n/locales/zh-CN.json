@@ -52,6 +52,8 @@
     "syncFixed": "固定间隔",
     "syncFixedDesc": "以固定间隔自动同步",
     "syncSmart": "智能排程",
+    "syncReadToPhone": "与手机同步已读",
+    "syncReadToPhoneDesc": "在这里打开聊天时，会清除官方手机 App 中该聊天的未读（就像在官方 App 打开一样）。后台同步不会改动手机的未读。默认关闭。",
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",

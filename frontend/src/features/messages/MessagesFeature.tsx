@@ -62,6 +62,7 @@ export interface AppSettings {
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
     auth_mode?: 'web' | 'mobile';  // 'web' (default) or 'mobile' (refresh_token, no browser)
+    sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
     translation_provider?: string | null;
     translation_model?: string | null;
     translation_api_key?: string | null;
@@ -359,6 +360,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
+
+            // Opt-in "sync read to phone": opening a room clears its unread on the
+            // official mobile app, mirroring tapping into the room there. The backend
+            // no-ops unless the user enabled the setting. Fire-and-forget.
+            const parsedOpen = parseReadStatePath(selectedGroupDir);
+            if (parsedOpen) {
+                fetch('/api/content/mark-room-read-remote', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
+                }).catch(() => {});
+            }
         }
     }, [selectedGroupDir, isGroupChat]);
 

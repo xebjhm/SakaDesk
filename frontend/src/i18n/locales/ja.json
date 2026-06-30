@@ -52,6 +52,8 @@
     "syncFixed": "固定間隔",
     "syncFixedDesc": "一定間隔で自動同期",
     "syncSmart": "スマートタイミング",
+    "syncReadToPhone": "既読をスマホと同期",
+    "syncReadToPhoneDesc": "ここでチャットを開くと、公式アプリ側のそのトークの未読も消えます（公式アプリで開いたときと同じ）。バックグラウンド同期ではスマホの未読は変わりません。初期設定はオフ。",
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",

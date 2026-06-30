@@ -361,6 +361,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                         )}
                     </div>
+
+                    {/* Sync read status to phone (opt-in) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.syncReadToPhone')}
+                            </label>
+                            <button
+                                onClick={() => onSaveSettings({ sync_read_to_phone: !(appSettings.sync_read_to_phone ?? false) })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    appSettings.sync_read_to_phone ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    appSettings.sync_read_to_phone ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.syncReadToPhoneDesc')}
+                        </p>
+                    </div>
                     </>)}
 
                     {activeTab === 'ai' && <AiTab />}

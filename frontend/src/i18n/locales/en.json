@@ -52,6 +52,8 @@
     "syncFixed": "Fixed Interval",
     "syncFixedDesc": "Sync at regular intervals",
     "syncSmart": "Smart Timing",
+    "syncReadToPhone": "Sync read status to phone",
+    "syncReadToPhoneDesc": "When you open a chat here, clear its unread on the official mobile app — just like opening the chat there. Background sync never changes your phone's unread. Off by default.",
     "serviceSettings": "Service Settings",
     "syncCurrentOff": "Currently: Manual sync only",
     "syncCurrentFixed": "Currently: Every {{minutes}} minutes",

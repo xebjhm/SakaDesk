@@ -92,8 +92,9 @@ class SettingsResponse(BaseModel):
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
     auto_download_updates: bool = False  # Auto-download new versions in background
-    auth_mode: str = (
-        "web"  # "web" (browser headers + cookie refresh) or "mobile" (android app headers + refresh_token)
+    auth_mode: str = "web"  # "web" (browser headers + cookie refresh) or "mobile" (android app headers + refresh_token)
+    sync_read_to_phone: bool = (
+        False  # Opt-in: opening a chat here clears its unread on the official app
     )
 
 
@@ -106,6 +107,7 @@ class SettingsUpdate(BaseModel):
     blogs_full_backup: Optional[bool] = None
     auto_download_updates: Optional[bool] = None
     auth_mode: Optional[str] = None
+    sync_read_to_phone: Optional[bool] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -144,6 +146,7 @@ async def get_settings():
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         auth_mode=config.get("auth_mode", "web"),
+        sync_read_to_phone=config.get("sync_read_to_phone", False),
     )
 
 
@@ -174,6 +177,8 @@ async def update_settings(update: SettingsUpdate):
                     status_code=400, detail="auth_mode must be 'web' or 'mobile'"
                 )
             config["auth_mode"] = update.auth_mode
+        if update.sync_read_to_phone is not None:
+            config["sync_read_to_phone"] = update.sync_read_to_phone
 
     config = await _store_update(_apply)
 
@@ -190,6 +195,7 @@ async def update_settings(update: SettingsUpdate):
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         auth_mode=config.get("auth_mode", "web"),
+        sync_read_to_phone=config.get("sync_read_to_phone", False),
     )
 
 
