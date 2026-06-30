@@ -196,12 +196,13 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         };
     }, [connectElement]);
 
-    // Auto-play on mount if requested
+    // Auto-play on mount / when the source changes (matches VideoPlayer) so navigating
+    // voice→voice in the gallery auto-plays the next clip.
     useEffect(() => {
         if (autoPlay && audioRef.current) {
             audioRef.current.play().catch(() => {});
         }
-    }, [autoPlay]);
+    }, [autoPlay, src]);
 
     // Sync playback rate to audio element
     useEffect(() => {
@@ -649,7 +650,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     onRerun={retriggerTranscription}
                     accentColor={accentColor}
                     variant={panelTheme}
-                    defaultExpanded={variant === 'fullscreen' || transcriptionJustCompleted || !!transcription}
+                    defaultExpanded={variant === 'fullscreen' || transcriptionJustCompleted}
                     withBackdrop={variant === 'gallery'}
                 />
             ) : (

@@ -378,6 +378,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         setBlogTranslations([]);
         setIsTranslating(false);
         setTranslationPartial(false);
+        setTranslationError(null);  // else a prior blog's error sticks on the new blog's button
     }, [blog.id]);
 
     return (

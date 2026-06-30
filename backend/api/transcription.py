@@ -194,7 +194,7 @@ async def transcribe(request: TranscribeRequest):
             message_id=request.message_id,
             media_type=media_type,
             language="ja",
-            model=f"gemini-{gemini_provider._model}",
+            model=gemini_provider._model,  # already e.g. "gemini-3.1-flash-lite"
             duration_seconds=round(duration, 2),
             full_text=gemini_text,
             segments=segments,

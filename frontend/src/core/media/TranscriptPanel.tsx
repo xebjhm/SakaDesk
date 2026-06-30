@@ -176,7 +176,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                                             textUnderlineOffset: '3px',
                                         } : {}),
                                     }}
-                                    title={seg.confidence < 0.4 ? `⚠ Low confidence (${Math.round(seg.confidence * 100)}%)` : undefined}
+                                    title={seg.confidence < 0.4 ? `⚠ ${t('transcription.lowConfidence', { pct: Math.round(seg.confidence * 100) })}` : undefined}
                                 >
                                     {seg.text}
                                 </span>

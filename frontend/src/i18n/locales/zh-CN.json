@@ -361,7 +361,7 @@
     "blogCacheHint": "仅可搜索已缓存的 Blog。可在设置中缓存全部。",
     "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个 Blog）",
     "blogSearchLimited": "Blog 搜索仅涵盖已缓存的文章。",
-    "blogBackupInProgress": "Blog 备份进行中 \u2014 搜索结果可能不完整。",
+    "blogBackupInProgress": "Blog 备份进行中 — 搜索结果可能不完整。",
     "enableFullBackup": "启用完整备份",
     "official": "官方",
     "buildingHint": "搜索索引仍在生成中，结果可能不完整。"
@@ -464,7 +464,8 @@
     "clickToJump": "点击跳转",
     "failed": "辨识失败",
     "cc": "字幕",
-    "rerun": "重新辨识"
+    "rerun": "重新辨识",
+    "lowConfidence": "置信度低（{{pct}}%）"
   },
   "translation": {
     "translate": "翻译",
@@ -487,7 +488,8 @@
       "clearCache": "清除翻译缓存",
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
-      "cacheClearedMsg": "翻译缓存已清除"
+      "cacheClearedMsg": "翻译缓存已清除",
+      "savedSecurely": "已安全保存在凭据管理器中"
     },
     "error": {
       "noProvider": "请在设置中配置翻译服务提供商",

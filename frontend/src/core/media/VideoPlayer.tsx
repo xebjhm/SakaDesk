@@ -632,7 +632,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         onSeek={setInternalSeek}
                         onRerun={retriggerTranscription}
                         variant="light"
-                        defaultExpanded={transcriptionJustCompleted || !!transcription}
+                        defaultExpanded={transcriptionJustCompleted}
                     />
                 ) : (
                     <TranscribeButton

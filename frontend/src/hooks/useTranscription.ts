@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from '../i18n';
 
 export interface TranscriptionSegment {
     start: number;
@@ -51,6 +52,7 @@ export function useTranscription(
     messageId: number | undefined,
     memberPath: string | undefined,
 ): UseTranscriptionReturn {
+    const { t } = useTranslation();
     const [transcription, setTranscription] = useState<Transcription | null>(null);
     const [state, setState] = useState<TranscriptionState>('idle');
     const [error, setError] = useState<string | null>(null);
@@ -114,13 +116,14 @@ export function useTranscription(
                 setTranscription(data.transcription);
                 setState('done');
             } else {
-                throw new Error('Transcription returned not ok');
+                throw new Error('Transcription returned not ok');  // internal; shown via t() below
             }
         } catch (e) {
+            console.error('[Transcription] failed:', e);
             setState('error');
-            setError(e instanceof Error ? e.message : 'Transcription failed');
+            setError(t('transcription.failed'));
         }
-    }, [service, messageId, memberPath]);
+    }, [service, messageId, memberPath, t]);
 
     const trigger = useCallback(() => runTranscribe(false), [runTranscribe]);
     const retrigger = useCallback(() => runTranscribe(true), [runTranscribe]);

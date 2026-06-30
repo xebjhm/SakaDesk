@@ -946,7 +946,7 @@ function AiTab() {
                             </div>
                             {hasApiKey && !apiKeyInput && (
                                 <div className="flex items-center justify-between mt-0.5">
-                                    <p className="text-xs text-green-600">Saved securely in credential manager</p>
+                                    <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
                                     <button
                                         onClick={handleClearApiKey}
                                         className="text-xs font-medium text-red-500 hover:text-red-700"

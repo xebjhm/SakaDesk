@@ -67,6 +67,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const { activeService, setActiveService } = useAppStore();
 
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authCheckComplete, setAuthCheckComplete] = useState(false);
     const [authError, setAuthError] = useState<string | null>(null);
     const [authStatus, setAuthStatus] = useState<MultiGroupAuthStatus | null>(null);
@@ -145,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             log(`Auth check complete: ${authenticatedServices.length} service(s) authenticated (backend)`);
         } catch (e) {
             console.error('[Auth] Auth check failed:', e);  // Keep error logging
+            // Force false on ANY check failure (incl. re-checks) so sync guards bail.
+            setIsAuthenticated(false);
         } finally {
             setAuthCheckComplete(true);
         }
@@ -296,12 +299,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         [serviceAuth]
     );
 
-    // isAuthenticated: null until the first auth check completes, then derived from
-    // serviceAuth (no separate state/effect — avoids an extra render pass).
-    const isAuthenticated = useMemo(
-        () => (authCheckComplete ? Object.values(serviceAuth).some(s => s.connected === true) : null),
-        [serviceAuth, authCheckComplete]
-    );
+    // Update isAuthenticated based on serviceAuth. (Kept as state+effect rather than a
+    // pure derivation so the checkAuth catch can force it false on a re-check failure.)
+    useEffect(() => {
+        setIsAuthenticated(Object.values(serviceAuth).some(s => s.connected));
+    }, [serviceAuth]);
 
     const isServiceConnected = useCallback(
         (serviceId: string) => serviceAuth[serviceId]?.connected === true,

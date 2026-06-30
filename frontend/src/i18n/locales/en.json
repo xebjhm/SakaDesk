@@ -149,7 +149,7 @@
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "Enter the full path where messages will be stored. You can copy this from Windows Explorer.",
     "downloadBlogsOffline": "Download blogs for search",
-    "downloadBlogsHint": "Downloads all blog posts to enable full-text search. Uses approximately 5\u201315 GB per service.",
+    "downloadBlogsHint": "Downloads all blog posts to enable full-text search. Uses approximately 5–15 GB per service.",
     "startUsing": "Start Using SakaDesk"
   },
   "sync": {
@@ -361,7 +361,7 @@
     "blogCacheHint": "Only cached blogs are searchable. Cache all in Settings.",
     "resultCountWithBlogs": "{{count}} results ({{blogCount}} blogs)",
     "blogSearchLimited": "Blog search only covers cached posts.",
-    "blogBackupInProgress": "Blog backup in progress \u2014 search results may be incomplete.",
+    "blogBackupInProgress": "Blog backup in progress — search results may be incomplete.",
     "enableFullBackup": "Enable full backup",
     "official": "Official",
     "buildingHint": "Search index is still being generated. Results may be incomplete."
@@ -464,7 +464,8 @@
     "clickToJump": "click to jump",
     "failed": "Error",
     "cc": "Subtitles",
-    "rerun": "Re-transcribe"
+    "rerun": "Re-transcribe",
+    "lowConfidence": "Low confidence ({{pct}}%)"
   },
   "translation": {
     "translate": "Translate",
@@ -487,7 +488,8 @@
       "clearCache": "Clear Translation Cache",
       "clearApiKey": "Clear API key",
       "clearApiKeyConfirm": "Remove the saved API key from this device?",
-      "cacheClearedMsg": "Translation cache cleared"
+      "cacheClearedMsg": "Translation cache cleared",
+      "savedSecurely": "Saved securely in credential manager"
     },
     "error": {
       "noProvider": "Please configure a translation provider in settings",

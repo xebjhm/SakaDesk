@@ -361,7 +361,7 @@
     "blogCacheHint": "キャッシュ済みのブログのみ検索可能です。設定で全てキャッシュできます。",
     "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
     "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
-    "blogBackupInProgress": "ブログバックアップ中 \u2014 検索結果が不完全な場合があります。",
+    "blogBackupInProgress": "ブログバックアップ中 — 検索結果が不完全な場合があります。",
     "enableFullBackup": "フルバックアップを有効にする",
     "official": "公式",
     "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"
@@ -464,7 +464,8 @@
     "clickToJump": "クリックでジャンプ",
     "failed": "失敗しました",
     "cc": "字幕",
-    "rerun": "再度文字起こし"
+    "rerun": "再度文字起こし",
+    "lowConfidence": "信頼度が低い（{{pct}}%）"
   },
   "translation": {
     "translate": "翻訳",
@@ -487,7 +488,8 @@
       "clearCache": "翻訳キャッシュをクリア",
       "clearApiKey": "APIキーを削除",
       "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
-      "cacheClearedMsg": "翻訳キャッシュをクリアしました"
+      "cacheClearedMsg": "翻訳キャッシュをクリアしました",
+      "savedSecurely": "認証情報マネージャーに安全に保存されました"
     },
     "error": {
       "noProvider": "設定で翻訳プロバイダーを設定してください",
