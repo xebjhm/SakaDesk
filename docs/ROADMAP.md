@@ -184,11 +184,25 @@ Option C: GitHub Release + percentage tag (future)
 - [ ] Enable `'fanclub'` in `SERVICE_FEATURES` for supporting services
 - [ ] Index fan club content in search
 
+### 7. Two-way Unread Sync (read status ↔ phone)
+**Status:** Validated, not built (opt-in)
+**Category:** Feature
+**Complexity:** Low-Medium
+
+**Goal:** Optionally keep the per-room unread count in step with the official mobile app.
+
+**Behavior (opt-in, default OFF):**
+- **Default OFF:** background sync never affects the official app's unread badge (current behavior).
+- **ON:** opening a chat in SakaDesk clears that room's unread on your phone — exactly like opening the room in the official app. Background sync still never clears it.
+- The in-room "unread shelter" is per-device and not synced.
+
+**Remaining:** add the setting + clear-on-open wiring (the mechanism is validated end-to-end).
+
 ---
 
 ## P4: Future Vision
 
-### 7. Sync Phase 4: Post-Processing
+### 8. Sync Phase 4: Post-Processing
 **Status:** Partial (post-sync tasks exist but scattered; no formal phase or job queue)
 **Category:** Architecture
 **Complexity:** Medium
@@ -216,7 +230,7 @@ Phase 4: Post-processing (NEW)
 
 ---
 
-### 8. Vector Database per Chat Room
+### 9. Vector Database per Chat Room
 **Status:** Research Required (no implementation; referenced design doc does not exist)
 **Category:** Future Feature
 **Complexity:** Very High
