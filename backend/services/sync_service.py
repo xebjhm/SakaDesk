@@ -20,10 +20,8 @@ from backend.services.platform import (
 )
 from backend.services.notification_service import notify_sync_complete
 from backend.services.service_utils import (
-    client_auth_params,
     get_service_enum,
     get_service_display_name,
-    resolve_auth_mode,
     validate_service,
 )
 import structlog
@@ -216,17 +214,6 @@ class SyncService:
                 connector_limit=20,
             )
 
-            # Auth mode decides refresh strategy: web = cookie/browser, mobile = refresh_token
-            app_settings = await self.load_app_settings()
-            stored_mode = (
-                app_settings.get("services", {})
-                .get(self._service, {})
-                .get("auth_mode", "web")
-            )
-            auth_params = client_auth_params(
-                resolve_auth_mode(stored_mode, config), auth_dir, config
-            )
-
             connector = aiohttp.TCPConnector(limit=20)
             async with aiohttp.ClientSession(connector=connector) as session:
                 client = Client(
@@ -235,7 +222,7 @@ class SyncService:
                     cookies=config.get("cookies"),
                     app_id=config.get("x-talk-app-id"),
                     user_agent=config.get("user-agent"),
-                    **auth_params,
+                    auth_dir=auth_dir,
                 )
 
                 # Lazy refresh - only refresh if token expires within 5 minutes
@@ -712,15 +699,6 @@ class SyncService:
 
             # auth_dir for fallback headless refresh if needed
             auth_dir = str(get_session_dir())
-            app_settings = await self.load_app_settings()
-            stored_mode = (
-                app_settings.get("services", {})
-                .get(self._service, {})
-                .get("auth_mode", "web")
-            )
-            auth_params = client_auth_params(
-                resolve_auth_mode(stored_mode, config), auth_dir, config
-            )
 
             connector = aiohttp.TCPConnector(limit=10)
             async with aiohttp.ClientSession(connector=connector) as session:
@@ -730,7 +708,7 @@ class SyncService:
                     cookies=config.get("cookies"),
                     app_id=config.get("x-talk-app-id"),
                     user_agent=config.get("user-agent"),
-                    **auth_params,
+                    auth_dir=auth_dir,
                 )
 
                 # Group members by group_id for batch fetching

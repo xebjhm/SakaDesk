@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, KeyRound, Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { SERVICES, getServiceDisplayName } from '../../data/services';
+import { getServiceDisplayName } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -15,13 +15,12 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'sync' | 'ai' | 'account' | 'updates';
+type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
 const SETTINGS_TABS: { id: SettingsTab; labelKey: string; Icon: typeof SlidersHorizontal }[] = [
     { id: 'general', labelKey: 'settings.tabGeneral', Icon: SlidersHorizontal },
     { id: 'sync', labelKey: 'settings.tabSync', Icon: RefreshCw },
     { id: 'ai', labelKey: 'settings.tabAi', Icon: Sparkles },
-    { id: 'account', labelKey: 'settings.tabAccount', Icon: KeyRound },
     { id: 'updates', labelKey: 'settings.tabUpdates', Icon: Download },
 ];
 
@@ -397,23 +396,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                             ? t('settings.phoneSyncNeedsSignin', { service: getServiceDisplayName(service) })
                                             : t('settings.phoneSyncUnavailable', { service: getServiceDisplayName(service) })}
                                     </span>
-                                    {status === 'needs_signin' && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setActiveTab('account')}
-                                            className="flex-shrink-0 font-medium text-amber-900 underline hover:no-underline"
-                                        >
-                                            {t('settings.phoneSyncFix')}
-                                        </button>
-                                    )}
                                 </div>
                             ))}
                     </div>
                     </>)}
 
                     {activeTab === 'ai' && <AiTab />}
-
-                    {activeTab === 'account' && <AuthModeSection />}
 
                     {activeTab === 'updates' && (
                         <UpdatesSection
@@ -507,196 +495,6 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
         </div>
     );
 }
-
-
-function AuthModeSection() {
-    const { t } = useTranslation();
-    const [modes, setModes] = useState<Record<string, 'web' | 'mobile'>>({});
-    const [visible, setVisible] = useState<typeof SERVICES>([]);
-    const [loaded, setLoaded] = useState(false);
-
-    const load = useCallback(async () => {
-        // Only services you're signed into AND that support mobile (excludes Yodel,
-        // which has no mobile host).
-        let connected: Record<string, boolean> = {};
-        try {
-            const res = await fetch('/api/auth/status');
-            const data = await res.json();
-            connected = Object.fromEntries(
-                Object.entries(data.services ?? {}).map(
-                    ([k, v]) => [k, !!(v as { authenticated?: boolean })?.authenticated] as const
-                )
-            );
-        } catch { /* ignore */ }
-        const vis = SERVICES.filter((s) => s.supportsMobile && connected[s.id]);
-        setVisible(vis);
-        const entries = await Promise.all(
-            vis.map(async (s) => {
-                try {
-                    const res = await fetch(`/api/settings/service/${encodeURIComponent(s.id)}`);
-                    const d = await res.json();
-                    return [s.id, d.auth_mode === 'mobile' ? 'mobile' : 'web'] as const;
-                } catch {
-                    return [s.id, 'web'] as const;
-                }
-            })
-        );
-        setModes(Object.fromEntries(entries));
-        setLoaded(true);
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
-
-    // Switch a service to web: fetch its current settings and re-post with auth_mode=web
-    // (merge so we don't clobber sync/blog fields).
-    const setWeb = async (service: string) => {
-        try {
-            const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`);
-            const current = await res.json();
-            const saved = await fetch(`/api/settings/service/${encodeURIComponent(service)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...current, auth_mode: 'web' }),
-            });
-            const data = await saved.json();
-            setModes((m) => ({ ...m, [service]: data.auth_mode === 'mobile' ? 'mobile' : 'web' }));
-        } catch { /* ignore */ }
-    };
-
-    return (
-        <div className="space-y-3">
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings.authMode')}
-                </label>
-                <p className="max-w-md text-xs leading-relaxed text-gray-500">
-                    {t('settings.authModeIntro')}
-                </p>
-            </div>
-            {!loaded ? null : visible.length === 0 ? (
-                <p className="max-w-md text-xs text-gray-400">{t('settings.authModeNoAccounts')}</p>
-            ) : (
-                <div className="max-w-md divide-y divide-gray-100 rounded-lg border border-gray-200">
-                    {visible.map((s) => (
-                        <ServiceAuthRow
-                            key={s.id}
-                            service={s}
-                            mode={modes[s.id] ?? 'web'}
-                            onSetWeb={() => setWeb(s.id)}
-                            onMobileActivated={load}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
-}
-
-
-function ServiceAuthRow({ service, mode, onSetWeb, onMobileActivated }: {
-    service: { id: string; displayName: string };
-    mode: 'web' | 'mobile';
-    onSetWeb: () => void;
-    onMobileActivated: () => void;
-}) {
-    const { t } = useTranslation();
-    const [expanded, setExpanded] = useState(false);
-    const isMobile = mode === 'mobile';
-    const showToken = isMobile || expanded;
-
-    return (
-        <div className="p-3">
-            <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-800">{service.displayName}</span>
-                <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
-                    {(['web', 'mobile'] as const).map((m) => (
-                        <button
-                            key={m}
-                            onClick={() => { if (m === 'web') { setExpanded(false); onSetWeb(); } else { setExpanded(true); } }}
-                            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                                (m === 'mobile') === isMobile
-                                    ? 'bg-white shadow text-gray-800 font-medium'
-                                    : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            {t(m === 'web' ? 'settings.authModeWeb' : 'settings.authModeMobile')}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            {showToken && (
-                <div className="mt-2.5 space-y-2">
-                    <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                        <p className="text-xs leading-relaxed text-amber-700">{t('settings.authModeMobileWarning')}</p>
-                    </div>
-                    <p className="text-xs leading-relaxed text-gray-500">{t('settings.manualTokenStorageNote')}</p>
-                    <ServiceTokenInput
-                        service={service.id}
-                        onSaved={() => { setExpanded(false); onMobileActivated(); }}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
-
-function ServiceTokenInput({ service, onSaved }: { service: string; onSaved: () => void }) {
-    const { t } = useTranslation();
-    const [token, setToken] = useState('');
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState(false);
-
-    const handleSave = async () => {
-        if (!token.trim()) return;
-        setSaving(true);
-        setError(false);
-        try {
-            const res = await fetch('/api/auth/manual-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service, refresh_token: token.trim() }),
-            });
-            if (res.ok) {
-                setToken('');
-                onSaved();
-            } else {
-                setError(true);
-            }
-        } catch {
-            setError(true);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div className="mt-2.5 space-y-1.5">
-            <div className="flex items-center gap-2">
-                <input
-                    type="password"
-                    value={token}
-                    onChange={(e) => { setToken(e.target.value); setError(false); }}
-                    placeholder={t('settings.manualTokenPlaceholder')}
-                    className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
-                    autoComplete="off"
-                />
-                <button
-                    onClick={handleSave}
-                    disabled={saving || !token.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white disabled:opacity-50 shrink-0"
-                >
-                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    {saving ? t('settings.manualTokenSaving') : t('settings.manualTokenSave')}
-                </button>
-            </div>
-            {error && <p className="text-xs text-red-600">{t('settings.manualTokenError')}</p>}
-        </div>
-    );
-}
-
-
 function AiTab() {
     const { t } = useTranslation();
     const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);

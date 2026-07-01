@@ -37,7 +37,6 @@ export interface ServiceSettings {
     adaptive_sync_enabled: boolean;
     last_sync: string | null;
     blogs_full_backup: boolean;
-    auth_mode?: 'web' | 'mobile';  // per-service; effective mode (mobile only when a refresh_token is stored)
 }
 
 /** Return type for the useSettings hook. */

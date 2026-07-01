@@ -281,7 +281,7 @@ class TestMarkRoomReadRemote:
             patch(
                 "backend.services.settings_store.load_config",
                 new=AsyncMock(
-                    return_value={"sync_read_to_phone": True, "auth_mode": "web"}
+                    return_value={"sync_read_to_phone": True}
                 ),
             ),
             patch("backend.api.chat_features.get_token_manager") as mock_tm,
@@ -358,7 +358,7 @@ class TestMarkRoomReadRemote:
             patch(
                 "backend.services.settings_store.load_config",
                 new=AsyncMock(
-                    return_value={"sync_read_to_phone": True, "auth_mode": "web"}
+                    return_value={"sync_read_to_phone": True}
                 ),
             ),
             patch("backend.api.chat_features.get_token_manager") as mock_tm,

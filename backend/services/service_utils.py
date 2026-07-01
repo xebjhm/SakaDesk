@@ -3,14 +3,10 @@ Service utilities for multi-service support.
 Maps between service identifiers and pysaka Group enum.
 """
 
-from typing import Any, Dict, List, Literal, Optional, cast
-
-import structlog
+from typing import Any, Dict, List, Optional, cast
 
 from pysaka import Group
 from pysaka.client import GROUP_CONFIG
-
-logger = structlog.get_logger(__name__)
 
 
 def get_all_services() -> List[str]:
@@ -67,41 +63,3 @@ def get_service_config(service: str) -> Dict[str, Any]:
     return cast(Dict[str, Any], GROUP_CONFIG[group])
 
 
-def resolve_auth_mode(
-    stored_mode: str, token_data: Optional[Dict[str, Any]]
-) -> Literal["web", "mobile"]:
-    """Effective auth mode for a service.
-
-    "mobile" downgrades to "web" unless a ``refresh_token`` is stored: mobile mode
-    refreshes via ``/update_token`` with that token, so without one it cannot work
-    and falls back to web (the per-service toggle "snaps back" until a valid token
-    is provided). Anything other than a token-backed "mobile" resolves to "web".
-    """
-    if stored_mode == "mobile" and (token_data or {}).get("refresh_token"):
-        return "mobile"
-    if stored_mode == "mobile":
-        # Configured for mobile but no refresh_token stored: the per-service
-        # toggle snaps back to web. Log a breadcrumb so this silent downgrade
-        # (which changes the request profile + refresh strategy) is diagnosable.
-        logger.info("auth_mode 'mobile' downgraded to 'web': no refresh_token stored")
-    return "web"
-
-
-def client_auth_params(
-    auth_mode: str, session_dir: Any, token_data: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Choose the Client refresh strategy AND request profile for the auth mode.
-
-    - "mobile": long-lived ``refresh_token`` refresh, no browser fallback, and the
-      ``android`` request profile (Dart UA, mobile host, x-talk-app-platform=android)
-      so traffic mimics the official app.
-    - "web" (default): cookie/session refresh with headless-browser fallback and the
-      ``web`` request profile — behaves like the official web client.
-    """
-    if auth_mode == "mobile":
-        return {
-            "refresh_token": token_data.get("refresh_token"),
-            "auth_dir": None,
-            "platform": "android",
-        }
-    return {"refresh_token": None, "auth_dir": session_dir, "platform": "web"}

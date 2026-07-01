@@ -27,8 +27,6 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     get_service_enum,
     validate_service,
-    client_auth_params,
-    resolve_auth_mode,
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -320,19 +318,11 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             # reason lets the UI say "sign in again" instead of a generic failure.
             return {"ok": False, "reason": "no_session"}
 
-        stored_mode = (
-            config.get("services", {}).get(req.service, {}).get("auth_mode", "web")
-        )
-        auth_params = client_auth_params(
-            resolve_auth_mode(stored_mode, token_data),
-            str(get_session_dir()),
-            token_data,
-        )
         client = Client(
             group=group,
             access_token=token_data["access_token"],
             cookies=token_data.get("cookies"),
-            **auth_params,
+            auth_dir=str(get_session_dir()),
         )
         async with aiohttp.ClientSession() as session:
             ok = await client.mark_group_read(session, req.group_id)

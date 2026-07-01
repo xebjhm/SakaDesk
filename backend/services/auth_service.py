@@ -24,10 +24,8 @@ from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
-    client_auth_params,
     get_all_services,
     get_service_enum,
-    resolve_auth_mode,
     validate_service,
 )
 
@@ -238,56 +236,6 @@ class AuthService:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
-    async def set_manual_token(self, service: str, refresh_token: str) -> bool:
-        """Bootstrap a mobile-mode session from a user-supplied refresh_token.
-
-        Validates the refresh_token by exchanging it for a fresh access_token; on
-        success the session is persisted in mobile mode, otherwise returns False.
-        The token itself is never logged.
-        """
-        validate_service(service)
-        group = self._get_group(service)
-
-        client = Client(
-            group=group,
-            refresh_token=refresh_token,
-            platform="android",
-        )
-        try:
-            async with aiohttp.ClientSession() as session:
-                ok = await client.refresh_access_token(session)
-        except Exception as e:
-            logger.error(
-                "Manual token validation failed", service=service, error=str(e)
-            )
-            return False
-
-        if not ok or not client.access_token:
-            logger.warning("Manual token rejected by server", service=service)
-            return False
-
-        # Persist the freshly minted access_token + (possibly rotated) refresh_token.
-        # No web cookies in mobile mode.
-        self._save_credentials(
-            service,
-            {
-                "access_token": client.access_token,
-                "refresh_token": client.refresh_token,
-                "cookies": {},
-            },
-        )
-        # A valid token is what makes mobile mode "stick" — activate it for this service.
-        from backend.services.settings_store import update_config
-
-        def _set_mobile(config: dict) -> None:
-            config.setdefault("services", {}).setdefault(service, {})["auth_mode"] = (
-                "mobile"
-            )
-
-        await update_config(_set_mobile)
-        logger.info("Manual mobile token stored", service=service)
-        return True
-
     def _save_credentials(self, service: str, creds: dict):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
@@ -398,27 +346,14 @@ class AuthService:
                 remaining_seconds=round(remaining_seconds),
             )
 
-            # Use proper API-based refresh via Client.refresh_access_token().
-            # Auth mode decides the strategy: web = cookie/browser fallback,
-            # mobile = refresh_token grant (no browser).
-            from backend.services.settings_store import load_config as load_app_config
-
-            app_settings = await load_app_config()
-            stored_mode = (
-                app_settings.get("services", {})
-                .get(service, {})
-                .get("auth_mode", "web")
-            )
-            auth_params = client_auth_params(
-                resolve_auth_mode(stored_mode, token_data),
-                self._session_dir,
-                token_data,
-            )
+            # Proper API-based refresh via Client.refresh_access_token()
+            # using the web request profile (cookie/session refresh with
+            # headless-browser fallback).
             client = Client(
                 group=group,
                 access_token=token,
                 cookies=token_data.get("cookies"),
-                **auth_params,
+                auth_dir=self._session_dir,
             )
 
             async with aiohttp.ClientSession() as session:
@@ -433,7 +368,7 @@ class AuthService:
                     tm.save_session(
                         group.value,
                         new_token,
-                        client.refresh_token,  # persist rotated refresh_token (mobile flow); parity with sync_service
+                        client.refresh_token,  # persist any refresh_token returned; parity with sync_service
                         new_cookies,
                     )
 
