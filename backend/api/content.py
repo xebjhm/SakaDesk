@@ -30,6 +30,8 @@ from backend.services.platform import (
     get_settings_path,
     is_test_mode,
     get_default_output_dir,
+    is_windows,
+    copy_file_to_clipboard,
 )
 from backend.services.path_resolver import (
     resolve_service_path,
@@ -281,10 +283,14 @@ async def get_groups():
             if sg:
                 is_graduated = sg.get("state") == "closed"
                 is_active = sg.get("is_active", True) if not is_graduated else False
+                # Server-side unread snapshot for the phone -> Windows badge cap.
+                # None when absent (old metadata) → caller must not cap on it.
+                server_unread_count = sg.get("unread_count")
             else:
                 # No server data yet — need to sync first
                 is_graduated = False
                 is_active = True
+                server_unread_count = None
 
             groups.append(
                 {
@@ -300,6 +306,7 @@ async def get_groups():
                     "is_group_chat": is_group_chat,
                     "is_active": is_active,
                     "is_graduated": is_graduated,
+                    "server_unread_count": server_unread_count,
                     "thumbnail": group_thumbnail,
                     "last_message_id": last_message_id,
                     "total_messages": total_messages,
@@ -884,3 +891,43 @@ async def download_media(file_path: str, filename: Optional[str] = None):
         filename=filename or safe_path.name,
         media_type="application/octet-stream",
     )
+
+
+class ClipboardRequest(BaseModel):
+    media_url: str
+
+
+@router.post("/clipboard")
+async def copy_to_clipboard(request: ClipboardRequest):
+    """Copy a media file to the Windows clipboard.
+
+    Resolves the media URL to a local file path and places it on the
+    clipboard using CF_HDROP format so it can be pasted into other apps.
+
+    Returns 501 on non-Windows platforms.
+    """
+    if not is_windows():
+        raise HTTPException(
+            status_code=501, detail="Clipboard copy is only supported on Windows"
+        )
+
+    # Extract the file path from the media URL.
+    # media_url is like "/api/content/media/hinatazaka46/messages/.../video/1.mp4"
+    prefix = "/api/content/media/"
+    if not request.media_url.startswith(prefix):
+        raise HTTPException(status_code=400, detail="Invalid media URL format")
+
+    from urllib.parse import unquote
+
+    file_path_str = unquote(request.media_url[len(prefix) :])
+    safe_path = _resolve_media_path(file_path_str)
+
+    try:
+        copy_file_to_clipboard(safe_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found")
+    except RuntimeError as e:
+        logger.error("Clipboard operation failed", error=str(e))
+        raise HTTPException(status_code=500, detail="Clipboard operation failed")
+
+    return {"ok": True}

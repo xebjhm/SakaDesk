@@ -58,3 +58,52 @@ def test_get_service_display_name_invalid():
     """Test get_service_display_name raises ValueError for invalid service."""
     with pytest.raises(ValueError, match="Unknown service"):
         get_service_display_name("invalid_service")
+
+
+# ---------------------------------------------------------------------------
+# client_auth_params — selects refresh strategy by auth mode
+# ---------------------------------------------------------------------------
+from backend.services.service_utils import client_auth_params  # noqa: E402
+
+
+def test_client_auth_params_web_uses_cookies_and_browser_fallback():
+    p = client_auth_params("web", "/sess", {"refresh_token": "RT", "cookies": {}})
+    assert p == {"refresh_token": None, "auth_dir": "/sess", "platform": "web"}
+
+
+def test_client_auth_params_mobile_uses_token_and_no_browser():
+    p = client_auth_params("mobile", "/sess", {"refresh_token": "RT"})
+    assert p == {"refresh_token": "RT", "auth_dir": None, "platform": "android"}
+
+
+def test_client_auth_params_unknown_mode_defaults_to_web():
+    p = client_auth_params("bogus", "/sess", {"refresh_token": "RT"})
+    assert p == {"refresh_token": None, "auth_dir": "/sess", "platform": "web"}
+
+
+def test_client_auth_params_mobile_sets_android_platform():
+    # Mobile mode must carry the android profile so pysaka emits app headers.
+    p = client_auth_params("mobile", "/sess", {"refresh_token": "RT"})
+    assert p["platform"] == "android"
+
+
+# resolve_auth_mode — effective mode with mobile->web fallback when no refresh_token
+from backend.services.service_utils import resolve_auth_mode  # noqa: E402
+
+
+def test_resolve_auth_mode_mobile_with_refresh_token_stays_mobile():
+    assert resolve_auth_mode("mobile", {"refresh_token": "RT"}) == "mobile"
+
+
+def test_resolve_auth_mode_mobile_without_refresh_token_falls_back_to_web():
+    assert resolve_auth_mode("mobile", {"refresh_token": None}) == "web"
+    assert resolve_auth_mode("mobile", {}) == "web"
+    assert resolve_auth_mode("mobile", None) == "web"
+
+
+def test_resolve_auth_mode_web_stays_web_even_with_refresh_token():
+    assert resolve_auth_mode("web", {"refresh_token": "RT"}) == "web"
+
+
+def test_resolve_auth_mode_unknown_defaults_to_web():
+    assert resolve_auth_mode("bogus", {"refresh_token": "RT"}) == "web"

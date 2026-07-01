@@ -2,10 +2,13 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import { formatDownloadFilename } from '../../utils/classnames';
+import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
+import { Z_CLASS } from '../../constants/zIndex';
+import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
+import { PhotoPlayer } from './PhotoPlayer';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -18,6 +21,16 @@ export interface MediaViewerItem {
     memberName?: string;
     /** Whether the video has no audio track (from sync metadata). */
     isMuted?: boolean;
+    /** Source context label (e.g. blog post title, message preview). */
+    sourceLabel?: string;
+    /** Called when sourceLabel is clicked — jumps to the source (blog post, message, etc). */
+    onSourceJump?: () => void;
+    /** Message ID for transcription lookup. */
+    messageId?: number;
+    /** Service ID for transcription API. */
+    service?: string;
+    /** Relative path to member directory for transcription. */
+    memberPath?: string;
 }
 
 interface MediaViewerModalProps {
@@ -49,10 +62,14 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
     const item = mediaItems[currentIndex];
 
+    // Clipboard shortcut — window-level Ctrl+C listener
+    const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
+
     const hasPrev = currentIndex > 0;
     const hasNext = currentIndex < mediaItems.length - 1;
 
-    // Reset zoom when navigating to a new item
+    // Reset zoom when navigating to a new item. (Video/voice transcription
+    // state is owned by the player components themselves via messageId.)
     useEffect(() => {
         setZoom(1);
     }, [currentIndex]);
@@ -105,7 +122,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         <div
             ref={modalRef}
             tabIndex={-1}
-            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center outline-none"
+            className={cn("fixed inset-0 bg-black/90 flex items-center justify-center outline-none", Z_CLASS.MODAL_DETAIL)}
             onClick={onClose}
             onKeyDown={handleKeyDown}
         >
@@ -117,34 +134,36 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             {/* Media content */}
             <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
                 {item.type === 'picture' && (
-                    <img
-                        src={item.src}
-                        alt="Media"
-                        className="max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-150"
-                        style={{ transform: `scale(${zoom})` }}
-                        draggable={false}
-                    />
+                    <PhotoPlayer variant="fullscreen" src={item.src} alt="Media" zoom={zoom} />
                 )}
                 {item.type === 'video' && (
-                    <VideoPlayer
-                        src={item.src}
-                        autoPlay
-                        messageTimestamp={item.timestamp}
-                        noAudio={item.isMuted}
-                        viewerMode
-                        videoClassName="max-w-[90vw] max-h-[90vh]"
-                    />
+                    <div className="flex flex-col items-center gap-3">
+                        <VideoPlayer
+                            src={item.src}
+                            variant="fullscreen"
+                            autoPlay
+                            messageTimestamp={item.timestamp}
+                            noAudio={item.isMuted}
+                            videoClassName="max-w-[90vw] max-h-[90vh]"
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
+                        />
+                    </div>
                 )}
                 {item.type === 'voice' && (
-                    <div className="w-96">
+                    <div className="w-96 flex flex-col gap-3">
                         <VoicePlayer
                             src={item.src}
-                            variant="premium"
+                            variant="fullscreen"
                             avatarUrl={item.avatarUrl}
                             memberName={item.memberName}
                             messageTimestamp={item.timestamp}
                             autoPlay
                             viewerMode
+                            messageId={item.messageId}
+                            service={item.service}
+                            memberPath={item.memberPath}
                         />
                     </div>
                 )}
@@ -154,7 +173,10 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             {goldenFingerActive && item.type === 'picture' && (
                 <button
                     onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-                    className="absolute bottom-6 right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors"
+                    className={cn(
+                        "absolute right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors",
+                        item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
+                    )}
                 >
                     <Download className="w-4 h-4" />
                     {t('common.download')}
@@ -163,8 +185,28 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
             {/* Navigation counter */}
             {mediaItems.length > 1 && (
-                <div className="absolute bottom-6 left-6 text-white/60 text-sm">
+                <div className={cn(
+                    "absolute left-6 text-white/60 text-sm",
+                    item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
+                )}>
                     {currentIndex + 1} / {mediaItems.length}
+                </div>
+            )}
+
+            {/* Source label */}
+            {item.sourceLabel && item.onSourceJump && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); item.onSourceJump!(); }}
+                    className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 hover:text-white text-sm max-w-[60vw] truncate transition-colors underline underline-offset-2 decoration-white/30 hover:decoration-white/60"
+                >
+                    {item.sourceLabel}
+                </button>
+            )}
+
+            {/* Clipboard toast */}
+            {toastMessage && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-20">
+                    {toastMessage}
                 </div>
             )}
         </div>

@@ -11,6 +11,7 @@ export interface MessageSearchResult {
   timestamp: string;
   type: string;
   is_group_chat?: boolean;
+  segment_start?: number;
 }
 
 export interface BlogSearchResult {

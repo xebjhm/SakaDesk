@@ -323,7 +323,10 @@ function App() {
                         onClose={clearSessionExpired}
                         onSuccess={async () => {
                             await checkAuth();
-                            clearSessionExpired();
+                            // Pass reconnected service to activate cooldown —
+                            // prevents SESSION_EXPIRED from re-triggering the
+                            // modal if the sync started below races with auth.
+                            clearSessionExpired(sessionExpiredService);
                             // Restart sync for this service
                             startSync(false, sessionExpiredService);
                         }}
@@ -340,6 +343,8 @@ function App() {
                         onSuccess={async () => {
                             await checkAuth();
                             setDisconnectedLoginService(null);
+                            // Pass reconnected service to activate cooldown
+                            clearSessionExpired(disconnectedLoginService);
                             startSync(false, disconnectedLoginService);
                         }}
                         isDisconnected={true}
@@ -381,6 +386,7 @@ function App() {
                         onOpenSearch={openSearch}
                         syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
+                        blogBackupEnabled={appSettings?.blogs_full_backup}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}

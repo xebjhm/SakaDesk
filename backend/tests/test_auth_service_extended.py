@@ -1,6 +1,7 @@
 """Extended tests for AuthService — session management, concurrency, credentials, error handling."""
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -186,36 +187,62 @@ class TestTokenExpiryHelpers:
 # ---------------------------------------------------------------------------
 
 
-class TestConcurrentLoginPrevention:
-    """Test that _browser_lock serialises concurrent login_with_browser calls."""
+class TestConcurrentLoginSupersede:
+    """A new login_with_browser supersedes (cancels) any in-progress one instead
+    of silently queueing behind it. Queueing previously caused a multi-minute
+    deadlock when a stuck/abandoned login kept holding the browser lock."""
 
-    def test_second_login_waits_for_first(self, auth_service):
-        """Two concurrent logins should not overlap: the lock serialises them."""
-        call_order = []
-
-        async def fake_login(group, headless, user_data_dir, channel):
-            call_order.append("start")
-            await asyncio.sleep(0.05)
-            call_order.append("end")
-            return {"access_token": "tok"}
+    def test_second_login_supersedes_first(self, auth_service):
+        """Starting a login for a new service cancels the in-progress one and
+        proceeds, rather than blocking until the first finishes."""
+        events = []
 
         async def run():
+            entered = asyncio.Event()
+
+            async def fake_login(group, headless, user_data_dir, channel):
+                events.append(("start", group.value))
+                entered.set()
+                try:
+                    await asyncio.sleep(
+                        10
+                    )  # simulate an open browser awaiting the user
+                    return {"access_token": "tok"}
+                except asyncio.CancelledError:
+                    events.append(("cancelled", group.value))
+                    raise
+
             with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
                 mock_auth.login = AsyncMock(side_effect=fake_login)
                 with patch.object(auth_service, "_save_credentials"):
                     task1 = asyncio.create_task(
                         auth_service.login_with_browser("hinatazaka46")
                     )
-                    # Small delay to ensure task1 acquires the lock first
-                    await asyncio.sleep(0.01)
+                    await asyncio.wait_for(
+                        entered.wait(), timeout=2
+                    )  # task1 is inside login
+                    entered.clear()
+
                     task2 = asyncio.create_task(
-                        auth_service.login_with_browser("hinatazaka46")
+                        auth_service.login_with_browser("nogizaka46")
                     )
-                    await asyncio.gather(task1, task2)
+                    # If the second login queued (old behaviour), task2 never
+                    # starts and this times out.
+                    await asyncio.wait_for(entered.wait(), timeout=2)
+
+                    # The first login must have been cancelled by the supersede.
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task1
+                    assert task1.cancelled()
+
+                    task2.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task2
 
         asyncio.run(run())
-        # Verify serialised execution: start-end-start-end, not start-start-end-end
-        assert call_order == ["start", "end", "start", "end"]
+        assert ("start", "hinatazaka46") in events
+        assert ("cancelled", "hinatazaka46") in events
+        assert ("start", "nogizaka46") in events
 
     def test_browser_lock_locked_check(self, auth_service):
         """When lock is held, login_with_browser logs a warning but still proceeds."""
@@ -489,6 +516,50 @@ class TestRefreshIfNeeded:
         assert result["refreshed"] is True
         assert result["status"] == "refreshed"
         assert result["remaining_seconds"] == 3600.0
+
+    def test_refresh_persists_rotated_refresh_token(self, auth_service):
+        """After a successful refresh, the client's (possibly rotated) refresh_token
+        must be persisted — not hardcoded None (parity with sync_service)."""
+
+        async def run():
+            with patch("backend.services.auth_service.get_token_manager") as mock_tm:
+                mock_tm.return_value.load_session.return_value = {
+                    "access_token": "old.tok",
+                    "refresh_token": "old.rt",
+                }
+                with patch.object(
+                    auth_service, "_get_token_remaining_seconds"
+                ) as mock_rem:
+                    mock_rem.side_effect = [300.0, 3600.0]
+                    with patch(
+                        "backend.services.auth_service.Client"
+                    ) as mock_client_cls:
+                        mock_client = MagicMock()
+                        mock_client.access_token = "new.tok"
+                        mock_client.refresh_token = "new.rt"
+                        mock_client.cookies = {"s": "v2"}
+                        mock_client.refresh_access_token = AsyncMock(return_value=True)
+                        mock_client_cls.return_value = mock_client
+
+                        with patch(
+                            "backend.services.auth_service.aiohttp.ClientSession"
+                        ) as mock_session_cls:
+                            mock_session = AsyncMock()
+                            mock_session_cls.return_value.__aenter__ = AsyncMock(
+                                return_value=mock_session
+                            )
+                            mock_session_cls.return_value.__aexit__ = AsyncMock(
+                                return_value=False
+                            )
+                            await auth_service.refresh_if_needed(
+                                "hinatazaka46", threshold_minutes=10
+                            )
+                            return mock_tm.return_value.save_session.call_args
+
+        save_args = asyncio.run(run())
+        # save_session(service, access_token, refresh_token, cookies) — 3rd positional arg
+        assert save_args is not None
+        assert save_args[0][2] == "new.rt"
 
     def test_token_refresh_fails_returns_refresh_failed(self, auth_service):
         """When Client.refresh_access_token returns False, status is refresh_failed."""

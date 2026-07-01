@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "設定",
+    "tabGeneral": "一般",
+    "tabSync": "同期",
+    "tabAi": "AI",
+    "tabAccount": "アカウント",
+    "tabUpdates": "アップデート",
     "outputFolder": "保存先フォルダ",
     "autoSync": "自動同期",
     "syncEvery": "同期間隔",
@@ -47,16 +52,40 @@
     "syncFixed": "固定間隔",
     "syncFixedDesc": "一定間隔で自動同期",
     "syncSmart": "スマートタイミング",
+    "syncReadToPhone": "既読をスマホと同期",
+    "syncReadToPhoneDesc": "ここでチャットを開くと、公式アプリでもそのトークの未読件数（赤いバッジ）が消えます（公式アプリで開いたときと同じ）。初期設定はオフ。",
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
     "syncCurrentSmart": "現在: スマートタイミング",
     "autoDownloadUpdates": "自動ダウンロード更新",
     "autoDownloadUpdatesDesc": "新しいバージョンをバックグラウンドで自動ダウンロード",
+    "authMode": "ログイン方法",
+    "authModeWeb": "ウェブ",
+    "authModeMobile": "スマホアプリ",
+    "authModeWebDesc": "公式サイトと同じ方法でログインします。最も互換性が高く安全です。定期的に再ログインが必要になることがあります。",
+    "authModeMobileDesc": "スマホアプリのようにログインします。一度ログインすれば、ログイン状態を自動で保ちます。",
+    "authModeMobileWarning": "上級者向け・自己責任です。SakaDesk が公式サイトではなく公式アプリのように動作するため、アカウントが制限・停止されるリスクはウェブモードより高くなります。",
+    "authModeIntro": "SakaDesk は既定でウェブログインを使います（ときどき再ログインが必要になります）。スマホアプリモードは代わりに refresh_token を使うため、ログインは不要です。",
+    "authModeNoAccounts": "ログイン方式を選ぶには、まずサービスにサインインしてください。",
+    "manualTokenStorageNote": "refresh_token は端末内に安全に保存されます。",
+    "manualTokenPlaceholder": "refresh_token を貼り付け",
+    "manualTokenSave": "確認して保存",
+    "manualTokenSaving": "確認中…",
+    "manualTokenError": "refresh_token が拒否されました。内容を確認してもう一度お試しください。",
     "checkForUpdates": "今すぐ確認",
     "updateFound": "v{{version}} が利用可能です！",
     "upToDate": "最新版です",
-    "updateCheckFailed": "確認に失敗しました"
+    "updateCheckFailed": "確認に失敗しました",
+    "transcriptionDevice": "文字起こし",
+    "aiProvider": "AIプロバイダー",
+    "resetDefaults": "デフォルトに戻す",
+    "resetConfirm": "設定をデフォルトに戻しますか？データフォルダ・保存済みのAPIキー・言語は保持されます。",
+    "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
+    "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
+    "transcriptionGpuTesting": "GPUをテスト中...",
+    "transcriptionGpuSuccess": "GPUが利用可能です",
+    "transcriptionGpuFailed": "GPUテストに失敗しました"
   },
   "time": {
     "minute": "{{count}}分",
@@ -162,7 +191,9 @@
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "ダウンロードボタン有効 ✨",
-    "goldenFingerDisabled": "ダウンロードボタン無効"
+    "goldenFingerDisabled": "ダウンロードボタン無効",
+    "goldenFingerCopied": "クリップボードにコピーしました",
+    "goldenFingerCopyFailed": "コピーに失敗しました"
   },
   "report": {
     "title": "不具合報告",
@@ -330,7 +361,7 @@
     "blogCacheHint": "キャッシュ済みのブログのみ検索可能です。設定で全てキャッシュできます。",
     "resultCountWithBlogs": "{{count}}件の結果（{{blogCount}}件ブログ）",
     "blogSearchLimited": "ブログ検索はキャッシュ済みの記事のみです。",
-    "blogBackupInProgress": "ブログバックアップ中 \u2014 検索結果が不完全な場合があります。",
+    "blogBackupInProgress": "ブログバックアップ中 — 検索結果が不完全な場合があります。",
     "enableFullBackup": "フルバックアップを有効にする",
     "official": "公式",
     "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"
@@ -338,6 +369,7 @@
   "media": {
     "title": "メディア",
     "jumpToDate": "日付へ移動",
+    "jumpToMessage": "メッセージへ移動",
     "cached": "保存済み",
     "publishedRecently": "24時間以内に公開",
     "checkingUpdates": "更新を確認中...",
@@ -408,5 +440,66 @@
     "5th": "五期生",
     "6th": "六期生",
     "7th": "七期生"
+  },
+  "memberProfile": {
+    "subscribedFor": "購読して",
+    "days": "日間！",
+    "startSubscription": "メンバーシップを始めよう！",
+    "retry": "再試行"
+  },
+  "blogGallery": {
+    "title": "アルバム",
+    "button": "アルバム",
+    "loading": "写真を読み込み中...",
+    "emptyNoBackup": "写真を閲覧するには、設定でブログの完全バックアップを有効にしてください",
+    "emptyNoPhotos": "写真が見つかりませんでした",
+    "count": "{{count}}枚の写真",
+    "jumpToDate": "日付にジャンプ"
+  },
+  "transcription": {
+    "transcribe": "文字にする",
+    "transcribing": "聞き取り中...",
+    "transcript": "語音內容",
+    "noTranscript": "記録なし",
+    "clickToJump": "クリックでジャンプ",
+    "failed": "失敗しました",
+    "cc": "字幕",
+    "rerun": "再度文字起こし",
+    "lowConfidence": "信頼度が低い（{{pct}}%）"
+  },
+  "translation": {
+    "translate": "翻訳",
+    "translating": "翻訳中...",
+    "rerun": "再翻訳",
+    "translated": "✓ 翻訳済み",
+    "translatedPartial": "✓ 翻訳済み (一部)",
+    "settings": {
+      "title": "翻訳",
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "apiKey": "APIキー",
+      "testConnection": "接続テスト",
+      "testSuccess": "接続成功",
+      "testFailed": "接続失敗",
+      "targetLanguage": "翻訳先の言語",
+      "globalMessages": "すべてのメッセージを翻訳",
+      "globalBlogs": "すべてのブログ記事を翻訳",
+      "experimental": "実験的機能",
+      "clearCache": "翻訳キャッシュをクリア",
+      "clearApiKey": "APIキーを削除",
+      "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
+      "cacheClearedMsg": "翻訳キャッシュをクリアしました",
+      "savedSecurely": "認証情報マネージャーに安全に保存されました"
+    },
+    "error": {
+      "noProvider": "設定で翻訳プロバイダーを設定してください",
+      "failed": "翻訳に失敗しました",
+      "rateLimited": "レート制限に達しました。後でもう一度お試しください"
+    },
+    "dataPolicy": {
+      "geminiFree": "無料枠 — Flash Lite（推奨）：1日約500リクエスト、Flash：1日約20リクエスト。データがGoogleの製品改善に使用される場合があります。",
+      "geminiPaid": "有料枠 — 翻訳100件あたり約US$0.01。データはトレーニングに使用されません。",
+      "openai": "APIデータはトレーニングに使用されません"
+    }
   }
 }

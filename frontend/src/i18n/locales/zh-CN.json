@@ -26,6 +26,11 @@
   },
   "settings": {
     "title": "设置",
+    "tabGeneral": "常规",
+    "tabSync": "同步",
+    "tabAi": "AI",
+    "tabAccount": "账号",
+    "tabUpdates": "更新",
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",
@@ -47,16 +52,40 @@
     "syncFixed": "固定间隔",
     "syncFixedDesc": "以固定间隔自动同步",
     "syncSmart": "智能排程",
+    "syncReadToPhone": "与手机同步已读",
+    "syncReadToPhoneDesc": "在这里打开聊天时，会一并清除它在官方 App 的未读计数（消红点），就像你在官方 App 打开一样。默认关闭。",
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
     "syncCurrentSmart": "目前: 智能排程",
     "autoDownloadUpdates": "自动下载更新",
     "autoDownloadUpdatesDesc": "在后台自动下载新版本",
+    "authMode": "登录方式",
+    "authModeWeb": "网页",
+    "authModeMobile": "手机 App",
+    "authModeWebDesc": "以官方网站相同的方式登录，兼容性最高、最安全。可能需要定期重新登录。",
+    "authModeMobileDesc": "像手机 App 一样登录。只要登录过一次，就会自动保持登录。",
+    "authModeMobileWarning": "高级功能，请自行承担风险。此模式会让 SakaDesk 表现得像官方 App 而非官方网站，账号被标记或封禁的风险高于网页模式。",
+    "authModeIntro": "SakaDesk 默认使用网页登录，可能需要不时重新登录。手机 App 模式改用 refresh_token，因此不需要登录。",
+    "authModeNoAccounts": "请先登录某个服务，才能选择它的登录方式。",
+    "manualTokenStorageNote": "你的 refresh_token 会安全地保存在你的设备上。",
+    "manualTokenPlaceholder": "粘贴你的 refresh_token",
+    "manualTokenSave": "验证并保存",
+    "manualTokenSaving": "验证中…",
+    "manualTokenError": "refresh_token 被拒绝。请再次确认后重试。",
     "checkForUpdates": "立即检查",
     "updateFound": "v{{version}} 可用！",
     "upToDate": "已是最新版本",
-    "updateCheckFailed": "检查失败"
+    "updateCheckFailed": "检查失败",
+    "transcriptionDevice": "语音转文字",
+    "aiProvider": "AI 服务商",
+    "resetDefaults": "重置为默认值",
+    "resetConfirm": "要将设置重置为默认值吗？数据文件夹、已保存的 API 密钥与语言会保留。",
+    "transcriptionCpuDesc": "适用所有电脑，速度较慢",
+    "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
+    "transcriptionGpuTesting": "测试 GPU 中...",
+    "transcriptionGpuSuccess": "GPU 可用且运行正常",
+    "transcriptionGpuFailed": "GPU 测试失败"
   },
   "time": {
     "minute": "{{count}} 分钟",
@@ -162,7 +191,9 @@
     "madeWith": "Made with",
     "by": "by",
     "goldenFingerEnabled": "下载按钮已启用 ✨",
-    "goldenFingerDisabled": "下载按钮已停用"
+    "goldenFingerDisabled": "下载按钮已停用",
+    "goldenFingerCopied": "已复制到剪贴板",
+    "goldenFingerCopyFailed": "复制失败"
   },
   "report": {
     "title": "报告问题",
@@ -330,7 +361,7 @@
     "blogCacheHint": "仅可搜索已缓存的 Blog。可在设置中缓存全部。",
     "resultCountWithBlogs": "{{count}} 个结果（{{blogCount}} 个 Blog）",
     "blogSearchLimited": "Blog 搜索仅涵盖已缓存的文章。",
-    "blogBackupInProgress": "Blog 备份进行中 \u2014 搜索结果可能不完整。",
+    "blogBackupInProgress": "Blog 备份进行中 — 搜索结果可能不完整。",
     "enableFullBackup": "启用完整备份",
     "official": "官方",
     "buildingHint": "搜索索引仍在生成中，结果可能不完整。"
@@ -338,6 +369,7 @@
   "media": {
     "title": "媒体",
     "jumpToDate": "跳转到日期",
+    "jumpToMessage": "跳转到消息",
     "cached": "已缓存",
     "publishedRecently": "24小时内发布",
     "checkingUpdates": "正在检查更新...",
@@ -408,5 +440,66 @@
     "5th": "５期生",
     "6th": "６期生",
     "7th": "７期生"
+  },
+  "memberProfile": {
+    "subscribedFor": "已订阅",
+    "days": "天！",
+    "startSubscription": "开始订阅吧！",
+    "retry": "重试"
+  },
+  "blogGallery": {
+    "title": "相册",
+    "button": "相册",
+    "loading": "加载照片中...",
+    "emptyNoBackup": "请在设置中启用完整博客备份以浏览照片",
+    "emptyNoPhotos": "未找到照片",
+    "count": "{{count}} 张照片",
+    "jumpToDate": "跳至日期"
+  },
+  "transcription": {
+    "transcribe": "显示文字",
+    "transcribing": "辨识中...",
+    "transcript": "语音内容",
+    "noTranscript": "暂无文字",
+    "clickToJump": "点击跳转",
+    "failed": "辨识失败",
+    "cc": "字幕",
+    "rerun": "重新辨识",
+    "lowConfidence": "置信度低（{{pct}}%）"
+  },
+  "translation": {
+    "translate": "翻译",
+    "translating": "翻译中...",
+    "rerun": "重新翻译",
+    "translated": "✓ 已翻译",
+    "translatedPartial": "✓ 已翻译 (部分)",
+    "settings": {
+      "title": "翻译",
+      "provider": "服务提供商",
+      "model": "模型",
+      "apiKey": "API 密钥",
+      "testConnection": "测试连接",
+      "testSuccess": "连接成功",
+      "testFailed": "连接失败",
+      "targetLanguage": "目标语言",
+      "globalMessages": "翻译所有消息",
+      "globalBlogs": "翻译所有博客文章",
+      "experimental": "实验性功能",
+      "clearCache": "清除翻译缓存",
+      "clearApiKey": "清除 API 密钥",
+      "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
+      "cacheClearedMsg": "翻译缓存已清除",
+      "savedSecurely": "已安全保存在凭据管理器中"
+    },
+    "error": {
+      "noProvider": "请在设置中配置翻译服务提供商",
+      "failed": "翻译失败",
+      "rateLimited": "已达速率限制，请稍后再试"
+    },
+    "dataPolicy": {
+      "geminiFree": "免费方案 — Flash Lite（推荐）：每日约 500 次；Flash：每日约 20 次。数据可能被 Google 用于改善产品。",
+      "geminiPaid": "付费方案 — 每 100 次翻译约 US$0.01。数据不会用于训练。",
+      "openai": "API 数据不会用于训练"
+    }
   }
 }

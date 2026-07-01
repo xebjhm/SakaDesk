@@ -1121,6 +1121,114 @@ class TestSyncPhaseProgression:
         # Notification was sent
         mock_notify.assert_called_once_with(5, 1)
 
+    @pytest.mark.asyncio
+    async def test_server_unread_count_captured_in_metadata(self, tmp_path):
+        """Sync snapshots each group's server unread_count into server_groups.
+
+        This is the phone->Windows signal: when the user reads a room on the
+        official app, the server's unread_count drops, and the next sync records
+        it so the badge can be capped to match.
+        """
+        svc = SyncService()
+
+        mock_progress = MagicMock()
+        for attr in ("start_phase", "set_completed", "complete", "update", "error"):
+            setattr(mock_progress, attr, MagicMock())
+
+        # group 100 has unread_count 7; group 200 omits it (API drops the field
+        # when zero) and must be recorded as 0, not missing.
+        groups = [
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+                "unread_count": 7,
+            },
+            {
+                "id": 200,
+                "name": "Group2",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+        ]
+        members = [{"id": 1, "name": "MemberA", "thumbnail": None, "portrait": None}]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=999)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.client = mock_client
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        saved_metadata = {}
+
+        async def capture_metadata(md):
+            saved_metadata.clear()
+            saved_metadata.update(md)
+
+        with (
+            patch.object(
+                svc,
+                "load_app_settings",
+                new_callable=AsyncMock,
+                return_value={"is_configured": True, "output_dir": str(tmp_path)},
+            ),
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch.object(
+                svc,
+                "load_metadata",
+                new_callable=AsyncMock,
+                return_value=_make_metadata(),
+            ),
+            patch.object(
+                svc,
+                "save_metadata",
+                new_callable=AsyncMock,
+                side_effect=capture_metadata,
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch(
+                "backend.services.sync_service.get_session_dir",
+                return_value=tmp_path / "session",
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+            patch(
+                "backend.services.sync_service.SyncManager", return_value=mock_manager
+            ),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+            patch("backend.services.sync_service.notify_sync_complete"),
+        ):
+            mock_pm.get.return_value = mock_progress
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            await svc.start_sync()
+
+        assert saved_metadata["server_groups"]["100"]["unread_count"] == 7
+        assert saved_metadata["server_groups"]["200"]["unread_count"] == 0
+
 
 # ---------------------------------------------------------------------------
 # Error handling in sync — partial failures

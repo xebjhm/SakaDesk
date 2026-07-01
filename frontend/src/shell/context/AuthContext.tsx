@@ -83,44 +83,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const res = await fetch('/api/auth/status');
             const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean; expires_at?: number }> } = await res.json();
 
-            const newServiceAuth: ServiceAuthRecord = {};
-            const authenticatedServices: string[] = [];
+            // Use functional update to access previous state and merge properly.
+            // This prevents clearing frontend-only disconnect state for services
+            // whose JWT is still valid but whose server-side session was invalidated
+            // (detected by sync as SESSION_EXPIRED).
+            setServiceAuth(prev => {
+                const newServiceAuth: ServiceAuthRecord = {};
 
-            for (const [serviceId, status] of Object.entries(data.services)) {
-                const wasEverConnected = status.authenticated || status.token_expired === true;
-                const connected = status.authenticated === true;
+                for (const [serviceId, status] of Object.entries(data.services)) {
+                    const wasEverConnected = status.authenticated || status.token_expired === true;
+                    const connected = status.authenticated === true;
+                    const newExpiresAt = status.expires_at ? status.expires_at * 1000 : null;
 
-                newServiceAuth[serviceId] = {
-                    connected,
-                    tokenExpiresAt: status.expires_at ? status.expires_at * 1000 : null,
-                    error: status.token_expired ? 'Session expired' : null,
-                    wasEverConnected,
-                };
+                    const prevState = prev[serviceId];
+                    const wasDisconnected = prevState?.wasEverConnected === true && prevState?.connected === false;
+                    const tokenChanged = prevState?.tokenExpiresAt !== newExpiresAt;
 
-                if (connected) {
-                    authenticatedServices.push(serviceId);
-                    log(`${serviceId}: connected, expires at ${status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : 'unknown'}`);
-                } else if (status.token_expired) {
-                    log(`${serviceId}: disconnected (token expired)`);
-                } else {
-                    log(`${serviceId}: not connected`);
+                    if (wasDisconnected && connected && !tokenChanged) {
+                        // Backend says JWT is valid, but frontend knows the server-side
+                        // session was invalidated (sync detected SESSION_EXPIRED).
+                        // Preserve the disconnect state — only a new token (re-login)
+                        // should clear it.
+                        log(`${serviceId}: preserving disconnect state (JWT valid but session invalidated)`);
+                        newServiceAuth[serviceId] = {
+                            ...prevState,
+                            tokenExpiresAt: newExpiresAt,
+                        };
+                    } else {
+                        newServiceAuth[serviceId] = {
+                            connected,
+                            tokenExpiresAt: newExpiresAt,
+                            error: status.token_expired ? 'Session expired' : null,
+                            wasEverConnected: wasEverConnected || (prevState?.wasEverConnected ?? false),
+                        };
+
+                        if (connected) {
+                            log(`${serviceId}: connected, expires at ${status.expires_at ? new Date(status.expires_at * 1000).toLocaleTimeString() : 'unknown'}`);
+                        } else if (status.token_expired) {
+                            log(`${serviceId}: disconnected (token expired)`);
+                        } else {
+                            log(`${serviceId}: not connected`);
+                        }
+                    }
                 }
-            }
 
-            setServiceAuth(newServiceAuth);
+                return newServiceAuth;
+            });
+
             setAuthStatus(data.services);
 
-            const anyAuthenticated = authenticatedServices.length > 0;
-            setIsAuthenticated(anyAuthenticated);
+            // Compute authenticated services from backend response for activeService fallback.
+            // isAuthenticated is derived from serviceAuth below (useMemo).
+            const authenticatedServices = Object.entries(data.services)
+                .filter(([_, s]) => s.authenticated === true)
+                .map(([id]) => id);
 
-            if (anyAuthenticated && !activeService) {
+            if (authenticatedServices.length > 0 && !activeService) {
                 setActiveService(authenticatedServices[0]);
             }
 
             setAuthError(null);
-            log(`Auth check complete: ${authenticatedServices.length} service(s) connected`);
+            log(`Auth check complete: ${authenticatedServices.length} service(s) authenticated (backend)`);
         } catch (e) {
             console.error('[Auth] Auth check failed:', e);  // Keep error logging
+            // Force false on ANY check failure (incl. re-checks) so sync guards bail.
             setIsAuthenticated(false);
         } finally {
             setAuthCheckComplete(true);
@@ -273,10 +299,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         [serviceAuth]
     );
 
-    // Update isAuthenticated based on serviceAuth
+    // Update isAuthenticated based on serviceAuth. (Kept as state+effect rather than a
+    // pure derivation so the checkAuth catch can force it false on a re-check failure.)
     useEffect(() => {
-        const anyConnected = Object.values(serviceAuth).some(s => s.connected);
-        setIsAuthenticated(anyConnected);
+        setIsAuthenticated(Object.values(serviceAuth).some(s => s.connected));
     }, [serviceAuth]);
 
     const isServiceConnected = useCallback(
@@ -320,27 +346,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         []
     );
 
-    const disconnectedServices = Object.entries(serviceAuth)
-        .filter(([_, state]) => state.wasEverConnected && !state.connected)
-        .map(([serviceId]) => serviceId);
+    const disconnectedServices = useMemo(
+        () => Object.entries(serviceAuth)
+            .filter(([_, state]) => state.wasEverConnected && !state.connected)
+            .map(([serviceId]) => serviceId),
+        [serviceAuth]
+    );
 
-    const value: AuthContextValue = {
-        isAuthenticated,
-        authCheckComplete,
-        authStatus,
-        authError,
-        setAuthError,
-        checkAuth,
-        connectedServices,
-        isServiceConnected,
-        isServiceDisconnected,
-        getServiceError,
-        clearServiceError,
-        disconnectedServices,
-        markServiceDisconnected,
-        getServiceExpiresAt,
-        getScheduledRefreshServices,
-    };
+    const value: AuthContextValue = useMemo(
+        () => ({
+            isAuthenticated,
+            authCheckComplete,
+            authStatus,
+            authError,
+            setAuthError,
+            checkAuth,
+            connectedServices,
+            isServiceConnected,
+            isServiceDisconnected,
+            getServiceError,
+            clearServiceError,
+            disconnectedServices,
+            markServiceDisconnected,
+            getServiceExpiresAt,
+            getScheduledRefreshServices,
+        }),
+        [
+            isAuthenticated, authCheckComplete, authStatus, authError, setAuthError,
+            checkAuth, connectedServices, isServiceConnected, isServiceDisconnected,
+            getServiceError, clearServiceError, disconnectedServices,
+            markServiceDisconnected, getServiceExpiresAt, getScheduledRefreshServices,
+        ]
+    );
 
     return (
         <AuthContext.Provider value={value}>

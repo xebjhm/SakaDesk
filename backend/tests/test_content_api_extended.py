@@ -662,3 +662,56 @@ class TestResolveMediaPath:
             with pytest.raises(HTTPException) as exc:
                 _resolve_media_path("unknown_service/file.jpg")
         assert exc.value.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/content/groups — server_unread_count snapshot (phone -> Windows)
+# ---------------------------------------------------------------------------
+
+
+class TestGroupsServerUnreadCount:
+    """Each group surfaces the server's unread_count snapshot from sync_metadata."""
+
+    def _write_metadata(self, tmp_path: Path, server_groups: dict):
+        meta = {"server_groups": server_groups, "last_sync": "2025-01-15T12:00:00Z"}
+        with open(
+            tmp_path / "日向坂46" / "sync_metadata.json", "w", encoding="utf-8"
+        ) as f:
+            json.dump(meta, f, ensure_ascii=False)
+
+    def test_surfaces_server_unread_count(self, tmp_path):
+        _build_tree(
+            tmp_path,
+            "日向坂46",
+            {"34 金村 美玖": {"58 金村 美玖": [{"id": 1}, {"id": 2}]}},
+        )
+        self._write_metadata(
+            tmp_path,
+            {"34": {"state": "open", "is_active": True, "unread_count": 2}},
+        )
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "34")
+        assert g["server_unread_count"] == 2
+
+    def test_none_when_group_not_in_server_snapshot(self, tmp_path):
+        # Group exists locally but was never seen by a sync → unknown, must not cap.
+        _build_tree(
+            tmp_path, "日向坂46", {"34 金村 美玖": {"58 金村 美玖": [{"id": 1}]}}
+        )
+        self._write_metadata(tmp_path, {})
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "34")
+        assert g["server_unread_count"] is None
+
+    def test_none_when_field_absent_in_old_metadata(self, tmp_path):
+        # Metadata predating this feature has no unread_count → unknown, not zero.
+        _build_tree(
+            tmp_path, "日向坂46", {"34 金村 美玖": {"58 金村 美玖": [{"id": 1}]}}
+        )
+        self._write_metadata(tmp_path, {"34": {"state": "open", "is_active": True}})
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "34")
+        assert g["server_unread_count"] is None

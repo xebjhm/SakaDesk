@@ -13,7 +13,7 @@ import aiohttp
 from collections import defaultdict
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict
 
 from pysaka import Client
@@ -24,7 +24,12 @@ from backend.services.platform import (
     get_session_dir,
     get_default_output_dir,
 )
-from backend.services.service_utils import get_service_enum, validate_service
+from backend.services.service_utils import (
+    get_service_enum,
+    validate_service,
+    client_auth_params,
+    resolve_auth_mode,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -269,3 +274,79 @@ async def get_message_dates(member_path: str):
     dates = [DateCount(date=d, count=c) for d, c in sorted(date_counts.items())]
 
     return MessageDatesResponse(dates=dates, total_dates=len(dates))
+
+
+class MarkRoomReadRemoteRequest(BaseModel):
+    service: str
+    group_id: int = Field(gt=0)
+
+
+@router.post("/mark-room-read-remote")
+async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
+    """Clear a room's unread on the OFFICIAL mobile app — opt-in 'sync read to phone'.
+
+    Fire-and-forget: a no-op unless the ``sync_read_to_phone`` setting is on, and
+    any error is swallowed so it never blocks opening a conversation. Triggered
+    only when the user opens a room (background sync never calls this).
+    """
+    from backend.services.settings_store import load_config
+
+    # Test mode must never fire a live mutation against the official app.
+    if is_test_mode():
+        return {"ok": True, "skipped": True}
+
+    config = await load_config()
+    if not config.get("sync_read_to_phone"):
+        return {"ok": True, "skipped": True}
+
+    # Resolve the service up front so a bad id surfaces as a 400 rather than being
+    # swallowed into a success-shaped {"ok": false} by the catch-all below.
+    try:
+        group = get_service_enum(req.service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        token_data = get_token_manager().load_session(group.value)
+        if not token_data or not token_data.get("access_token"):
+            # Breadcrumb: the most common silent failure (opted into phone sync
+            # but the mobile session is missing/expired). Without this there is
+            # no log at all and the user never learns their reads aren't syncing.
+            logger.warning(
+                "mark_room_read_remote skipped: no valid session",
+                service=req.service,
+                group_id=req.group_id,
+            )
+            return {"ok": False}
+
+        stored_mode = (
+            config.get("services", {}).get(req.service, {}).get("auth_mode", "web")
+        )
+        auth_params = client_auth_params(
+            resolve_auth_mode(stored_mode, token_data),
+            str(get_session_dir()),
+            token_data,
+        )
+        client = Client(
+            group=group,
+            access_token=token_data["access_token"],
+            cookies=token_data.get("cookies"),
+            **auth_params,
+        )
+        async with aiohttp.ClientSession() as session:
+            ok = await client.mark_group_read(session, req.group_id)
+        logger.info(
+            "Marked room read on official app",
+            service=req.service,
+            group_id=req.group_id,
+            ok=ok,
+        )
+        return {"ok": ok}
+    except Exception as e:
+        logger.warning(
+            "mark_room_read_remote failed",
+            service=req.service,
+            group_id=req.group_id,
+            error=str(e),
+        )
+        return {"ok": False}

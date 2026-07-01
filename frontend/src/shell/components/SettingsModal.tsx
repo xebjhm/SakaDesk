@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, KeyRound, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
+import { clearTranslationCache } from '../../hooks/useMessageTranslation';
+import { SERVICES } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -12,6 +14,16 @@ interface SettingsModalProps {
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     onClose: () => void;
 }
+
+type SettingsTab = 'general' | 'sync' | 'ai' | 'account' | 'updates';
+
+const SETTINGS_TABS: { id: SettingsTab; labelKey: string; Icon: typeof SlidersHorizontal }[] = [
+    { id: 'general', labelKey: 'settings.tabGeneral', Icon: SlidersHorizontal },
+    { id: 'sync', labelKey: 'settings.tabSync', Icon: RefreshCw },
+    { id: 'ai', labelKey: 'settings.tabAi', Icon: Sparkles },
+    { id: 'account', labelKey: 'settings.tabAccount', Icon: KeyRound },
+    { id: 'updates', labelKey: 'settings.tabUpdates', Icon: Download },
+];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
@@ -23,6 +35,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
+    const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
+    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
+    const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
+    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
@@ -127,9 +143,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         localStorage.setItem('sakadesk-language', lang);
     };
 
+    // Restore behavioural preferences to defaults. Non-destructive: keeps the
+    // data folder, the saved API key, and the chosen language.
+    const handleResetDefaults = async () => {
+        if (!window.confirm(t('settings.resetConfirm'))) return;
+        await onSaveSettings({
+            auto_sync_enabled: true,
+            adaptive_sync_enabled: true,
+            sync_interval_minutes: 15,
+            blogs_full_backup: false,
+            auto_download_updates: false,
+        });
+        setTranscriptionEnabled(true);
+        setTranslationEnabled(false);
+        setTranslationTargetLanguage(null);
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl overflow-hidden h-[600px] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
                     <h3 className="text-lg font-bold text-gray-800">{t('settings.title')}</h3>
                     <button
@@ -139,7 +171,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         X
                     </button>
                 </div>
-                <div className="p-6 space-y-6 overflow-y-auto">
+                <div className="flex flex-1 min-h-0">
+                    {/* Category nav */}
+                    <nav className="w-44 flex-shrink-0 border-r bg-gray-50 p-2 space-y-0.5 overflow-y-auto">
+                        {SETTINGS_TABS.map(({ id, labelKey, Icon }) => (
+                            <button
+                                key={id}
+                                onClick={() => setActiveTab(id)}
+                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                                    activeTab === id
+                                        ? 'bg-white shadow-sm text-gray-800 font-medium'
+                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                <Icon className="w-4 h-4 shrink-0" />
+                                {t(labelKey)}
+                            </button>
+                        ))}
+                    </nav>
+                    {/* Active category content */}
+                    <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto">
+                    {activeTab === 'general' && (<>
                     {/* Language Selector */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -179,7 +231,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </button>
                         </div>
                     </div>
+                    </>)}
 
+                    {activeTab === 'sync' && (<>
                     {/* Sync Mode */}
                     <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -308,12 +362,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                     </div>
 
-                    {/* Updates */}
-                    <UpdatesSection
-                        autoDownload={appSettings.auto_download_updates ?? false}
-                        onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
-                    />
+                    {/* Sync read status to phone (opt-in) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.syncReadToPhone')}
+                            </label>
+                            <button
+                                onClick={() => onSaveSettings({ sync_read_to_phone: !(appSettings.sync_read_to_phone ?? false) })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    appSettings.sync_read_to_phone ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    appSettings.sync_read_to_phone ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.syncReadToPhoneDesc')}
+                        </p>
+                    </div>
+                    </>)}
 
+                    {activeTab === 'ai' && <AiTab />}
+
+                    {activeTab === 'account' && <AuthModeSection />}
+
+                    {activeTab === 'updates' && (
+                        <UpdatesSection
+                            autoDownload={appSettings.auto_download_updates ?? false}
+                            onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
+                        />
+                    )}
+                    </div>
+                </div>
+                <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-3 flex justify-end">
+                    <button
+                        onClick={handleResetDefaults}
+                        className="text-xs font-medium text-gray-500 hover:text-red-600"
+                    >
+                        {t('settings.resetDefaults')}
+                    </button>
                 </div>
             </div>
         </div>
@@ -389,5 +479,489 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
                 )}
             </div>
         </div>
+    );
+}
+
+
+function AuthModeSection() {
+    const { t } = useTranslation();
+    const [modes, setModes] = useState<Record<string, 'web' | 'mobile'>>({});
+    const [visible, setVisible] = useState<typeof SERVICES>([]);
+    const [loaded, setLoaded] = useState(false);
+
+    const load = useCallback(async () => {
+        // Only services you're signed into AND that support mobile (excludes Yodel,
+        // which has no mobile host).
+        let connected: Record<string, boolean> = {};
+        try {
+            const res = await fetch('/api/auth/status');
+            const data = await res.json();
+            connected = Object.fromEntries(
+                Object.entries(data.services ?? {}).map(
+                    ([k, v]) => [k, !!(v as { authenticated?: boolean })?.authenticated] as const
+                )
+            );
+        } catch { /* ignore */ }
+        const vis = SERVICES.filter((s) => s.supportsMobile && connected[s.id]);
+        setVisible(vis);
+        const entries = await Promise.all(
+            vis.map(async (s) => {
+                try {
+                    const res = await fetch(`/api/settings/service/${encodeURIComponent(s.id)}`);
+                    const d = await res.json();
+                    return [s.id, d.auth_mode === 'mobile' ? 'mobile' : 'web'] as const;
+                } catch {
+                    return [s.id, 'web'] as const;
+                }
+            })
+        );
+        setModes(Object.fromEntries(entries));
+        setLoaded(true);
+    }, []);
+
+    useEffect(() => { load(); }, [load]);
+
+    // Switch a service to web: fetch its current settings and re-post with auth_mode=web
+    // (merge so we don't clobber sync/blog fields).
+    const setWeb = async (service: string) => {
+        try {
+            const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`);
+            const current = await res.json();
+            const saved = await fetch(`/api/settings/service/${encodeURIComponent(service)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...current, auth_mode: 'web' }),
+            });
+            const data = await saved.json();
+            setModes((m) => ({ ...m, [service]: data.auth_mode === 'mobile' ? 'mobile' : 'web' }));
+        } catch { /* ignore */ }
+    };
+
+    return (
+        <div className="space-y-3">
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('settings.authMode')}
+                </label>
+                <p className="max-w-md text-xs leading-relaxed text-gray-500">
+                    {t('settings.authModeIntro')}
+                </p>
+            </div>
+            {!loaded ? null : visible.length === 0 ? (
+                <p className="max-w-md text-xs text-gray-400">{t('settings.authModeNoAccounts')}</p>
+            ) : (
+                <div className="max-w-md divide-y divide-gray-100 rounded-lg border border-gray-200">
+                    {visible.map((s) => (
+                        <ServiceAuthRow
+                            key={s.id}
+                            service={s}
+                            mode={modes[s.id] ?? 'web'}
+                            onSetWeb={() => setWeb(s.id)}
+                            onMobileActivated={load}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+function ServiceAuthRow({ service, mode, onSetWeb, onMobileActivated }: {
+    service: { id: string; displayName: string };
+    mode: 'web' | 'mobile';
+    onSetWeb: () => void;
+    onMobileActivated: () => void;
+}) {
+    const { t } = useTranslation();
+    const [expanded, setExpanded] = useState(false);
+    const isMobile = mode === 'mobile';
+    const showToken = isMobile || expanded;
+
+    return (
+        <div className="p-3">
+            <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-gray-800">{service.displayName}</span>
+                <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+                    {(['web', 'mobile'] as const).map((m) => (
+                        <button
+                            key={m}
+                            onClick={() => { if (m === 'web') { setExpanded(false); onSetWeb(); } else { setExpanded(true); } }}
+                            className={`px-3 py-1 text-xs rounded-md transition-colors ${
+                                (m === 'mobile') === isMobile
+                                    ? 'bg-white shadow text-gray-800 font-medium'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {t(m === 'web' ? 'settings.authModeWeb' : 'settings.authModeMobile')}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            {showToken && (
+                <div className="mt-2.5 space-y-2">
+                    <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-xs leading-relaxed text-amber-700">{t('settings.authModeMobileWarning')}</p>
+                    </div>
+                    <p className="text-xs leading-relaxed text-gray-500">{t('settings.manualTokenStorageNote')}</p>
+                    <ServiceTokenInput
+                        service={service.id}
+                        onSaved={() => { setExpanded(false); onMobileActivated(); }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+function ServiceTokenInput({ service, onSaved }: { service: string; onSaved: () => void }) {
+    const { t } = useTranslation();
+    const [token, setToken] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState(false);
+
+    const handleSave = async () => {
+        if (!token.trim()) return;
+        setSaving(true);
+        setError(false);
+        try {
+            const res = await fetch('/api/auth/manual-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service, refresh_token: token.trim() }),
+            });
+            if (res.ok) {
+                setToken('');
+                onSaved();
+            } else {
+                setError(true);
+            }
+        } catch {
+            setError(true);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="mt-2.5 space-y-1.5">
+            <div className="flex items-center gap-2">
+                <input
+                    type="password"
+                    value={token}
+                    onChange={(e) => { setToken(e.target.value); setError(false); }}
+                    placeholder={t('settings.manualTokenPlaceholder')}
+                    className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
+                    autoComplete="off"
+                />
+                <button
+                    onClick={handleSave}
+                    disabled={saving || !token.trim()}
+                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white disabled:opacity-50 shrink-0"
+                >
+                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {saving ? t('settings.manualTokenSaving') : t('settings.manualTokenSave')}
+                </button>
+            </div>
+            {error && <p className="text-xs text-red-600">{t('settings.manualTokenError')}</p>}
+        </div>
+    );
+}
+
+
+function AiTab() {
+    const { t } = useTranslation();
+    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
+    const translationEnabled = useAppStore(s => s.translationEnabled);
+    const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
+    const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<string | null>(null);
+
+    // Own state loaded from /api/translation/config (not from appSettings)
+    const [provider, setProvider] = useState<string | null>(null);
+    const [model, setModel] = useState<string | null>(null);
+    const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
+    const [hasApiKey, setHasApiKey] = useState(false);    // Whether a key is stored in keyring
+    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(null);  // e.g. "AIza...xQ"
+    const [targetLang, setTargetLang] = useState<string | null>(null);
+
+    useEffect(() => {
+        fetch('/api/translation/config')
+            .then(res => res.json())
+            .then(data => {
+                setProvider(data.provider ?? null);
+                setModel(data.model ?? null);
+                setHasApiKey(data.has_api_key ?? false);
+                setApiKeyMasked(data.api_key_masked ?? null);
+                setTargetLang(data.target_language ?? null);
+                if (data.target_language) {
+                    setTranslationTargetLanguage(data.target_language);
+                }
+            })
+            .catch(() => {});
+    }, [setTranslationTargetLanguage]);
+
+    // Providers available in the UI. Backend supports OpenAI too (OpenAIProvider)
+    // but it's hidden for now — add back when needed.
+    const PROVIDERS = [
+        { value: 'gemini', label: 'Google Gemini' },
+    ];
+
+    const [modelOptions, setModelOptions] = useState<Record<string, { value: string; label: string }[]>>({});
+
+    useEffect(() => {
+        fetch('/api/translation/models')
+            .then(res => res.json())
+            .then(data => {
+                // Transform backend format {gemini: [{id, label}]} to {gemini: [{value, label}]}
+                const opts: Record<string, { value: string; label: string }[]> = {};
+                for (const [prov, models] of Object.entries(data)) {
+                    opts[prov] = (models as { id: string; label: string }[]).map(m => ({ value: m.id, label: m.label }));
+                }
+                setModelOptions(opts);
+            })
+            .catch(() => {});
+    }, []);
+
+    const MODELS = modelOptions;
+
+    // Source content is Japanese, so Japanese is not offered as a target.
+    const TARGET_LANGUAGES = [
+        { value: 'en', label: 'English' },
+        { value: 'zh-TW', label: '繁體中文' },
+        { value: 'zh-CN', label: '简体中文' },
+        { value: 'yue', label: '廣東話' },
+    ];
+
+    const handleTestConnection = async () => {
+        if (!provider || !model || (!apiKeyInput && !hasApiKey)) return;
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/translation/test-connection', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, model, api_key: apiKeyInput || undefined }),
+            });
+            const data = await res.json();
+            setTestResult(data.ok
+                ? t('translation.settings.testSuccess')
+                : t('translation.settings.testFailed') + (data.detail ? `: ${data.detail}` : '')
+            );
+        } catch {
+            setTestResult(t('translation.settings.testFailed'));
+        } finally {
+            setTesting(false);
+        }
+    };
+
+    const handleClearCache = () => {
+        clearTranslationCache();
+        setTestResult(t('translation.settings.cacheClearedMsg'));
+    };
+
+    const handleClearApiKey = async () => {
+        if (!window.confirm(t('translation.settings.clearApiKeyConfirm'))) return;
+        await fetch('/api/translation/clear-api-key', { method: 'POST' });
+        setApiKeyInput('');
+        setHasApiKey(false);
+        setApiKeyMasked(null);
+        setTestResult(null);
+    };
+
+    const saveConfig = (updates: { provider?: string | null; model?: string | null; api_key?: string | null; target_language?: string | null }) => {
+        const newProvider = updates.provider !== undefined ? updates.provider : provider;
+        const newModel = updates.model !== undefined ? updates.model : model;
+        const newTargetLang = updates.target_language !== undefined ? updates.target_language : targetLang;
+
+        // Update local state
+        if (updates.provider !== undefined) setProvider(updates.provider);
+        if (updates.model !== undefined) setModel(updates.model);
+        if (updates.api_key !== undefined) {
+            setApiKeyInput(updates.api_key ?? '');
+            if (updates.api_key) setHasApiKey(true);
+        }
+        if (updates.target_language !== undefined) {
+            setTargetLang(updates.target_language);
+            setTranslationTargetLanguage(updates.target_language);
+        }
+
+        // Persist to backend (API key stored in keyring, not settings.json)
+        // Only send api_key if user typed a new one
+        const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        fetch('/api/translation/configure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                provider: newProvider,
+                model: newModel,
+                api_key: apiKeyToSend ?? null,
+                target_language: newTargetLang,
+            }),
+        });
+    };
+
+    const handleProviderChange = (value: string | null) => {
+        const newModels = MODELS[value ?? ''] ?? [];
+        const newModel = newModels[0]?.value ?? null;
+        saveConfig({ provider: value, model: newModel });
+    };
+
+    const showProvider = transcriptionEnabled || translationEnabled;
+
+    return (
+        <>
+            {/* Transcription */}
+            <div>
+                <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">
+                        {t('settings.transcriptionDevice')}
+                    </label>
+                    <button
+                        onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${
+                            transcriptionEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                        }`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            transcriptionEnabled ? 'translate-x-7' : 'translate-x-1'
+                        }`} />
+                    </button>
+                </div>
+            </div>
+
+            {/* Translation */}
+            <div>
+                <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                        {t('translation.settings.title')}
+                        <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
+                            {t('translation.settings.experimental')}
+                        </span>
+                    </label>
+                    <button
+                        onClick={() => setTranslationEnabled(!translationEnabled)}
+                        className={`relative w-12 h-6 rounded-full transition-colors ${
+                            translationEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                        }`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            translationEnabled ? 'translate-x-7' : 'translate-x-1'
+                        }`} />
+                    </button>
+                </div>
+                {translationEnabled && (
+                    <div className="space-y-3">
+                        {/* Target Language */}
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.targetLanguage')}</label>
+                            <select
+                                value={targetLang ?? ''}
+                                onChange={(e) => saveConfig({ target_language: e.target.value || null })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="">—</option>
+                                {TARGET_LANGUAGES.map(l => (
+                                    <option key={l.value} value={l.value}>{l.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {/* Clear Cache */}
+                        <button
+                            onClick={handleClearCache}
+                            className="text-xs text-red-500 hover:text-red-700 font-medium"
+                        >
+                            {t('translation.settings.clearCache')}
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            {/* Shared AI provider — used by both Transcription and Translation */}
+            {showProvider && (
+                <div className="pt-4 border-t border-gray-100 space-y-3">
+                    <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    {/* Provider */}
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
+                        <select
+                            value={provider ?? ''}
+                            onChange={(e) => handleProviderChange(e.target.value || null)}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="">—</option>
+                            {PROVIDERS.map(p => (
+                                <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                        </select>
+                        {provider === 'gemini' && (
+                            <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
+                                <p>{t('translation.dataPolicy.geminiFree')}</p>
+                                <p>{t('translation.dataPolicy.geminiPaid')}</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Model */}
+                    {provider && MODELS[provider] && (
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
+                            <select
+                                value={model ?? ''}
+                                onChange={(e) => saveConfig({ model: e.target.value || null })}
+                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                {MODELS[provider].map(m => (
+                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {/* API Key */}
+                    {provider && (
+                        <div>
+                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
+                            <div className="flex gap-2">
+                                <input
+                                    type="password"
+                                    value={apiKeyInput}
+                                    onChange={(e) => setApiKeyInput(e.target.value)}
+                                    onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                                />
+                                <button
+                                    onClick={handleTestConnection}
+                                    disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    {testing && <Loader2 className="w-3 h-3 animate-spin" />}
+                                    {t('translation.settings.testConnection')}
+                                </button>
+                            </div>
+                            {hasApiKey && !apiKeyInput && (
+                                <div className="flex items-center justify-between mt-0.5">
+                                    <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
+                                    <button
+                                        onClick={handleClearApiKey}
+                                        className="text-xs font-medium text-red-500 hover:text-red-700"
+                                    >
+                                        {t('translation.settings.clearApiKey')}
+                                    </button>
+                                </div>
+                            )}
+                            {testResult && (
+                                <p className="text-xs mt-1 text-gray-500">{testResult}</p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+        </>
     );
 }

@@ -253,3 +253,82 @@ class TestGetClientAndSession:
         mock_tm.return_value = MagicMock(load_session=MagicMock(return_value=None))
         response = client.get("/api/chat/streak/40?service=hinatazaka46")
         assert response.status_code == 401
+
+
+class TestMarkRoomReadRemote:
+    """Tests for POST /api/chat/mark-room-read-remote (opt-in sync read to phone)."""
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_noop_when_setting_off(self, _mock_test):
+        """Default: sync_read_to_phone off → no-op (never touches the official app)."""
+        with patch(
+            "backend.services.settings_store.load_config",
+            new=AsyncMock(return_value={"sync_read_to_phone": False}),
+        ):
+            with patch("backend.api.chat_features.get_token_manager") as mock_tm:
+                res = client.post(
+                    "/api/chat/mark-room-read-remote",
+                    json={"service": "hinatazaka46", "group_id": 70},
+                )
+                assert res.status_code == 200
+                assert res.json() == {"ok": True, "skipped": True}
+                mock_tm.assert_not_called()  # never even looked up credentials
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_marks_when_setting_on(self, _mock_test):
+        """When sync_read_to_phone on, it clears the room via mark_group_read."""
+        with (
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={"sync_read_to_phone": True, "auth_mode": "web"}
+                ),
+            ),
+            patch("backend.api.chat_features.get_token_manager") as mock_tm,
+            patch("backend.api.chat_features.Client") as MockClient,
+        ):
+            mock_tm.return_value.load_session.return_value = {
+                "access_token": "tok",
+                "cookies": {},
+            }
+            MockClient.return_value.mark_group_read = AsyncMock(return_value=True)
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "hinatazaka46", "group_id": 70},
+            )
+            assert res.status_code == 200
+            assert res.json() == {"ok": True}
+            MockClient.return_value.mark_group_read.assert_awaited_once()
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=True)
+    def test_noop_in_test_mode(self, _mock_test):
+        """Test mode must never fire a live mutation, even with the setting on."""
+        with patch("backend.api.chat_features.get_token_manager") as mock_tm:
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "hinatazaka46", "group_id": 70},
+            )
+            assert res.status_code == 200
+            assert res.json() == {"ok": True, "skipped": True}
+            mock_tm.assert_not_called()
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_invalid_service_returns_400(self, _mock_test):
+        """An unknown service is rejected with 400, not swallowed into {ok: false}."""
+        with patch(
+            "backend.services.settings_store.load_config",
+            new=AsyncMock(return_value={"sync_read_to_phone": True}),
+        ):
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "not_a_real_service", "group_id": 70},
+            )
+            assert res.status_code == 400
+
+    def test_rejects_non_positive_group_id(self):
+        """group_id must be positive (Field gt=0) → 422 on 0 or negative."""
+        res = client.post(
+            "/api/chat/mark-room-read-remote",
+            json={"service": "hinatazaka46", "group_id": 0},
+        )
+        assert res.status_code == 422

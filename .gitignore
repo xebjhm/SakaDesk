@@ -108,3 +108,7 @@ frontend/playwright/.cache/
 *.temp
 .cache/
 .worktrees/
+
+# MCP / agent tool output
+.playwright-mcp/
+.superpowers/

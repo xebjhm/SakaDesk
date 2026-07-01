@@ -37,6 +37,8 @@ class MockAudioContext {
   state = 'running'
   createMediaElementSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }))
   createGain = vi.fn(() => ({ gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() }))
-  close = vi.fn()
+  // Real AudioContext.close() returns a Promise; mirror that so unmount cleanup can .catch().
+  close = vi.fn(() => { this.state = 'closed'; return Promise.resolve() })
+  resume = vi.fn(() => Promise.resolve())
 }
 globalThis.AudioContext = MockAudioContext as unknown as typeof AudioContext

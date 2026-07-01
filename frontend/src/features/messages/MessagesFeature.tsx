@@ -61,6 +61,11 @@ export interface AppSettings {
     notifications_enabled?: boolean;
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
+    sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
+    translation_provider?: string | null;
+    translation_model?: string | null;
+    translation_api_key?: string | null;
+    translation_target_language?: string | null;
 }
 
 // Parse path into API params. Handles both:
@@ -357,6 +362,38 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [selectedGroupDir, isGroupChat]);
 
+    // Opt-in "sync read to phone": opening a room clears its unread on the official
+    // mobile app, mirroring tapping into the room there. Gated on the setting here so
+    // the off-by-default majority skips the round-trip entirely; the backend re-checks
+    // the setting authoritatively. Fire-and-forget — never blocks opening the room.
+    //
+    // Fire only when the user genuinely opens a room, or when settings finish loading
+    // with the flag already on while a room is open (cold start) — but NOT when the
+    // user flips the setting on while sitting in a room (that would clear a room they
+    // didn't just open). We compare the previous (room, flag) to tell a real
+    // room-open / initial settings load apart from a pure toggle. undefined flag means
+    // settings haven't loaded yet; false means explicitly off.
+    const syncReadPrevRef = useRef<{ dir: string | undefined; on: boolean | undefined }>({
+        dir: undefined,
+        on: undefined,
+    });
+    useEffect(() => {
+        const on = appSettings?.sync_read_to_phone;
+        const prev = syncReadPrevRef.current;
+        syncReadPrevRef.current = { dir: selectedGroupDir, on };
+        if (!selectedGroupDir || !on) return;
+        const roomOpened = selectedGroupDir !== prev.dir;
+        const settingsJustLoaded = prev.on === undefined; // null → loaded transition
+        if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
+        const parsedOpen = parseReadStatePath(selectedGroupDir);
+        if (!parsedOpen) return;
+        fetch('/api/chat/mark-room-read-remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
+        }).catch(() => {});
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
+
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
         return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
@@ -510,6 +547,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         };
     }, [isGroupChat, membersMap, selectedName]);
 
+    /**
+     * Resolve the member directory path for a message (used by transcription API).
+     * For individual chats, selectedGroupDir is the member directory path.
+     * For group chats, each message sender has their own path via membersMap.
+     */
+    const getMemberPath = useCallback((msg: GroupMessage): string | undefined => {
+        if (isGroupChat && msg.member_id) {
+            return membersMap[msg.member_id]?.path ?? undefined;
+        }
+        return selectedGroupDir;
+    }, [isGroupChat, membersMap, selectedGroupDir]);
+
     const scrollToFirstUnread = useCallback(() => {
         const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
         if (index !== -1) {
@@ -539,9 +588,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     avatarUrl: sender.avatar,
                     memberName: sender.name,
                     isMuted: m.is_muted,
+                    messageId: m.id,
+                    service: messagesService,
+                    memberPath: getMemberPath(m),
                 };
             });
-    }, [messages, messagesService, getSenderInfo]);
+    }, [messages, messagesService, getSenderInfo, getMemberPath]);
 
     const handleMediaClick = useCallback((mediaUrl: string, _type: string, _timestamp?: string) => {
         const idx = mediaItems.findIndex(item => item.src === mediaUrl);
@@ -723,6 +775,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             service={messagesService}
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
+                            getMemberPath={getMemberPath}
                         />
                     )}
                 </div>
