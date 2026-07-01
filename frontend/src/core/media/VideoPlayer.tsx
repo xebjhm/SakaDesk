@@ -116,8 +116,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         : transcriptionSegments;
     const transcriptionJustCompleted = useJustBecame(transcriptionState, 'done', 'loading');
     // Bridge click-to-seek from the below-player TranscriptPanel into the video element.
-    const [internalSeek, setInternalSeek] = useState<number | undefined>(undefined);
-    const effectiveSeekTo = seekTo ?? internalSeek;
+    // Internal seek carries a bumping `seq` so clicking the SAME transcript line
+    // twice still re-fires the seek effect (a bare time value would be deduped by
+    // React's state bail-out and the second click would be a silent no-op).
+    const [internalSeek, setInternalSeek] = useState<{ time: number; seq: number } | undefined>(undefined);
+    const seekSeqRef = useRef(0);
+    const handleTranscriptSeek = useCallback((time: number) => {
+        seekSeqRef.current += 1;
+        setInternalSeek({ time, seq: seekSeqRef.current });
+    }, []);
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -185,13 +192,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [playbackRate]);
 
-    // External / internal seek request
+    // External seek request (parent-controlled position, e.g. subtitle sync)
     useEffect(() => {
-        if (effectiveSeekTo != null && videoRef.current) {
-            videoRef.current.currentTime = effectiveSeekTo;
-            setCurrentTime(effectiveSeekTo);
+        if (seekTo != null && videoRef.current) {
+            videoRef.current.currentTime = seekTo;
+            setCurrentTime(seekTo);
         }
-    }, [effectiveSeekTo]);
+    }, [seekTo]);
+
+    // Internal seek request from transcript clicks (seq-keyed so repeat clicks re-fire)
+    useEffect(() => {
+        if (internalSeek && videoRef.current) {
+            videoRef.current.currentTime = internalSeek.time;
+            setCurrentTime(internalSeek.time);
+        }
+    }, [internalSeek]);
 
     // Track fullscreen changes and restore focus after exit
     useEffect(() => {
@@ -629,7 +644,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         key={messageId}
                         segments={transcription.segments}
                         currentTime={currentTime}
-                        onSeek={setInternalSeek}
+                        onSeek={handleTranscriptSeek}
                         onRerun={retriggerTranscription}
                         variant="light"
                         defaultExpanded={transcriptionJustCompleted}

@@ -52,6 +52,9 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 }) => {
     const theme = useBlogTheme();
     const blogContentRef = useRef<HTMLDivElement>(null);
+    // Aborts the in-flight translate-all POST when the blog changes, so a stale
+    // result can't be injected over a different blog.
+    const translateAbortRef = useRef<AbortController | null>(null);
     const [blogPhotoIndex, setBlogPhotoIndex] = useState<number | null>(null);
     const [blogPhotoItems, setBlogPhotoItems] = useState<MediaViewerItem[]>([]);
 
@@ -122,6 +125,12 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const handleTranslateAll = async () => {
         if (!content || isTranslating) return;
 
+        // Supersede any prior in-flight translation and track this one so a blog
+        // change can abort it before it writes stale paragraphs over a new blog.
+        translateAbortRef.current?.abort();
+        const controller = new AbortController();
+        translateAbortRef.current = controller;
+
         // Check cache first
         const cacheKey = `translation:blog:${blog.id}:${translationTargetLanguage}`;
         const cached = localStorage.getItem(cacheKey);
@@ -152,12 +161,14 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     paragraphs,
                     target_language: translationTargetLanguage,
                 }),
+                signal: controller.signal,
             });
             if (!res.ok) {
                 const detail = await res.json().catch(() => ({}));
                 throw new Error(detail.detail || `Request failed: ${res.status}`);
             }
             const data = await res.json();
+            if (controller.signal.aborted) return;  // blog changed mid-flight
             if (data.ok && data.translations) {
                 setBlogTranslations(data.translations);
                 setTranslationPartial(data.partial ?? false);
@@ -168,9 +179,11 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                 throw new Error('Translation returned not ok');
             }
         } catch (e) {
+            // Aborted because the user navigated to another blog — not a failure.
+            if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
             setTranslationError(e instanceof Error ? e.message : 'Translation failed');
         } finally {
-            setIsTranslating(false);
+            if (!controller.signal.aborted) setIsTranslating(false);
         }
     };
 
@@ -375,6 +388,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
     // Reset translations when blog changes
     useEffect(() => {
+        translateAbortRef.current?.abort();  // cancel a translate-all still running for the old blog
         setBlogTranslations([]);
         setIsTranslating(false);
         setTranslationPartial(false);

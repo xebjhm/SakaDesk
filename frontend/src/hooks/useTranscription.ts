@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n';
 
 export interface TranscriptionSegment {
@@ -56,6 +56,9 @@ export function useTranscription(
     const [transcription, setTranscription] = useState<Transcription | null>(null);
     const [state, setState] = useState<TranscriptionState>('idle');
     const [error, setError] = useState<string | null>(null);
+    // Aborts the in-flight transcribe POST when the target message changes or the
+    // component unmounts, so a stale result can't be written under a new message.
+    const abortRef = useRef<AbortController | null>(null);
 
     // Fetch cached transcription on mount, and reset state whenever the
     // target message changes so a previous message's transcription does
@@ -69,8 +72,11 @@ export function useTranscription(
         let cancelled = false;
         const fetchCached = async () => {
             try {
+                // Pass member_path so the backend can load the cached transcript
+                // directly instead of brute-force scanning every member directory.
+                const query = memberPath ? `?member_path=${encodeURIComponent(memberPath)}` : '';
                 const res = await fetch(
-                    `/api/transcription/${encodeURIComponent(service)}/${messageId}`
+                    `/api/transcription/${encodeURIComponent(service)}/${messageId}${query}`
                 );
                 if (res.ok) {
                     const data = await res.json();
@@ -86,11 +92,22 @@ export function useTranscription(
         };
 
         fetchCached();
-        return () => { cancelled = true; };
-    }, [service, messageId]);
+        return () => {
+            cancelled = true;
+            // Cancel any in-flight transcribe POST for the message we're leaving.
+            abortRef.current?.abort();
+        };
+    }, [service, messageId, memberPath]);
 
     const runTranscribe = useCallback(async (force: boolean) => {
         if (!service || !messageId || !memberPath) return;
+
+        // Supersede any prior in-flight run and track this one so a message
+        // change (effect cleanup) can abort it before it writes stale state.
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
         setState('loading');
         setError(null);
 
@@ -104,6 +121,7 @@ export function useTranscription(
                     member_path: memberPath,
                     force,
                 }),
+                signal: controller.signal,
             });
 
             if (!res.ok) {
@@ -112,6 +130,7 @@ export function useTranscription(
             }
 
             const data = await res.json();
+            if (controller.signal.aborted) return;  // message changed mid-flight
             if (data.ok) {
                 setTranscription(data.transcription);
                 setState('done');
@@ -119,6 +138,8 @@ export function useTranscription(
                 throw new Error('Transcription returned not ok');  // internal; shown via t() below
             }
         } catch (e) {
+            // Aborted because the user navigated away — not a real failure.
+            if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
             console.error('[Transcription] failed:', e);
             setState('error');
             setError(t('transcription.failed'));

@@ -8,6 +8,9 @@ Hybrid pipeline:
 - Falls back to Whisper tiny only when no API key is present
 """
 
+import asyncio
+import json
+from pathlib import Path
 from typing import Optional, cast
 
 import httpx
@@ -68,7 +71,7 @@ async def transcribe(request: TranscribeRequest):
 
     # Check cache first (unless caller explicitly requested a rerun)
     if not request.force:
-        cached = storage.load(member_dir, request.message_id)
+        cached = await asyncio.to_thread(storage.load, member_dir, request.message_id)
         if cached:
             return {"ok": True, "transcription": _result_to_dict(cached)}
 
@@ -77,10 +80,7 @@ async def transcribe(request: TranscribeRequest):
     if not messages_file.exists():
         raise HTTPException(status_code=404, detail="Messages file not found")
 
-    import json
-
-    with open(messages_file, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = await asyncio.to_thread(_read_json_file, messages_file)
 
     message = None
     for msg in data.get("messages", []):
@@ -235,8 +235,14 @@ async def get_status():
 
 
 @router.get("/{service}/{message_id}")
-async def get_cached(service: str, message_id: int):
-    """Get a cached transcription by service and message_id."""
+async def get_cached(service: str, message_id: int, member_path: Optional[str] = None):
+    """Get a cached transcription by service and message_id.
+
+    When ``member_path`` is supplied (callers that already know the member dir,
+    e.g. a voice/video bubble), the transcript is loaded directly. Without it,
+    the legacy fallback scans every group/member dir under the service — O(dirs)
+    filesystem walks per request — so always pass member_path from on-screen UI.
+    """
     try:
         validate_service(service)
     except ValueError as e:
@@ -244,7 +250,16 @@ async def get_cached(service: str, message_id: int):
 
     output_dir = get_output_dir()
 
-    # Search all member directories under this service for the message
+    # Fast path: caller knows the member directory — load directly, no scan.
+    if member_path:
+        member_dir = validate_path_within_dir(output_dir, member_path)
+        if member_dir.is_dir():
+            result = await asyncio.to_thread(storage.load, member_dir, message_id)
+            if result:
+                return {"ok": True, "transcription": _result_to_dict(result)}
+        raise HTTPException(status_code=404, detail="Transcription not found")
+
+    # Fallback: scan member directories (legacy callers without member_path).
     try:
         display_name = get_service_display_name(service)
     except ValueError:
@@ -254,7 +269,26 @@ async def get_cached(service: str, message_id: int):
     if not service_dir.exists():
         raise HTTPException(status_code=404, detail="Service directory not found")
 
-    # Search through group/member dirs for this message_id
+    result = await asyncio.to_thread(_scan_for_transcription, service_dir, message_id)
+    if result:
+        return {"ok": True, "transcription": _result_to_dict(result)}
+
+    raise HTTPException(status_code=404, detail="Transcription not found")
+
+
+def _read_json_file(path: Path) -> dict:
+    """Read and parse a JSON file (offloaded to a thread to keep the loop free)."""
+    with open(path, "r", encoding="utf-8") as f:
+        return cast(dict, json.load(f))
+
+
+def _scan_for_transcription(
+    service_dir: Path, message_id: int
+) -> TranscriptionResult | None:
+    """Walk every group/member dir under a service looking for a cached transcript.
+
+    Blocking filesystem work — call via asyncio.to_thread, never on the loop.
+    """
     for group_dir in service_dir.iterdir():
         if not group_dir.is_dir():
             continue
@@ -263,9 +297,8 @@ async def get_cached(service: str, message_id: int):
                 continue
             result = storage.load(member_dir, message_id)
             if result:
-                return {"ok": True, "transcription": _result_to_dict(result)}
-
-    raise HTTPException(status_code=404, detail="Transcription not found")
+                return result
+    return None
 
 
 def _result_to_dict(result: TranscriptionResult) -> dict:

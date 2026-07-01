@@ -35,6 +35,7 @@ export function useAmplifiedVolume(storageKey: string) {
     const gainNodeRef = useRef<GainNode | null>(null);
     const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
     const connectedElementRef = useRef<HTMLMediaElement | null>(null);
+    const playListenerRef = useRef<(() => void) | null>(null);
 
     // Keep volumeRef in sync with state
     useEffect(() => {
@@ -96,9 +97,13 @@ export function useAmplifiedVolume(storageKey: string) {
 
         const ctx = audioContextRef.current;
 
-        // Clean up previous source if reconnecting to a different element
+        // Clean up previous source + its play listener if reconnecting to a different element
         if (sourceNodeRef.current) {
             try { sourceNodeRef.current.disconnect(); } catch { /* ignore */ }
+        }
+        if (connectedElementRef.current && playListenerRef.current) {
+            connectedElementRef.current.removeEventListener('play', playListenerRef.current);
+            playListenerRef.current = null;
         }
 
         // Create gain node if not exists
@@ -123,12 +128,15 @@ export function useAmplifiedVolume(storageKey: string) {
             // Element may already be connected to an AudioContext (e.g., hot reload)
         }
 
-        // Resume AudioContext when media starts playing (user click = user gesture)
-        element.addEventListener('play', () => {
+        // Resume AudioContext when media starts playing (user click = user gesture).
+        // Keep a ref to the handler so it can be removed on rebind / unmount.
+        const handlePlay = () => {
             if (audioContextRef.current?.state === 'suspended') {
                 audioContextRef.current.resume();
             }
-        });
+        };
+        element.addEventListener('play', handlePlay);
+        playListenerRef.current = handlePlay;
 
         // Also try to resume now (works if user has already interacted with page)
         if (ctx.state === 'suspended') {
@@ -143,12 +151,25 @@ export function useAmplifiedVolume(storageKey: string) {
         }
     }, [volume]);
 
-    // NOTE: We intentionally do NOT close the AudioContext on unmount.
-    // createMediaElementSource() permanently binds an element to its AudioContext.
-    // Closing the context makes the binding dead, and the element cannot be rebound
-    // to a new context. React StrictMode (mount→cleanup→mount) would break audio
-    // because the second mount can't reconnect the same element. The AudioContext
-    // is lightweight and will be GC'd when the component is truly destroyed.
+    // Close the AudioContext and drop the play listener on unmount. Without this,
+    // each mounted player holds an open AudioContext for its lifetime; scrolling a
+    // long chat/gallery mounts many and browsers cap concurrent contexts (~6 in
+    // Chrome), after which `new AudioContext()` throws and amplification breaks.
+    // A StrictMode mount→cleanup→mount still works: connectElement() detects a
+    // closed context (state === 'closed'), resets its refs, and rebinds the element
+    // to a fresh context (createMediaElementSource is wrapped in try/catch).
+    useEffect(() => {
+        return () => {
+            if (connectedElementRef.current && playListenerRef.current) {
+                connectedElementRef.current.removeEventListener('play', playListenerRef.current);
+                playListenerRef.current = null;
+            }
+            const ctx = audioContextRef.current;
+            if (ctx && ctx.state !== 'closed') {
+                ctx.close().catch(() => { /* already closing/closed */ });
+            }
+        };
+    }, []);
 
     return {
         /** Current volume (0-1 slider value). 0.5 = original recording volume. */
