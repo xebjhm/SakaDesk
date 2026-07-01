@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-01
+
+### Added
+- **AI transcription** — on-demand Gemini transcription of voice/video messages
+  with timeline-synced segments and click-to-seek subtitles; structured-output
+  timestamps, File API for large audio, and safety-block handling.
+- **AI translation** — immersive blog translation with in-place DOM injection,
+  per-message translation, a unified translate button with error state, and
+  provider/model settings.
+- **Mobile auth mode** — per-service auth mode (web/mobile) with a redesigned
+  account tab, manual refresh_token entry, an Android request profile, and a
+  login-time mode choice; rows scoped to connected services.
+- **Two-way unread sync (opt-in)** — opening a room in SakaDesk can clear its
+  unread on the official app (Windows → phone), and the unread badge reflects
+  reads made on the phone (phone → Windows).
+- **Blog photo gallery ("Album")** — photo gallery modal with post dates, wired
+  into the member timeline, with jump-to-message from a photo.
+- **Clipboard copy** — Ctrl+C to copy media to the clipboard in the media viewer.
+- **Media gallery** — jump-to-message from photo/video/voice detail via clickable
+  timestamps, per-row transcript previews, source labels with a jump action.
+- **Settings redesign** — left-sidebar tabs, a shared "AI Provider" block for
+  transcription + translation, "Reset to defaults", and "Clear API key".
+- Rerun buttons for transcription and translation; diagnostics bundle filename;
+  release CI infrastructure.
+
+### Changed
+- Unified the Voice, Video, and Photo players into shared components that own
+  their transcription across bubble, gallery, and fullscreen contexts.
+- Gemini model list centralized and updated to GA IDs (gemini-3.1); stale model
+  names auto-reset to default on config load.
+- Message/media panels auto-expand and auto-collapse based on visibility.
+- Desktop window geometry migrated into settings.json; no longer shrinks on restart.
+- Requires **pysaka >= 0.4.0** (mobile auth mode, two-way unread sync, data-loss fixes).
+
+### Fixed
+- Numerous transcription/subtitle-sync, auto-expand/collapse, and fullscreen
+  control fixes across the media players.
+- Auth: reconnection cooldown stops the login dialog re-triggering; disconnect
+  state preserved across auth refresh; rotated refresh_token persisted.
+- Translation no longer caches truncated (`MAX_TOKENS`/`RECITATION`) output as a
+  success; fullscreen photo viewer recovers after a broken image; transcript
+  auto-scroll no longer skips every other active segment.
+- Many i18n corrections across the 5 locales.
+
+### Removed
+- Local Whisper transcription model (transcription is now Gemini-only).
+
 ## [0.2.4] - 2026-03-29
 
 ### Added
