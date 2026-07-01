@@ -22,6 +22,71 @@ class _FakeProvider:
         return self._raw
 
 
+class TestCodedErrors:
+    """AI errors carry a stable `code` (in addition to `detail`) for the UI."""
+
+    def test_provider_error_mapper_codes(self):
+        from backend.api.errors import ai_provider_error
+        from backend.services.ai_errors import SafetyBlockedError
+
+        def status(code):
+            req = httpx.Request("POST", "https://p.example")
+            return httpx.HTTPStatusError(
+                "x", request=req, response=httpx.Response(code, request=req)
+            )
+
+        assert ai_provider_error(status(429)).code == "rate_limit"
+        assert ai_provider_error(status(401)).code == "invalid_key"
+        assert ai_provider_error(status(403)).code == "invalid_key"
+        assert ai_provider_error(status(404)).code == "model_not_found"
+        assert ai_provider_error(status(503)).code == "unavailable"
+        assert ai_provider_error(httpx.ConnectError("x")).code == "network"
+        assert ai_provider_error(httpx.TimeoutException("x")).code == "timeout"
+        assert ai_provider_error(SafetyBlockedError("x")).code == "safety_blocked"
+        assert ai_provider_error(ValueError("x")).code == "unknown"
+
+    def test_translate_no_provider_returns_code(self):
+        with patch(
+            "backend.services.settings_store.load_config",
+            new=AsyncMock(return_value={}),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "message",
+                    "message_id": 1,
+                    "service": "hinatazaka46",
+                    "member_path": "x/y",
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "no_provider"
+
+    def test_safety_block_surfaces_code(self):
+        from backend.services.ai_errors import SafetyBlockedError
+
+        class _SafetyProvider:
+            async def translate(self, prompt, system_instruction=None):
+                raise SafetyBlockedError("blocked")
+
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=_SafetyProvider()),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "safety_blocked"
+
+
 class TestBlogAlignment:
     """blog_full re-aligns a JSON map to source order; omissions stay empty."""
 

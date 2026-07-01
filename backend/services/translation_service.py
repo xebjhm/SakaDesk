@@ -14,6 +14,12 @@ from typing import Literal, Optional, cast
 
 import httpx
 
+from backend.services.ai_errors import (
+    EmptyOutputError,
+    IncompleteOutputError,
+    SafetyBlockedError,
+)
+
 # Result of a provider connectivity probe: reachable+authorized, key rejected,
 # or could-not-reach (network/timeout/unexpected status). Lets the UI tell the
 # user whether to fix the key or their connection.
@@ -182,21 +188,21 @@ class GeminiProvider(TranslationProvider):
 
             candidates = data.get("candidates", [])
             if not candidates:
-                raise RuntimeError("Gemini returned no candidates")
+                raise EmptyOutputError("Gemini returned no candidates")
 
             candidate = candidates[0]
             finish_reason = candidate.get("finishReason", "")
             if finish_reason == "SAFETY":
-                raise RuntimeError("Translation blocked by Gemini safety filter")
+                raise SafetyBlockedError("Translation blocked by Gemini safety filter")
             if "content" not in candidate or not candidate["content"].get("parts"):
-                raise RuntimeError(
+                raise EmptyOutputError(
                     f"Gemini returned no content (finishReason: {finish_reason})"
                 )
             # A non-STOP finish (MAX_TOKENS, RECITATION, OTHER) means the text is
             # truncated. Returning it would cache a half-translation as a success
             # with a "✓ translated" badge and no indication content is missing.
             if finish_reason not in ("STOP", ""):
-                raise RuntimeError(
+                raise IncompleteOutputError(
                     f"Translation incomplete (finishReason: {finish_reason})"
                 )
 
