@@ -1,4 +1,21 @@
 {
+  "aiError": {
+    "no_provider": "尚未设置 AI 提供商。请到“设置 → AI”选择。",
+    "no_api_key": "尚未设置 API 密钥。请到“设置 → AI”输入密钥。",
+    "no_model": "尚未选择模型。请到“设置 → AI”选择。",
+    "invalid_key": "API 密钥被拒绝。请到“设置 → AI”确认或重新输入。",
+    "wrong_provider": "识别需要使用 Gemini。请到“设置 → AI”切换为 Gemini。",
+    "rate_limit": "已达速率上限。请稍候再试。",
+    "unavailable": "AI 服务暂时不可用。请稍后再试。",
+    "timeout": "请求超时。请再试一次。",
+    "network": "无法连接到 AI 服务。请检查你的网络连接。",
+    "model_not_found": "所选模型不可用。请到“设置 → AI”改选其他模型。",
+    "safety_blocked": "已被安全过滤器拦截，此内容无法处理。",
+    "incomplete": "结果不完整。请再试一次。",
+    "bad_response": "服务提供商返回了非预期的内容。请再试一次。",
+    "unknown_provider": "未知的提供商。请到“设置 → AI”选择受支持的提供商。",
+    "unknown": "发生问题。请再试一次。"
+  },
   "common": {
     "settings": "设置",
     "messages": "消息",
