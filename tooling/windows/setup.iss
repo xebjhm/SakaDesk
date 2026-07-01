@@ -36,6 +36,11 @@ ShowLanguageDialog=yes
 ; Close running SakaDesk before install/uninstall
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
+; The app holds this mutex (desktop.py) for its whole lifetime. Setup detects it
+; and, together with PrepareToInstall below, waits for the app to fully exit
+; before replacing files — the app's loaded DLLs in _internal (e.g. libffi-8.dll)
+; stay locked until the process truly terminates.
+AppMutex=SakaDeskInstanceMutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -82,6 +87,27 @@ Filename: "{app}\{#MyAppExeName}"; Flags: nowait postinstall; Check: IsSilentIns
 function IsSilentInstall: Boolean;
 begin
   Result := WizardSilent;
+end;
+
+// Runs after CloseApplications, before any files are replaced. The app's DLLs in
+// {app}\_internal stay memory-mapped (locked) until the process fully exits, and
+// CloseApplications can return before the app's multi-second graceful shutdown
+// finishes. Wait for the instance mutex to clear (the app kills its child workers
+// before releasing it, so a cleared mutex means the whole tree is gone), so we
+// never hit "DeleteFile failed; code 5" overwriting a still-loaded DLL.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Waited: Integer;
+begin
+  Result := '';
+  Waited := 0;
+  while (Waited < 24) and CheckForMutexes('SakaDeskInstanceMutex') do
+  begin
+    Sleep(500);
+    Waited := Waited + 1;
+  end;
+  // Extra grace so the OS can unmap the freed executable images.
+  Sleep(500);
 end;
 
 // Write installer language choice to settings.json so the app uses it as default
