@@ -309,6 +309,14 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
     try:
         token_data = get_token_manager().load_session(group.value)
         if not token_data or not token_data.get("access_token"):
+            # Breadcrumb: the most common silent failure (opted into phone sync
+            # but the mobile session is missing/expired). Without this there is
+            # no log at all and the user never learns their reads aren't syncing.
+            logger.warning(
+                "mark_room_read_remote skipped: no valid session",
+                service=req.service,
+                group_id=req.group_id,
+            )
             return {"ok": False}
 
         stored_mode = (

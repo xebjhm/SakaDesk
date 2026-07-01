@@ -239,12 +239,10 @@ class AuthService:
                 await task
 
     async def set_manual_token(self, service: str, refresh_token: str) -> bool:
-        """Bootstrap a session from a user-supplied refresh_token (for mobile mode).
+        """Bootstrap a mobile-mode session from a user-supplied refresh_token.
 
-        The refresh_token is the only long-lived credential the user can capture from
-        the official app. We mint a fresh access_token from it via ``/update_token``
-        (android profile) — which both validates the token and yields the access_token
-        — then persist the session. Returns False if the refresh_token is rejected.
+        Validates the refresh_token by exchanging it for a fresh access_token; on
+        success the session is persisted in mobile mode, otherwise returns False.
         The token itself is never logged.
         """
         validate_service(service)

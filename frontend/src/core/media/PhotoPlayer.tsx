@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImageOff } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 
@@ -53,6 +53,10 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     className,
 }) => {
     const [hasError, setHasError] = useState(false);
+    // Fullscreen instances are reused across navigation (arrow keys change `src`
+    // on the same component). Without this reset, one broken/missing photo latches
+    // hasError=true and every later photo in the session renders as broken.
+    useEffect(() => { setHasError(false); }, [src]);
     const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
 
     const fallback = (extraClasses?: string) => (

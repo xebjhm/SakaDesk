@@ -187,6 +187,13 @@ class GeminiProvider(TranslationProvider):
                 raise RuntimeError(
                     f"Gemini returned no content (finishReason: {finish_reason})"
                 )
+            # A non-STOP finish (MAX_TOKENS, RECITATION, OTHER) means the text is
+            # truncated. Returning it would cache a half-translation as a success
+            # with a "✓ translated" badge and no indication content is missing.
+            if finish_reason not in ("STOP", ""):
+                raise RuntimeError(
+                    f"Translation incomplete (finishReason: {finish_reason})"
+                )
 
             return cast(str, candidate["content"]["parts"][0]["text"])
 

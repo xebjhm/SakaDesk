@@ -138,7 +138,12 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                             ? ` rounded-md px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
                             : ''
                     }`}
-                    onScroll={() => { userScrolledRef.current = true; }}
+                    // Mark "user scrolled" only on real input (wheel/touch), not on
+                    // the browser scroll events emitted by our own smooth scrollTo —
+                    // using onScroll here latched the flag after each auto-scroll and
+                    // made centering skip every other active segment.
+                    onWheel={() => { userScrolledRef.current = true; }}
+                    onTouchMove={() => { userScrolledRef.current = true; }}
                 >
                     {segments.map((seg, i) => {
                         const isActive = i === activeIndex;

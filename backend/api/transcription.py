@@ -2,10 +2,9 @@
 Transcription API for SakaDesk.
 Handles on-demand transcription requests and cached transcript retrieval.
 
-Hybrid pipeline:
-- Gemini API for high-quality Japanese text (when API key is configured)
-- Whisper tiny (CPU) for segment timestamps
-- Falls back to Whisper tiny only when no API key is present
+Gemini-only pipeline: Gemini returns the Japanese text and timestamped segments
+in one call. An API key is required — requests return 400 when none is
+configured (there is no local Whisper fallback).
 """
 
 import asyncio

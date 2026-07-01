@@ -1,4 +1,6 @@
+import httpx
 import pytest
+import respx
 
 from backend.services.translation_service import (
     TranslationProvider,
@@ -8,6 +10,56 @@ from backend.services.translation_service import (
     build_batch_translation_prompt,
     validate_placeholder_count,
 )
+
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/"
+    "models/gemini-3.1-flash-lite:generateContent"
+)
+
+
+def _gemini_response(text: str, finish_reason: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "candidates": [
+                {
+                    "content": {"parts": [{"text": text}]},
+                    "finishReason": finish_reason,
+                }
+            ]
+        },
+    )
+
+
+class TestGeminiFinishReason:
+    """GeminiProvider.translate must not pass off truncated output as success."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_stop_returns_text(self):
+        respx.post(GEMINI_URL).mock(return_value=_gemini_response("Hello", "STOP"))
+        provider = GeminiProvider(api_key="k")
+        assert await provider.translate("こんにちは") == "Hello"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_max_tokens_raises_instead_of_returning_truncated(self):
+        # Content is present but the model was cut off — returning it would cache
+        # a half-translation as a success. Must raise instead.
+        respx.post(GEMINI_URL).mock(
+            return_value=_gemini_response("Half a transl", "MAX_TOKENS")
+        )
+        provider = GeminiProvider(api_key="k")
+        with pytest.raises(RuntimeError, match="incomplete"):
+            await provider.translate("very long text")
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_safety_block_raises(self):
+        respx.post(GEMINI_URL).mock(return_value=_gemini_response("", "SAFETY"))
+        provider = GeminiProvider(api_key="k")
+        with pytest.raises(RuntimeError, match="safety"):
+            await provider.translate("blocked")
 
 
 class TestTranslationProviderInterface:

@@ -5,8 +5,12 @@ Maps between service identifiers and pysaka Group enum.
 
 from typing import Any, Dict, List, Optional, cast
 
+import structlog
+
 from pysaka import Group
 from pysaka.client import GROUP_CONFIG
+
+logger = structlog.get_logger(__name__)
 
 
 def get_all_services() -> List[str]:
@@ -73,6 +77,11 @@ def resolve_auth_mode(stored_mode: str, token_data: Optional[Dict[str, Any]]) ->
     """
     if stored_mode == "mobile" and (token_data or {}).get("refresh_token"):
         return "mobile"
+    if stored_mode == "mobile":
+        # Configured for mobile but no refresh_token stored: the per-service
+        # toggle snaps back to web. Log a breadcrumb so this silent downgrade
+        # (which changes the request profile + refresh strategy) is diagnosable.
+        logger.info("auth_mode 'mobile' downgraded to 'web': no refresh_token stored")
     return "web"
 
 

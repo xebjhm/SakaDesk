@@ -1,10 +1,10 @@
 """
 Transcription service for SakaDesk.
 
-Provides hybrid Japanese audio transcription:
-- Gemini API for high-quality text (accurate Japanese)
-- Local faster-whisper tiny (CPU-only) for segment timestamps
-- Alignment function to combine both outputs
+Gemini-only Japanese audio transcription: the Gemini API returns high-quality
+text together with timestamped segments in one structured-output call (no local
+Whisper model and no alignment step). Requires an API key — there is no offline
+fallback.
 
 Storage: JSON sidecar files (transcriptions.json) alongside messages.json.
 """
