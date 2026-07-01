@@ -212,4 +212,32 @@ describe('appStore', () => {
             expect(getSelectedConversation('sakurazaka46')).toEqual(conv2)
         })
     })
+
+    describe('phoneSyncStatus', () => {
+        beforeEach(() => useAppStore.setState({ phoneSyncStatus: {} }))
+
+        it('starts empty (healthy)', () => {
+            expect(useAppStore.getState().phoneSyncStatus).toEqual({})
+        })
+
+        it('sets a per-service status', () => {
+            useAppStore.getState().setPhoneSyncStatus('sakurazaka46', 'needs_signin')
+            expect(useAppStore.getState().phoneSyncStatus).toEqual({ sakurazaka46: 'needs_signin' })
+        })
+
+        it('clears a service with null (on a later successful sync)', () => {
+            const { setPhoneSyncStatus } = useAppStore.getState()
+            setPhoneSyncStatus('sakurazaka46', 'unavailable')
+            setPhoneSyncStatus('sakurazaka46', null)
+            expect(useAppStore.getState().phoneSyncStatus).toEqual({})
+        })
+
+        it('tracks services independently', () => {
+            const { setPhoneSyncStatus } = useAppStore.getState()
+            setPhoneSyncStatus('sakurazaka46', 'needs_signin')
+            setPhoneSyncStatus('hinatazaka46', 'unavailable')
+            setPhoneSyncStatus('sakurazaka46', null)
+            expect(useAppStore.getState().phoneSyncStatus).toEqual({ hinatazaka46: 'unavailable' })
+        })
+    })
 })

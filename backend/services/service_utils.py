@@ -3,7 +3,7 @@ Service utilities for multi-service support.
 Maps between service identifiers and pysaka Group enum.
 """
 
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Literal, Optional, cast
 
 import structlog
 
@@ -67,7 +67,9 @@ def get_service_config(service: str) -> Dict[str, Any]:
     return cast(Dict[str, Any], GROUP_CONFIG[group])
 
 
-def resolve_auth_mode(stored_mode: str, token_data: Optional[Dict[str, Any]]) -> str:
+def resolve_auth_mode(
+    stored_mode: str, token_data: Optional[Dict[str, Any]]
+) -> Literal["web", "mobile"]:
     """Effective auth mode for a service.
 
     "mobile" downgrades to "web" unless a ``refresh_token`` is stored: mobile mode

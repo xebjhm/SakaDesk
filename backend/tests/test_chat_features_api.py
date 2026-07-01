@@ -332,3 +332,46 @@ class TestMarkRoomReadRemote:
             json={"service": "hinatazaka46", "group_id": 0},
         )
         assert res.status_code == 422
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_no_session_returns_reason(self, _mock_test):
+        """No stored session → ok:false with reason 'no_session' (UI says re-sign-in)."""
+        with (
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(return_value={"sync_read_to_phone": True}),
+            ),
+            patch("backend.api.chat_features.get_token_manager") as mock_tm,
+        ):
+            mock_tm.return_value.load_session.return_value = None
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "hinatazaka46", "group_id": 70},
+            )
+            assert res.status_code == 200
+            assert res.json() == {"ok": False, "reason": "no_session"}
+
+    @patch("backend.api.chat_features.is_test_mode", return_value=False)
+    def test_server_refusal_returns_refused_reason(self, _mock_test):
+        """Valid session but the server refuses the clear → reason 'refused' (transient)."""
+        with (
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={"sync_read_to_phone": True, "auth_mode": "web"}
+                ),
+            ),
+            patch("backend.api.chat_features.get_token_manager") as mock_tm,
+            patch("backend.api.chat_features.Client") as MockClient,
+        ):
+            mock_tm.return_value.load_session.return_value = {
+                "access_token": "tok",
+                "cookies": {},
+            }
+            MockClient.return_value.mark_group_read = AsyncMock(return_value=False)
+            res = client.post(
+                "/api/chat/mark-room-read-remote",
+                json={"service": "hinatazaka46", "group_id": 70},
+            )
+            assert res.status_code == 200
+            assert res.json() == {"ok": False, "reason": "refused"}
