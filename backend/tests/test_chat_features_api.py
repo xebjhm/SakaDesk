@@ -280,9 +280,7 @@ class TestMarkRoomReadRemote:
         with (
             patch(
                 "backend.services.settings_store.load_config",
-                new=AsyncMock(
-                    return_value={"sync_read_to_phone": True}
-                ),
+                new=AsyncMock(return_value={"sync_read_to_phone": True}),
             ),
             patch("backend.api.chat_features.get_token_manager") as mock_tm,
             patch("backend.api.chat_features.Client") as MockClient,
@@ -334,8 +332,9 @@ class TestMarkRoomReadRemote:
         assert res.status_code == 422
 
     @patch("backend.api.chat_features.is_test_mode", return_value=False)
-    def test_no_session_returns_reason(self, _mock_test):
-        """No stored session → ok:false with reason 'no_session' (UI says re-sign-in)."""
+    def test_no_session_returns_ok_false(self, _mock_test):
+        """No stored session → ok:false (never raises). The service rail's
+        disconnect badge is the user-facing surface for the re-login case."""
         with (
             patch(
                 "backend.services.settings_store.load_config",
@@ -349,17 +348,15 @@ class TestMarkRoomReadRemote:
                 json={"service": "hinatazaka46", "group_id": 70},
             )
             assert res.status_code == 200
-            assert res.json() == {"ok": False, "reason": "no_session"}
+            assert res.json() == {"ok": False}
 
     @patch("backend.api.chat_features.is_test_mode", return_value=False)
-    def test_server_refusal_returns_refused_reason(self, _mock_test):
-        """Valid session but the server refuses the clear → reason 'refused' (transient)."""
+    def test_server_refusal_returns_ok_false(self, _mock_test):
+        """Valid session but the server refuses the clear → ok:false (no raise)."""
         with (
             patch(
                 "backend.services.settings_store.load_config",
-                new=AsyncMock(
-                    return_value={"sync_read_to_phone": True}
-                ),
+                new=AsyncMock(return_value={"sync_read_to_phone": True}),
             ),
             patch("backend.api.chat_features.get_token_manager") as mock_tm,
             patch("backend.api.chat_features.Client") as MockClient,
@@ -374,4 +371,4 @@ class TestMarkRoomReadRemote:
                 json={"service": "hinatazaka46", "group_id": 70},
             )
             assert res.status_code == 200
-            assert res.json() == {"ok": False, "reason": "refused"}
+            assert res.json() == {"ok": False}

@@ -308,15 +308,14 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
         token_data = get_token_manager().load_session(group.value)
         if not token_data or not token_data.get("access_token"):
             # Breadcrumb: the most common silent failure (opted into phone sync
-            # but the mobile session is missing/expired). Without this there is
-            # no log at all and the user never learns their reads aren't syncing.
+            # but the session is missing/expired). The service rail's disconnect
+            # badge is the user-facing surface for this; the log aids diagnostics.
             logger.warning(
                 "mark_room_read_remote skipped: no valid session",
                 service=req.service,
                 group_id=req.group_id,
             )
-            # reason lets the UI say "sign in again" instead of a generic failure.
-            return {"ok": False, "reason": "no_session"}
+            return {"ok": False}
 
         client = Client(
             group=group,
@@ -332,9 +331,7 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             group_id=req.group_id,
             ok=ok,
         )
-        # Valid session but the server refused the clear — transient, not a
-        # sign-in problem, so a distinct reason ("refused") the UI can soften.
-        return {"ok": ok} if ok else {"ok": False, "reason": "refused"}
+        return {"ok": ok}
     except Exception as e:
         logger.warning(
             "mark_room_read_remote failed",
@@ -342,4 +339,4 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             group_id=req.group_id,
             error=str(e),
         )
-        return {"ok": False, "reason": "error"}
+        return {"ok": False}
