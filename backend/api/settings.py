@@ -9,7 +9,7 @@ import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from backend.services.platform import (
     get_settings_path,
@@ -126,7 +126,7 @@ class ServiceSettings(BaseModel):
     blogs_full_backup: bool = False
     # Per-service auth mode. Read back as the *effective* mode: "mobile" only when a
     # refresh_token is stored, otherwise "web" (it snaps back until a token is added).
-    auth_mode: str = "web"
+    auth_mode: Literal["web", "mobile"] = "web"
 
 
 @router.get("", response_model=SettingsResponse)
@@ -263,7 +263,9 @@ async def select_folder():
     return {"path": None}
 
 
-def _effective_service_auth_mode(service: str, stored_mode: str) -> str:
+def _effective_service_auth_mode(
+    service: str, stored_mode: str
+) -> Literal["web", "mobile"]:
     """Resolve a service's effective auth mode (mobile needs a stored refresh_token)."""
     try:
         from pysaka.credentials import get_token_manager
@@ -306,8 +308,8 @@ async def update_service_settings(service: str, update: ServiceSettings):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    mode = update.auth_mode if update.auth_mode in ("web", "mobile") else "web"
-
+    # auth_mode is validated to "web"|"mobile" by the Literal on ServiceSettings
+    # (invalid values are rejected with 422 before we get here).
     def _apply(config: dict) -> None:
         config.setdefault("services", {}).setdefault(service, {})
         config["services"][service].update(
@@ -316,7 +318,7 @@ async def update_service_settings(service: str, update: ServiceSettings):
                 "adaptive_sync_enabled": update.adaptive_sync_enabled,
                 "last_sync": update.last_sync,
                 "blogs_full_backup": update.blogs_full_backup,
-                "auth_mode": mode,
+                "auth_mode": update.auth_mode,
             }
         )
 

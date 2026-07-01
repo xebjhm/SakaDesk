@@ -8,6 +8,7 @@ from backend.services.translation_service import (
     OpenAIProvider,
     build_translation_prompt,
     build_batch_translation_prompt,
+    build_blog_translation_prompt,
     validate_placeholder_count,
 )
 
@@ -60,6 +61,59 @@ class TestGeminiFinishReason:
         provider = GeminiProvider(api_key="k")
         with pytest.raises(RuntimeError, match="safety"):
             await provider.translate("blocked")
+
+
+GEMINI_MODELS_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite"
+)
+
+
+class TestCheckConnection:
+    """check_connection must distinguish a rejected key from an unreachable host."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_200_is_ok(self):
+        respx.get(GEMINI_MODELS_URL).mock(return_value=httpx.Response(200))
+        assert await GeminiProvider(api_key="k").check_connection() == "ok"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_401_is_auth(self):
+        respx.get(GEMINI_MODELS_URL).mock(return_value=httpx.Response(401))
+        assert await GeminiProvider(api_key="k").check_connection() == "auth"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_403_is_auth(self):
+        respx.get(GEMINI_MODELS_URL).mock(return_value=httpx.Response(403))
+        assert await GeminiProvider(api_key="k").check_connection() == "auth"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_network_error_is_unreachable(self):
+        respx.get(GEMINI_MODELS_URL).mock(side_effect=httpx.ConnectError("no route"))
+        assert await GeminiProvider(api_key="k").check_connection() == "unreachable"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_500_is_unreachable(self):
+        respx.get(GEMINI_MODELS_URL).mock(return_value=httpx.Response(500))
+        assert await GeminiProvider(api_key="k").check_connection() == "unreachable"
+
+
+class TestBlogPromptFormat:
+    """Blog prompt asks for a numbered JSON map so alignment survives merges."""
+
+    def test_requests_numbered_json_map(self):
+        prompt, _system = build_blog_translation_prompt(
+            paragraphs=["最初の段落", "二番目の段落"],
+            target_language="en",
+        )
+        assert "JSON" in prompt
+        assert '"0":' in prompt
+        assert '"1":' in prompt
+        assert "最初の段落" in prompt
 
 
 class TestTranslationProviderInterface:

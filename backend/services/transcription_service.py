@@ -14,7 +14,7 @@ import structlog
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 
 import httpx
 
@@ -74,7 +74,7 @@ class TranscriptionSegment:
 @dataclass
 class TranscriptionResult:
     message_id: int
-    media_type: str  # "voice" or "video"
+    media_type: Literal["voice", "video"]
     language: str
     model: str
     duration_seconds: float

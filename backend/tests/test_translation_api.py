@@ -1,6 +1,8 @@
-from unittest.mock import patch
+import json
+from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -8,6 +10,138 @@ from backend.api.translation import _provider_http_error
 from backend.main import app
 
 client = TestClient(app)
+
+
+class _FakeProvider:
+    """Provider stub whose translate() returns a preset raw string."""
+
+    def __init__(self, raw: str):
+        self._raw = raw
+
+    async def translate(self, prompt, system_instruction=None):
+        return self._raw
+
+
+class TestBlogAlignment:
+    """blog_full re-aligns a JSON map to source order; omissions stay empty."""
+
+    def test_missing_paragraph_stays_empty_not_shifted(self):
+        # 3 source paragraphs; model omits index 1.
+        provider = _FakeProvider(json.dumps({"0": "A-en", "2": "C-en"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A", "B", "C"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Alignment preserved: C-en stays at index 2, not shifted up to index 1.
+        assert body["translations"] == ["A-en", "", "C-en"]
+        assert body["partial"] is True
+
+    def test_all_present_is_not_partial(self):
+        provider = _FakeProvider(json.dumps({"0": "A-en", "1": "B-en"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A", "B"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.json()["translations"] == ["A-en", "B-en"]
+        assert resp.json()["partial"] is False
+
+
+class TestBatchMissing:
+    """translate-batch reports message IDs the model silently dropped."""
+
+    def test_missing_ids_surfaced(self, tmp_path, monkeypatch):
+        member_rel = "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+        member_dir = tmp_path / member_rel
+        member_dir.mkdir(parents=True)
+        (member_dir / "messages.json").write_text(
+            json.dumps(
+                {
+                    "messages": [
+                        {"id": 1, "content": "おはよう"},
+                        {"id": 2, "content": "こんにちは"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
+        # Model returns only id 1; id 2 is silently dropped.
+        provider = _FakeProvider(json.dumps({"1": "morning"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate-batch",
+                json={
+                    "type": "messages",
+                    "message_ids": [1, 2],
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"] == {"1": "morning"}
+        assert body["missing"] == ["2"]
+
+
+class TestTestConnectionCodes:
+    """test-connection distinguishes a rejected key from an unreachable host."""
+
+    @pytest.mark.parametrize(
+        "status,code",
+        [("auth", "auth"), ("unreachable", "unreachable")],
+    )
+    def test_status_maps_to_code(self, status, code):
+        fake = AsyncMock()
+        fake.check_connection = AsyncMock(return_value=status)
+        with (
+            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._instantiate_provider", return_value=fake),
+        ):
+            resp = client.post(
+                "/api/translation/test-connection",
+                json={"provider": "gemini", "model": "gemini-3.1-flash-lite"},
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert body["code"] == code
+
+    def test_ok_status(self):
+        fake = AsyncMock()
+        fake.check_connection = AsyncMock(return_value="ok")
+        with (
+            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._instantiate_provider", return_value=fake),
+        ):
+            resp = client.post(
+                "/api/translation/test-connection",
+                json={"provider": "gemini", "model": "gemini-3.1-flash-lite"},
+            )
+        assert resp.json() == {"ok": True}
 
 
 def _status_error(code: int) -> httpx.HTTPStatusError:
