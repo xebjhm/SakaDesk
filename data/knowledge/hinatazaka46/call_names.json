@@ -1,0 +1,815 @@
+{
+  "meta": {
+    "group": "hinatazaka46",
+    "scope": "5th generation (五期生) + noted cross-gen",
+    "source": "official 五期生 relay-blog call-name table",
+    "source_date": "2025-05-26",
+    "direction": "caller_id uses `names` to address callee_id"
+  },
+  "edges": [
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなお",
+        "大野"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "さきてぃ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなしゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にーたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "さとうゆ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いじゅき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "高井"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこしゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "ピンク先生",
+        "大田"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "妃那乃"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にぃたん",
+        "にぃな"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "サトゥユ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "下田"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:38",
+      "caller_name": "大野 愛実",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "世界遺産先生",
+        "仁香ちゃん",
+        "鶴崎さん",
+        "にこぼーの",
+        "ぼーの"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "ピンク先生",
+        "美月ちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にいたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "ゆうちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "りかたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:39",
+      "caller_name": "片山 紗希",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "みづき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん",
+        "大野ちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "さきてぃ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にいたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "優羽"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずきち",
+        "衣珠季"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "高井ちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくてぃん",
+        "桜"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "ピンク先生",
+        "美月"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん",
+        "まなみぃ",
+        "まなみんいい",
+        "まいなみん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "うさき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなのん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "さとゆ〜",
+        "ゆうゆう",
+        "さとうゆ",
+        "ゆう",
+        "さーとぅゆ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずきち"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "りかたん",
+        "りかたんたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこちゃん",
+        "にこちゃ〜ん",
+        "にこしゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:41",
+      "caller_name": "坂井 新奈",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくらぶりー"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "大野"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "さきてぃ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなしゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にいたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずきち"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "高井"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこ姉",
+        "にこ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:42",
+      "caller_name": "佐藤 優羽",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:43",
+      "caller_name": "下田 衣珠季",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "大野"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:43",
+      "caller_name": "下田 衣珠季",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "うさき",
+        "さき",
+        "紗希"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:43",
+      "caller_name": "下田 衣珠季",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "松尾"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "ピンク先生",
+        "みづき",
+        "大田",
+        "美月",
+        "ぴんくせんせい"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん",
+        "まなみんいい",
+        "まなみいい",
+        "まなみぃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "さきてぃ",
+        "さきてい"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなのしゃん",
+        "ひなしゃん",
+        "ひなの",
+        "ひなぁのしゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にいな",
+        "にいたん",
+        "にいなあ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "ゆうたん",
+        "さとゆ",
+        "ゆう",
+        "ゆうさん",
+        "ゆさん",
+        "ゆたんっ",
+        "ゆたん",
+        "さとうゆ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "イズキ",
+        "いずき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこしゃん",
+        "お姉ちゃん",
+        "にこぉしゃん",
+        "にこぼーの",
+        "にこちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:44",
+      "caller_name": "高井 俐香",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "おさく",
+        "おしゃく",
+        "まつさく",
+        "さくらぶり〜",
+        "さくラブリー",
+        "桜鰤ー",
+        "おしゃくしゃん",
+        "おしゃくさん",
+        "さくらぶりぃ〜",
+        "おしゃくら"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "美月",
+        "美月しゃん",
+        "ピンク先生"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん",
+        "マナ・プールズ",
+        "大野愛実さん",
+        "まなみさん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:39",
+      "callee_name": "片山 紗希",
+      "names": [
+        "さきてぃ",
+        "さきさん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひなのん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にぃたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "ゆうちゃん",
+        "しゃーべい先生",
+        "ゆうたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずきち"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "りかたん",
+        "りかさん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:45",
+      "caller_name": "鶴崎 仁香",
+      "callee_id": "hinatazaka46:46",
+      "callee_name": "松尾 桜",
+      "names": [
+        "さくら",
+        "おさく",
+        "さくらぶりー",
+        "桜鰤",
+        "桜"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:37",
+      "callee_name": "大田 美月",
+      "names": [
+        "みづゅ",
+        "美月"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:38",
+      "callee_name": "大野 愛実",
+      "names": [
+        "まなみん",
+        "ウーパールーパー"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:40",
+      "callee_name": "蔵盛 妃那乃",
+      "names": [
+        "ひな",
+        "くらもり"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:41",
+      "callee_name": "坂井 新奈",
+      "names": [
+        "にぃたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:42",
+      "callee_name": "佐藤 優羽",
+      "names": [
+        "さとうゆ"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:43",
+      "callee_name": "下田 衣珠季",
+      "names": [
+        "いずきち",
+        "いずき"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:44",
+      "callee_name": "高井 俐香",
+      "names": [
+        "りかたん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:46",
+      "caller_name": "松尾 桜",
+      "callee_id": "hinatazaka46:45",
+      "callee_name": "鶴崎 仁香",
+      "names": [
+        "にこちゃん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:37",
+      "caller_name": "大田 美月",
+      "callee_id": "hinatazaka46:29",
+      "callee_name": "正源司 陽子",
+      "names": [
+        "源さん"
+      ]
+    },
+    {
+      "caller_id": "hinatazaka46:40",
+      "caller_name": "蔵盛 妃那乃",
+      "callee_id": "hinatazaka46:29",
+      "callee_name": "正源司 陽子",
+      "names": [
+        "陽子姉さん"
+      ]
+    }
+  ],
+  "notes": [
+    "片山：同期からは「さきてぃ」と呼ばれてる。",
+    "大田：同期からは「みづき」と呼ばれてるが、地方組からは「ピンク先生」と呼ばれてる。",
+    "高井：地方組からは「高井」と呼ばれてる。「さとゆ」は合宿時代に佐藤へ付けたあだ名。",
+    "大田：正源司陽子を「源さん」と呼んでる。",
+    "下田：大野からは五期生で唯一「下田」と呼ばれてる。下田は大野を「大野」と呼んでる。",
+    "蔵盛：正源司陽子を「陽子姉さん」と呼んでる。"
+  ]
+}

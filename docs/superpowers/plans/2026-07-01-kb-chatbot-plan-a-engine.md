@@ -420,7 +420,7 @@ def test_unknown_author_autoprovisions():
 **Files:** Create `pysaka/src/pysaka/knowledge/aliases.py`; Test `pysaka/tests/knowledge/test_aliases.py`
 **Interfaces:**
 - Consumes: `MemberRegistry`, `Member`.
-- Produces: `AliasTable` with `.seed_from_registry(reg) -> AliasTable` (derives kanji, kanji-no-space, hiragana, romaji, given-name-only), `.load_curated(data: dict)` (merges the §6.4 file, keyed by canonical_id), `.aliases_for(canonical_id) -> list[str]`, `.entries(group) -> list[tuple[str, CanonicalId]]` (alias→member for the scan), `.resolve(text, scope) -> list[CanonicalId]` (nickname→members, group-scoped).
+- Produces: `AliasTable` with `.seed_from_registry(reg) -> AliasTable` (derives kanji, kanji-no-space, hiragana, romaji, given-name-only), `.load_curated(data: dict)` (merges the curated `aliases.json` under `data/knowledge/<service>/`, keyed by canonical_id), `.aliases_for(canonical_id) -> list[str]`, `.entries(group) -> list[tuple[str, CanonicalId]]` (alias→member for the scan), `.resolve(text, scope) -> list[CanonicalId]` (nickname→members, group-scoped). Real data already exists: `data/knowledge/hinatazaka46/aliases.json` (+ `call_names.json` for directional/author-scoped resolution — a small `CallNameTable` loader that Task 6's `MentionDetector` consults to defuse common-word aliases; see spec §6.4a).
 
 - [ ] **Step 1: Failing test** — seed produces romaji + given-name ("美玖"), curated merge adds "みくちゃん"; `resolve("みく", scope)` → `["hinatazaka46:12"]`; cross-group collision returns both only when scope spans groups.
 - [ ] **Step 2: Run — expect fail.**
