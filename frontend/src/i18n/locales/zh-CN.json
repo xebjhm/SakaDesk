@@ -53,8 +53,6 @@
     "syncSmart": "智能排程",
     "syncReadToPhone": "与手机同步已读",
     "syncReadToPhoneDesc": "在这里打开聊天时，会一并清除它在官方 App 的未读计数（消红点），就像你在官方 App 打开一样。默认关闭。",
-    "phoneSyncNeedsSignin": "无法与 {{service}} 同步 — 请重新登录以启用。",
-    "phoneSyncUnavailable": "无法连接到 {{service}} 的手机，下次会自动重试。",
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",

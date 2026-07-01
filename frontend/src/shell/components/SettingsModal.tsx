@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
+import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { getServiceDisplayName } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -34,7 +33,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
-    const phoneSyncStatus = useAppStore(s => s.phoneSyncStatus);
     const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
@@ -382,22 +380,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
                             {t('settings.syncReadToPhoneDesc')}
                         </p>
-                        {/* Health chips: only while the feature is on and a service is failing.
-                            Clears itself when the next room-open syncs successfully. */}
-                        {appSettings.sync_read_to_phone &&
-                            Object.entries(phoneSyncStatus).map(([service, status]) => (
-                                <div
-                                    key={service}
-                                    className="mt-2 flex items-start gap-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800"
-                                >
-                                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-                                    <span className="flex-1">
-                                        {status === 'needs_signin'
-                                            ? t('settings.phoneSyncNeedsSignin', { service: getServiceDisplayName(service) })
-                                            : t('settings.phoneSyncUnavailable', { service: getServiceDisplayName(service) })}
-                                    </span>
-                                </div>
-                            ))}
                     </div>
                     </>)}
 

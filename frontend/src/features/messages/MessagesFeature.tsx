@@ -209,7 +209,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Virtuoso's initialTopMostItemIndex on mount (no post-mount scroll races).
     const targetMessageId = useAppStore(s => s.targetMessageId);
     const setTargetMessageId = useAppStore(s => s.setTargetMessageId);
-    const setPhoneSyncStatus = useAppStore(s => s.setPhoneSyncStatus);
 
     // Save current selection and restore previous selection when service changes
     useEffect(() => {
@@ -388,29 +387,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
         const parsedOpen = parseReadStatePath(selectedGroupDir);
         if (!parsedOpen) return;
-        const { service } = parsedOpen;
-        // Fire-and-forget (never blocks opening the room), but record the outcome
-        // so the Settings ▸ Sync tab can surface a failing service instead of the
-        // read-sync silently doing nothing.
+        // Fire-and-forget — never blocks opening the room. A failed clear (e.g.
+        // expired session) is a no-op; the service rail's disconnect badge already
+        // surfaces the actionable "session expired — re-login" case.
         fetch('/api/chat/mark-room-read-remote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ service, group_id: parsedOpen.groupId }),
-        })
-            .then(async (res) => {
-                const data = res.ok ? await res.json().catch(() => null) : null;
-                if (data?.skipped) return; // setting off / test mode — not a failure
-                if (data?.ok) {
-                    setPhoneSyncStatus(service, null); // healthy — clear any prior warning
-                } else {
-                    setPhoneSyncStatus(
-                        service,
-                        data?.reason === 'no_session' ? 'needs_signin' : 'unavailable',
-                    );
-                }
-            })
-            .catch(() => setPhoneSyncStatus(service, 'unavailable'));
-    }, [selectedGroupDir, appSettings?.sync_read_to_phone, setPhoneSyncStatus]);
+            body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
+        }).catch(() => {});
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {

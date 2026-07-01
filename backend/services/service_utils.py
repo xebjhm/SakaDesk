@@ -61,5 +61,3 @@ def get_service_config(service: str) -> Dict[str, Any]:
     """Get full config for a service."""
     group = get_service_enum(service)
     return cast(Dict[str, Any], GROUP_CONFIG[group])
-
-
