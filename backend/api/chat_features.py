@@ -317,7 +317,8 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
                 service=req.service,
                 group_id=req.group_id,
             )
-            return {"ok": False}
+            # reason lets the UI say "sign in again" instead of a generic failure.
+            return {"ok": False, "reason": "no_session"}
 
         stored_mode = (
             config.get("services", {}).get(req.service, {}).get("auth_mode", "web")
@@ -341,7 +342,9 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             group_id=req.group_id,
             ok=ok,
         )
-        return {"ok": ok}
+        # Valid session but the server refused the clear — transient, not a
+        # sign-in problem, so a distinct reason ("refused") the UI can soften.
+        return {"ok": ok} if ok else {"ok": False, "reason": "refused"}
     except Exception as e:
         logger.warning(
             "mark_room_read_remote failed",
@@ -349,4 +352,4 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             group_id=req.group_id,
             error=str(e),
         )
-        return {"ok": False}
+        return {"ok": False, "reason": "error"}

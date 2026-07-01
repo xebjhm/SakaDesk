@@ -46,6 +46,13 @@ export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
 export type BlogSelectionMode = 'all' | 'favorite';
 
 /**
+ * Health of the opt-in "sync read to phone" feature for a service.
+ * - 'needs_signin': no valid session — the user must re-authenticate.
+ * - 'unavailable': had a session but the clear was refused / errored (transient).
+ */
+export type PhoneSyncStatus = 'needs_signin' | 'unavailable';
+
+/**
  * Global application state interface.
  *
  * Organized into logical groups:
@@ -208,6 +215,12 @@ interface AppState {
     transcriptionEnabled: boolean;
     /** Set the top-level transcription feature toggle. */
     setTranscriptionEnabled: (enabled: boolean) => void;
+
+    // ─── Phone Read-Sync Health ──────────────────────────────────────────────
+    /** Per-service "sync read to phone" failure status (non-persisted; empty = healthy). */
+    phoneSyncStatus: Record<string, PhoneSyncStatus>;
+    /** Set a service's phone read-sync status, or clear it with null (on success). */
+    setPhoneSyncStatus: (service: string, status: PhoneSyncStatus | null) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -358,6 +371,18 @@ export const useAppStore = create<AppState>()(
             setTranslationEnabled: (enabled) => set({ translationEnabled: enabled }),
             transcriptionEnabled: true,
             setTranscriptionEnabled: (enabled) => set({ transcriptionEnabled: enabled }),
+
+            phoneSyncStatus: {},
+            setPhoneSyncStatus: (service, status) =>
+                set((state) => {
+                    if (status === null) {
+                        if (!(service in state.phoneSyncStatus)) return state;
+                        const { [service]: _removed, ...rest } = state.phoneSyncStatus;
+                        return { phoneSyncStatus: rest };
+                    }
+                    if (state.phoneSyncStatus[service] === status) return state;
+                    return { phoneSyncStatus: { ...state.phoneSyncStatus, [service]: status } };
+                }),
         }),
         {
             name: 'sakadesk-app-state',
