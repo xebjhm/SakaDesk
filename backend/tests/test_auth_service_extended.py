@@ -204,7 +204,9 @@ class TestConcurrentLoginSupersede:
                 events.append(("start", group.value))
                 entered.set()
                 try:
-                    await asyncio.sleep(10)  # simulate an open browser awaiting the user
+                    await asyncio.sleep(
+                        10
+                    )  # simulate an open browser awaiting the user
                     return {"access_token": "tok"}
                 except asyncio.CancelledError:
                     events.append(("cancelled", group.value))
@@ -216,7 +218,9 @@ class TestConcurrentLoginSupersede:
                     task1 = asyncio.create_task(
                         auth_service.login_with_browser("hinatazaka46")
                     )
-                    await asyncio.wait_for(entered.wait(), timeout=2)  # task1 is inside login
+                    await asyncio.wait_for(
+                        entered.wait(), timeout=2
+                    )  # task1 is inside login
                     entered.clear()
 
                     task2 = asyncio.create_task(
