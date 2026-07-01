@@ -477,6 +477,19 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
         </div>
     );
 }
+
+// Session cache of the AI config so reopening the panel shows the saved values
+// instantly instead of flashing blank while /api/translation/config (which reads
+// the OS keyring) round-trips. Revalidated in the background on every mount.
+interface AiConfigCache {
+    provider: string | null;
+    model: string | null;
+    hasApiKey: boolean;
+    apiKeyMasked: string | null;
+    targetLang: string | null;
+}
+let aiConfigCache: AiConfigCache | null = null;
+
 function AiTab() {
     const { t } = useTranslation();
     const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
@@ -487,13 +500,14 @@ function AiTab() {
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<string | null>(null);
 
-    // Own state loaded from /api/translation/config (not from appSettings)
-    const [provider, setProvider] = useState<string | null>(null);
-    const [model, setModel] = useState<string | null>(null);
+    // Own state loaded from /api/translation/config (not from appSettings).
+    // Seed from the session cache so a reopen renders instantly, then revalidate.
+    const [provider, setProvider] = useState<string | null>(() => aiConfigCache?.provider ?? null);
+    const [model, setModel] = useState<string | null>(() => aiConfigCache?.model ?? null);
     const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
-    const [hasApiKey, setHasApiKey] = useState(false);    // Whether a key is stored in keyring
-    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(null);  // e.g. "AIza...xQ"
-    const [targetLang, setTargetLang] = useState<string | null>(null);
+    const [hasApiKey, setHasApiKey] = useState(() => aiConfigCache?.hasApiKey ?? false);  // key stored in keyring
+    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(() => aiConfigCache?.apiKeyMasked ?? null);  // "AIza...xQ"
+    const [targetLang, setTargetLang] = useState<string | null>(() => aiConfigCache?.targetLang ?? null);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -504,6 +518,13 @@ function AiTab() {
                 setHasApiKey(data.has_api_key ?? false);
                 setApiKeyMasked(data.api_key_masked ?? null);
                 setTargetLang(data.target_language ?? null);
+                aiConfigCache = {
+                    provider: data.provider ?? null,
+                    model: data.model ?? null,
+                    hasApiKey: data.has_api_key ?? false,
+                    apiKeyMasked: data.api_key_masked ?? null,
+                    targetLang: data.target_language ?? null,
+                };
                 if (data.target_language) {
                     setTranslationTargetLanguage(data.target_language);
                 }
@@ -554,12 +575,21 @@ function AiTab() {
                 body: JSON.stringify({ provider, model, api_key: apiKeyInput || undefined }),
             });
             const data = await res.json();
-            setTestResult(data.ok
-                ? t('translation.settings.testSuccess')
-                : t('translation.settings.testFailed') + (data.detail ? `: ${data.detail}` : '')
-            );
+            if (data.ok) {
+                setTestResult(t('translation.settings.testSuccess'));
+            } else {
+                // Map the backend's reason code to a localized message instead of
+                // showing its English `detail`.
+                const byCode: Record<string, string> = {
+                    auth: 'translation.settings.testErrorAuth',
+                    unreachable: 'translation.settings.testErrorUnreachable',
+                    no_key: 'translation.settings.testErrorNoKey',
+                };
+                const key = (data.code && byCode[data.code]) || 'translation.settings.testFailed';
+                setTestResult(t(key));
+            }
         } catch {
-            setTestResult(t('translation.settings.testFailed'));
+            setTestResult(t('translation.settings.testErrorUnreachable'));
         } finally {
             setTesting(false);
         }
@@ -577,6 +607,7 @@ function AiTab() {
         setHasApiKey(false);
         setApiKeyMasked(null);
         setTestResult(null);
+        if (aiConfigCache) { aiConfigCache.hasApiKey = false; aiConfigCache.apiKeyMasked = null; }
     };
 
     const saveConfig = (updates: { provider?: string | null; model?: string | null; api_key?: string | null; target_language?: string | null }) => {
@@ -595,6 +626,15 @@ function AiTab() {
             setTargetLang(updates.target_language);
             setTranslationTargetLanguage(updates.target_language);
         }
+
+        // Keep the session cache in step so a reopen reflects the change instantly.
+        aiConfigCache = {
+            provider: newProvider,
+            model: newModel,
+            hasApiKey: updates.api_key ? true : hasApiKey,
+            apiKeyMasked: aiConfigCache?.apiKeyMasked ?? null,  // refreshed by the next fetch
+            targetLang: newTargetLang,
+        };
 
         // Persist to backend (API key stored in keyring, not settings.json)
         // Only send api_key if user typed a new one
