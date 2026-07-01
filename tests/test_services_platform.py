@@ -88,8 +88,10 @@ class TestAppDataDirectory:
         result = get_app_data_dir()
         assert isinstance(result, Path)
 
-    def test_app_data_dir_contains_sakadesk(self):
+    def test_app_data_dir_contains_sakadesk(self, monkeypatch):
         """get_app_data_dir() should return a path containing 'SakaDesk'."""
+        # Bypass the test-isolation override to exercise the real path logic.
+        monkeypatch.delenv("SAKADESK_DATA_DIR", raising=False)
         result = get_app_data_dir()
         assert "SakaDesk" in str(result)
 
@@ -100,15 +102,17 @@ class TestAppDataDirectory:
         assert result.is_dir()
 
     @patch("backend.services.platform.is_windows", return_value=False)
-    def test_linux_uses_home_sakadesk(self, mock_is_windows):
+    def test_linux_uses_home_sakadesk(self, mock_is_windows, monkeypatch):
         """Linux should use ~/.SakaDesk directory."""
+        monkeypatch.delenv("SAKADESK_DATA_DIR", raising=False)
         result = get_app_data_dir()
         assert ".SakaDesk" in str(result)
 
     @patch("backend.services.platform.is_windows", return_value=True)
     @patch.dict(os.environ, {"LOCALAPPDATA": "/tmp/test_localappdata"})
-    def test_windows_uses_localappdata(self, mock_is_windows):
+    def test_windows_uses_localappdata(self, mock_is_windows, monkeypatch):
         """Windows should use LOCALAPPDATA\\SakaDesk."""
+        monkeypatch.delenv("SAKADESK_DATA_DIR", raising=False)
         result = get_app_data_dir()
         assert "SakaDesk" in str(result)
 
