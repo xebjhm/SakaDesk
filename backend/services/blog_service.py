@@ -1341,6 +1341,29 @@ class BlogBackupManager:
                 )
             except Exception as e:
                 logger.warning(f"Blog search index update failed (non-fatal): {e}")
+
+            # Index blogs for the KB chatbot too (background, non-fatal — must not
+            # block backup completion; mirrors the search-index hook above).
+            try:
+                from backend.services.knowledge_service import get_knowledge_service
+
+                async def _bg_index_knowledge():
+                    try:
+                        knowledge_svc = await get_knowledge_service()
+                        indexed = await knowledge_svc.index_blogs_for_service(service)
+                        logger.info(
+                            "Blog knowledge index updated after backup",
+                            service=service,
+                            indexed=indexed,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Blog knowledge index update failed (non-fatal): {e}"
+                        )
+
+                asyncio.create_task(_bg_index_knowledge())
+            except Exception as e:
+                logger.warning(f"Blog knowledge index update failed (non-fatal): {e}")
         except asyncio.CancelledError:
             logger.info(f"Standalone blog backup cancelled for {service}")
         except Exception as e:

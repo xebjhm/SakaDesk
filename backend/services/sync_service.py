@@ -556,6 +556,34 @@ class SyncService:
                             "Search index update failed (non-fatal)", error=str(e)
                         )
 
+                    # Update knowledge base (KB chatbot) index in background too
+                    # (non-fatal, must not block sync) — mirrors the search-index
+                    # hook above exactly, same members_with_changes payload, so the
+                    # KB chatbot's corpus stays fresh without slowing down sync.
+                    try:
+                        from backend.services.knowledge_service import (
+                            get_knowledge_service,
+                        )
+
+                        async def _bg_index_knowledge():
+                            try:
+                                knowledge_svc = await get_knowledge_service()
+                                indexed = await knowledge_svc.index_members(
+                                    members_with_changes, self._service
+                                )
+                                logger.info("Knowledge index updated", indexed=indexed)
+                            except Exception as e:
+                                logger.warning(
+                                    "Knowledge index update failed (non-fatal)",
+                                    error=str(e),
+                                )
+
+                        asyncio.create_task(_bg_index_knowledge())
+                    except Exception as e:
+                        logger.warning(
+                            "Knowledge index update failed (non-fatal)", error=str(e)
+                        )
+
                 # Phase 3: Media Download (Queued)
                 phase3_t0 = time.monotonic()
                 media_count = len(media_queue)
