@@ -71,7 +71,7 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 # Default ONNX embedding model name (settings.knowledge_base.embedding_model may
 # override). The model *assets* are fetched out of band (Task 12 / manual); a
 # clear error is raised if the resolved dir is absent — see `_build_embedder`.
-_DEFAULT_EMBEDDING_MODEL = "granite-embedding-107m-multilingual"
+_DEFAULT_EMBEDDING_MODEL = "granite-embedding-278m-multilingual"
 
 
 def _roster_short_name(service: str) -> str:
