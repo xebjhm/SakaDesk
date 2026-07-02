@@ -49,6 +49,10 @@ export interface SyncProgress {
     speed_unit?: string;
     detail?: string;
     detail_extra?: string;
+    result?: {
+        members: number; checked: number; missing: number;
+        repaired: number; failed: number; still_missing: number;
+    } | null;
 }
 
 export interface AppSettings {
