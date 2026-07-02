@@ -167,6 +167,8 @@
     "phaseDiscovering": "Discovering",
     "phaseSyncing": "Collecting Metadata",
     "phaseDownloading": "Downloading Media",
+    "phaseVerifying": "Verifying",
+    "phaseRepairing": "Repairing media",
     "pleaseWait": "Please wait...",
     "members": "members",
     "files": "files",
