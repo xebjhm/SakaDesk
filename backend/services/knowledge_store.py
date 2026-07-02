@@ -101,6 +101,19 @@ class SqliteKnowledgeStore:
         """Close the underlying sqlite connection."""
         self._conn.close()
 
+    @property
+    def db_path(self) -> Path:
+        """The sqlite file this store persists to.
+
+        Exposed so callers (e.g. `KnowledgeService.status`) can open their OWN
+        independent connection to the same file for read-only access, rather than
+        touching the shared `self._conn` (which is not safe to read concurrently
+        with an in-flight write from another thread despite
+        `check_same_thread=False` — that flag only lifts sqlite's same-thread
+        check, it doesn't make the connection itself concurrency-safe).
+        """
+        return self._db_path
+
     # ------------------------------------------------------------------
     # Document persistence
     # ------------------------------------------------------------------

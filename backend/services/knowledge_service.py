@@ -19,14 +19,18 @@ embedding); the `SqliteKnowledgeStore` already holds those same chunk_ids' vecto
 embedded at ask-time, inside `HybridRetriever.search`. `ask` then runs the bounded
 `KnowledgeAgent` and returns its grounding-VALIDATED `Answer`.
 
-All blocking work (file reads, embedding, sqlite) is offloaded via
-`asyncio.to_thread` to keep the event loop responsive.
+All blocking work (file reads, ONNX embedding, LLM tool-calling, sqlite) is
+offloaded via `asyncio.to_thread` to keep the event loop responsive — including,
+for `ask`, the `KnowledgeAgent` run itself: retriever assembly AND the agent loop
+both happen inside a single `to_thread` call, with `_store_lock` held for the
+whole thing, so a concurrent index write can never mutate the shared store mid-ask.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from datetime import tzinfo
 from pathlib import Path
 
@@ -103,9 +107,14 @@ class KnowledgeService:
         # Per-service reference data (registry / aliases / mention detector), built
         # lazily on first use and cached — loading + alias-seeding is pure and stable.
         self._reference: dict[str, _Reference] = {}
-        # Serializes every access to the single sqlite connection: store calls run on
-        # `asyncio.to_thread` worker threads, and one `sqlite3.Connection` must not be
-        # used from two threads at once (the store opens with check_same_thread=False).
+        # Serializes every access to the single shared sqlite connection (index writes
+        # and asks, both of which run on `asyncio.to_thread` worker threads): one
+        # `sqlite3.Connection` must not be read/written from two threads at once (the
+        # store opens with check_same_thread=False, which only lifts sqlite's
+        # same-thread check — it doesn't make concurrent use of the connection safe).
+        # `status()` deliberately does NOT take this lock: it never touches the shared
+        # connection, instead opening its own independent short-lived connection — see
+        # `status()`.
         self._store_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
@@ -163,7 +172,22 @@ class KnowledgeService:
         reference = self._reference_for(service)
         docs: list[Document] = []
         for group, member in members:
-            messages_file = resolve_messages_file(service, group["id"], member["id"])
+            try:
+                messages_file = resolve_messages_file(
+                    service, group["id"], member["id"]
+                )
+            except FileNotFoundError:
+                # The member/group folder isn't synced to disk yet (e.g. rebuild()
+                # discovered it from an in-progress sync, or a caller passed a
+                # stale roster entry). Skip it rather than aborting the whole
+                # batch — the rest of `members` still gets indexed.
+                logger.info(
+                    "knowledge_service.index_members.skipped_unsynced_member",
+                    service=service,
+                    group_id=group["id"],
+                    member_id=member["id"],
+                )
+                continue
             payload = self._read_json(messages_file)
             if payload is None:
                 continue
@@ -246,14 +270,49 @@ class KnowledgeService:
             raise KnowledgeMisconfigured(
                 "no LLM client configured for the knowledge chatbot"
             )
+        llm = self._llm
         logger.debug("knowledge_service.ask", service=scope.service, tz=str(tz))
-        # The retriever's ask-time state (in-memory DocumentStore + lexical index) is
-        # built under the lock because it reads the sqlite store; the agent loop that
-        # follows only touches in-memory state (DocumentStore + NumpyVectorStore), so
-        # it runs outside the lock and concurrent asks don't serialize on each other.
+        # Hold `_store_lock` for the WHOLE ask (retriever assembly AND the agent's
+        # tool-calling loop, which reads the shared NumpyVectorStore via
+        # HybridRetriever.search), and run all of it in ONE `to_thread` call:
+        #   - Correctness: a concurrent index write mutates the store's
+        #     NumpyVectorStore non-atomically (`_ids.append` then
+        #     `_matrix = vstack`); holding the lock for the full ask prevents that
+        #     write from interleaving with this ask's reads (a torn read).
+        #   - Responsiveness: `agent.answer()` synchronously runs ONNX embedding
+        #     inference (via ToolRunner -> HybridRetriever.search -> OnnxEmbedder)
+        #     and blocking LLM HTTP calls; offloading the entire thing keeps the
+        #     event loop free rather than just the retriever build.
+        # Trade-off: an ask now pauses background indexing (and other asks) for
+        # its full duration. Acceptable for a single-user desktop app.
         async with self._store_lock:
-            agent = await asyncio.to_thread(self._build_agent, scope.service, self._llm)
-        return await agent.answer(question, scope, history)
+            return await asyncio.to_thread(
+                self._run_ask_blocking, question, scope, llm, history
+            )
+
+    def _run_ask_blocking(
+        self,
+        question: str,
+        scope: Scope,
+        llm: LLMClient,
+        history: list[dict] | None,
+    ) -> Answer:
+        """Build the retriever+agent over the persisted store and run the agent, synchronously.
+
+        Runs entirely on a `to_thread` worker thread while the caller holds
+        `_store_lock`. `agent.answer(...)` is a coroutine, but this method must be
+        plain sync to be handed to `asyncio.to_thread` as a whole — so it drives
+        that coroutine to completion with its OWN fresh event loop via
+        `asyncio.run`. That's safe here: this method only ever runs on a
+        `to_thread` worker thread, which never has an existing event loop of its
+        own (so `asyncio.run` cannot collide with one), and neither
+        `KnowledgeAgent`/`ToolRunner`/`HybridRetriever` nor
+        `OpenAICompatLLMClient` retain any loop-bound resources across `await`s —
+        the LLM client opens and closes a fresh `httpx.AsyncClient` inside each
+        `chat()` call, so nothing is pinned to the event loop that creates it.
+        """
+        agent = self._build_agent(scope.service, llm)
+        return asyncio.run(agent.answer(question, scope, history))
 
     def _build_agent(self, service: str, llm: LLMClient) -> KnowledgeAgent:
         """Rehydrate a retriever over persisted state (zero corpus re-embedding)."""
@@ -276,19 +335,42 @@ class KnowledgeService:
     # ------------------------------------------------------------------
 
     def status(self, service: str | None = None) -> dict:
-        """Indexed-document counts, overall or for one `service`, bucketed by type."""
-        if service is not None:
-            docs = self._store.documents_for_service(service)
-        else:
-            docs = self._store.all_documents()
-        by_type: dict[str, int] = {}
-        for doc in docs:
-            by_type[doc.type] = by_type.get(doc.type, 0) + 1
+        """Indexed-document counts, overall or for one `service`, bucketed by type.
+
+        Deliberately does NOT read via `self._store` (which owns the single
+        shared `check_same_thread=False` connection that index writes run
+        against on a worker thread): `status()` is sync and called straight from
+        the event-loop thread, so reading the shared connection here could
+        interleave mid-write with a concurrently `to_thread`-running index. Instead
+        this opens its OWN short-lived, read-only connection to the same db file
+        and closes it before returning — safe to do concurrently with an
+        in-flight writer because the store enables WAL mode on open, and WAL
+        readers never block on (or are blocked by) writers.
+        """
+        by_type = self._read_status_by_type(service)
         return {
             "service": service,
-            "document_count": len(docs),
+            "document_count": sum(by_type.values()),
             "by_type": by_type,
         }
+
+    def _read_status_by_type(self, service: str | None) -> dict[str, int]:
+        conn = sqlite3.connect(str(self._store.db_path))
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            if service is not None:
+                rows = conn.execute(
+                    "SELECT type, COUNT(*) FROM kb_documents "
+                    "WHERE service = ? GROUP BY type",
+                    (service,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT type, COUNT(*) FROM kb_documents GROUP BY type"
+                ).fetchall()
+        finally:
+            conn.close()
+        return {type_: count for type_, count in rows}
 
     async def rebuild(self, service: str) -> int:
         """Re-index `service` from disk (blogs + all message members); returns changed docs.

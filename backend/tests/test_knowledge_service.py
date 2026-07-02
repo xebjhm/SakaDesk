@@ -216,3 +216,66 @@ async def test_status_reports_indexed_document_count(
     status = svc.status(_SERVICE)
     assert status["document_count"] == 1
     assert status["by_type"].get("text_msg") == 1
+
+
+@pytest.mark.asyncio
+async def test_status_reads_via_independent_connection_while_data_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`status()` must no longer touch the shared store connection (see module docs
+    on the ask-vs-status race). It now opens its own short-lived connection to the
+    same db file; this asserts that still works and returns correct counts, both
+    scoped to a service and overall.
+    """
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, None)
+
+    scoped = svc.status(_SERVICE)
+    assert scoped["service"] == _SERVICE
+    assert scoped["document_count"] == 1
+    assert scoped["by_type"] == {"text_msg": 1}
+
+    overall = svc.status()
+    assert overall["service"] is None
+    assert overall["document_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_index_members_skips_member_with_missing_messages_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One member whose messages file/folder isn't synced yet (`resolve_messages_file`
+    raises `FileNotFoundError`) must be skipped, not abort the whole batch — the
+    other member(s) in the same call still get indexed.
+    """
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+
+    def fake_resolve(service: str, group_id: int, member_id: int) -> Path:
+        if member_id == 999:
+            raise FileNotFoundError(f"no synced folder for member {member_id}")
+        return messages_file
+
+    monkeypatch.setattr(ks, "resolve_messages_file", fake_resolve)
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(
+        store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+    )
+
+    group = {"id": 94, "name": "日向坂46"}
+    unsynced_member = {"id": 999, "name": "unsynced"}
+    synced_member = {"id": 145, "name": "佐藤 花"}
+
+    # The unsynced member must not raise and must not block the synced member.
+    changed = await svc.index_members(
+        [(group, unsynced_member), (group, synced_member)], _SERVICE
+    )
+    assert changed == 1
+
+    docs = store.documents_for_service(_SERVICE)
+    assert len(docs) == 1
