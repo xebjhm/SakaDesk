@@ -88,7 +88,17 @@
         "transcriptionGpuDesc": "要 NVIDIA GPU（CUDA），快好多",
         "transcriptionGpuTesting": "測試緊 GPU...",
         "transcriptionGpuSuccess": "GPU 可以用",
-        "transcriptionGpuFailed": "GPU 測試失敗"
+        "transcriptionGpuFailed": "GPU 測試失敗",
+        "knowledgeBase": "知識庫",
+        "rebuildIndex": "重新整理索引",
+        "kbIndexed": "已經索引咗 {{count}} 份文件",
+        "kbBackend": "後端",
+        "kbBackendCloud": "雲端",
+        "kbBackendLocal": "本機",
+        "kbModel": "模型",
+        "kbBaseUrl": "伺服器網址",
+        "kbDetectHardware": "檢測硬件",
+        "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}"
     },
     "time": {
         "minute": "{{count}} 分鐘",

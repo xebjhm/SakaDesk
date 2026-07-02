@@ -88,7 +88,18 @@
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",
     "transcriptionGpuSuccess": "GPU is available and working",
-    "transcriptionGpuFailed": "GPU test failed"
+    "transcriptionGpuFailed": "GPU test failed",
+    "knowledgeBase": "Knowledge base",
+    "rebuildIndex": "Rebuild index",
+    "kbIndexed": "{{count}} document indexed",
+    "kbIndexed_other": "{{count}} documents indexed",
+    "kbBackend": "Backend",
+    "kbBackendCloud": "Cloud",
+    "kbBackendLocal": "Local",
+    "kbModel": "Model",
+    "kbBaseUrl": "Base URL",
+    "kbDetectHardware": "Detect hardware",
+    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}"
   },
   "time": {
     "minute": "{{count}} minute",

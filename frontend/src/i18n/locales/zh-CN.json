@@ -88,7 +88,17 @@
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",
     "transcriptionGpuSuccess": "GPU 可用且运行正常",
-    "transcriptionGpuFailed": "GPU 测试失败"
+    "transcriptionGpuFailed": "GPU 测试失败",
+    "knowledgeBase": "知识库",
+    "rebuildIndex": "重建索引",
+    "kbIndexed": "已索引 {{count}} 篇文档",
+    "kbBackend": "后端",
+    "kbBackendCloud": "云端",
+    "kbBackendLocal": "本地",
+    "kbModel": "模型",
+    "kbBaseUrl": "服务地址",
+    "kbDetectHardware": "检测硬件",
+    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}"
   },
   "time": {
     "minute": "{{count}} 分钟",

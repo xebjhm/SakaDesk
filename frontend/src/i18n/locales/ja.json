@@ -88,7 +88,17 @@
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",
     "transcriptionGpuSuccess": "GPUが利用可能です",
-    "transcriptionGpuFailed": "GPUテストに失敗しました"
+    "transcriptionGpuFailed": "GPUテストに失敗しました",
+    "knowledgeBase": "ナレッジベース",
+    "rebuildIndex": "インデックスを再構築",
+    "kbIndexed": "{{count}} 件のドキュメントをインデックス済み",
+    "kbBackend": "バックエンド",
+    "kbBackendCloud": "クラウド",
+    "kbBackendLocal": "ローカル",
+    "kbModel": "モデル",
+    "kbBaseUrl": "ベースURL",
+    "kbDetectHardware": "ハードウェアを検出",
+    "kbSuggestion": "{{gpu}}・{{vram}}GB → {{target}}"
   },
   "time": {
     "minute": "{{count}}分",
