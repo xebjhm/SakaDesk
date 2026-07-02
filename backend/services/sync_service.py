@@ -181,7 +181,16 @@ class SyncService:
                 raise
 
         if client.access_token != token:
-            logger.info("Tokens refreshed during auth check - saving to storage")
+            logger.info(
+                "Tokens refreshed during auth check - saving to storage",
+                extra={
+                    "has_new_cookies": bool(client.cookies),
+                    "cookie_count": len(client.cookies) if client.cookies else 0,
+                    "cookie_keys": list(client.cookies.keys())
+                    if client.cookies
+                    else [],
+                },
+            )
             try:
                 tm = get_token_manager()
                 tm.save_session(
@@ -190,10 +199,14 @@ class SyncService:
                     client.refresh_token,
                     client.cookies,
                 )
+                logger.info("Refreshed tokens saved successfully to TokenManager")
             except Exception as e:
                 logger.error(
                     "Failed to save refreshed tokens", error=str(e), exc_info=True
                 )
+        else:
+            logger.debug("Token unchanged after refresh check, no save needed")
+
         return client
 
     async def start_sync(
