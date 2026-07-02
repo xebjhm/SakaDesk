@@ -25,12 +25,19 @@ export function loadBackgroundSettings(conversationPath: string): BackgroundSett
 }
 
 /**
- * Save background settings to localStorage
+ * Save background settings to localStorage.
+ *
+ * @returns `true` if persisted successfully, `false` if the write failed
+ *          (e.g. localStorage quota exceeded or unavailable). Callers should
+ *          surface the failure so the user knows the background will not
+ *          survive a restart, rather than silently swallowing it.
  */
-export function saveBackgroundSettings(conversationPath: string, settings: BackgroundSettings): void {
+export function saveBackgroundSettings(conversationPath: string, settings: BackgroundSettings): boolean {
   try {
     localStorage.setItem(`bg_settings_${conversationPath}`, JSON.stringify(settings));
+    return true;
   } catch {
-    // Storage quota exceeded or unavailable - silently fail
+    // Storage quota exceeded or unavailable
+    return false;
   }
 }

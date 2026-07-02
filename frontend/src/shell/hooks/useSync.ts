@@ -376,7 +376,9 @@ export function useSync({
                 log(`${targetService}: sync already running, polling existing progress`);
                 pollSyncProgress(targetService, blocking);
             } else {
-                // Other error
+                // Other error — surface it AND resolve any pending sequential-sync
+                // callback so the sequence can advance instead of deadlocking on a
+                // never-started service (the SyncModal has no close button).
                 const data = await response.json().catch(() => ({ detail: i18n.t('sync.unknownError') }));
                 log(`${targetService}: failed to start`, data.detail);
                 if (currentProgress?.state !== 'running') {
@@ -386,8 +388,12 @@ export function useSync({
                         setSyncProgress(errorProgress);
                     }
                 }
+                useAppStore.getState().removeInitialSyncService(targetService);
+                resolveSyncCallback(targetService);
             }
         } catch {
+            // Fetch threw — same as above: surface the error but never leave the
+            // sequential loop's awaited promise unresolved.
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -395,8 +401,10 @@ export function useSync({
                     setSyncProgress(errorProgress);
                 }
             }
+            useAppStore.getState().removeInitialSyncService(targetService);
+            resolveSyncCallback(targetService);
         }
-    }, [pollSyncProgress]);
+    }, [pollSyncProgress, resolveSyncCallback]);
 
     const startSyncAllServices = useCallback(async (blocking: boolean) => {
         if (connectedServices.length === 0) return;

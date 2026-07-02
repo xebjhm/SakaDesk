@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Bug, RefreshCw, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useModalClose } from '../common/useModalClose';
@@ -42,6 +42,17 @@ export function ReportIssueModal({
     const [whatWrong, setWhatWrong] = useState(crashError || '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // The modal is mounted persistently, so useState initializers only run once —
+    // a crashError that arrives later would never prefill. Sync from props each
+    // time the modal opens (or the crashError changes) so the current crash is
+    // reflected, and blank fields are used when there's no crash.
+    useEffect(() => {
+        if (isOpen) {
+            setWhatWrong(crashError || '');
+            setCategory(crashError ? 'other' : null);
+        }
+    }, [isOpen, crashError]);
 
     const handleSubmit = async () => {
         if (!category) return;
@@ -89,9 +100,12 @@ export function ReportIssueModal({
     };
 
     const handleClose = () => {
+        // Reset to BLANKS (not crashError). The parent clears crashError right
+        // after onClose, so copying the current crashError here would leak stale
+        // crash text into the next unrelated report.
         setCategory(null);
         setWhatDoing('');
-        setWhatWrong(crashError || '');
+        setWhatWrong('');
         setError(null);
         onClose();
     };

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -64,8 +64,17 @@ export function useMessageTranslation(params: {
     );
     const [error, setError] = useState<string | null>(null);
 
+    // Track the cacheKey (target language) of the latest request so an in-flight
+    // response for a previous language can't overwrite state after the reset
+    // effect cleared it (which would show a wrong-language translation and lock
+    // the button at 'done'). Updated synchronously at request start and on reset.
+    const activeCacheKeyRef = useRef<string>(cacheKey);
+
     // Re-sync state when cacheKey changes (e.g., target language or provider changed)
     useEffect(() => {
+        // Mark the new key as active so any request still in flight for the
+        // previous key is treated as stale and won't overwrite this state.
+        activeCacheKeyRef.current = cacheKey;
         const cachedValue = cacheKey ? getCachedTranslation(cacheKey) : null;
         setTranslation(cachedValue);
         setState(cachedValue ? 'done' : 'idle');
@@ -75,6 +84,9 @@ export function useMessageTranslation(params: {
     // Shared fetch+persist path for both trigger (cache-miss) and retrigger (forced).
     const doTranslate = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;
+
+        const requestCacheKey = cacheKey;
+        activeCacheKeyRef.current = requestCacheKey;
 
         setState('loading');
         setError(null);
@@ -93,20 +105,26 @@ export function useMessageTranslation(params: {
                 }),
             });
 
+            // Bail if the target language changed while this request was in flight —
+            // its result is for a stale cacheKey and must not touch current state.
+            if (activeCacheKeyRef.current !== requestCacheKey) return;
+
             if (!res.ok) {
                 const detail = await res.json().catch(() => ({}));
                 throw new Error(detail.detail || `Request failed: ${res.status}`);
             }
 
             const data = await res.json();
+            if (activeCacheKeyRef.current !== requestCacheKey) return; // stale
             if (data.ok) {
                 setTranslation(data.translation);
                 setState('done');
-                setCachedTranslation(cacheKey, data.translation);
+                setCachedTranslation(requestCacheKey, data.translation);
             } else {
                 throw new Error('Translation returned not ok');
             }
         } catch (e) {
+            if (activeCacheKeyRef.current !== requestCacheKey) return; // stale — don't surface
             setState('error');
             setError(e instanceof Error ? e.message : 'Translation failed');
         }
@@ -185,7 +203,12 @@ export async function translateBatch(params: {
     }
 
     const data = await res.json();
-    if (data.ok && data.translations) {
+    // Match the single-message path: a { ok: false } payload is a failure, not
+    // an empty success — throw so callers don't silently treat it as done.
+    if (!data.ok) {
+        throw new Error(data.error || 'Batch translation returned not ok');
+    }
+    if (data.translations) {
         for (const [id, text] of Object.entries(data.translations)) {
             results[id] = text as string;
             const key = getCacheKey('message', id, targetLanguage);

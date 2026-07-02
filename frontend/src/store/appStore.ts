@@ -260,9 +260,24 @@ export const useAppStore = create<AppState>()(
                         state.activeService === serviceId
                             ? newSelected[0] || null
                             : state.activeService;
+                    // Purge the removed service's per-service state so re-adding starts
+                    // clean (no dead conversation paths restored) and localStorage does
+                    // not grow unbounded across add/remove cycles.
+                    const { [serviceId]: _af, ...activeFeatures } = state.activeFeatures;
+                    const { [serviceId]: _fav, ...favorites } = state.favorites;
+                    const { [serviceId]: _fo, ...featureOrders } = state.featureOrders;
+                    const { [serviceId]: _bsm, ...blogSelectionModes } = state.blogSelectionModes;
+                    const { [serviceId]: _brc, ...blogRecentPostsCache } = state.blogRecentPostsCache;
+                    const { [serviceId]: _sc, ...selectedConversations } = state.selectedConversations;
                     return {
                         selectedServices: newSelected,
                         activeService: newActiveService,
+                        activeFeatures,
+                        favorites,
+                        featureOrders,
+                        blogSelectionModes,
+                        blogRecentPostsCache,
+                        selectedConversations,
                     };
                 }),
             setSelectedServices: (services) => set({ selectedServices: services }),
@@ -387,6 +402,26 @@ export const useAppStore = create<AppState>()(
         {
             name: 'sakadesk-app-state',
             version: 4,
+            // Upgrade persisted state from any older version instead of discarding it.
+            // Without a migrate(), zustand drops state whose version < the current
+            // version on rehydration → selectedServices becomes [], the user is
+            // kicked to the LandingPage, and favorites / conversation memory /
+            // service order / translation settings are wiped.
+            //
+            // All prior persisted shapes are structurally compatible (this store has
+            // only ever added new persisted keys, never renamed/removed existing
+            // ones), so we carry the old state through unchanged and let the store's
+            // own getters/defaults fill in any keys the older version didn't persist.
+            // `persist` already merges the returned object over the initial state,
+            // so missing keys retain their defaults automatically.
+            migrate: (persistedState, _version) => {
+                // Defensive: if the stored blob is somehow not an object, fall back
+                // to defaults rather than throwing during rehydration.
+                if (!persistedState || typeof persistedState !== 'object') {
+                    return persistedState as AppState;
+                }
+                return persistedState as Partial<AppState> as AppState;
+            },
             partialize: (state) => ({
                 selectedServices: state.selectedServices,
                 activeService: state.activeService,

@@ -109,31 +109,40 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     // Use either API dates, computed message dates, or direct date counts
     const activeDates = isDatesMode ? directDates! : isMessagesMode ? messageDates : apiDates;
 
-    // Fetch message dates (API mode only)
-    const fetchDates = useCallback(async () => {
+    // Fetch message dates (API mode only), guarding against out-of-order/stale
+    // responses. A `cancelled` flag (set by the effect cleanup on path change /
+    // close / unmount) ensures a slow stale response never clobbers a newer one.
+    const fetchDates = useCallback(async (signal?: AbortSignal) => {
         if (!conversationPath) return;
 
         setLoading(true);
         setError(null);
 
         try {
-            const res = await fetch(`/api/chat/message_dates/${encodeURIComponent(conversationPath)}`);
+            const res = await fetch(`/api/chat/message_dates/${encodeURIComponent(conversationPath)}`, { signal });
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
                 throw new Error(errData.detail || 'Failed to fetch dates');
             }
             const data = await res.json();
+            if (signal?.aborted) return;
             setApiDates(data.dates || []);
         } catch (err: any) {
+            if (signal?.aborted || err?.name === 'AbortError') return;
             setError(err.message || 'Failed to load dates');
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) setLoading(false);
         }
     }, [conversationPath]);
 
     useEffect(() => {
         if (isOpen && !isMessagesMode && !isDatesMode) {
-            fetchDates();
+            // Clear any dates from a previous conversationPath so a stale slow
+            // response can't be shown against the new path.
+            setApiDates([]);
+            const controller = new AbortController();
+            fetchDates(controller.signal);
+            return () => controller.abort();
         }
     }, [isOpen, isMessagesMode, isDatesMode, fetchDates]);
 
@@ -285,7 +294,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                 {loading ? (
                     <ModalLoadingState />
                 ) : error ? (
-                    <ModalErrorState error={error} onRetry={fetchDates} />
+                    <ModalErrorState error={error} onRetry={() => fetchDates()} />
                 ) : (
                     <>
                         {/* Weekday headers */}

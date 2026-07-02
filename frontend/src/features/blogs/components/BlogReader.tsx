@@ -15,6 +15,18 @@ import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { useTranslation } from '../../../i18n';
 
+// Defense-in-depth: force every anchor in sanitized remote blog HTML to open in
+// a new context with noopener/noreferrer. The container click handler already
+// intercepts anchors (opening the system browser under pywebview), but this
+// guards the case where an anchor is somehow activated directly. Registered once
+// at module scope so it isn't re-added on every render.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    if (node.tagName === 'A') {
+        node.setAttribute('target', '_blank');
+        node.setAttribute('rel', 'noopener noreferrer');
+    }
+});
+
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
     member: BlogMember;
@@ -276,13 +288,31 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         }
     }, [searchQuery, matchedTerms, content]);
 
-    // Intercept clicks on blog images to open in photo viewer
+    // Intercept clicks inside the sanitized blog HTML:
+    //  - <a> anchors → open in the system browser instead of navigating the
+    //    pywebview window (which has no browser chrome / back button, so a link
+    //    click would strand the user on an external site). window.open(url,
+    //    '_blank') is the app's existing "open in system browser" mechanism
+    //    under pywebview (see utils/download.ts).
+    //  - <img> → open in the in-app photo viewer.
     useEffect(() => {
         const container = blogContentRef.current;
         if (!container || !content) return;
 
-        const handleImgClick = (e: Event) => {
+        const handleContentClick = (e: Event) => {
             const target = e.target as HTMLElement;
+
+            // Anchor clicks: never let remote HTML drive window navigation.
+            const anchor = target.closest('a');
+            if (anchor) {
+                e.preventDefault();
+                const href = anchor.getAttribute('href');
+                if (href && !href.startsWith('#')) {
+                    window.open(href, '_blank', 'noopener,noreferrer');
+                }
+                return;
+            }
+
             if (target.tagName !== 'IMG') return;
 
             const imgSrc = (target as HTMLImageElement).src;
@@ -302,8 +332,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             }
         };
 
-        container.addEventListener('click', handleImgClick);
-        return () => container.removeEventListener('click', handleImgClick);
+        container.addEventListener('click', handleContentClick);
+        return () => container.removeEventListener('click', handleContentClick);
     }, [content, blog.published_at]);
 
     // Inject translations into blog DOM — immersive style.

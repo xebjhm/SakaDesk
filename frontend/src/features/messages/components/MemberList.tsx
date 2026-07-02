@@ -62,15 +62,24 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
             : '/api/content/groups';
         fetch(url)
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error(`Failed to load groups. Server returned ${res.status}`);
+                return res.json();
+            })
             .then(data => {
-                // Support both old format (array) and new format (object with groups + last_sync)
-                const groupList = Array.isArray(data) ? data : data.groups;
+                // Support both old format (array) and new format (object with groups + last_sync).
+                // Guard against error payloads (e.g. { detail: ... }) that lack a valid groups
+                // array — setGroups(undefined) would make groups.filter throw and crash the app.
+                const groupList = Array.isArray(data) ? data : (data?.groups ?? []);
                 setGroups(groupList);
-                if (data.last_sync) setLastSyncMap(data.last_sync);
+                if (data && !Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
                 checkUnread(groupList);
             })
-            .catch(console.error)
+            .catch(err => {
+                // Keep previously loaded groups on a transient poll failure rather than
+                // clearing the sidebar; just log so the app stays usable.
+                console.error('Failed to load groups:', err);
+            })
             .finally(() => setLoading(false));
     };
 

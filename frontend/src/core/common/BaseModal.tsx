@@ -7,6 +7,46 @@ import { Z_CLASS } from '../../constants/zIndex';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 
+// ─── Module-level modal stack ───────────────────────────────────────────────
+// Every open BaseModal / DetailModal registers a unique id here (in insertion
+// order). Only the top-of-stack modal responds to Escape, so pressing Escape
+// over stacked modals closes exactly one — the topmost — instead of closing all
+// (bubble-phase BaseModals) or the wrong one (capture-phase DetailModals).
+const modalStack: string[] = [];
+
+const registerModal = (id: string) => {
+    modalStack.push(id);
+};
+
+const unregisterModal = (id: string) => {
+    const idx = modalStack.lastIndexOf(id);
+    if (idx !== -1) modalStack.splice(idx, 1);
+};
+
+const isTopModal = (id: string): boolean => modalStack[modalStack.length - 1] === id;
+
+// ─── Module-level body-scroll lock reference count ──────────────────────────
+// Body scroll is disabled while any modal is open. Reference-count opens so that
+// closing a nested modal does NOT re-enable scrolling while a parent modal is
+// still open — only restore the original overflow once the count returns to 0.
+let scrollLockCount = 0;
+let previousBodyOverflow = '';
+
+const acquireScrollLock = () => {
+    if (scrollLockCount === 0) {
+        previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+    }
+    scrollLockCount++;
+};
+
+const releaseScrollLock = () => {
+    scrollLockCount = Math.max(0, scrollLockCount - 1);
+    if (scrollLockCount === 0) {
+        document.body.style.overflow = previousBodyOverflow;
+    }
+};
+
 /**
  * BaseModal component that handles common modal patterns:
  * - Portal rendering to document.body
@@ -46,19 +86,25 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
+    const modalId = useId();
 
-    // Handle ESC key to close modal (skip when exiting fullscreen — browser handles that)
+    // Handle ESC key to close modal (skip when exiting fullscreen — browser handles that).
+    // Only respond if this modal is the top of the stack, so a single Escape closes
+    // exactly the topmost modal rather than every stacked BaseModal.
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isOpen && !document.fullscreenElement) {
+        if (e.key === 'Escape' && isOpen && !document.fullscreenElement && isTopModal(modalId)) {
             onClose();
         }
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, modalId]);
 
     // Focus management
     useEffect(() => {
         if (isOpen) {
             // Store the currently focused element
             previousFocusRef.current = document.activeElement as HTMLElement;
+
+            // Register in the modal stack (topmost handles Escape)
+            registerModal(modalId);
 
             // Focus the modal container
             setTimeout(() => {
@@ -68,18 +114,19 @@ export const BaseModal: React.FC<BaseModalComponentProps> = ({
             // Add keyboard listener
             document.addEventListener('keydown', handleKeyDown);
 
-            // Prevent body scroll when modal is open
-            document.body.style.overflow = 'hidden';
+            // Prevent body scroll while any modal is open (reference-counted)
+            acquireScrollLock();
 
             return () => {
                 document.removeEventListener('keydown', handleKeyDown);
-                document.body.style.overflow = '';
+                releaseScrollLock();
+                unregisterModal(modalId);
 
                 // Return focus to previous element
                 previousFocusRef.current?.focus();
             };
         }
-    }, [isOpen, handleKeyDown]);
+    }, [isOpen, handleKeyDown, modalId]);
 
     // Handle backdrop click
     const handleBackdropClick = (e: React.MouseEvent) => {
@@ -222,32 +269,37 @@ export const DetailModal: React.FC<DetailModalProps> = ({
     const modalRef = useRef<HTMLDivElement>(null);
     const previousFocusRef = useRef<HTMLElement | null>(null);
     const titleId = useId();
+    const modalId = useId();
 
-    // Handle ESC key — stopImmediatePropagation prevents parent modals from also closing.
-    // Capture phase so this fires BEFORE parent BaseModal's bubble-phase handler.
+    // Handle ESC key — only the top-of-stack modal responds, so stacked
+    // DetailModals close the topmost (not the bottom) one. Capture phase +
+    // stopImmediatePropagation ensures that when this modal IS the top, no
+    // parent BaseModal's bubble-phase handler also fires.
     // Skip when exiting fullscreen — browser handles that, we don't want to close the modal.
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
-        if (e.key === 'Escape' && isOpen && !document.fullscreenElement) {
+        if (e.key === 'Escape' && isOpen && !document.fullscreenElement && isTopModal(modalId)) {
             e.stopImmediatePropagation();
             onClose();
         }
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, modalId]);
 
     // Focus management
     useEffect(() => {
         if (isOpen) {
             previousFocusRef.current = document.activeElement as HTMLElement;
+            registerModal(modalId);
             setTimeout(() => modalRef.current?.focus(), 0);
             document.addEventListener('keydown', handleKeyDown, true);
-            document.body.style.overflow = 'hidden';
+            acquireScrollLock();
 
             return () => {
                 document.removeEventListener('keydown', handleKeyDown, true);
-                document.body.style.overflow = '';
+                releaseScrollLock();
+                unregisterModal(modalId);
                 previousFocusRef.current?.focus();
             };
         }
-    }, [isOpen, handleKeyDown]);
+    }, [isOpen, handleKeyDown, modalId]);
 
     if (!isOpen) return null;
 

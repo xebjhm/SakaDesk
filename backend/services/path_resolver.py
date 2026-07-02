@@ -7,7 +7,11 @@ from pathlib import Path
 import re
 from typing import cast
 
+import structlog
+
 from backend.services.service_utils import get_service_display_name, validate_service
+
+logger = structlog.get_logger(__name__)
 
 
 def get_output_dir() -> Path:
@@ -23,8 +27,15 @@ def get_output_dir() -> Path:
                 path_str = settings.get("output_dir")
                 if path_str:
                     return Path(path_str)
-        except Exception:
-            pass
+        except Exception as e:
+            # Don't silently redirect ALL path resolution to the default dir on a
+            # transient read/parse error — surface it so the misconfiguration is
+            # observable. The default fallback below is still used.
+            logger.warning(
+                "Failed to read output_dir from settings; using default",
+                settings_path=str(settings_path),
+                error=str(e),
+            )
     return get_default_output_dir()
 
 

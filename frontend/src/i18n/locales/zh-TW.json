@@ -299,7 +299,8 @@
     "opacity": "不透明度：{{value}}%",
     "resetToDefault": "恢復預設值",
     "imageTooLarge": "圖片太大。請選擇 2MB 以下的圖片。",
-    "selectImageFile": "請選擇圖片檔案。"
+    "selectImageFile": "請選擇圖片檔案。",
+    "saveFailed": "無法儲存背景——瀏覽器儲存空間已滿。重新啟動應用程式後將會重設。請嘗試移除較大的自訂圖片或釋放空間。"
   },
   "features": {
     "messages": "訊息",

@@ -37,7 +37,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
     >
       {results.map((result, index) => (
         <SearchResultItem
-          key={result.result_type === 'message' ? result.message_id : result.blog_id}
+          key={`${result.service}-${result.result_type}-${result.result_type === 'message' ? result.message_id : result.blog_id}`}
           result={result}
           isSelected={index === selectedIndex}
           onSelect={onSelect}

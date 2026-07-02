@@ -50,8 +50,12 @@ interface VoicePlayerProps {
     viewerMode?: boolean;
     /** Called on each time update with current playback time in seconds */
     onTimeUpdate?: (time: number) => void;
-    /** Called externally to seek to a specific time */
-    seekTo?: number;
+    /**
+     * Called externally to seek to a specific time. Uses the `{ time, seq }`
+     * shape (matching the internal seek path) so seeking to the SAME time twice
+     * still re-fires — a bare number would be deduped by React's state bail-out.
+     */
+    seekTo?: { time: number; seq: number };
     /**
      * When provided, the timestamp label becomes a clickable link that calls
      * this handler. Used in the media gallery to jump back to the owning
@@ -167,6 +171,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const [animatedProgress, setAnimatedProgress] = useState(0);
     const lastUpdateRef = useRef<number>(Date.now());
 
+    // Keep the latest onTimeUpdate in a ref so the listener effect (deps
+    // [connectElement]) calls the current callback instead of a stale closure.
+    const onTimeUpdateRef = useRef(onTimeUpdate);
+    onTimeUpdateRef.current = onTimeUpdate;
+
     // Setup audio event listeners and connect to amplification pipeline
     useEffect(() => {
         const audio = audioRef.current;
@@ -174,7 +183,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
         const handleTimeUpdate = () => {
             setCurrentTime(audio.currentTime);
-            onTimeUpdate?.(audio.currentTime);
+            onTimeUpdateRef.current?.(audio.currentTime);
         };
         const handleLoadedMetadata = () => setDuration(audio.duration);
         const handleEnded = () => setIsPlaying(false);
@@ -218,11 +227,12 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         }
     }, [playbackRate]);
 
-    // External seek request (parent-controlled position, e.g. subtitle sync)
+    // External seek request (parent-controlled position, e.g. subtitle sync).
+    // Keyed by seq so repeating the same time still re-fires.
     useEffect(() => {
         if (seekTo != null && audioRef.current) {
-            audioRef.current.currentTime = seekTo;
-            setCurrentTime(seekTo);
+            audioRef.current.currentTime = seekTo.time;
+            setCurrentTime(seekTo.time);
         }
     }, [seekTo]);
 

@@ -21,6 +21,17 @@ interface RecentPostsFeedProps {
     serviceId?: string | null;
 }
 
+// Stable pseudo-random delay (0–400ms) derived from the post id, so new-post
+// "light up" cards don't restart their animation on every re-render (Math.random()
+// in render produced a fresh delay each time → flicker).
+function stableDelayFromId(id: string): number {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+        hash = (hash * 31 + id.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash) % 400;
+}
+
 // Determine which posts should be "hero" (2x2) cards
 function getHeroIndices(totalPosts: number): Set<number> {
     const heroes = new Set<number>();
@@ -165,9 +176,10 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                                 const isHero = heroIndices.has(index);
                                 const isNew = knownPostIds && knownPostIds.size > 0 && !knownPostIds.has(post.id);
                                 // Known posts (or initial load): sequential stagger delay
-                                // New posts (from background sync): random delay for "light up" effect
+                                // New posts (from background sync): stable per-id delay for
+                                // a "light up" effect that doesn't restart on re-render.
                                 const delay = isNew
-                                    ? Math.random() * 400
+                                    ? stableDelayFromId(post.id)
                                     : index * 50;
                                 return (
                                     <div

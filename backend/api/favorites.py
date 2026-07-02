@@ -122,6 +122,7 @@ async def _get_client_and_session(service: str):
         raise HTTPException(status_code=400, detail=str(e))
 
     group = get_service_enum(service)
+    session = None
 
     try:
         tm = get_token_manager()
@@ -146,8 +147,14 @@ async def _get_client_and_session(service: str):
         return client, session
 
     except HTTPException:
+        # e.g. the Client constructor raised after the session was opened; close
+        # it so the aiohttp session doesn't leak.
+        if session:
+            await session.close()
         raise
     except Exception as e:
+        if session:
+            await session.close()
         logger.error(f"Failed to create client: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 

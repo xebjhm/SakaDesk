@@ -55,6 +55,8 @@ export interface UseSettingsReturn {
     setOutputDirInput: (dir: string) => void;
     /** Error message if settings operation failed */
     settingsError: string | null;
+    /** Dismiss the settings error toast */
+    clearSettingsError: () => void;
     /** Whether settings modal is visible */
     showSettingsModal: boolean;
     /** Toggle settings modal */
@@ -113,6 +115,9 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             const data = await res.json();
             setAppSettings(data);
             setOutputDirInput(data.output_dir);
+            // Clear any stale error toast from a previous failed save now that
+            // this save succeeded.
+            setSettingsError(null);
 
             // Blog backup toggle: start/stop backup on setting change.
             // During first-launch setup, App.tsx defers saving blogs_full_backup
@@ -170,6 +175,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
         }
     }, []);
 
+    const clearSettingsError = useCallback(() => setSettingsError(null), []);
+
     const openSettingsModal = useCallback(() => {
         setShowSettingsModal(true);
         selectedServices.forEach(service => loadServiceSettings(service));
@@ -210,6 +217,7 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
         outputDirInput,
         setOutputDirInput,
         settingsError,
+        clearSettingsError,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,

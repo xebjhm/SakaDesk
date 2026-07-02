@@ -185,7 +185,9 @@ async def get_groups():
     output_dir = get_output_dir()
     if not output_dir.exists():
         logger.warning(f"Output directory does not exist: {output_dir}")
-        return []
+        # Always return the {groups, last_sync} object shape so callers never
+        # have to branch on a bare list vs. object.
+        return {"groups": [], "last_sync": {}}
 
     # Load sync metadata for group status (source of truth)
     sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
@@ -333,6 +335,8 @@ async def get_messages_by_path(
 
     Parameters:
     - limit: Maximum number of messages to return (returns latest messages)
+    - offset: Number of most-recent messages to skip before applying limit
+      (for paging older messages; 0 = newest window)
     - last_read_id: For calculating unread count
     """
     if is_test_mode():
@@ -374,7 +378,10 @@ async def get_messages_by_path(
                 if messages:
                     max_message_id = max(m.get("id", 0) for m in messages)
 
-            # Simple pagination: return latest messages
+            # Pagination over the timeline (sorted oldest -> newest): offset skips
+            # the N most-recent messages, then limit takes the newest remaining.
+            if offset > 0:
+                messages = messages[: len(messages) - offset] if offset < len(messages) else []
             if limit > 0:
                 messages = messages[-limit:]
 
@@ -399,6 +406,8 @@ async def get_group_messages(
 
     Parameters:
     - limit: Maximum number of messages to return (returns latest messages)
+    - offset: Number of most-recent messages to skip before applying limit
+      (for paging older messages; 0 = newest window)
     - last_read_id: For calculating unread count
     """
     output_dir = get_output_dir()
@@ -464,11 +473,15 @@ async def get_group_messages(
         if all_messages:
             max_message_id = max(m.get("id", 0) for m in all_messages)
 
-    # Simple pagination: return latest messages
+    # Pagination over the merged timeline (oldest -> newest): offset skips the
+    # N most-recent messages, then limit takes the newest remaining.
+    paginated = all_messages
+    if offset > 0:
+        paginated = (
+            paginated[: len(paginated) - offset] if offset < len(paginated) else []
+        )
     if limit > 0:
-        paginated = all_messages[-limit:]
-    else:
-        paginated = all_messages
+        paginated = paginated[-limit:]
 
     return {
         "group_path": group_path,
@@ -576,10 +589,35 @@ async def get_unread_counts(read_states: Dict[str, Any]):
     return result
 
 
+# Media served through the path-based endpoints must live under one of these
+# subfolders and carry an allowed extension — otherwise the traversal-safe path
+# would still expose non-media files (e.g. messages.json) under the output dir.
+_MEDIA_SUBFOLDERS = {"picture", "video", "voice"}
+_MEDIA_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".gif",
+    ".mp4",
+    ".mov",
+    ".m4a",
+    ".mp3",
+    ".aac",
+    ".wav",
+    ".ogg",
+}
+
+
 def _resolve_media_path(file_path: str) -> Path:
     """Resolve a media file path, translating service ID to display name.
 
-    Raises HTTPException 404 if the resolved path does not exist.
+    Restricts served files to known media subfolders + extensions so this
+    endpoint can only expose media (parity with the param-based /media_file),
+    not arbitrary files (e.g. messages.json) under the output dir.
+
+    Raises HTTPException 404 if the resolved path does not exist,
+    403 if it is not a permitted media file.
     """
     output_dir = get_output_dir()
 
@@ -593,6 +631,16 @@ def _resolve_media_path(file_path: str) -> Path:
             pass
 
     safe_path = validate_path_within_dir(output_dir, file_path)
+
+    # Only serve files that sit inside a media subfolder and have a media
+    # extension. This is checked after traversal validation so a valid path to a
+    # non-media file (e.g. .../messages.json) is still rejected.
+    if (
+        _MEDIA_SUBFOLDERS.isdisjoint(p.name for p in safe_path.parents)
+        or safe_path.suffix.lower() not in _MEDIA_EXTENSIONS
+    ):
+        raise HTTPException(status_code=403, detail="Not a media file")
+
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path

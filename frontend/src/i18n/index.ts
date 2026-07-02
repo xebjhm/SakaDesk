@@ -32,9 +32,28 @@ const resources = {
 
 function findBrowserLanguageMatch(): string | undefined {
     const navLang = navigator.language;
-    return Object.keys(SUPPORTED_LANGUAGES).find(
-        code => navLang === code || navLang.startsWith(code.split('-')[0])
-    );
+    const supportedCodes = Object.keys(SUPPORTED_LANGUAGES);
+    const lower = navLang.toLowerCase();
+
+    // 1) Exact locale match across ALL supported codes (case-insensitive).
+    //    Must run before any prefix fallback so e.g. 'zh-TW' matches 'zh-TW'
+    //    rather than being swallowed by the 'zh-CN' prefix.
+    const exact = supportedCodes.find(code => code.toLowerCase() === lower);
+    if (exact) return exact;
+
+    // 2) Traditional-Chinese preference: zh-HK / zh-Hant (and their variants)
+    //    should map to Traditional, not the insertion-order-first Simplified.
+    if (lower.startsWith('zh')) {
+        if (lower.includes('hk') || lower.includes('mo') || lower.includes('hant') || lower.includes('tw')) {
+            return 'zh-TW';
+        }
+        // zh-CN / zh-Hans / bare zh → Simplified
+        return 'zh-CN';
+    }
+
+    // 3) Prefix fallback for non-Chinese languages (e.g. 'en-US' → 'en').
+    const prefix = lower.split('-')[0];
+    return supportedCodes.find(code => code.split('-')[0].toLowerCase() === prefix);
 }
 
 // Resolve initial language synchronously from localStorage

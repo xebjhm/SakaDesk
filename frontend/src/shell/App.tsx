@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { Loader2 } from 'lucide-react'
+import { Loader2, X } from 'lucide-react'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
@@ -53,6 +53,7 @@ function App() {
         outputDirInput,
         setOutputDirInput,
         settingsError,
+        clearSettingsError,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,
@@ -300,6 +301,13 @@ function App() {
                             className="ml-2 bg-white/50 hover:bg-white text-red-700 p-1.5 rounded-lg transition-colors text-xs font-medium"
                         >
                             Debug
+                        </button>
+                        <button
+                            onClick={clearSettingsError}
+                            className="ml-1 text-red-500 hover:text-red-700 p-1 rounded-lg transition-colors"
+                            aria-label="Dismiss error"
+                        >
+                            <X className="w-4 h-4" />
                         </button>
                     </div>
                 )}

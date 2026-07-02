@@ -8,7 +8,6 @@ This ensures consistent behavior across CLI and GUI:
 """
 
 import asyncio
-import contextlib
 import structlog
 from typing import Any, Dict, Optional, cast
 import aiohttp
@@ -38,6 +37,11 @@ class AuthService:
         self._browser_lock = asyncio.Lock()
         # The in-progress browser-login task, so a newer login can supersede it.
         self._active_login_task: Optional["asyncio.Task[Any]"] = None
+        # Monotonic counter identifying the most recently *requested* login. A
+        # request stamps this before awaiting the old task, so a login arriving
+        # during a supersede is recorded immediately (closing the race window
+        # where _active_login_task was only set after acquiring the lock).
+        self._login_generation: int = 0
 
     def _get_group(self, service: str) -> Group:
         """Convert service string to Group enum."""
@@ -180,6 +184,12 @@ class AuthService:
         validate_service(service)
         group = self._get_group(service)
 
+        # Record this login intent BEFORE awaiting the old task. A concurrent
+        # login arriving during the supersede below will bump the generation
+        # again, so whoever wins the lock can tell if it has been superseded.
+        self._login_generation += 1
+        my_generation = self._login_generation
+
         # Supersede any in-progress browser login (e.g. the user switched
         # services, or a previous window was abandoned). Cancelling closes the
         # old browser and releases the lock, instead of silently queueing behind
@@ -187,6 +197,17 @@ class AuthService:
         await self._supersede_active_login(service)
 
         async with self._browser_lock:
+            # Re-check after acquiring the lock: if a newer login intent arrived
+            # while we waited, it now owns this flow — supersede whatever it may
+            # have registered and bail so we don't launch a stale browser.
+            if self._login_generation != my_generation:
+                logger.info(
+                    "Browser login superseded before start, aborting",
+                    service=service,
+                )
+                await self._supersede_active_login(service)
+                return False
+
             self._active_login_task = asyncio.current_task()
             try:
                 logger.info(
@@ -227,14 +248,25 @@ class AuthService:
     async def _supersede_active_login(self, new_service: str) -> None:
         """Cancel any in-progress browser login so a newer one can take over."""
         task = self._active_login_task
-        if task is not None and not task.done():
+        if task is not None and task is not asyncio.current_task() and not task.done():
             logger.info(
                 "Superseding in-progress browser login", new_service=new_service
             )
             task.cancel()
             # Wait for it to unwind (closing its browser, releasing the lock).
-            with contextlib.suppress(asyncio.CancelledError, Exception):
+            # Only swallow the *superseded* task's own cancellation/errors — if
+            # awaiting raises CancelledError because THIS coroutine was itself
+            # cancelled (a newer login superseding us), it must propagate.
+            try:
                 await task
+            except asyncio.CancelledError:
+                if not task.cancelled():
+                    # The exception came from our own cancellation, not the
+                    # superseded task finishing its cancel — re-raise it.
+                    raise
+            except Exception:
+                # The superseded task failed while unwinding; not our concern.
+                pass
 
     def _save_credentials(self, service: str, creds: dict):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""

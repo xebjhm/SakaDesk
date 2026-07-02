@@ -36,7 +36,10 @@ TEST_GROUPS = {
             "message_count": 25,
             "last_message_date": "2024-01-15T12:00:00Z",
         },
-    ]
+    ],
+    # Match the real /groups object shape ({groups, last_sync}) so callers can
+    # treat test mode and production identically.
+    "last_sync": {},
 }
 
 # Test messages for chat view

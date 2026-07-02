@@ -2,6 +2,7 @@
 
 import asyncio
 import threading
+import time
 
 from unittest.mock import patch, AsyncMock
 
@@ -151,6 +152,67 @@ class TestBlogBackupManagerThreading:
 
         manager.shutdown()
         assert manager._thread is None or not manager._thread.is_alive()
+
+    def test_force_restart_keeps_new_run_registered(self):
+        """SVC-I8: start(force=True) supersedes the old run; when the old run's
+        finally fires it must NOT deregister the *new* run's bookkeeping.
+
+        Old bug: _run_backup's finally unconditionally did
+        self._running.discard(service) + self._cancel_events.pop(service), so
+        the superseding run's registration was wiped -> is_running() wrongly
+        False, stop() couldn't cancel, and a later start() launched a duplicate.
+        """
+        manager = BlogBackupManager()
+        first_entered = threading.Event()
+        first_cancelled = threading.Event()
+        second_entered = threading.Event()
+        release_second = threading.Event()
+        run_count = 0
+        count_lock = threading.Lock()
+
+        async def backup(service, cancel_event):
+            nonlocal run_count
+            with count_lock:
+                run_count += 1
+                which = run_count
+            if which == 1:
+                first_entered.set()
+                # First run loops until superseded (its cancel_event is set)
+                while not cancel_event.is_set():
+                    await asyncio.sleep(0.01)
+                # Its finally will run after this returns.
+                first_cancelled.set()
+            else:
+                second_entered.set()
+                # Keep the second run alive so we can observe registration
+                while not release_second.is_set() and not cancel_event.is_set():
+                    await asyncio.sleep(0.01)
+
+        with patch.object(manager, "_run_backup", side_effect=backup):
+            manager.start(["hinatazaka46"])
+            assert first_entered.wait(timeout=5), "first run never entered"
+
+            # Force-restart: cancels the old run, registers a fresh run.
+            manager.start(["hinatazaka46"], force=True)
+            assert second_entered.wait(timeout=5), "second run never entered"
+            # The old run observes cancellation and its finally fires.
+            assert first_cancelled.wait(timeout=5), "first run never cancelled"
+
+            # Give the old finally a moment to (wrongly) deregister if buggy.
+            time.sleep(0.2)
+
+            # The NEW run must still be registered.
+            assert manager.is_running("hinatazaka46"), (
+                "new run's registration was wiped by the old run's finally"
+            )
+            assert "hinatazaka46" in manager._cancel_events
+
+            # And stop() must be able to cancel the new (still-active) run.
+            manager.stop(["hinatazaka46"])
+            assert not manager.is_running("hinatazaka46")
+
+        release_second.set()
+        manager.shutdown()
 
     def test_running_services(self):
         """running_services() should return snapshot of running service IDs."""

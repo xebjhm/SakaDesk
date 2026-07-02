@@ -127,11 +127,20 @@ export function useChatScroll(
     savePosition(range.startIndex);
   }, [savePosition]);
 
-  // Cleanup debounce timer on unmount
+  // Flush the pending position save on unmount rather than just dropping it —
+  // otherwise the last scroll within DEBOUNCE_MS of leaving the room is lost.
+  // Uses the "current" refs so the write targets the room being unmounted.
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      const msgs = currentMessagesRef.current;
+      const message = msgs && msgs[currentTopIndexRef.current];
+      if (message) {
+        localStorage.setItem(currentStorageKeyRef.current, String(message.id));
+        lastSavedIdRef.current = message.id;
       }
     };
   }, []);

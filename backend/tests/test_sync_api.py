@@ -155,10 +155,11 @@ class TestCancelSync:
         assert response.status_code == 400
 
     def test_cancel_not_running_returns_not_running(self):
-        """Cancelling when nothing is running should return not_running."""
+        """Cancelling when nothing is running (no flag, no task) returns not_running."""
         with patch("backend.api.sync.get_sync_service") as mock_get:
             mock_svc = MagicMock()
             mock_svc.running = False
+            mock_svc._task = None  # no live task to cancel
             mock_get.return_value = mock_svc
 
             response = client.post("/api/sync/cancel?service=hinatazaka46")
@@ -167,10 +168,13 @@ class TestCancelSync:
         assert response.json()["status"] == "not_running"
 
     def test_cancel_running_sync(self):
-        """Cancelling a running sync should reset the running flag and return cancelled."""
+        """Cancelling a running sync should invoke the real async cancel() and
+        return cancelled. cancel() (not the endpoint) is responsible for the
+        real task.cancel() + awaiting the unwind (SVC-C1)."""
         with patch("backend.api.sync.get_sync_service") as mock_get:
             mock_svc = MagicMock()
             mock_svc.running = True
+            mock_svc.cancel = AsyncMock(return_value=True)
             mock_get.return_value = mock_svc
 
             response = client.post("/api/sync/cancel?service=hinatazaka46")
@@ -179,8 +183,8 @@ class TestCancelSync:
         data = response.json()
         assert data["status"] == "cancelled"
         assert data["service"] == "hinatazaka46"
-        # Verify the running flag was reset
-        assert mock_svc.running is False
+        # The endpoint delegates to the service's real cancel() coroutine.
+        mock_svc.cancel.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------

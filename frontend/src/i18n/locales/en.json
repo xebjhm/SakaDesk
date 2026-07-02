@@ -299,7 +299,8 @@
     "opacity": "Opacity: {{value}}%",
     "resetToDefault": "Reset to Default",
     "imageTooLarge": "Image too large. Please choose an image under 2MB.",
-    "selectImageFile": "Please select an image file."
+    "selectImageFile": "Please select an image file.",
+    "saveFailed": "Could not save the background — your browser storage is full. It will reset when the app restarts. Try removing large custom images or freeing up space."
   },
   "features": {
     "messages": "Messages",

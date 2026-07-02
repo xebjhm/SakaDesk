@@ -390,7 +390,11 @@ class TestUnreadCounts:
 
 class TestDownloadEndpoint:
     def test_nonexistent_file_returns_404(self):
-        response = client.get("/api/content/download/nonexistent/file.jpg")
+        # Well-formed media path (…/picture/…) so it clears the media allowlist
+        # and reaches the missing-file check (404) rather than the 403 gate.
+        response = client.get(
+            "/api/content/download/hinatazaka46/messages/34 x/58 x/picture/file.jpg"
+        )
         assert response.status_code == 404
 
     def test_path_traversal_blocked(self, tmp_path):
@@ -445,8 +449,19 @@ class TestDownloadEndpoint:
 
 class TestMediaEndpoint:
     def test_nonexistent_media_returns_404(self):
-        response = client.get("/api/content/media/no/such/file.jpg")
+        # Well-formed media path (…/picture/…) so it clears the media allowlist
+        # and reaches the missing-file check (404) rather than the 403 gate.
+        response = client.get(
+            "/api/content/media/hinatazaka46/messages/34 x/58 x/picture/file.jpg"
+        )
         assert response.status_code == 404
+
+    def test_non_media_file_returns_403(self):
+        """A traversal-safe path to a non-media file (e.g. messages.json) is 403."""
+        response = client.get(
+            "/api/content/media/hinatazaka46/messages/34 x/58 x/messages.json"
+        )
+        assert response.status_code == 403
 
     def test_serve_existing_media(self, tmp_path):
         media_file = tmp_path / "pic.jpg"
@@ -642,25 +657,34 @@ class TestValidatePathWithinDirExtended:
 class TestResolveMediaPath:
     def test_translates_service_id_to_display_name(self, tmp_path):
         """Service ID (romaji) should be mapped to display name for disk path."""
-        media_file = tmp_path / "日向坂46" / "messages" / "pic.jpg"
+        media_file = tmp_path / "日向坂46" / "messages" / "34 x" / "58 x" / "picture" / "pic.jpg"
         media_file.parent.mkdir(parents=True)
         media_file.write_bytes(b"img")
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
-            result = _resolve_media_path("hinatazaka46/messages/pic.jpg")
+            result = _resolve_media_path(
+                "hinatazaka46/messages/34 x/58 x/picture/pic.jpg"
+            )
         assert result == media_file.resolve()
 
     def test_raises_404_when_file_missing(self, tmp_path):
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             with pytest.raises(HTTPException) as exc:
-                _resolve_media_path("hinatazaka46/nonexistent.jpg")
+                _resolve_media_path("hinatazaka46/messages/34 x/58 x/picture/gone.jpg")
         assert exc.value.status_code == 404
+
+    def test_rejects_non_media_file(self, tmp_path):
+        """A traversal-safe path to a non-media file (e.g. messages.json) is 403."""
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            with pytest.raises(HTTPException) as exc:
+                _resolve_media_path("hinatazaka46/messages/34 x/58 x/messages.json")
+        assert exc.value.status_code == 403
 
     def test_unknown_service_passes_through(self, tmp_path):
         """Unknown service prefix should not be translated and still raise 404 if missing."""
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             with pytest.raises(HTTPException) as exc:
-                _resolve_media_path("unknown_service/file.jpg")
+                _resolve_media_path("unknown_service/picture/file.jpg")
         assert exc.value.status_code == 404
 
 

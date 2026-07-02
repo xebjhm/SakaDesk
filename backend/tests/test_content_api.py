@@ -84,6 +84,10 @@ class TestDownloadEndpoint:
     """Tests for the GET /api/content/download/ endpoint."""
 
     def test_nonexistent_file_returns_404(self):
-        """Downloading a file that does not exist should return 404, not 500."""
-        response = client.get("/api/content/download/nonexistent/file.jpg")
+        """Downloading a missing media file should return 404, not 500."""
+        # Use a well-formed media path (…/picture/…) so it passes the media
+        # allowlist and reaches the missing-file check rather than the 403 gate.
+        response = client.get(
+            "/api/content/download/hinatazaka46/messages/34 x/58 x/picture/file.jpg"
+        )
         assert response.status_code == 404

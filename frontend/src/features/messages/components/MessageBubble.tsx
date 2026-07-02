@@ -65,6 +65,58 @@ const SHELTER_ICONS = {
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
+interface ShelterOverlayProps {
+    type: Message['type'];
+    shelterColors?: ShelterColors;
+    shelterStyle?: ShelterStyle;
+    onReveal?: () => void;
+    onPressStart: () => void;
+    onPressEnd: () => void;
+}
+
+/**
+ * Overlay covering an unread message ("shelter"). Hoisted to module scope so it
+ * isn't redefined every render of MessageBubble (which remounted the overlay,
+ * churning the DOM and dropping in-progress long-press gestures).
+ */
+const ShelterOverlay: React.FC<ShelterOverlayProps> = ({
+    type,
+    shelterColors,
+    shelterStyle,
+    onReveal,
+    onPressStart,
+    onPressEnd,
+}) => {
+    const colors = shelterColors || DEFAULT_SHELTER_COLORS;
+    const style = shelterStyle || 'classic';
+    const themeColor = colors[type as keyof ShelterColors] || colors.text;
+    const Icon = SHELTER_ICONS[type] || MessageSquare;
+
+    // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
+    // 'light' = white background with colored border and icon (Sakurazaka)
+    const isLightStyle = style === 'light';
+    const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
+    const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
+    const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
+
+    return (
+        <div
+            className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
+            style={{ backgroundColor: bgColor, border: borderStyle }}
+            onClick={(e) => {
+                e.stopPropagation();
+                onReveal?.();
+            }}
+            onMouseDown={onPressStart}
+            onMouseUp={onPressEnd}
+            onTouchStart={onPressStart}
+            onTouchEnd={onPressEnd}
+        >
+            <Icon className="w-8 h-8" style={{ color: iconColor }} />
+        </div>
+    );
+};
+
 // Media container constraints
 const MAX_MEDIA_WIDTH = 320;
 const MAX_MEDIA_HEIGHT = 500;
@@ -243,9 +295,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         userNickname,
     });
 
-    // Playback time sync between player and transcript panel
+    // Playback time sync between player and transcript panel.
+    // seekTarget carries a bumping `seq` so clicking the SAME transcript line
+    // twice re-fires the player's seek effect (a bare number would be deduped).
     const [playerTime, setPlayerTime] = useState(0);
-    const [seekTarget, setSeekTarget] = useState<number | undefined>(undefined);
+    const [seekTarget, setSeekTarget] = useState<{ time: number; seq: number } | undefined>(undefined);
+    const seekSeqRef = useRef(0);
+    const handleSeek = useCallback((time: number) => {
+        seekSeqRef.current += 1;
+        setSeekTarget({ time, seq: seekSeqRef.current });
+    }, []);
 
     // Auto-expand only on user-triggered completions (loading → done
     // transition). Prevents Virtuoso remounts from re-expanding cached
@@ -267,43 +326,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         }
     }, []);
 
-    const ShelterOverlay = () => {
-        const type = message.type;
-        const shelterColors = theme?.shelterColors || DEFAULT_SHELTER_COLORS;
-        const shelterStyle = theme?.shelterStyle || 'classic';
-        const themeColor = shelterColors[type as keyof ShelterColors] || shelterColors.text;
-        const Icon = SHELTER_ICONS[type] || MessageSquare;
-
-        // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
-        // 'light' = white background with colored border and icon (Sakurazaka)
-        const isLightStyle = shelterStyle === 'light';
-        const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
-        const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
-        const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
-
-        return (
-            <div
-                className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-                style={{ backgroundColor: bgColor, border: borderStyle }}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onReveal?.();
-                }}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-            >
-                <Icon className="w-8 h-8" style={{ color: iconColor }} />
-            </div>
-        );
-    };
-
     return (
         <div
             className="flex gap-3 mb-6 relative"
             onContextMenu={handleContextMenu}
             onTouchStart={handleTouchStartFavorite}
+            onTouchMove={handleTouchEndFavorite}
             onTouchEnd={handleTouchEndFavorite}
             onTouchCancel={handleTouchEndFavorite}
         >
@@ -369,7 +397,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                 {/* Bubble Container */}
                 <div className="relative">
-                    {isUnread && <ShelterOverlay />}
+                    {isUnread && (
+                        <ShelterOverlay
+                            type={message.type}
+                            shelterColors={theme?.shelterColors}
+                            shelterStyle={theme?.shelterStyle}
+                            onReveal={onReveal}
+                            onPressStart={handleTouchStart}
+                            onPressEnd={handleTouchEnd}
+                        />
+                    )}
 
                     <div
                         className={cn(
@@ -473,7 +510,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 <TranscriptPanel
                                     segments={transcription.segments}
                                     currentTime={playerTime}
-                                    onSeek={setSeekTarget}
+                                    onSeek={handleSeek}
                                     onRerun={retriggerTranscription}
                                     accentColor={theme?.voicePlayerAccent}
                                     variant="dark"

@@ -41,6 +41,9 @@ export function useClipboardShortcut(
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.ctrlKey && e.key === 'c') {
+                // Don't hijack a normal text copy — if the user has selected text,
+                // let the browser's default Ctrl+C run.
+                if (window.getSelection()?.toString()) return;
                 if (mediaType === 'picture') {
                     e.preventDefault();
                     copyImageToClipboard(mediaSrc)

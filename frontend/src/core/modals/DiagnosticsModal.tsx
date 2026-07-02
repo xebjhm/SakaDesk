@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Copy, RefreshCw, Terminal, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
@@ -134,8 +134,18 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
+    const [copyError, setCopyError] = useState(false);
+    const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [logTab, setLogTab] = useState<LogTab>('recent');
     const frontendBundle = useMemo(() => getFrontendBundle(), []);
+
+    // Clear any pending copy-state reset timer on unmount to avoid setState on
+    // an unmounted component.
+    useEffect(() => {
+        return () => {
+            if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+        };
+    }, []);
 
     // Get live auth status from context
     const { connectedServices, disconnectedServices, isServiceConnected, isServiceDisconnected, getServiceExpiresAt, getScheduledRefreshServices } = useAuth();
@@ -190,12 +200,23 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
         }
     }, [isOpen]);
 
-    const handleCopy = () => {
+    const handleCopy = async () => {
         if (!data) return;
         const text = JSON.stringify({ ...data, frontend_bundle: frontendBundle }, null, 2);
-        navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        // Clear any pending reset from a prior click before re-arming.
+        if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+        try {
+            await navigator.clipboard.writeText(text);
+            setCopied(true);
+            setCopyError(false);
+            copyResetTimer.current = setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard write failed (permissions / unavailable) — show an error
+            // state instead of a false "Copied!".
+            setCopyError(true);
+            setCopied(false);
+            copyResetTimer.current = setTimeout(() => setCopyError(false), 2000);
+        }
     };
 
     const getLogsForTab = (): string[] => {
@@ -548,11 +569,13 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                         disabled={!data}
                         className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${copied
                                 ? 'bg-green-500 text-white shadow-lg shadow-green-500/20'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'
+                                : copyError
+                                    ? 'bg-red-500 text-white shadow-lg shadow-red-500/20'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'
                             }`}
                     >
-                        {copied ? <CheckCircle2 className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        {copied ? 'Copied!' : 'Copy JSON'}
+                        {copied ? <CheckCircle2 className="w-4 h-4" /> : copyError ? <AlertCircle className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                        {copied ? 'Copied!' : copyError ? 'Copy failed' : 'Copy JSON'}
                     </button>
                 </div>
             </div>

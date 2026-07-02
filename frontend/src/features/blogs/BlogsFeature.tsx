@@ -337,7 +337,9 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         const cachedContent = contentCacheRef.current.get(blogId);
         if (cachedContent) {
             setViewState(prev =>
-                prev.view === 'reader' && !prev.content ? { ...prev, content: cachedContent } : prev
+                prev.view === 'reader' && !prev.content && prev.blog.id === blogId
+                    ? { ...prev, content: cachedContent }
+                    : prev
             );
             return;
         }
@@ -360,11 +362,21 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     newCache.set(blogId, content);
                     return newCache;
                 });
+                // Guard on blog id so a slow response for blog A can't be attached
+                // to blog B after the user navigated (next/prev twice quickly).
                 setViewState(prev =>
-                    prev.view === 'reader' && !prev.content ? { ...prev, content } : prev
+                    prev.view === 'reader' && !prev.content && prev.blog.id === blogId
+                        ? { ...prev, content }
+                        : prev
                 );
             })
-            .catch(e => setError(e.message))
+            .catch(e => {
+                // Only surface the error if we're still viewing the blog we fetched for.
+                setViewState(prev => {
+                    if (prev.view === 'reader' && prev.blog.id === blogId) setError(e.message);
+                    return prev;
+                });
+            })
             .finally(() => {
                 setLoading(false);
                 fetchingContentRef.current.delete(blogId);
@@ -470,7 +482,20 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
     // Retry handler for main content
     const handleRetry = () => {
         setError(null);
-        // Re-trigger the current view's data fetch by toggling loading
+        // In the reader, re-fetch the failed blog's content instead of bailing to
+        // the feed. Clear any stale fetch-guard entry and reset content to null so
+        // the load-content effect re-runs for the current blog id.
+        if (viewState.view === 'reader') {
+            const blogId = viewState.blog.id;
+            fetchingContentRef.current.delete(blogId);
+            setViewState(prev =>
+                prev.view === 'reader' && prev.blog.id === blogId
+                    ? { ...prev, content: null }
+                    : prev
+            );
+            return;
+        }
+        // Non-reader (recent feed): re-trigger by resetting to the recent view.
         setViewState({ view: 'recent' });
     };
 

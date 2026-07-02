@@ -42,12 +42,21 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
 
     const persistSettings = (newSettings: BackgroundSettings) => {
         setSettings(newSettings);
-        saveBackgroundSettings(conversationPath, newSettings);
+        const saved = saveBackgroundSettings(conversationPath, newSettings);
         onSettingsChange(newSettings);
+        // Surface persistence failures (e.g. localStorage quota exceeded). The
+        // background is applied in memory but would revert on restart, so the
+        // user needs to know rather than have it silently swallowed.
+        if (!saved) {
+            alert(t('background.saveFailed'));
+        }
     };
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
+        // Clear the input value so re-selecting the SAME file still fires a
+        // change event (otherwise picking the identical file again does nothing).
+        e.target.value = '';
         if (!file) return;
 
         // Check file size

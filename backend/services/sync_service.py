@@ -55,6 +55,17 @@ class SyncService:
         # self.metadata_file will be resolved dynamically now based on configured output_dir
         self.metadata_file: Optional[Path] = None
         self.manager = None
+        # Concurrency ownership (SVC-C1): a reference to the currently running
+        # sync asyncio.Task plus a monotonically increasing generation token.
+        # cancel() calls task.cancel() and awaits its unwind; the run's finally
+        # only clears self.running when it still owns the current generation so a
+        # stale (cancelled) run cannot clear a newer run's flag.
+        self._task: Optional["asyncio.Task[Any]"] = None
+        self._generation: int = 0
+        # Strong references to fire-and-forget background tasks (SVC-M1). Without
+        # this the event loop only keeps a weak reference, so a task can be GC'd
+        # mid-execution and its exceptions lost.
+        self._bg_tasks: set["asyncio.Task[Any]"] = set()
 
     def _get_group(self) -> Group:
         """Get Group enum for this service."""
@@ -151,6 +162,12 @@ class SyncService:
             return False
 
         self.running = True
+        # Claim ownership of this run: bump the generation token and register the
+        # running task so cancel() can target it and so a stale run's finally can
+        # detect it no longer owns self.running (SVC-C1).
+        self._generation += 1
+        my_generation = self._generation
+        self._task = asyncio.current_task()
         progress = progress_manager.get(self._service)
 
         try:
@@ -304,8 +321,11 @@ class SyncService:
 
                 sync_t0 = time.monotonic()
                 progress.start_phase("scanning", "Scanning Groups", 1, 0, "group")
-                # Always include_inactive=True to get both online and offline members
-                groups = await client.get_groups(session, include_inactive=True)
+                # Honor the include_inactive flag (SVC-I9): True fetches both
+                # online and offline members; False limits to active ones.
+                groups = await client.get_groups(
+                    session, include_inactive=include_inactive
+                )
 
                 if not groups:
                     logger.info("No groups found!")
@@ -418,11 +438,6 @@ class SyncService:
                     g_name = group_tasks[0]["group"].get("name", "?")
 
                     # Find the oldest timestamp cursor across all members.
-                    # Only consider SYNCED members; unsynced ones (last_ts=None)
-                    # will naturally get all prefetched messages in sync_member
-                    # (its filter passes everything when last_ts is None), and
-                    # sync_member's own update_sync_state records the correct
-                    # cursor after processing.
                     since_timestamps = [
                         self.manager.get_last_ts(gid, t["member"]["id"])
                         for t in group_tasks
@@ -430,7 +445,13 @@ class SyncService:
                     synced_ts = [s for s in since_timestamps if s is not None]
                     none_count = len(since_timestamps) - len(synced_ts)
 
-                    if synced_ts:
+                    # SVC-I2: a group that mixes SYNCED (has cursor) and UNSYNCED
+                    # (no cursor) members must be fetched in full. Using
+                    # min(synced cursors) - overlap would only return recent
+                    # messages, but the unsynced members need their COMPLETE
+                    # history — sync_member records their cursor from what it
+                    # writes, so anything not in this fetch is lost forever.
+                    if synced_ts and none_count == 0:
                         min_ts = min(synced_ts)
                         # Subtract overlap to catch boundary messages
                         try:
@@ -442,7 +463,9 @@ class SyncService:
                         except (ValueError, TypeError):
                             min_since_ts = min_ts
                     else:
-                        # Every member is new — genuine first sync
+                        # Either a genuine first sync (all new) OR a mixed group
+                        # with at least one unsynced member — full fetch so the
+                        # unsynced members get complete history.
                         min_since_ts = None
 
                     if none_count:
@@ -462,13 +485,36 @@ class SyncService:
 
                     # Process each member using pre-fetched data (in-memory filtering)
                     group_results: list[tuple[dict[str, Any], int]] = []
-                    for task in group_tasks:
+                    for task, member_ts in zip(group_tasks, since_timestamps):
+                        member_id = task["member"]["id"]
+                        member_prefetched = all_messages
+
+                        # SVC-I9: bound the FIRST sync of a cursor-less member to
+                        # the newest ``initial_limit`` messages. get_messages has
+                        # no server-side count cap, so cap client-side here: slice
+                        # this member's newest N messages out of the full timeline
+                        # and hand only those to sync_member. sync_member records
+                        # the cursor from the newest message it writes, so the
+                        # cursor stays correct; older history beyond the cap is
+                        # intentionally not fetched (the documented first-sync cap).
+                        if member_ts is None and initial_limit and initial_limit > 0:
+                            member_msgs = [
+                                m
+                                for m in all_messages
+                                if m.get("member_id") == member_id
+                            ]
+                            if len(member_msgs) > initial_limit:
+                                member_msgs.sort(
+                                    key=lambda m: (m.get("published_at") or "", m["id"])
+                                )
+                                member_prefetched = member_msgs[-initial_limit:]
+
                         count = await self.manager.sync_member(
                             session,
                             task["group"],
                             task["member"],
                             media_queue,
-                            prefetched_messages=all_messages,
+                            prefetched_messages=member_prefetched,
                         )
                         m_name = task["member"]["name"]
                         progress.update(
@@ -489,16 +535,51 @@ class SyncService:
                     )
                     return group_results
 
-                # Groups run in parallel (1 API call each instead of N)
+                # Groups run in parallel (1 API call each instead of N).
+                # SVC-I3: return_exceptions=True so a single group's failure does
+                # NOT propagate mid-flight and leave sibling coroutines writing
+                # files while the session is torn down. gather awaits every group
+                # (success or failure) before returning, so no writer is orphaned.
+                group_ids = list(tasks_by_group.keys())
                 all_group_results = await asyncio.gather(
-                    *[sync_group(gid, gt) for gid, gt in tasks_by_group.items()]
+                    *[sync_group(gid, tasks_by_group[gid]) for gid in group_ids],
+                    return_exceptions=True,
                 )
-                results = [item for sublist in all_group_results for item in sublist]
+
+                # Aggregate per-group outcomes. Successful groups are kept even
+                # when a sibling failed (partial success). Session-expiry errors
+                # are re-raised so the api layer surfaces the re-login sentinel
+                # (SVC-I1); other failures are logged per group.
+                results = []
+                group_errors: list[tuple[int, BaseException]] = []
+                for gid, res in zip(group_ids, all_group_results):
+                    if isinstance(res, (SessionExpiredError, RefreshFailedError)):
+                        raise res
+                    if isinstance(res, BaseException):
+                        group_errors.append((gid, res))
+                        logger.error(
+                            "group_sync_failed",
+                            group_id=gid,
+                            error=str(res),
+                            error_type=type(res).__name__,
+                        )
+                        continue
+                    results.extend(res)
+
+                # Only fail the whole sync if EVERY group failed; a partial
+                # failure still persists the groups that succeeded.
+                if group_errors and not results:
+                    first_gid, first_err = group_errors[0]
+                    raise RuntimeError(
+                        f"All {len(group_errors)} group(s) failed to sync; "
+                        f"first error (group {first_gid}): {first_err}"
+                    )
 
                 logger.info(
                     "phase2_complete",
                     elapsed=f"{time.monotonic() - phase2_t0:.1f}s",
                     groups=len(tasks_by_group),
+                    failed_groups=len(group_errors),
                     total_members=total_members,
                 )
 
@@ -550,7 +631,22 @@ class SyncService:
                                     error=str(e),
                                 )
 
-                        asyncio.create_task(_bg_index())
+                        # SVC-M1: keep a strong reference so the task is not GC'd
+                        # mid-run and any exception it raises is not lost.
+                        bg_task = asyncio.create_task(_bg_index())
+                        self._bg_tasks.add(bg_task)
+
+                        def _on_bg_index_done(t: "asyncio.Task[Any]") -> None:
+                            self._bg_tasks.discard(t)
+                            if not t.cancelled():
+                                exc = t.exception()
+                                if exc is not None:
+                                    logger.warning(
+                                        "Search index background task errored (non-fatal)",
+                                        error=str(exc),
+                                    )
+
+                        bg_task.add_done_callback(_on_bg_index_done)
                     except Exception as e:
                         logger.warning(
                             "Search index update failed (non-fatal)", error=str(e)
@@ -670,12 +766,61 @@ class SyncService:
 
             progress.complete()
 
+        except asyncio.CancelledError:
+            # Cooperative cancellation via cancel() (SVC-C1). Report the cancel
+            # to the progress tracker and re-raise so the task unwinds cleanly
+            # and the awaiting cancel() sees it complete.
+            logger.warning("Sync cancelled", service=self._service)
+            with contextlib.suppress(Exception):
+                progress.error("CANCELLED")
+            raise
+        except (SessionExpiredError, RefreshFailedError):
+            # Surface the session-expiry sentinels so the api layer's
+            # run_sync_task handler maps them to SESSION_EXPIRED/REFRESH_FAILED,
+            # which the frontend keys on to open the re-login modal (SVC-I1).
+            # A generic progress.error(str(e)) here would make those detail
+            # strings unreachable, so re-raise instead.
+            raise
         except Exception as e:
             logger.error("Sync error", error=str(e))
             logger.error(traceback.format_exc())
             progress.error(str(e))
         finally:
+            # Only the run that still owns the current generation may clear the
+            # running flag / task reference. A stale run (cancelled, superseded
+            # by a newer /start) must not clobber a newer run's bookkeeping.
+            if self._generation == my_generation:
+                self.running = False
+                self._task = None
+
+    async def cancel(self) -> bool:
+        """Cancel the running sync and wait for it to truly unwind (SVC-C1).
+
+        A real ``task.cancel()`` (rather than merely flipping ``running``)
+        guarantees the background task stops writing ``messages.json`` /
+        ``sync_metadata.json`` / ``sync_state.json`` before this returns, so a
+        subsequent ``start_sync`` cannot launch a second concurrent sync over the
+        same output directory. Returns True if a task was cancelled.
+        """
+        task = self._task
+        if task is None or task.done():
+            # Nothing owned a live task; make sure the flag is clear either way.
             self.running = False
+            self._task = None
+            return False
+
+        task.cancel()
+        # Await the task's unwind so files are flushed/closed before we return.
+        # Suppress CancelledError (expected) and any error the run raised while
+        # unwinding — those are already reported via progress inside start_sync.
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+
+        # The task's own finally clears running/_task when it still owns the
+        # generation; force-clear here as a safety net for the caller.
+        self.running = False
+        self._task = None
+        return True
 
     async def check_new_messages(self):
         """
@@ -723,6 +868,10 @@ class SyncService:
                     if info.get("last_sync_ts") or info.get("last_message_id"):
                         members_by_group[gid].append(info)
 
+                # Track whether any cursor advanced so metadata is persisted even
+                # when there are no genuinely-new messages (SVC-M2).
+                cursors_advanced = False
+
                 # ONE API call per group instead of per member
                 for gid_str, member_infos in members_by_group.items():
                     try:
@@ -746,22 +895,65 @@ class SyncService:
                                 session, gid_int, since_id=min_last_id
                             )
 
+                        # SVC-M3: get_messages returns None on auth failure. That
+                        # is not "no new messages" — log a clear signal and skip
+                        # this group rather than silently treating it as empty.
+                        if msgs is None:
+                            logger.warning(
+                                "check_new_messages: get_messages returned None "
+                                "(likely auth failure), skipping group",
+                                group_id=gid_str,
+                            )
+                            continue
+
                         for info in member_infos:
                             member_ts = info.get("last_sync_ts")
+                            last_id = info.get("last_message_id") or 0
+                            mine = [
+                                m
+                                for m in msgs
+                                if m.get("member_id") == info["member_id"]
+                            ]
                             if member_ts:
+                                # SVC-M2: strict comparison. A message is new when
+                                # its timestamp is strictly newer, OR the timestamp
+                                # ties the cursor but its id is greater (dedupe by
+                                # id on timestamp collisions). This stops counting
+                                # the newest already-synced message every time.
                                 member_msgs = [
                                     m
-                                    for m in msgs
-                                    if m.get("member_id") == info["member_id"]
-                                    and (m.get("published_at") or "") >= member_ts
+                                    for m in mine
+                                    if (m.get("published_at") or "") > member_ts
+                                    or (
+                                        (m.get("published_at") or "") == member_ts
+                                        and m.get("id", 0) > last_id
+                                    )
                                 ]
                             else:
                                 member_msgs = [
-                                    m
-                                    for m in msgs
-                                    if m.get("member_id") == info["member_id"]
-                                    and m["id"] > (info.get("last_message_id") or 0)
+                                    m for m in mine if m.get("id", 0) > last_id
                                 ]
+
+                            # Advance this member's cursors to the newest message
+                            # observed for it, even when nothing is new (SVC-M2),
+                            # so the cursor keeps up with same-timestamp dedupe.
+                            if mine:
+                                newest = max(
+                                    mine,
+                                    key=lambda m: (
+                                        m.get("published_at") or "",
+                                        m.get("id", 0),
+                                    ),
+                                )
+                                new_ts = newest.get("published_at")
+                                new_id = newest.get("id")
+                                if new_ts and new_ts != info.get("last_sync_ts"):
+                                    info["last_sync_ts"] = new_ts
+                                    cursors_advanced = True
+                                if new_id and new_id != info.get("last_message_id"):
+                                    info["last_message_id"] = new_id
+                                    cursors_advanced = True
+
                             if member_msgs:
                                 new_messages.append(
                                     {
@@ -771,11 +963,28 @@ class SyncService:
                                     }
                                 )
                     except Exception as e:
+                        # SVC-M3: log gid_str (loop var), not the leaked gid from
+                        # the earlier metadata scan.
                         logger.debug(
                             "Failed to check messages for group",
-                            group_id=gid,
+                            group_id=gid_str,
                             error=str(e),
                         )
+
+            # Persist advanced cursors so the newest-synced message is never
+            # re-counted as new on the next poll (SVC-M2).
+            if cursors_advanced:
+                try:
+                    output_dir = await self.get_output_dir()
+                    service_display = get_service_display_name(self._service)
+                    self.service_data_dir = output_dir / service_display
+                    self.metadata_file = self.service_data_dir / "sync_metadata.json"
+                    await self.save_metadata(metadata)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to persist advanced cursors in check_new_messages",
+                        error=str(e),
+                    )
 
             return new_messages
 

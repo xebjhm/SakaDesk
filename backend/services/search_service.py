@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import jaconv
 import structlog
+from pysaka.utils import sanitize_name
 
 from backend.services.platform import get_app_data_dir
 from backend.services.path_resolver import get_output_dir
@@ -23,6 +24,49 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    """Apply the PRAGMAs every SQLite connection in this module must set.
+
+    ``recursive_triggers=ON`` is required so the implicit DELETE performed by
+    ``INSERT OR REPLACE`` fires the ``AFTER DELETE`` triggers that keep the
+    external-content FTS5 tables (``search_fts`` / ``search_blogs_fts``) in
+    sync.  With the SQLite default (OFF) those triggers do not fire on a
+    replace, leaving ghost FTS rows that accumulate on every rebuild.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA recursive_triggers=ON")
+
+
+_LIKE_ESCAPE_CHAR = "\\"
+
+
+def _like_contains(term: str) -> str:
+    """Build a ``%term%`` LIKE pattern with SQL wildcards escaped.
+
+    Escapes the escape char, ``%`` and ``_`` in *term* so a search for
+    "100%" or "a_b" matches those literals instead of treating ``%``/``_``
+    as wildcards.  Pair with ``LIKE ? ESCAPE '\\'`` in the SQL.
+    """
+    escaped = (
+        term.replace(_LIKE_ESCAPE_CHAR, _LIKE_ESCAPE_CHAR * 2)
+        .replace("%", _LIKE_ESCAPE_CHAR + "%")
+        .replace("_", _LIKE_ESCAPE_CHAR + "_")
+    )
+    return f"%{escaped}%"
+
+
+def _blog_member_dir_name(member_name: str) -> str:
+    """Sanitize a blog member name to match how blog_service writes its dirs.
+
+    Blog cache directories are written by ``blog_service.get_blog_cache_path``
+    which uses ``member_name.strip().replace("/", "_")`` — NOT pysaka's
+    ``sanitize_name``.  Incremental blog indexing must reproduce that exact
+    transform or members whose names contain '/' or surrounding whitespace are
+    never found on disk and silently skipped.
+    """
+    return member_name.strip().replace("/", "_")
 
 
 def _strip_html(html: str) -> str:
@@ -210,10 +254,17 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
+
+    # Full rebuild-over-existing: clear stale rows so INSERT OR REPLACE cannot
+    # leave orphaned FTS entries (belt-and-suspenders alongside
+    # recursive_triggers=ON, which also fires the delete triggers on replace).
+    conn.execute("DELETE FROM search_messages")
+    conn.execute("DELETE FROM search_blogs")
+    conn.commit()
 
     count = 0
     batch: list[Tuple[Any, ...]] = []
@@ -387,7 +438,10 @@ def _build_blog_index_process(
                         pass
 
                 blog_json_path = (
-                    blogs_dir / member_name / f"{date_prefix}_{blog_id}" / "blog.json"
+                    blogs_dir
+                    / _blog_member_dir_name(member_name)
+                    / f"{date_prefix}_{blog_id}"
+                    / "blog.json"
                 )
                 if not blog_json_path.exists():
                     continue
@@ -491,8 +545,8 @@ def _index_blogs_for_service_process(
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
 
@@ -515,7 +569,7 @@ def _index_blogs_for_service_process(
             continue
 
         member_name = member_info.get("name", "")
-        member_dir = blogs_dir / member_name
+        member_dir = blogs_dir / _blog_member_dir_name(member_name)
         if not member_dir.is_dir():
             continue
 
@@ -624,8 +678,8 @@ def _index_members_process(
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
 
@@ -649,12 +703,15 @@ def _index_members_process(
 
         max_indexed_id = max_indexed_ids.get((gid, mid), 0)
 
+        # pysaka writes message dirs via sanitize_name(name); reproduce it here
+        # so members/groups whose names contain '/' or surrounding whitespace
+        # are found on disk instead of silently skipped.
         msg_file = (
             output_dir
             / service_display
             / "messages"
-            / f"{gid} {g_name}"
-            / f"{mid} {m_name}"
+            / f"{gid} {sanitize_name(g_name)}"
+            / f"{mid} {sanitize_name(m_name)}"
             / "messages.json"
         )
         if not msg_file.exists():
@@ -749,6 +806,26 @@ class SearchService:
         self._executor = self._write_executor
         self._kakasi: Any = None
         self._aliases: Dict[str, Any] = self._load_aliases()
+        # Strong references to fire-and-forget background build tasks. Without
+        # this, create_task() results are GC'd mid-flight ("Task was destroyed
+        # but it is pending") and build_full_index re-raising surfaces
+        # "Task exception was never retrieved" (SVC-M1).
+        self._background_tasks: set[asyncio.Task] = set()
+
+    def _spawn_background_build(self) -> None:
+        """Start a background full build, retaining a strong task reference
+        and logging any exception so it is never silently swallowed."""
+        task = asyncio.create_task(self.build_full_index())
+        self._background_tasks.add(task)
+
+        def _on_done(t: asyncio.Task) -> None:
+            self._background_tasks.discard(t)
+            if not t.cancelled():
+                exc = t.exception()
+                if exc is not None:
+                    logger.error("Background index build failed", error=str(exc))
+
+        task.add_done_callback(_on_done)
 
     # ------------------------------------------------------------------
     # Connection
@@ -759,7 +836,7 @@ class SearchService:
         if self._conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path))
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            _configure_connection(self._conn)
             self._conn.executescript(_SCHEMA_SQL)
             _migrate_add_type_column(self._conn)
         return self._conn
@@ -773,7 +850,7 @@ class SearchService:
         if self._read_conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._read_conn = sqlite3.connect(str(self._db_path))
-            self._read_conn.execute("PRAGMA journal_mode=WAL")
+            _configure_connection(self._read_conn)
             self._read_conn.executescript(_SCHEMA_SQL)
             _migrate_add_type_column(self._read_conn)
         return self._read_conn
@@ -1266,22 +1343,26 @@ class SearchService:
             all_params.append(match_expr)
             all_params.extend(filter_params)
         else:
-            # LIKE fallback
+            # LIKE fallback — escape %/_ so short queries match literally
             like_clauses: list[str] = []
+            like_query = _like_contains(query)
+            like_normalized = _like_contains(normalized_query)
             if exact_only:
-                like_clauses.append("(b.title LIKE ? OR b.content LIKE ?)")
-                all_params.extend([f"%{query}%", f"%{query}%"])
+                like_clauses.append(
+                    "(b.title LIKE ? ESCAPE '\\' OR b.content LIKE ? ESCAPE '\\')"
+                )
+                all_params.extend([like_query, like_query])
             else:
                 like_clauses.append(
-                    "(b.title LIKE ? OR b.title_normalized LIKE ? "
-                    "OR b.content LIKE ? OR b.content_normalized LIKE ?)"
+                    "(b.title LIKE ? ESCAPE '\\' OR b.title_normalized LIKE ? ESCAPE '\\' "
+                    "OR b.content LIKE ? ESCAPE '\\' OR b.content_normalized LIKE ? ESCAPE '\\')"
                 )
                 all_params.extend(
                     [
-                        f"%{query}%",
-                        f"%{normalized_query}%",
-                        f"%{query}%",
-                        f"%{normalized_query}%",
+                        like_query,
+                        like_normalized,
+                        like_query,
+                        like_normalized,
                     ]
                 )
             all_params.extend(filter_params)
@@ -1679,17 +1760,19 @@ class SearchService:
                 all_params.extend(filter_params)
             else:
                 # LIKE fallback: each word must match (AND)
+                # Escape %/_ so short queries match literally.
                 like_clauses: list[str] = []
                 for w in words:
                     norm_w = self._normalize_query(w)
                     if exact_only:
-                        like_clauses.append("m.content LIKE ?")
-                        all_params.append(f"%{w}%")
+                        like_clauses.append("m.content LIKE ? ESCAPE '\\'")
+                        all_params.append(_like_contains(w))
                     else:
                         like_clauses.append(
-                            "(m.content LIKE ? OR m.content_normalized LIKE ?)"
+                            "(m.content LIKE ? ESCAPE '\\' "
+                            "OR m.content_normalized LIKE ? ESCAPE '\\')"
                         )
-                        all_params.extend([f"%{w}%", f"%{norm_w}%"])
+                        all_params.extend([_like_contains(w), _like_contains(norm_w)])
                 all_params.extend(filter_params)
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
@@ -1746,25 +1829,27 @@ class SearchService:
                         all_params.extend(filter_params)
                         sub_queries.append(sq_en)
                 else:
+                    # LIKE fallback — escape %/_ so short queries match literally
                     if exact_only:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE m.content LIKE ? {filter_sql}"
+                            f"WHERE m.content LIKE ? ESCAPE '\\' {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
+                        all_params.append(_like_contains(term))
                     else:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
+                            "WHERE (m.content LIKE ? ESCAPE '\\' "
+                            f"OR m.content_normalized LIKE ? ESCAPE '\\') {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
-                        all_params.append(f"%{norm}%")
+                        all_params.append(_like_contains(term))
+                        all_params.append(_like_contains(norm))
                     all_params.extend(filter_params)
                     sub_queries.append(sq)
 
@@ -2010,6 +2095,12 @@ class SearchService:
                 return 0
 
             conn = self._get_conn()
+            # Full rebuild-over-existing: clear stale rows so INSERT OR REPLACE
+            # cannot leave orphaned FTS entries (belt-and-suspenders alongside
+            # recursive_triggers=ON, which fires the delete triggers on replace).
+            conn.execute("DELETE FROM search_messages")
+            conn.execute("DELETE FROM search_blogs")
+            conn.commit()
             batch: list[Tuple[Any, ...]] = []
             normalize_count = 0
 
@@ -2209,7 +2300,11 @@ class SearchService:
                         except Exception:
                             pass
 
-                    blog_dir = blogs_dir / member_name / f"{date_prefix}_{blog_id}"
+                    blog_dir = (
+                        blogs_dir
+                        / _blog_member_dir_name(member_name)
+                        / f"{date_prefix}_{blog_id}"
+                    )
                     blog_json_path = blog_dir / "blog.json"
 
                     if not blog_json_path.exists():
@@ -2320,8 +2415,11 @@ class SearchService:
 
             max_indexed_id = max_indexed_ids.get((gid, mid), 0)
 
-            group_dir_name = f"{gid} {g_name}"
-            member_dir_name = f"{mid} {m_name}"
+            # pysaka writes message dirs via sanitize_name(name); reproduce it
+            # here so members/groups whose names contain '/' or surrounding
+            # whitespace are found on disk instead of silently skipped.
+            group_dir_name = f"{gid} {sanitize_name(g_name)}"
+            member_dir_name = f"{mid} {sanitize_name(m_name)}"
             msg_file = (
                 output_dir
                 / service_display
@@ -2467,7 +2565,7 @@ class SearchService:
                 continue
 
             member_name = member_info.get("name", "")
-            member_dir = blogs_dir / member_name
+            member_dir = blogs_dir / _blog_member_dir_name(member_name)
             if not member_dir.is_dir():
                 continue
 
@@ -2580,16 +2678,95 @@ class SearchService:
             "db_size_bytes": db_size,
         }
 
-    def _clear_db_sync(self) -> None:
-        """Close connections and delete the DB file. Used before rebuild."""
+    def _close_read_conn_sync(self) -> None:
+        """Close the read connection from its OWNING thread (read executor).
+
+        The read connection is created with ``check_same_thread=True`` on the
+        read-executor thread, so it must be closed there — closing it from the
+        write executor (as ``_clear_db_sync`` runs) raises
+        ``sqlite3.ProgrammingError``.  ``rebuild`` submits this to the read
+        executor before clearing the DB.
+        """
+        if self._read_conn is not None:
+            self._read_conn.close()
+            self._read_conn = None
+
+    def _clear_db_sync(self) -> List[Tuple[Any, ...]]:
+        """Close the write connection and delete the DB file. Used before rebuild.
+
+        Returns the preserved ``read_states`` rows so ``rebuild`` can restore
+        this user data into the freshly rebuilt DB — the DB file also holds
+        ``read_states``, which a plain unlink would otherwise wipe (SVC-M4).
+
+        Only the write connection (``_conn``) is closed here; it is created on
+        the write executor, which is where this method runs.  The read
+        connection is closed separately on the read executor via
+        ``_close_read_conn_sync`` (SVC-I4) — closing it here would cross
+        threads and raise ``sqlite3.ProgrammingError``.  We still clear it
+        defensively when it happens to be owned by the current thread (e.g. in
+        single-threaded tests that call this method directly).
+        """
+        # Preserve read_states (user data) before the file is unlinked.
+        preserved_read_states = self._read_states_snapshot()
+
         if self._conn is not None:
             self._conn.close()
             self._conn = None
         if self._read_conn is not None:
-            self._read_conn.close()
-            self._read_conn = None
-        if self._db_path.exists():
-            self._db_path.unlink()
+            try:
+                self._read_conn.close()
+                self._read_conn = None
+            except sqlite3.ProgrammingError:
+                # Owned by the read-executor thread; rebuild() closes it there.
+                pass
+
+        # Delete the DB plus its WAL/SHM siblings so no stale journal survives.
+        for suffix in ("", "-wal", "-shm"):
+            sibling = (
+                self._db_path
+                if not suffix
+                else self._db_path.with_name(self._db_path.name + suffix)
+            )
+            if sibling.exists():
+                sibling.unlink()
+
+        return preserved_read_states
+
+    def _read_states_snapshot(self) -> List[Tuple[Any, ...]]:
+        """Read all read_states rows from a short-lived connection.
+
+        Uses its own connection so it is safe to call from any thread without
+        touching the executor-owned ``_conn`` / ``_read_conn``.
+        """
+        if not self._db_path.exists():
+            return []
+        try:
+            conn = sqlite3.connect(str(self._db_path))
+            _configure_connection(conn)
+            try:
+                return conn.execute(
+                    "SELECT service, group_id, member_id, last_read_id, "
+                    "read_count, revealed_ids, updated_at FROM read_states"
+                ).fetchall()
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning("Failed to snapshot read_states before rebuild", error=str(e))
+            return []
+
+    def _restore_read_states_sync(self, rows: List[Tuple[Any, ...]]) -> None:
+        """Restore preserved read_states rows into the rebuilt DB."""
+        if not rows:
+            return
+        conn = self._get_conn()
+        conn.executemany(
+            "INSERT OR REPLACE INTO read_states "
+            "(service, group_id, member_id, last_read_id, read_count, "
+            "revealed_ids, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+        conn.commit()
+        logger.info("Restored read_states after rebuild", count=len(rows))
 
     # ------------------------------------------------------------------
     # Read states
@@ -2682,6 +2859,7 @@ class SearchService:
         still serve (partial) data from committed rows without blocking.
         """
         conn = sqlite3.connect(str(self._db_path))
+        _configure_connection(conn)
         try:
             return self._get_members_from_conn(conn)
         finally:
@@ -2785,6 +2963,7 @@ class SearchService:
             return True
         try:
             conn = sqlite3.connect(str(self._db_path))
+            _configure_connection(conn)
             try:
                 row = conn.execute(
                     "SELECT value FROM search_meta WHERE key = 'last_full_build'"
@@ -2820,7 +2999,7 @@ class SearchService:
             logger.info(
                 "Full index missing at search time, triggering background build (failsafe)"
             )
-            asyncio.create_task(self.build_full_index())
+            self._spawn_background_build()
         # If the DB doesn't exist at all yet, return empty immediately
         if not self._db_path.exists():
             return {
@@ -2903,7 +3082,7 @@ class SearchService:
         # run one now in the background.
         if self._needs_build() and not self._build_lock.locked():
             logger.info("No full index found, triggering background build")
-            asyncio.create_task(self.build_full_index())
+            self._spawn_background_build()
         return count
 
     async def index_blogs_for_service(self, service: str) -> int:
@@ -2925,11 +3104,23 @@ class SearchService:
         return await loop.run_in_executor(self._read_executor, self._get_status_sync)
 
     async def rebuild(self) -> None:
-        # Close connections and delete DB on the write executor
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(self._executor, self._clear_db_sync)
-        # Rebuild in process pool
+        # Close the read connection on its OWNING thread (the read executor);
+        # closing it from the write executor raises sqlite3.ProgrammingError
+        # and permanently breaks rebuild for the session (SVC-I4).
+        await loop.run_in_executor(self._read_executor, self._close_read_conn_sync)
+        # Close the write connection and delete the DB (+ WAL/SHM) on the write
+        # executor, preserving read_states user data for restoration (SVC-M4).
+        preserved_read_states = await loop.run_in_executor(
+            self._executor, self._clear_db_sync
+        )
+        # Rebuild in the process pool.
         await self.build_full_index()
+        # Restore preserved read_states into the freshly rebuilt DB.
+        if preserved_read_states:
+            await loop.run_in_executor(
+                self._executor, self._restore_read_states_sync, preserved_read_states
+            )
 
     async def get_all_read_states(self) -> Dict[str, Any]:
         loop = asyncio.get_running_loop()
@@ -2982,7 +3173,7 @@ class SearchService:
                 "Found unindexed services, triggering rebuild",
                 missing=list(missing),
             )
-            asyncio.create_task(self.build_full_index())
+            self._spawn_background_build()
         return result
 
 

@@ -114,8 +114,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 }) => {
     const { t } = useTranslation();
 
-    // Get active service and conversation persistence from Zustand store
-    const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
+    // Get active service and conversation persistence from Zustand store.
+    // Per-field selectors avoid re-rendering the whole chat view on every store write.
+    const activeService = useAppStore(s => s.activeService);
+    const setSelectedConversation = useAppStore(s => s.setSelectedConversation);
+    const getSelectedConversation = useAppStore(s => s.getSelectedConversation);
 
     // Get theme for current service
     const theme = useMessagesTheme();
@@ -287,13 +290,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?${params}`);
                 if (thisId !== fetchIdRef.current) return; // stale — a newer fetch superseded this one
                 if (!res.ok) {
-                    const text = await res.text();
+                    // Parse the server's error detail inside the try, then throw AFTER
+                    // it — throwing inside the try would be caught by its own catch and
+                    // replaced with the generic message, discarding the real detail.
+                    let detail: string | null = null;
                     try {
-                        const errJson = JSON.parse(text);
-                        throw new Error(errJson.detail || "Failed to load");
+                        const errJson = JSON.parse(await res.text());
+                        detail = errJson.detail || null;
                     } catch {
-                        throw new Error(`Failed to load messages. Server returned ${res.status}`);
+                        detail = null;
                     }
+                    throw new Error(detail || `Failed to load messages. Server returned ${res.status}`);
                 }
                 data = await res.json() as GroupMessagesResponse;
                 if (thisId !== fetchIdRef.current) return; // stale
@@ -454,7 +461,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const loadReadState = (path: string): ReadState => {
         try {
             const saved = localStorage.getItem(`read_state_${path}`);
-            return saved ? JSON.parse(saved) : { lastReadId: 0, readCount: 0, revealedIds: [] };
+            if (!saved) return { lastReadId: 0, readCount: 0, revealedIds: [] };
+            // Normalize: legacy entries may lack revealedIds/readCount, and consumers
+            // call readState.revealedIds.includes(...) unconditionally — an undefined
+            // field would crash displayUnreadCount / isUnread.
+            const parsed = JSON.parse(saved);
+            return {
+                lastReadId: parsed.lastReadId || 0,
+                readCount: parsed.readCount || 0,
+                revealedIds: Array.isArray(parsed.revealedIds) ? parsed.revealedIds : [],
+            };
         } catch {
             return { lastReadId: 0, readCount: 0, revealedIds: [] };
         }
@@ -490,32 +506,25 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setReadState(prev => {
             if (prev.revealedIds.includes(msgId)) return prev;
 
-            // Add the new revealed ID
-            const newRevealedIds = [...prev.revealedIds, msgId];
+            // Add the new revealed ID (Set for O(1) membership checks).
+            const revealedSet = new Set(prev.revealedIds);
+            revealedSet.add(msgId);
 
-            // Consolidate: If all messages from lastReadId+1 up to some point are now revealed,
-            // advance lastReadId and remove those IDs from revealedIds.
+            // Consolidate in a single forward scan: advance lastReadId over the
+            // contiguous run of revealed messages starting just past lastReadId.
             const unreadMsgIds = messages
                 .map(m => m.id)
                 .filter(id => id > prev.lastReadId)
                 .sort((a, b) => a - b);
 
             let newLastReadId = prev.lastReadId;
-
             for (const id of unreadMsgIds) {
-                if (newRevealedIds.includes(id)) {
-                    const allPreviousRead = unreadMsgIds
-                        .filter(uid => uid <= id && uid > newLastReadId)
-                        .every(uid => newRevealedIds.includes(uid));
-
-                    if (allPreviousRead) {
-                        newLastReadId = id;
-                    }
-                }
+                if (!revealedSet.has(id)) break; // gap → stop advancing
+                newLastReadId = id;
             }
 
-            // Remove IDs that are now covered by newLastReadId
-            const consolidatedRevealedIds = newRevealedIds.filter(id => id > newLastReadId);
+            // Drop IDs now covered by the advanced lastReadId.
+            const consolidatedRevealedIds = [...revealedSet].filter(id => id > newLastReadId);
 
             const next: ReadState = {
                 lastReadId: newLastReadId,
@@ -749,15 +758,24 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
                     style={{
+                        // Base background color stays fully opaque so content behind is never
+                        // see-through; the image (with its opacity) is a separate layer below.
                         backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
-                        backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
-                            ? `url(${backgroundSettings.imageData})`
-                            : 'none',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: backgroundSettings.opacity / 100,
                     }}
                 >
+                    {/* Background image layer — opacity applies ONLY here, not to the
+                        message bubbles/text/media which render above at full opacity. */}
+                    {backgroundSettings.type === 'image' && backgroundSettings.imageData && (
+                        <div
+                            className="absolute inset-0 pointer-events-none"
+                            style={{
+                                backgroundImage: `url(${backgroundSettings.imageData})`,
+                                backgroundSize: 'cover',
+                                backgroundPosition: 'center',
+                                opacity: backgroundSettings.opacity / 100,
+                            }}
+                        />
+                    )}
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                             <div className="text-center">

@@ -7,6 +7,7 @@ with a provider abstraction for multiple backends (Gemini, OpenAI).
 Translations are cached client-side in localStorage — no server-side storage.
 """
 
+import json
 import re
 import structlog
 from abc import ABC, abstractmethod
@@ -329,7 +330,11 @@ def build_batch_translation_prompt(
 
     parts.append("\nMessages:")
     for msg_id, text in texts.items():
-        parts.append(f'  "{msg_id}": "{text}"')
+        # json.dumps escapes ", \, newlines, etc. so the block we tell the model
+        # to mirror is valid JSON (the response is json.loads-parsed downstream).
+        key = json.dumps(str(msg_id), ensure_ascii=False)
+        value = json.dumps(text, ensure_ascii=False)
+        parts.append(f"  {key}: {value}")
 
     system = _build_system_instruction(member_name, group_name, "message")
     return "\n".join(parts), system
@@ -363,7 +368,11 @@ def build_blog_translation_prompt(
 
     parts.append("\nParagraphs:")
     for i, paragraph in enumerate(paragraphs):
-        parts.append(f'  "{i}": "{paragraph}"')
+        # json.dumps escapes ", \, newlines, etc. so the block we tell the model
+        # to mirror is valid JSON (the response is json.loads-parsed downstream).
+        key = json.dumps(str(i), ensure_ascii=False)
+        value = json.dumps(paragraph, ensure_ascii=False)
+        parts.append(f"  {key}: {value}")
 
     system = _build_system_instruction(member_name, group_name, "blog post")
     return "\n".join(parts), system

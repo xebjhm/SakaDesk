@@ -19,7 +19,7 @@ Does NOT modify the existing test_search_service_units.py.
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -820,6 +820,68 @@ class TestSearchSync:
 
 
 # =====================================================================
+# 5b. LIKE-fallback wildcard escaping (SVC-M10)
+# =====================================================================
+
+
+class TestLikeWildcardEscaping:
+    """Short queries use the LIKE fallback; %/_ must match literally, not as
+    SQL wildcards (SVC-M10)."""
+
+    @pytest.fixture()
+    def wildcard_output_dir(self, tmp_path: Path) -> Path:
+        out = tmp_path / "output"
+        m = out / _SERVICE_DISPLAY / "messages" / "1 グループ" / "100 メンバー"
+        m.mkdir(parents=True)
+        _write_messages_json(
+            m / "messages.json",
+            [
+                {"id": 1, "content": "100%", "timestamp": "2026-01-01T10:00:00+09:00"},
+                {"id": 2, "content": "1000", "timestamp": "2026-01-01T11:00:00+09:00"},
+                {"id": 3, "content": "a_b", "timestamp": "2026-01-01T12:00:00+09:00"},
+                {"id": 4, "content": "axb", "timestamp": "2026-01-01T13:00:00+09:00"},
+            ],
+        )
+        return out
+
+    def _indexed_service(
+        self, service: SearchService, wildcard_output_dir: Path
+    ) -> SearchService:
+        with patch(
+            "backend.services.search_service.get_output_dir",
+            return_value=wildcard_output_dir,
+        ):
+            service._build_full_index_sync()
+        return service
+
+    def test_percent_matches_literally(
+        self, service: SearchService, wildcard_output_dir: Path
+    ):
+        """A short query of '0%' must match '100%' but NOT '1000'."""
+        svc = self._indexed_service(service, wildcard_output_dir)
+        conn = svc._get_read_conn()
+        result = svc._search_sync(
+            "0%", None, None, None, 50, 0, content_type="messages", conn=conn
+        )
+        contents = {r["content"] for r in result["results"]}
+        assert "100%" in contents
+        assert "1000" not in contents
+
+    def test_underscore_matches_literally(
+        self, service: SearchService, wildcard_output_dir: Path
+    ):
+        """A short query of 'a_' must match 'a_b' but NOT 'axb'."""
+        svc = self._indexed_service(service, wildcard_output_dir)
+        conn = svc._get_read_conn()
+        result = svc._search_sync(
+            "a_", None, None, None, 50, 0, content_type="messages", conn=conn
+        )
+        contents = {r["content"] for r in result["results"]}
+        assert "a_b" in contents
+        assert "axb" not in contents
+
+
+# =====================================================================
 # 6. Read states
 # =====================================================================
 
@@ -1018,6 +1080,81 @@ class TestClearDb:
             count = service._build_full_index_sync()
         assert count == 6
         assert db_path.exists()
+
+    def test_clear_removes_wal_and_shm_siblings(
+        self, service: SearchService, db_path: Path, output_dir: Path
+    ):
+        """SVC-M4: -wal/-shm siblings are unlinked alongside the DB file."""
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            service._build_full_index_sync()
+        wal = db_path.with_name(db_path.name + "-wal")
+        shm = db_path.with_name(db_path.name + "-shm")
+        # Force WAL/SHM to exist by touching them (WAL mode may leave them).
+        wal.touch()
+        shm.touch()
+
+        service._clear_db_sync()
+        assert not db_path.exists()
+        assert not wal.exists()
+        assert not shm.exists()
+
+    def test_clear_returns_read_states_for_restore(
+        self, service: SearchService, output_dir: Path
+    ):
+        """SVC-M4: read_states rows are preserved (returned) across a clear."""
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            service._build_full_index_sync()
+        service._upsert_read_state_sync(
+            _SERVICE_ID, group_id=1, member_id=100, last_read_id=7,
+            read_count=3, revealed_ids=[1, 2],
+        )
+
+        preserved = service._clear_db_sync()
+        assert any(
+            row[0] == _SERVICE_ID and row[1] == 1 and row[2] == 100 and row[3] == 7
+            for row in preserved
+        )
+
+    @pytest.mark.asyncio
+    async def test_rebuild_after_search_closes_read_conn_cross_thread(
+        self, service: SearchService, output_dir: Path
+    ):
+        """SVC-I4: a search creates _read_conn on the read-executor thread; a
+        subsequent rebuild must close it there, not on the write executor
+        (which would raise sqlite3.ProgrammingError and break rebuild)."""
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            # Build on the write executor so _conn is owned by the same thread
+            # that _clear_db_sync later runs on (matches production).
+            await loop.run_in_executor(
+                service._write_executor, service._build_full_index_sync
+            )
+            # Run a real search so _read_conn is opened on the read executor.
+            result = await service.search(
+                "ライブ", content_type="messages", limit=50
+            )
+        assert result["total_count"] >= 1
+        assert service._read_conn is not None
+
+        # Patch the heavy process build; we only exercise the connection
+        # teardown/threading, not the full reindex.
+        with patch.object(
+            service, "build_full_index", new=AsyncMock(return_value=0)
+        ):
+            # Before the fix this raised sqlite3.ProgrammingError from the
+            # write executor closing a read-executor-owned connection.
+            await service.rebuild()
+
+        assert service._read_conn is None
+        assert service._conn is None
 
 
 # =====================================================================

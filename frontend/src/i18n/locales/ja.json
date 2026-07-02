@@ -299,7 +299,8 @@
     "opacity": "不透明度: {{value}}%",
     "resetToDefault": "デフォルトに戻す",
     "imageTooLarge": "画像が大きすぎます。2MB以下の画像を選択してください。",
-    "selectImageFile": "画像ファイルを選択してください。"
+    "selectImageFile": "画像ファイルを選択してください。",
+    "saveFailed": "背景を保存できませんでした。ブラウザのストレージが一杯です。アプリを再起動するとリセットされます。大きな画像を削除するか、空き容量を増やしてください。"
   },
   "features": {
     "messages": "メッセージ",

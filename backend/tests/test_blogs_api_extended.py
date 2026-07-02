@@ -383,14 +383,23 @@ class TestProxyBlogImage:
 
     @patch("httpx.AsyncClient")
     def test_proxy_image_allowed_domain(self, mock_httpx_cls):
-        """Allowed domain proxies the image."""
+        """Allowed domain proxies the image via the streaming client."""
+
+        async def _aiter_bytes():
+            yield b"\xff\xd8\xff\xe0"
+
         mock_response = MagicMock()
-        mock_response.content = b"\xff\xd8\xff\xe0"
         mock_response.headers = {"content-type": "image/jpeg"}
         mock_response.raise_for_status = MagicMock()
+        mock_response.aiter_bytes = MagicMock(return_value=_aiter_bytes())
 
-        mock_client_inst = AsyncMock()
-        mock_client_inst.get = AsyncMock(return_value=mock_response)
+        # client.stream(...) returns an async context manager yielding the response.
+        stream_cm = MagicMock()
+        stream_cm.__aenter__ = AsyncMock(return_value=mock_response)
+        stream_cm.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client_inst = MagicMock()
+        mock_client_inst.stream = MagicMock(return_value=stream_cm)
         mock_client_inst.__aenter__ = AsyncMock(return_value=mock_client_inst)
         mock_client_inst.__aexit__ = AsyncMock(return_value=None)
         mock_httpx_cls.return_value = mock_client_inst
@@ -399,6 +408,7 @@ class TestProxyBlogImage:
             "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
         )
         assert response.status_code == 200
+        assert response.content == b"\xff\xd8\xff\xe0"
 
 
 class TestServeBlogImage:

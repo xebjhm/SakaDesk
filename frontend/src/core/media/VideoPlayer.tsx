@@ -60,8 +60,12 @@ interface VideoPlayerProps {
     memberPath?: string;
     /** Called on each time update with current playback time in seconds */
     onTimeUpdate?: (time: number) => void;
-    /** Called externally to seek to a specific time */
-    seekTo?: number;
+    /**
+     * Called externally to seek to a specific time. Uses the `{ time, seq }`
+     * shape (matching the internal seek path) so seeking to the SAME time twice
+     * still re-fires — a bare number would be deduped by React's state bail-out.
+     */
+    seekTo?: { time: number; seq: number };
 }
 
 const formatTime = (seconds: number): string => {
@@ -146,6 +150,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const { volume, setVolume, isMuted, toggleMute, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
 
+    // Keep the latest onTimeUpdate in a ref so the listener effect (deps
+    // [connectElement]) calls the current callback instead of a stale closure.
+    const onTimeUpdateRef = useRef(onTimeUpdate);
+    onTimeUpdateRef.current = onTimeUpdate;
+
     // Connect video to amplification pipeline
     useEffect(() => {
         const video = videoRef.current;
@@ -153,7 +162,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         const handleTimeUpdate = () => {
             setCurrentTime(video.currentTime);
-            onTimeUpdate?.(video.currentTime);
+            onTimeUpdateRef.current?.(video.currentTime);
         };
         const handleLoadedMetadata = () => setDuration(video.duration);
         const handleEnded = () => setIsPlaying(false);
@@ -192,11 +201,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     }, [playbackRate]);
 
-    // External seek request (parent-controlled position, e.g. subtitle sync)
+    // External seek request (parent-controlled position, e.g. subtitle sync).
+    // Keyed by seq so repeating the same time still re-fires.
     useEffect(() => {
         if (seekTo != null && videoRef.current) {
-            videoRef.current.currentTime = seekTo;
-            setCurrentTime(seekTo);
+            videoRef.current.currentTime = seekTo.time;
+            setCurrentTime(seekTo.time);
         }
     }, [seekTo]);
 

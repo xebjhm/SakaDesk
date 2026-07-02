@@ -211,39 +211,105 @@ async def check_fresh_install():
     return FreshCheckResponse(is_fresh=is_fresh, output_dir=output_dir)
 
 
-@router.post("/select-folder")
-async def select_folder():
-    """Open a native folder picker dialog."""
-    import asyncio
+def _pywebview_pick_folder() -> Optional[str]:
+    """Open a folder picker via the pywebview window, if one is running.
+
+    pywebview's ``create_file_dialog`` marshals to the GUI (main) thread
+    internally, so it is safe to call from an executor thread — unlike raw
+    ``tk.Tk()``, which requires the main thread on macOS. Returns the selected
+    path, or None if no folder was chosen. Raises RuntimeError when no pywebview
+    window is available so the caller can fall back.
+    """
+    try:
+        import webview
+    except ImportError as e:
+        raise RuntimeError(f"pywebview not available: {e}")
+
+    if not getattr(webview, "windows", None):
+        raise RuntimeError("No pywebview window available")
+
+    window = webview.windows[0]
+    result = window.create_file_dialog(webview.FOLDER_DIALOG)
+    # create_file_dialog returns a tuple/list of paths, or None on cancel.
+    if result:
+        return result[0] if isinstance(result, (list, tuple)) else str(result)
+    return None
+
+
+def _tk_pick_folder() -> Optional[str]:
+    """Open a tkinter folder dialog. Runs in an executor thread.
+
+    NOTE: tkinter must run on the main thread on macOS; callers must not use
+    this off-main-thread on Darwin (see select_folder).
+    """
+    import tkinter as tk
+    from tkinter import filedialog
 
     try:
-        import tkinter as tk
-        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+        root.attributes("-topmost", True)  # Bring to front
+
+        folder = filedialog.askdirectory(title="Select Output Folder")
+        root.destroy()
+        return folder if folder else None
+    except Exception as e:
+        logger.error(f"Dialog error: {e}")
+        return None
+
+
+@router.post("/select-folder")
+async def select_folder():
+    """Open a native folder picker dialog.
+
+    Prefers the pywebview main-thread dialog API (works on all platforms,
+    including macOS). Falls back to a tkinter dialog only where that is safe:
+    tkinter's ``tk.Tk()`` crashes/hangs when created off the main thread on
+    macOS, so on macOS without a pywebview window we return a clear error
+    instead of triggering that crash.
+    """
+    import asyncio
+    import sys
+
+    # Timeout after 5 minutes (user should have selected a folder by then)
+    DIALOG_TIMEOUT_SECONDS = 300
+    loop = asyncio.get_event_loop()
+
+    # Preferred path: pywebview's dialog (safe on the GUI thread on every OS).
+    try:
+        result = await asyncio.wait_for(
+            loop.run_in_executor(None, _pywebview_pick_folder),
+            timeout=DIALOG_TIMEOUT_SECONDS,
+        )
+        return {"path": result} if result else {"path": None}
+    except asyncio.TimeoutError:
+        logger.warning("Folder dialog timed out after 5 minutes")
+        return {"path": None, "error": "Dialog timed out"}
+    except RuntimeError as e:
+        # No pywebview window — fall through to the tkinter fallback below.
+        logger.debug(f"pywebview folder dialog unavailable: {e}")
+
+    # Fallback: tkinter. Creating tk.Tk() off the main thread crashes on macOS,
+    # so guard against it rather than hang/crash the process.
+    if sys.platform == "darwin":
+        logger.warning(
+            "Folder picker unavailable: no pywebview window and tkinter is "
+            "unsafe off the main thread on macOS"
+        )
+        return {
+            "path": None,
+            "error": "Folder picker not available on macOS outside the app window",
+        }
+
+    try:
+        import tkinter  # noqa: F401
     except ImportError as e:
         logger.warning(f"Tkinter not available: {e}")
         return {"path": None, "error": "Folder picker not available (tkinter missing)"}
 
-    def open_dialog() -> Optional[str]:
-        """Open a tkinter folder dialog. Runs in an executor thread."""
-        try:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            root.attributes("-topmost", True)  # Bring to front
-
-            folder = filedialog.askdirectory(title="Select Output Folder")
-            root.destroy()
-            return folder if folder else None
-        except Exception as e:
-            logger.error(f"Dialog error: {e}")
-            return None
-
-    # Timeout after 5 minutes (user should have selected a folder by then)
-    DIALOG_TIMEOUT_SECONDS = 300
-
     try:
-        loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(None, open_dialog),
+            loop.run_in_executor(None, _tk_pick_folder),
             timeout=DIALOG_TIMEOUT_SECONDS,
         )
     except asyncio.TimeoutError:

@@ -425,6 +425,12 @@ class BlogService:
             completed = 0
             total = len(members)
 
+            # Bound concurrent member scans, mirroring the stage-2 blog_sem.
+            # Without this, gather queues ALL members at once; requests waiting
+            # in the connector queue still count against aiohttp's total timeout,
+            # causing timeout storms on first sync.
+            member_sem = asyncio.Semaphore(5)
+
             async def sync_member(member_id: str, member_name: str):
                 nonlocal completed
                 if cancel_event and cancel_event.is_set():
@@ -457,53 +463,59 @@ class BlogService:
                 new_entries = []
                 needs_detail: list[tuple[int, dict]] = []
 
-                async for entry in scraper.get_blogs_metadata(
-                    member_id,
-                    since_date=since_date,
-                    max_pages=max_pages,
-                    member_name=member_name,
-                ):
-                    if entry.id not in existing_ids:
-                        blog_data = {
-                            "id": entry.id,
-                            "title": entry.title,
-                            "published_at": entry.published_at,
-                            "url": entry.url,
-                            "thumbnail": entry.images[0] if entry.images else None,
-                        }
-                        new_entries.append(blog_data)
-                        # Sakurazaka list pages have incomplete data (no time,
-                        # no thumbnails, possibly truncated titles), so the
-                        # detail page is the single source of truth.
-                        if not blog_data["thumbnail"]:
-                            needs_detail.append((len(new_entries) - 1, blog_data))
+                # Bound concurrent member scans with the shared semaphore. The
+                # network-bound scan runs inside it so at most `member_sem`
+                # members hit the API at once (see comment at member_sem).
+                async with member_sem:
+                    async for entry in scraper.get_blogs_metadata(
+                        member_id,
+                        since_date=since_date,
+                        max_pages=max_pages,
+                        member_name=member_name,
+                    ):
+                        if entry.id not in existing_ids:
+                            blog_data = {
+                                "id": entry.id,
+                                "title": entry.title,
+                                "published_at": entry.published_at,
+                                "url": entry.url,
+                                "thumbnail": entry.images[0]
+                                if entry.images
+                                else None,
+                            }
+                            new_entries.append(blog_data)
+                            # Sakurazaka list pages have incomplete data (no time,
+                            # no thumbnails, possibly truncated titles), so the
+                            # detail page is the single source of truth.
+                            if not blog_data["thumbnail"]:
+                                needs_detail.append((len(new_entries) - 1, blog_data))
 
-                # Batch detail fetches for entries missing thumbnails
-                if needs_detail:
+                    # Batch detail fetches for entries missing thumbnails
+                    if needs_detail:
 
-                    async def fetch_detail(idx: int, blog: dict):
-                        try:
-                            (
-                                detail_thumb,
-                                detail_date,
-                                detail_title,
-                            ) = await scraper.get_blog_detail_metadata(blog["id"])
-                            if detail_thumb:
-                                blog["thumbnail"] = detail_thumb
-                            if detail_date:
-                                blog["published_at"] = detail_date
-                            if detail_title:
-                                blog["title"] = detail_title
-                        except Exception as e:
-                            logger.debug(
-                                "detail_metadata_failed",
-                                blog_id=blog["id"],
-                                error=str(e),
-                            )
+                        async def fetch_detail(idx: int, blog: dict):
+                            try:
+                                (
+                                    detail_thumb,
+                                    detail_date,
+                                    detail_title,
+                                ) = await scraper.get_blog_detail_metadata(blog["id"])
+                                if detail_thumb:
+                                    blog["thumbnail"] = detail_thumb
+                                if detail_date:
+                                    blog["published_at"] = detail_date
+                                if detail_title:
+                                    blog["title"] = detail_title
+                            except Exception as e:
+                                logger.debug(
+                                    "detail_metadata_failed",
+                                    blog_id=blog["id"],
+                                    error=str(e),
+                                )
 
-                    await asyncio.gather(
-                        *[fetch_detail(idx, blog) for idx, blog in needs_detail]
-                    )
+                        await asyncio.gather(
+                            *[fetch_detail(idx, blog) for idx, blog in needs_detail]
+                        )
 
                 for blog_data in new_entries:
                     pub_at = blog_data["published_at"]
@@ -521,13 +533,26 @@ class BlogService:
 
                 completed += 1
 
-            # Run all member syncs concurrently with semaphore limit
-            await asyncio.gather(
+            # Run all member syncs concurrently, bounded by member_sem.
+            # return_exceptions=True so one member's scrape failure does not
+            # abort the whole stage and discard every other member's scanned
+            # metadata before save_blog_index below (the partial index still
+            # persists whatever succeeded).
+            results = await asyncio.gather(
                 *[
                     sync_member(member_id, member_name)
                     for member_id, member_name in members.items()
-                ]
+                ],
+                return_exceptions=True,
             )
+            for member_id, res in zip(members.keys(), results):
+                if isinstance(res, Exception):
+                    logger.warning(
+                        "blog_metadata_member_sync_failed",
+                        member_id=member_id,
+                        error_type=type(res).__name__,
+                        error=str(res),
+                    )
 
         from datetime import datetime, timezone
 
@@ -787,8 +812,23 @@ class BlogService:
             images=images_result,
         )
 
-        async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(content, ensure_ascii=False, indent=2))
+        # Atomic write: temp file + os.replace so a crash mid-write can never
+        # leave a truncated blog.json that skip_cached treats as valid and
+        # get_blog_content then fails to parse forever.  The atomic rename also
+        # makes the concurrent on-demand fetch path (get_blog_content) writing
+        # the same file safe to interleave.
+        import os
+
+        fd, tmp_path = tempfile.mkstemp(dir=str(item.cache_path), suffix=".tmp")
+        os.close(fd)
+        try:
+            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
+                await f.write(json.dumps(content, ensure_ascii=False, indent=2))
+            os.replace(tmp_path, str(cache_file))
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
 
     async def _download_images(
         self,
@@ -831,6 +871,13 @@ class BlogService:
                         logger.debug(
                             "Image download non-200", url=img_url, status=resp.status
                         )
+                        # Mirror the exception path: never leave a None slot in
+                        # the results array (None serialized into blog.json would
+                        # break _rewrite_local_images' img.get() calls).
+                        results[idx] = {
+                            "original_url": img_url,
+                            "local_path": None,
+                        }
 
             try:
                 if semaphore:
@@ -1058,9 +1105,21 @@ class BlogService:
         cache_file = cache_path / "blog.json"
 
         if cache_file.exists():
-            async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
-                content = cast(Dict[Any, Any], json.loads(await f.read()))
-            return self._rewrite_local_images(content, cache_path, service, blog_id)
+            try:
+                async with aiofiles.open(cache_file, "r", encoding="utf-8") as f:
+                    content = cast(Dict[Any, Any], json.loads(await f.read()))
+                return self._rewrite_local_images(
+                    content, cache_path, service, blog_id
+                )
+            except (json.JSONDecodeError, ValueError) as e:
+                # A truncated / corrupt cache file (e.g. written before the
+                # atomic-write fix, or a crash mid-write) must not 500 forever.
+                # Fall through to re-fetch, which atomically overwrites it.
+                logger.warning(
+                    "Corrupt blog cache, re-fetching",
+                    blog_id=blog_id,
+                    error=str(e),
+                )
 
         # Fetch on-demand — delegate to _download_single_blog (single code path)
         item = BlogDownloadItem(
@@ -1310,13 +1369,24 @@ class BlogBackupManager:
         if event is not None:
             event.set()
 
+    def _deregister_own(self, service: str, cancel_event: threading.Event) -> None:
+        """Remove this run's bookkeeping only if it is still the current run.
+
+        A superseding ``start(force=True)`` replaces ``_cancel_events[service]``
+        with a fresh event; this run must not clobber the newer run's
+        registration.  Identity of the cancel-event is the per-run token: only
+        deregister when the currently-registered event is still our own.
+        """
+        with self._lock:
+            if self._cancel_events.get(service) is cancel_event:
+                self._cancel_events.pop(service, None)
+                self._running.discard(service)
+
     async def _run_backup(self, service: str, cancel_event: threading.Event):
         """Run full backup for one service with cancellation support."""
         if not _is_blog_supported(service):
             logger.info(f"Skipping blog backup for {service} (not supported)")
-            with self._lock:
-                self._running.discard(service)
-                self._cancel_events.pop(service, None)
+            self._deregister_own(service, cancel_event)
             return
 
         blog_service = BlogService()
@@ -1346,9 +1416,7 @@ class BlogBackupManager:
         except Exception as e:
             logger.error(f"Standalone blog backup error for {service}: {e}")
         finally:
-            with self._lock:
-                self._running.discard(service)
-                self._cancel_events.pop(service, None)
+            self._deregister_own(service, cancel_event)
 
 
 _blog_backup_manager: BlogBackupManager | None = None

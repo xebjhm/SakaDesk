@@ -59,6 +59,10 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const inputRef = useRef<HTMLInputElement>(null!);
   const listRef = useRef<HTMLDivElement>(null!);
   const wasBuilding = useRef(false);
+  // Bumped whenever a fresh search runs (query/filter change). handleLoadMore
+  // captures it and discards its response if the generation moved on — otherwise
+  // a slow load-more would append results for a stale query/filter set.
+  const fetchGenerationRef = useRef(0);
 
   // ─── Open / Close ──────────────────────────────────────────────────────────
   const resetState = useCallback(() => {
@@ -201,6 +205,9 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     setIsLoading(true);
     setError(null);
 
+    // New search generation — invalidates any in-flight load-more.
+    const generation = ++fetchGenerationRef.current;
+
     const timer = setTimeout(async () => {
       try {
         const filterParams = buildFilterParams();
@@ -212,6 +219,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         }
 
         const data: SearchResponse = await response.json();
+        if (generation !== fetchGenerationRef.current) return; // superseded
         // Show building banner if index is still being built, but
         // still render whatever partial results the backend returned.
         setIsIndexBuilding(!!data.is_building);
@@ -237,19 +245,23 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const handleLoadMore = useCallback(async () => {
     if (isLoadingMore || !hasMore || !query.trim()) return;
     setIsLoadingMore(true);
+    // Snapshot the current search generation; discard the response if a new
+    // search (query/filter change) started while this page was loading.
+    const generation = fetchGenerationRef.current;
     try {
       const filterParams = buildFilterParams();
       const url = `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=${results.length}${filterParams ? '&' + filterParams : ''}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: SearchResponse = await response.json();
+      if (generation !== fetchGenerationRef.current) return; // stale — query/filters changed
       setResults((prev) => [...prev, ...data.results]);
       setHasMore(data.has_more);
       setTotalCount(data.total_count);
     } catch (_err) {
       // Silently fail — user can try again
     } finally {
-      setIsLoadingMore(false);
+      if (generation === fetchGenerationRef.current) setIsLoadingMore(false);
     }
   }, [isLoadingMore, hasMore, query, results.length, buildFilterParams]);
 

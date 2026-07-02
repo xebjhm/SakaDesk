@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { cn } from '../../utils/classnames';
 import { useAppStore, FeatureId } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { getAvailableFeatures, isFeaturePaid } from '../../config/features';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { LoginModal } from '../../shell/components/LoginModal';
@@ -10,6 +11,10 @@ import { getServicePrimaryColor } from '../../data/services';
 export interface FeatureRailProps {
     service: string;
 }
+
+/** Stable default feature order (module scope so the selector fallback keeps a
+ *  constant reference and doesn't trigger re-render loops). */
+const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclub', 'ai'];
 
 /**
  * Convert hex color to rgba with opacity for light tints
@@ -22,12 +27,20 @@ function hexToRgba(hex: string, alpha: number): string {
 }
 
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
-    const { getActiveFeature, setActiveFeature, getFeatureOrder, triggerBlogViewReset } = useAppStore();
+    // Subscribe only to the actions (stable) plus the reactive slices this
+    // component actually reads (this service's active feature + custom order),
+    // instead of the whole store.
+    const { setActiveFeature, triggerBlogViewReset } = useAppStore(
+        useShallow((s) => ({
+            setActiveFeature: s.setActiveFeature,
+            triggerBlogViewReset: s.triggerBlogViewReset,
+        }))
+    );
+    const activeFeature = useAppStore((s) => s.activeFeatures[service] || 'messages');
+    const featureOrder = useAppStore((s) => s.featureOrders[service] || DEFAULT_FEATURE_ORDER);
     const { isServiceConnected, checkAuth, isServiceDisconnected } = useAuth();
     const [loginModal, setLoginModal] = useState<{ featureId: FeatureId } | null>(null);
 
-    const activeFeature = getActiveFeature(service);
-    const featureOrder = getFeatureOrder(service);
     const availableFeatures = getAvailableFeatures(service);
     const primaryColor = getServicePrimaryColor(service);
 

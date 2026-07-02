@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImageOff } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 
@@ -30,6 +30,10 @@ export const SafeImage: React.FC<SafeImageProps> = ({
     fallbackText,
 }) => {
     const [hasError, setHasError] = useState(false);
+
+    // Reset the error flag when the source changes, so a single 404 doesn't
+    // latch the fallback for every later src.
+    useEffect(() => setHasError(false), [src]);
 
     if (hasError) {
         return (

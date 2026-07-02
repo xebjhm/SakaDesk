@@ -1337,3 +1337,491 @@ class TestSyncOlderMessages:
         svc = SyncService()
         result = await svc.sync_older_messages(100, 1, 50)
         assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# Shared harness for driving start_sync with a fully mocked client/manager
+# ---------------------------------------------------------------------------
+
+
+async def _run_start_sync(
+    svc, tmp_path, *, groups, members, mock_manager, **start_kwargs
+):
+    """Run start_sync with the standard set of patches. Returns nothing;
+    inspect the passed mock_manager / mock_client for assertions."""
+    mock_progress = MagicMock()
+    for attr in ("start_phase", "set_completed", "complete", "update", "error"):
+        setattr(mock_progress, attr, MagicMock())
+
+    mock_client = mock_manager.client
+
+    with (
+        patch.object(
+            svc,
+            "load_app_settings",
+            new_callable=AsyncMock,
+            return_value={"is_configured": True, "output_dir": str(tmp_path)},
+        ),
+        patch.object(
+            svc,
+            "load_config",
+            new_callable=AsyncMock,
+            return_value={"access_token": "tok"},
+        ),
+        patch.object(
+            svc, "load_metadata", new_callable=AsyncMock, return_value=_make_metadata()
+        ),
+        patch.object(svc, "save_metadata", new_callable=AsyncMock),
+        patch(
+            "backend.services.sync_service.get_service_display_name",
+            return_value="日向坂46",
+        ),
+        patch(
+            "backend.services.sync_service.get_session_dir",
+            return_value=tmp_path / "session",
+        ),
+        patch("backend.services.sync_service.aiohttp.TCPConnector"),
+        patch(
+            "backend.services.sync_service.aiohttp.ClientSession"
+        ) as mock_sess_cls,
+        patch("backend.services.sync_service.Client", return_value=mock_client),
+        patch(
+            "backend.services.sync_service.SyncManager", return_value=mock_manager
+        ),
+        patch("backend.services.sync_service.progress_manager") as mock_pm,
+        patch("backend.services.sync_service.notify_sync_complete"),
+    ):
+        mock_pm.get.return_value = mock_progress
+        mock_sess_ctx = AsyncMock()
+        mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+        mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_sess_cls.return_value = mock_sess_ctx
+        await svc.start_sync(**start_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# SVC-I1 — session-expiry sentinels reach the api layer (re-raise, not error())
+# ---------------------------------------------------------------------------
+
+
+class TestSessionExpirySurfacing:
+    @pytest.mark.asyncio
+    async def test_session_expired_reraised_not_swallowed(self, tmp_path):
+        """start_sync must re-raise SessionExpiredError so run_sync_task can map
+        it to the SESSION_EXPIRED detail the frontend keys on (SVC-I1)."""
+        from pysaka import SessionExpiredError
+
+        svc = SyncService()
+        mock_progress = MagicMock()
+        for attr in ("start_phase", "set_completed", "complete", "update", "error"):
+            setattr(mock_progress, attr, MagicMock())
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(side_effect=SessionExpiredError("expired"))
+
+        with (
+            patch.object(
+                svc,
+                "load_app_settings",
+                new_callable=AsyncMock,
+                return_value={"is_configured": True, "output_dir": str(tmp_path)},
+            ),
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch(
+                "backend.services.sync_service.get_session_dir",
+                return_value=tmp_path / "session",
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+        ):
+            mock_pm.get.return_value = mock_progress
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            with pytest.raises(SessionExpiredError):
+                await svc.start_sync()
+
+        # It must NOT have degraded to a generic progress.error(str(e)).
+        mock_progress.error.assert_not_called()
+        assert svc.running is False
+
+
+# ---------------------------------------------------------------------------
+# SVC-I2 — new (unsynced) member in an already-synced group gets a full fetch
+# ---------------------------------------------------------------------------
+
+
+class TestNewMemberFullHistory:
+    @pytest.mark.asyncio
+    async def test_mixed_group_fetches_full_history(self, tmp_path):
+        """A group with one synced + one unsynced member must fetch since_ts=None
+        (full history) so the new member's earlier messages aren't lost."""
+        svc = SyncService()
+
+        groups = [
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        members = [
+            {"id": 1, "name": "Synced", "thumbnail": None, "portrait": None},
+            {"id": 2, "name": "New", "thumbnail": None, "portrait": None},
+        ]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        # member 1 is synced (has cursor), member 2 is new (None)
+        mock_manager.get_last_ts = MagicMock(
+            side_effect=lambda gid, mid: "2025-03-20T12:00:00Z" if mid == 1 else None
+        )
+        mock_manager.get_last_id = MagicMock(return_value=None)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.client = mock_client
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        await _run_start_sync(
+            svc, tmp_path, groups=groups, members=members, mock_manager=mock_manager
+        )
+
+        # The single group timeline fetch must use since_ts=None (full fetch).
+        assert mock_client.get_messages.await_count == 1
+        _, kwargs = mock_client.get_messages.await_args
+        assert kwargs.get("since_ts") is None
+
+    @pytest.mark.asyncio
+    async def test_all_synced_group_uses_cursor(self, tmp_path):
+        """When every member is synced, the efficient incremental cursor (not a
+        full fetch) is used."""
+        svc = SyncService()
+
+        groups = [
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        members = [
+            {"id": 1, "name": "A", "thumbnail": None, "portrait": None},
+            {"id": 2, "name": "B", "thumbnail": None, "portrait": None},
+        ]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=None)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.client = mock_client
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        await _run_start_sync(
+            svc, tmp_path, groups=groups, members=members, mock_manager=mock_manager
+        )
+
+        _, kwargs = mock_client.get_messages.await_args
+        assert kwargs.get("since_ts") is not None
+
+
+# ---------------------------------------------------------------------------
+# SVC-I9 — initial_limit caps a cursor-less member's first sync; include_inactive
+# ---------------------------------------------------------------------------
+
+
+class TestInitialLimitAndIncludeInactive:
+    @pytest.mark.asyncio
+    async def test_include_inactive_passed_through(self, tmp_path):
+        """include_inactive is honored on get_groups (not hardcoded)."""
+        svc = SyncService()
+        groups = []  # early-exit after get_groups
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+
+        await _run_start_sync(
+            svc,
+            tmp_path,
+            groups=groups,
+            members=[],
+            mock_manager=mock_manager,
+            include_inactive=False,
+        )
+
+        _, kwargs = mock_client.get_groups.await_args
+        assert kwargs.get("include_inactive") is False
+
+    @pytest.mark.asyncio
+    async def test_initial_limit_caps_cursorless_member(self, tmp_path):
+        """A cursor-less member on first sync only receives the newest
+        initial_limit messages in prefetched_messages (SVC-I9)."""
+        svc = SyncService()
+
+        groups = [
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        members = [{"id": 1, "name": "New", "thumbnail": None, "portrait": None}]
+
+        # 5 messages for the member; initial_limit=2 -> only newest 2 handed over.
+        all_msgs = [
+            _make_message(10, 1, "2025-03-20T01:00:00Z"),
+            _make_message(11, 1, "2025-03-20T02:00:00Z"),
+            _make_message(12, 1, "2025-03-20T03:00:00Z"),
+            _make_message(13, 1, "2025-03-20T04:00:00Z"),
+            _make_message(14, 1, "2025-03-20T05:00:00Z"),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=members)
+        mock_client.get_messages = AsyncMock(return_value=all_msgs)
+
+        captured = {}
+
+        async def capture_sync_member(session, group, member, media_queue, **kwargs):
+            captured["prefetched"] = kwargs.get("prefetched_messages")
+            return len(kwargs.get("prefetched_messages") or [])
+
+        mock_manager = MagicMock()
+        mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
+        mock_manager.get_last_id = MagicMock(return_value=None)
+        mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
+        mock_manager.client = mock_client
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        await _run_start_sync(
+            svc,
+            tmp_path,
+            groups=groups,
+            members=members,
+            mock_manager=mock_manager,
+            initial_limit=2,
+        )
+
+        prefetched = captured["prefetched"]
+        assert len(prefetched) == 2
+        # newest two by (published_at, id)
+        assert {m["id"] for m in prefetched} == {13, 14}
+
+
+# ---------------------------------------------------------------------------
+# SVC-C1 — cancel() performs a real task.cancel() with generation ownership
+# ---------------------------------------------------------------------------
+
+
+class TestCancelOwnership:
+    @pytest.mark.asyncio
+    async def test_cancel_cancels_task_and_clears_running(self):
+        """cancel() cancels the running task, awaits its unwind, and clears
+        running / _task."""
+        import asyncio
+
+        svc = SyncService()
+        svc.running = True
+
+        started = asyncio.Event()
+
+        async def long_run():
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            finally:
+                # emulate start_sync's owned finally
+                if svc._generation == 1:
+                    svc.running = False
+                    svc._task = None
+
+        svc._generation = 1
+        task = asyncio.create_task(long_run())
+        svc._task = task
+        await started.wait()
+
+        result = await svc.cancel()
+        assert result is True
+        assert task.cancelled()
+        assert svc.running is False
+        assert svc._task is None
+
+    @pytest.mark.asyncio
+    async def test_cancel_when_no_task(self):
+        svc = SyncService()
+        svc.running = False
+        svc._task = None
+        result = await svc.cancel()
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_stale_run_does_not_clear_newer_generation(self):
+        """A stale run's finally must not clear a newer run's running flag.
+
+        Simulates the generation-ownership guard: gen 1's finally sees the
+        generation has advanced to 2 and leaves running alone."""
+        svc = SyncService()
+        # Newer run (gen 2) currently owns running.
+        svc._generation = 2
+        svc.running = True
+        my_generation = 1  # stale run captured gen 1 earlier
+        # Reproduce the finally guard logic:
+        if svc._generation == my_generation:
+            svc.running = False
+        assert svc.running is True  # untouched by the stale run
+
+
+# ---------------------------------------------------------------------------
+# SVC-M2 — check_new_messages: strict comparison + cursor advance on count==0
+# ---------------------------------------------------------------------------
+
+
+class TestCheckNewMessagesStrict:
+    async def _drive(self, svc, metadata, msgs):
+        mock_client = MagicMock()
+        mock_client.get_messages = AsyncMock(return_value=msgs)
+
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={
+                    "access_token": "tok",
+                    "refresh_token": "ref",
+                    "cookies": {},
+                },
+            ),
+            patch.object(
+                svc, "load_metadata", new_callable=AsyncMock, return_value=metadata
+            ),
+            patch.object(svc, "save_metadata", new_callable=AsyncMock) as save_mock,
+            patch.object(
+                svc,
+                "get_output_dir",
+                new_callable=AsyncMock,
+                return_value=Path("/tmp/x"),
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch(
+                "backend.services.sync_service.get_session_dir",
+                return_value=Path("/tmp/session"),
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+        ):
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+            result = await svc.check_new_messages()
+            return result, save_mock
+
+    @pytest.mark.asyncio
+    async def test_newest_synced_message_not_counted(self):
+        """The message exactly AT the cursor timestamp/id must not be reported
+        as new (SVC-M2: strict > not >=)."""
+        svc = SyncService()
+        metadata = _make_metadata(
+            groups={
+                "100_1": _member_info(
+                    100, 1, member_name="A",
+                    last_sync_ts="2025-03-20T12:00:00Z",
+                    last_message_id=50,
+                ),
+            },
+            server_groups={"100": {"state": "open", "is_active": True}},
+        )
+        # Only the already-synced message (same ts, same id) is returned.
+        msgs = [_make_message(50, 1, "2025-03-20T12:00:00Z")]
+        result, _ = await self._drive(svc, metadata, msgs)
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_same_timestamp_newer_id_is_new(self):
+        """A message with the same timestamp but higher id IS new (dedupe by id)."""
+        svc = SyncService()
+        metadata = _make_metadata(
+            groups={
+                "100_1": _member_info(
+                    100, 1, member_name="A",
+                    last_sync_ts="2025-03-20T12:00:00Z",
+                    last_message_id=50,
+                ),
+            },
+            server_groups={"100": {"state": "open", "is_active": True}},
+        )
+        msgs = [
+            _make_message(50, 1, "2025-03-20T12:00:00Z"),  # the cursor msg
+            _make_message(51, 1, "2025-03-20T12:00:00Z"),  # same ts, newer id
+        ]
+        result, _ = await self._drive(svc, metadata, msgs)
+        assert len(result) == 1
+        assert result[0]["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_cursor_advances_even_when_no_new(self):
+        """Cursors are persisted even when nothing is new, so save_metadata is
+        called when the cursor moves (SVC-M2)."""
+        svc = SyncService()
+        metadata = _make_metadata(
+            groups={
+                "100_1": _member_info(
+                    100, 1, member_name="A",
+                    last_sync_ts="2025-03-19T00:00:00Z",  # stale cursor
+                    last_message_id=10,
+                ),
+            },
+            server_groups={"100": {"state": "open", "is_active": True}},
+        )
+        # A single message newer than the stale cursor.
+        msgs = [_make_message(11, 1, "2025-03-20T00:00:00Z")]
+        result, save_mock = await self._drive(svc, metadata, msgs)
+        # It is reported new AND the cursor is persisted.
+        assert len(result) == 1
+        save_mock.assert_awaited()

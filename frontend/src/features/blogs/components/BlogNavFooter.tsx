@@ -18,6 +18,17 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
     // Keyboard navigation
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Don't navigate the reader when the user is typing in a field
+            // (Search/Settings inputs) or when another handler already consumed
+            // the event.
+            if (e.defaultPrevented) return;
+            const target = e.target as HTMLElement | null;
+            if (target) {
+                const tag = target.tagName;
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) {
+                    return;
+                }
+            }
             if (e.key === 'ArrowLeft' && prevBlog) {
                 onPrev();
             } else if (e.key === 'ArrowRight' && nextBlog) {

@@ -4,6 +4,7 @@ import { ServiceRail } from './ServiceRail';
 import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
@@ -31,7 +32,14 @@ export const Layout: React.FC<LayoutProps> = ({
     blogBackupEnabled,
 }) => {
     const { t } = useTranslation();
-    const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
+    const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore(
+        useShallow((s) => ({
+            activeService: s.activeService,
+            setActiveService: s.setActiveService,
+            selectedServices: s.selectedServices,
+            getServiceOrder: s.getServiceOrder,
+        }))
+    );
 
     // Sort selected services by global display order
     const serviceOrder = getServiceOrder();

@@ -166,6 +166,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
 
+    // Clear cached node maps when switching tabs — the previous tab's nodes are
+    // unmounted and their ref callbacks may not all fire with null, so drop them
+    // wholesale to avoid retaining detached DOM.
+    useEffect(() => {
+        monthRefs.current.clear();
+        itemRefs.current.clear();
+    }, [activeTab]);
+
     // Clipboard shortcut for detail view — active when a photo/video is selected
     const selectedMediaUrl = selectedMedia?.media_file
         ? (serviceId
@@ -448,6 +456,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         key={group.key}
                         ref={(el) => {
                             if (el) monthRefs.current.set(group.key, el);
+                            else monthRefs.current.delete(group.key);
                         }}
                     >
                         {/* Month header - sticky below tabs (top-12 = tabs height) */}
@@ -476,6 +485,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                             onClick={() => setSelectedMedia(item)}
                                             anchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
+                                                else itemRefs.current.delete(dateKey);
                                             } : undefined}
                                         />
                                     );
@@ -487,6 +497,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                         key={item.id}
                                         ref={isFirstOfDate ? (el) => {
                                             if (el) itemRefs.current.set(dateKey, el);
+                                            else itemRefs.current.delete(dateKey);
                                         } : undefined}
                                         className="aspect-square"
                                     >
@@ -545,6 +556,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             key={group.key}
                             ref={(el) => {
                                 if (el) monthRefs.current.set(group.key, el);
+                                else monthRefs.current.delete(group.key);
                             }}
                         >
                             {/* Month header - sticky below tabs (top-12 = tabs height) */}
@@ -577,6 +589,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                             accentColorLight={theme.modals.accentColorLight}
                                             dateAnchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
+                                                else itemRefs.current.delete(dateKey);
                                             } : undefined}
                                         />
                                     );

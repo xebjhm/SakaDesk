@@ -20,8 +20,8 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     isInitialSyncing,
     blogBackupEnabled,
 }) => {
-    const { getActiveFeature } = useAppStore();
-    const activeFeature = getActiveFeature(service);
+    // Subscribe only to this service's active feature slice, not the whole store.
+    const activeFeature = useAppStore((s) => s.activeFeatures[service] || 'messages');
 
     const renderFeature = () => {
         switch (activeFeature) {

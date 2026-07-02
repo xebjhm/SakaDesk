@@ -85,6 +85,40 @@ def _redact_nickname(text: str, nickname: Optional[str]) -> str:
     return text.replace(nickname, "[REDACTED]")
 
 
+# Patterns for token-like / bearer / JWT / long secret strings. Ordered so the
+# more specific patterns run first. Kept module-level so they compile once.
+_SECRET_PATTERNS = [
+    # JWT (header.payload.signature) — matches even when only base64url chars
+    re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    # Authorization: Bearer <token>
+    re.compile(r"[Bb]earer\s+\S+"),
+    # Long hex secrets (>= 32 hex chars, e.g. API keys / hashes)
+    re.compile(r"\b[0-9a-fA-F]{32,}\b"),
+    # Long base64/base64url secrets (>= 40 chars)
+    re.compile(r"\b[A-Za-z0-9_/+-]{40,}={0,2}\b"),
+]
+
+
+def _scrub_secrets(text: str) -> str:
+    """Scrub token-like / bearer / JWT / long secret strings from log text.
+
+    Applied on top of path/nickname redaction so leaked credentials never reach
+    the diagnostics or bug-report output. Preserves surrounding context.
+    """
+    result = text
+    for pattern in _SECRET_PATTERNS:
+        result = pattern.sub("[REDACTED_SECRET]", result)
+    return result
+
+
+def scrub_log_line(line: str, username: str, nickname: Optional[str]) -> str:
+    """Full redaction for a single emitted log line: path + nickname + secrets.
+
+    Shared by the report and diagnostics endpoints (SEC-5).
+    """
+    return _scrub_secrets(_redact_path(_redact_nickname(line, nickname), username))
+
+
 def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> dict:
     """
     Smart log filtering:
@@ -104,8 +138,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
             all_lines = f.readlines()
 
         for line in all_lines[-30:]:
-            redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
-            recent.append(redacted)
+            recent.append(scrub_log_line(line.strip(), username, nickname))
 
         # Errors/warnings: prefer error.log (pre-filtered, smaller)
         error_log = log_path.parent / "error.log"
@@ -122,10 +155,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
         for line in error_lines:
             if _is_error_or_warning(line):
-                redacted = _redact_path(
-                    _redact_nickname(line.strip(), nickname), username
-                )
-                errors.append(redacted)
+                errors.append(scrub_log_line(line.strip(), username, nickname))
 
         # Deduplicate (errors that appear in recent don't need to be in both)
         recent_set = set(recent)
