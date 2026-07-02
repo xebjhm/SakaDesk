@@ -774,3 +774,121 @@ class SyncService:
         (Placeholder during architecture refactor)
         """
         return 0
+
+    async def verify_and_fix_media(self) -> dict[str, int]:
+        """Scan every member's messages.json for missing media (absent/0-byte) and
+        backfill it using fresh timeline URLs. One-click, per-service, idempotent."""
+        totals = {
+            "members": 0,
+            "checked": 0,
+            "missing": 0,
+            "repaired": 0,
+            "failed": 0,
+            "still_missing": 0,
+        }
+        if self.running:
+            return totals
+        self.running = True
+        progress = progress_manager.get(self._service)
+        try:
+            app_settings = await self.load_app_settings()
+            self.output_dir = Path(
+                app_settings.get("output_dir", str(get_default_output_dir()))
+            )
+            service_display = get_service_display_name(self._service)
+            self.service_data_dir = self.output_dir / service_display
+            self.metadata_file = self.service_data_dir / "sync_metadata.json"
+            messages_root = self.service_data_dir / "messages"
+
+            progress.reset()
+            progress.start_phase("verifying", "Verifying", 1, 0, "members")
+
+            if not messages_root.exists():
+                progress.complete()
+                progress.set_result(totals)
+                return totals
+
+            connector = aiohttp.TCPConnector(limit=20)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                client = await self._authenticated_client(session)
+                if self.manager is None:
+                    self.manager = SyncManager(client, self.service_data_dir)
+                manager = self.manager
+                assert manager is not None  # narrowed by the check above
+
+                # Phase 1: offline scan, group gaps by group id.
+                gaps_by_group: dict[int, list[tuple[Path, list]]] = defaultdict(list)
+                for group_dir in sorted(
+                    p for p in messages_root.iterdir() if p.is_dir()
+                ):
+                    try:
+                        gid = int(group_dir.name.split(" ", 1)[0])
+                    except (ValueError, IndexError):
+                        continue
+                    for member_dir in sorted(
+                        p for p in group_dir.iterdir() if p.is_dir()
+                    ):
+                        if not (member_dir / "messages.json").exists():
+                            continue
+                        totals["members"] += 1
+                        scan = manager.scan_member_media(member_dir)
+                        totals["checked"] += scan["checked"]
+                        if scan["missing"]:
+                            totals["missing"] += len(scan["missing"])
+                            gaps_by_group[gid].append((member_dir, scan["missing"]))
+                        progress.update(1, detail=f"{member_dir.name}")
+
+                # Phase 2: per-group fresh timeline fetch + reconcile.
+                if totals["missing"] == 0:
+                    progress.complete()
+                    progress.set_result(totals)
+                    return totals
+
+                progress.start_phase(
+                    "repairing", "Repairing Media", 2, totals["missing"], "files"
+                )
+                done = 0
+                for gid, members in gaps_by_group.items():
+                    all_ts = [d["timestamp"] for _, miss in members for d in miss]
+                    if any(not ts for ts in all_ts):
+                        since_ts: Optional[str] = (
+                            None  # some gap has no ts -> full history
+                        )
+                    else:
+                        earliest = min(all_ts)
+                        try:
+                            dt = datetime.fromisoformat(
+                                earliest.replace("Z", "+00:00")
+                            ) - timedelta(seconds=300)
+                            since_ts = dt.isoformat().replace("+00:00", "Z")
+                        except (ValueError, TypeError):
+                            since_ts = None
+                    timeline = await manager.client.get_messages(
+                        session, gid, since_ts=since_ts
+                    )
+                    for member_dir, missing in members:
+                        base = done
+
+                        async def _cb(c, t, _base=base):
+                            progress.set_completed(
+                                _base + c, detail=f"{_base + c:,} files"
+                            )
+
+                        report = await manager.reconcile_member_media(
+                            session,
+                            member_dir,
+                            missing,
+                            timeline,
+                            progress_callback=_cb,
+                        )
+                        done += report["repaired"] + report["failed"]
+                        totals["repaired"] += report["repaired"]
+                        totals["failed"] += report["failed"]
+                        totals["still_missing"] += report["still_missing"]
+
+            progress.complete()
+            progress.set_result(totals)
+            logger.info("verify_complete", service=self._service, **totals)
+            return totals
+        finally:
+            self.running = False
