@@ -416,3 +416,30 @@ class TestRunSyncTask:
                 asyncio.run(run_sync_task("hinatazaka46", False, False))
 
         mock_progress.error.assert_called_once_with("something broke")
+
+
+# ---------------------------------------------------------------------------
+# POST /api/sync/verify
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyMedia:
+    def test_verify_endpoint_starts(self):
+        """Starting verify for a valid, non-running service should return 200."""
+        with patch("backend.api.sync.get_sync_service") as mock_get:
+            mock_svc = MagicMock()
+            mock_svc.running = False
+            mock_get.return_value = mock_svc
+
+            with patch("backend.api.sync.asyncio.create_task"):
+                response = client.post("/api/sync/verify?service=hinatazaka46")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "started"
+        assert data["service"] == "hinatazaka46"
+
+    def test_verify_endpoint_rejects_bad_service(self):
+        """Verify endpoint should reject invalid services."""
+        response = client.post("/api/sync/verify?service=not_a_service")
+        assert response.status_code == 400
