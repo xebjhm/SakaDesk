@@ -2,6 +2,7 @@
 import React from 'react';
 import { useAppStore } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
+import { AiFeature } from '../../features/ai';
 import { InlineSyncView } from './InlineSyncView';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
@@ -48,14 +49,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
                     </div>
                 );
             case 'ai':
-                return (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">AI Agent Feature</p>
-                            <p className="text-sm">Coming soon...</p>
-                        </div>
-                    </div>
-                );
+                return <AiFeature />;
             default:
                 return messagesContent;
         }

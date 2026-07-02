@@ -424,6 +424,16 @@
     "firstSyncHint": "初回は少し時間がかかる場合があります",
     "selectService": "サービスを選択してください"
   },
+  "ai": {
+    "title": "AIアシスタント",
+    "welcome": "ブログやメッセージについて何でも聞いてください。引用元付きで回答します。",
+    "placeholder": "質問を入力...",
+    "send": "送信",
+    "thinking": "考え中…",
+    "verifying": "情報源を確認中…",
+    "noEvidence": "同期済みのコンテンツから回答が見つかりませんでした。",
+    "sourceLabel": "情報源"
+  },
   "voicePlayer": {
     "speed": "再生速度",
     "skipBack": "5秒戻る (←)",

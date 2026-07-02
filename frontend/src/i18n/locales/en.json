@@ -424,6 +424,16 @@
     "firstSyncHint": "This may take a moment for the first time",
     "selectService": "Please select a service"
   },
+  "ai": {
+    "title": "AI Assistant",
+    "welcome": "Ask me anything about your synced blogs and messages — I'll answer with cited sources.",
+    "placeholder": "Ask a question...",
+    "send": "Send",
+    "thinking": "Thinking…",
+    "verifying": "Verifying sources…",
+    "noEvidence": "I couldn't find anything in your synced content to answer that.",
+    "sourceLabel": "Source"
+  },
   "voicePlayer": {
     "speed": "Speed",
     "skipBack": "Back 5 seconds (←)",

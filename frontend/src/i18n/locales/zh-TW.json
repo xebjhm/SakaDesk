@@ -424,6 +424,16 @@
     "firstSyncHint": "首次同步可能需要一些時間",
     "selectService": "請選擇服務"
   },
+  "ai": {
+    "title": "AI 助理",
+    "welcome": "問我任何關於已同步 Blog 和訊息的問題，我會附上引用來源作答。",
+    "placeholder": "輸入問題...",
+    "send": "傳送",
+    "thinking": "思考中…",
+    "verifying": "正在核實來源…",
+    "noEvidence": "在已同步的內容中找不到相關答案。",
+    "sourceLabel": "來源"
+  },
   "voicePlayer": {
     "speed": "播放速度",
     "skipBack": "倒退 5 秒 (←)",
