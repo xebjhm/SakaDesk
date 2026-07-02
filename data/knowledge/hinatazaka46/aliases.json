@@ -1,0 +1,260 @@
+{
+  "meta": {
+    "group": "hinatazaka46",
+    "source": "call-name matrix + hinatafan combo guide",
+    "source_date": "2025-05-26",
+    "note": "Distinctive nicknames keyed by canonical member id. The engine unions these with auto-derived seed aliases (kanji/kana/romaji/given-name)."
+  },
+  "members": {
+    "hinatazaka46:12": {
+      "canonical": "金村 美玖",
+      "blog_id": "12",
+      "aliases": [
+        "みく"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:14": {
+      "canonical": "小坂 菜緒",
+      "blog_id": "14",
+      "aliases": [
+        "なお"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:21": {
+      "canonical": "上村 ひなの",
+      "blog_id": "21",
+      "aliases": [
+        "ひなの"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:22": {
+      "canonical": "髙橋 未来虹",
+      "blog_id": "22",
+      "aliases": [
+        "みくにん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:24": {
+      "canonical": "山口 陽世",
+      "blog_id": "24",
+      "aliases": [
+        "ぱる"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:29": {
+      "canonical": "正源司 陽子",
+      "blog_id": "29",
+      "aliases": [
+        "しょげ",
+        "源さん",
+        "陽子姉さん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:31": {
+      "canonical": "平尾 帆夏",
+      "blog_id": "31",
+      "aliases": [
+        "ほー"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:33": {
+      "canonical": "藤嶌 果歩",
+      "blog_id": "33",
+      "aliases": [
+        "かほ"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:34": {
+      "canonical": "宮地 すみれ",
+      "blog_id": "34",
+      "aliases": [
+        "りなし"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:35": {
+      "canonical": "山下 葉留花",
+      "blog_id": "35",
+      "aliases": [
+        "はるか"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:37": {
+      "canonical": "大田 美月",
+      "blog_id": "37",
+      "aliases": [
+        "ぴんくせんせい",
+        "みづき",
+        "みづゅ",
+        "ピンク先生",
+        "大田",
+        "美月",
+        "美月しゃん",
+        "美月ちゃん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:38": {
+      "canonical": "大野 愛実",
+      "blog_id": "38",
+      "aliases": [
+        "まいなみん",
+        "まなお",
+        "まなみぃ",
+        "まなみぃん",
+        "まなみいい",
+        "まなみさん",
+        "まなみん",
+        "まなみんいい",
+        "ウーパールーパー",
+        "マナ・プールズ",
+        "大野",
+        "大野ちゃん",
+        "大野愛実さん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:39": {
+      "canonical": "片山 紗希",
+      "blog_id": "39",
+      "aliases": [
+        "うさき",
+        "さき",
+        "さきさん",
+        "さきてぃ",
+        "さきてい",
+        "紗希"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:40": {
+      "canonical": "蔵盛 妃那乃",
+      "blog_id": "40",
+      "aliases": [
+        "くらもり",
+        "ひな",
+        "ひなぁのしゃん",
+        "ひなしゃん",
+        "ひなちゃん",
+        "ひなの",
+        "ひなのしゃん",
+        "ひなのん",
+        "妃那乃"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:41": {
+      "canonical": "坂井 新奈",
+      "blog_id": "41",
+      "aliases": [
+        "にぃたん",
+        "にぃな",
+        "にいたん",
+        "にいな",
+        "にいなあ",
+        "にーたん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:42": {
+      "canonical": "佐藤 優羽",
+      "blog_id": "42",
+      "aliases": [
+        "さとうゆ",
+        "さとゆ",
+        "さとゆ〜",
+        "さーとぅゆ",
+        "しゃーべい先生",
+        "ゆう",
+        "ゆうさん",
+        "ゆうたん",
+        "ゆうちゃん",
+        "ゆうゆう",
+        "ゆさん",
+        "ゆたん",
+        "ゆたんっ",
+        "サトゥユ",
+        "優羽"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:43": {
+      "canonical": "下田 衣珠季",
+      "blog_id": "43",
+      "aliases": [
+        "いじゅき",
+        "いずき",
+        "いずきち",
+        "イズキ",
+        "下田",
+        "衣珠季"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:44": {
+      "canonical": "高井 俐香",
+      "blog_id": "44",
+      "aliases": [
+        "りかさん",
+        "りかたん",
+        "りかたんたん",
+        "高井",
+        "高井ちゃん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:45": {
+      "canonical": "鶴崎 仁香",
+      "blog_id": "45",
+      "aliases": [
+        "お姉ちゃん",
+        "にこ",
+        "にこぉしゃん",
+        "にこしゃん",
+        "にこちゃ〜ん",
+        "にこちゃん",
+        "にこぼーの",
+        "にこ姉",
+        "ぼーの",
+        "世界遺産先生",
+        "仁香ちゃん",
+        "鶴崎さん"
+      ],
+      "origin": "curated"
+    },
+    "hinatazaka46:46": {
+      "canonical": "松尾 桜",
+      "blog_id": "46",
+      "aliases": [
+        "おさく",
+        "おしゃく",
+        "おしゃくさん",
+        "おしゃくしゃん",
+        "おしゃくら",
+        "さく",
+        "さくちゃん",
+        "さくてぃん",
+        "さくら",
+        "さくらぶり〜",
+        "さくらぶりぃ〜",
+        "さくらぶりー",
+        "さくラブリー",
+        "まつさく",
+        "松尾",
+        "桜",
+        "桜鰤",
+        "桜鰤ー"
+      ],
+      "origin": "curated"
+    }
+  }
+}

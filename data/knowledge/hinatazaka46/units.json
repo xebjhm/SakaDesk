@@ -1,0 +1,1091 @@
+{
+  "meta": {
+    "group": "hinatazaka46",
+    "source": "sakamichidatabase.penguinelegy.com/hinatazaka46-pairunitname/",
+    "caveat": "Automated extraction; members not on the current roster (graduated 1st-4th gen) are kept by name with canonical_id=null. Verify before relying on edge cases.",
+    "unmatched_names": [
+      "丹生明里",
+      "井口眞緒",
+      "佐々木久美",
+      "佐々木美玲",
+      "加藤史帆",
+      "宮田愛萌",
+      "富田鈴花",
+      "影山優佳",
+      "東村芽依",
+      "柿崎芽実",
+      "渡邊美穂",
+      "潮紗理菜",
+      "濱岸ひより",
+      "高本彩花",
+      "高瀬愛奈",
+      "齊藤京子"
+    ]
+  },
+  "units": [
+    {
+      "unit_name": "きくとし",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "佐々木久美",
+          "canonical_id": null
+        },
+        {
+          "name": "加藤史帆",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "としきょん",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "加藤史帆",
+          "canonical_id": null
+        },
+        {
+          "name": "齊藤京子",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "くさり",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "佐々木久美",
+          "canonical_id": null
+        },
+        {
+          "name": "潮紗理菜",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "Wささき",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "佐々木久美",
+          "canonical_id": null
+        },
+        {
+          "name": "佐々木美玲",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "あゃめぃちゃん",
+      "reading": "あめちゃん",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "高本彩花",
+          "canonical_id": null
+        },
+        {
+          "name": "東村芽依",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "いちごミルク",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "佐々木久美",
+          "canonical_id": null
+        },
+        {
+          "name": "東村芽依",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "共演NGコンビ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "加藤史帆",
+          "canonical_id": null
+        },
+        {
+          "name": "高瀬愛奈",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "キャン共",
+      "reading": "きゃんとも",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "井口眞緒",
+          "canonical_id": null
+        },
+        {
+          "name": "潮紗理菜",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "めみふぃ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "柿崎芽実",
+          "canonical_id": null
+        },
+        {
+          "name": "高瀬愛奈",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "わくわくピーナッツ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        },
+        {
+          "name": "渡邊美穂",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "なおみく",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        }
+      ],
+      "notes": "同い年ペア；15thシングルのセンターユニット"
+    },
+    {
+      "unit_name": "おみそしるコンビ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "丹生明里",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "花ちゃんズ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "富田鈴花",
+          "canonical_id": null
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": "「まさか 偶然…」を演奏"
+    },
+    {
+      "unit_name": "ゆばレタ",
+      "reading": "ゆばとレタス",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "丹生明里",
+          "canonical_id": null
+        },
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        }
+      ],
+      "notes": "埼玉近隣ペア"
+    },
+    {
+      "unit_name": "なおこの",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "ひなひよ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "濱岸ひより",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "わんだっふる",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "富田鈴花",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "納豆巻きコンビ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": "食の好みに基づく"
+    },
+    {
+      "unit_name": "MM姉妹",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "宮田愛萌",
+          "canonical_id": null
+        },
+        {
+          "name": "森本 茉莉",
+          "canonical_id": "hinatazaka46:23"
+        }
+      ],
+      "notes": "姓と名の両方がMで始まる"
+    },
+    {
+      "unit_name": "なおみほ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "渡邊美穂",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "まりりん&るびー",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "富田鈴花",
+          "canonical_id": null
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": "ドラマ「DASADA」ユニット"
+    },
+    {
+      "unit_name": "ひなこの",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": "元：鎌クローバー"
+    },
+    {
+      "unit_name": "バチバチコンビ",
+      "reading": "ぱるみくにん",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "髙橋 未来虹",
+          "canonical_id": "hinatazaka46:22"
+        },
+        {
+          "name": "山口 陽世",
+          "canonical_id": "hinatazaka46:24"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "相棒コンビ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        },
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        }
+      ],
+      "notes": "同い年ペア"
+    },
+    {
+      "unit_name": "源平合戦",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "正源司 陽子",
+          "canonical_id": "hinatazaka46:29"
+        },
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "しょげかほ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "正源司 陽子",
+          "canonical_id": "hinatazaka46:29"
+        },
+        {
+          "name": "藤嶌 果歩",
+          "canonical_id": "hinatazaka46:33"
+        }
+      ],
+      "notes": "同い年ペア"
+    },
+    {
+      "unit_name": "はるおか",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        },
+        {
+          "name": "平岡 海月",
+          "canonical_id": "hinatazaka46:32"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "みつきら",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "竹内 希来里",
+          "canonical_id": "hinatazaka46:30"
+        },
+        {
+          "name": "平岡 海月",
+          "canonical_id": "hinatazaka46:32"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "りおなな",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "清水 理央",
+          "canonical_id": "hinatazaka46:28"
+        },
+        {
+          "name": "小西 夏菜実",
+          "canonical_id": "hinatazaka46:27"
+        }
+      ],
+      "notes": "同い年ペア"
+    },
+    {
+      "unit_name": "渡辺莉奈親衛隊",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "平岡 海月",
+          "canonical_id": "hinatazaka46:32"
+        },
+        {
+          "name": "宮地 すみれ",
+          "canonical_id": "hinatazaka46:34"
+        }
+      ],
+      "notes": "4期生最年少メンバーを支援"
+    },
+    {
+      "unit_name": "能ある少女はスカート揺らす",
+      "reading": "能スカ",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "宮地 すみれ",
+          "canonical_id": "hinatazaka46:34"
+        },
+        {
+          "name": "渡辺 莉奈",
+          "canonical_id": "hinatazaka46:36"
+        }
+      ],
+      "notes": "姉妹のように親しいペア"
+    },
+    {
+      "unit_name": "なおみくにん",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "髙橋 未来虹",
+          "canonical_id": "hinatazaka46:22"
+        }
+      ],
+      "notes": "2期生×3期生"
+    },
+    {
+      "unit_name": "ドリアンミルク",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "佐々木久美",
+          "canonical_id": null
+        },
+        {
+          "name": "富田鈴花",
+          "canonical_id": null
+        }
+      ],
+      "notes": "1期生×2期生"
+    },
+    {
+      "unit_name": "なおなの",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "上村 ひなの",
+          "canonical_id": "hinatazaka46:21"
+        }
+      ],
+      "notes": "2期生×3期生"
+    },
+    {
+      "unit_name": "やまはる",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "山口 陽世",
+          "canonical_id": "hinatazaka46:24"
+        },
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        }
+      ],
+      "notes": "3期生×4期生"
+    },
+    {
+      "unit_name": "代官山姉妹",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "潮紗理菜",
+          "canonical_id": null
+        },
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        }
+      ],
+      "notes": "1期生×2期生"
+    },
+    {
+      "unit_name": "チーム鳥取",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "山口 陽世",
+          "canonical_id": "hinatazaka46:24"
+        },
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        }
+      ],
+      "notes": "同じ県・高校・学年"
+    },
+    {
+      "unit_name": "busines's",
+      "reading": "びじねぇず",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "影山優佳",
+          "canonical_id": null
+        },
+        {
+          "name": "宮田愛萌",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "自然姉妹",
+      "reading": "ネイチャーズ",
+      "kind": "pair",
+      "members": [
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        },
+        {
+          "name": "森本 茉莉",
+          "canonical_id": "hinatazaka46:23"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "ハタチズ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "影山優佳",
+          "canonical_id": null
+        },
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        }
+      ],
+      "notes": "1期生×2期生、2001年生まれ"
+    },
+    {
+      "unit_name": "まなまなコンビ",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "高瀬愛奈",
+          "canonical_id": null
+        },
+        {
+          "name": "宮田愛萌",
+          "canonical_id": null
+        }
+      ],
+      "notes": "両メンバーの名前に「真」が含まれる"
+    },
+    {
+      "unit_name": "ファンタジー界隈",
+      "reading": null,
+      "kind": "pair",
+      "members": [
+        {
+          "name": "上村 ひなの",
+          "canonical_id": "hinatazaka46:21"
+        },
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "AB型同盟",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "井口眞緒",
+          "canonical_id": null
+        },
+        {
+          "name": "丹生明里",
+          "canonical_id": null
+        },
+        {
+          "name": "上村 ひなの",
+          "canonical_id": "hinatazaka46:21"
+        }
+      ],
+      "notes": "血液型テーマ"
+    },
+    {
+      "unit_name": "ごりごりドーナッツ",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "富田鈴花",
+          "canonical_id": null
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        },
+        {
+          "name": "渡邊美穂",
+          "canonical_id": null
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "カラーチャート",
+      "reading": "埼玉トリオ",
+      "kind": "trio",
+      "members": [
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        },
+        {
+          "name": "丹生明里",
+          "canonical_id": null
+        },
+        {
+          "name": "渡邊美穂",
+          "canonical_id": null
+        }
+      ],
+      "notes": "6thシングル曲"
+    },
+    {
+      "unit_name": "FACTORY",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "東村芽依",
+          "canonical_id": null
+        },
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "松田 好花",
+          "canonical_id": "hinatazaka46:18"
+        }
+      ],
+      "notes": "ドラマ「DASADA」ユニット"
+    },
+    {
+      "unit_name": "彩シス",
+      "reading": "あやしす",
+      "kind": "trio",
+      "members": [
+        {
+          "name": "高本彩花",
+          "canonical_id": null
+        },
+        {
+          "name": "石塚 瑶季",
+          "canonical_id": "hinatazaka46:25"
+        },
+        {
+          "name": "清水 理央",
+          "canonical_id": "hinatazaka46:28"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "wisTar",
+      "reading": "うぃすたー",
+      "kind": "trio",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "上村 ひなの",
+          "canonical_id": "hinatazaka46:21"
+        },
+        {
+          "name": "小西 夏菜実",
+          "canonical_id": "hinatazaka46:27"
+        }
+      ],
+      "notes": "平尾帆夏が特番のため制作"
+    },
+    {
+      "unit_name": "河田男前軍団",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "髙橋 未来虹",
+          "canonical_id": "hinatazaka46:22"
+        },
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "きずなーず",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "加藤史帆",
+          "canonical_id": null
+        },
+        {
+          "name": "齊藤京子",
+          "canonical_id": null
+        },
+        {
+          "name": "佐々木美玲",
+          "canonical_id": null
+        }
+      ],
+      "notes": "1期生ボーカル3人"
+    },
+    {
+      "unit_name": "3K",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        },
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        }
+      ],
+      "notes": "姓がKで始まる；14thシングル曲"
+    },
+    {
+      "unit_name": "末っ子むすび",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "正源司 陽子",
+          "canonical_id": "hinatazaka46:29"
+        },
+        {
+          "name": "藤嶌 果歩",
+          "canonical_id": "hinatazaka46:33"
+        },
+        {
+          "name": "渡辺 莉奈",
+          "canonical_id": "hinatazaka46:36"
+        }
+      ],
+      "notes": "4期生最年少ユニット；14thシングル曲"
+    },
+    {
+      "unit_name": "チョコラショコラ",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "東村芽依",
+          "canonical_id": null
+        },
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "濱岸ひより",
+          "canonical_id": null
+        }
+      ],
+      "notes": "ドラマ「声春っ!」声優ユニット"
+    },
+    {
+      "unit_name": "2002年組",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        },
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "濱岸ひより",
+          "canonical_id": null
+        }
+      ],
+      "notes": "2期生最年少；7thシングル曲"
+    },
+    {
+      "unit_name": "末っ子まりん",
+      "reading": null,
+      "kind": "trio",
+      "members": [
+        {
+          "name": "大野 愛実",
+          "canonical_id": "hinatazaka46:38"
+        },
+        {
+          "name": "坂井 新奈",
+          "canonical_id": "hinatazaka46:41"
+        },
+        {
+          "name": "高井 俐香",
+          "canonical_id": "hinatazaka46:44"
+        }
+      ],
+      "notes": "5期生最年少ユニット"
+    },
+    {
+      "unit_name": "日向坂アニメ部",
+      "reading": null,
+      "kind": "unit",
+      "members": [
+        {
+          "name": "小西 夏菜実",
+          "canonical_id": "hinatazaka46:27"
+        },
+        {
+          "name": "正源司 陽子",
+          "canonical_id": "hinatazaka46:29"
+        },
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        },
+        {
+          "name": "渡辺 莉奈",
+          "canonical_id": "hinatazaka46:36"
+        }
+      ],
+      "notes": "テレビ番組キャスト"
+    },
+    {
+      "unit_name": "日向坂バレー部",
+      "reading": null,
+      "kind": "unit",
+      "members": [
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "河田 陽菜",
+          "canonical_id": "hinatazaka46:13"
+        },
+        {
+          "name": "髙橋 未来虹",
+          "canonical_id": "hinatazaka46:22"
+        },
+        {
+          "name": "清水 理央",
+          "canonical_id": "hinatazaka46:28"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "気難6",
+      "reading": null,
+      "kind": "unit",
+      "members": [
+        {
+          "name": "金村 美玖",
+          "canonical_id": "hinatazaka46:12"
+        },
+        {
+          "name": "小坂 菜緒",
+          "canonical_id": "hinatazaka46:14"
+        },
+        {
+          "name": "小西 夏菜実",
+          "canonical_id": "hinatazaka46:27"
+        },
+        {
+          "name": "清水 理央",
+          "canonical_id": "hinatazaka46:28"
+        },
+        {
+          "name": "竹内 希来里",
+          "canonical_id": "hinatazaka46:30"
+        },
+        {
+          "name": "渡辺 莉奈",
+          "canonical_id": "hinatazaka46:36"
+        }
+      ],
+      "notes": "平岡海月が近づきやすくないと考えるメンバー"
+    },
+    {
+      "unit_name": "山口家連れ込み隊",
+      "reading": null,
+      "kind": "unit",
+      "members": [
+        {
+          "name": "山口 陽世",
+          "canonical_id": "hinatazaka46:24"
+        },
+        {
+          "name": "石塚 瑶季",
+          "canonical_id": "hinatazaka46:25"
+        },
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        },
+        {
+          "name": "竹内 希来里",
+          "canonical_id": "hinatazaka46:30"
+        }
+      ],
+      "notes": null
+    },
+    {
+      "unit_name": "はむちゃんちっく",
+      "reading": null,
+      "kind": "unit",
+      "members": [
+        {
+          "name": "上村 ひなの",
+          "canonical_id": "hinatazaka46:21"
+        },
+        {
+          "name": "森本 茉莉",
+          "canonical_id": "hinatazaka46:23"
+        },
+        {
+          "name": "平尾 帆夏",
+          "canonical_id": "hinatazaka46:31"
+        },
+        {
+          "name": "平岡 海月",
+          "canonical_id": "hinatazaka46:32"
+        },
+        {
+          "name": "山下 葉留花",
+          "canonical_id": "hinatazaka46:35"
+        }
+      ],
+      "notes": "名前がHまたはMで始まる"
+    }
+  ]
+}
