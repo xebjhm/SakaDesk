@@ -811,10 +811,10 @@ class SyncService:
             connector = aiohttp.TCPConnector(limit=20)
             async with aiohttp.ClientSession(connector=connector) as session:
                 client = await self._authenticated_client(session)
-                if self.manager is None:
-                    self.manager = SyncManager(client, self.service_data_dir)
-                manager = self.manager
-                assert manager is not None  # narrowed by the check above
+                # Always build a fresh manager with the freshly-authenticated client — never
+                # reuse a cached client whose token may have expired (mirrors start_sync).
+                manager = SyncManager(client, self.service_data_dir)
+                self.manager = manager
 
                 # Phase 1: offline scan, group gaps by group id.
                 gaps_by_group: dict[int, list[tuple[Path, list]]] = defaultdict(list)
