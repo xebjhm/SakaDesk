@@ -3,7 +3,6 @@ import { cn } from '../../../utils/classnames';
 import { Users, RefreshCw } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
 import { formatName, getShortName } from '../../../utils';
-import { getGroupChatIds } from '../../../config/groupConfig';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
@@ -148,13 +147,13 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         if (groups.length > 0) checkUnread(groups);
     }, [selectedGroupDir, readStateVersion]);
 
-    // Get group chat IDs for the current service
-    const groupChatIds = getGroupChatIds(activeService ?? null);
-
-    const isGroupChatCheck = (group: GroupInfo) => {
-        if (groupChatIds.includes(group.id)) return true;
-        return group.is_group_chat || group.member_count > 1;
-    };
+    // The backend is the single source of truth for group-vs-member
+    // classification: `is_group_chat` already folds in the verified communal
+    // channel list AND the member_count > 1 heuristic (see backend
+    // content.py GROUP_CHAT_IDS). member_count > 1 is kept only as a defensive
+    // fallback for older API responses that predate the is_group_chat field.
+    const isGroupChatCheck = (group: GroupInfo) =>
+        group.is_group_chat || group.member_count > 1;
 
     const getGroupDisplayInfo = (group: GroupInfo) => {
         const groupChat = isGroupChatCheck(group);

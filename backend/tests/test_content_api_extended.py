@@ -715,3 +715,67 @@ class TestGroupsServerUnreadCount:
             resp = client.get("/api/content/groups")
         g = next(g for g in resp.json()["groups"] if str(g["id"]) == "34")
         assert g["server_unread_count"] is None
+
+
+# ---------------------------------------------------------------------------
+# GET /api/content/groups — group-vs-member classification (FC-M13)
+# ---------------------------------------------------------------------------
+
+
+class TestGroupsClassification:
+    """
+    is_group_chat is the single source of truth for the frontend.
+
+    Ground truth (from real synced data, 2026-07-02): communal official
+    channels post from ONE account, so their on-disk sender count is 1 and
+    member_count > 1 CANNOT detect them. GROUP_CHAT_IDS is the load-bearing
+    override for exactly these single-sender communal channels (hinatazaka46
+    43, nogizaka46 45, sakurazaka46 33). These tests lock in that behavior so
+    the list is not "simplified" away.
+    """
+
+    def test_single_sender_communal_in_list_is_group_chat(self, tmp_path):
+        # id 43 is a real single-sender communal channel (日向坂46 official).
+        _build_tree(
+            tmp_path,
+            "日向坂46",
+            {"43 日向坂46": {"79 日向坂46": [{"id": 1}, {"id": 2}]}},
+        )
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "43")
+        assert g["member_count"] == 1  # count alone would misclassify as a DM
+        assert g["is_group_chat"] is True
+
+    def test_single_sender_dm_not_in_list_is_member_chat(self, tmp_path):
+        _build_tree(
+            tmp_path,
+            "日向坂46",
+            {"34 金村 美玖": {"58 金村 美玖": [{"id": 1}]}},
+        )
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "34")
+        assert g["member_count"] == 1
+        assert g["is_group_chat"] is False
+
+    def test_multi_sender_group_is_group_chat_by_count(self, tmp_path):
+        # A group NOT in GROUP_CHAT_IDS but with >1 sender must still classify as
+        # a group chat via the member_count > 1 heuristic. Uses id 9001 (absent
+        # from every override list) so this isolates the count path — an id that
+        # is also in the override list would pass even if the heuristic broke.
+        _build_tree(
+            tmp_path,
+            "日向坂46",
+            {
+                "9001 四期生ライブ": {
+                    "58 金村 美玖": [{"id": 1}],
+                    "60 小坂 菜緒": [{"id": 2}],
+                }
+            },
+        )
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups")
+        g = next(g for g in resp.json()["groups"] if str(g["id"]) == "9001")
+        assert g["member_count"] == 2
+        assert g["is_group_chat"] is True

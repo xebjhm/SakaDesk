@@ -51,8 +51,19 @@ logger = structlog.get_logger(__name__)
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
-# Group IDs that should be treated as group chat (multiple members posting),
-# keyed by service identifier to avoid cross-service collisions.
+# Communal (group) chat IDs, keyed by service identifier to avoid cross-service
+# collisions (group IDs are only unique within a single service's API).
+#
+# LOAD-BEARING — do not "simplify" this away in favour of member_count alone.
+# member_count here is the number of distinct on-disk *senders* (get_member_dirs),
+# NOT the API's /groups/{id}/members count. An official communal channel posts
+# from a single account, so it has one sender folder and member_count == 1;
+# `member_count > 1` therefore cannot detect it. The IDs below are the communal
+# channels verified against real synced data (2026-07-02) that need this override:
+#   hinatazaka46 43 (日向坂46), nogizaka46 45 (乃木坂46), sakurazaka46 33 (櫻坂46).
+# 79/93 (hinatazaka46) also have >1 sender so member_count catches them too; they
+# are listed for clarity. 78/70/73 are closed/future channels kept so they classify
+# correctly if they reopen (currently no synced messages → no group emitted).
 GROUP_CHAT_IDS: dict[str, set[str]] = {
     "hinatazaka46": {"43", "78", "79", "93"},
     "sakurazaka46": {"33", "73"},
