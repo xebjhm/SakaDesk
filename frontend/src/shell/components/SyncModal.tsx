@@ -70,7 +70,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                 {/* Content */}
                 <div className="p-6 space-y-5">
                     {syncProgress.state === 'complete' && syncProgress.result && (
-                        <p className="mt-2 text-xs text-gray-600">
+                        <p className="text-xs text-gray-600">
                             {syncProgress.result.missing === 0
                                 ? t('settings.verifyNoGaps')
                                 : t('settings.verifySummary', {

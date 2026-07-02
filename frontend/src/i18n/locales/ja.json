@@ -167,6 +167,8 @@
     "phaseDiscovering": "検出中",
     "phaseSyncing": "メタデータ取得中",
     "phaseDownloading": "メディアダウンロード中",
+    "phaseVerifying": "検証中",
+    "phaseRepairing": "メディア修復中",
     "pleaseWait": "お待ちください...",
     "members": "メンバー",
     "files": "ファイル",

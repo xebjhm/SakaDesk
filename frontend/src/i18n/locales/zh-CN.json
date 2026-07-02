@@ -167,6 +167,8 @@
     "phaseDiscovering": "发现中",
     "phaseSyncing": "获取元数据",
     "phaseDownloading": "下载媒体",
+    "phaseVerifying": "校验中",
+    "phaseRepairing": "修复媒体中",
     "pleaseWait": "请稍候...",
     "members": "成员",
     "files": "文件",

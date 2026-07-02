@@ -6,6 +6,7 @@
  * - Polling for sync progress updates
  * - Session expiry detection and re-authentication flow
  * - Sync state management (idle, syncing, complete, error)
+ * - Driving the verify/fix media flow (scanning for missing media and repairing gaps)
  *
  * @example
  * ```tsx
