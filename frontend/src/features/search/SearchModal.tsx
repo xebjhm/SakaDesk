@@ -10,9 +10,7 @@ import React, {
 import { Search, Loader2, Database } from 'lucide-react';
 import { Portal } from '../../core/common/Portal';
 import { useTranslation } from '../../i18n';
-import { useAppStore } from '../../store/appStore';
-import { formatName } from '../../utils';
-import { getServiceDisplayName } from '../../data/services';
+import { navigateToSource, type CitationReference } from '../../utils/navigateToSource';
 import { SearchInput } from './components/SearchInput';
 import { SearchFilterBar } from './components/SearchFilterBar';
 import { SearchResultList } from './components/SearchResultList';
@@ -259,23 +257,6 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   // ─── Navigation handler ────────────────────────────────────────────────────
   const handleNavigate = useCallback(
     (result: SearchResult) => {
-      const {
-        setActiveService,
-        setActiveFeature,
-        setSelectedConversation,
-        triggerConversationNavigation,
-        setTargetMessageId,
-        setTargetBlog,
-        activeService,
-        selectedServices,
-        setSelectedServices,
-      } = useAppStore.getState();
-
-      // Ensure the target service is in selectedServices so ServiceRail shows it
-      if (!selectedServices.includes(result.service)) {
-        setSelectedServices([...selectedServices, result.service]);
-      }
-
       // Blog search result → navigate to BlogReader
       if (result.result_type === 'blog') {
         // Extract actual matched text from snippet <mark> tags.
@@ -294,44 +275,32 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             }
           }
         }
-        setTargetBlog({
-          blogId: result.blog_id,
+        const ref: CitationReference = {
+          type: 'blog',
           service: result.service,
+          blogId: result.blog_id,
           memberId: result.member_id,
           searchQuery: query,
           matchedTerms: [...new Set(matchedTerms)],
           readingTerms: [...new Set(readingTerms)],
-        });
-        setActiveFeature(result.service, 'blogs');
-        if (activeService !== result.service) {
-          setActiveService(result.service);
-        }
+        };
+        navigateToSource(ref);
         close();
         return;
       }
 
       // Message search result → navigate to conversation
-      const serviceDisplay = getServiceDisplayName(result.service);
-      const isGroupChat = result.is_group_chat ?? false;
-
-      const path = isGroupChat
-        ? `${serviceDisplay}/messages/${result.group_id} ${result.group_name}`
-        : `${serviceDisplay}/messages/${result.group_id} ${result.group_name}/${result.member_id} ${result.member_name}`;
-
-      setSelectedConversation(result.service, {
-        path,
-        name: isGroupChat ? formatName(result.group_name) : formatName(result.member_name),
-        isGroupChat,
-      });
-      setActiveFeature(result.service, 'messages');
-      setTargetMessageId(result.message_id);
-
-      if (activeService !== result.service) {
-        setActiveService(result.service);
-      } else {
-        triggerConversationNavigation();
-      }
-
+      const ref: CitationReference = {
+        type: 'message',
+        service: result.service,
+        groupId: result.group_id,
+        groupName: result.group_name,
+        memberId: result.member_id,
+        memberName: result.member_name,
+        messageId: result.message_id,
+        isGroupChat: result.is_group_chat ?? false,
+      };
+      navigateToSource(ref);
       close();
     },
     [close, query]
