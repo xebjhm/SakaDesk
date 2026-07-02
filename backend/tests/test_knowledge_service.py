@@ -205,6 +205,11 @@ async def test_index_members_is_idempotent_via_content_hash(
     assert len(docs) == 1
     # Mention detection ran at index time and was persisted.
     assert f"{_SERVICE}:20" in docs[0].mentions
+    # `group_name` must be enriched onto the persisted MESSAGE source_ref (the
+    # deep-link citation regression guard): pysaka's `ingest_messages` never
+    # sees the `group` dict, so `_index_members_sync` fills it in from
+    # `group["name"]` before persisting.
+    assert docs[0].source_ref.group_name == group["name"]
 
 
 @pytest.mark.asyncio

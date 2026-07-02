@@ -321,7 +321,11 @@ def test_ask_e2e_over_synthetic_corpus(
     assert ref["memberId"] == _MEMBER_A_MSG_ID
     assert ref["memberName"] == _MEMBER_A_NAME
     assert "isGroupChat" in ref
-    assert "groupName" in ref
+    # Regression guard for the deep-link 404: `groupName` must be the real
+    # synced group name (matches the on-disk `"<id> <name>"` folder), not
+    # null -- a null here makes `navigateToSource` build a literal "<gid>
+    # null" path that `messages_by_path` can't resolve.
+    assert ref["groupName"] == _GROUP_NAME
 
     # --- Q2: absent-evidence question -> validator drops the hallucinated citation ---
     assert r2.status_code == 200

@@ -191,9 +191,23 @@ class KnowledgeService:
             payload = self._read_json(messages_file)
             if payload is None:
                 continue
-            docs.extend(
-                ingest_messages(payload, service, reference.registry.resolve_author)
+            member_docs = ingest_messages(
+                payload, service, reference.registry.resolve_author
             )
+            # `ingest_messages` (pysaka, source-agnostic) leaves
+            # `SourceRef.group_name` unset — it never sees the `group` dict, only
+            # `messages_file`'s payload. We hold `group["name"]` right here, so
+            # enrich each message doc's ref with it before persisting: the SSE
+            # citation's `ref.groupName` feeds the frontend's
+            # `navigateToSource` path (`"<groupId> <groupName>/..."`), which must
+            # match the on-disk sync folder name or `messages_by_path` 404s.
+            # `Document`/`SourceRef` are plain (non-frozen) dataclasses, so this
+            # mutates in place — no `dataclasses.replace` needed.
+            group_name = group["name"]
+            for doc in member_docs:
+                if doc.source_ref.kind == "message":
+                    doc.source_ref.group_name = group_name
+            docs.extend(member_docs)
         return self._persist(docs, reference)
 
     async def index_blogs_for_service(self, service: str) -> int:
