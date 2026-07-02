@@ -1154,6 +1154,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 Wire `onVerifyAndFix` / `activeService` from wherever `SettingsModal` is rendered (the same component tree that owns `useSync`). Follow the existing prop pattern (`onSaveSettings` is already threaded in the same way).
 
+- [ ] **Step 1b: Forward `result` through the poller (REQUIRED — the summary is dead without it).** In `frontend/src/shell/hooks/useSync.ts`, `pollSyncProgress` rebuilds the `SyncProgress` object field-by-field and currently drops the backend's `result`. In the `state === 'complete'` branch (grep `'complete'` / where it constructs the completed `SyncProgress`), add `result: data.result ?? null` to the constructed object so `SyncProgress.result` is actually populated for the modal to render. Verify the poll response type includes `result` (extend the response interface if needed). Without this, `progress.result` is always undefined and Step 2 renders nothing.
+
 - [ ] **Step 2: Render the summary** in the sync progress modal. Locate the component that renders `syncProgress.phase_name` / `detail` (`grep -rl "phase_name" src/shell`). When `state === 'complete'` and `result` is present, add a localized summary line:
 
 ```tsx
