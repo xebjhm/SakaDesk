@@ -83,7 +83,12 @@ class SqliteKnowledgeStore:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path))
+        # `check_same_thread=False`: the service layer (Task 3) offloads store calls
+        # onto `asyncio.to_thread` worker threads (never the thread that opened the
+        # connection), so the connection must not be pinned to its creating thread.
+        # The service serializes access (an `asyncio.Lock`), so only one thread ever
+        # touches the connection at a time — safe despite the relaxed check.
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=30000")
         self._conn.executescript(_SCHEMA_SQL)
