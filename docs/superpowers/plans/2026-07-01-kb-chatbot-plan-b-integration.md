@@ -13,7 +13,8 @@
 ## Global Constraints
 - **uv only** in the SakaDesk repo (`uv run …`, `uv add …`); commit via `uv run git commit` (pre-commit not on PATH otherwise).
 - **Python 3.12** floor here (vs pysaka 3.9); `from __future__ import annotations` still used per repo style. **Heavy deps (onnxruntime/numpy) belong here**, not in pysaka core — SakaDesk installs `pysaka[embeddings]`.
-- **Reuse, don't reinvent:** the keyring key group is `"llm_provider_api_key"` (shared with translation); provider/model come from `settings.json` (`translation_provider`/`translation_model`). **No new provider config** — the KB reuses the AI tab's key/model.
+- **Reuse, don't reinvent:** the keyring key group is `"llm_provider_api_key"` (shared with translation) — the CLOUD key is reused from there. **The KB has its OWN backend config** (it can run a LOCAL model while translation stays cloud): `settings.knowledge_base.llm` = `{"backend": "cloud"|"local", "base_url": str, "model": str}`. Cloud default `base_url="https://generativelanguage.googleapis.com/v1beta/openai"`, `model="gemini-2.5-flash"` (key from keyring); local default `base_url="http://localhost:11434/v1"`, `model="qwen2.5:14b"` (no key). One `OpenAICompatLLMClient` serves both via the OpenAI `/v1/chat/completions` shape.
+- **Model-agnostic LLM + hardware suggestion — PORT the verified saka-cli reference, don't reinvent:** `saka-cli/src/saka_cli/llm_backends.py` (`OpenAICompatLLMClient`) and `saka-cli/src/saka_cli/hardware.py` (`detect_hardware()` / `suggest_llm_backend()`) are already built, tested, and live-verified. Port them to `backend/services/`, adapting to SakaDesk's httpx/structlog/settings conventions.
 - **Style:** `structlog` (`logger = structlog.get_logger(__name__)`); **no `print()`**; **no `assert`** for validation; all file I/O `encoding="utf-8"`; `pathlib.Path`; ruff/mypy per repo config.
 - **Async:** FastAPI async endpoints; offload blocking (embedding, sqlite, file reads) via `asyncio.to_thread`/executors — never block the loop.
 - **i18n:** all user-facing strings in `i18n/locales/{en,ja,zh-CN,zh-TW,yue}.json` via `t()`; dates UTC internally, "past month" resolved from a request `tz`.
@@ -60,7 +61,8 @@ The SSE `source_ref`→`CitationReference` shape is exactly the search-result sh
 ```
 SakaDesk/backend/
   services/knowledge_store.py     NEW  SqliteKnowledgeStore: persist docs+vectors+mentions (knowledge_index.db)
-  services/llm_client.py          NEW  GeminiLLMClient (function-calling) impl of pysaka LLMClient
+  services/llm_client.py          NEW  OpenAICompatLLMClient (cloud+local) impl of pysaka LLMClient (port from saka-cli)
+  services/hardware.py            NEW  detect_hardware()/suggest_llm_backend() (port from saka-cli)
   services/knowledge_service.py   NEW  wires pysaka engine; index/ask/status/rebuild; get_knowledge_service()
   services/settings_store.py      MOD  +knowledge_base defaults
   services/sync_service.py        MOD  +bg knowledge-index hook (~line 553)
@@ -74,6 +76,7 @@ SakaDesk/frontend/src/
   features/ai/api.ts              NEW  SSE ask client + types
   features/ai/AiFeature.tsx       NEW  chat feature (mirrors BlogsFeature)
   features/ai/components/ChatWindow.tsx, CitationChip.tsx  NEW
+  features/ai/components/KnowledgeBaseStatus.tsx, KbBackendSelector.tsx  NEW  (settings: status + cloud/local switch + hw suggestion)
   features/ai/index.ts            NEW  barrel export
   config/features.ts              MOD  add 'ai' to SERVICE_FEATURES
   shell/components/ContentArea.tsx MOD  case 'ai' → <AiFeature/>
@@ -121,17 +124,19 @@ def test_persist_and_reload(tmp_path: Path):
 - [ ] **Step 4: Run — expect pass.**
 - [ ] **Step 5: Commit** — `feat(kb): sqlite-backed knowledge store (docs+vectors+mentions)`
 
-### Task 2: GeminiLLMClient (function-calling adapter)
-**Files:** Create `backend/services/llm_client.py`; Test `backend/tests/test_llm_client.py`.
+### Task 2: OpenAICompatLLMClient (model-agnostic cloud+local) + hardware suggestion
+**PORT the verified saka-cli reference** — do NOT reinvent. Read `saka-cli/src/saka_cli/llm_backends.py` and `saka-cli/src/saka_cli/hardware.py` first; port them to SakaDesk backend, adapting to httpx (async) + structlog + settings conventions.
+**Files:** Create `backend/services/llm_client.py`, `backend/services/hardware.py`; Test `backend/tests/test_llm_client.py`, `backend/tests/test_hardware.py`.
 **Interfaces:**
-- Consumes: pysaka `LLMClient` protocol, `llm.LLMResponse`, `llm.ToolCall`; the existing keyring loader pattern (`get_token_manager`, group `"llm_provider_api_key"`).
-- Produces: `GeminiLLMClient(api_key: str, model: str)` implementing `async chat(messages, tools=None) -> LLMResponse` — builds the Gemini `generateContent` payload with `tools=[{"functionDeclarations": schemas}]`, parses `functionCall` parts into `ToolCall`s (else returns `.text`); a JSON-plan fallback when `tools` unsupported. Reuse the `GeminiProvider` httpx + error style. Also `build_llm_client_from_settings() -> GeminiLLMClient | None` (reads provider/model from settings + key from keyring; `None` if unconfigured).
+- Consumes: pysaka `LLMClient` protocol, `llm.LLMResponse`, `llm.ToolCall`; keyring loader (`get_token_manager`, group `"llm_provider_api_key"`) for the cloud key.
+- Produces: `OpenAICompatLLMClient(base_url: str, model: str, api_key: str | None = None)` implementing `async chat(messages, tools=None) -> LLMResponse` via OpenAI `/v1/chat/completions` (works for Gemini's openai-compat endpoint, OpenAI, Ollama, llama.cpp). Translate the agent's messages → OpenAI shape (assistant `tool_calls` with `{id,type:"function",function:{name,arguments:json.dumps(args)}}`; tool results → `{role:"tool",tool_call_id,content}` correlated by the agent-threaded `id`). Parse `choices[0].message.tool_calls` → `ToolCall`s, handling `arguments` as str OR object; else `.text`. Use `httpx.AsyncClient` (repo style); raise a typed error on non-2xx with status+body snippet. Also `build_llm_client_from_settings() -> OpenAICompatLLMClient | None` (reads `settings.knowledge_base.llm.{backend,base_url,model}`; cloud → api_key from keyring, local → `None`; returns `None` only if a cloud backend is selected with no key).
+- Produces (`hardware.py`): `detect_hardware() -> dict` (`ram_gb`,`gpu`,`vram_gb`,`platform`; best-effort, never raises — nvidia-smi parse, Apple-Silicon unified memory, graceful None) and `suggest_llm_backend(hw=None) -> dict` (`recommended` cloud|local, `local_model`, `tier`, `reason`; ≥24GB→`qwen3:32b` T2, 10–24→`qwen2.5:14b` T1, 6–10→`qwen2.5:7b`/`nemotron-nano-9b-v2-japanese` T1-small, else cloud).
 
-- [ ] **Step 1: Failing test** — with `respx` mocking `generativelanguage.googleapis.com`, a response containing a `functionCall` part → `chat(...)` returns `LLMResponse(tool_calls=[ToolCall(name="search", arguments={...})])`; a text response → `.text` set, `tool_calls==[]`; `isinstance(client, LLMClient)`.
-- [ ] **Step 2: Run — expect fail.**
-- [ ] **Step 3: Implement** `llm_client.py`.
+- [ ] **Step 1: Failing test (`test_llm_client.py`)** — with `respx` mocking `/v1/chat/completions`: a response with a `tool_calls` message → `chat(...)` returns `LLMResponse(tool_calls=[ToolCall(name="search", arguments={...}, id=...)])` (test BOTH `arguments` as a JSON string AND as an object); a text-only response → `.text` set, `tool_calls==[]`; a multi-turn sequence maps assistant tool_calls + tool results to `tool_call_id`-correlated messages; `isinstance(client, LLMClient)`.
+- [ ] **Step 2: Run — expect fail.** `cd SakaDesk && uv run pytest backend/tests/test_llm_client.py backend/tests/test_hardware.py -v`
+- [ ] **Step 3: Implement** `llm_client.py` + `hardware.py` (add `test_hardware.py`: `suggest_llm_backend` returns the right rec for hand-made hw dicts 24GB/12GB/4GB/None; `detect_hardware` never raises on mocked subprocess failure).
 - [ ] **Step 4: Run — expect pass.**
-- [ ] **Step 5: Commit** — `feat(kb): Gemini LLMClient adapter with function-calling`
+- [ ] **Step 5: Commit** — `feat(kb): model-agnostic OpenAI-compat LLMClient + hardware suggestion`
 
 ### Task 3: KnowledgeService (wire the pysaka engine)
 **Files:** Create `backend/services/knowledge_service.py`; Test `backend/tests/test_knowledge_service.py`.
@@ -146,7 +151,7 @@ def test_persist_and_reload(tmp_path: Path):
 
 ### Task 4: Settings `knowledge_base` subsection
 **Files:** Modify `backend/services/settings_store.py` (`_SETTINGS_DEFAULTS`); Test `backend/tests/test_settings.py` (extend).
-**Interfaces:** Adds defaults: `"knowledge_base": {"enabled": False, "embedding_model": "granite-embedding-311m-multilingual-r2", "last_built": None}` (provider/model/key reuse translation's).
+**Interfaces:** Adds defaults: `"knowledge_base": {"enabled": False, "embedding_model": "granite-embedding-278m-multilingual", "last_built": None, "llm": {"backend": "cloud", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-2.5-flash"}}`. (`embedding_model` verified working = `278m-multilingual` ONNX; `311m-multilingual-r2` is the target if/when its ONNX is fetched — swap is config-only. The CLOUD key still reuses translation's keyring entry; the `llm` block is KB-specific so a user can select a LOCAL Ollama model here without touching translation.)
 - [ ] **Step 1: Failing test** — `load_config()` on a fresh file exposes `knowledge_base.enabled is False`; `update_config` can flip it.
 - [ ] **Step 2–4:** implement; run → PASS.
 - [ ] **Step 5: Commit** — `feat(kb): knowledge_base settings defaults`
@@ -159,7 +164,7 @@ def test_persist_and_reload(tmp_path: Path):
 **Files:** Create `backend/api/ai.py`; Modify `backend/main.py` (import + `include_router(ai.router, prefix="/api/ai", tags=["ai"])`); Test `backend/tests/test_ai_api.py`.
 **Interfaces:**
 - Consumes: `get_knowledge_service`, pysaka `Scope`; the `_provider_http_error` error-mapping style.
-- Produces: `router = APIRouter()`; `POST /ask` `{question, service, group_ids?, member_id?, tz, conversation_id?}` → `StreamingResponse(media_type="text/event-stream")` emitting `event: progress` lines during the agent run (tool labels), then one `event: answer` with the **validated** `{sentences, citations}` (or `{no_evidence: true}`); `GET /index/status?service=` → `KnowledgeService.status()`; `POST /index/rebuild` `{service}` → kicks `rebuild` as a background task, returns `{ok: true}`. Grounding runs server-side **before** the `answer` event (two-pass: progress streams live, the answer is emitted only after `validate`).
+- Produces: `router = APIRouter()`; `POST /ask` `{question, service, group_ids?, member_id?, tz, conversation_id?}` → `StreamingResponse(media_type="text/event-stream")` emitting `event: progress` lines during the agent run (tool labels), then one `event: answer` with the **validated** `{sentences, citations}` (or `{no_evidence: true}`); `GET /index/status?service=` → `KnowledgeService.status()`; `POST /index/rebuild` `{service}` → kicks `rebuild` as a background task, returns `{ok: true}`; `GET /hardware-suggestion` → `{"hardware": detect_hardware(), "suggestion": suggest_llm_backend()}` (offload the blocking detect via `to_thread`); `GET /config` → `settings.knowledge_base.llm`; `PUT /config` `{backend, base_url, model}` → validates + persists it (updates `settings.knowledge_base.llm`, invalidates the cached `KnowledgeService` LLM client so the next `ask` uses the new backend). Grounding runs server-side **before** the `answer` event (two-pass: progress streams live, the answer is emitted only after `validate`).
 
 - [ ] **Step 1: Failing test** — patch `get_knowledge_service` with an `AsyncMock` whose `ask` returns a canned validated `Answer`; `TestClient` POST `/api/ai/ask` → 200, `text/event-stream`, body contains a `progress` event then an `answer` event whose JSON carries citations. A `no_evidence` answer streams `{"no_evidence": true}`. `GET /index/status` returns the mocked status.
 ```python
@@ -222,9 +227,11 @@ def test_ask_streams_answer_event():
 - [ ] **Step 4: Run — expect pass.**
 - [ ] **Step 5: Commit** — `feat(frontend): AiFeature chat with citation deep-links`
 
-### Task 10: Settings "Knowledge base" subsection + i18n
-**Files:** Create `frontend/src/features/ai/components/KnowledgeBaseStatus.tsx`; Modify `shell/components/SettingsModal.tsx` (render it inside `AiTab`), `i18n/locales/{en,ja,zh-CN,zh-TW,yue}.json` (+`settings.knowledgeBase`, `settings.rebuildIndex`, `settings.kbIndexed`, `ai.title`, `ai.welcome`, `ai.placeholder`, `ai.send`, `ai.thinking`, `ai.verifying`, `ai.noEvidence`, `ai.sourceLabel`); Test `frontend/src/features/ai/__tests__/KnowledgeBaseStatus.test.tsx`.
-**Interfaces:** `KnowledgeBaseStatus` GETs `/api/ai/index/status`, shows `{indexed}/{total}` + a rebuild button POSTing `/api/ai/index/rebuild`, polling status (reuse the existing search/backup polling idiom — no streaming needed here).
+### Task 10: Settings "Knowledge base" subsection (status + provider switch + hardware suggestion) + i18n
+**Files:** Create `frontend/src/features/ai/components/KnowledgeBaseStatus.tsx`, `frontend/src/features/ai/components/KbBackendSelector.tsx`; Modify `shell/components/SettingsModal.tsx` (render both inside `AiTab`), `i18n/locales/{en,ja,zh-CN,zh-TW,yue}.json` (+`settings.knowledgeBase`, `settings.rebuildIndex`, `settings.kbIndexed`, `settings.kbBackend`, `settings.kbBackendCloud`, `settings.kbBackendLocal`, `settings.kbModel`, `settings.kbBaseUrl`, `settings.kbDetectHardware`, `settings.kbSuggestion`, `ai.title`, `ai.welcome`, `ai.placeholder`, `ai.send`, `ai.thinking`, `ai.verifying`, `ai.noEvidence`, `ai.sourceLabel`); Test `frontend/src/features/ai/__tests__/KnowledgeBaseStatus.test.tsx`, `KbBackendSelector.test.tsx`.
+**Interfaces:**
+- `KnowledgeBaseStatus` GETs `/api/ai/index/status`, shows `{indexed}/{total}` + a rebuild button POSTing `/api/ai/index/rebuild`, polling status (reuse the existing search/backup polling idiom — no streaming needed here).
+- `KbBackendSelector` GETs `/api/ai/config` (current `{backend,base_url,model}`), renders a **Cloud/Local toggle** + editable `model` (and `base_url` when Local), PUTs `/api/ai/config` on change. A **"Detect hardware"** button GETs `/api/ai/hardware-suggestion` and shows the recommendation (e.g. "RTX 3090 · 24 GB → local `qwen3:32b`") with a one-click "use this" that fills backend=local + model. Default view = Cloud (works for everyone); Local is opt-in. All strings via `t()`.
 - [ ] **Step 1: Failing test** — render with mocked fetch status; click rebuild → POST fired; strings resolve via i18n (assert `t` keys exist in `en.json`).
 - [ ] **Step 2–4:** implement + add all 5 locale files (Japanese/Chinese translations included — CJK, no `%%%`); run → PASS.
 - [ ] **Step 5: Commit** — `feat(frontend): knowledge-base settings subsection + i18n`
