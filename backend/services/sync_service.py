@@ -33,6 +33,21 @@ logger = structlog.get_logger(__name__)
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 
+def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
+    """Earliest cursor to re-fetch a group's timeline from: None (full history)
+    if any missing item lacks a timestamp, else min(ts) minus a 5-min overlap."""
+    if any(not ts for ts in missing_timestamps):
+        return None
+    earliest = min(missing_timestamps)
+    try:
+        dt = datetime.fromisoformat(earliest.replace("Z", "+00:00")) - timedelta(
+            seconds=300
+        )
+        return dt.isoformat().replace("+00:00", "Z")
+    except (ValueError, TypeError):
+        return None
+
+
 class SyncService:
     """
     Per-service sync orchestrator for SakaDesk.
@@ -59,6 +74,15 @@ class SyncService:
     def _get_group(self) -> Group:
         """Get Group enum for this service."""
         return get_service_enum(self._service)
+
+    def _resolve_service_paths(self, app_settings: dict) -> None:
+        """Set output_dir / service_data_dir / metadata_file for this service."""
+        self.output_dir = Path(
+            app_settings.get("output_dir", str(get_default_output_dir()))
+        )
+        service_display = get_service_display_name(self._service)
+        self.service_data_dir = self.output_dir / service_display
+        self.metadata_file = self.service_data_dir / "sync_metadata.json"
 
     async def load_config(self):
         """Load config from pysaka's TokenManager (WCM on Windows)."""
@@ -239,14 +263,8 @@ class SyncService:
                 progress.error("Output folder not configured")
                 return
 
-            self.output_dir = Path(
-                app_settings.get("output_dir", str(get_default_output_dir()))
-            )
-
-            # Per-service data directory for state files
-            service_display = get_service_display_name(self._service)
-            self.service_data_dir = self.output_dir / service_display
-            self.metadata_file = self.service_data_dir / "sync_metadata.json"
+            self._resolve_service_paths(app_settings)
+            assert self.metadata_file is not None  # set by _resolve_service_paths
 
             # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
             if force_resync:
@@ -792,12 +810,7 @@ class SyncService:
         progress = progress_manager.get(self._service)
         try:
             app_settings = await self.load_app_settings()
-            self.output_dir = Path(
-                app_settings.get("output_dir", str(get_default_output_dir()))
-            )
-            service_display = get_service_display_name(self._service)
-            self.service_data_dir = self.output_dir / service_display
-            self.metadata_file = self.service_data_dir / "sync_metadata.json"
+            self._resolve_service_paths(app_settings)
             messages_root = self.service_data_dir / "messages"
 
             progress.reset()
@@ -831,7 +844,9 @@ class SyncService:
                         if not (member_dir / "messages.json").exists():
                             continue
                         totals["members"] += 1
-                        scan = manager.scan_member_media(member_dir)
+                        scan = await asyncio.to_thread(
+                            manager.scan_member_media, member_dir
+                        )
                         totals["checked"] += scan["checked"]
                         if scan["missing"]:
                             totals["missing"] += len(scan["missing"])
@@ -849,20 +864,9 @@ class SyncService:
                 )
                 done = 0
                 for gid, members in gaps_by_group.items():
-                    all_ts = [d["timestamp"] for _, miss in members for d in miss]
-                    if any(not ts for ts in all_ts):
-                        since_ts: Optional[str] = (
-                            None  # some gap has no ts -> full history
-                        )
-                    else:
-                        earliest = min(all_ts)
-                        try:
-                            dt = datetime.fromisoformat(
-                                earliest.replace("Z", "+00:00")
-                            ) - timedelta(seconds=300)
-                            since_ts = dt.isoformat().replace("+00:00", "Z")
-                        except (ValueError, TypeError):
-                            since_ts = None
+                    since_ts = _compute_group_since_ts(
+                        [d["timestamp"] for _, miss in members for d in miss]
+                    )
                     timeline = await manager.client.get_messages(
                         session, gid, since_ts=since_ts
                     )
