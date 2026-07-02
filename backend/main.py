@@ -44,6 +44,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from backend.api import (  # noqa: E402
+    ai,
     auth,
     content,
     sync,
@@ -194,6 +195,7 @@ app.include_router(
     transcription.router, prefix="/api/transcription", tags=["transcription"]
 )
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
+app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 
 
 @app.get("/health")

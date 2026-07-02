@@ -314,6 +314,14 @@ class KnowledgeService:
         agent = self._build_agent(scope.service, llm)
         return asyncio.run(agent.answer(question, scope, history))
 
+    def reload_llm(self, llm: LLMClient | None) -> None:
+        """Swap in a freshly-built LLM client (e.g. after `settings.knowledge_base.llm` changes).
+
+        The next `ask()` call picks up `llm`; an ask already in flight keeps running
+        with whichever client it captured at call time (no cross-call interruption).
+        """
+        self._llm = llm
+
     def _build_agent(self, service: str, llm: LLMClient) -> KnowledgeAgent:
         """Rehydrate a retriever over persisted state (zero corpus re-embedding)."""
         reference = self._reference_for(service)
@@ -457,6 +465,21 @@ async def get_knowledge_service() -> KnowledgeService:
         llm = await build_llm_client_from_settings()
         _knowledge_service = KnowledgeService(store=store, embedder=embedder, llm=llm)
     return _knowledge_service
+
+
+async def invalidate_llm_client() -> None:
+    """Force the process-wide `KnowledgeService`'s LLM client to be rebuilt from settings.
+
+    Called by `PUT /api/ai/config` after persisting a new `knowledge_base.llm`
+    backend/base_url/model, so the very next `ask()` uses it instead of a stale
+    cached client. No-op if the singleton hasn't been built yet -- in that case
+    the next `get_knowledge_service()` call reads the (already-saved) new config
+    itself, so there is nothing to invalidate.
+    """
+    if _knowledge_service is None:
+        return
+    llm = await build_llm_client_from_settings()
+    _knowledge_service.reload_llm(llm)
 
 
 async def _build_embedder() -> Embedder:
