@@ -135,6 +135,67 @@ class SyncService:
                 os.unlink(tmp_path)
             raise
 
+    async def _authenticated_client(self, session: aiohttp.ClientSession) -> Client:
+        """Build an authenticated Client for this service, refreshing the token if
+        needed. Verifies a failed refresh with a live get_groups call before giving
+        up; deletes a truly-expired session and raises SessionExpiredError."""
+        config = await self.load_config()
+        token = config.get("access_token")
+        if not token:
+            raise Exception("Not authenticated")
+
+        auth_dir = str(get_session_dir())
+        client = Client(
+            group=self._get_group(),
+            access_token=token,
+            cookies=config.get("cookies"),
+            app_id=config.get("x-talk-app-id"),
+            user_agent=config.get("user-agent"),
+            auth_dir=auth_dir,
+        )
+
+        try:
+            await client.refresh_if_needed(session, min_seconds_remaining=300)
+        except (SessionExpiredError, RefreshFailedError) as refresh_err:
+            logger.warning(
+                "Token refresh failed - verifying token validity",
+                error_type=type(refresh_err).__name__,
+                error=str(refresh_err),
+            )
+            try:
+                test_groups = await client.get_groups(session, include_inactive=False)
+                if test_groups is not None:
+                    logger.info(
+                        "Token is still valid despite refresh failure - continuing",
+                        groups_found=len(test_groups),
+                    )
+                else:
+                    logger.error("Token verification failed - session is truly expired")
+                    tm = get_token_manager()
+                    tm.delete_session(self._service)
+                    raise SessionExpiredError("Session expired") from refresh_err
+            except SessionExpiredError:
+                logger.error("Token verification confirmed session is expired")
+                tm = get_token_manager()
+                tm.delete_session(self._service)
+                raise
+
+        if client.access_token != token:
+            logger.info("Tokens refreshed during auth check - saving to storage")
+            try:
+                tm = get_token_manager()
+                tm.save_session(
+                    self._service,
+                    client.access_token,
+                    client.refresh_token,
+                    client.cookies,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to save refreshed tokens", error=str(e), exc_info=True
+                )
+        return client
+
     async def start_sync(
         self,
         include_inactive: bool = True,
@@ -185,15 +246,6 @@ class SyncService:
                 if state_file.exists():
                     state_file.unlink()
 
-            # Load credentials from pysaka's TokenManager (same as CLI)
-            config = await self.load_config()
-            token = config.get("access_token")
-            if not token:
-                raise Exception("Not authenticated")
-
-            # Get auth_dir for headless refresh (from platform settings)
-            auth_dir = str(get_session_dir())
-
             # Detect if fresh sync for THIS service (empty service dir or just metadata)
             existing_files = (
                 list(self.service_data_dir.iterdir())
@@ -216,87 +268,7 @@ class SyncService:
 
             connector = aiohttp.TCPConnector(limit=20)
             async with aiohttp.ClientSession(connector=connector) as session:
-                client = Client(
-                    group=self._get_group(),
-                    access_token=token,
-                    cookies=config.get("cookies"),
-                    app_id=config.get("x-talk-app-id"),
-                    user_agent=config.get("user-agent"),
-                    auth_dir=auth_dir,
-                )
-
-                # Lazy refresh - only refresh if token expires within 5 minutes
-                # This reduces API calls and makes usage less detectable
-                try:
-                    await client.refresh_if_needed(session, min_seconds_remaining=300)
-                except (SessionExpiredError, RefreshFailedError) as refresh_err:
-                    # Token refresh mechanism failed - but the token itself might
-                    # still be valid (e.g., fresh token where JWT parsing failed
-                    # or cookies don't work for the refresh endpoint).
-                    # Verify with a real API call before giving up.
-                    logger.warning(
-                        "Token refresh failed - verifying token validity",
-                        error_type=type(refresh_err).__name__,
-                        error=str(refresh_err),
-                    )
-                    try:
-                        test_groups = await client.get_groups(
-                            session, include_inactive=False
-                        )
-                        if test_groups is not None:
-                            logger.info(
-                                "Token is still valid despite refresh failure - continuing sync",
-                                groups_found=len(test_groups),
-                            )
-                        else:
-                            # get_groups returned None - token is invalid
-                            logger.error(
-                                "Token verification failed - session is truly expired"
-                            )
-                            tm = get_token_manager()
-                            tm.delete_session(self._service)
-                            raise SessionExpiredError(
-                                "Session expired"
-                            ) from refresh_err
-                    except SessionExpiredError:
-                        logger.error("Token verification confirmed session is expired")
-                        tm = get_token_manager()
-                        tm.delete_session(self._service)
-                        raise
-
-                # Save refreshed tokens if they changed (CLI pattern)
-                if client.access_token != token:
-                    logger.info(
-                        "Tokens refreshed during auth check - saving to storage",
-                        extra={
-                            "has_new_cookies": bool(client.cookies),
-                            "cookie_count": len(client.cookies)
-                            if client.cookies
-                            else 0,
-                            "cookie_keys": list(client.cookies.keys())
-                            if client.cookies
-                            else [],
-                        },
-                    )
-                    try:
-                        tm = get_token_manager()
-                        tm.save_session(
-                            self._service,
-                            client.access_token,
-                            client.refresh_token,
-                            client.cookies,
-                        )
-                        logger.info(
-                            "Refreshed tokens saved successfully to TokenManager"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            "Failed to save refreshed tokens",
-                            error=str(e),
-                            exc_info=True,
-                        )
-                else:
-                    logger.debug("Token unchanged after refresh check, no save needed")
+                client = await self._authenticated_client(session)
 
                 # Create fresh SyncManager each sync (don't cache stale client)
                 # Use service_data_dir so sync_state.json is per-service
