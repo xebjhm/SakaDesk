@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Verify & Fix media** (Settings → Sync): scans downloaded messages and
+  re-downloads any missing images/videos, per service.
+
+### Fixed
+- Interrupted syncs no longer permanently skip message media — the sync cursor is
+  held behind any message whose media has not been confirmed on disk.
+
 ## [0.3.0] - 2026-07-01
 
 ### Added

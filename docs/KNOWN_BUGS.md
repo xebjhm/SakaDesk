@@ -14,3 +14,14 @@ Should be stored in settings.json instead of a separate file. Currently doesn't 
 
 ## 5. Auto-expand/collapse for transcription and translation
 After transcription or translation finishes, the result should automatically expand. Should automatically collapse when the user scrolls away or switches to a different conversation/blog. Goal: minimize unnecessary user inputs.
+
+## Resolved
+
+### Interrupted initial sync could strand message media
+If the initial sync was interrupted (app closed, network drop, crash) partway
+through downloading a batch of message media, the sync cursor could advance
+past messages whose images/videos never finished downloading, permanently
+skipping that media on future syncs. This is now prevented: the sync cursor
+is held behind any message whose media has not been confirmed on disk. For
+members affected before this fix, use **Settings → Sync → Verify & fix
+media** to scan for and re-download any missing media.
