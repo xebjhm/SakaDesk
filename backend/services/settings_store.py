@@ -37,6 +37,17 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "translation_model": None,  # e.g., "gemini-3.1-flash-lite", "gpt-4o-mini"
     "translation_target_language": None,  # Defaults to UI language at runtime
     # Note: translation API key stored in OS credential manager, not here
+    "knowledge_base": {
+        "enabled": False,
+        "embedding_model": "granite-embedding-278m-multilingual",
+        "last_built": None,
+        "llm": {
+            "backend": "cloud",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "model": "gemini-2.5-flash",
+        },
+    },
+    # Note: KB chatbot's cloud API key reuses translation's keyring entry, not here
 }
 
 
