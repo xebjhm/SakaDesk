@@ -31,6 +31,7 @@ class SyncProgress:
             self._speed_unit = ""
             self._phase_start: Optional[float] = None
             self._error: Optional[str] = None
+            self._result: Optional[dict] = None
 
     def start_phase(
         self,
@@ -80,6 +81,11 @@ class SyncProgress:
             if detail is not None:
                 self._detail = detail
 
+    def set_result(self, result: dict):
+        """Attach a structured summary (rendered by the frontend, i18n-safe)."""
+        with self._lock:
+            self._result = result
+
     def complete(self):
         """Mark sync as complete"""
         with self._lock:
@@ -121,6 +127,7 @@ class SyncProgress:
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,
                 "detail_extra": self._detail_extra,
+                "result": self._result,
             }
 
 

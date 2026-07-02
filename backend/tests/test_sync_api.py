@@ -139,6 +139,17 @@ class TestGetProgress:
         # Cleanup
         progress.reset()
 
+    def test_progress_result_roundtrip(self):
+        """Result field should be None initially, settable, and clearable."""
+        from backend.api.progress import SyncProgress
+
+        p = SyncProgress()
+        assert p.get_status()["result"] is None
+        p.set_result({"missing": 5, "repaired": 4})
+        assert p.get_status()["result"] == {"missing": 5, "repaired": 4}
+        p.reset()
+        assert p.get_status()["result"] is None
+
 
 # ---------------------------------------------------------------------------
 # POST /api/sync/cancel
