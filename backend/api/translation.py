@@ -9,12 +9,12 @@ import re
 from pathlib import Path
 from typing import Literal, Optional, cast
 
-import httpx
 import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.settings_store import load_config, update_config
 from backend.services.service_utils import validate_service, get_service_display_name
 from pysaka.credentials import get_token_manager
@@ -133,40 +133,12 @@ def _replace_token_with_nickname(text: str, nickname: str) -> str:
 
 
 def _provider_http_error(exc: Exception) -> HTTPException:
-    """Map a provider/transport exception to an HTTPException.
+    """Map a provider/transport exception to a coded HTTPException.
 
-    Provider-agnostic (works for any LLM backend, not just Gemini) and never
-    leaks the raw exception text to the client — details go to the logs instead.
+    Delegates to the shared AI error mapper so translation and transcription
+    surface the same stable ``code`` vocabulary to the UI.
     """
-    if isinstance(exc, httpx.HTTPStatusError):
-        status = exc.response.status_code
-        if status == 429:
-            return HTTPException(
-                status_code=429,
-                detail="Rate limit reached. Please wait a moment and try again.",
-            )
-        if status == 503:
-            return HTTPException(
-                status_code=503,
-                detail="Translation service is temporarily unavailable. Please try again later.",
-            )
-        return HTTPException(
-            status_code=502,
-            detail=f"Translation provider error ({status}). Please try again.",
-        )
-    if isinstance(exc, httpx.ConnectError):
-        return HTTPException(
-            status_code=503,
-            detail="Cannot reach the translation provider. Check your internet connection.",
-        )
-    if isinstance(exc, httpx.TimeoutException):
-        return HTTPException(
-            status_code=504,
-            detail="The translation provider timed out. Please try again.",
-        )
-    return HTTPException(
-        status_code=500, detail="Translation failed. Please try again."
-    )
+    return ai_provider_error(exc)
 
 
 def _instantiate_provider(
@@ -178,8 +150,8 @@ def _instantiate_provider(
     elif provider_name == "openai":
         return OpenAIProvider(api_key=api_key, model=model)
     else:
-        raise HTTPException(
-            status_code=400, detail=f"Unknown provider: {provider_name}"
+        raise CodedHTTPException(
+            400, "unknown_provider", f"Unknown provider: {provider_name}"
         )
 
 
@@ -194,20 +166,15 @@ async def _get_provider_from_config() -> TranslationProvider:
     api_key = _load_api_key()
 
     if not provider_name:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation provider configured. Please set a provider in settings.",
+        raise CodedHTTPException(
+            400, "no_provider", "No translation provider configured."
         )
     if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation API key configured. Please set an API key in settings.",
+        raise CodedHTTPException(
+            400, "no_api_key", "No translation API key configured."
         )
     if not model:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation model configured. Please set a model in settings.",
-        )
+        raise CodedHTTPException(400, "no_model", "No translation model configured.")
 
     return _instantiate_provider(provider_name, model, api_key)
 
@@ -505,9 +472,10 @@ async def translate(request: TranslateRequest):
             logger.error(
                 "Failed to parse blog translation JSON", error=str(e), raw=raw[:200]
             )
-            raise HTTPException(
-                status_code=502,
-                detail="Provider returned invalid JSON for blog translation",
+            raise CodedHTTPException(
+                502,
+                "bad_response",
+                "Provider returned invalid JSON for blog translation",
             )
 
         aligned = [
@@ -598,9 +566,8 @@ async def translate_batch(request: TranslateBatchRequest):
             error=str(e),
             raw=raw_response[:200],
         )
-        raise HTTPException(
-            status_code=502,
-            detail="Provider returned invalid JSON for batch translation",
+        raise CodedHTTPException(
+            502, "bad_response", "Provider returned invalid JSON for batch translation"
         )
 
     # Surface any requested messages the model silently dropped, rather than

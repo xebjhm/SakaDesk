@@ -148,6 +148,14 @@ async def _deferred_blog_backup():
 
 app = FastAPI(title="SakaDesk", lifespan=lifespan)
 
+# Coded AI errors → {"detail", "code"} so the UI can localize the message.
+from backend.api.errors import (  # noqa: E402
+    CodedHTTPException,
+    coded_http_exception_handler,
+)
+
+app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)
+
 # CORS configuration
 # In production, frontend is served from same origin (no CORS needed).
 # These origins are for development mode when Vite runs on a separate port.

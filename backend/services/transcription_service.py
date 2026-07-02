@@ -18,6 +18,8 @@ from typing import Literal, Optional, cast
 
 import httpx
 
+from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
+
 logger = structlog.get_logger(__name__)
 
 _TRANSCRIPTION_SYSTEM_INSTRUCTION = """You are transcribing audio from 坂道シリーズ (Sakamichi Series) idol group members — 日向坂46, 櫻坂46, 乃木坂46.
@@ -239,18 +241,18 @@ class GeminiTranscriptionProvider:
         # Check for safety filter blocks
         candidates = data.get("candidates", [])
         if not candidates:
-            raise RuntimeError("Gemini returned no candidates")
+            raise EmptyOutputError("Gemini returned no candidates")
 
         candidate = candidates[0]
         finish_reason = candidate.get("finishReason", "")
         if finish_reason == "SAFETY":
             safety_ratings = candidate.get("safetyRatings", [])
             blocked_cats = [r["category"] for r in safety_ratings if r.get("blocked")]
-            raise RuntimeError(
+            raise SafetyBlockedError(
                 f"Content blocked by safety filter: {', '.join(blocked_cats) or 'unknown'}"
             )
         if "content" not in candidate or not candidate["content"].get("parts"):
-            raise RuntimeError(
+            raise EmptyOutputError(
                 f"Gemini returned no content (finishReason: {finish_reason})"
             )
 

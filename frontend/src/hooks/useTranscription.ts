@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n';
+import { aiErrorKey } from '../i18n/aiError';
 
 export interface TranscriptionSegment {
     start: number;
@@ -125,8 +126,10 @@ export function useTranscription(
             });
 
             if (!res.ok) {
-                const detail = await res.json().catch(() => ({}));
-                throw new Error(detail.detail || `Request failed: ${res.status}`);
+                const body = await res.json().catch(() => ({}));
+                const err = new Error(body.detail || `Request failed: ${res.status}`);
+                (err as Error & { code?: string }).code = body.code;
+                throw err;
             }
 
             const data = await res.json();
@@ -135,14 +138,15 @@ export function useTranscription(
                 setTranscription(data.transcription);
                 setState('done');
             } else {
-                throw new Error('Transcription returned not ok');  // internal; shown via t() below
+                throw new Error('Transcription returned not ok');
             }
         } catch (e) {
             // Aborted because the user navigated away — not a real failure.
             if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
             console.error('[Transcription] failed:', e);
             setState('error');
-            setError(t('transcription.failed'));
+            // Localized, actionable message keyed off the backend error code.
+            setError(t(aiErrorKey((e as Error & { code?: string })?.code)));
         }
     }, [service, messageId, memberPath, t]);
 

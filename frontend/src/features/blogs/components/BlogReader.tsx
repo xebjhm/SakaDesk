@@ -14,6 +14,7 @@ import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { useTranslation } from '../../../i18n';
+import { aiErrorKey } from '../../../i18n/aiError';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -164,8 +165,10 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                 signal: controller.signal,
             });
             if (!res.ok) {
-                const detail = await res.json().catch(() => ({}));
-                throw new Error(detail.detail || `Request failed: ${res.status}`);
+                const body = await res.json().catch(() => ({}));
+                const err = new Error(body.detail || `Request failed: ${res.status}`);
+                (err as Error & { code?: string }).code = body.code;
+                throw err;
             }
             const data = await res.json();
             if (controller.signal.aborted) return;  // blog changed mid-flight
@@ -181,7 +184,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         } catch (e) {
             // Aborted because the user navigated to another blog — not a failure.
             if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return;
-            setTranslationError(e instanceof Error ? e.message : 'Translation failed');
+            setTranslationError(t(aiErrorKey((e as Error & { code?: string })?.code)));
         } finally {
             if (!controller.signal.aborted) setIsTranslating(false);
         }

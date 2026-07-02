@@ -1,4 +1,21 @@
 {
+  "aiError": {
+    "no_provider": "No AI provider set. Choose one in Settings → AI.",
+    "no_api_key": "No API key set. Add your API key in Settings → AI.",
+    "no_model": "No model selected. Pick one in Settings → AI.",
+    "invalid_key": "Your API key was rejected. Check or re-enter it in Settings → AI.",
+    "wrong_provider": "Transcription needs Gemini. Switch the provider to Gemini in Settings → AI.",
+    "rate_limit": "Rate limit reached. Wait a moment, then try again.",
+    "unavailable": "The AI service is temporarily unavailable. Try again shortly.",
+    "timeout": "The request timed out. Please try again.",
+    "network": "Can't reach the AI service. Check your internet connection.",
+    "model_not_found": "The selected model isn't available. Pick another in Settings → AI.",
+    "safety_blocked": "Blocked by the safety filter — this content can't be processed.",
+    "incomplete": "The result came back incomplete. Please try again.",
+    "bad_response": "The provider returned an unexpected response. Please try again.",
+    "unknown_provider": "Unknown provider selected. Pick a supported one in Settings → AI.",
+    "unknown": "Something went wrong. Please try again."
+  },
   "common": {
     "settings": "Settings",
     "messages": "Messages",

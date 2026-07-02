@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from '../i18n';
+import { aiErrorKey } from '../i18n/aiError';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -50,6 +52,7 @@ export function useMessageTranslation(params: {
     userNickname?: string;
 }): UseMessageTranslationReturn {
     const { service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname } = params;
+    const { t } = useTranslation();
 
     const cacheKey = messageId
         ? getCacheKey('message', messageId, targetLanguage)
@@ -94,8 +97,10 @@ export function useMessageTranslation(params: {
             });
 
             if (!res.ok) {
-                const detail = await res.json().catch(() => ({}));
-                throw new Error(detail.detail || `Request failed: ${res.status}`);
+                const body = await res.json().catch(() => ({}));
+                const err = new Error(body.detail || `Request failed: ${res.status}`);
+                (err as Error & { code?: string }).code = body.code;
+                throw err;
             }
 
             const data = await res.json();
@@ -108,9 +113,10 @@ export function useMessageTranslation(params: {
             }
         } catch (e) {
             setState('error');
-            setError(e instanceof Error ? e.message : 'Translation failed');
+            // Localized, actionable message keyed off the backend error code.
+            setError(t(aiErrorKey((e as Error & { code?: string })?.code)));
         }
-    }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey]);
+    }, [service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname, cacheKey, t]);
 
     const trigger = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;

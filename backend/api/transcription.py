@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 from typing import Optional, cast
 
-import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import structlog
@@ -23,6 +22,7 @@ from backend.services.transcription_service import (
     GeminiTranscriptionProvider,
 )
 from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.service_utils import validate_service, get_service_display_name
 
 router = APIRouter()
@@ -126,9 +126,8 @@ async def transcribe(request: TranscribeRequest):
             group_display = request.service
 
         if not api_key:
-            raise HTTPException(
-                status_code=400,
-                detail="No API key configured. Please set up a provider in Translation settings.",
+            raise CodedHTTPException(
+                400, "no_api_key", "No API key configured for transcription."
             )
 
         # Read provider and model from settings (shared with translation)
@@ -139,9 +138,8 @@ async def transcribe(request: TranscribeRequest):
         provider = config.get("translation_provider")
 
         if provider and provider != "gemini":
-            raise HTTPException(
-                status_code=400,
-                detail="Transcription requires Gemini (multimodal audio). Please switch provider to Gemini in Translation settings.",
+            raise CodedHTTPException(
+                400, "wrong_provider", "Transcription requires the Gemini provider."
             )
 
         model = config.get("translation_model")
@@ -154,38 +152,11 @@ async def transcribe(request: TranscribeRequest):
             gemini_text, segments = await gemini_provider.transcribe(
                 media_path, member_name=member_name, group_name=group_display
             )
-        except httpx.HTTPStatusError as e:
-            status = e.response.status_code
-            if status == 429:
-                raise HTTPException(
-                    status_code=429,
-                    detail="Rate limit reached. Please wait a moment and try again.",
-                )
-            elif status == 503:
-                raise HTTPException(
-                    status_code=503,
-                    detail="Gemini API is temporarily unavailable. Please try again later.",
-                )
-            elif status == 404:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Gemini model '{gemini_provider._model}' not found. Check settings.",
-                )
-            else:
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Gemini API error ({status}). Please try again.",
-                )
-        except httpx.ConnectError:
-            raise HTTPException(
-                status_code=503,
-                detail="Cannot reach Gemini API. Check your internet connection.",
-            )
-        except httpx.TimeoutException:
-            raise HTTPException(
-                status_code=504,
-                detail="Gemini API timed out. The audio may be too long. Please try again.",
-            )
+        except Exception as e:
+            # Maps httpx transport errors AND typed provider errors (safety block,
+            # empty output) to a coded HTTPException the UI can localize.
+            logger.warning("Transcription provider error", error=str(e))
+            raise ai_provider_error(e)
 
         duration = segments[-1].end if segments else 0.0
 
@@ -212,14 +183,14 @@ async def transcribe(request: TranscribeRequest):
         return {"ok": True, "transcription": _result_to_dict(result)}
 
     except HTTPException:
-        raise  # Re-raise specific HTTP errors as-is
+        raise  # Re-raise specific HTTP errors (incl. CodedHTTPException) as-is
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.error(
             "Transcription failed", message_id=request.message_id, error=str(e)
         )
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+        raise CodedHTTPException(500, "unknown", f"Transcription failed: {e}")
 
 
 @router.get("/status")

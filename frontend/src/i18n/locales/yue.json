@@ -1,4 +1,21 @@
 {
+  "aiError": {
+    "no_provider": "重未設定 AI 供應商。請去「設定 → AI」揀。",
+    "no_api_key": "重未設定 API key。請去「設定 → AI」輸入。",
+    "no_model": "重未揀模型。請去「設定 → AI」揀。",
+    "invalid_key": "API key 俾拒絕咗。請去「設定 → AI」檢查或者重新輸入。",
+    "wrong_provider": "辨識要用 Gemini。請去「設定 → AI」轉做 Gemini。",
+    "rate_limit": "去到速率上限。請等陣再試。",
+    "unavailable": "AI 服務暫時用唔到。請遲啲再試。",
+    "timeout": "請求逾時。請再試多次。",
+    "network": "連唔到 AI 服務。請檢查你嘅網絡連線。",
+    "model_not_found": "揀咗嘅模型用唔到。請去「設定 → AI」揀第個。",
+    "safety_blocked": "俾安全過濾器封鎖咗，呢啲內容處理唔到。",
+    "incomplete": "結果唔完整。請再試多次。",
+    "bad_response": "供應商回傳咗啲估唔到嘅嘢。請再試多次。",
+    "unknown_provider": "唔知邊個供應商。請去「設定 → AI」揀個支援嘅。",
+    "unknown": "出咗問題。請再試多次。"
+  },
     "common": {
         "settings": "設定",
         "messages": "訊息",
