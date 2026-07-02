@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Knowledge-base chatbot** — grounded, cited Q&A over synced blogs and
+  messages in a new AI chat tab (e.g. "when did A last mention B"). Local
+  Granite embeddings (`granite-embedding-278m-multilingual`) plus a hybrid
+  lexical + vector retrieval index built per service; answers are validated
+  server-side against the retrieved evidence before they are ever streamed,
+  and a question with no supporting evidence returns a plain "no evidence"
+  state instead of a guess. Model-agnostic LLM backend — cloud Gemini via an
+  OpenAI-compatible endpoint, or a local Ollama/llama.cpp server — with a
+  hardware-based (GPU/VRAM) suggestion for which backend to use. Each answer
+  sentence carries citation chips that deep-link straight to the source blog
+  post or message, reusing the same in-app navigation as global search.
+  Streamed over SSE (progress heartbeat, then one terminal answer/error
+  event). Configured from Settings → AI: backend switch (cloud/local), model,
+  index status, and a manual rebuild-index action.
+  _Known limitations:_ voice-message transcripts are not indexed yet (only
+  synced text/blog content); message citations from the knowledge base carry
+  lower-fidelity group metadata than search citations (no group name or
+  group-chat flag on the deep-link); chat history does not persist across tab
+  switches.
+
 ## [0.3.0] - 2026-07-01
 
 ### Added
