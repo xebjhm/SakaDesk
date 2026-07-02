@@ -71,6 +71,7 @@ function App() {
         showSyncModal,
         syncVersion,
         startSync,
+        verifyAndFix,
         startSequentialSync,
         sequentialSyncInfo,
         hasStartedSyncRef,
@@ -312,6 +313,8 @@ function App() {
                         setOutputDirInput={setOutputDirInput}
                         onSaveSettings={saveSettings}
                         onClose={() => setShowSettingsModal(false)}
+                        activeService={activeService ?? ''}
+                        onVerifyAndFix={verifyAndFix}
                     />
                 )}
 
