@@ -243,7 +243,8 @@ export function useSync({
                         speed: data.speed,
                         speed_unit: data.speed_unit,
                         detail: i18n.t('sync.syncComplete'),
-                        detail_extra: ''
+                        detail_extra: '',
+                        result: data.result ?? null
                     });
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
