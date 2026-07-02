@@ -16,6 +16,20 @@ one `asyncio.Task` so every failure mode surfaces as an in-band SSE `event: erro
 rather than an unhandled exception mid-stream (the HTTP status is already 200 by
 the time any of this runs).
 
+**Client disconnect.** The heartbeat loop polls `request.is_disconnected()` each
+cycle; once the client is gone, the generator stops emitting entirely (no more
+heartbeats, no terminal event) but deliberately does NOT `task.cancel()` the
+in-flight ask. `KnowledgeService.ask()` holds `_store_lock` for the duration of a
+worker thread (`asyncio.to_thread`) that the event loop cannot preempt --
+cancelling the awaiting coroutine would only unwind the `async with
+self._store_lock:` block and free the lock *while the orphaned worker thread kept
+running*, letting a concurrent index/ask race that orphaned thread over the shared
+sqlite/vector store. So the task is instead detached into the module-level
+`_pending_ask_tasks` set (via `add_done_callback`) and left to finish naturally --
+bounded by `OpenAICompatLLMClient`'s ~120s httpx timeout, so the lock is never
+held indefinitely -- which also guarantees its exception (if any) is always
+retrieved even though nothing `await`s it directly anymore.
+
 **Citation `ref` serialization.** Each `Citation.source_ref` (`pysaka.knowledge
 .models.SourceRef`) is translated into the frontend's `CitationReference` shape
 (Plan B Shared Contracts / Task 7's `navigateToSource`): `kind == "blog"` ->
@@ -39,7 +53,7 @@ from datetime import tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -132,8 +146,9 @@ def _serialize_ref(ref: SourceRef) -> dict:
 
 
 def _serialize_citation(citation: Citation) -> dict:
+    """`Citation` -> the frontend `Citation` shape (camelCase, Shared Contracts)."""
     return {
-        "doc_id": citation.doc_id,
+        "docId": citation.doc_id,
         "ref": _serialize_ref(citation.source_ref),
         "snippet": citation.quoted_snippet,
         "member": citation.member,
@@ -142,15 +157,16 @@ def _serialize_citation(citation: Citation) -> dict:
 
 
 def _serialize_answer(answer: Answer) -> dict:
+    """`Answer` -> the frontend `Answer` shape (camelCase, Shared Contracts)."""
     if answer.no_evidence:
-        return {"no_evidence": True}
+        return {"noEvidence": True}
     return {
         "sentences": [
-            {"text": sentence.text, "citation_ids": sentence.citation_ids}
+            {"text": sentence.text, "citationIds": sentence.citation_ids}
             for sentence in answer.sentences
         ],
         "citations": [_serialize_citation(c) for c in answer.citations],
-        "no_evidence": False,
+        "noEvidence": False,
     }
 
 
@@ -164,7 +180,25 @@ async def _run_ask(
     return await svc.ask(question, scope, tz, history)
 
 
-async def _ask_event_stream(question: str, scope: Scope, tz: tzinfo):
+# Ask tasks detached from a generator that stopped early (client disconnect) --
+# see `_ask_event_stream`'s WHY-NOT-CANCEL comment. Kept alive here so asyncio
+# never garbage-collects a still-running task, and `add_done_callback` below
+# guarantees its result/exception is always retrieved exactly once even though
+# nothing `await`s it directly anymore (avoids an "exception was never
+# retrieved" warning once the worker thread finally finishes).
+_pending_ask_tasks: set[asyncio.Task] = set()
+
+
+def _on_ask_task_done(task: asyncio.Task) -> None:
+    _pending_ask_tasks.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error("ai.ask.background_task_failed", exc_info=exc)
+
+
+async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: tzinfo):
     # Immediate "thinking" feedback -- guarantees the client sees at least one
     # progress event even if `ask()` resolves faster than the heartbeat interval.
     yield _format_sse("progress", {"stage": "thinking"})
@@ -172,8 +206,34 @@ async def _ask_event_stream(question: str, scope: Scope, tz: tzinfo):
     task: asyncio.Task[Answer] = asyncio.create_task(
         _run_ask(question, scope, tz, None)
     )
+    _pending_ask_tasks.add(task)
+    task.add_done_callback(_on_ask_task_done)
+
     try:
         while not task.done():
+            if await request.is_disconnected():
+                # Client is gone -- stop streaming (no point heartbeating to a
+                # dead socket). We deliberately do NOT `task.cancel()` here.
+                #
+                # WHY: `svc.ask()` holds `KnowledgeService._store_lock` for its
+                # entire body, which runs inside `asyncio.to_thread` -- a worker
+                # thread the event loop cannot preempt. Cancelling this
+                # generator's `task` only raises `CancelledError` in the
+                # *awaiting* coroutine (the `await asyncio.to_thread(...)`
+                # call); it cannot stop the worker thread already executing
+                # `_run_ask_blocking` underneath it. That would unwind the
+                # `async with self._store_lock:` block and release the lock
+                # WHILE the orphaned worker thread keeps mutating the shared
+                # sqlite/vector store -- letting a concurrent index write or
+                # another ask acquire the freed lock and race that orphaned
+                # thread (a torn read/write). So instead we let `task` run to
+                # natural completion (it's already detached into
+                # `_pending_ask_tasks`, above) -- bounded by
+                # `OpenAICompatLLMClient`'s ~120s httpx timeout, so the lock
+                # can never be held forever even with no one left to hear the
+                # answer.
+                logger.info("ai.ask.client_disconnected", service=scope.service)
+                return
             await asyncio.wait({task}, timeout=_HEARTBEAT_INTERVAL_S)
             if not task.done():
                 yield _format_sse("progress", {"stage": "thinking"})
@@ -200,27 +260,25 @@ async def _ask_event_stream(question: str, scope: Scope, tz: tzinfo):
 
 
 @router.post("/ask")
-async def ask(request: AskRequest) -> StreamingResponse:
+async def ask(http_request: Request, body: AskRequest) -> StreamingResponse:
     try:
-        validate_service(request.service)
+        validate_service(body.service)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
-        tz: tzinfo = ZoneInfo(request.tz)
+        tz: tzinfo = ZoneInfo(body.tz)
     except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise HTTPException(
-            status_code=422, detail=f"invalid tz: {request.tz}"
-        ) from exc
+        raise HTTPException(status_code=422, detail=f"invalid tz: {body.tz}") from exc
 
     scope = Scope(
-        service=request.service,
-        group_ids=request.group_ids or [],
-        member_id=request.member_id,
+        service=body.service,
+        group_ids=body.group_ids or [],
+        member_id=body.member_id,
     )
-    logger.info("ai.ask.start", service=request.service, tz=request.tz)
+    logger.info("ai.ask.start", service=body.service, tz=body.tz)
     return StreamingResponse(
-        _ask_event_stream(request.question, scope, tz),
+        _ask_event_stream(http_request, body.question, scope, tz),
         media_type="text/event-stream",
     )
 

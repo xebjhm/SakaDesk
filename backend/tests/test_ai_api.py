@@ -9,14 +9,20 @@ of `backend/api/ai.py` is under test.
 
 from __future__ import annotations
 
+import asyncio
+import copy
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
+from zoneinfo import ZoneInfo
 
+import pytest
 from fastapi.testclient import TestClient
 
+import backend.api.ai as ai_module
 from backend.main import app
 from backend.services.llm_client import LLMBackendError
-from pysaka.knowledge.models import Answer, AnswerSentence, Citation, SourceRef
+from backend.services.settings_store import _SETTINGS_DEFAULTS, load_config
+from pysaka.knowledge.models import Answer, AnswerSentence, Citation, Scope, SourceRef
 
 client = TestClient(app)
 
@@ -126,6 +132,9 @@ class TestAskSSE:
         assert "hinatazaka46" in answer_line
         assert '"blogId"' in answer_line
         assert '"memberId"' in answer_line
+        # Outer envelope is camelCase (Finding 2): `docId`, not `doc_id`.
+        assert '"docId"' in answer_line
+        assert '"doc_id"' not in answer_line
 
     def test_ask_answer_serializes_message_citation_ref(self):
         with patch("backend.api.ai.get_knowledge_service") as g:
@@ -149,6 +158,9 @@ class TestAskSSE:
         assert '"groupId"' in answer_line
         assert '"messageId"' in answer_line
         assert '"isGroupChat"' in answer_line
+        # Outer envelope is camelCase (Finding 2): `citationIds`, not `citation_ids`.
+        assert '"citationIds"' in r.text
+        assert '"citation_ids"' not in r.text
 
     def test_ask_no_evidence_streams_minimal_payload(self):
         with patch("backend.api.ai.get_knowledge_service") as g:
@@ -163,12 +175,12 @@ class TestAskSSE:
                 },
             )
         assert r.status_code == 200
-        assert '"no_evidence": true' in r.text or '"no_evidence":true' in r.text
+        assert '"noEvidence": true' in r.text or '"noEvidence":true' in r.text
         # No leaked sentences/citations keys alongside a no-evidence answer.
         answer_data_line = next(
             line
             for line in r.text.splitlines()
-            if line.startswith("data:") and "no_evidence" in line
+            if line.startswith("data:") and "noEvidence" in line
         )
         assert "sentences" not in answer_data_line
 
@@ -349,6 +361,51 @@ class TestConfig:
             "model": "qwen2.5:14b",
         }
 
+    def test_put_config_does_not_alias_shared_defaults(self, tmp_path, monkeypatch):
+        """Finding 3 regression: PUT /config with a new `llm` block must copy
+        `knowledge_base` before mutating it, not alias the shared
+        `_SETTINGS_DEFAULTS["knowledge_base"]` dict.
+
+        `settings.json` doesn't exist yet in this tmp dir, so `load_config()`'s
+        shallow `{**_SETTINGS_DEFAULTS, **json.load(f)}` merge (see
+        `settings_store._read_file`) hands the endpoint's `_update` callback the
+        very same `knowledge_base` dict object that lives on the module-level
+        `_SETTINGS_DEFAULTS`. If `_update` mutated it in place, this PUT would
+        corrupt `_SETTINGS_DEFAULTS` for the rest of the process.
+        """
+        settings_path = tmp_path / "settings.json"
+        monkeypatch.setattr(
+            "backend.services.settings_store.get_settings_path", lambda: settings_path
+        )
+        original_kb_defaults = copy.deepcopy(_SETTINGS_DEFAULTS["knowledge_base"])
+
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "local",
+                    "base_url": "http://localhost:11434/v1",
+                    "model": "qwen2.5:14b",
+                },
+            )
+        assert r.status_code == 200
+
+        # The module-level defaults dict itself must be byte-for-byte untouched.
+        assert _SETTINGS_DEFAULTS["knowledge_base"] == original_kb_defaults
+
+        # A fresh `load_config()` read sees the PUT's `llm` change, but the
+        # OTHER `knowledge_base` fields are still exactly the defaults.
+        config = asyncio.run(load_config())
+        kb = config["knowledge_base"]
+        assert kb["enabled"] == original_kb_defaults["enabled"]
+        assert kb["embedding_model"] == original_kb_defaults["embedding_model"]
+        assert kb["last_built"] == original_kb_defaults["last_built"]
+        assert kb["llm"] == {
+            "backend": "local",
+            "base_url": "http://localhost:11434/v1",
+            "model": "qwen2.5:14b",
+        }
+
     def test_put_config_invalid_backend_returns_4xx(self, tmp_path, monkeypatch):
         settings_path = tmp_path / "settings.json"
         monkeypatch.setattr(
@@ -372,3 +429,82 @@ class TestConfig:
             json={"backend": "cloud", "base_url": "  ", "model": "m"},
         )
         assert 400 <= r.status_code < 500
+
+
+class TestAskDisconnect:
+    """`_ask_event_stream` client-disconnect handling (Finding 1).
+
+    Drives the SSE generator directly (`TestClient`/ASGI can't simulate a
+    mid-stream disconnect) with a duck-typed fake `Request` and a slow mocked
+    `svc.ask` that holds a plain `asyncio.Lock` standing in for
+    `KnowledgeService._store_lock`.
+    """
+
+    @pytest.mark.asyncio
+    async def test_disconnect_stops_stream_but_lets_ask_finish_and_release_lock(self):
+        lock = asyncio.Lock()
+
+        async def slow_ask(question, scope, tz, history):
+            async with lock:
+                await asyncio.sleep(0.2)
+            return _validated_answer()
+
+        svc = AsyncMock()
+        svc.ask = AsyncMock(side_effect=slow_ask)
+
+        class FakeRequest:
+            """Duck-types `fastapi.Request`'s `is_disconnected()`: connected on
+            the first heartbeat poll, gone from the second poll onward."""
+
+            def __init__(self) -> None:
+                self.disconnect_calls = 0
+
+            async def is_disconnected(self) -> bool:
+                self.disconnect_calls += 1
+                return self.disconnect_calls > 1
+
+        fake_request = FakeRequest()
+        scope = Scope(service="hinatazaka46", group_ids=[], member_id=None)
+
+        tasks_before = set(ai_module._pending_ask_tasks)
+        with (
+            patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)),
+            patch("backend.api.ai._HEARTBEAT_INTERVAL_S", 0.01),
+        ):
+            events = [
+                event
+                async for event in ai_module._ask_event_stream(
+                    fake_request, "何を食べた?", scope, ZoneInfo("Asia/Tokyo")
+                )
+            ]
+
+        # The stream stopped as soon as the disconnect was observed: the
+        # immediate "thinking" event plus (at most) one heartbeat made it out,
+        # but no more heartbeats after that, and no terminal `event: answer`
+        # (the ask is still running in the background at this point).
+        assert events, "expected at least the immediate progress event"
+        assert all("event: progress" in e for e in events)
+        assert all("event: answer" not in e for e in events)
+        assert fake_request.disconnect_calls >= 1
+
+        # The ask task was detached (NOT cancelled) into the module-level
+        # registry when the generator returned early.
+        new_tasks = set(ai_module._pending_ask_tasks) - tasks_before
+        assert len(new_tasks) == 1
+        task = new_tasks.pop()
+        assert not task.cancelled()
+
+        # It must be allowed to run to natural completion and release the lock
+        # on its own -- proving the lock isn't left permanently held by an
+        # orphaned/cancelled worker.
+        answer = await asyncio.wait_for(asyncio.shield(task), timeout=2)
+        assert answer is not None
+        assert not task.cancelled()
+        assert not lock.locked()
+        svc.ask.assert_awaited_once()
+
+        # The done-callback retrieves the task's result/exception and
+        # self-discards it from the registry (no leaked reference, no
+        # "exception was never retrieved" warning).
+        await asyncio.sleep(0)
+        assert task not in ai_module._pending_ask_tasks
