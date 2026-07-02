@@ -275,7 +275,9 @@ async def get_config():
 
         await update_config(_fix)
 
-    api_key = _load_api_key()
+    # Offload the OS keyring read — it can take hundreds of ms on Windows (WCM),
+    # and running it on the event loop stalls every other request meanwhile.
+    api_key = await asyncio.to_thread(_load_api_key)
     masked_key = None
     if api_key:
         if len(api_key) > 8:
