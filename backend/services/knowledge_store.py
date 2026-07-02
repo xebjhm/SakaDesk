@@ -64,6 +64,10 @@ _DOCUMENT_COLUMNS = (
     "doc_id, source_ref_json, author_id, timestamp, type, is_favorite, text, has_text"
 )
 
+# Sqlite's default SQLITE_MAX_VARIABLE_NUMBER; IN (...) queries must be
+# chunked below this to avoid "too many SQL variables" on large corpora.
+_SQLITE_MAX_VARIABLES = 999
+
 
 class SqliteKnowledgeStore:
     """Durable `Document` + vector store for one knowledge index.
@@ -152,14 +156,16 @@ class SqliteKnowledgeStore:
         ).fetchone()
         if row is None:
             return None
-        return self._row_to_document(row)
+        mentions_map = self._fetch_mentions_map([doc_id])
+        return self._row_to_document(row, mentions_map[doc_id])
 
     def all_documents(self) -> list[Document]:
         """Every stored document, ordered by `doc_id`."""
         rows = self._conn.execute(
             f"SELECT {_DOCUMENT_COLUMNS} FROM kb_documents ORDER BY doc_id"
         ).fetchall()
-        return [self._row_to_document(row) for row in rows]
+        mentions_map = self._fetch_mentions_map([row[0] for row in rows])
+        return [self._row_to_document(row, mentions_map[row[0]]) for row in rows]
 
     def documents_for_service(self, service: str) -> list[Document]:
         """Documents whose `group` equals `service`, ordered by `doc_id`."""
@@ -168,9 +174,30 @@ class SqliteKnowledgeStore:
             "WHERE service = ? ORDER BY doc_id",
             (service,),
         ).fetchall()
-        return [self._row_to_document(row) for row in rows]
+        mentions_map = self._fetch_mentions_map([row[0] for row in rows])
+        return [self._row_to_document(row, mentions_map[row[0]]) for row in rows]
 
-    def _row_to_document(self, row: tuple) -> Document:
+    def _fetch_mentions_map(self, doc_ids: list[str]) -> dict[str, list[str]]:
+        """`doc_id -> mentions` (each sorted) for every id in `doc_ids`.
+
+        Batches the lookup into `SELECT ... WHERE doc_id IN (...)` queries
+        instead of issuing one query per document, chunking at
+        `_SQLITE_MAX_VARIABLES` to respect sqlite's host-parameter limit.
+        """
+        mentions_map: dict[str, list[str]] = {doc_id: [] for doc_id in doc_ids}
+        for start in range(0, len(doc_ids), _SQLITE_MAX_VARIABLES):
+            chunk = doc_ids[start : start + _SQLITE_MAX_VARIABLES]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                "SELECT doc_id, mentions_id FROM kb_mentions "
+                f"WHERE doc_id IN ({placeholders}) ORDER BY doc_id, mentions_id",
+                chunk,
+            ).fetchall()
+            for doc_id, mentions_id in rows:
+                mentions_map[doc_id].append(mentions_id)
+        return mentions_map
+
+    def _row_to_document(self, row: tuple, mentions: list[str]) -> Document:
         (
             doc_id,
             source_ref_json,
@@ -182,14 +209,6 @@ class SqliteKnowledgeStore:
             has_text,
         ) = row
         source_ref = SourceRef(**json.loads(source_ref_json))
-        mentions = [
-            mention_row[0]
-            for mention_row in self._conn.execute(
-                "SELECT mentions_id FROM kb_mentions WHERE doc_id = ? "
-                "ORDER BY mentions_id",
-                (doc_id,),
-            )
-        ]
         return Document(
             doc_id=doc_id,
             source_ref=source_ref,

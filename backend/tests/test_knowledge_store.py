@@ -121,6 +121,65 @@ def test_upsert_documents_persists_mentions(tmp_path: Path) -> None:
     s.close()
 
 
+def test_all_documents_attaches_each_docs_own_mentions(tmp_path: Path) -> None:
+    """`all_documents()` batches the mentions lookup; guard against the
+    batched grouping cross-wiring mentions between documents."""
+    s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    s.upsert_documents(
+        [
+            _doc(1, mentions=["hinatazaka46:1"]),
+            _doc(2, mentions=["hinatazaka46:2", "hinatazaka46:3"]),
+            _doc(3, mentions=[]),
+        ]
+    )
+    docs_by_id = {d.doc_id: d for d in s.all_documents()}
+    assert sorted(docs_by_id["blog:hinatazaka46:1"].mentions) == ["hinatazaka46:1"]
+    assert sorted(docs_by_id["blog:hinatazaka46:2"].mentions) == [
+        "hinatazaka46:2",
+        "hinatazaka46:3",
+    ]
+    assert docs_by_id["blog:hinatazaka46:3"].mentions == []
+    s.close()
+
+
+def test_documents_for_service_attaches_each_docs_own_mentions(
+    tmp_path: Path,
+) -> None:
+    """`documents_for_service()` batches the mentions lookup; guard against
+    the batched grouping cross-wiring mentions between documents."""
+    other = Document(
+        doc_id="blog:sakurazaka46:1",
+        source_ref=SourceRef(
+            service="sakurazaka46", kind="blog", blog_id="1", member_id=5
+        ),
+        author_id="sakurazaka46:5",
+        group="sakurazaka46",
+        timestamp=datetime(2026, 3, 3, tzinfo=timezone.utc),
+        type="blog",
+        is_favorite=False,
+        text="桜",
+        has_text=True,
+        mentions=["sakurazaka46:99"],
+    )
+    s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    s.upsert_documents(
+        [
+            _doc(1, mentions=["hinatazaka46:1"]),
+            _doc(2, mentions=["hinatazaka46:2", "hinatazaka46:3"]),
+            other,
+        ]
+    )
+    docs_by_id = {d.doc_id: d for d in s.documents_for_service("hinatazaka46")}
+    assert sorted(docs_by_id["blog:hinatazaka46:1"].mentions) == ["hinatazaka46:1"]
+    assert sorted(docs_by_id["blog:hinatazaka46:2"].mentions) == [
+        "hinatazaka46:2",
+        "hinatazaka46:3",
+    ]
+    # The other-service doc's mentions must never leak into this result set.
+    assert "blog:sakurazaka46:1" not in docs_by_id
+    s.close()
+
+
 def test_vector_remove(tmp_path: Path) -> None:
     s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
     s.upsert_documents([_doc(1), _doc(2)])
