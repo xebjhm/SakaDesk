@@ -21,11 +21,13 @@ import json
 import threading
 from datetime import timezone
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
 
 from backend.services.knowledge_store import SqliteKnowledgeStore
+from backend.services.settings_store import load_config
 from pysaka.knowledge.llm import FakeLLMClient, LLMResponse, ToolCall
 from pysaka.knowledge.models import Answer, Scope
 
@@ -522,3 +524,453 @@ async def test_get_knowledge_service_returns_cached_instance_without_rebuilding(
     result = await ks.get_knowledge_service()
 
     assert result is sentinel
+
+
+# ---------------------------------------------------------------------------
+# P-wave Task 3: kb_enabled(), no-op fast path, lock fairness, retriever
+# cache, indexing progress, initial-build discovery/scheduling, last_built.
+# ---------------------------------------------------------------------------
+
+
+def _isolate_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    settings_path = tmp_path / "settings.json"
+    monkeypatch.setattr(
+        "backend.services.settings_store.get_settings_path", lambda: settings_path
+    )
+    return settings_path
+
+
+class TestKbEnabled:
+    @pytest.mark.asyncio
+    async def test_defaults_to_false(self, tmp_path, monkeypatch):
+        from backend.services import knowledge_service as ks
+
+        _isolate_settings(tmp_path, monkeypatch)
+        assert await ks.kb_enabled() is False
+
+    @pytest.mark.asyncio
+    async def test_true_when_set_in_settings(self, tmp_path, monkeypatch):
+        from backend.services import knowledge_service as ks
+
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"enabled": True}}), encoding="utf-8"
+        )
+        assert await ks.kb_enabled() is True
+
+
+class SpyMentionDetector:
+    """Wraps a real `MentionDetector`, counting `detect()` calls."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self.calls = 0
+
+    def detect(self, text: str, author_id: str):
+        self.calls += 1
+        return self._inner.detect(text, author_id)
+
+
+class CountingEmbedder:
+    """Wraps `FakeEmbedder`, counting `embed()` calls."""
+
+    def __init__(self, inner) -> None:
+        self._inner = inner
+        self.dim = inner.dim
+        self.calls = 0
+
+    def embed(self, texts, kind="passage"):
+        self.calls += 1
+        return self._inner.embed(texts, kind)
+
+
+@pytest.mark.asyncio
+async def test_second_index_pass_with_unchanged_docs_skips_mention_detection_and_embedding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No-op fast path (item 5): a sync/backup with zero actually-changed docs
+    must do ZERO mention detection and ZERO embedding -- `changed_document_ids`
+    is computed BEFORE either runs, so an unchanged corpus never reaches them."""
+    svc, store = await _build_indexed_service(tmp_path, monkeypatch, llm=None)
+
+    # Swap in counting wrappers around the ALREADY-BUILT reference's detector
+    # and the service's embedder, after the first (real) index pass.
+    reference = svc._reference_for(_SERVICE)
+    spy_detector = SpyMentionDetector(reference.detector)
+    reference.detector = spy_detector
+    spy_embedder = CountingEmbedder(svc._embedder)
+    svc._embedder = spy_embedder
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    changed = await svc.index_members([(group, member)], _SERVICE)
+
+    assert changed == 0
+    assert spy_detector.calls == 0
+    assert spy_embedder.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_ask_completes_between_index_batches_not_after_whole_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lock fairness (item 4): with a multi-batch index in flight (a slow fake
+    embedder + `_EMBED_BATCH_SIZE` overridden to 1 so 2 docs -> 2 batches), a
+    queued `ask()` must complete BETWEEN batches, not wait for the whole index.
+    Choreographed deterministically with `threading.Event`s (the embedder runs
+    on a `to_thread` worker thread) and `asyncio.Lock`'s documented FIFO
+    fairness (a waiter queued before a release is served before a later
+    acquire attempt from the same task that just released it).
+    """
+    from backend.services import knowledge_service as ks
+
+    monkeypatch.setattr(ks, "_EMBED_BATCH_SIZE", 1)
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    messages_file.parent.mkdir(parents=True, exist_ok=True)
+    messages_file.write_text(
+        json.dumps(
+            {
+                "member": {"id": 145, "name": "佐藤 花", "group_id": 94},
+                "messages": [
+                    {
+                        "id": 500001,
+                        "timestamp": "2026-06-15T09:30:00Z",
+                        "type": "text",
+                        "is_favorite": False,
+                        "content": "first message",
+                    },
+                    {
+                        "id": 500002,
+                        "timestamp": "2026-06-15T09:31:00Z",
+                        "type": "text",
+                        "is_favorite": False,
+                        "content": "second message",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    order: list[str] = []
+    batch1_started = threading.Event()
+    release_batch1 = threading.Event()
+
+    class SlowEmbedder:
+        dim = 2
+
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def embed(self, texts, kind="passage"):
+            self.call_count += 1
+            if self.call_count == 1:
+                batch1_started.set()
+                assert release_batch1.wait(timeout=5), (
+                    "test deadlock: release_batch1 never set"
+                )
+                order.append("batch1_embedded")
+            else:
+                order.append(f"batch{self.call_count}_embedded")
+            return [[1.0, 0.0] for _ in texts]
+
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    llm = FakeLLMClient(script)
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(
+        store=store, embedder=SlowEmbedder(), llm=llm, data_dir=data_dir
+    )
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    index_task = asyncio.create_task(svc.index_members([(group, member)], _SERVICE))
+
+    # Wait until the indexer is inside batch 1's embed call -- it holds
+    # `_store_lock` right now.
+    assert await asyncio.to_thread(batch1_started.wait, 5)
+
+    async def _run_ask():
+        answer = await svc.ask("anything", Scope(service=_SERVICE), timezone.utc)
+        order.append("ask_done")
+        return answer
+
+    ask_task = asyncio.create_task(_run_ask())
+    # Give the ask a real chance to queue on `_store_lock` BEFORE batch 1
+    # releases it -- same idiom as the singleton-race test above.
+    await asyncio.sleep(0.05)
+
+    release_batch1.set()
+
+    changed = await index_task
+    answer = await ask_task
+
+    assert changed == 2
+    assert answer.no_evidence is True
+    # The ask completed strictly BETWEEN the two embed batches -- proof the
+    # lock was released (and fairly handed to the queued ask) after batch 1
+    # instead of being held for the whole multi-batch index.
+    assert order == ["batch1_embedded", "ask_done", "batch2_embedded"]
+
+
+@pytest.mark.asyncio
+async def test_ask_reuses_cached_retriever_until_store_generation_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retriever cache (item 6): two asks with no index write in between must
+    build the `HybridRetriever` exactly ONCE; an index write between them
+    (bumping `SqliteKnowledgeStore.generation`) must invalidate the cache and
+    rebuild it on the next ask."""
+    from backend.services import knowledge_service as ks
+
+    build_count = {"n": 0}
+    real_hybrid_retriever = ks.HybridRetriever
+
+    class CountingHybridRetriever(real_hybrid_retriever):  # type: ignore[misc, valid-type]
+        def __init__(self, *args, **kwargs) -> None:
+            build_count["n"] += 1
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setattr(ks, "HybridRetriever", CountingHybridRetriever)
+
+    script = [LLMResponse(text=json.dumps({"no_evidence": True})) for _ in range(3)]
+    llm = FakeLLMClient(script)
+    svc, store = await _build_indexed_service(tmp_path, monkeypatch, llm)
+
+    await svc.ask("q1", Scope(service=_SERVICE), timezone.utc)
+    assert build_count["n"] == 1
+
+    await svc.ask("q2", Scope(service=_SERVICE), timezone.utc)
+    assert build_count["n"] == 1, "second ask must reuse the cached retriever"
+
+    # An index write (new message) bumps the store's generation.
+    messages_file = tmp_path / "messages.json"
+    payload = json.loads(messages_file.read_text(encoding="utf-8"))
+    payload["messages"].append(
+        {
+            "id": 500002,
+            "timestamp": "2026-06-16T09:30:00Z",
+            "type": "text",
+            "is_favorite": False,
+            "content": "a brand new message",
+        }
+    )
+    messages_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    from backend.services import knowledge_service as ks_mod
+
+    real_embedder = svc._embedder
+    monkeypatch.setattr(
+        real_embedder,
+        "embed",
+        lambda texts, kind="passage": [[1.0, 0.0] for _ in texts],
+        raising=False,
+    )
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    changed = await svc.index_members([(group, member)], _SERVICE)
+    assert changed == 1
+    del ks_mod  # only imported for readability above; no further use
+
+    await svc.ask("q3", Scope(service=_SERVICE), timezone.utc)
+    assert build_count["n"] == 2, "an index write must invalidate the cache"
+
+
+@pytest.mark.asyncio
+async def test_index_progress_reports_embedding_phase_with_growing_done_then_idle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real progress (item 3): `status()`'s `progress` shows `phase="embedding"`
+    with `done` growing per batch while an index is running, and `phase="idle"`
+    once it completes."""
+    from backend.services import knowledge_service as ks
+
+    monkeypatch.setattr(ks, "_EMBED_BATCH_SIZE", 1)
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    messages_file.write_text(
+        json.dumps(
+            {
+                "member": {"id": 145, "name": "佐藤 花", "group_id": 94},
+                "messages": [
+                    {
+                        "id": 500001,
+                        "timestamp": "2026-06-15T09:30:00Z",
+                        "type": "text",
+                        "is_favorite": False,
+                        "content": "first message",
+                    },
+                    {
+                        "id": 500002,
+                        "timestamp": "2026-06-15T09:31:00Z",
+                        "type": "text",
+                        "is_favorite": False,
+                        "content": "second message",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    batch1_started = threading.Event()
+    release_batch1 = threading.Event()
+
+    class SlowEmbedder:
+        dim = 2
+
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        def embed(self, texts, kind="passage"):
+            self.call_count += 1
+            if self.call_count == 1:
+                batch1_started.set()
+                assert release_batch1.wait(timeout=5)
+            return [[1.0, 0.0] for _ in texts]
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(
+        store=store, embedder=SlowEmbedder(), llm=None, data_dir=data_dir
+    )
+
+    assert svc.status(_SERVICE)["progress"]["phase"] == "idle"
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    index_task = asyncio.create_task(svc.index_members([(group, member)], _SERVICE))
+    assert await asyncio.to_thread(batch1_started.wait, 5)
+
+    mid_progress = svc.status(_SERVICE)["progress"]
+    assert mid_progress["phase"] == "embedding"
+    assert mid_progress["total"] == 2
+    assert mid_progress["done"] == 0
+    assert mid_progress["service"] == _SERVICE
+
+    release_batch1.set()
+    changed = await index_task
+    assert changed == 2
+
+    final_progress = svc.status(_SERVICE)["progress"]
+    assert final_progress["phase"] == "idle"
+
+
+class TestKbInitialBuild:
+    """Enable-toggle / app-startup initial-build discovery and scheduling."""
+
+    def test_discover_synced_services_finds_only_services_with_on_disk_data(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        output_dir = tmp_path / "output"
+        (output_dir / "日向坂46").mkdir(parents=True)
+        monkeypatch.setattr(
+            "backend.services.path_resolver.get_output_dir", lambda: output_dir
+        )
+
+        services = ks.discover_synced_services()
+
+        assert "hinatazaka46" in services
+        assert "sakurazaka46" not in services
+
+    @pytest.mark.asyncio
+    async def test_schedule_initial_build_runs_rebuild_via_tracked_background_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import background_tasks as bt
+        from backend.services import knowledge_service as ks
+
+        fake_svc = MagicMock()
+        fake_svc.rebuild = AsyncMock(return_value=5)
+        monkeypatch.setattr(
+            ks, "get_knowledge_service", AsyncMock(return_value=fake_svc)
+        )
+
+        await ks.schedule_initial_build("hinatazaka46")
+        pending = {t for t in bt._background_tasks if not t.done()}
+        assert len(pending) == 1
+        await asyncio.gather(*pending)
+        await asyncio.sleep(0)
+
+        fake_svc.rebuild.assert_awaited_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_schedule_initial_build_swallows_misconfigured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A missing embedding model must not crash the enable-toggle response
+        or the startup sweep -- it's swallowed with a log, same as any other
+        "not configured yet" state elsewhere."""
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setattr(
+            ks,
+            "get_knowledge_service",
+            AsyncMock(side_effect=ks.KnowledgeMisconfigured("no model")),
+        )
+
+        await ks.schedule_initial_build("hinatazaka46")
+        await asyncio.sleep(0)  # let the retained background task run
+
+    @pytest.mark.asyncio
+    async def test_schedule_initial_build_all_fans_out_over_discovered_services(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setattr(
+            ks, "discover_synced_services", lambda: ["hinatazaka46", "sakurazaka46"]
+        )
+        scheduled: list[str] = []
+
+        async def fake_schedule(service: str) -> None:
+            scheduled.append(service)
+
+        monkeypatch.setattr(ks, "schedule_initial_build", fake_schedule)
+
+        await ks.schedule_initial_build_all()
+
+        assert scheduled == ["hinatazaka46", "sakurazaka46"]
+
+
+@pytest.mark.asyncio
+async def test_rebuild_records_last_built_in_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    _isolate_settings(tmp_path, monkeypatch)
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    monkeypatch.setattr(
+        ks,
+        "resolve_service_path",
+        lambda service: tmp_path / "no-such-service-dir",
+    )
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(
+        store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+    )
+
+    config_before = await load_config()
+    assert config_before["knowledge_base"]["last_built"] is None
+
+    await svc.rebuild(_SERVICE)
+
+    config_after = await load_config()
+    assert config_after["knowledge_base"]["last_built"] is not None

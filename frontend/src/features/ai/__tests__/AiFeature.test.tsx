@@ -143,6 +143,28 @@ describe('AiFeature', () => {
         expect(await screen.findByText('You can try again in 42s.')).toBeInTheDocument();
     });
 
+    it('renders the kb_disabled copy (not the generic fallback) with the open-settings hint', async () => {
+        // Task 3 item 1: `/ask` streams `event: error {code: "kb_disabled"}` when
+        // `knowledge_base.enabled` is false -- must map to a friendly, localized
+        // "enable it in settings" message, not the generic fallback.
+        const kbDisabledError = Object.assign(new Error('raw internal detail'), {
+            code: 'kb_disabled',
+        });
+        mockAskKnowledge.mockRejectedValue(kbDisabledError);
+
+        render(<AiFeature />);
+        await askQuestion('will this be disabled?');
+
+        expect(
+            await screen.findByText('The knowledge chatbot is turned off. Enable it in AI settings.')
+        ).toBeInTheDocument();
+        expect(
+            screen.queryByText('Something went wrong answering that. Please try again.')
+        ).toBeNull();
+        // kb_disabled's fix lives in AI settings too, so it gets the same hint.
+        expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+    });
+
     it('renders the unreachable copy without an "open settings" hint (not one of the settings-fixable codes)', async () => {
         const unreachableError = Object.assign(new Error('connect failed'), {
             code: 'unreachable',

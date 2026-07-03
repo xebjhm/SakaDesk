@@ -63,11 +63,19 @@ def _member_info(group_id: int, member_id: int, member_name: str = "Test") -> di
 
 
 async def _run_start_sync(
-    tmp_path: Path, mock_search_svc: MagicMock, mock_knowledge_svc: MagicMock
+    tmp_path: Path,
+    mock_search_svc: MagicMock,
+    mock_knowledge_svc: MagicMock,
+    *,
+    kb_enabled_return: bool = True,
 ) -> tuple[SyncService, AsyncMock]:
     """Run `SyncService.start_sync()` to completion for one member with 5 new
     messages, with the pysaka `Client`/`SyncManager` mocked out, and drain any
     background tasks the search/knowledge index hooks scheduled.
+
+    `kb_enabled_return` defaults to `True` so callers exercise the "KB is on"
+    path without having to isolate settings themselves; the disabled gate
+    (item 1) is covered by its own dedicated test class, which passes `False`.
 
     Returns `(svc, mock_save_metadata)` so callers can assert sync reached its
     normal completion (metadata persisted) regardless of what the knowledge
@@ -145,6 +153,15 @@ async def _run_start_sync(
         patch(
             "backend.services.knowledge_service.get_knowledge_service",
             new=AsyncMock(return_value=mock_knowledge_svc),
+        ),
+        # Task 3's shared `kb_enabled()` guard early-returns every index hook
+        # before it builds the knowledge service -- these hook tests are about
+        # the trigger/payload/dedupe behavior once the KB is on, not the gate
+        # itself, so arrange enabled=True by default (settings default to
+        # False); the disabled-gate test class passes `kb_enabled_return=False`.
+        patch(
+            "backend.services.knowledge_service.kb_enabled",
+            new=AsyncMock(return_value=kb_enabled_return),
         ),
     ):
         mock_pm.get.return_value = mock_progress
@@ -271,6 +288,12 @@ class TestBlogBackupKnowledgeHook:
                 "backend.services.knowledge_service.get_knowledge_service",
                 new=AsyncMock(return_value=mock_knowledge_svc),
             ),
+            # See `_run_start_sync`'s comment: the KB must read as enabled for
+            # this hook to reach `index_blogs_for_service` at all.
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=True),
+            ),
         ):
             await manager._run_backup("hinatazaka46", threading.Event())
             await _drain_background_tasks()
@@ -300,6 +323,10 @@ class TestBlogBackupKnowledgeHook:
             patch(
                 "backend.services.knowledge_service.get_knowledge_service",
                 new=AsyncMock(return_value=mock_knowledge_svc),
+            ),
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=True),
             ),
         ):
             await manager._run_backup("hinatazaka46", threading.Event())
@@ -347,9 +374,17 @@ class TestTranscriptionKnowledgeHook:
         mock_knowledge_svc = MagicMock()
         mock_knowledge_svc.index_members = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.services.knowledge_service.get_knowledge_service",
-            new=AsyncMock(return_value=mock_knowledge_svc),
+        with (
+            patch(
+                "backend.services.knowledge_service.get_knowledge_service",
+                new=AsyncMock(return_value=mock_knowledge_svc),
+            ),
+            # See `_run_start_sync`'s comment: the KB must read as enabled for
+            # this hook to reach `index_members` at all.
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=True),
+            ),
         ):
             storage.save(member_dir, _transcription_result())
             await _drain_background_tasks()
@@ -366,14 +401,23 @@ class TestTranscriptionKnowledgeHook:
         mock_knowledge_svc = MagicMock()
         mock_knowledge_svc.index_members = AsyncMock(side_effect=RuntimeError("boom"))
 
-        with patch(
-            "backend.services.knowledge_service.get_knowledge_service",
-            new=AsyncMock(return_value=mock_knowledge_svc),
+        with (
+            patch(
+                "backend.services.knowledge_service.get_knowledge_service",
+                new=AsyncMock(return_value=mock_knowledge_svc),
+            ),
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=True),
+            ),
         ):
             # Must not raise even though the knowledge index blows up.
             storage.save(member_dir, _transcription_result())
             await _drain_background_tasks()
 
+        # The hook actually reached (and blew up in) `index_members` -- this
+        # is the call whose failure must be non-fatal, not skipped entirely.
+        mock_knowledge_svc.index_members.assert_awaited_once()
         # The transcript itself was still saved successfully — the write is
         # not rolled back or affected by the background re-index failing.
         loaded = storage.load(member_dir, 500)
@@ -404,3 +448,86 @@ class TestTranscriptionKnowledgeHook:
         storage.save(member_dir, _transcription_result())
 
         assert storage.load(member_dir, 500) is not None
+
+
+# ---------------------------------------------------------------------------
+# Shared `kb_enabled()` gate (Task 3, item 1) -- every hook must skip BEFORE
+# building the knowledge service when the KB is off.
+# ---------------------------------------------------------------------------
+
+
+class TestHooksSkipWhenKbDisabled:
+    """`settings.knowledge_base.enabled = false` (the default): none of the
+    three index hooks may call `get_knowledge_service()` -- a disabled KB
+    must never build the embedder/store/LLM client just to throw the result
+    away (see `kb_enabled`'s docstring)."""
+
+    @pytest.mark.asyncio
+    async def test_sync_hook_never_builds_knowledge_service(self, tmp_path):
+        mock_search_svc = MagicMock()
+        mock_search_svc.index_members = AsyncMock(return_value=5)
+        mock_knowledge_svc = MagicMock()
+        mock_knowledge_svc.index_members = AsyncMock(return_value=5)
+
+        await _run_start_sync(
+            tmp_path, mock_search_svc, mock_knowledge_svc, kb_enabled_return=False
+        )
+
+        mock_knowledge_svc.index_members.assert_not_awaited()
+        # The search-index hook (unaffected by the KB gate) still ran --
+        # proof the sync itself completed normally, only the KB hook skipped.
+        mock_search_svc.index_members.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_blog_backup_hook_never_builds_knowledge_service(self):
+        manager = BlogBackupManager()
+        mock_search_svc = MagicMock()
+        mock_search_svc.index_blogs_for_service = AsyncMock(return_value=2)
+        mock_knowledge_svc = MagicMock()
+        mock_knowledge_svc.index_blogs_for_service = AsyncMock(return_value=3)
+
+        with (
+            patch.object(BlogService, "sync_full_backup", new=AsyncMock()),
+            patch(
+                "backend.services.search_service.get_search_service",
+                return_value=mock_search_svc,
+            ),
+            patch(
+                "backend.services.knowledge_service.get_knowledge_service",
+                new=AsyncMock(return_value=mock_knowledge_svc),
+            ),
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            await manager._run_backup("hinatazaka46", threading.Event())
+            await _drain_background_tasks()
+
+        mock_knowledge_svc.index_blogs_for_service.assert_not_awaited()
+        mock_search_svc.index_blogs_for_service.assert_awaited_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_transcription_hook_never_builds_knowledge_service(self, tmp_path):
+        member_dir = _member_dir(tmp_path)
+        storage = TranscriptionStorage()
+        mock_knowledge_svc = MagicMock()
+        mock_knowledge_svc.index_members = AsyncMock(return_value=1)
+
+        with (
+            patch(
+                "backend.services.knowledge_service.get_knowledge_service",
+                new=AsyncMock(return_value=mock_knowledge_svc),
+            ),
+            patch(
+                "backend.services.knowledge_service.kb_enabled",
+                new=AsyncMock(return_value=False),
+            ),
+        ):
+            storage.save(member_dir, _transcription_result())
+            await _drain_background_tasks()
+
+        mock_knowledge_svc.index_members.assert_not_awaited()
+        # The transcript write itself is unaffected by the KB gate.
+        loaded = storage.load(member_dir, 500)
+        assert loaded is not None

@@ -95,6 +95,14 @@ class SqliteKnowledgeStore:
         self._conn.commit()
         self._vector_store = NumpyVectorStore()
         self._load_vectors()
+        # Bumped by every persisted write (`add`/`upsert_documents`/`remove`) that
+        # actually changes something. `KnowledgeService._ensure_retriever_cached`
+        # keys its per-service `(DocumentStore, HybridRetriever)` cache on this
+        # value: a mismatch means the corpus changed since the retriever was
+        # assembled, so the cache is invalidated and rebuilt. Not persisted
+        # in-db -- it only needs to be unique WITHIN this process's lifetime
+        # (rebuilt from vector blobs at every fresh open anyway).
+        self.generation = 0
         logger.debug("knowledge_store.opened", path=str(self._db_path))
 
     def close(self) -> None:
@@ -128,17 +136,35 @@ class SqliteKnowledgeStore:
         the retry is idempotent. Persisting the doc row first would strand its
         unembedded chunks permanently (the content-hash skip would never
         revisit them).
+
+        Batches the existing-hash lookup into chunked `WHERE doc_id IN (...)`
+        selects (`_SQLITE_MAX_VARIABLES` per query) instead of one `SELECT` per
+        doc -- this is the hot path a hook-triggered sync/backup runs on EVERY
+        doc regardless of whether anything changed, so an O(n) query count here
+        directly costs a large corpus (e.g. 26k docs -> 26k queries) real
+        wall-clock time even when the answer is "nothing changed".
         """
+        existing_hashes = self._fetch_content_hashes([doc.doc_id for doc in docs])
         changed: list[str] = []
         for doc in docs:
             new_hash = DocumentStore.content_hash(doc)
-            row = self._conn.execute(
-                "SELECT content_hash FROM kb_documents WHERE doc_id = ?",
-                (doc.doc_id,),
-            ).fetchone()
-            if row is None or row[0] != new_hash:
+            if existing_hashes.get(doc.doc_id) != new_hash:
                 changed.append(doc.doc_id)
         return changed
+
+    def _fetch_content_hashes(self, doc_ids: list[str]) -> dict[str, str]:
+        """`doc_id -> content_hash` for every id in `doc_ids` currently persisted."""
+        hashes: dict[str, str] = {}
+        for start in range(0, len(doc_ids), _SQLITE_MAX_VARIABLES):
+            chunk = doc_ids[start : start + _SQLITE_MAX_VARIABLES]
+            placeholders = ",".join("?" * len(chunk))
+            rows = self._conn.execute(
+                "SELECT doc_id, content_hash FROM kb_documents "
+                f"WHERE doc_id IN ({placeholders})",
+                chunk,
+            ).fetchall()
+            hashes.update(rows)
+        return hashes
 
     def upsert_documents(self, docs: list[Document]) -> list[str]:
         """Insert or update `docs`, keyed by `doc_id`.
@@ -185,6 +211,8 @@ class SqliteKnowledgeStore:
                     [(doc.doc_id, mention_id) for mention_id in doc.mentions],
                 )
         self._conn.commit()
+        if changed:
+            self.generation += 1
         logger.debug("knowledge_store.upserted", total=len(docs), changed=len(changed))
         return changed
 
@@ -278,6 +306,8 @@ class SqliteKnowledgeStore:
 
     def add(self, ids: list[str], vectors: list[list[float]]) -> None:
         """Add or update vectors, both in-memory and persisted to `kb_vectors`."""
+        if not ids:
+            return
         self._vector_store.add(ids, vectors)
         rows = [
             (id_, len(vector), np.asarray(vector, dtype=np.float32).tobytes())
@@ -288,14 +318,18 @@ class SqliteKnowledgeStore:
             rows,
         )
         self._conn.commit()
+        self.generation += 1
 
     def remove(self, ids: list[str]) -> None:
         """Remove vectors, both in-memory and from `kb_vectors`."""
+        if not ids:
+            return
         self._vector_store.remove(ids)
         self._conn.executemany(
             "DELETE FROM kb_vectors WHERE id = ?", [(id_,) for id_ in ids]
         )
         self._conn.commit()
+        self.generation += 1
 
     def search(
         self, vector: list[float], k: int, allowed_ids: set[str] | None = None

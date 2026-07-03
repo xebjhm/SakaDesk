@@ -76,6 +76,7 @@ async def lifespan(app: FastAPI):
     cleanup_upgrade_files()
 
     background_task = asyncio.create_task(_deferred_blog_backup())
+    kb_initial_build_task = asyncio.create_task(_deferred_kb_initial_build())
 
     yield
 
@@ -85,6 +86,18 @@ async def lifespan(app: FastAPI):
         background_task.cancel()
         try:
             await background_task
+        except asyncio.CancelledError:
+            pass
+
+    # Cancel the deferred KB initial-build check if it's still pending. Any
+    # per-service rebuild it may have already scheduled lives in
+    # `background_tasks.track_background_task`'s own retained set, independent
+    # of this wrapper task -- cancelling this one only stops the (cheap)
+    # enabled-check/fan-out, never an in-flight rebuild.
+    if not kb_initial_build_task.done():
+        kb_initial_build_task.cancel()
+        try:
+            await kb_initial_build_task
         except asyncio.CancelledError:
             pass
 
@@ -145,6 +158,40 @@ async def _deferred_blog_backup():
             logger.info("Blog backup auto-resumed on startup", services=services)
     except Exception as e:
         logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
+
+
+async def _deferred_kb_initial_build():
+    """On startup, if the KB chatbot is enabled, catch up any service that
+    synced (or was backed up) while the KB was off/never rebuilt.
+
+    Confirmed bug (`pwave-confirmed-bugs.md`): blog/message indexing only ever
+    fires as a side hook of a backup/sync completing, so a user who already has
+    a synced library when they enable the KB (or whose sync ran while the KB
+    was disabled) gets an empty or stale corpus until they happen to find the
+    Rebuild button. This mirrors `_deferred_blog_backup`'s pattern (a retained
+    local `asyncio.Task`, cancelled at shutdown -- see `lifespan`) but schedules
+    the actual per-service work through `schedule_initial_build_all`, which
+    fans out via `background_tasks.track_background_task` (so a multi-minute
+    first index can't be silently garbage-collected) -- this wrapper task
+    itself is just the cheap enabled-check + fan-out.
+
+    Deliberately does NOT try to distinguish "empty" from "stale" up front:
+    `rebuild()`'s no-op fast path (Task 3 item 5) makes a rebuild of an
+    already-fully-indexed service a cheap content-hash pass with zero
+    embedding, so it's simpler and just as cheap to always run one per synced
+    service rather than pre-checking document counts.
+    """
+    try:
+        from backend.services.knowledge_service import (
+            kb_enabled,
+            schedule_initial_build_all,
+        )
+
+        if not await kb_enabled():
+            return
+        await schedule_initial_build_all()
+    except Exception as e:
+        logger.warning(f"KB initial build check failed (non-fatal): {e}")
 
 
 app = FastAPI(title="SakaDesk", lifespan=lifespan)

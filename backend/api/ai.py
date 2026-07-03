@@ -43,6 +43,18 @@ isGroupChat}`.
 `ask()` builds its `LLMClient` from the new backend/base_url/model instead of a
 stale cached one -- see that function's docstring for why it's a safe no-op when
 the service singleton hasn't been built yet.
+
+**Enabled gate + lifecycle.** `PUT /enabled` is the KB settings section's on/off
+switch, separate from `PUT /config` (which stays LLM-only so a user can
+configure before enabling). `/ask` and `/index/rebuild` both check
+`knowledge_service.kb_enabled()` before doing any KB work -- `/ask` via
+`_run_ask` raising `KnowledgeDisabled`, translated to SSE `event: error
+{code: "kb_disabled"}`; `/index/rebuild` via a plain 409
+`{code: "kb_disabled"}`. `PUT /config` and `GET /index/status` are
+deliberately NOT gated: a user must be able to configure/inspect the KB before
+turning it on. `/index/rebuild` also 409s `{alreadyRunning: true}` when
+`KnowledgeService.index_progress()` isn't `"idle"`, instead of stacking another
+background rebuild behind `_store_lock` on a repeated click.
 """
 
 from __future__ import annotations
@@ -61,10 +73,13 @@ from pydantic import BaseModel, field_validator
 from backend.services.background_tasks import track_background_task
 from backend.services.hardware import detect_hardware, suggest_llm_backend
 from backend.services.knowledge_service import (
+    KnowledgeDisabled,
     KnowledgeMisconfigured,
     KnowledgeService,
     get_knowledge_service,
     invalidate_llm_client,
+    kb_enabled,
+    schedule_initial_build_all,
 )
 from backend.services.llm_client import LLMBackendError
 from backend.services.service_utils import validate_service
@@ -114,6 +129,7 @@ _LLM_ERROR_FALLBACK_MESSAGE = (
 _MISCONFIGURED_MESSAGE = (
     "The knowledge chatbot isn't configured yet. Check the AI settings."
 )
+_KB_DISABLED_MESSAGE = "The knowledge chatbot is turned off. Enable it in AI settings."
 _GENERIC_ERROR_MESSAGE = "The request failed unexpectedly."
 
 # `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
@@ -164,6 +180,10 @@ class LLMConfigRequest(BaseModel):
     backend: str
     base_url: str
     model: str
+
+
+class KbEnabledRequest(BaseModel):
+    enabled: bool
 
 
 # ----------------------------------------------------------------------------
@@ -255,11 +275,47 @@ def _serialize_answer(answer: Answer) -> dict:
 async def _run_ask(
     question: str, scope: Scope, tz: tzinfo, history: list[dict] | None
 ) -> Answer:
-    """Look up the service and run `ask()` -- both inside the same task, so
-    `get_knowledge_service()` failures (e.g. `KnowledgeMisconfigured`) surface
-    through the same in-band `event: error` path as an LLM/provider failure."""
+    """Check `kb_enabled()`, look up the service, and run `ask()` -- all inside
+    the same task, so every failure mode (disabled, `KnowledgeMisconfigured`, an
+    LLM/provider failure) surfaces through the same in-band `event: error` path.
+
+    The `kb_enabled()` check runs BEFORE `get_knowledge_service()` so a disabled
+    KB never builds the embedder/store/LLM client just to answer a question no
+    one is allowed to ask yet (mirrors the index hooks' guard).
+    """
+    if not await kb_enabled():
+        raise KnowledgeDisabled()
     svc = await get_knowledge_service()
     return await svc.ask(question, scope, tz, history)
+
+
+async def _heartbeat_payload(service: str) -> dict:
+    """The `event: progress` payload for one heartbeat tick.
+
+    `{"stage": "indexing", "done": ..., "total": ...}` when `service`'s index is
+    actively embedding right now (Lock fairness): an ask queued behind an
+    in-flight index batch only ever waits SECONDS between batches (see
+    `KnowledgeService._persist_batched`), but without this it would show a
+    generic "thinking" spinner that looks identical to a slow LLM call for
+    however long that wait lasts. Falls back to `{"stage": "thinking"}` --
+    including when the knowledge service isn't buildable at all (disabled/
+    misconfigured); `_run_ask` surfaces THAT failure through the normal error
+    path already, so this is purely best-effort progress labeling.
+    """
+    try:
+        svc = await get_knowledge_service()
+        progress = svc.index_progress()
+        if progress.get("phase") != "idle" and progress.get("service") == service:
+            return {
+                "stage": "indexing",
+                "done": progress.get("done", 0),
+                "total": progress.get("total", 0),
+            }
+    except KnowledgeMisconfigured:
+        pass
+    except Exception:  # noqa: BLE001 - best-effort UX label; must never break the heartbeat/ask
+        logger.debug("ai.ask.heartbeat_progress_lookup_failed", exc_info=True)
+    return {"stage": "thinking"}
 
 
 # Ask tasks detached from a generator that stopped early (client disconnect) --
@@ -318,7 +374,7 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
                 return
             await asyncio.wait({task}, timeout=_HEARTBEAT_INTERVAL_S)
             if not task.done():
-                yield _format_sse("progress", {"stage": "thinking"})
+                yield _format_sse("progress", await _heartbeat_payload(scope.service))
         answer = await task
     except LLMBackendError as exc:
         # `exc.kind`/`status_code` are logged for diagnostics; `str(exc)` (which
@@ -350,6 +406,20 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
             _serialize_error_event(
                 "misconfigured",
                 _MISCONFIGURED_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
+        return
+    except KnowledgeDisabled:
+        logger.info("ai.ask.kb_disabled", service=scope.service)
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "kb_disabled",
+                _KB_DISABLED_MESSAGE,
                 retry_after_s=None,
                 backend=backend,
                 model=model,
@@ -424,7 +494,14 @@ async def index_status(service: str | None = Query(None)) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     svc = await _get_knowledge_service_or_409()
-    return svc.status(service)
+    status = svc.status(service)
+    # `status()` stays sync (see its docstring) and can't `await load_config()`
+    # itself, so the settings-owned `last_built` timestamp (Task 3 item 2) is
+    # enriched here at the async endpoint layer instead -- `KnowledgeBaseStatus`
+    # renders it as "Last indexed: …".
+    config = await load_config()
+    status["last_built"] = (config.get("knowledge_base") or {}).get("last_built")
+    return status
 
 
 @router.post("/index/rebuild")
@@ -434,7 +511,21 @@ async def index_rebuild(request: RebuildRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    if not await kb_enabled():
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "kb_disabled", "message": _KB_DISABLED_MESSAGE},
+        )
+
     svc = await _get_knowledge_service_or_409()
+    if svc.index_progress().get("phase") != "idle":
+        # An index/rebuild is already in flight (process-wide -- see
+        # `KnowledgeService.status`'s docstring on why `_index_progress` isn't
+        # per-service). Reject instead of stacking another background task
+        # behind `_store_lock`: repeated clicks used to each queue a FULL extra
+        # rebuild, compounding a multi-minute lock hold (see
+        # `pwave-confirmed-bugs.md`).
+        raise HTTPException(status_code=409, detail={"alreadyRunning": True})
     track_background_task(_run_rebuild(svc, request.service), name="index_rebuild")
     return {"ok": True}
 
@@ -498,3 +589,35 @@ async def put_ai_config(request: LLMConfigRequest) -> dict:
     await invalidate_llm_client()
     logger.info("ai.config.updated", backend=request.backend)
     return {"ok": True}
+
+
+@router.get("/enabled")
+async def get_kb_enabled() -> dict:
+    return {"enabled": await kb_enabled()}
+
+
+@router.put("/enabled")
+async def put_kb_enabled(request: KbEnabledRequest) -> dict:
+    """Toggle `settings.knowledge_base.enabled` -- the KB settings section's
+    top-level Enable switch (`KbBackendSelector.tsx`). Separate from
+    `PUT /config` (which only ever covered the `llm` block, and stays that way
+    so a user can configure backend/model BEFORE turning the KB on) since
+    "enabled" is a distinct concept with its own side effect: flipping
+    false->true schedules a background initial build (`rebuild()`, via
+    `schedule_initial_build_all`) for every already-synced service, so a corpus
+    that accumulated while the KB was off converges automatically instead of
+    silently staying empty until someone finds the Rebuild button.
+    """
+    previously_enabled = await kb_enabled()
+
+    def _update(config: dict) -> None:
+        # Copy rather than mutate in place -- see `put_ai_config`'s comment.
+        kb_config = dict(config.get("knowledge_base") or {})
+        kb_config["enabled"] = request.enabled
+        config["knowledge_base"] = kb_config
+
+    await update_config(_update)
+    logger.info("ai.enabled.updated", enabled=request.enabled)
+    if request.enabled and not previously_enabled:
+        await schedule_initial_build_all()
+    return {"ok": True, "enabled": request.enabled}

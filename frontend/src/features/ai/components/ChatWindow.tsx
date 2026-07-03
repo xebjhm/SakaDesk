@@ -41,6 +41,7 @@ const KNOWN_AI_ERROR_CODES = new Set([
     'timeout',
     'malformed_response',
     'misconfigured',
+    'kb_disabled',
     'network',
 ]);
 
@@ -57,6 +58,7 @@ const SETTINGS_HINT_CODES = new Set([
     'quota_exhausted',
     'auth',
     'misconfigured',
+    'kb_disabled',
     'model_not_found',
     'model_incompatible',
 ]);

@@ -31,14 +31,22 @@ interface HardwareSuggestionResponse {
 }
 
 /**
- * `KbBackendSelector` — Settings > AI > Knowledge base backend switch.
+ * `KbBackendSelector` — Settings > AI > Enable switch + knowledge base backend
+ * switch.
  *
- * Loads the current `{backend, base_url, model}` from `GET /api/ai/config`
- * (Plan B Task 5, `backend/api/ai.py`) into local draft state, lets the user
- * flip Cloud <-> Local, edit `model` (and `base_url`, Local only), and PUTs
- * the draft back on Save. Default view is Cloud -- works out of the box for
- * everyone; Local is opt-in and needs a reachable OpenAI-compatible endpoint
- * (e.g. a local Ollama server).
+ * The Enable switch at the top toggles `settings.knowledge_base.enabled` via
+ * `GET`/`PUT /api/ai/enabled` (Task 3 item 1) -- the single flag every index
+ * hook and `/ask`/`/index/rebuild` gate on. Flipping it false->true also
+ * schedules a background initial build for every already-synced service (see
+ * `backend/api/ai.py`'s `put_kb_enabled` docstring), so `KnowledgeBaseStatus`
+ * above will start showing real progress shortly after.
+ *
+ * Below that: loads the current `{backend, base_url, model}` from
+ * `GET /api/ai/config` (Plan B Task 5, `backend/api/ai.py`) into local draft
+ * state, lets the user flip Cloud <-> Local, edit `model` (and `base_url`,
+ * Local only), and PUTs the draft back on Save. Default view is Cloud --
+ * works out of the box for everyone; Local is opt-in and needs a reachable
+ * OpenAI-compatible endpoint (e.g. a local Ollama server).
  *
  * "Detect hardware" is a convenience helper, not tied to the draft: it GETs
  * `/api/ai/hardware-suggestion` and renders the recommendation. When the
@@ -49,6 +57,11 @@ interface HardwareSuggestionResponse {
  */
 export const KbBackendSelector: React.FC = () => {
     const { t } = useTranslation();
+
+    // Enable switch — independent of the draft below (its own GET/PUT
+    // endpoint, see `backend/api/ai.py`'s `get_kb_enabled`/`put_kb_enabled`).
+    const [enabled, setEnabled] = useState(false);
+    const [enabledSaving, setEnabledSaving] = useState(false);
 
     // Draft state, PUT to the backend on Save. Starts as Cloud (the default,
     // pre-fetch view) so there's no flash of a Local-only field before the
@@ -64,6 +77,17 @@ export const KbBackendSelector: React.FC = () => {
     const [hwResult, setHwResult] = useState<HardwareSuggestionResponse | null>(null);
 
     useEffect(() => {
+        fetch('/api/ai/enabled')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: { enabled?: boolean } | null) => {
+                if (data && typeof data.enabled === 'boolean') setEnabled(data.enabled);
+            })
+            .catch((err: unknown) => {
+                console.error('[KbBackendSelector] Failed to fetch KB enabled state:', err);
+            });
+    }, []);
+
+    useEffect(() => {
         fetch('/api/ai/config')
             .then((res) => (res.ok ? res.json() : null))
             .then((data: Partial<KbConfig> | null) => {
@@ -76,6 +100,25 @@ export const KbBackendSelector: React.FC = () => {
                 console.error('[KbBackendSelector] Failed to fetch AI config:', err);
             });
     }, []);
+
+    const handleToggleEnabled = () => {
+        const next = !enabled;
+        setEnabled(next); // optimistic — matches `syncReadToPhone`'s toggle idiom elsewhere in Settings
+        setEnabledSaving(true);
+        fetch('/api/ai/enabled', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: next }),
+        })
+            .then((res) => {
+                if (!res.ok) setEnabled(!next); // roll back on failure
+            })
+            .catch((err: unknown) => {
+                console.error('[KbBackendSelector] Failed to save KB enabled state:', err);
+                setEnabled(!next);
+            })
+            .finally(() => setEnabledSaving(false));
+    };
 
     const handleSave = () => {
         setSaving(true);
@@ -126,6 +169,29 @@ export const KbBackendSelector: React.FC = () => {
 
     return (
         <div className="pt-4 border-t border-gray-100 space-y-3">
+            {/* Enable switch — top of the KB settings section (Task 3 item 1) */}
+            <div>
+                <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">{t('settings.kbEnabled')}</label>
+                    <button
+                        type="button"
+                        onClick={handleToggleEnabled}
+                        disabled={enabledSaving}
+                        role="switch"
+                        aria-checked={enabled}
+                        aria-label={t('settings.kbEnabled')}
+                        className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                            enabled ? 'bg-blue-400' : 'bg-gray-300'
+                        }`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                            enabled ? 'translate-x-7' : 'translate-x-1'
+                        }`} />
+                    </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-500">{t('settings.kbEnabledDesc')}</p>
+            </div>
+
             <label className="block text-sm font-medium text-gray-700">{t('settings.kbBackend')}</label>
 
             {/* Cloud / Local toggle */}

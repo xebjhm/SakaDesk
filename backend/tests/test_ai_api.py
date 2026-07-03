@@ -5,6 +5,12 @@ suggestion, and LLM config endpoints.
 `test_search_api.py`'s `_mock_search_service` pattern) so these tests never touch
 the real pysaka engine, sqlite store, or ONNX embedder -- only the HTTP contract
 of `backend/api/ai.py` is under test.
+
+`kb_enabled` is patched to `True` by an autouse fixture (`_kb_enabled_by_default`)
+so every pre-existing test below keeps exercising the "KB is on" path without
+having to isolate settings itself; the `enabled=False` gating behavior (item 1)
+is covered by its own dedicated test classes further down, which override the
+autouse patch locally.
 """
 
 from __future__ import annotations
@@ -21,12 +27,21 @@ from fastapi.testclient import TestClient
 
 import backend.api.ai as ai_module
 from backend.main import app
-from backend.services.knowledge_service import KnowledgeMisconfigured
+from backend.services.knowledge_service import (
+    KnowledgeDisabled,
+    KnowledgeMisconfigured,
+)
+from backend.services.knowledge_service import kb_enabled as _real_kb_enabled
 from backend.services.llm_client import LLMBackendError
 from backend.services.settings_store import _SETTINGS_DEFAULTS, load_config
 from pysaka.knowledge.models import Answer, AnswerSentence, Citation, Scope, SourceRef
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _kb_enabled_by_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=True))
 
 
 def _extract_event_data(text: str, event: str) -> dict:
@@ -40,13 +55,15 @@ def _extract_event_data(text: str, event: str) -> dict:
     raise AssertionError(f"no 'event: {event}' block found in SSE stream:\n{text}")
 
 
-def _isolate_settings(tmp_path, monkeypatch) -> None:
+def _isolate_settings(tmp_path, monkeypatch):
     """Point `settings_store` at a fresh tmp file so error-payload `backend`/`model`
-    assertions are deterministic (not whatever real settings.json happens to exist)."""
+    assertions are deterministic (not whatever real settings.json happens to exist).
+    Returns the tmp settings path so callers can pre-seed it."""
+    settings_path = tmp_path / "settings.json"
     monkeypatch.setattr(
-        "backend.services.settings_store.get_settings_path",
-        lambda: tmp_path / "settings.json",
+        "backend.services.settings_store.get_settings_path", lambda: settings_path
     )
+    return settings_path
 
 
 def _validated_answer() -> Answer:
@@ -98,13 +115,29 @@ def _no_evidence_answer() -> Answer:
     return Answer(sentences=[], citations=[], no_evidence=True)
 
 
+_IDLE_PROGRESS = {
+    "service": None,
+    "phase": "idle",
+    "done": 0,
+    "total": 0,
+    "started_at": None,
+}
+
+
 def _mock_knowledge_service() -> MagicMock:
-    """`get_knowledge_service()`-shaped mock: `ask`/`rebuild` async, `status` sync."""
+    """`get_knowledge_service()`-shaped mock: `ask`/`rebuild` async, `status`/
+    `index_progress` sync."""
     svc = MagicMock()
     svc.ask = AsyncMock(return_value=_validated_answer())
     svc.status = MagicMock(
-        return_value={"service": None, "document_count": 3, "by_type": {"blog": 3}}
+        return_value={
+            "service": None,
+            "document_count": 3,
+            "by_type": {"blog": 3},
+            "progress": dict(_IDLE_PROGRESS),
+        }
     )
+    svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
     svc.rebuild = AsyncMock(return_value=3)
     return svc
 
@@ -453,7 +486,10 @@ class TestAskSSEErrorContract:
 class TestIndexStatus:
     """GET /api/ai/index/status."""
 
-    def test_returns_mocked_status(self):
+    def test_returns_mocked_status_enriched_with_last_built(
+        self, tmp_path, monkeypatch
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
         svc = _mock_knowledge_service()
         with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
             r = client.get("/api/ai/index/status", params={"service": "hinatazaka46"})
@@ -462,10 +498,24 @@ class TestIndexStatus:
             "service": None,
             "document_count": 3,
             "by_type": {"blog": 3},
+            "progress": _IDLE_PROGRESS,
+            "last_built": None,
         }
         svc.status.assert_called_once_with("hinatazaka46")
 
-    def test_status_without_service_param(self):
+    def test_returns_last_built_when_settings_has_it(self, tmp_path, monkeypatch):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"last_built": "2026-06-30T12:00:00+00:00"}}),
+            encoding="utf-8",
+        )
+        svc = _mock_knowledge_service()
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.get("/api/ai/index/status")
+        assert r.json()["last_built"] == "2026-06-30T12:00:00+00:00"
+
+    def test_status_without_service_param(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
         svc = _mock_knowledge_service()
         with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
             r = client.get("/api/ai/index/status")
@@ -549,6 +599,170 @@ class TestIndexRebuild:
 
         assert not (pending & bt._background_tasks)
         svc.rebuild.assert_awaited_once_with("hinatazaka46")
+
+    def test_rebuild_returns_409_alreadyrunning_when_an_index_is_in_flight(self):
+        svc = _mock_knowledge_service()
+        svc.index_progress = MagicMock(
+            return_value={
+                "service": "hinatazaka46",
+                "phase": "embedding",
+                "done": 5,
+                "total": 20,
+                "started_at": "2026-06-30T12:00:00+00:00",
+            }
+        )
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["alreadyRunning"] is True
+        svc.rebuild.assert_not_called()
+
+
+class TestKbDisabledGating:
+    """`knowledge_base.enabled = false` (item 1): `/ask` and `/index/rebuild`
+    must never build the knowledge service -- overrides the module's autouse
+    `_kb_enabled_by_default` fixture locally.
+    """
+
+    def test_ask_streams_kb_disabled_error_and_never_builds_the_service(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=False))
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "何を食べた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                },
+            )
+        assert r.status_code == 200  # in-band SSE error, same as every other kind
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "kb_disabled"
+        assert data["message"]
+        g.assert_not_called()
+
+    def test_rebuild_returns_409_kb_disabled_and_never_builds_the_service(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=False))
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "kb_disabled"
+        g.assert_not_called()
+
+    def test_put_config_stays_allowed_while_disabled(self, tmp_path, monkeypatch):
+        """`PUT /config` is deliberately NOT gated -- a user must be able to
+        configure the LLM backend/model BEFORE flipping the KB on."""
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=False))
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "local",
+                    "base_url": "http://localhost:11434/v1",
+                    "model": "qwen2.5:14b",
+                },
+            )
+        assert r.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_run_ask_raises_knowledge_disabled_before_building_service(self):
+        """Direct unit test of `_run_ask`'s guard ordering (item 1): it must
+        raise `KnowledgeDisabled` BEFORE calling `get_knowledge_service()`."""
+        with (
+            patch.object(ai_module, "kb_enabled", AsyncMock(return_value=False)),
+            patch.object(ai_module, "get_knowledge_service") as g,
+        ):
+            with pytest.raises(KnowledgeDisabled):
+                await ai_module._run_ask(
+                    "q", Scope(service="hinatazaka46"), ZoneInfo("UTC"), None
+                )
+            g.assert_not_called()
+
+
+class TestKbEnabledEndpoint:
+    """GET/PUT /api/ai/enabled -- the KB settings section's Enable switch
+    (item 1/2): toggling false->true schedules the initial build fan-out.
+
+    These tests care about `kb_enabled()`'s ACTUAL settings-driven return
+    value (the false->true transition is detected by comparing two real
+    reads), so every test here restores the real function over the module's
+    autouse `_kb_enabled_by_default` mock.
+    """
+
+    def test_get_reflects_settings(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ai_module, "kb_enabled", _real_kb_enabled)
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"enabled": True}}), encoding="utf-8"
+        )
+        r = client.get("/api/ai/enabled")
+        assert r.status_code == 200
+        assert r.json() == {"enabled": True}
+
+    def test_get_defaults_to_false(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ai_module, "kb_enabled", _real_kb_enabled)
+        _isolate_settings(tmp_path, monkeypatch)
+        r = client.get("/api/ai/enabled")
+        assert r.json() == {"enabled": False}
+
+    def test_false_to_true_schedules_initial_build_for_every_synced_service(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(ai_module, "kb_enabled", _real_kb_enabled)
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"enabled": False}}), encoding="utf-8"
+        )
+        with patch.object(
+            ai_module, "schedule_initial_build_all", AsyncMock()
+        ) as scheduled:
+            r = client.put("/api/ai/enabled", json={"enabled": True})
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "enabled": True}
+        scheduled.assert_awaited_once()
+        assert (
+            json.loads(settings_path.read_text(encoding="utf-8"))["knowledge_base"][
+                "enabled"
+            ]
+            is True
+        )
+
+    def test_true_to_true_does_not_reschedule_initial_build(
+        self, tmp_path, monkeypatch
+    ):
+        """Already-enabled -> still-enabled must NOT re-trigger the initial
+        build fan-out (only the false->true transition does)."""
+        monkeypatch.setattr(ai_module, "kb_enabled", _real_kb_enabled)
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"enabled": True}}), encoding="utf-8"
+        )
+        with patch.object(
+            ai_module, "schedule_initial_build_all", AsyncMock()
+        ) as scheduled:
+            r = client.put("/api/ai/enabled", json={"enabled": True})
+        assert r.status_code == 200
+        scheduled.assert_not_awaited()
+
+    def test_true_to_false_does_not_schedule_initial_build(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ai_module, "kb_enabled", _real_kb_enabled)
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"enabled": True}}), encoding="utf-8"
+        )
+        with patch.object(
+            ai_module, "schedule_initial_build_all", AsyncMock()
+        ) as scheduled:
+            r = client.put("/api/ai/enabled", json={"enabled": False})
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "enabled": False}
+        scheduled.assert_not_awaited()
 
 
 class TestHardwareSuggestion:
@@ -715,6 +929,12 @@ class TestAskDisconnect:
 
         svc = AsyncMock()
         svc.ask = AsyncMock(side_effect=slow_ask)
+        # `index_progress()` is sync on the real `KnowledgeService` (a plain
+        # lock-free attribute read) -- `_heartbeat_payload` calls it directly
+        # without `await`, so this must be a real (sync) `MagicMock`, not the
+        # auto-generated `AsyncMock` child `AsyncMock()` attribute access would
+        # otherwise produce (which would hand back an un-awaited coroutine).
+        svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
 
         class FakeRequest:
             """Duck-types `fastapi.Request`'s `is_disconnected()`: connected on

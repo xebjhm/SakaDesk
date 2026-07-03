@@ -31,8 +31,10 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-from datetime import tzinfo
+from collections import Counter
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
+from typing import cast
 
 import structlog
 
@@ -40,6 +42,7 @@ from pysaka.knowledge import (
     AliasTable,
     Answer,
     CallNameTable,
+    Chunk,
     Document,
     DocumentStore,
     HybridRetriever,
@@ -57,11 +60,12 @@ from pysaka.knowledge import (
 from pysaka.knowledge.llm import LLMClient
 from pysaka.knowledge.protocols import Embedder
 
+from backend.services.background_tasks import track_background_task
 from backend.services.knowledge_store import SqliteKnowledgeStore
 from backend.services.llm_client import LLMBackendError, build_llm_client_from_settings
 from backend.services.path_resolver import resolve_messages_file, resolve_service_path
 from backend.services.platform import get_app_data_dir
-from backend.services.settings_store import load_config
+from backend.services.settings_store import load_config, update_config
 
 logger = structlog.get_logger(__name__)
 
@@ -86,6 +90,32 @@ def _roster_short_name(service: str) -> str:
 
 class KnowledgeMisconfigured(RuntimeError):
     """Raised when the knowledge engine can't be assembled (e.g. no LLM configured)."""
+
+
+class KnowledgeDisabled(RuntimeError):
+    """Raised (by `backend/api/ai.py`'s `/ask`) when `settings.knowledge_base.enabled`
+    is false. Deliberately NOT a subclass of `KnowledgeMisconfigured`: that one means
+    "the KB is wanted but can't be built yet" (e.g. no LLM/embedding model
+    configured); this one means "the user hasn't turned it on" -- the two need
+    distinct SSE error codes (`misconfigured` vs `kb_disabled`) so the UI can point
+    the user at the right fix (configure vs enable).
+    """
+
+
+async def kb_enabled() -> bool:
+    """Whether `settings.knowledge_base.enabled` is true.
+
+    The single shared guard every index hook (`sync_service`/`blog_service`/
+    `transcription_service`'s `_bg_index_knowledge`) plus `/ask` and
+    `/index/rebuild` check BEFORE doing any KB work -- previously this flag lived
+    in `_SETTINGS_DEFAULTS` with zero readers anywhere in the backend (see
+    `pwave-confirmed-bugs.md`: ONNX embedding ran unconditionally on every sync for
+    users who never opted in). Hooks call this before `get_knowledge_service()` so
+    a disabled KB never even builds the embedder/store/LLM client.
+    """
+    config = await load_config()
+    kb_config = config.get("knowledge_base") or {}
+    return bool(kb_config.get("enabled", False))
 
 
 class KnowledgeService:
@@ -121,6 +151,35 @@ class KnowledgeService:
         # connection, instead opening its own independent short-lived connection — see
         # `status()`.
         self._store_lock = asyncio.Lock()
+        # Live indexing progress, read by `status()`/`index_progress()` and by
+        # `backend/api/ai.py`'s rebuild-dedupe (409 `alreadyRunning`) and ask
+        # heartbeat ("indexing" vs "thinking"). Plain attribute writes updated per
+        # embed batch from `_persist_batched` -- readers never take `_store_lock`
+        # for this (it's just a dict read, and MUST stay lock-free so a queued
+        # ask's heartbeat and `/index/status` can observe progress WHILE an index
+        # holds the lock for an embed batch). Only one index/rebuild coroutine
+        # ever writes it at a time in practice (all index entry points serialize
+        # through `_store_lock` for their actual store work), so plain attribute
+        # assignment (not mutation) is safe without a lock on the writer side too.
+        self._index_progress: dict = {
+            "service": None,
+            "phase": "idle",
+            "done": 0,
+            "total": 0,
+            "started_at": None,
+        }
+        # `service -> (store_generation, DocumentStore, HybridRetriever)`. Rebuilt
+        # only when `self._store.generation` (bumped on `add`/`upsert_documents`/
+        # `remove` -- see `SqliteKnowledgeStore`) no longer matches the cached
+        # entry's generation, i.e. the persisted corpus changed since the
+        # retriever was assembled. Reused across asks otherwise, removing the
+        # ~1s-and-growing per-ask corpus rehydration (re-chunk + lexical index)
+        # `_build_agent` used to pay on every single call. Access is safe without
+        # its own lock: every reader/writer runs inside `ask()`'s or an index
+        # method's `_store_lock`-held section (see `_ensure_retriever_cached`).
+        self._retriever_cache: dict[
+            str, tuple[int, DocumentStore, HybridRetriever]
+        ] = {}
 
     # ------------------------------------------------------------------
     # Reference data (roster + curated aliases / call-names)
@@ -166,15 +225,33 @@ class KnowledgeService:
 
         `members` is a list of `(group_dict, member_dict)` pairs (same shape as
         `SearchService.index_members`): each dict's `id` locates the on-disk
-        `messages.json` via `path_resolver`.
+        `messages.json` via `path_resolver`. File reads + ingest happen OFF
+        `_store_lock` (via `to_thread`, see `_ingest_members_sync`); only
+        `_persist`'s per-batch store access takes the lock -- see `_persist` for
+        the fairness rationale.
         """
-        async with self._store_lock:
-            return await asyncio.to_thread(self._index_members_sync, members, service)
-
-    def _index_members_sync(
-        self, members: list[tuple[dict, dict]], service: str
-    ) -> int:
         reference = self._reference_for(service)
+        self._index_progress = {
+            "service": service,
+            "phase": "discovering",
+            "done": 0,
+            "total": 0,
+            "started_at": _utcnow_iso(),
+        }
+        docs = await asyncio.to_thread(
+            self._ingest_members_sync, members, service, reference
+        )
+        return await self._persist(docs, reference, service)
+
+    def _ingest_members_sync(
+        self, members: list[tuple[dict, dict]], service: str, reference: _Reference
+    ) -> list[Document]:
+        """Read + ingest `members`' `messages.json` files into `Document`s.
+
+        Pure file I/O + parsing, no store access -- deliberately kept separate
+        from `_persist` so it can run entirely off `_store_lock` (see
+        `index_members`).
+        """
         docs: list[Document] = []
         for group, member in members:
             try:
@@ -213,18 +290,29 @@ class KnowledgeService:
                 if doc.source_ref.kind == "message":
                     doc.source_ref.group_name = group_name
             docs.extend(member_docs)
-        return self._persist(docs, reference)
+        return docs
 
     async def index_blogs_for_service(self, service: str) -> int:
-        """Index every `blogs/**/blog.json` under `service`; returns new/changed docs."""
-        async with self._store_lock:
-            return await asyncio.to_thread(self._index_blogs_sync, service)
+        """Index every `blogs/**/blog.json` under `service`; returns new/changed docs.
 
-    def _index_blogs_sync(self, service: str) -> int:
+        Same off-lock-then-batched-persist split as `index_members` -- see
+        `_persist`.
+        """
         reference = self._reference_for(service)
+        self._index_progress = {
+            "service": service,
+            "phase": "discovering",
+            "done": 0,
+            "total": 0,
+            "started_at": _utcnow_iso(),
+        }
+        docs = await asyncio.to_thread(self._ingest_blogs_sync, service, reference)
+        return await self._persist(docs, reference, service)
+
+    def _ingest_blogs_sync(self, service: str, reference: _Reference) -> list[Document]:
         blogs_dir = resolve_service_path(service) / "blogs"
         if not blogs_dir.exists():
-            return 0
+            return []
         docs: list[Document] = []
         for blog_path in sorted(blogs_dir.glob("**/blog.json")):
             payload = self._read_json(blog_path)
@@ -233,41 +321,129 @@ class KnowledgeService:
             docs.append(
                 ingest_blog(payload, service, reference.registry.resolve_author)
             )
-        return self._persist(docs, reference)
+        return docs
 
-    def _persist(self, docs: list[Document], reference: _Reference) -> int:
-        """Mention-detect, embed ONLY changed docs' chunks, THEN hash-dedupe-persist.
+    async def _persist(
+        self, docs: list[Document], reference: _Reference, service: str
+    ) -> int:
+        """Hash-diff, mention-detect + chunk OFF the lock, then embed+persist in
+        batches, each batch under its own short `_store_lock` acquisition.
 
-        Ordering is deliberate: vectors are embedded and stored BEFORE the doc
-        rows are upserted, so an interruption mid-embed leaves the docs
-        "changed" and the next index pass retries them (vector writes are
-        idempotent). Upserting docs first would mark them done and strand any
-        not-yet-embedded chunks permanently. Embedding runs in batches — the
-        ONNX tokenizer/session amortizes far better over a batch than
-        per-chunk calls, and each batch is one vector-store add.
+        **No-op fast path.** `changed_document_ids` is a pure content-hash
+        comparison of `(doc_id, text)` (see `DocumentStore.content_hash`) -- it
+        does NOT depend on mentions or chunking, so computing it FIRST (before
+        mention detection/chunking run at all) is semantics-identical to the old
+        "detect mentions on everything, then hash-diff" order, but a sync/backup
+        with zero actually-changed docs now does zero mention detection and zero
+        chunking, not just zero embedding. This read touches the shared sqlite
+        connection, so it still needs `_store_lock` (brief) even though it's off
+        the *embedding* critical path.
+
+        **Lock fairness.** Mention detection and chunking are pure computation
+        (no store access) and run OFF the lock, via `to_thread`. Only the
+        embed-and-persist loop (`_persist_batched`) takes `_store_lock`, and only
+        for the duration of ONE batch at a time -- a queued `ask()` (which also
+        acquires `_store_lock`, for its whole run) can then interleave BETWEEN
+        batches instead of waiting for the entire multi-minute index to finish.
         """
         if not docs:
+            self._mark_idle(service)
             return 0
-        for doc in docs:
-            doc.mentions = reference.detector.detect(doc.text, doc.author_id)
-        changed_ids = set(self._store.changed_document_ids(docs))
-        if not changed_ids:
-            return 0
-        changed_docs = [doc for doc in docs if doc.doc_id in changed_ids]
-        chunks = chunk_documents(changed_docs)
-        for start in range(0, len(chunks), _EMBED_BATCH_SIZE):
-            batch = chunks[start : start + _EMBED_BATCH_SIZE]
-            vectors = self._embedder.embed(
-                [chunk.context_text for chunk in batch], kind="passage"
+
+        async with self._store_lock:
+            changed_ids = set(
+                await asyncio.to_thread(self._store.changed_document_ids, docs)
             )
-            self._store.add([chunk.chunk_id for chunk in batch], vectors)
-        self._store.upsert_documents(changed_docs)
-        logger.info(
-            "knowledge_service.indexed",
-            changed=len(changed_ids),
-            chunks=len(chunks),
-        )
-        return len(changed_ids)
+        if not changed_ids:
+            self._mark_idle(service)
+            return 0
+
+        changed_docs = [doc for doc in docs if doc.doc_id in changed_ids]
+
+        def _detect_and_chunk() -> list[Chunk]:
+            for doc in changed_docs:
+                doc.mentions = reference.detector.detect(doc.text, doc.author_id)
+            # `chunk_documents` is a `pysaka` call -- untyped from mypy's view
+            # (no `py.typed` marker, `ignore_missing_imports`), so it resolves to
+            # `Any`; `cast` documents the real, fully-typed pysaka signature
+            # instead of silently loosening this function's own return type.
+            return cast("list[Chunk]", chunk_documents(changed_docs))
+
+        chunks = await asyncio.to_thread(_detect_and_chunk)
+        changed = await self._persist_batched(changed_docs, chunks, service)
+        logger.info("knowledge_service.indexed", changed=changed, chunks=len(chunks))
+        return changed
+
+    async def _persist_batched(
+        self, changed_docs: list[Document], chunks: list[Chunk], service: str
+    ) -> int:
+        """Embed `chunks` in `_EMBED_BATCH_SIZE` groups, each under its own
+        `_store_lock` acquisition; upsert a doc's row only once EVERY one of its
+        chunks has a persisted vector (crash-safe: an interruption mid-batch
+        leaves that doc's content-hash unchanged, so the next pass retries it —
+        marking it done first would strand any not-yet-embedded chunk
+        permanently). A doc with no chunks at all (empty/caption-less text) has
+        nothing to embed, so it's upserted immediately instead of never being
+        marked done.
+        """
+        chunked_doc_ids = {chunk.doc_id for chunk in chunks}
+        no_chunk_docs = [
+            doc for doc in changed_docs if doc.doc_id not in chunked_doc_ids
+        ]
+        docs_by_id = {doc.doc_id: doc for doc in changed_docs}
+
+        self._index_progress = {
+            "service": service,
+            "phase": "embedding",
+            "done": 0,
+            "total": len(chunks),
+            "started_at": _utcnow_iso(),
+        }
+        try:
+            if no_chunk_docs:
+                async with self._store_lock:
+                    await asyncio.to_thread(self._store.upsert_documents, no_chunk_docs)
+
+            remaining = Counter(chunk.doc_id for chunk in chunks)
+            for start in range(0, len(chunks), _EMBED_BATCH_SIZE):
+                batch = chunks[start : start + _EMBED_BATCH_SIZE]
+                async with self._store_lock:
+                    vectors = await asyncio.to_thread(
+                        self._embedder.embed,
+                        [chunk.context_text for chunk in batch],
+                        "passage",
+                    )
+                    await asyncio.to_thread(
+                        self._store.add,
+                        [chunk.chunk_id for chunk in batch],
+                        vectors,
+                    )
+                    ready_docs = []
+                    for chunk in batch:
+                        remaining[chunk.doc_id] -= 1
+                        if remaining[chunk.doc_id] == 0:
+                            ready_docs.append(docs_by_id[chunk.doc_id])
+                    if ready_docs:
+                        await asyncio.to_thread(
+                            self._store.upsert_documents, ready_docs
+                        )
+                self._index_progress["done"] += len(batch)
+        finally:
+            self._mark_idle(service)
+        return len(changed_docs)
+
+    def _mark_idle(self, service: str) -> None:
+        self._index_progress = {
+            "service": service,
+            "phase": "idle",
+            "done": 0,
+            "total": 0,
+            "started_at": None,
+        }
+
+    def index_progress(self) -> dict:
+        """A snapshot of the live indexing progress -- see `_index_progress`."""
+        return dict(self._index_progress)
 
     @staticmethod
     def _read_json(path: Path) -> dict | None:
@@ -383,22 +559,53 @@ class KnowledgeService:
         self._llm = llm
 
     def _build_agent(self, service: str, llm: LLMClient, tz: tzinfo) -> KnowledgeAgent:
-        """Rehydrate a retriever over persisted state (zero corpus re-embedding)."""
+        """Rehydrate a retriever over persisted state (zero corpus re-embedding).
+
+        `ToolRunner`/`KnowledgeAgent` are built fresh every call (they carry the
+        per-request `tz`), but the (`DocumentStore`, `HybridRetriever`) pair
+        behind them is reused across asks via `_ensure_retriever_cached` -- see
+        that method for the cache-invalidation rule. This runs on a `to_thread`
+        worker thread from inside `ask()`'s `_store_lock`-held section (see
+        `ask`'s docstring), so the cache read/write here is already serialized
+        against concurrent index writes and other asks -- no lock of its own.
+        """
         reference = self._reference_for(service)
-        docs = self._store.documents_for_service(service)
-        doc_store = DocumentStore()
-        doc_store.upsert(docs)
-        # Re-chunk deterministically (same params as index-time) so regenerated
-        # chunk_ids match the vectors the SqliteKnowledgeStore already holds; then
-        # populate the lexical index + bookkeeping WITHOUT embedding.
-        retriever = HybridRetriever(
-            doc_store, PureLexicalIndex(), self._store, self._embedder
-        )
-        retriever.index_lexical(chunk_documents(docs))
+        doc_store, retriever = self._ensure_retriever_cached(service)
         tools = ToolRunner(
             reference.aliases, reference.registry, retriever, doc_store, tz=tz
         )
         return KnowledgeAgent(llm, tools, tz=tz)
+
+    def _ensure_retriever_cached(
+        self, service: str
+    ) -> tuple[DocumentStore, HybridRetriever]:
+        """The cached `(DocumentStore, HybridRetriever)` for `service`, rebuilding
+        it only if the store's `generation` has moved on since it was cached.
+
+        `SqliteKnowledgeStore.generation` is bumped by `add`/`upsert_documents`/
+        `remove` -- any persisted write. A generation mismatch means the corpus
+        changed since this pair was assembled (an index write happened), so the
+        cache is invalidated and rebuilt: re-chunk deterministically (same params
+        as index-time, so regenerated chunk_ids match the vectors the
+        `SqliteKnowledgeStore` already holds) and populate the lexical index +
+        bookkeeping WITHOUT re-embedding (the vectors are already persisted).
+        Called both from `_build_agent` (lazily, at ask-time) and from
+        `rebuild()` (eagerly, at rebuild-end, to warm the cache so the very next
+        ask doesn't pay this cost).
+        """
+        generation = self._store.generation
+        cached = self._retriever_cache.get(service)
+        if cached is not None and cached[0] == generation:
+            return cached[1], cached[2]
+        docs = self._store.documents_for_service(service)
+        doc_store = DocumentStore()
+        doc_store.upsert(docs)
+        retriever = HybridRetriever(
+            doc_store, PureLexicalIndex(), self._store, self._embedder
+        )
+        retriever.index_lexical(chunk_documents(docs))
+        self._retriever_cache[service] = (generation, doc_store, retriever)
+        return doc_store, retriever
 
     # ------------------------------------------------------------------
     # Status / rebuild
@@ -416,12 +623,20 @@ class KnowledgeService:
         and closes it before returning — safe to do concurrently with an
         in-flight writer because the store enables WAL mode on open, and WAL
         readers never block on (or are blocked by) writers.
+
+        `progress` is `self._index_progress` verbatim (a lock-free attribute
+        read, see the constructor) -- it reflects whichever index/rebuild is
+        CURRENTLY running process-wide (there's only ever one, since every index
+        entry point serializes its store writes through `_store_lock`), not
+        specifically `service`'s progress; callers compare `progress["service"]`
+        themselves if they only care about one service.
         """
         by_type = self._read_status_by_type(service)
         return {
             "service": service,
             "document_count": sum(by_type.values()),
             "by_type": by_type,
+            "progress": dict(self._index_progress),
         }
 
     def _read_status_by_type(self, service: str | None) -> dict[str, int]:
@@ -446,14 +661,49 @@ class KnowledgeService:
         """Re-index `service` from disk (blogs + all message members); returns changed docs.
 
         Relies on content-hash dedupe for idempotency, so this picks up new/changed
-        source files cheaply. (It does not delete docs whose source files were
-        removed — a hard purge would need a store `delete_service`, out of scope for
-        v1.)
+        source files cheaply -- including the case where NOTHING changed, thanks
+        to the no-op fast path in `_persist` (a pure hash-diff pass, no
+        embedding). (It does not delete docs whose source files were removed — a
+        hard purge would need a store `delete_service`, out of scope for v1.)
+
+        On completion: warms the retriever cache for `service` (see
+        `_ensure_retriever_cached`) so the very next `ask()` doesn't pay the
+        corpus-rehydration cost, and records `settings.knowledge_base.last_built`
+        so `KnowledgeBaseStatus` can render "Last indexed: …".
         """
+        self._index_progress = {
+            "service": service,
+            "phase": "discovering",
+            "done": 0,
+            "total": 0,
+            "started_at": _utcnow_iso(),
+        }
         members = await asyncio.to_thread(self._discover_message_members, service)
         changed = await self.index_members(members, service)
         changed += await self.index_blogs_for_service(service)
+        async with self._store_lock:
+            await asyncio.to_thread(self._ensure_retriever_cached, service)
+        await self._record_last_built()
         return changed
+
+    async def _record_last_built(self) -> None:
+        """Persist `settings.knowledge_base.last_built = <UTC ISO now>`.
+
+        Called at the end of every `rebuild()` (manual `/index/rebuild`, the
+        enable-toggle's initial build, and the app-startup catch-up sweep all go
+        through `rebuild()`) -- the field has existed in `_SETTINGS_DEFAULTS`
+        since Task 4 but was never written anywhere until now.
+        """
+
+        def _update(config: dict) -> None:
+            # Copy rather than mutate `config["knowledge_base"]` in place -- see
+            # `backend/api/ai.py`'s `put_ai_config` for why aliasing the shared
+            # `_SETTINGS_DEFAULTS["knowledge_base"]` dict would corrupt it.
+            kb_config = dict(config.get("knowledge_base") or {})
+            kb_config["last_built"] = _utcnow_iso()
+            config["knowledge_base"] = kb_config
+
+        await update_config(_update)
 
     @staticmethod
     def _discover_message_members(service: str) -> list[tuple[dict, dict]]:
@@ -506,6 +756,12 @@ def _leading_id(folder_name: str) -> int | None:
         return None
 
 
+def _utcnow_iso() -> str:
+    """Current UTC instant as an ISO-8601 string -- for `_index_progress`'s
+    `started_at` and `settings.knowledge_base.last_built`."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 # ------------------------------------------------------------------
 # Singleton (mirrors search_service.get_search_service)
 # ------------------------------------------------------------------
@@ -551,6 +807,80 @@ async def get_knowledge_service() -> KnowledgeService:
                 store=store, embedder=embedder, llm=llm
             )
     return _knowledge_service
+
+
+def discover_synced_services() -> list[str]:
+    """Service ids with any synced content already on disk.
+
+    A service "has synced content" if `resolve_service_path(service)` resolves
+    to an existing directory -- i.e. the user has synced/backed-up SOMETHING for
+    it, regardless of whether they're currently logged in (a login session can
+    expire or be logged out while the synced folders remain). Used to fan the
+    enable-toggle's initial build and the app-startup catch-up sweep out over
+    every service that actually has data, instead of hardcoding the app's
+    service list or depending on a live session.
+    """
+    from backend.services.service_utils import get_all_services
+
+    services: list[str] = []
+    for service in get_all_services():
+        try:
+            path = resolve_service_path(service)
+        except ValueError:
+            continue
+        if path.exists():
+            services.append(service)
+    return services
+
+
+async def schedule_initial_build(service: str) -> None:
+    """Schedule a retained background `rebuild()` of `service`'s KB index.
+
+    Used both by the enable-toggle's false->true transition
+    (`PUT /api/ai/enabled`) and by the app-startup catch-up sweep
+    (`schedule_initial_build_all`, called from `backend/main.py`'s lifespan) --
+    the fix for "blogs/messages never index until a manual Rebuild" (see
+    `pwave-confirmed-bugs.md`). Scheduled via `track_background_task` (see that
+    module) so a multi-minute first index can't be silently garbage-collected.
+
+    Swallows `KnowledgeMisconfigured` (e.g. the embedding model isn't installed
+    yet): there is nothing buildable without it, and the resulting empty index
+    is exactly the "not configured" state `/index/status`/`KnowledgeBaseStatus`
+    already render elsewhere -- this must never crash startup or the
+    enable-toggle response.
+    """
+
+    async def _run() -> None:
+        try:
+            svc = await get_knowledge_service()
+        except KnowledgeMisconfigured:
+            logger.info(
+                "knowledge_service.initial_build_skipped_misconfigured",
+                service=service,
+            )
+            return
+        try:
+            changed = await svc.rebuild(service)
+            logger.info(
+                "knowledge_service.initial_build_done",
+                service=service,
+                changed=changed,
+            )
+        except Exception:
+            logger.error(
+                "knowledge_service.initial_build_failed",
+                service=service,
+                exc_info=True,
+            )
+
+    track_background_task(_run(), name=f"kb_initial_build_{service}")
+
+
+async def schedule_initial_build_all() -> None:
+    """`schedule_initial_build` for every service with synced content on disk."""
+    services = await asyncio.to_thread(discover_synced_services)
+    for service in services:
+        await schedule_initial_build(service)
 
 
 async def invalidate_llm_client() -> None:

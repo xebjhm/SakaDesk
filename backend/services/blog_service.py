@@ -1346,10 +1346,18 @@ class BlogBackupManager:
             # Index blogs for the KB chatbot too (background, non-fatal — must not
             # block backup completion; mirrors the search-index hook above).
             try:
-                from backend.services.knowledge_service import get_knowledge_service
+                from backend.services.knowledge_service import (
+                    get_knowledge_service,
+                    kb_enabled,
+                )
 
                 async def _bg_index_knowledge():
                     try:
+                        if not await kb_enabled():
+                            logger.debug(
+                                "Blog knowledge index hook skipped (KB disabled)"
+                            )
+                            return
                         knowledge_svc = await get_knowledge_service()
                         indexed = await knowledge_svc.index_blogs_for_service(service)
                         logger.info(

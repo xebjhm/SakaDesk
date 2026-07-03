@@ -28,7 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -277,7 +277,14 @@ def test_ask_e2e_over_synthetic_corpus(
         _build_indexed_service(tmp_path, monkeypatch, FakeLLMClient(script))
     )
 
-    with patch("backend.api.ai.get_knowledge_service") as mock_get_svc:
+    with (
+        patch("backend.api.ai.get_knowledge_service") as mock_get_svc,
+        # Task 3's `kb_enabled()` guard runs before `_run_ask` ever reaches
+        # `get_knowledge_service()` -- this e2e test is about the ask/grounding
+        # pipeline, not the enabled gate (covered separately in test_ai_api.py
+        # and test_knowledge_service.py), so the KB must read as enabled here.
+        patch("backend.api.ai.kb_enabled", new=AsyncMock(return_value=True)),
+    ):
         mock_get_svc.return_value = svc
 
         r1 = client.post(

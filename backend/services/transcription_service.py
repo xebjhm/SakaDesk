@@ -431,8 +431,16 @@ class TranscriptionStorage:
 
         async def _bg_index_knowledge() -> None:
             try:
-                from backend.services.knowledge_service import get_knowledge_service
+                from backend.services.knowledge_service import (
+                    get_knowledge_service,
+                    kb_enabled,
+                )
 
+                if not await kb_enabled():
+                    logger.debug(
+                        "transcription_service.knowledge_reindex_skipped_disabled"
+                    )
+                    return
                 knowledge_svc = await get_knowledge_service()
                 indexed = await knowledge_svc.index_members([(group, member)], service)
                 logger.info(

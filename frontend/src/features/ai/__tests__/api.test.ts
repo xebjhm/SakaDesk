@@ -78,6 +78,21 @@ describe('askKnowledge', () => {
     }
   });
 
+  it('passes the "indexing" stage through onProgress (Task 3 lock-fairness heartbeat)', async () => {
+    // `_heartbeat_payload` emits `{stage: "indexing", done, total}` while a
+    // queued ask waits between embed batches for a concurrent index --
+    // `extractProgressLabel` only ever surfaces `stage` (see its docstring),
+    // so `done`/`total` are just extra fields that must not break parsing.
+    mockFetchStream([
+      sse('progress', { stage: 'indexing', done: 3, total: 10 }) + sse('answer', MESSAGE_ANSWER),
+    ]);
+
+    const onProgress = vi.fn();
+    await askKnowledge('hinatazaka46', '何を食べた?', 'Asia/Tokyo', onProgress);
+
+    expect(onProgress).toHaveBeenCalledWith('indexing');
+  });
+
   it('resolves a blog citation ref', async () => {
     const blogAnswer = {
       sentences: [{ text: 'blog sentence', citationIds: ['c1'] }],

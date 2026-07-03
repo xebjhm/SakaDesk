@@ -15,17 +15,21 @@ function nextTurnId(): string {
 }
 
 /**
- * Known `event: progress` stage codes -> i18n key. Today the backend only
- * ever emits `{stage: "thinking"}` (see `backend/api/ai.py`'s
- * `_ask_event_stream` heartbeat) — `verifying` is reserved for a future,
- * more granular per-tool-call progress hook (documented as a v1.1 item).
- * An unrecognized or empty stage (e.g. `askKnowledge`'s `''` fallback for a
- * malformed payload) falls back to the generic "thinking" label so the user
- * never sees raw/untranslated text.
+ * Known `event: progress` stage codes -> i18n key. `thinking` is the default
+ * heartbeat while the ask resolves; `indexing` is Task 3's lock-fairness
+ * label -- `_ask_event_stream`'s heartbeat emits `{stage: "indexing", done,
+ * total}` instead of a false "thinking" while a queued ask is waiting
+ * BETWEEN embed batches for a concurrent index (see
+ * `backend/api/ai.py`'s `_heartbeat_payload`); `verifying` is reserved for a
+ * future, more granular per-tool-call progress hook (documented as a v1.1
+ * item). An unrecognized or empty stage (e.g. `askKnowledge`'s `''` fallback
+ * for a malformed payload) falls back to the generic "thinking" label so the
+ * user never sees raw/untranslated text.
  */
 const PROGRESS_LABEL_KEYS: Record<string, string> = {
     thinking: 'ai.thinking',
     verifying: 'ai.verifying',
+    indexing: 'ai.indexing',
 };
 
 function progressLabelKey(stage: string): string {

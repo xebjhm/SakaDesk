@@ -27,9 +27,12 @@ const HARDWARE_SUGGESTION = {
 };
 
 /** Build a mock fetch that routes by URL/method (mirrors `useSettings.test.ts`'s idiom). */
-function buildFetch(overrides: { config?: Record<string, unknown> } = {}) {
+function buildFetch(
+    overrides: { config?: Record<string, unknown>; enabled?: boolean; enabledPutOk?: boolean } = {}
+) {
     const calls: FetchCall[] = [];
     const config = overrides.config ?? CLOUD_CONFIG;
+    const enabled = overrides.enabled ?? false;
     const impl = (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
         const method = (init?.method ?? 'GET').toUpperCase();
@@ -40,6 +43,13 @@ function buildFetch(overrides: { config?: Record<string, unknown> } = {}) {
         }
         if (url === '/api/ai/config' && method === 'PUT') {
             return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+        }
+        if (url === '/api/ai/enabled' && method === 'GET') {
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ enabled }) });
+        }
+        if (url === '/api/ai/enabled' && method === 'PUT') {
+            const ok = overrides.enabledPutOk ?? true;
+            return Promise.resolve({ ok, json: () => Promise.resolve(ok ? { ok: true } : {}) });
         }
         if (url === '/api/ai/hardware-suggestion' && method === 'GET') {
             return Promise.resolve({ ok: true, json: () => Promise.resolve(HARDWARE_SUGGESTION) });
@@ -121,5 +131,47 @@ describe('KbBackendSelector', () => {
 
         expect(screen.getByRole('button', { name: 'Local' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByRole('textbox', { name: 'Model' })).toHaveValue('qwen3:32b');
+    });
+
+    it('loads the Enable switch state from GET /api/ai/enabled', async () => {
+        const { impl } = buildFetch({ enabled: true });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+
+        const toggle = await screen.findByRole('switch', { name: 'Enable knowledge base chatbot' });
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+    });
+
+    it('clicking the Enable switch PUTs /api/ai/enabled with the flipped value', async () => {
+        const { calls, impl } = buildFetch({ enabled: false });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        const toggle = await screen.findByRole('switch', { name: 'Enable knowledge base chatbot' });
+        expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+        await userEvent.click(toggle);
+
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        await waitFor(() => {
+            expect(calls.some((c) => c.url === '/api/ai/enabled' && c.method === 'PUT')).toBe(true);
+        });
+        const putCall = calls.find((c) => c.url === '/api/ai/enabled' && c.method === 'PUT')!;
+        expect(putCall.body).toEqual({ enabled: true });
+    });
+
+    it('rolls back the optimistic toggle if the PUT fails', async () => {
+        const { impl } = buildFetch({ enabled: false, enabledPutOk: false });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        const toggle = await screen.findByRole('switch', { name: 'Enable knowledge base chatbot' });
+
+        await userEvent.click(toggle);
+
+        await waitFor(() => {
+            expect(toggle).toHaveAttribute('aria-checked', 'false');
+        });
     });
 });
