@@ -62,6 +62,7 @@
     "cleanBlogCacheConfirm2": "Are you sure? This cannot be undone.",
     "verifyFixMedia": "Verify & fix media",
     "verifyFixMediaDesc": "Scan downloaded messages and re-download any missing images or videos.",
+    "verifyFixButton": "Verify now",
     "verifyFixRunning": "Verifying…",
     "verifySummary": "Checked {{checked}} files · repaired {{repaired}} · {{stillMissing}} still unavailable",
     "verifyNoGaps": "All media present — nothing to fix.",

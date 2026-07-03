@@ -810,6 +810,15 @@ class SyncService:
         progress = progress_manager.get(self._service)
         try:
             app_settings = await self.load_app_settings()
+            if not app_settings.get("is_configured"):
+                logger.warning(
+                    "Verify skipped - configuration incomplete",
+                    is_configured=app_settings.get("is_configured"),
+                    has_output_dir=bool(app_settings.get("output_dir")),
+                )
+                progress.error("Output folder not configured")
+                return totals
+
             self._resolve_service_paths(app_settings)
             messages_root = self.service_data_dir / "messages"
 
@@ -885,7 +894,7 @@ class SyncService:
                             timeline,
                             progress_callback=_cb,
                         )
-                        done += report["repaired"] + report["failed"]
+                        done += len(missing)
                         totals["repaired"] += report["repaired"]
                         totals["failed"] += report["failed"]
                         totals["still_missing"] += report["still_missing"]
