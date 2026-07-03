@@ -12,6 +12,8 @@ interface SettingsModalProps {
     setOutputDirInput: (dir: string) => void;
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     onClose: () => void;
+    activeService: string;
+    onVerifyAndFix: (service: string) => void;
 }
 
 type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
@@ -29,6 +31,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setOutputDirInput,
     onSaveSettings,
     onClose,
+    activeService,
+    onVerifyAndFix,
 }) => {
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
@@ -358,6 +362,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </button>
                             </div>
                         )}
+                    </div>
+
+                    {/* Data completeness: verify & fix media */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.verifyFixMedia')}
+                            </label>
+                            <button
+                                onClick={() => onVerifyAndFix(activeService)}
+                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                            >
+                                {t('settings.verifyFixButton')}
+                            </button>
+                        </div>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.verifyFixMediaDesc')}
+                        </p>
                     </div>
 
                     {/* Sync read status to phone (opt-in) */}
