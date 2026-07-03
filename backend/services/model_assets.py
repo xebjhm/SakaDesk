@@ -184,7 +184,13 @@ class ModelDownloadManager:
     ) -> None:
         self._models_dir_override = models_dir
         self._http_client_factory = http_client_factory or (
-            lambda: httpx.AsyncClient(timeout=_DOWNLOAD_TIMEOUT)
+            # follow_redirects: HF /resolve/ URLs 302/307-redirect to a CDN
+            # (us.aws.cdn.hf.co). httpx does NOT follow redirects by default, so
+            # without this the download fails on the redirect instead of fetching
+            # the real bytes.
+            lambda: httpx.AsyncClient(
+                timeout=_DOWNLOAD_TIMEOUT, follow_redirects=True
+            )
         )
         self._status = DownloadStatus()
         self._cancel_event = asyncio.Event()
@@ -239,6 +245,12 @@ class ModelDownloadManager:
         """
         models_dir = self._resolve_models_dir()
         tmp_dir = models_dir / f".{manifest.name}.download"
+        logger.info(
+            "model_assets.download_started",
+            model=manifest.name,
+            assets=len(manifest.assets),
+            total_bytes=manifest.total_bytes,
+        )
         try:
             models_dir.mkdir(parents=True, exist_ok=True)
             # A leftover partial dir from a previous crashed/killed/cancelled
@@ -282,7 +294,23 @@ class ModelDownloadManager:
         hasher = hashlib.sha256()
         bytes_done_before = self._status.bytes_done
         downloaded = 0
+        logger.info(
+            "model_assets.asset_download_started",
+            asset=asset.filename,
+            url=asset.url,
+            size_bytes=asset.size_bytes,
+        )
         async with client.stream("GET", asset.url) as response:
+            # Log the actual HTTP status BEFORE raise_for_status so a redirect
+            # (302/307) or 4xx/5xx is visible in logs rather than surfacing only
+            # as a generic downstream failure.
+            if response.status_code != 200:
+                logger.error(
+                    "model_assets.asset_http_status",
+                    asset=asset.filename,
+                    status=response.status_code,
+                    final_url=str(response.url),
+                )
             response.raise_for_status()
             with dest.open("wb") as f:
                 async for chunk in response.aiter_bytes(_CHUNK_SIZE):
@@ -297,6 +325,9 @@ class ModelDownloadManager:
             raise ChecksumMismatch(
                 f"{asset.filename}: expected sha256 {asset.sha256}, got {digest}"
             )
+        logger.info(
+            "model_assets.asset_verified", asset=asset.filename, bytes=downloaded
+        )
 
     def cancel(self) -> bool:
         """Signal an in-flight download to stop at the next chunk boundary.

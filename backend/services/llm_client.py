@@ -241,6 +241,7 @@ class OpenAICompatLLMClient:
             logger.warning(
                 "llm_client.http_error",
                 url=url,
+                model=self._model,
                 status=resp.status_code,
                 kind=kind,
                 body=body_snippet,

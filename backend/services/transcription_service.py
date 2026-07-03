@@ -231,11 +231,24 @@ class GeminiTranscriptionProvider:
                 },
             }
 
+            logger.debug(
+                "transcription.gemini_request",
+                model=self._model,
+                audio_bytes=len(audio_bytes),
+                mime_type=mime_type,
+            )
             resp = await client.post(
                 url,
                 headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
+            if resp.status_code != 200:
+                logger.error(
+                    "transcription.gemini_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
 

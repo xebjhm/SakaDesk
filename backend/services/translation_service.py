@@ -177,12 +177,23 @@ class GeminiProvider(TranslationProvider):
         }
         if system_instruction:
             payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
+        logger.debug("translation.gemini_request", model=self._model)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 url,
                 headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
+            # Log the failing status + a body snippet (never the api key/headers)
+            # so a bad model (404), rejected key (401/403), or quota (429) is
+            # diagnosable instead of silently raising.
+            if resp.status_code != 200:
+                logger.error(
+                    "translation.gemini_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
 
@@ -245,10 +256,18 @@ class OpenAIProvider(TranslationProvider):
             ],
             "temperature": 0.3,
         }
+        logger.debug("translation.openai_request", model=self._model)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 url, headers={"Authorization": f"Bearer {self._api_key}"}, json=payload
             )
+            if resp.status_code != 200:
+                logger.error(
+                    "translation.openai_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
             return cast(str, data["choices"][0]["message"]["content"])
