@@ -62,6 +62,7 @@
     "cleanBlogCacheConfirm2": "确定要删除吗？此操作无法撤消。",
     "verifyFixMedia": "校验并修复媒体",
     "verifyFixMediaDesc": "扫描已下载的消息，重新下载缺失的图片或视频。",
+    "verifyFixButton": "立即校验",
     "verifyFixRunning": "校验中…",
     "verifySummary": "已检查 {{checked}} 个文件 · 修复 {{repaired}} 个 · {{stillMissing}} 个仍不可用",
     "verifyNoGaps": "所有媒体均已存在，无需修复。",

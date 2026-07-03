@@ -374,7 +374,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 onClick={() => onVerifyAndFix(activeService)}
                                 className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
-                                {t('settings.verifyFixMedia')}
+                                {t('settings.verifyFixButton')}
                             </button>
                         </div>
                         <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">

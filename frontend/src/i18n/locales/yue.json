@@ -62,6 +62,7 @@
         "cleanBlogCacheConfirm2": "確定要刪除？呢個操作唔可以復原。",
         "verifyFixMedia": "驗證同修復媒體",
         "verifyFixMediaDesc": "掃描已下載嘅訊息，重新下載唔見咗嘅圖片或者影片。",
+        "verifyFixButton": "即刻驗證",
         "verifyFixRunning": "驗證緊…",
         "verifySummary": "檢查咗 {{checked}} 個檔案 · 修復咗 {{repaired}} 個 · {{stillMissing}} 個仲攞唔到",
         "verifyNoGaps": "所有媒體都齊，唔使修復。",
