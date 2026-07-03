@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import platform
 import subprocess
+import threading
 from typing import Any
 
 import structlog
@@ -26,15 +27,44 @@ logger = structlog.get_logger(__name__)
 
 _NVIDIA_SMI_TIMEOUT = 5.0
 
+# Process-lifetime cache for detect_hardware(). Hardware doesn't change while the
+# app runs, but detect_hardware() is called from frequently-polled endpoints
+# (/readiness every few seconds, /hardware-suggestion), and each uncached probe
+# spawns nvidia-smi -- which flashed a console window on every poll (root cause
+# of the repeated flashes) and is wasteful regardless. Populated once, under a
+# lock, then reused. `detect_hardware(force=True)` re-probes.
+_hw_cache: dict[str, Any] | None = None
+_hw_cache_lock = threading.Lock()
 
-def detect_hardware() -> dict[str, Any]:
-    """Best-effort, cross-platform hardware probe. Never raises.
+
+def detect_hardware(*, force: bool = False) -> dict[str, Any]:
+    """Best-effort, cross-platform hardware probe. Never raises. CACHED.
+
+    The result is cached for the process lifetime (nothing it detects -- RAM,
+    GPU, platform -- changes while the app runs) and returned as a fresh copy on
+    every call, so the underlying probes (notably the `nvidia-smi` subprocess)
+    run ONCE rather than on every poll of `/readiness` / `/hardware-suggestion`.
+    Pass `force=True` to re-probe (e.g. after installing a GPU runtime).
 
     Returns a dict with `ram_gb` (float|None), `gpu` (str|None), `vram_gb` (float|None),
     and `platform` (str, from `platform.system()`). Each individual probe already guards
     its own failures, but every call is wrapped again here so a probe raising something
     unexpected still can't take down a caller that just wants a best-effort suggestion.
     """
+    global _hw_cache
+    if not force and _hw_cache is not None:
+        return dict(_hw_cache)
+    with _hw_cache_lock:
+        # Double-check: a concurrent caller may have populated it while we waited
+        # for the lock (detect_hardware runs in threads via asyncio.to_thread).
+        if not force and _hw_cache is not None:
+            return dict(_hw_cache)
+        _hw_cache = _probe_hardware()
+        return dict(_hw_cache)
+
+
+def _probe_hardware() -> dict[str, Any]:
+    """The actual (uncached) probe. Use `detect_hardware()` -- it caches this."""
     hw: dict[str, Any] = {
         "ram_gb": _safe_call(_detect_ram_gb),
         "gpu": None,
