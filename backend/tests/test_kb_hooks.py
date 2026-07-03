@@ -215,6 +215,35 @@ class TestSyncKnowledgeHook:
         mock_save_metadata.assert_awaited_once()
         assert svc.running is False
 
+    @pytest.mark.asyncio
+    async def test_knowledge_index_hook_uses_retained_background_task_helper(
+        self, tmp_path
+    ):
+        """Fix 4 (pwave-2): the hook must schedule via the shared
+        `track_background_task` helper (retained set + exception-logged
+        done-callback), not a bare, un-retained `asyncio.create_task` that a
+        GC pass could collect mid-run on a slow first index. blog_service.py's
+        and transcription_service.py's hooks use the identical call (verified
+        by code inspection, not re-tested per hook here)."""
+        from backend.services import sync_service as sync_module
+
+        calls: list[str] = []
+        real_track = sync_module.track_background_task
+
+        def _spy_track(coro, *, name):
+            calls.append(name)
+            return real_track(coro, name=name)
+
+        with patch.object(sync_module, "track_background_task", _spy_track):
+            mock_search_svc = MagicMock()
+            mock_search_svc.index_members = AsyncMock(return_value=5)
+            mock_knowledge_svc = MagicMock()
+            mock_knowledge_svc.index_members = AsyncMock(return_value=5)
+
+            await _run_start_sync(tmp_path, mock_search_svc, mock_knowledge_svc)
+
+        assert "sync_knowledge_index" in calls
+
 
 # ---------------------------------------------------------------------------
 # Blog backup hook (blog_service.py)

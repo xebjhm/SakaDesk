@@ -1,6 +1,6 @@
 // frontend/src/features/ai/__tests__/api.test.ts
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { askKnowledge, AskError } from '../api';
+import { askKnowledge, AskError, canonicalMemberId } from '../api';
 
 /** Builds a `ReadableStream<Uint8Array>` that yields `chunks` one per read
  * (i.e. one `reader.read()` resolves per array entry), then closes. Lets
@@ -235,7 +235,7 @@ describe('askKnowledge', () => {
 
     await askKnowledge('hinatazaka46', 'question text', 'Asia/Tokyo', vi.fn(), {
       groupIds: [1, 2],
-      memberId: 9,
+      memberId: 'hinatazaka46:9',
       conversationId: 'conv-1',
     });
 
@@ -253,8 +253,23 @@ describe('askKnowledge', () => {
       service: 'hinatazaka46',
       tz: 'Asia/Tokyo',
       group_ids: [1, 2],
-      member_id: 9,
+      member_id: 'hinatazaka46:9',
       conversation_id: 'conv-1',
     });
+  });
+});
+
+describe('canonicalMemberId', () => {
+  it('joins service and a numeric blogId with a colon', () => {
+    expect(canonicalMemberId('hinatazaka46', 12)).toBe('hinatazaka46:12');
+  });
+
+  it('joins service and an already-stringified blogId', () => {
+    expect(canonicalMemberId('hinatazaka46', '12')).toBe('hinatazaka46:12');
+  });
+
+  it('produces the shape backend/api/ai.py\'s member_id validator accepts', () => {
+    const id = canonicalMemberId('nogizaka46', 58);
+    expect(id).toMatch(/^\S+:\d+$/);
   });
 });

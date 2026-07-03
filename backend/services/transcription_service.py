@@ -9,7 +9,6 @@ fallback.
 Storage: JSON sidecar files (transcriptions.json) alongside messages.json.
 """
 
-import asyncio
 import json
 import structlog
 from dataclasses import dataclass, field, asdict
@@ -20,6 +19,7 @@ from typing import Literal, Optional, cast
 import httpx
 
 from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
+from backend.services.background_tasks import track_background_task
 
 logger = structlog.get_logger(__name__)
 
@@ -414,7 +414,8 @@ class TranscriptionStorage:
         """Best-effort background KB re-index of `member_dir`'s member.
 
         Resolves (service, group, member) from the on-disk path and schedules
-        `KnowledgeService.index_members` via `asyncio.create_task`. Silently
+        `KnowledgeService.index_members` via `track_background_task` (a
+        retained `asyncio.create_task`, see `background_tasks.py`). Silently
         no-ops if the path doesn't resolve to a known service/member (e.g. in a
         unit test with a synthetic tmp_path layout) or if there's no running
         event loop (e.g. called from a plain sync context) — never raises.
@@ -448,7 +449,12 @@ class TranscriptionStorage:
 
         coro = _bg_index_knowledge()
         try:
-            asyncio.create_task(coro)
+            # Retained (not bare `asyncio.create_task`) -- an un-retained task
+            # can be garbage-collected mid-run; see
+            # `background_tasks.track_background_task`. Still raises
+            # `RuntimeError` with no running loop, same as bare
+            # `create_task`, so the except below is unchanged.
+            track_background_task(coro, name="transcription_knowledge_index")
         except RuntimeError as e:
             # No running event loop (e.g. a sync caller/test outside asyncio) —
             # non-fatal, must never block/break the transcription flow. Close

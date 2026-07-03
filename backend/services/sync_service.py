@@ -13,6 +13,7 @@ from typing import Any, Optional
 from pysaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
+from backend.services.background_tasks import track_background_task
 from backend.services.platform import (
     get_session_dir,
     is_test_mode,
@@ -578,7 +579,12 @@ class SyncService:
                                     error=str(e),
                                 )
 
-                        asyncio.create_task(_bg_index_knowledge())
+                        # Retained (not bare `asyncio.create_task`) -- an
+                        # un-retained task can be garbage-collected mid-run;
+                        # see `background_tasks.track_background_task`.
+                        track_background_task(
+                            _bg_index_knowledge(), name="sync_knowledge_index"
+                        )
                     except Exception as e:
                         logger.warning(
                             "Knowledge index update failed (non-fatal)", error=str(e)

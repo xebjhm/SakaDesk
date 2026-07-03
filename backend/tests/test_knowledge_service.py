@@ -16,9 +16,12 @@ index-time. Only the query is embedded at ask-time.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import threading
 from datetime import timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -394,6 +397,28 @@ async def test_ask_lazily_rebuilds_llm_client_when_none(
 
 
 @pytest.mark.asyncio
+async def test_ask_threads_tz_into_agent_system_prompt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix 2 (pwave-2): `ask()`'s validated `tz` param must reach the
+    `KnowledgeAgent`'s system prompt (the "Current date/time: ... (<zone>)"
+    anchor line pysaka's agent injects) instead of being accepted and silently
+    dropped -- previously the docstring literally said "it is not consulted
+    here yet"."""
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    fake_llm = FakeLLMClient(script)
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, fake_llm)
+
+    await svc.ask(
+        "what did she do last month", Scope(service=_SERVICE), ZoneInfo("Asia/Tokyo")
+    )
+
+    system_content = fake_llm.calls[0][0][0]["content"]
+    assert "Current date/time:" in system_content
+    assert "Asia/Tokyo" in system_content
+
+
+@pytest.mark.asyncio
 async def test_ask_raises_misconfigured_when_llm_still_unbuildable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -407,3 +432,93 @@ async def test_ask_raises_misconfigured_when_llm_still_unbuildable(
 
     with pytest.raises(ks.KnowledgeMisconfigured):
         await svc.ask("anything", Scope(service=_SERVICE), timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# get_knowledge_service() singleton: race + event-loop stall (Fix 3, pwave-2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_knowledge_service_concurrent_calls_build_exactly_one_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two callers racing the FIRST `get_knowledge_service()` call (e.g. a
+    sync-completion hook firing while the settings panel polls
+    `/index/status` at app start -- a real startup pattern) must not both
+    build a full stack: two sqlite connections + two ONNX sessions, with the
+    loser leaked forever (`close()` never called). A double-checked
+    `asyncio.Lock` must serialize the build so exactly ONE instance is ever
+    constructed and every caller gets that same instance back.
+    """
+    from backend.services import knowledge_service as ks
+
+    monkeypatch.setattr(ks, "_knowledge_service", None)
+    monkeypatch.setattr(ks, "_knowledge_service_lock", asyncio.Lock())
+
+    build_count = {"store": 0, "embedder": 0, "llm": 0}
+    entered_build = threading.Event()
+    release_build = threading.Event()
+
+    class FakeStore:
+        def __init__(self, path) -> None:
+            build_count["store"] += 1
+            entered_build.set()
+            # Blocks the WORKER THREAD (`asyncio.to_thread`) the real
+            # SqliteKnowledgeStore build now runs on, giving a concurrent
+            # second caller a real window to race in while this "build" is
+            # still in flight -- if the lock weren't held for the whole
+            # check-then-build section, the second caller would sail past its
+            # own `is None` check and start a second build right here.
+            assert release_build.wait(timeout=5), (
+                "test deadlock: release_build never set"
+            )
+
+    async def fake_build_embedder() -> object:
+        build_count["embedder"] += 1
+        return object()
+
+    async def fake_build_llm() -> None:
+        build_count["llm"] += 1
+        return None
+
+    monkeypatch.setattr(ks, "SqliteKnowledgeStore", FakeStore)
+    monkeypatch.setattr(ks, "_build_embedder", fake_build_embedder)
+    monkeypatch.setattr(ks, "build_llm_client_from_settings", fake_build_llm)
+
+    task1 = asyncio.create_task(ks.get_knowledge_service())
+    # Wait until task1 is inside FakeStore.__init__ -- it now holds the lock.
+    assert await asyncio.to_thread(entered_build.wait, 5)
+    task2 = asyncio.create_task(ks.get_knowledge_service())
+    # Give task2 a real chance to race past an unlocked check (it must not).
+    await asyncio.sleep(0.05)
+    release_build.set()
+
+    svc1 = await task1
+    svc2 = await task2
+
+    assert svc1 is svc2
+    assert build_count == {"store": 1, "embedder": 1, "llm": 1}
+
+
+@pytest.mark.asyncio
+async def test_get_knowledge_service_returns_cached_instance_without_rebuilding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Once built, a subsequent call takes the fast, lock-free early-return
+    path and must not touch the (expensive) builders again."""
+    from backend.services import knowledge_service as ks
+
+    sentinel = object()
+    monkeypatch.setattr(ks, "_knowledge_service", sentinel)
+
+    def _must_not_be_called(*args, **kwargs):
+        raise AssertionError("must not rebuild once already cached")
+
+    monkeypatch.setattr(ks, "SqliteKnowledgeStore", _must_not_be_called)
+    monkeypatch.setattr(ks, "_build_embedder", _must_not_be_called)
+    monkeypatch.setattr(ks, "build_llm_client_from_settings", _must_not_be_called)
+
+    result = await ks.get_knowledge_service()
+
+    assert result is sentinel

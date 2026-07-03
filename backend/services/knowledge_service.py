@@ -295,8 +295,13 @@ class KnowledgeService:
 
         Assembles the retriever without re-embedding the corpus (see module
         docstring), runs the bounded `KnowledgeAgent`, and returns its
-        grounding-validated answer. `tz` is accepted for relative-date resolution
-        (Task 5); it is not consulted here yet.
+        grounding-validated answer. `tz` is threaded all the way into the
+        `KnowledgeAgent`/`ToolRunner` pysaka builds for this ask (see
+        `_build_agent`): the agent injects a "Current date/time: ... (<zone>)"
+        line into its system prompt so relative-date questions ("last month")
+        resolve against the real clock in the user's zone, and the tool runner
+        localizes naive `date_from`/`date_to` tool-call args to it instead of
+        UTC.
         """
         if self._llm is None:
             # Lazy retry, not a permanent verdict: the client can be absent because
@@ -330,7 +335,7 @@ class KnowledgeService:
         # its full duration. Acceptable for a single-user desktop app.
         async with self._store_lock:
             return await asyncio.to_thread(
-                self._run_ask_blocking, question, scope, llm, history
+                self._run_ask_blocking, question, scope, llm, tz, history
             )
 
     def _run_ask_blocking(
@@ -338,6 +343,7 @@ class KnowledgeService:
         question: str,
         scope: Scope,
         llm: LLMClient,
+        tz: tzinfo,
         history: list[dict] | None,
     ) -> Answer:
         """Build the retriever+agent over the persisted store and run the agent, synchronously.
@@ -362,7 +368,7 @@ class KnowledgeService:
         type to handle for every LLM-taxonomy failure, regardless of whether it
         originated in the HTTP client or the agent's tool-calling loop.
         """
-        agent = self._build_agent(scope.service, llm)
+        agent = self._build_agent(scope.service, llm, tz)
         try:
             return asyncio.run(agent.answer(question, scope, history))
         except ToolCallingUnreliableError as exc:
@@ -376,7 +382,7 @@ class KnowledgeService:
         """
         self._llm = llm
 
-    def _build_agent(self, service: str, llm: LLMClient) -> KnowledgeAgent:
+    def _build_agent(self, service: str, llm: LLMClient, tz: tzinfo) -> KnowledgeAgent:
         """Rehydrate a retriever over persisted state (zero corpus re-embedding)."""
         reference = self._reference_for(service)
         docs = self._store.documents_for_service(service)
@@ -389,8 +395,10 @@ class KnowledgeService:
             doc_store, PureLexicalIndex(), self._store, self._embedder
         )
         retriever.index_lexical(chunk_documents(docs))
-        tools = ToolRunner(reference.aliases, reference.registry, retriever, doc_store)
-        return KnowledgeAgent(llm, tools)
+        tools = ToolRunner(
+            reference.aliases, reference.registry, retriever, doc_store, tz=tz
+        )
+        return KnowledgeAgent(llm, tools, tz=tz)
 
     # ------------------------------------------------------------------
     # Status / rebuild
@@ -503,6 +511,17 @@ def _leading_id(folder_name: str) -> int | None:
 # ------------------------------------------------------------------
 
 _knowledge_service: KnowledgeService | None = None
+# Guards the check-then-build below: without it, two callers racing the FIRST
+# `get_knowledge_service()` (e.g. a sync-completion hook firing while the
+# settings panel polls `/index/status` at app start -- a common real pattern)
+# both see `_knowledge_service is None`, interleave at the `await`s, and BOTH
+# build a full stack -- two sqlite connections to `knowledge_index.db` and two
+# ONNX sessions, with the loser's `SqliteKnowledgeStore.close()` never called
+# (leaked forever). Double-checked locking: re-check `is None` INSIDE the lock
+# so only the first caller through actually builds anything; every other
+# caller (racing or sequential) just awaits the lock and returns the same
+# instance.
+_knowledge_service_lock = asyncio.Lock()
 
 
 async def get_knowledge_service() -> KnowledgeService:
@@ -511,13 +530,26 @@ async def get_knowledge_service() -> KnowledgeService:
     Builds an `OnnxEmbedder` (model dir under app-data), a `SqliteKnowledgeStore`
     (`knowledge_index.db`, alongside `search_index.db`), and the LLM client from
     settings. Async because the LLM client is built from settings + OS keyring.
+
+    Both heavy, blocking constructors -- `SqliteKnowledgeStore.__init__`
+    (rehydrates every persisted vector blob, ~80MB+ at 26k docs) and
+    `OnnxEmbedder.__init__` (loads a ~1GB ONNX `InferenceSession`, inside
+    `_build_embedder`) -- run via `asyncio.to_thread` so the first touch never
+    stalls the event loop (and therefore the whole UI/API) for seconds.
     """
     global _knowledge_service
-    if _knowledge_service is None:
-        store = SqliteKnowledgeStore(get_app_data_dir() / "knowledge_index.db")
-        embedder = await _build_embedder()
-        llm = await build_llm_client_from_settings()
-        _knowledge_service = KnowledgeService(store=store, embedder=embedder, llm=llm)
+    if _knowledge_service is not None:
+        return _knowledge_service
+    async with _knowledge_service_lock:
+        if _knowledge_service is None:
+            store = await asyncio.to_thread(
+                SqliteKnowledgeStore, get_app_data_dir() / "knowledge_index.db"
+            )
+            embedder = await _build_embedder()
+            llm = await build_llm_client_from_settings()
+            _knowledge_service = KnowledgeService(
+                store=store, embedder=embedder, llm=llm
+            )
     return _knowledge_service
 
 
@@ -549,4 +581,6 @@ async def _build_embedder() -> Embedder:
         )
     from pysaka.knowledge.backends.onnx_embedder import OnnxEmbedder
 
-    return OnnxEmbedder(model_dir)
+    # OnnxEmbedder.__init__ loads a ~1GB ONNX InferenceSession synchronously --
+    # off the event loop thread, same reasoning as SqliteKnowledgeStore above.
+    return await asyncio.to_thread(OnnxEmbedder, model_dir)

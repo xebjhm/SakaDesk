@@ -30,6 +30,7 @@ from pysaka.blog import (
     get_scraper,
 )
 
+from backend.services.background_tasks import track_background_task
 from backend.services.path_resolver import get_output_dir
 from backend.services.service_utils import (
     get_service_display_name,
@@ -1361,7 +1362,12 @@ class BlogBackupManager:
                             f"Blog knowledge index update failed (non-fatal): {e}"
                         )
 
-                asyncio.create_task(_bg_index_knowledge())
+                # Retained (not bare `asyncio.create_task`) -- an un-retained
+                # task can be garbage-collected mid-run; see
+                # `background_tasks.track_background_task`.
+                track_background_task(
+                    _bg_index_knowledge(), name="blog_knowledge_index"
+                )
             except Exception as e:
                 logger.warning(f"Blog knowledge index update failed (non-fatal): {e}")
         except asyncio.CancelledError:

@@ -49,14 +49,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
+from backend.services.background_tasks import track_background_task
 from backend.services.hardware import detect_hardware, suggest_llm_backend
 from backend.services.knowledge_service import (
     KnowledgeMisconfigured,
@@ -114,6 +116,15 @@ _MISCONFIGURED_MESSAGE = (
 )
 _GENERIC_ERROR_MESSAGE = "The request failed unexpectedly."
 
+# `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
+# "hinatazaka46:12" -- what `doc.author_id`/`Scope.member_id` are always
+# compared against (see `pysaka.knowledge.store._matches`). Rejects the shape
+# a plain numeric blog id would take if sent as a bare string ("12") or as a
+# JSON number coerced to string by an old/buggy client -- those would parse as
+# valid `str`s but never equal any `author_id`, silently scoping every ask to
+# zero documents instead of erroring.
+_CANONICAL_MEMBER_ID_RE = re.compile(r"^\S+:\d+$")
+
 
 # ----------------------------------------------------------------------------
 # Request/response models
@@ -129,6 +140,20 @@ class AskRequest(BaseModel):
     # Accepted for forward-compatibility with a future conversation store; not
     # yet resolved into `history` here (no conversation-store seam exists yet).
     conversation_id: str | None = None
+
+    @field_validator("member_id")
+    @classmethod
+    def _member_id_must_be_canonical(cls, value: str | None) -> str | None:
+        """Reject a `member_id` that isn't shaped like a pysaka `CanonicalId`
+        (`"<service>:<blog_id>"`) up front, as a 422, instead of letting it
+        silently scope the ask to zero documents (see `_CANONICAL_MEMBER_ID_RE`
+        docstring)."""
+        if value is not None and not _CANONICAL_MEMBER_ID_RE.match(value):
+            raise ValueError(
+                "member_id must be a canonical id shaped '<service>:<blog_id>' "
+                "(e.g. 'hinatazaka46:12')"
+            )
+        return value
 
 
 class RebuildRequest(BaseModel):
@@ -410,12 +435,18 @@ async def index_rebuild(request: RebuildRequest) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     svc = await _get_knowledge_service_or_409()
-    asyncio.create_task(_run_rebuild(svc, request.service))
+    track_background_task(_run_rebuild(svc, request.service), name="index_rebuild")
     return {"ok": True}
 
 
 async def _run_rebuild(svc, service: str) -> None:
-    """Background rebuild task: logged, errors swallowed (nothing awaits this task)."""
+    """Background rebuild task: logged, errors swallowed (nothing awaits this task).
+
+    Retained (not bare `asyncio.create_task`) via `track_background_task` --
+    without a strong reference the event loop's weak task ref can GC this
+    mid-run, silently killing a multi-minute first index; see that helper's
+    module docstring.
+    """
     try:
         changed = await svc.rebuild(service)
         logger.info("ai.index_rebuild.done", service=service, changed=changed)

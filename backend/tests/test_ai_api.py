@@ -268,6 +268,76 @@ class TestAskSSE:
         assert r.status_code == 400
 
 
+class TestAskMemberIdValidation:
+    """`AskRequest.member_id` must be a pysaka canonical id ("<service>:<blog_id>",
+    e.g. "hinatazaka46:12") -- Fix 5 (pwave-2). A bare numeric id/string would
+    pass Pydantic's `str` type check but never equal any `doc.author_id`,
+    silently scoping every ask to zero documents -- rejected up front instead.
+    """
+
+    def test_bare_numeric_string_member_id_returns_422(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "何を食べた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "member_id": "12",
+                },
+            )
+        assert r.status_code == 422
+        assert "canonical id" in json.dumps(r.json()).lower()
+        g.return_value.ask.assert_not_called()
+
+    def test_member_id_missing_colon_returns_422(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "何を食べた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "member_id": "hinatazaka4612",
+                },
+            )
+        assert r.status_code == 422
+
+    def test_canonical_member_id_is_accepted(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "何を食べた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "member_id": "hinatazaka46:12",
+                },
+            )
+        assert r.status_code == 200
+        g.return_value.ask.assert_awaited_once()
+        scope = g.return_value.ask.await_args.args[1]
+        assert scope.member_id == "hinatazaka46:12"
+
+    def test_omitted_member_id_is_accepted(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "何を食べた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                },
+            )
+        assert r.status_code == 200
+
+
 class TestAskSSEErrorContract:
     """`event: error` payload shape: `{code, message, retryAfterS?, backend, model}`."""
 
@@ -441,6 +511,44 @@ class TestIndexRebuild:
             r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
         assert r.status_code == 409
         assert r.json()["detail"]["code"] == "misconfigured"
+
+    @pytest.mark.asyncio
+    async def test_rebuild_schedules_a_retained_background_task(self):
+        """Fix 4 (pwave-2): the rebuild task must be retained via the shared
+        `background_tasks.track_background_task` helper -- a bare, un-retained
+        `asyncio.create_task` can be garbage-collected mid-run on a
+        multi-minute first index. Drives the endpoint coroutine directly
+        (rather than through `TestClient`) so this test's own event loop can
+        observe the task while it's still pending."""
+        from backend.services import background_tasks as bt
+
+        release = asyncio.Event()
+
+        async def slow_rebuild(service: str) -> int:
+            await release.wait()
+            return 3
+
+        svc = _mock_knowledge_service()
+        svc.rebuild = AsyncMock(side_effect=slow_rebuild)
+
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            result = await ai_module.index_rebuild(
+                ai_module.RebuildRequest(service="hinatazaka46")
+            )
+        assert result == {"ok": True}
+
+        # The endpoint returned immediately (fire-and-forget), but its task is
+        # still pending AND retained in the shared set -- proving it isn't an
+        # un-retained bare `asyncio.create_task`.
+        pending = {t for t in bt._background_tasks if not t.done()}
+        assert len(pending) == 1
+
+        release.set()
+        await asyncio.gather(*pending, return_exceptions=True)
+        await asyncio.sleep(0)  # let the done-callback discard it
+
+        assert not (pending & bt._background_tasks)
+        svc.rebuild.assert_awaited_once_with("hinatazaka46")
 
 
 class TestHardwareSuggestion:

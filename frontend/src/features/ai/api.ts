@@ -22,8 +22,25 @@ export interface AskAnswer {
 
 export interface AskOptions {
   groupIds?: number[];
-  memberId?: number;
+  /**
+   * pysaka canonical member id, shaped `"<service>:<blogId>"` (e.g.
+   * `"hinatazaka46:12"`) -- NOT a bare numeric id. The backend
+   * (`backend/api/ai.py`'s `AskRequest.member_id`) compares this verbatim
+   * against `doc.author_id`, which is always this canonical form; a bare
+   * number/numeric string never matches anything and is rejected with a 422.
+   * Build one with `canonicalMemberId()` rather than concatenating by hand.
+   */
+  memberId?: string;
   conversationId?: string;
+}
+
+/** Builds the canonical member id `askKnowledge`'s `AskOptions.memberId`
+ * expects: `"<service>:<blogId>"` (pysaka's `CanonicalId`, e.g.
+ * `"hinatazaka46:12"`). `blogId` may be a number (as stored on e.g. a blog
+ * list item) or an already-stringified id; either way it's coerced to a
+ * plain decimal string with no extra formatting. */
+export function canonicalMemberId(service: string, blogId: number | string): string {
+  return `${service}:${blogId}`;
 }
 
 /** Extra fields an `AskError` may carry alongside its stable `code`. */
