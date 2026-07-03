@@ -65,6 +65,16 @@ from backend.api import (  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
+# Deliberate startup delay shared by both deferred background sweeps below
+# (`_deferred_blog_backup` and `_deferred_kb_initial_build`): gives the real
+# sync/backup-completion hooks time to fire and enqueue their own work first,
+# so these startup sweeps mostly find "nothing to do" instead of routinely
+# racing a live hook doing the SAME work for the SAME service. KB review
+# Finding 1: `_deferred_kb_initial_build` used to fire with ZERO delay (unlike
+# this constant), so the startup sweep raced a live sync-completion hook's KB
+# index on every app launch that happened to have pending sync work.
+_STARTUP_DEFERRED_DELAY_S = 60
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -124,7 +134,7 @@ async def lifespan(app: FastAPI):
 
 async def _deferred_blog_backup():
     """Auto-resume blog backup if enabled but not triggered by sync."""
-    await asyncio.sleep(60)  # Wait long enough for sync to finish and enqueue
+    await asyncio.sleep(_STARTUP_DEFERRED_DELAY_S)  # let sync finish and enqueue first
     try:
         from backend.services.settings_store import load_config
         from backend.services.blog_service import (
@@ -168,12 +178,22 @@ async def _deferred_kb_initial_build():
     fires as a side hook of a backup/sync completing, so a user who already has
     a synced library when they enable the KB (or whose sync ran while the KB
     was disabled) gets an empty or stale corpus until they happen to find the
-    Rebuild button. This mirrors `_deferred_blog_backup`'s pattern (a retained
-    local `asyncio.Task`, cancelled at shutdown -- see `lifespan`) but schedules
-    the actual per-service work through `schedule_initial_build_all`, which
-    fans out via `background_tasks.track_background_task` (so a multi-minute
-    first index can't be silently garbage-collected) -- this wrapper task
-    itself is just the cheap enabled-check + fan-out.
+    Rebuild button. This mirrors `_deferred_blog_backup`'s pattern (the SAME
+    deliberate `_STARTUP_DEFERRED_DELAY_S` delay, then a retained local
+    `asyncio.Task`, cancelled at shutdown -- see `lifespan`) but schedules the
+    actual per-service work through `schedule_initial_build_all`, which fans
+    out via `background_tasks.track_background_task` (so a multi-minute first
+    index can't be silently garbage-collected) -- this wrapper task itself is
+    just the delay + cheap enabled-check + fan-out.
+
+    KB review Finding 1: this sweep used to fire with ZERO delay, unlike
+    `_deferred_blog_backup`'s deliberate 60s wait -- so it routinely raced a
+    live sync-completion hook indexing the SAME service right after startup,
+    both writing `KnowledgeService`'s (then process-wide) progress at once.
+    Sharing the delay makes that race rare in the first place; `rebuild()`'s
+    per-service in-flight registry (see `KnowledgeService._index_inflight`) is
+    the actual fix that makes it harmless even when it does happen -- one of
+    the two calls simply skips.
 
     Deliberately does NOT try to distinguish "empty" from "stale" up front:
     `rebuild()`'s no-op fast path (Task 3 item 5) makes a rebuild of an
@@ -181,6 +201,7 @@ async def _deferred_kb_initial_build():
     embedding, so it's simpler and just as cheap to always run one per synced
     service rather than pre-checking document counts.
     """
+    await asyncio.sleep(_STARTUP_DEFERRED_DELAY_S)  # mirrors _deferred_blog_backup
     try:
         from backend.services.knowledge_service import (
             kb_enabled,

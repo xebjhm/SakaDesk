@@ -8,7 +8,10 @@ source files via `path_resolver`, `ingest_*` them into `Document`s, run
 `MentionDetector` per doc, `chunk_documents`, embed *only new/changed* chunks with
 the injected `Embedder`, and persist docs + vectors + mentions to the durable
 `SqliteKnowledgeStore`. Idempotent via `Document` content-hash: an unchanged doc is
-neither rewritten nor re-embedded, so re-indexing is cheap.
+neither rewritten nor re-embedded, so re-indexing is cheap. Each of these three
+entry points is guarded by a per-service in-flight registry (`_index_inflight`,
+see the constructor) so two concurrent runs for the SAME service can never race
+each other -- the second one skips instead of clobbering the first's progress.
 
 **Query** (`ask`): assemble a `HybridRetriever` over the ALREADY-PERSISTED state
 without re-embedding the corpus. Persisted docs are loaded into an in-memory pysaka
@@ -88,6 +91,36 @@ def _roster_short_name(service: str) -> str:
     return service.replace("46", "")
 
 
+def _pack_batches_by_doc(chunks: list[Chunk], batch_size: int) -> list[list[Chunk]]:
+    """Group `chunks` into batches that never split one doc's chunks across two
+    batches (Finding 2, KB review) -- see `KnowledgeService._persist_batched`'s
+    docstring for the consistency guarantee this restores.
+
+    Docs are packed whole, up to `batch_size` chunks per batch, in first-seen
+    order; a single doc with MORE than `batch_size` chunks gets its own
+    oversized batch (its chunks stay contiguous -- never split -- just over
+    budget) rather than being treated as an error. Chunk order within each doc,
+    and doc order within each batch, is preserved.
+    """
+    chunks_by_doc: dict[str, list[Chunk]] = {}
+    for chunk in chunks:
+        chunks_by_doc.setdefault(chunk.doc_id, []).append(chunk)
+
+    batches: list[list[Chunk]] = []
+    current: list[Chunk] = []
+    for doc_chunks in chunks_by_doc.values():
+        if current and len(current) + len(doc_chunks) > batch_size:
+            batches.append(current)
+            current = []
+        current.extend(doc_chunks)
+        if len(current) >= batch_size:
+            batches.append(current)
+            current = []
+    if current:
+        batches.append(current)
+    return batches
+
+
 class KnowledgeMisconfigured(RuntimeError):
     """Raised when the knowledge engine can't be assembled (e.g. no LLM configured)."""
 
@@ -151,23 +184,40 @@ class KnowledgeService:
         # connection, instead opening its own independent short-lived connection — see
         # `status()`.
         self._store_lock = asyncio.Lock()
-        # Live indexing progress, read by `status()`/`index_progress()` and by
-        # `backend/api/ai.py`'s rebuild-dedupe (409 `alreadyRunning`) and ask
-        # heartbeat ("indexing" vs "thinking"). Plain attribute writes updated per
-        # embed batch from `_persist_batched` -- readers never take `_store_lock`
-        # for this (it's just a dict read, and MUST stay lock-free so a queued
-        # ask's heartbeat and `/index/status` can observe progress WHILE an index
-        # holds the lock for an embed batch). Only one index/rebuild coroutine
-        # ever writes it at a time in practice (all index entry points serialize
-        # through `_store_lock` for their actual store work), so plain attribute
-        # assignment (not mutation) is safe without a lock on the writer side too.
-        self._index_progress: dict = {
-            "service": None,
-            "phase": "idle",
-            "done": 0,
-            "total": 0,
-            "started_at": None,
-        }
+        # Live indexing progress, PER SERVICE (a dict keyed by service id), read
+        # by `status()`/`index_progress()` and by ask heartbeat ("indexing" vs
+        # "thinking"). Deliberately per-service, not one process-wide dict
+        # (Finding 1, KB review): concurrent index runs for DIFFERENT services
+        # are allowed (see `_index_inflight` below), so a single shared dict
+        # would let one service's `_mark_idle` clobber another's still-running
+        # progress mid-write. `/index/rebuild`'s 409 `alreadyRunning` reads
+        # `_index_inflight`/`is_indexing()` instead of this dict -- this is
+        # display-only and was never actually exclusive. Per-entry writes are
+        # updated per embed batch from `_persist_batched` -- readers never take
+        # `_store_lock` for this (a dict read, and MUST stay lock-free so a
+        # queued ask's heartbeat and `/index/status` can observe progress WHILE
+        # an index holds the lock for an embed batch). `_index_inflight`
+        # guarantees at most one run per service, so plain dict-entry
+        # assignment (not further locking) is safe on the writer side too.
+        self._index_progress: dict[str, dict] = {}
+        # Per-service in-flight registry (Finding 1, KB review): the set of
+        # services with an index run (`index_members`/`index_blogs_for_service`/
+        # `rebuild`) CURRENTLY running. Without this, two concurrent runs for
+        # the SAME service -- e.g. the app-startup catch-up sweep racing a live
+        # sync-completion hook, a routine occurrence before this fix since the
+        # startup sweep fired with zero delay (see `backend/main.py`'s
+        # `_deferred_kb_initial_build`) -- interleave their `_index_progress`
+        # writes and stray `_mark_idle` calls, and made `/index/rebuild`'s
+        # dedupe unreliable. Every index entry point acquires this (via
+        # `_try_acquire_inflight`/`_release_inflight`, always try/finally)
+        # around its ENTIRE run; a caller that finds its service already
+        # claimed SKIPS (logged, not an error) rather than racing -- the
+        # skipped work is picked up by the next pass's content-hash diff
+        # regardless. Different services may run concurrently, each with its
+        # own slot; `_inflight_lock` only guards the brief add/discard on this
+        # set, never held for a run's duration.
+        self._index_inflight: set[str] = set()
+        self._inflight_lock = asyncio.Lock()
         # `service -> (store_generation, DocumentStore, HybridRetriever)`. Rebuilt
         # only when `self._store.generation` (bumped on `add`/`upsert_documents`/
         # `remove` -- see `SqliteKnowledgeStore`) no longer matches the cached
@@ -223,6 +273,32 @@ class KnowledgeService:
     ) -> int:
         """Index changed members' messages; returns the count of new/changed docs.
 
+        Guarded by the per-service in-flight registry (Finding 1, KB review):
+        if `service` already has an index run in progress (another hook, a
+        rebuild, or the startup sweep), this call SKIPS immediately and returns
+        0 instead of racing it -- the skipped members are picked up by the next
+        pass via content-hash diffing regardless. See `_index_members_impl` for
+        the actual indexing work.
+        """
+        if not await self._try_acquire_inflight(service):
+            logger.info(
+                "knowledge_service.index_members.skipped_inflight", service=service
+            )
+            return 0
+        try:
+            return await self._index_members_impl(members, service)
+        finally:
+            await self._release_inflight(service)
+
+    async def _index_members_impl(
+        self, members: list[tuple[dict, dict]], service: str
+    ) -> int:
+        """The actual `index_members` work -- see that method's docstring for
+        the in-flight guard wrapping this. Also called directly by
+        `_rebuild_impl` (which already holds `service`'s in-flight claim for
+        the whole rebuild), bypassing the `index_members` wrapper so it doesn't
+        see that same claim as "already taken" and self-skip.
+
         `members` is a list of `(group_dict, member_dict)` pairs (same shape as
         `SearchService.index_members`): each dict's `id` locates the on-disk
         `messages.json` via `path_resolver`. File reads + ingest happen OFF
@@ -231,7 +307,7 @@ class KnowledgeService:
         the fairness rationale.
         """
         reference = self._reference_for(service)
-        self._index_progress = {
+        self._index_progress[service] = {
             "service": service,
             "phase": "discovering",
             "done": 0,
@@ -295,11 +371,28 @@ class KnowledgeService:
     async def index_blogs_for_service(self, service: str) -> int:
         """Index every `blogs/**/blog.json` under `service`; returns new/changed docs.
 
-        Same off-lock-then-batched-persist split as `index_members` -- see
-        `_persist`.
+        Guarded the same way as `index_members` -- see its docstring for the
+        in-flight-registry skip semantics (Finding 1, KB review).
+        """
+        if not await self._try_acquire_inflight(service):
+            logger.info(
+                "knowledge_service.index_blogs_for_service.skipped_inflight",
+                service=service,
+            )
+            return 0
+        try:
+            return await self._index_blogs_impl(service)
+        finally:
+            await self._release_inflight(service)
+
+    async def _index_blogs_impl(self, service: str) -> int:
+        """The actual `index_blogs_for_service` work; also called directly by
+        `_rebuild_impl` (which already holds the in-flight claim) -- see
+        `_index_members_impl`'s docstring for why. Same off-lock-then-
+        batched-persist split as `index_members` -- see `_persist`.
         """
         reference = self._reference_for(service)
-        self._index_progress = {
+        self._index_progress[service] = {
             "service": service,
             "phase": "discovering",
             "done": 0,
@@ -377,14 +470,27 @@ class KnowledgeService:
     async def _persist_batched(
         self, changed_docs: list[Document], chunks: list[Chunk], service: str
     ) -> int:
-        """Embed `chunks` in `_EMBED_BATCH_SIZE` groups, each under its own
-        `_store_lock` acquisition; upsert a doc's row only once EVERY one of its
-        chunks has a persisted vector (crash-safe: an interruption mid-batch
-        leaves that doc's content-hash unchanged, so the next pass retries it —
-        marking it done first would strand any not-yet-embedded chunk
-        permanently). A doc with no chunks at all (empty/caption-less text) has
-        nothing to embed, so it's upserted immediately instead of never being
-        marked done.
+        """Embed `chunks` in ~`_EMBED_BATCH_SIZE`-chunk, DOC-ALIGNED batches
+        (see `_pack_batches_by_doc`), each batch under its own `_store_lock`
+        acquisition; upsert a doc's row only once EVERY one of its chunks has a
+        persisted vector (crash-safe: an interruption mid-batch leaves that
+        doc's content-hash unchanged, so the next pass retries it — marking it
+        done first would strand any not-yet-embedded chunk permanently). A doc
+        with no chunks at all (empty/caption-less text) has nothing to embed,
+        so it's upserted immediately instead of never being marked done.
+
+        **Consistency guarantee (Finding 2, KB review).** Batches are packed on
+        DOCUMENT boundaries and never split one doc's chunks across two batches
+        -- a doc with more chunks than `_EMBED_BATCH_SIZE` gets its own
+        oversized batch instead, so its chunks stay contiguous within a single
+        `_store_lock` acquisition. Combined with the crash-safety rule above (a
+        doc's row is upserted only once ALL its chunks are embedded, in that
+        SAME batch), this guarantees a queued `ask()` that interleaves BETWEEN
+        batches (see `_persist`'s Lock fairness note) never observes one doc in
+        a torn state: for any given doc, either ALL of its chunk vectors AND
+        its row reflect the new version, or NONE of them do -- never
+        some-but-not-all of one doc's chunks re-embedded while its row/lexical
+        text is still the old version.
         """
         chunked_doc_ids = {chunk.doc_id for chunk in chunks}
         no_chunk_docs = [
@@ -392,7 +498,7 @@ class KnowledgeService:
         ]
         docs_by_id = {doc.doc_id: doc for doc in changed_docs}
 
-        self._index_progress = {
+        self._index_progress[service] = {
             "service": service,
             "phase": "embedding",
             "done": 0,
@@ -405,8 +511,7 @@ class KnowledgeService:
                     await asyncio.to_thread(self._store.upsert_documents, no_chunk_docs)
 
             remaining = Counter(chunk.doc_id for chunk in chunks)
-            for start in range(0, len(chunks), _EMBED_BATCH_SIZE):
-                batch = chunks[start : start + _EMBED_BATCH_SIZE]
+            for batch in _pack_batches_by_doc(chunks, _EMBED_BATCH_SIZE):
                 async with self._store_lock:
                     vectors = await asyncio.to_thread(
                         self._embedder.embed,
@@ -427,23 +532,51 @@ class KnowledgeService:
                         await asyncio.to_thread(
                             self._store.upsert_documents, ready_docs
                         )
-                self._index_progress["done"] += len(batch)
+                self._index_progress[service]["done"] += len(batch)
         finally:
             self._mark_idle(service)
         return len(changed_docs)
 
     def _mark_idle(self, service: str) -> None:
-        self._index_progress = {
-            "service": service,
-            "phase": "idle",
-            "done": 0,
-            "total": 0,
-            "started_at": None,
-        }
+        self._index_progress[service] = _idle_progress(service)
 
-    def index_progress(self) -> dict:
-        """A snapshot of the live indexing progress -- see `_index_progress`."""
-        return dict(self._index_progress)
+    def index_progress(self, service: str) -> dict:
+        """A snapshot of `service`'s live indexing progress -- see
+        `_index_progress`. Idle-shaped if `service` has never indexed, or has
+        no run in flight right now.
+        """
+        return dict(self._index_progress.get(service) or _idle_progress(service))
+
+    async def _try_acquire_inflight(self, service: str) -> bool:
+        """Atomically claim `service`'s in-flight slot; `False` if another
+        index run already holds it -- see `_index_inflight`'s constructor
+        comment (Finding 1, KB review)."""
+        async with self._inflight_lock:
+            if service in self._index_inflight:
+                return False
+            self._index_inflight.add(service)
+            return True
+
+    async def _release_inflight(self, service: str) -> None:
+        """Release `service`'s in-flight slot -- always paired with
+        `_try_acquire_inflight` via try/finally."""
+        async with self._inflight_lock:
+            self._index_inflight.discard(service)
+
+    def is_indexing(self, service: str) -> bool:
+        """Whether `service` currently has an index run in flight.
+
+        The SOURCE OF TRUTH for `/index/rebuild`'s 409 `alreadyRunning`
+        (Finding 1, KB review) -- deliberately NOT `_index_progress`/
+        `index_progress()`, which is display-only and was never actually
+        exclusive. A plain set-membership read, safe without `_inflight_lock`
+        (which only serializes the brief add/discard, see
+        `_try_acquire_inflight`): this is inherently advisory anyway -- a run
+        can start the instant after this returns `False`, same as any
+        check-then-act race of this kind (acceptable for a single-user desktop
+        app; `rebuild()`'s own guard is still the real enforcement).
+        """
+        return service in self._index_inflight
 
     @staticmethod
     def _read_json(path: Path) -> dict | None:
@@ -624,19 +757,24 @@ class KnowledgeService:
         in-flight writer because the store enables WAL mode on open, and WAL
         readers never block on (or are blocked by) writers.
 
-        `progress` is `self._index_progress` verbatim (a lock-free attribute
-        read, see the constructor) -- it reflects whichever index/rebuild is
-        CURRENTLY running process-wide (there's only ever one, since every index
-        entry point serializes its store writes through `_store_lock`), not
-        specifically `service`'s progress; callers compare `progress["service"]`
-        themselves if they only care about one service.
+        `progress` is `service`'s OWN `_index_progress` entry (Finding 1, KB
+        review: per-service, not one process-wide dict -- concurrent index runs
+        for DIFFERENT services no longer clobber each other's displayed
+        progress). Idle-shaped when `service is None` (no single service was
+        asked about, so there's nothing meaningful to report) or when `service`
+        has no run in flight right now.
         """
         by_type = self._read_status_by_type(service)
+        progress = (
+            self.index_progress(service)
+            if service is not None
+            else _idle_progress(None)
+        )
         return {
             "service": service,
             "document_count": sum(by_type.values()),
             "by_type": by_type,
-            "progress": dict(self._index_progress),
+            "progress": progress,
         }
 
     def _read_status_by_type(self, service: str | None) -> dict[str, int]:
@@ -660,18 +798,46 @@ class KnowledgeService:
     async def rebuild(self, service: str) -> int:
         """Re-index `service` from disk (blogs + all message members); returns changed docs.
 
+        Guarded by the per-service in-flight registry (Finding 1, KB review):
+        if `service` already has a run in progress (another rebuild, or a hook
+        indexing it right now), this call SKIPS immediately and returns 0
+        instead of racing it -- see `_index_members_impl`'s docstring. Both the
+        manual `/index/rebuild` endpoint AND the app-startup catch-up sweep
+        (`schedule_initial_build_all`, via `backend/main.py`'s
+        `_deferred_kb_initial_build`) go through this -- exactly the pair the
+        review flagged as racing routinely (the startup sweep used to fire with
+        zero delay; see that function's docstring for the fix).
+        """
+        if not await self._try_acquire_inflight(service):
+            logger.info("knowledge_service.rebuild.skipped_inflight", service=service)
+            return 0
+        try:
+            return await self._rebuild_impl(service)
+        finally:
+            await self._release_inflight(service)
+
+    async def _rebuild_impl(self, service: str) -> int:
+        """The actual `rebuild` work -- see that method's docstring for the
+        in-flight guard wrapping this.
+
         Relies on content-hash dedupe for idempotency, so this picks up new/changed
         source files cheaply -- including the case where NOTHING changed, thanks
         to the no-op fast path in `_persist` (a pure hash-diff pass, no
         embedding). (It does not delete docs whose source files were removed — a
         hard purge would need a store `delete_service`, out of scope for v1.)
 
+        Calls `_index_members_impl`/`_index_blogs_impl` directly (NOT the
+        guarded `index_members`/`index_blogs_for_service` wrappers): `rebuild`
+        already holds `service`'s in-flight claim for this whole call, so going
+        through the wrappers would see that same claim as "already taken" and
+        skip, breaking rebuild entirely.
+
         On completion: warms the retriever cache for `service` (see
         `_ensure_retriever_cached`) so the very next `ask()` doesn't pay the
         corpus-rehydration cost, and records `settings.knowledge_base.last_built`
         so `KnowledgeBaseStatus` can render "Last indexed: …".
         """
-        self._index_progress = {
+        self._index_progress[service] = {
             "service": service,
             "phase": "discovering",
             "done": 0,
@@ -679,8 +845,8 @@ class KnowledgeService:
             "started_at": _utcnow_iso(),
         }
         members = await asyncio.to_thread(self._discover_message_members, service)
-        changed = await self.index_members(members, service)
-        changed += await self.index_blogs_for_service(service)
+        changed = await self._index_members_impl(members, service)
+        changed += await self._index_blogs_impl(service)
         async with self._store_lock:
             await asyncio.to_thread(self._ensure_retriever_cached, service)
         await self._record_last_built()
@@ -760,6 +926,19 @@ def _utcnow_iso() -> str:
     """Current UTC instant as an ISO-8601 string -- for `_index_progress`'s
     `started_at` and `settings.knowledge_base.last_built`."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _idle_progress(service: str | None) -> dict:
+    """The idle-shaped `_index_progress` entry for `service` -- or the generic
+    fallback (`service=None`) when `status()` was asked about no service in
+    particular. See `KnowledgeService._index_progress`."""
+    return {
+        "service": service,
+        "phase": "idle",
+        "done": 0,
+        "total": 0,
+        "started_at": None,
+    }
 
 
 # ------------------------------------------------------------------

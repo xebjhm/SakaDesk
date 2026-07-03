@@ -26,10 +26,12 @@ interface RawIndexStatus {
 }
 
 interface Progress {
-    /** Which service the CURRENTLY running index/rebuild belongs to -- `progress`
-     * is process-wide (only one index ever runs at a time), not per-service, so
-     * this may differ from the active service (see `KnowledgeService.status`'s
-     * docstring). */
+    /** Which service this progress snapshot belongs to. `GET /index/status?service=X`
+     * now returns X's OWN progress (`KnowledgeService`'s per-service in-flight
+     * registry -- see that module's `_index_inflight`/`_index_progress`), so this
+     * normally equals the queried `activeService`; kept as a field rather than
+     * assumed so the UI stays correct even if a snapshot ever names a different
+     * service (see `KnowledgeService.status`'s docstring). */
     service: string | null;
     phase: string;
     done: number;
@@ -85,10 +87,11 @@ function phaseLabelKey(phase: string): string {
  *
  * Shows how many documents are currently indexed for the active service
  * (`useAppStore`'s `activeService`), when it was last (re)indexed, and a
- * Rebuild button. While ANY index/rebuild is in flight process-wide (Task 3's
- * `_index_progress`, not per-service), the button is disabled and a real
- * progress bar (or, for a different service's index, a generic "already
- * indexing" note) replaces the static count.
+ * Rebuild button. While an index/rebuild is in flight for the active service
+ * (`KnowledgeService`'s per-service in-flight registry -- see its module
+ * docstring), the button is disabled and a real progress bar replaces the
+ * static count; the generic "already indexing" note is a defensive fallback
+ * for a progress snapshot naming a different service than the one queried.
  */
 export const KnowledgeBaseStatus: React.FC = () => {
     const { t } = useTranslation();

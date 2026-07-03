@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
-from datetime import timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -29,7 +29,7 @@ import pytest
 from backend.services.knowledge_store import SqliteKnowledgeStore
 from backend.services.settings_store import load_config
 from pysaka.knowledge.llm import FakeLLMClient, LLMResponse, ToolCall
-from pysaka.knowledge.models import Answer, Scope
+from pysaka.knowledge.models import Answer, Chunk, Document, Scope, SourceRef
 
 _SERVICE = "hinatazaka46"
 _MSG_ID = 500001
@@ -974,3 +974,326 @@ async def test_rebuild_records_last_built_in_settings(
 
     config_after = await load_config()
     assert config_after["knowledge_base"]["last_built"] is not None
+
+
+# ---------------------------------------------------------------------------
+# KB review Finding 1: per-service in-flight registry (index-level mutex)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_concurrent_index_runs_same_service_second_entry_point_skips(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two concurrent index runs for the SAME service -- e.g. a live
+    sync-completion hook racing the startup sweep -- must not both run. The
+    per-service in-flight registry makes the second entry point (the "hook
+    path") SKIP immediately (returning 0, picked up by the next content-hash
+    pass) instead of racing the first and clobbering its `_index_progress`."""
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    batch_started = threading.Event()
+    release_batch = threading.Event()
+
+    class SlowEmbedder:
+        dim = 2
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def embed(self, texts, kind="passage"):
+            self.calls += 1
+            batch_started.set()
+            assert release_batch.wait(timeout=5), (
+                "test deadlock: release_batch never set"
+            )
+            return [[1.0, 0.0] for _ in texts]
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    embedder = SlowEmbedder()
+    svc = ks.KnowledgeService(
+        store=store, embedder=embedder, llm=None, data_dir=data_dir
+    )
+
+    # Spy on `_mark_idle` (instance-level override) to assert the run reaches
+    # "idle" exactly once -- a skip must never call it at all.
+    mark_idle_calls: list[str] = []
+    real_mark_idle = svc._mark_idle
+
+    def _spy_mark_idle(service: str) -> None:
+        mark_idle_calls.append(service)
+        real_mark_idle(service)
+
+    monkeypatch.setattr(svc, "_mark_idle", _spy_mark_idle)
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+
+    first_task = asyncio.create_task(svc.index_members([(group, member)], _SERVICE))
+    assert await asyncio.to_thread(batch_started.wait, 5)
+
+    # The FIRST run holds `_SERVICE`'s in-flight slot right now (blocked inside
+    # its embed call, which also holds `_store_lock`) -- a concurrent second
+    # call must skip immediately without waiting for the embed to unblock.
+    second_result = await asyncio.wait_for(
+        svc.index_members([(group, member)], _SERVICE), timeout=2
+    )
+    assert second_result == 0
+
+    release_batch.set()
+    first_result = await first_task
+
+    assert first_result == 1
+    assert embedder.calls == 1, "the skipped second run must never call embed"
+    assert svc.index_progress(_SERVICE)["phase"] == "idle"
+    assert mark_idle_calls == [_SERVICE], "exactly one real run reached _mark_idle"
+
+
+@pytest.mark.asyncio
+async def test_rebuild_skips_when_service_already_in_flight(tmp_path: Path) -> None:
+    """`rebuild()` -- the entry point behind both `/index/rebuild` and the
+    app-startup catch-up sweep -- must respect the same in-flight registry as
+    `index_members`/`index_blogs_for_service`: a rebuild racing an already
+    in-flight run for its service skips (returns 0) instead of racing it."""
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+
+    claimed = await svc._try_acquire_inflight(_SERVICE)
+    assert claimed is True
+    try:
+        assert svc.is_indexing(_SERVICE) is True
+        result = await svc.rebuild(_SERVICE)
+        assert result == 0
+    finally:
+        await svc._release_inflight(_SERVICE)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_index_runs_different_services_progress_isolated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_index_progress` is per-service (a dict keyed by service id): two
+    services with index runs in flight at once -- A mid-embed (holding
+    `_store_lock`) while B is registered and queued behind it -- each keep
+    their own independent progress entry. B merely being in flight (or later
+    completing and calling its OWN `_mark_idle`) must never touch A's entry.
+    (The shared `_store_lock` still serializes the two runs' actual store
+    writes -- this asserts the *progress bookkeeping* stays isolated
+    regardless, which is what Finding 1 flagged as broken.)
+    """
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    # Service B gets its own roster (same fixture content, different filename
+    # -- `_roster_short_name` strips "46").
+    (data_dir / "members" / "sakurazaka.json").write_text(
+        (data_dir / "members" / "hinatazaka.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    service_a = _SERVICE
+    service_b = "sakurazaka46"
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    a_embed_started = threading.Event()
+    release_a_embed = threading.Event()
+
+    class SlowEmbedder:
+        dim = 2
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def embed(self, texts, kind="passage"):
+            self.calls += 1
+            if self.calls == 1:
+                a_embed_started.set()
+                assert release_a_embed.wait(timeout=5), (
+                    "test deadlock: release_a_embed never set"
+                )
+            return [[1.0, 0.0] for _ in texts]
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(
+        store=store, embedder=SlowEmbedder(), llm=None, data_dir=data_dir
+    )
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+
+    task_a = asyncio.create_task(svc.index_members([(group, member)], service_a))
+    assert await asyncio.to_thread(a_embed_started.wait, 5)
+    assert svc.index_progress(service_a)["phase"] == "embedding"
+
+    # B is started concurrently: it's registered in-flight under its OWN slot
+    # (a different service -- allowed) and will queue on the shared
+    # `_store_lock` behind A's still-open embed batch.
+    task_b = asyncio.create_task(svc.index_members([(group, member)], service_b))
+    await asyncio.sleep(0.05)  # give B a real chance to start and queue
+
+    assert svc.is_indexing(service_a) is True
+    assert svc.is_indexing(service_b) is True
+    # A's own entry must be completely unaffected by B merely being in flight.
+    mid_progress_a = svc.index_progress(service_a)
+    assert mid_progress_a["phase"] == "embedding"
+    assert mid_progress_a["service"] == service_a
+
+    release_a_embed.set()
+    changed_a = await task_a
+    changed_b = await task_b
+
+    assert changed_a == 1
+    assert changed_b == 1
+    assert svc.index_progress(service_a) == {
+        "service": service_a,
+        "phase": "idle",
+        "done": 0,
+        "total": 0,
+        "started_at": None,
+    }
+    assert svc.index_progress(service_b) == {
+        "service": service_b,
+        "phase": "idle",
+        "done": 0,
+        "total": 0,
+        "started_at": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# KB review Finding 2: embed batches packed on doc boundaries
+# ---------------------------------------------------------------------------
+
+
+class TestPackBatchesByDoc:
+    """`_pack_batches_by_doc` must never split one doc's chunks across two
+    batches -- a multi-chunk BLOG doc straddling a batch boundary was the bug
+    (a queued ask could see some-but-not-all of its chunks re-embedded while
+    its row/lexical text was still old)."""
+
+    @staticmethod
+    def _chunk(doc_id: str, n: int) -> Chunk:
+        chunk_id = f"{doc_id}#{n}"
+        return Chunk(
+            chunk_id=chunk_id, doc_id=doc_id, text=chunk_id, context_text=chunk_id
+        )
+
+    def test_multi_chunk_doc_never_split_across_batches(self) -> None:
+        from backend.services.knowledge_service import _pack_batches_by_doc
+
+        blog_doc_id = "blog:svc:1"
+        single_doc_ids = [f"msg:svc:a:{i}" for i in range(1, 5)]
+        chunks = [self._chunk(blog_doc_id, n) for n in range(3)] + [
+            self._chunk(doc_id, 0) for doc_id in single_doc_ids
+        ]
+
+        batches = _pack_batches_by_doc(chunks, batch_size=2)
+
+        blog_chunk_ids = {c.chunk_id for c in chunks if c.doc_id == blog_doc_id}
+        for batch in batches:
+            batch_blog_ids = {c.chunk_id for c in batch if c.doc_id == blog_doc_id}
+            assert batch_blog_ids in (set(), blog_chunk_ids), (
+                "the 3-chunk blog doc must never be split across batches: "
+                f"got {[[c.chunk_id for c in b] for b in batches]}"
+            )
+        # Every chunk appears exactly once, across all batches, doc-contiguous.
+        assert [c.chunk_id for batch in batches for c in batch] == [
+            c.chunk_id for c in chunks
+        ]
+        # 3 > batch_size=2, so the blog doc gets its own oversized batch.
+        blog_batch = next(b for b in batches if b[0].doc_id == blog_doc_id)
+        assert len(blog_batch) == 3
+
+    def test_docs_pack_up_to_batch_size_without_unnecessary_splitting(self) -> None:
+        from backend.services.knowledge_service import _pack_batches_by_doc
+
+        chunks = [self._chunk(f"msg:svc:a:{i}", 0) for i in range(1, 5)]
+
+        batches = _pack_batches_by_doc(chunks, batch_size=2)
+
+        assert [len(b) for b in batches] == [2, 2]
+
+
+@pytest.mark.asyncio
+async def test_persist_batched_never_splits_a_multi_chunk_doc_across_embed_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Integration-level version of the packing guarantee: driving the REAL
+    `_persist_batched` (not just the pure packer) with a fake corpus of one
+    3-chunk blog doc + four 1-chunk docs and `_EMBED_BATCH_SIZE` forced small
+    -- inspects the fake embedder's per-call chunk batches directly."""
+    from backend.services import knowledge_service as ks
+
+    def _doc(doc_id: str) -> Document:
+        return Document(
+            doc_id=doc_id,
+            source_ref=SourceRef(
+                service=_SERVICE, kind="blog", blog_id="1", member_id=1
+            ),
+            author_id=f"{_SERVICE}:1",
+            group=_SERVICE,  # `Document.group` is the "service" column (see `documents_for_service`)
+            timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            type="blog",
+            is_favorite=False,
+            text="x",
+            has_text=True,
+        )
+
+    def _chunk(doc_id: str, n: int) -> Chunk:
+        chunk_id = f"{doc_id}#{n}"
+        return Chunk(
+            chunk_id=chunk_id, doc_id=doc_id, text=chunk_id, context_text=chunk_id
+        )
+
+    blog_doc_id = f"blog:{_SERVICE}:1"
+    single_doc_ids = [f"blog:{_SERVICE}:{i}" for i in range(2, 6)]
+    changed_docs = [_doc(blog_doc_id)] + [_doc(d) for d in single_doc_ids]
+    chunks = [_chunk(blog_doc_id, n) for n in range(3)] + [
+        _chunk(doc_id, 0) for doc_id in single_doc_ids
+    ]
+
+    class RecordingEmbedder:
+        dim = 2
+
+        def __init__(self) -> None:
+            self.batches: list[list[str]] = []
+
+        def embed(self, texts, kind="passage"):
+            self.batches.append(list(texts))
+            return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr(ks, "_EMBED_BATCH_SIZE", 2)
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    embedder = RecordingEmbedder()
+    svc = ks.KnowledgeService(store=store, embedder=embedder, llm=None)
+    changed = await svc._persist_batched(changed_docs, chunks, _SERVICE)
+
+    assert changed == len(changed_docs)
+    blog_chunk_ids = {c.chunk_id for c in chunks if c.doc_id == blog_doc_id}
+    for batch in embedder.batches:
+        batch_blog_ids = blog_chunk_ids & set(batch)
+        assert batch_blog_ids in (set(), blog_chunk_ids), (
+            "the 3-chunk blog doc's chunk_ids must all land in ONE embed call, "
+            f"not split -- got batches {embedder.batches}"
+        )
+    # The 3-chunk blog doc (> batch_size=2) gets its own oversized batch; the
+    # four 1-chunk docs pack 2-per-batch.
+    assert [len(b) for b in embedder.batches] == [3, 2, 2]
+    # Every doc's row was persisted (crash-safe upsert-when-fully-embedded).
+    persisted = store.documents_for_service(_SERVICE)
+    assert {d.doc_id for d in persisted} == {blog_doc_id, *single_doc_ids}

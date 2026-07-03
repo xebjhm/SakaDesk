@@ -53,8 +53,10 @@ configure before enabling). `/ask` and `/index/rebuild` both check
 `{code: "kb_disabled"}`. `PUT /config` and `GET /index/status` are
 deliberately NOT gated: a user must be able to configure/inspect the KB before
 turning it on. `/index/rebuild` also 409s `{alreadyRunning: true}` when
-`KnowledgeService.index_progress()` isn't `"idle"`, instead of stacking another
-background rebuild behind `_store_lock` on a repeated click.
+`KnowledgeService.is_indexing(service)` is true -- the per-service in-flight
+registry (Finding 1, KB review), NOT the display-only `_index_progress` this
+used to read -- instead of stacking another background rebuild behind
+`_store_lock` on a repeated click.
 """
 
 from __future__ import annotations
@@ -297,15 +299,18 @@ async def _heartbeat_payload(service: str) -> dict:
     in-flight index batch only ever waits SECONDS between batches (see
     `KnowledgeService._persist_batched`), but without this it would show a
     generic "thinking" spinner that looks identical to a slow LLM call for
-    however long that wait lasts. Falls back to `{"stage": "thinking"}` --
-    including when the knowledge service isn't buildable at all (disabled/
-    misconfigured); `_run_ask` surfaces THAT failure through the normal error
-    path already, so this is purely best-effort progress labeling.
+    however long that wait lasts. `index_progress(service)` is already scoped
+    to `service` (Finding 1, KB review: per-service, not process-wide), so
+    there's no need to separately compare a `"service"` field here anymore.
+    Falls back to `{"stage": "thinking"}` -- including when the knowledge
+    service isn't buildable at all (disabled/misconfigured); `_run_ask`
+    surfaces THAT failure through the normal error path already, so this is
+    purely best-effort progress labeling.
     """
     try:
         svc = await get_knowledge_service()
-        progress = svc.index_progress()
-        if progress.get("phase") != "idle" and progress.get("service") == service:
+        progress = svc.index_progress(service)
+        if progress.get("phase") != "idle":
             return {
                 "stage": "indexing",
                 "done": progress.get("done", 0),
@@ -518,13 +523,14 @@ async def index_rebuild(request: RebuildRequest) -> dict:
         )
 
     svc = await _get_knowledge_service_or_409()
-    if svc.index_progress().get("phase") != "idle":
-        # An index/rebuild is already in flight (process-wide -- see
-        # `KnowledgeService.status`'s docstring on why `_index_progress` isn't
-        # per-service). Reject instead of stacking another background task
-        # behind `_store_lock`: repeated clicks used to each queue a FULL extra
-        # rebuild, compounding a multi-minute lock hold (see
-        # `pwave-confirmed-bugs.md`).
+    if svc.is_indexing(request.service):
+        # An index/rebuild is already in flight for THIS service -- the
+        # per-service in-flight registry (Finding 1, KB review), the actual
+        # source of truth (NOT the display-only `_index_progress`, which was
+        # never really exclusive). Reject instead of stacking another
+        # background task behind `_store_lock`: repeated clicks used to each
+        # queue a FULL extra rebuild, compounding a multi-minute lock hold
+        # (see `pwave-confirmed-bugs.md`).
         raise HTTPException(status_code=409, detail={"alreadyRunning": True})
     track_background_task(_run_rebuild(svc, request.service), name="index_rebuild")
     return {"ok": True}

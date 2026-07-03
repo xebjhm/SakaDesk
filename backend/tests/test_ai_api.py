@@ -126,7 +126,13 @@ _IDLE_PROGRESS = {
 
 def _mock_knowledge_service() -> MagicMock:
     """`get_knowledge_service()`-shaped mock: `ask`/`rebuild` async, `status`/
-    `index_progress` sync."""
+    `index_progress`/`is_indexing` sync.
+
+    `is_indexing` defaults to `False` -- the per-service in-flight registry
+    (Finding 1, KB review) that `/index/rebuild`'s 409 `alreadyRunning` now
+    reads instead of `index_progress()` -- so ordinary rebuild tests aren't
+    all falsely 409'd by an unconfigured `MagicMock` truthy return.
+    """
     svc = MagicMock()
     svc.ask = AsyncMock(return_value=_validated_answer())
     svc.status = MagicMock(
@@ -138,6 +144,7 @@ def _mock_knowledge_service() -> MagicMock:
         }
     )
     svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
+    svc.is_indexing = MagicMock(return_value=False)
     svc.rebuild = AsyncMock(return_value=3)
     return svc
 
@@ -601,6 +608,23 @@ class TestIndexRebuild:
         svc.rebuild.assert_awaited_once_with("hinatazaka46")
 
     def test_rebuild_returns_409_alreadyrunning_when_an_index_is_in_flight(self):
+        """Finding 1 (KB review): the 409 dedupe must be sourced from the
+        per-service in-flight registry (`is_indexing`), NOT the display-only
+        `index_progress` -- so this sets ONLY `is_indexing`, leaving
+        `index_progress` at its idle default, and still expects a 409."""
+        svc = _mock_knowledge_service()
+        svc.is_indexing = MagicMock(return_value=True)
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["alreadyRunning"] is True
+        svc.rebuild.assert_not_called()
+        svc.is_indexing.assert_called_once_with("hinatazaka46")
+
+    def test_rebuild_ignores_index_progress_for_the_409_dedupe(self):
+        """The inverse of the above: a non-idle `index_progress()` (the OLD
+        source of truth) must NOT by itself trigger the 409 anymore -- only
+        `is_indexing()` (the registry) does."""
         svc = _mock_knowledge_service()
         svc.index_progress = MagicMock(
             return_value={
@@ -613,9 +637,8 @@ class TestIndexRebuild:
         )
         with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
             r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
-        assert r.status_code == 409
-        assert r.json()["detail"]["alreadyRunning"] is True
-        svc.rebuild.assert_not_called()
+        assert r.status_code == 200
+        svc.rebuild.assert_called_once()
 
 
 class TestKbDisabledGating:
