@@ -325,6 +325,73 @@ class TestMigrations:
         finally:
             s2.close()
 
+    def test_a_failing_migration_leaves_db_at_prior_version_with_no_partial_ddl(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Finding 3 (P-4 review): migrations must be REALLY atomic, not just
+        documented as such -- `executescript()` was empirically found to
+        issue an implicit `COMMIT` before running (bypassing the `with
+        conn:` block `_run_migrations` used to wrap it in), so a
+        mid-migration failure used to leave the DDL that ran before the
+        failure (and even the `user_version` bump right after it) committed
+        anyway. This injects a THIRD migration (beyond the two real ones,
+        via a monkeypatched `_MIGRATIONS`) that creates one table
+        successfully and then hits an invalid statement -- with the fix,
+        NEITHER that table NOR the version bump may survive, and the two
+        real migrations' data (already committed in their own, earlier,
+        successful transactions) must be untouched.
+        """
+        import backend.services.knowledge_store as store_module
+
+        def _broken_migration(conn: sqlite3.Connection) -> None:
+            conn.execute("CREATE TABLE kb_partial_migration_marker (id INTEGER)")
+            conn.execute("THIS IS NOT VALID SQL")
+
+        monkeypatch.setattr(
+            store_module,
+            "_MIGRATIONS",
+            [*store_module._MIGRATIONS, _broken_migration],
+        )
+        monkeypatch.setattr(store_module, "_LATEST_SCHEMA_VERSION", 3)
+
+        db_path = tmp_path / "knowledge_index.db"
+        with pytest.raises(sqlite3.OperationalError):
+            SqliteKnowledgeStore(db_path)
+
+        # A fresh connection to the same file: migrations 1-2 must have
+        # committed (each ran in ITS OWN, already-successful transaction,
+        # before migration 3 ever started), but migration 3's partial DDL
+        # and its version bump must both be gone.
+        conn = sqlite3.connect(str(db_path))
+        try:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+            conn.execute("SELECT key, value FROM kb_meta")  # migration 2 intact
+            with pytest.raises(sqlite3.OperationalError, match="no such table"):
+                conn.execute("SELECT * FROM kb_partial_migration_marker")
+        finally:
+            conn.close()
+
+    def test_migration_runner_restores_isolation_level_after_running(
+        self, tmp_path: Path
+    ) -> None:
+        """`_run_migrations` temporarily sets `conn.isolation_level = None`
+        (true autocommit) so it has exclusive control of `BEGIN`/`COMMIT`/
+        `ROLLBACK` for the migration steps -- it must restore whatever the
+        connection's isolation level was before returning, so every OTHER
+        store method (`upsert_documents`/`add`/`remove`/`set_meta`, which
+        all rely on the `sqlite3` module's normal implicit-transaction
+        handling plus their own explicit `commit()`) keeps behaving exactly
+        as before."""
+        db_path = tmp_path / "knowledge_index.db"
+        s = SqliteKnowledgeStore(db_path)
+        try:
+            # `sqlite3.connect()`'s default isolation level (deferred implicit
+            # transactions) -- restored, not left at the migration runner's
+            # `None` (true autocommit).
+            assert s._conn.isolation_level == ""
+        finally:
+            s.close()
+
 
 class TestKbMeta:
     def test_get_meta_missing_key_returns_none(self, tmp_path: Path) -> None:
@@ -356,41 +423,11 @@ class TestKbMeta:
         s2.close()
 
 
-class TestWipeVectorsAndContentHashes:
-    def test_wipe_clears_vectors_but_keeps_document_rows(self, tmp_path: Path) -> None:
-        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
-        s.upsert_documents([_doc(1), _doc(2)])
-        s.add(["blog:hinatazaka46:1", "blog:hinatazaka46:2"], [[1.0, 0.0], [0.0, 1.0]])
-
-        s.wipe_vectors_and_content_hashes()
-
-        # Vectors are gone, both from the persisted table and the in-memory mirror.
-        assert s.search([1.0, 0.0], k=5) == []
-        row_count = s._conn.execute("SELECT COUNT(*) FROM kb_vectors").fetchone()[0]
-        assert row_count == 0
-        # Document rows (text/mentions) survive untouched.
-        doc = s.get_document("blog:hinatazaka46:1")
-        assert doc is not None
-        assert doc.text == "焼肉1"
-        s.close()
-
-    def test_wipe_blanks_content_hash_so_next_index_pass_reembeds_everything(
-        self, tmp_path: Path
-    ) -> None:
-        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
-        s.upsert_documents([_doc(1)])
-        assert s.changed_document_ids([_doc(1)]) == []  # unchanged before wipe
-
-        s.wipe_vectors_and_content_hashes()
-
-        assert s.changed_document_ids([_doc(1)]) == ["blog:hinatazaka46:1"]
-        s.close()
-
-    def test_wipe_bumps_generation(self, tmp_path: Path) -> None:
-        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
-        s.upsert_documents([_doc(1)])
-        s.add(["blog:hinatazaka46:1"], [[1.0, 0.0]])
-        before = s.generation
-        s.wipe_vectors_and_content_hashes()
-        assert s.generation > before
-        s.close()
+# NOTE: `TestWipeVectorsAndContentHashes` (covering the now-removed
+# `wipe_vectors_and_content_hashes()`) was deleted here -- P-4 review,
+# Finding 2 (ADJUDICATED): a fingerprint mismatch flag-gates instead of
+# wiping now. See `test_knowledge_service.py`'s `TestFingerprint` for the
+# replacement coverage (vectors preserved, vector arm disabled at retriever
+# assembly, flag round-trips on a model flip-back) and
+# `SqliteKnowledgeStore.set_meta`'s neighboring comment for the removal
+# rationale.

@@ -8,10 +8,14 @@ source files via `path_resolver`, `ingest_*` them into `Document`s, run
 `MentionDetector` per doc, `chunk_documents`, embed *only new/changed* chunks with
 the injected `Embedder`, and persist docs + vectors + mentions to the durable
 `SqliteKnowledgeStore`. Idempotent via `Document` content-hash: an unchanged doc is
-neither rewritten nor re-embedded, so re-indexing is cheap. Each of these three
-entry points is guarded by a per-service in-flight registry (`_index_inflight`,
-see the constructor) so two concurrent runs for the SAME service can never race
-each other -- the second one skips instead of clobbering the first's progress.
+neither rewritten nor re-embedded, so re-indexing is cheap -- UNLESS `rebuild()`
+is force-re-embedding everything because `kb_meta['reindex_required']` is set
+(an embedder-fingerprint mismatch, see `_check_fingerprint`), in which case the
+hash-diff is bypassed entirely for that one rebuild (`_persist`'s `force` param).
+Each of these three entry points is guarded by a per-service in-flight registry
+(`_index_inflight`, see the constructor) so two concurrent runs for the SAME
+service can never race each other -- the second one skips instead of clobbering
+the first's progress.
 
 **Query** (`ask`): assemble a `HybridRetriever` over the ALREADY-PERSISTED state
 without re-embedding the corpus. Persisted docs are loaded into an in-memory pysaka
@@ -61,7 +65,7 @@ from pysaka.knowledge import (
     ingest_messages,
 )
 from pysaka.knowledge.llm import LLMClient
-from pysaka.knowledge.protocols import Embedder
+from pysaka.knowledge.protocols import Embedder, VectorStore
 
 from backend.services.background_tasks import track_background_task
 from backend.services.knowledge_store import (
@@ -227,6 +231,43 @@ async def _current_fingerprint(embedder: Embedder) -> dict:
     }
 
 
+class _NullVectorStore:
+    """A `VectorStore` (structural, see `pysaka.knowledge.protocols`) whose
+    `search` always returns no hits -- the "vector arm disabled" half of the
+    fingerprint-mismatch flag-gate (P-4 review, Finding 2, ADJUDICATED
+    decision: non-destructive flag-gating replaces the old eager vector
+    WIPE).
+
+    Handed to `HybridRetriever` in place of the real `SqliteKnowledgeStore`
+    by `KnowledgeService._ensure_retriever_cached` for as long as
+    `kb_meta['reindex_required']` is set: the persisted vectors are still
+    fully intact on disk (nothing was ever deleted, see `_check_fingerprint`)
+    but they were embedded under the OLD model, and comparing them against a
+    query embedded under the CURRENTLY active (different) model would mix
+    two unrelated vector spaces -- garbage rankings that would look plausible
+    enough not to be noticed. Rather than let that happen, this makes
+    `HybridRetriever.search`'s RRF fusion degrade cleanly to lexical +
+    structured-filters ranking only (still grounded, just without semantic
+    matching) until a Rebuild clears the flag.
+
+    `add`/`remove` are no-ops -- retriever assembly only ever calls
+    `index_lexical(...)` (see `_ensure_retriever_cached`), which never
+    touches the vector store at all, so these two are never actually invoked
+    in practice; they exist only to satisfy the `VectorStore` protocol.
+    """
+
+    def add(self, ids: list[str], vectors: list[list[float]]) -> None:
+        pass
+
+    def remove(self, ids: list[str]) -> None:
+        pass
+
+    def search(
+        self, vector: list[float], k: int, allowed_ids: set[str] | None = None
+    ) -> list[tuple[str, float]]:
+        return []
+
+
 class KnowledgeService:
     """Wires the pysaka knowledge engine over SakaDesk paths/settings/persistence.
 
@@ -306,17 +347,24 @@ class KnowledgeService:
         # set, never held for a run's duration.
         self._index_inflight: set[str] = set()
         self._inflight_lock = asyncio.Lock()
-        # `service -> (store_generation, DocumentStore, HybridRetriever)`. Rebuilt
-        # only when `self._store.generation` (bumped on `add`/`upsert_documents`/
+        # `service -> (store_generation, DocumentStore, HybridRetriever,
+        # reindex_required_at_build_time)`. Rebuilt when EITHER
+        # `self._store.generation` (bumped on `add`/`upsert_documents`/
         # `remove` -- see `SqliteKnowledgeStore`) no longer matches the cached
-        # entry's generation, i.e. the persisted corpus changed since the
-        # retriever was assembled. Reused across asks otherwise, removing the
-        # ~1s-and-growing per-ask corpus rehydration (re-chunk + lexical index)
-        # `_build_agent` used to pay on every single call. Access is safe without
-        # its own lock: every reader/writer runs inside `ask()`'s or an index
-        # method's `_store_lock`-held section (see `_ensure_retriever_cached`).
+        # entry's generation (the persisted corpus changed since the retriever
+        # was assembled), OR `kb_meta['reindex_required']` has flipped since
+        # then (Finding 2, P-4 review: that flag decides which `VectorStore`
+        # the retriever gets -- the real store, or a `_NullVectorStore` that
+        # disables the vector arm -- see `_ensure_retriever_cached`; flipping
+        # it changes NOTHING about `generation`, so generation alone can't
+        # detect that this cache entry is now stale). Reused across asks
+        # otherwise, removing the ~1s-and-growing per-ask corpus rehydration
+        # (re-chunk + lexical index) `_build_agent` used to pay on every
+        # single call. Access is safe without its own lock: every
+        # reader/writer runs inside `ask()`'s or an index method's
+        # `_store_lock`-held section (see `_ensure_retriever_cached`).
         self._retriever_cache: dict[
-            str, tuple[int, DocumentStore, HybridRetriever]
+            str, tuple[int, DocumentStore, HybridRetriever, bool]
         ] = {}
 
     # ------------------------------------------------------------------
@@ -343,6 +391,11 @@ class KnowledgeService:
         process lifetime, the first time an embedder becomes available (see
         `_check_fingerprint`) -- "on service init or first index/ask" per the
         fold-in spec.
+
+        Private (leading underscore) because it's meant to be called from
+        WITHIN this module, right before something that actually needs the
+        embedder -- `ensure_ready()` is the public seam for outside callers
+        (e.g. `backend/api/ai.py`) that just need the lazy-pickup side effect.
         """
         if self._embedder is None:
             embedder = await _build_embedder()
@@ -355,32 +408,78 @@ class KnowledgeService:
             self._fingerprint_checked = True
         return True
 
+    async def ensure_ready(self) -> bool:
+        """Public seam for callers OUTSIDE this module that need to trigger
+        the lazy embedder pickup without reaching for the private
+        `_ensure_embedder` (P-4 review, Finding 1, CRITICAL).
+
+        `backend/api/ai.py`'s `POST /index/rebuild` pre-check used to read
+        `status(service).get("configured")` directly, with nothing in that
+        request ever calling `_ensure_embedder()` first -- so after an
+        in-app model download completed, THAT endpoint kept 409ing
+        `not_configured` forever (the process-wide `KnowledgeService`
+        singleton's `self._embedder` stayed `None` from its point of view),
+        even though `GET /readiness` already reported the model as installed
+        (it probes the filesystem directly, see `compute_readiness`) and a
+        direct `svc.rebuild()` call would have succeeded (`rebuild()` retries
+        the embedder itself, see its docstring). Calling this first closes
+        that gap: `status()`/`is_indexing()` afterward reflect reality.
+
+        Returns the same `True`/`False` as `_ensure_embedder`: `True` once
+        `self._embedder` is usable.
+        """
+        return await self._ensure_embedder()
+
     async def _check_fingerprint(self) -> None:
         """Compare the ACTIVE embedder config's fingerprint against
         `kb_meta['embedder_fingerprint']`.
 
         - Empty db (key never set) -> write the current fingerprint; nothing
           persisted yet, nothing to mismatch against.
-        - Match -> no-op.
+        - Match -> no-op, EXCEPT: if `kb_meta['reindex_required']` is
+          currently set, CLEAR it right here, with no rebuild -- see the
+          mismatch branch below for why this is safe and exactly what
+          "flip the model back" should do.
         - Mismatch (e.g. `embedding_model` changed in settings, or a
           normalizer/chunker version bump) -> do NOT silently mix vector
-          spaces: wipe every persisted vector + blank every doc's
-          content_hash (`SqliteKnowledgeStore.wipe_vectors_and_content_hashes`,
-          see its docstring for why a full wipe rather than a partial one),
-          write the NEW fingerprint as the new baseline, and set
-          `kb_meta['reindex_required'] = "1"` -- surfaced in `/readiness` and
-          `/index/status`, and consulted by `index_members`/
-          `index_blogs_for_service` to block further incremental embedding
-          writes until a Rebuild clears it (`_rebuild_impl`). The execution
-          PROVIDER (CUDA vs CPU) is deliberately NOT part of the fingerprint
-          -- see `_current_fingerprint`'s docstring.
+          spaces, but also do NOT destroy anything (P-4 review, Finding 2,
+          ADJUDICATED decision -- supersedes the earlier eager-wipe design):
+          set `kb_meta['reindex_required'] = "1"` ONLY. Every persisted
+          vector is left exactly as it was (nothing is deleted -- see
+          `SqliteKnowledgeStore.set_meta`'s neighboring comment for what
+          used to live here), and `embedder_fingerprint` is deliberately
+          NEVER overwritten to `current` on a mismatch -- it keeps pointing
+          at whatever config the persisted vectors actually match. That is
+          what makes the MATCH branch above able to detect "the user flipped
+          the model back to what it was" as a match again (not yet another
+          mismatch) and clear the flag instantly, with the old (still
+          intact, still valid for THAT config) vectors immediately usable
+          again -- zero data ever moved for a round trip.
+
+        While `reindex_required` is set: incremental embedding writes are
+        blocked (`_index_preflight_ok`) and the vector arm is disabled at
+        retriever-assembly time (`_ensure_retriever_cached` swaps in a
+        `_NullVectorStore` in place of the real, still-populated store) so
+        an ask degrades to lexical + structured-filters ranking only --
+        still grounded, just not semantically ranked -- rather than ever
+        comparing a query vector from the NEW model against a persisted
+        vector from the OLD one. A Rebuild (`_rebuild_impl`) is the only
+        thing that force-re-embeds the WHOLE corpus regardless of
+        content-hash (`_persist`'s `force` param) and, ONLY on successful
+        completion, clears the flag and rewrites the fingerprint to the new
+        baseline (`_clear_reindex_required_and_rewrite_fingerprint`) -- so a
+        crash mid-rebuild leaves the flag set and the OLD (still intact)
+        vectors in place, never a half-migrated store.
 
         Runs at most once per process lifetime (`_fingerprint_checked`,
         `_ensure_embedder`) -- changing `embedding_model` at runtime isn't a
         supported flow today (same as `knowledge_base.llm`, which similarly
         needs `invalidate_llm_client()`); this only guards against a
         DIFFERENT SakaDesk install/profile's fingerprint already being on
-        disk (a copied/synced app-data dir, or a downgrade-then-upgrade).
+        disk (a copied/synced app-data dir, or a downgrade-then-upgrade), or
+        the user manually editing `embedding_model` in settings.json between
+        restarts. The execution PROVIDER (CUDA vs CPU) is deliberately NOT
+        part of the fingerprint -- see `_current_fingerprint`'s docstring.
         """
         assert self._embedder is not None
         current = await _current_fingerprint(self._embedder)
@@ -397,17 +496,24 @@ class KnowledgeService:
                 logger.info("knowledge_service.fingerprint_written", **current)
                 return
             if json.loads(stored_json) == current:
+                if await asyncio.to_thread(self._read_reindex_required):
+                    # The active config flipped back to whatever the
+                    # persisted vectors actually match -- restore full
+                    # (vector + lexical) search with NO rebuild; nothing
+                    # ever moved.
+                    await asyncio.to_thread(
+                        self._store.set_meta, "reindex_required", "0"
+                    )
+                    self._retriever_cache.clear()
+                    logger.info(
+                        "knowledge_service.fingerprint_flip_back_restored",
+                        **current,
+                    )
                 return
             logger.warning(
                 "knowledge_service.fingerprint_mismatch",
                 stored=json.loads(stored_json),
                 current=current,
-            )
-            await asyncio.to_thread(self._store.wipe_vectors_and_content_hashes)
-            await asyncio.to_thread(
-                self._store.set_meta,
-                "embedder_fingerprint",
-                json.dumps(current, sort_keys=True),
             )
             await asyncio.to_thread(self._store.set_meta, "reindex_required", "1")
             self._retriever_cache.clear()
@@ -522,7 +628,11 @@ class KnowledgeService:
             await self._release_inflight(service)
 
     async def _index_members_impl(
-        self, members: list[tuple[dict, dict]], service: str
+        self,
+        members: list[tuple[dict, dict]],
+        service: str,
+        *,
+        force: bool = False,
     ) -> int:
         """The actual `index_members` work -- see that method's docstring for
         the in-flight guard wrapping this. Also called directly by
@@ -536,6 +646,10 @@ class KnowledgeService:
         `_store_lock` (via `to_thread`, see `_ingest_members_sync`); only
         `_persist`'s per-batch store access takes the lock -- see `_persist` for
         the fairness rationale.
+
+        `force` (only ever passed `True` by `_rebuild_impl`, when
+        `reindex_required` was set -- Finding 2, P-4 review) is threaded
+        straight through to `_persist`: see its docstring for what it does.
         """
         reference = self._reference_for(service)
         self._index_progress[service] = {
@@ -548,7 +662,7 @@ class KnowledgeService:
         docs = await asyncio.to_thread(
             self._ingest_members_sync, members, service, reference
         )
-        return await self._persist(docs, reference, service)
+        return await self._persist(docs, reference, service, force=force)
 
     def _ingest_members_sync(
         self, members: list[tuple[dict, dict]], service: str, reference: _Reference
@@ -621,11 +735,12 @@ class KnowledgeService:
         finally:
             await self._release_inflight(service)
 
-    async def _index_blogs_impl(self, service: str) -> int:
+    async def _index_blogs_impl(self, service: str, *, force: bool = False) -> int:
         """The actual `index_blogs_for_service` work; also called directly by
         `_rebuild_impl` (which already holds the in-flight claim) -- see
         `_index_members_impl`'s docstring for why. Same off-lock-then-
-        batched-persist split as `index_members` -- see `_persist`.
+        batched-persist split as `index_members` -- see `_persist`. `force`
+        has the same meaning as `_index_members_impl`'s -- see there.
         """
         reference = self._reference_for(service)
         self._index_progress[service] = {
@@ -636,7 +751,7 @@ class KnowledgeService:
             "started_at": _utcnow_iso(),
         }
         docs = await asyncio.to_thread(self._ingest_blogs_sync, service, reference)
-        return await self._persist(docs, reference, service)
+        return await self._persist(docs, reference, service, force=force)
 
     def _ingest_blogs_sync(self, service: str, reference: _Reference) -> list[Document]:
         blogs_dir = resolve_service_path(service) / "blogs"
@@ -653,7 +768,12 @@ class KnowledgeService:
         return docs
 
     async def _persist(
-        self, docs: list[Document], reference: _Reference, service: str
+        self,
+        docs: list[Document],
+        reference: _Reference,
+        service: str,
+        *,
+        force: bool = False,
     ) -> int:
         """Hash-diff, mention-detect + chunk OFF the lock, then embed+persist in
         batches, each batch under its own short `_store_lock` acquisition.
@@ -668,6 +788,22 @@ class KnowledgeService:
         connection, so it still needs `_store_lock` (brief) even though it's off
         the *embedding* critical path.
 
+        **`force=True` (P-4 review, Finding 2 -- used ONLY by `_rebuild_impl`
+        when `kb_meta['reindex_required']` was set).** Skips the content-hash
+        diff entirely and treats EVERY doc in `docs` as changed, so a Rebuild
+        after a fingerprint mismatch re-embeds the whole corpus even though
+        the TEXT never changed -- only the active embedding model did, and
+        the old hash-diff fast path would otherwise wrongly treat those docs
+        as already up to date and skip them, leaving their stale (wrong
+        embedding-space) vectors in place forever. This is what makes the
+        non-destructive flag-gate in `_check_fingerprint` work WITHOUT ever
+        needing to pre-emptively blank `content_hash` the moment a mismatch
+        is detected: the next Rebuild forces the re-embed on demand, right
+        before `_persist_batched` overwrites each doc's vectors via
+        `store.add` (`INSERT OR REPLACE`) -- the stale vectors stay valid and
+        searchable in the meantime, right up until the instant they're
+        actually replaced.
+
         **Lock fairness.** Mention detection and chunking are pure computation
         (no store access) and run OFF the lock, via `to_thread`. Only the
         embed-and-persist loop (`_persist_batched`) takes `_store_lock`, and only
@@ -679,13 +815,16 @@ class KnowledgeService:
             self._mark_idle(service)
             return 0
 
-        async with self._store_lock:
-            changed_ids = set(
-                await asyncio.to_thread(self._store.changed_document_ids, docs)
-            )
-        if not changed_ids:
-            self._mark_idle(service)
-            return 0
+        if force:
+            changed_ids = {doc.doc_id for doc in docs}
+        else:
+            async with self._store_lock:
+                changed_ids = set(
+                    await asyncio.to_thread(self._store.changed_document_ids, docs)
+                )
+            if not changed_ids:
+                self._mark_idle(service)
+                return 0
 
         changed_docs = [doc for doc in docs if doc.doc_id in changed_ids]
 
@@ -962,7 +1101,8 @@ class KnowledgeService:
         self, service: str
     ) -> tuple[DocumentStore, HybridRetriever]:
         """The cached `(DocumentStore, HybridRetriever)` for `service`, rebuilding
-        it only if the store's `generation` has moved on since it was cached.
+        it if EITHER the store's `generation` has moved on since it was cached,
+        OR `kb_meta['reindex_required']` has flipped since then.
 
         `SqliteKnowledgeStore.generation` is bumped by `add`/`upsert_documents`/
         `remove` -- any persisted write. A generation mismatch means the corpus
@@ -974,19 +1114,50 @@ class KnowledgeService:
         Called both from `_build_agent` (lazily, at ask-time) and from
         `rebuild()` (eagerly, at rebuild-end, to warm the cache so the very next
         ask doesn't pay this cost).
+
+        **Vector-arm gating (P-4 review, Finding 2).** `reindex_required` is
+        checked on EVERY call (not cached in `self`) and included in the cache
+        key: it decides which `VectorStore` the freshly-built `HybridRetriever`
+        gets -- the real, persisted `self._store` normally, or a
+        `_NullVectorStore` (search always empty) while `reindex_required` is
+        set, so a query embedded under a NEW model can never be compared
+        against OLD-model vectors still sitting in `self._store` (never wiped
+        -- see `_check_fingerprint`). Flipping that flag changes nothing about
+        `generation`, so generation alone can't detect this cache entry needs
+        rebuilding.
         """
         generation = self._store.generation
+        reindex_required = self._read_reindex_required()
         cached = self._retriever_cache.get(service)
-        if cached is not None and cached[0] == generation:
+        if (
+            cached is not None
+            and cached[0] == generation
+            and cached[3] == reindex_required
+        ):
             return cached[1], cached[2]
         docs = self._store.documents_for_service(service)
         doc_store = DocumentStore()
         doc_store.upsert(docs)
+        vectors: VectorStore = self._store
+        if reindex_required:
+            # Degrade to lexical + structured-filters ranking only -- still
+            # grounded, just without semantic matching -- until a Rebuild
+            # clears the flag. See `_NullVectorStore`'s docstring.
+            vectors = _NullVectorStore()
+            logger.info(
+                "knowledge_service.retriever_vector_arm_disabled_reindex_required",
+                service=service,
+            )
         retriever = HybridRetriever(
-            doc_store, PureLexicalIndex(), self._store, self._embedder
+            doc_store, PureLexicalIndex(), vectors, self._embedder
         )
         retriever.index_lexical(chunk_documents(docs))
-        self._retriever_cache[service] = (generation, doc_store, retriever)
+        self._retriever_cache[service] = (
+            generation,
+            doc_store,
+            retriever,
+            reindex_required,
+        )
         return doc_store, retriever
 
     # ------------------------------------------------------------------
@@ -1021,9 +1192,14 @@ class KnowledgeService:
         `model`/`expected_path` (which need an async settings read `status()`
         deliberately can't do here -- same pattern as its `last_built`
         enrichment). When configured, also reports `provider` (the ACTUAL
-        onnxruntime execution provider in use) and `reindex_required` (an
+        onnxruntime execution provider in use), `reindex_required` (an
         embedder-fingerprint mismatch blocking incremental writes -- see
-        `_check_fingerprint`).
+        `_check_fingerprint`), and `degraded` (P-4 review, Finding 2 -- the
+        SAME condition as `reindex_required`, surfaced under the name a
+        search-quality UI banner reads naturally as: while true, the vector
+        arm is disabled at retriever-assembly time, see
+        `_ensure_retriever_cached`, so search runs lexical + structured-
+        filters only until a Rebuild clears it).
         """
         if self._embedder is None:
             return {
@@ -1044,6 +1220,7 @@ class KnowledgeService:
             if service is not None
             else _idle_progress(None)
         )
+        reindex_required = self._read_reindex_required()
         return {
             "configured": True,
             "service": service,
@@ -1051,7 +1228,8 @@ class KnowledgeService:
             "by_type": by_type,
             "progress": progress,
             "provider": self.embedder_provider,
-            "reindex_required": self._read_reindex_required(),
+            "reindex_required": reindex_required,
+            "degraded": reindex_required,
         }
 
     def _read_status_by_type(self, service: str | None) -> dict[str, int]:
@@ -1113,7 +1291,14 @@ class KnowledgeService:
         Relies on content-hash dedupe for idempotency, so this picks up new/changed
         source files cheaply -- including the case where NOTHING changed, thanks
         to the no-op fast path in `_persist` (a pure hash-diff pass, no
-        embedding). (It does not delete docs whose source files were removed — a
+        embedding) -- UNLESS `kb_meta['reindex_required']` is set (an
+        embedder-fingerprint mismatch, see `_check_fingerprint`), in which case
+        `force=True` bypasses that fast path and re-embeds EVERY doc regardless
+        of content-hash (P-4 review, Finding 2: this is what actually replaces
+        the old, now-removed eager vector wipe -- see `_persist`'s `force`
+        docstring). The flag is read ONCE, right here, before either
+        `_index_*_impl` call runs, so this whole rebuild uses one consistent
+        decision. (It does not delete docs whose source files were removed — a
         hard purge would need a store `delete_service`, out of scope for v1.)
 
         Calls `_index_members_impl`/`_index_blogs_impl` directly (NOT the
@@ -1122,10 +1307,11 @@ class KnowledgeService:
         through the wrappers would see that same claim as "already taken" and
         skip, breaking rebuild entirely.
 
-        On completion: warms the retriever cache for `service` (see
-        `_ensure_retriever_cached`) so the very next `ask()` doesn't pay the
-        corpus-rehydration cost, and records `settings.knowledge_base.last_built`
-        so `KnowledgeBaseStatus` can render "Last indexed: …".
+        On completion: clears `reindex_required`/rewrites the fingerprint
+        (`_clear_reindex_required_and_rewrite_fingerprint`) BEFORE warming the
+        retriever cache -- ordering matters, see that method's docstring --
+        then records `settings.knowledge_base.last_built` so
+        `KnowledgeBaseStatus` can render "Last indexed: …".
         """
         self._index_progress[service] = {
             "service": service,
@@ -1134,38 +1320,68 @@ class KnowledgeService:
             "total": 0,
             "started_at": _utcnow_iso(),
         }
+        force_reembed = await asyncio.to_thread(self._read_reindex_required)
         members = await asyncio.to_thread(self._discover_message_members, service)
-        changed = await self._index_members_impl(members, service)
-        changed += await self._index_blogs_impl(service)
+        changed = await self._index_members_impl(members, service, force=force_reembed)
+        changed += await self._index_blogs_impl(service, force=force_reembed)
+        await self._clear_reindex_required_and_rewrite_fingerprint()
         async with self._store_lock:
             await asyncio.to_thread(self._ensure_retriever_cached, service)
-        await self._clear_reindex_required_and_rewrite_fingerprint()
         await self._record_last_built()
         return changed
 
     async def _clear_reindex_required_and_rewrite_fingerprint(self) -> None:
-        """Called at the end of every successful `_rebuild_impl`: clears the
-        `reindex_required` banner and (re)writes `kb_meta['embedder_fingerprint']`
-        to the current active config.
+        """Called at the end of every successful `_rebuild_impl`, AFTER
+        `service`'s whole corpus has actually been force-re-embedded (see
+        `_persist`'s `force` param): clears the `reindex_required` flag and
+        (re)writes `kb_meta['embedder_fingerprint']` to the current active
+        config -- the new baseline `service`'s just-rewritten vectors now
+        match.
 
-        `_check_fingerprint`'s mismatch handling already WIPED every vector and
-        blanked every content_hash the moment a mismatch was first detected (so
-        two embedding spaces never coexist in `kb_vectors` -- see that method),
-        and already wrote the new fingerprint as the baseline right then. This
-        step is the USER-FACING half: `reindex_required` stays true (and
-        `index_members`/`index_blogs_for_service` keep skipping incremental
-        writes, see `_index_preflight_ok`) until at least one Rebuild has
-        actually repopulated vectors.
+        **Ordering is crash-safety-critical (P-4 review, Finding 2).** If the
+        process dies mid-rebuild, this line never runs, so `reindex_required`
+        stays set and `embedder_fingerprint` keeps pointing at whatever
+        baseline the STILL-INTACT persisted vectors actually match (nothing
+        was ever wiped up front -- see `_check_fingerprint`); the vector arm
+        stays disabled and incremental writes stay blocked until the next
+        Rebuild retries. A retry always force-re-embeds the WHOLE corpus
+        again regardless of content-hash, so there is no partial-progress
+        state to resume from -- a rebuild either fully completes and reaches
+        this line, or it doesn't and the flag/fingerprint are left exactly as
+        they were. `_rebuild_impl` also calls this BEFORE warming the
+        retriever cache (not after, as the old wipe-based design did): the
+        cache-warm reads `reindex_required` to decide which `VectorStore` to
+        hand the retriever (`_ensure_retriever_cached`), so clearing the flag
+        first ensures the freshly warmed cache gets the REAL vector store,
+        not a `_NullVectorStore` built one step too early.
 
-        KNOWN v1 LIMITATION: with multiple synced services sharing this one
-        db, this clears the flag GLOBALLY after the FIRST service's rebuild,
-        even though sibling services haven't re-embedded yet -- they simply
-        read as 0 documents / no evidence (the existing, already-understood
-        "not indexed yet" UX) until their own Rebuild runs, never a silently
-        wrong mixed-space answer (the wipe already prevents that). Rewriting
-        the fingerprint here too is belt-and-braces (it's already correct
-        post-mismatch) and keeps this the one place that writes it on the
-        "happy" (no-mismatch) rebuild path as well.
+        KNOWN v1 LIMITATION (inherited from before this fix, just a different
+        failure mode now that vectors are never wiped): with multiple synced
+        services sharing this one db and ONE GLOBAL `reindex_required`/
+        `embedder_fingerprint` pair, this clears the flag for EVERY service
+        the instant the FIRST one's rebuild completes -- which re-enables the
+        vector arm globally (`_ensure_retriever_cached`) even for sibling
+        services that haven't rebuilt yet. Those siblings' OLD-model vectors
+        are still on disk (never wiped) and would be compared against
+        NEW-model query vectors until their own Rebuild catches up. Making
+        `reindex_required`/`embedder_fingerprint` PER-SERVICE would close
+        this, but is out of scope here -- the flag was already global before
+        this change; only its wipe-vs-preserve semantics changed.
+
+        A mismatch that also changes the vector DIMENSIONALITY (a genuinely
+        different model, not just a normalizer/chunker bump) compounds the
+        above into a harder failure than "wrong rankings": `NumpyVectorStore`
+        keeps one dense matrix and requires every row to be the same width,
+        so a not-yet-rebuilt sibling service's OLD-dimension vectors sitting
+        in `kb_vectors` alongside a rebuilt service's NEW-dimension ones can
+        raise at the NEXT store open (`_load_vectors` stacks every persisted
+        row into one matrix, regardless of service). `SqliteKnowledgeStore
+        .add`'s remove-then-add (see its docstring) only protects the exact
+        ids being replaced within ONE write; it cannot make two DIFFERENT
+        services' vectors coexist at different widths. A real dimension
+        change across a multi-service install should be followed by
+        rebuilding every synced service, not just the one the user happened
+        to touch first -- not automated here, same v1 scope boundary as above.
         """
         assert self._embedder is not None
         current = await _current_fingerprint(self._embedder)
@@ -1176,6 +1392,7 @@ class KnowledgeService:
                 json.dumps(current, sort_keys=True),
             )
             await asyncio.to_thread(self._store.set_meta, "reindex_required", "0")
+        self._retriever_cache.clear()
 
     async def _record_last_built(self) -> None:
         """Persist `settings.knowledge_base.last_built = <UTC ISO now>`.
@@ -1466,21 +1683,32 @@ async def compute_readiness() -> dict:
     settings + the filesystem directly, and (for the LLM check) the OS
     keyring via `build_llm_client_from_settings()` -- which itself never
     makes a network call, only constructs a client object (see
-    `llm_client.py`). The document count opens its OWN short-lived sqlite
-    connection (mirrors `KnowledgeService.status`'s `_read_status_by_type`).
+    `llm_client.py`). The document count and `degraded` flag each open their
+    OWN short-lived sqlite connection (mirrors `KnowledgeService.status`'s
+    `_read_status_by_type`).
 
     Every individual probe is wrapped so a single failing check degrades to
     `ok: false` instead of raising -- this endpoint must never 500.
+
+    `degraded` (P-4 review, Finding 2) mirrors `KnowledgeService.status()`'s
+    same-named field: `True` while `kb_meta['reindex_required']` is set (an
+    embedder-fingerprint mismatch flag-gated the vector arm, see
+    `_check_fingerprint`/`_ensure_retriever_cached`) -- surfaced here too so
+    `SetupChecklist`/`KnowledgeBaseStatus` can show a "search quality reduced
+    until rebuild" banner without ever needing to build the full
+    `KnowledgeService` singleton just to answer this.
     """
     enabled = await kb_enabled()
     embedding_model = await _probe_embedding_model()
     llm = await _probe_llm()
     index = await asyncio.to_thread(_probe_index_document_count)
+    degraded = await asyncio.to_thread(_probe_degraded)
     return {
         "enabled": enabled,
         "embeddingModel": embedding_model,
         "llm": llm,
         "index": index,
+        "degraded": degraded,
     }
 
 
@@ -1589,3 +1817,34 @@ def _probe_index_document_count() -> dict:
     except sqlite3.Error:
         logger.warning("knowledge_service.readiness_index_probe_failed", exc_info=True)
         return {"documentCount": 0}
+
+
+def _probe_degraded() -> bool:
+    """Whether `kb_meta['reindex_required']` is set on `knowledge_index.db`
+    (P-4 review, Finding 2) -- an embedder-fingerprint mismatch that
+    flag-gated (never wiped) the persisted vectors, disabling the vector arm
+    at retriever-assembly time until a Rebuild clears it (see
+    `KnowledgeService._check_fingerprint`/`_ensure_retriever_cached`).
+
+    Opens its OWN short-lived connection, same rationale as
+    `_probe_index_document_count`; `False` (never degraded) when the db
+    doesn't exist yet -- nothing indexed, nothing to degrade.
+    """
+    db_path = get_app_data_dir() / "knowledge_index.db"
+    if not db_path.exists():
+        return False
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'reindex_required'"
+            ).fetchone()
+            return row is not None and row[0] == "1"
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        logger.warning(
+            "knowledge_service.readiness_degraded_probe_failed", exc_info=True
+        )
+        return False

@@ -479,6 +479,8 @@
       "kb_disabled": "The knowledge chatbot is turned off. Enable it in AI settings.",
       "embedding_model_missing": "The embedding model isn't installed yet. Download it in AI settings to enable the knowledge chatbot.",
       "network": "Couldn't reach SakaDesk's backend. Check your connection and try again.",
+      "not_configured": "The knowledge chatbot needs the embedding model installed before it can build an index. Download it in AI settings.",
+      "already_running": "An index rebuild is already running for this service. It'll finish shortly — no need to try again.",
       "unknown": "Something went wrong answering that. Please try again.",
       "retryAfter": "You can try again in {{seconds}}s.",
       "openSettingsHint": "Open AI settings to fix this."

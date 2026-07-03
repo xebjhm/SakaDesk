@@ -126,13 +126,18 @@ _IDLE_PROGRESS = {
 
 
 def _mock_knowledge_service() -> MagicMock:
-    """`get_knowledge_service()`-shaped mock: `ask`/`rebuild` async, `status`/
-    `index_progress`/`is_indexing` sync.
+    """`get_knowledge_service()`-shaped mock: `ask`/`rebuild`/`ensure_ready`
+    async, `status`/`index_progress`/`is_indexing` sync.
 
     `is_indexing` defaults to `False` -- the per-service in-flight registry
     (Finding 1, KB review) that `/index/rebuild`'s 409 `alreadyRunning` now
     reads instead of `index_progress()` -- so ordinary rebuild tests aren't
     all falsely 409'd by an unconfigured `MagicMock` truthy return.
+
+    `ensure_ready` defaults to `True` -- the public lazy-embedder-pickup seam
+    (P-4 review, Finding 1) `/index/rebuild` now calls before its `configured`
+    pre-check; see `TestIndexRebuildLazyPickup` for a test that gives it a
+    stateful, non-default behavior.
     """
     svc = MagicMock()
     svc.ask = AsyncMock(return_value=_validated_answer())
@@ -147,6 +152,7 @@ def _mock_knowledge_service() -> MagicMock:
     svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
     svc.is_indexing = MagicMock(return_value=False)
     svc.rebuild = AsyncMock(return_value=3)
+    svc.ensure_ready = AsyncMock(return_value=True)
     return svc
 
 
@@ -612,13 +618,21 @@ class TestIndexRebuild:
         """Finding 1 (KB review): the 409 dedupe must be sourced from the
         per-service in-flight registry (`is_indexing`), NOT the display-only
         `index_progress` -- so this sets ONLY `is_indexing`, leaving
-        `index_progress` at its idle default, and still expects a 409."""
+        `index_progress` at its idle default, and still expects a 409.
+
+        P-4 review, Finding 1: this 409 must also carry a `code` (previously
+        just a bare `{alreadyRunning: true}` with nothing a caller could key
+        a localized message off) -- `alreadyRunning` stays too, for the
+        existing `KnowledgeBaseStatus.tsx` consumer that reads it directly.
+        """
         svc = _mock_knowledge_service()
         svc.is_indexing = MagicMock(return_value=True)
         with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
             r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
         assert r.status_code == 409
         assert r.json()["detail"]["alreadyRunning"] is True
+        assert r.json()["detail"]["code"] == "already_running"
+        assert r.json()["detail"]["message"]
         svc.rebuild.assert_not_called()
         svc.is_indexing.assert_called_once_with("hinatazaka46")
 
@@ -1110,6 +1124,63 @@ class TestIndexRebuildNotConfigured:
         assert r.status_code == 409
         assert r.json()["detail"]["code"] == "not_configured"
         svc.rebuild.assert_not_called()
+
+
+class TestIndexRebuildLazyPickup:
+    """P-4 review, Finding 1, CRITICAL: `/index/rebuild` must trigger the
+    lazy embedder pickup (`KnowledgeService.ensure_ready`, the public seam
+    for `_ensure_embedder`) BEFORE reading `status()`'s `configured` flag --
+    otherwise a model installed mid-session (the in-app download) is never
+    picked up by this endpoint's pre-check, and it 409s `not_configured`
+    forever even after the download completes.
+    """
+
+    def test_rebuild_calls_ensure_ready_before_the_configured_precheck(self):
+        svc = _mock_knowledge_service()
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 200
+        svc.ensure_ready.assert_awaited_once()
+
+    def test_rebuild_succeeds_right_after_a_mocked_download_completes(self):
+        """Simulates the real end-to-end bug: a `status()` that only
+        reports `configured: True` once `ensure_ready()` has actually been
+        called (mirroring `_ensure_embedder()`'s lazy-build side effect,
+        which only picks up an in-app-downloaded model when something
+        finally calls it -- see `KnowledgeService.ensure_ready`'s
+        docstring). Before this fix, the endpoint read `status()` WITHOUT
+        ever calling `ensure_ready()` first, so it would have kept 409ing
+        `not_configured` even though the (mocked) download already
+        completed.
+        """
+        svc = _mock_knowledge_service()
+        embedder_ready = {"value": False}
+
+        async def _ensure_ready() -> bool:
+            # The lazy pickup itself -- as if the in-app model download had
+            # JUST finished and this is the first call to notice.
+            embedder_ready["value"] = True
+            return True
+
+        def _status(service: str | None = None) -> dict:
+            if not embedder_ready["value"]:
+                return _unconfigured_status()
+            return {
+                "service": service,
+                "document_count": 0,
+                "by_type": {},
+                "progress": dict(_IDLE_PROGRESS),
+                "configured": True,
+            }
+
+        svc.ensure_ready = _ensure_ready
+        svc.status = MagicMock(side_effect=_status)
+
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+
+        assert r.status_code == 200
+        assert r.json() == {"ok": True}
 
 
 class TestReadiness:

@@ -478,6 +478,8 @@
       "kb_disabled": "知識庫聊天機器人已關閉。請到「設定 → AI」啟用它。",
       "embedding_model_missing": "嵌入模型尚未安裝。請到「設定 → AI」下載以啟用知識庫聊天機器人。",
       "network": "無法連線到 SakaDesk 的後端。請檢查網路連線後再試一次。",
+      "not_configured": "知識庫需要先安裝嵌入模型才能建立索引。請到「設定 → AI」下載。",
+      "already_running": "這個服務的索引重建已經在執行中，請稍後再試。",
       "unknown": "回答問題時發生問題。請再試一次。",
       "retryAfter": "你可以在 {{seconds}} 秒後重試。",
       "openSettingsHint": "開啟「設定 → AI」來解決此問題。"

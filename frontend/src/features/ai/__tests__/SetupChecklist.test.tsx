@@ -43,12 +43,19 @@ const NO_LLM_READINESS = {
     index: { documentCount: 0 },
 };
 
-/** Mock fetch routing by URL/method, with mutable readiness/download responses
- * a test can flip mid-flow (mirrors `KnowledgeBaseStatus.test.tsx`'s idiom). */
+/** Mock fetch routing by URL/method, with mutable readiness/download/rebuild
+ * responses a test can flip mid-flow (mirrors `KnowledgeBaseStatus.test.tsx`'s
+ * idiom). `rebuildResponse` defaults to a 200 `{ok: true}` -- override via
+ * `setRebuildResponse` to simulate a non-2xx `POST /api/ai/index/rebuild`
+ * (P-4 review, Finding 1). */
 function buildFetch(initialReadiness: object = READY_READINESS) {
     const calls: FetchCall[] = [];
     let readiness = initialReadiness;
     let downloadStatus: object = { state: 'idle', model: null, bytesDone: 0, bytesTotal: 0, reason: null };
+    let rebuildResponse: { ok: boolean; status?: number; body: object } = {
+        ok: true,
+        body: { ok: true },
+    };
 
     const impl = (input: string | URL | Request, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -70,7 +77,11 @@ function buildFetch(initialReadiness: object = READY_READINESS) {
             return Promise.resolve({ ok: true, json: () => Promise.resolve(downloadStatus) });
         }
         if (url === '/api/ai/index/rebuild' && method === 'POST') {
-            return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            return Promise.resolve({
+                ok: rebuildResponse.ok,
+                status: rebuildResponse.status ?? (rebuildResponse.ok ? 200 : 500),
+                json: () => Promise.resolve(rebuildResponse.body),
+            });
         }
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     };
@@ -83,6 +94,9 @@ function buildFetch(initialReadiness: object = READY_READINESS) {
         },
         setDownloadStatus: (next: object) => {
             downloadStatus = next;
+        },
+        setRebuildResponse: (next: { ok: boolean; status?: number; body: object }) => {
+            rebuildResponse = next;
         },
     };
 }
@@ -231,6 +245,106 @@ describe('SetupChecklist', () => {
 
         const buildButton = await screen.findByText('Build');
         expect(buildButton.closest('button')).toBeDisabled();
+    });
+
+    // P-4 review, Finding 1: `handleBuildIndex` used to only catch NETWORK
+    // failures -- a non-2xx response (e.g. a 409) resolved normally and was
+    // silently dropped, leaving the user with no explanation. These assert
+    // the typed, localized message now renders for each 409 the backend can
+    // send, and for a genuine network failure.
+    it('clicking Build renders the typed error when the rebuild 409s not_configured', async () => {
+        const { impl, setRebuildResponse } = buildFetch(READY_READINESS);
+        setRebuildResponse({
+            ok: false,
+            status: 409,
+            body: {
+                detail: {
+                    code: 'not_configured',
+                    message: 'The knowledge chatbot needs the embedding model installed before it can build an index. Download it in AI settings.',
+                },
+            },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<SetupChecklist />);
+        await screen.findByText('5 documents indexed');
+        await userEvent.click(screen.getByText('Build'));
+
+        expect(
+            await screen.findByText(
+                'The knowledge chatbot needs the embedding model installed before it can build an index. Download it in AI settings.'
+            )
+        ).toBeInTheDocument();
+    });
+
+    it('clicking Build renders the typed error when the rebuild 409s already_running', async () => {
+        const { impl, setRebuildResponse } = buildFetch(READY_READINESS);
+        setRebuildResponse({
+            ok: false,
+            status: 409,
+            body: {
+                detail: {
+                    code: 'already_running',
+                    alreadyRunning: true,
+                    message: "An index rebuild is already running for this service. It'll finish shortly -- no need to try again.",
+                },
+            },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<SetupChecklist />);
+        await screen.findByText('5 documents indexed');
+        await userEvent.click(screen.getByText('Build'));
+
+        expect(
+            await screen.findByText(
+                "An index rebuild is already running for this service. It'll finish shortly — no need to try again."
+            )
+        ).toBeInTheDocument();
+    });
+
+    it('clicking Build renders a fallback error for an UNRECOGNIZED 409 code', async () => {
+        const { impl, setRebuildResponse } = buildFetch(READY_READINESS);
+        setRebuildResponse({
+            ok: false,
+            status: 500,
+            body: { detail: 'some raw, untranslated backend string' },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<SetupChecklist />);
+        await screen.findByText('5 documents indexed');
+        await userEvent.click(screen.getByText('Build'));
+
+        // Never the raw backend string -- falls back to the generic `unknown`
+        // i18n message instead.
+        expect(await screen.findByText('Something went wrong answering that. Please try again.')).toBeInTheDocument();
+        expect(screen.queryByText('some raw, untranslated backend string')).toBeNull();
+    });
+
+    it('clicking Build renders the network-error message when the fetch itself rejects', async () => {
+        const calls: { url: string; method: string }[] = [];
+        const impl = (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            calls.push({ url, method });
+            if (url === '/api/ai/readiness' && method === 'GET') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(READY_READINESS) });
+            }
+            if (url === '/api/ai/index/rebuild' && method === 'POST') {
+                return Promise.reject(new Error('network down'));
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        };
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<SetupChecklist />);
+        await screen.findByText('5 documents indexed');
+        await userEvent.click(screen.getByText('Build'));
+
+        expect(
+            await screen.findByText("Couldn't reach SakaDesk's backend. Check your connection and try again.")
+        ).toBeInTheDocument();
     });
 
     it('renders the GPU-detected-but-runtime-missing hint when the readiness probe reports it', async () => {

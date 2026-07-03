@@ -52,11 +52,19 @@ configure before enabling). `/ask` and `/index/rebuild` both check
 {code: "kb_disabled"}`; `/index/rebuild` via a plain 409
 `{code: "kb_disabled"}`. `PUT /config` and `GET /index/status` are
 deliberately NOT gated: a user must be able to configure/inspect the KB before
-turning it on. `/index/rebuild` also 409s `{alreadyRunning: true}` when
-`KnowledgeService.is_indexing(service)` is true -- the per-service in-flight
-registry (Finding 1, KB review), NOT the display-only `_index_progress` this
-used to read -- instead of stacking another background rebuild behind
-`_store_lock` on a repeated click.
+turning it on. `/index/rebuild` also 409s `{code: "already_running",
+alreadyRunning: true}` when `KnowledgeService.is_indexing(service)` is true --
+the per-service in-flight registry (Finding 1, KB review), NOT the
+display-only `_index_progress` this used to read -- instead of stacking
+another background rebuild behind `_store_lock` on a repeated click.
+
+**Rebuild pre-check lazy pickup (P-4 review, Finding 1, CRITICAL).**
+`/index/rebuild` calls `svc.ensure_ready()` BEFORE reading `svc.status(...)
+.get("configured")`: without it, an in-app model download completing AFTER
+the process-wide `KnowledgeService` singleton was built left this endpoint
+409ing `{code: "not_configured"}` forever, even once `GET /readiness`
+already reported the model installed and a direct `svc.rebuild()` call would
+have succeeded. See `KnowledgeService.ensure_ready`'s docstring.
 """
 
 from __future__ import annotations
@@ -145,6 +153,15 @@ _EMBEDDING_MODEL_MISSING_MESSAGE = (
 _NOT_CONFIGURED_MESSAGE = (
     "The knowledge chatbot needs the embedding model installed before it can "
     "build an index. Download it in AI settings."
+)
+# P-4 review, Finding 1: the `alreadyRunning` 409 used to carry no `code`/
+# `message` at all (just `{"alreadyRunning": true}`), so a caller keying off
+# `code` (the same pattern every other typed error here uses) had nothing to
+# show. `alreadyRunning` is kept alongside `code` for any existing consumer
+# still reading that boolean directly (`KnowledgeBaseStatus.tsx`).
+_ALREADY_RUNNING_MESSAGE = (
+    "An index rebuild is already running for this service. It'll finish "
+    "shortly -- no need to try again."
 )
 
 # `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
@@ -572,6 +589,17 @@ async def index_rebuild(request: RebuildRequest) -> dict:
         )
 
     svc = await _get_knowledge_service_or_409()
+    # P-4 review, Finding 1 (CRITICAL): trigger the lazy embedder pickup
+    # BEFORE reading `status()`'s `configured` flag. Without this, an in-app
+    # model download that completes AFTER the process-wide `KnowledgeService`
+    # singleton was built left `svc._embedder` stuck at `None` from THIS
+    # endpoint's point of view forever -- nothing else on this request path
+    # ever called `_ensure_embedder()` -- even though `GET /readiness`
+    # already reported the model as installed (it probes the filesystem
+    # directly, see `compute_readiness`) and a direct `svc.rebuild()` call
+    # would have succeeded (`rebuild()` retries the embedder itself). See
+    # `KnowledgeService.ensure_ready`'s docstring for the full story.
+    await svc.ensure_ready()
     if not svc.status(request.service).get("configured", True):
         # No embedding model installed yet -- 409 instead of silently
         # scheduling a background task that would just skip quietly (item 1).
@@ -587,7 +615,14 @@ async def index_rebuild(request: RebuildRequest) -> dict:
         # background task behind `_store_lock`: repeated clicks used to each
         # queue a FULL extra rebuild, compounding a multi-minute lock hold
         # (see `pwave-confirmed-bugs.md`).
-        raise HTTPException(status_code=409, detail={"alreadyRunning": True})
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "already_running",
+                "alreadyRunning": True,
+                "message": _ALREADY_RUNNING_MESSAGE,
+            },
+        )
     track_background_task(_run_rebuild(svc, request.service), name="index_rebuild")
     return {"ok": True}
 

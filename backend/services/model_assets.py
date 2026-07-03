@@ -18,6 +18,24 @@ top-level files in the repo (no ``onnx/`` subdirectory, despite that being a
 common HF layout for other models):
 https://huggingface.co/ibm-granite/granite-embedding-278m-multilingual
 
+**Revision pin (P-4 review, Finding 4 -- supply chain).** The manifest URLs
+resolve a specific commit sha (``/resolve/<sha>/...``), NOT `/resolve/main/`:
+`main` is a mutable ref an upstream maintainer can force-push or overwrite at
+any time, which would silently start serving different bytes at the SAME url
+this manifest already pins a sha256 for -- pinning the sha closes that
+supply-chain gap (the sha256 check alone only catches a mismatch AFTER a
+1GB+ download, this avoids ever fetching from a ref that could have moved).
+
+    To refresh (e.g. onto a newer upstream revision with new pinned hashes):
+    1. `curl https://huggingface.co/api/models/ibm-granite/granite-embedding-278m-multilingual`
+       and read the top-level `"sha"` field -- that's the commit to pin.
+    2. Download `model.onnx` + `tokenizer.json` at that commit and compute
+       their sha256 (`sha256sum`) + byte size -- these become the new
+       `sha256`/`size_bytes` in `_GRANITE_278M_MANIFEST` below.
+    3. Replace the sha in both `url` fields below with the one from step 1.
+    Never bump the sha alone without also recomputing the hashes in step 2 --
+    a different commit is presumptively different bytes.
+
 **Progress + status.** `ModelDownloadManager` is a small process-wide singleton
 (mirrors `KnowledgeService`'s) tracking ONE in-flight download at a time;
 `GET /api/ai/models/download/status` polls `status()` rather than folding this
@@ -77,6 +95,12 @@ class ModelManifest:
         return sum(asset.size_bytes for asset in self.assets)
 
 
+# Pinned to the `ibm-granite/granite-embedding-278m-multilingual` commit sha
+# current as of this manifest's last refresh (2026-07-03) -- see the module
+# docstring's "Revision pin" section for the refresh procedure and why `main`
+# (a mutable ref) is deliberately never used here.
+_PINNED_REVISION = "a9cb5338491faf32b73dd17b714a31821c021bbf"
+
 _GRANITE_278M_MANIFEST = ModelManifest(
     name="granite-embedding-278m-multilingual",
     assets=(
@@ -84,7 +108,7 @@ _GRANITE_278M_MANIFEST = ModelManifest(
             filename="model.onnx",
             url=(
                 "https://huggingface.co/ibm-granite/granite-embedding-278m-multilingual"
-                "/resolve/main/model.onnx"
+                f"/resolve/{_PINNED_REVISION}/model.onnx"
             ),
             sha256="aefac97b384f92932a61a19900d41c870679d5b8e6ceb682768eb153d0e31c7d",
             size_bytes=1_112_413_925,
@@ -93,7 +117,7 @@ _GRANITE_278M_MANIFEST = ModelManifest(
             filename="tokenizer.json",
             url=(
                 "https://huggingface.co/ibm-granite/granite-embedding-278m-multilingual"
-                "/resolve/main/tokenizer.json"
+                f"/resolve/{_PINNED_REVISION}/tokenizer.json"
             ),
             sha256="2a0d7366dd7780ea36cc42431dd74cd79289b783ab01acd33013fcc96865a8e9",
             size_bytes=9_081_351,
@@ -200,15 +224,30 @@ class ModelDownloadManager:
         await self._run(manifest)
 
     async def _run(self, manifest: ModelManifest) -> None:
+        """Download, verify, and atomically install `manifest`'s assets.
+
+        The mkdir/rmtree PREAMBLE (P-4 review, Finding 4) lives INSIDE this
+        try/except, not before it: a permission-denied or disk-full failure
+        creating `models_dir`/`tmp_dir` used to raise straight out of `start()`
+        (called from `backend/api/ai.py`'s fire-and-forget background task),
+        leaving `self._status.state` stuck at `"downloading"` forever -- the
+        poller (`GET .../download/status`) would show an in-progress download
+        that had already silently died, with no way for the UI to ever detect
+        or recover from it. Every exception path below (including one raised
+        by the preamble itself) now reaches the `except Exception` branch and
+        records a terminal `"error"` state.
+        """
         models_dir = self._resolve_models_dir()
-        models_dir.mkdir(parents=True, exist_ok=True)
         tmp_dir = models_dir / f".{manifest.name}.download"
-        # A leftover partial dir from a previous crashed/killed/cancelled attempt
-        # is discarded -- see module docstring's "range-resume out of scope" note.
-        if tmp_dir.exists():
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-        tmp_dir.mkdir(parents=True)
         try:
+            models_dir.mkdir(parents=True, exist_ok=True)
+            # A leftover partial dir from a previous crashed/killed/cancelled
+            # attempt is discarded -- see module docstring's "range-resume out
+            # of scope" note.
+            if tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            tmp_dir.mkdir(parents=True)
+
             async with self._http_client_factory() as client:
                 for asset in manifest.assets:
                     await self._download_one(client, asset, tmp_dir)

@@ -53,54 +53,64 @@ logger = structlog.get_logger(__name__)
 # kb_mentions, kb_vectors. `CREATE TABLE IF NOT EXISTS` makes this a genuine
 # no-op replay for a v0 db that already has these tables (see module
 # docstring), and the normal path for a brand-new file.
-_SCHEMA_V1_SQL = """
-CREATE TABLE IF NOT EXISTS kb_documents (
-    doc_id TEXT PRIMARY KEY,
-    service TEXT NOT NULL,
-    source_ref_json TEXT NOT NULL,
-    author_id TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    type TEXT NOT NULL,
-    is_favorite INTEGER NOT NULL DEFAULT 0,
-    text TEXT NOT NULL,
-    has_text INTEGER NOT NULL DEFAULT 0,
-    content_hash TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_kb_documents_service ON kb_documents(service);
-
-CREATE TABLE IF NOT EXISTS kb_mentions (
-    doc_id TEXT NOT NULL,
-    mentions_id TEXT NOT NULL,
-    PRIMARY KEY (doc_id, mentions_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_kb_mentions_id ON kb_mentions(mentions_id);
-
-CREATE TABLE IF NOT EXISTS kb_vectors (
-    id TEXT PRIMARY KEY,
-    dim INTEGER NOT NULL,
-    vec BLOB NOT NULL
-);
-"""
+#
+# Each migration is a TUPLE of individual statements (not one multi-statement
+# SQL blob) run one at a time via `conn.execute()` -- see `_run_migrations`'s
+# docstring for why `executescript()` cannot be used here.
+_SCHEMA_V1_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS kb_documents (
+        doc_id TEXT PRIMARY KEY,
+        service TEXT NOT NULL,
+        source_ref_json TEXT NOT NULL,
+        author_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        type TEXT NOT NULL,
+        is_favorite INTEGER NOT NULL DEFAULT 0,
+        text TEXT NOT NULL,
+        has_text INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_kb_documents_service ON kb_documents(service)",
+    """
+    CREATE TABLE IF NOT EXISTS kb_mentions (
+        doc_id TEXT NOT NULL,
+        mentions_id TEXT NOT NULL,
+        PRIMARY KEY (doc_id, mentions_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_kb_mentions_id ON kb_mentions(mentions_id)",
+    """
+    CREATE TABLE IF NOT EXISTS kb_vectors (
+        id TEXT PRIMARY KEY,
+        dim INTEGER NOT NULL,
+        vec BLOB NOT NULL
+    )
+    """,
+)
 
 # Migration 2: `kb_meta`, a generic key/value table -- currently holds the
 # embedder fingerprint (`embedder_fingerprint`) and the reindex-required
 # sentinel (`reindex_required`), see `KnowledgeService._check_fingerprint`.
-_SCHEMA_V2_SQL = """
-CREATE TABLE IF NOT EXISTS kb_meta (
-    key TEXT PRIMARY KEY,
-    value TEXT
-);
-"""
+_SCHEMA_V2_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS kb_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """,
+)
 
 
 def _migrate_to_v1(conn: sqlite3.Connection) -> None:
-    conn.executescript(_SCHEMA_V1_SQL)
+    for statement in _SCHEMA_V1_STATEMENTS:
+        conn.execute(statement)
 
 
 def _migrate_to_v2(conn: sqlite3.Connection) -> None:
-    conn.executescript(_SCHEMA_V2_SQL)
+    for statement in _SCHEMA_V2_STATEMENTS:
+        conn.execute(statement)
 
 
 # Index `i` migrates a db from version `i` to version `i + 1`. Append here,
@@ -127,12 +137,46 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
     """Bring `conn`'s db forward to `_LATEST_SCHEMA_VERSION`, or raise
     `KnowledgeStoreVersionError` if it's already newer than that.
 
-    Each migration runs in its own transaction, immediately followed by its
-    version bump in the SAME transaction (`PRAGMA user_version` can't take a
-    bound parameter, but the value here is always this module's own
-    trusted integer, never external input) -- a crash mid-migration leaves
-    `user_version` at the last successfully-completed step, so the next open
-    resumes from exactly there instead of re-running (or skipping) a step.
+    Each migration's statements run inside ONE explicit transaction
+    (`BEGIN` ... `COMMIT`), with the `user_version` bump (`PRAGMA
+    user_version` can't take a bound parameter, but the value here is
+    always this module's own trusted integer, never external input) as the
+    LAST statement in that SAME transaction: a crash/exception mid-migration
+    `ROLLBACK`s the whole step, leaving `user_version` at the last
+    successfully-COMMITTED step and none of that step's DDL applied -- so
+    the next open resumes from exactly there instead of re-running a
+    half-applied step or skipping one.
+
+    **This was NOT actually true before (P-4 review, Finding 3) despite the
+    docstring's claim.** The previous implementation ran each migration via
+    `conn.executescript(...)` inside a `with conn:` block, which looks like
+    it should be one atomic transaction but isn't: `Connection.
+    executescript()` issues an implicit `COMMIT` of any pending transaction
+    BEFORE it runs, and does not wrap the script it executes in a
+    transaction of its own -- so the DDL inside `executescript()` (and,
+    empirically, the `PRAGMA user_version` statement that ran right after
+    it, since PRAGMAs don't trigger the `sqlite3` module's own
+    implicit-BEGIN heuristic either) committed to disk immediately,
+    completely bypassing the `with conn:` block's rollback-on-exception.
+    Verified empirically (not just inferred from the docs): raising mid-
+    `with conn:` after an `executescript()` call left BOTH the DDL and the
+    `user_version` bump committed anyway -- see
+    `test_knowledge_store.py`'s migration-atomicity tests, which pin this
+    down by injecting a failing statement mid-migration.
+
+    **The fix.** `conn.execute()` runs ONE statement at a time (never
+    triggers the auto-commit-before-running behavior `executescript()`
+    has), so migrations here are a tuple of individual statements (see
+    `_SCHEMA_V1_STATEMENTS`/`_SCHEMA_V2_STATEMENTS`) run in a loop, inside
+    transaction boundaries THIS function issues by hand (`BEGIN`/`COMMIT`/
+    `ROLLBACK`). `conn.isolation_level` is set to `None` (true autocommit --
+    the `sqlite3` module does no implicit transaction management of its
+    own) for the duration of this function and restored before returning,
+    so these hand-issued statements are the ONLY transaction boundaries in
+    play; nothing else can commit out from under them. SQLite's DDL
+    (`CREATE TABLE`/`CREATE INDEX`) and `PRAGMA user_version` are both
+    fully transactional as long as nothing auto-commits mid-way -- this was
+    verified directly against a live connection, not assumed.
     """
     current_version = conn.execute("PRAGMA user_version").fetchone()[0]
     if current_version > _LATEST_SCHEMA_VERSION:
@@ -141,14 +185,26 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
             f"newer than the {_LATEST_SCHEMA_VERSION} this SakaDesk version "
             "supports. Upgrade SakaDesk to open it."
         )
-    for version in range(current_version, _LATEST_SCHEMA_VERSION):
-        migrate = _MIGRATIONS[version]
-        with conn:
-            migrate(conn)
-            conn.execute(f"PRAGMA user_version = {version + 1}")
-        logger.info(
-            "knowledge_store.migrated", from_version=version, to_version=version + 1
-        )
+    previous_isolation_level = conn.isolation_level
+    conn.isolation_level = (
+        None  # true autocommit -- we manage transactions by hand below
+    )
+    try:
+        for version in range(current_version, _LATEST_SCHEMA_VERSION):
+            migrate = _MIGRATIONS[version]
+            conn.execute("BEGIN")
+            try:
+                migrate(conn)
+                conn.execute(f"PRAGMA user_version = {version + 1}")
+            except Exception:
+                conn.execute("ROLLBACK")
+                raise
+            conn.execute("COMMIT")
+            logger.info(
+                "knowledge_store.migrated", from_version=version, to_version=version + 1
+            )
+    finally:
+        conn.isolation_level = previous_isolation_level
 
 
 _DOCUMENT_COLUMNS = (
@@ -395,9 +451,25 @@ class SqliteKnowledgeStore:
         logger.debug("knowledge_store.vectors_loaded", count=len(ids))
 
     def add(self, ids: list[str], vectors: list[list[float]]) -> None:
-        """Add or update vectors, both in-memory and persisted to `kb_vectors`."""
+        """Add or update vectors, both in-memory and persisted to `kb_vectors`.
+
+        Drops any of `ids` from the in-memory mirror FIRST (`remove` is a
+        safe no-op for an id that isn't there yet), rather than handing them
+        straight to `NumpyVectorStore.add`: that store keeps one dense
+        matrix and assumes every row is the same width, so overwriting an
+        EXISTING id in place with a vector of a DIFFERENT dimensionality
+        would crash trying to broadcast into the old (differently-shaped)
+        row. This can genuinely happen now that an embedder-fingerprint
+        mismatch flag-gates instead of wiping (P-4 review, Finding 2): a
+        force-re-embedding Rebuild can hand back a NEW-dimension vector for
+        a chunk_id whose OLD-dimension vector is still sitting in memory.
+        Removing first makes this call always take the "new row" append
+        path instead of an in-place same-shape-assumed overwrite -- a no-op
+        behavior change for the (overwhelmingly common) same-dimension case.
+        """
         if not ids:
             return
+        self._vector_store.remove(ids)
         self._vector_store.add(ids, vectors)
         rows = [
             (id_, len(vector), np.asarray(vector, dtype=np.float32).tobytes())
@@ -451,23 +523,14 @@ class SqliteKnowledgeStore:
         )
         self._conn.commit()
 
-    def wipe_vectors_and_content_hashes(self) -> None:
-        """Global vector-space reset for an embedder fingerprint mismatch (see
-        `KnowledgeService._check_fingerprint`): deletes every persisted vector
-        (`kb_vectors`, plus the in-memory `NumpyVectorStore` mirror -- leaving
-        the latter stale would let searches keep returning vectors from the
-        OLD embedding model even after the table is cleared) and blanks every
-        document's `content_hash` so the next index/rebuild pass treats the
-        ENTIRE corpus (every service) as changed and re-embeds it. Document
-        rows themselves (text/mentions/source_ref) are left intact -- only
-        the vectors and the hash gating re-embedding are cleared. This is the
-        "do NOT silently mix vector spaces" guard: safer to make search
-        temporarily return nothing for not-yet-rebuilt services than to let
-        two different embedding models' vectors coexist in one search.
-        """
-        self._conn.execute("DELETE FROM kb_vectors")
-        self._conn.execute("UPDATE kb_documents SET content_hash = ''")
-        self._conn.commit()
-        self._vector_store = NumpyVectorStore()
-        self.generation += 1
-        logger.warning("knowledge_store.vectors_wiped")
+    # NOTE: this store used to also expose `wipe_vectors_and_content_hashes()`,
+    # an eager global vector-space reset called by `KnowledgeService.
+    # _check_fingerprint` on an embedder-fingerprint mismatch. Removed (P-4
+    # review, Finding 2 -- ADJUDICATED): a mismatch now flag-gates instead of
+    # destroying data -- `KnowledgeService` sets `kb_meta['reindex_required']`
+    # and leaves every persisted vector untouched; a Rebuild force-re-embeds
+    # the corpus on demand (`_persist`'s `force` param), overwriting each old
+    # vector via this store's existing `add()` (`INSERT OR REPLACE`) rather
+    # than a separate destructive step. See `KnowledgeService._check_
+    # fingerprint`'s docstring for the full rationale (old vectors are a
+    # DIFFERENT embedding space, but wiping was needlessly irreversible).

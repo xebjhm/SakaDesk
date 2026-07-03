@@ -4,6 +4,7 @@ import { AlertCircle, Bot, Loader2, Send, Sparkles, SearchX } from 'lucide-react
 import { useTranslation } from '../../../i18n';
 import { CitationChip } from './CitationChip';
 import { SetupChecklist } from './SetupChecklist';
+import { errorMessageKey } from '../aiErrorCode';
 import type { AskAnswer, AskCitation } from '../api';
 
 /**
@@ -11,9 +12,11 @@ import type { AskAnswer, AskCitation } from '../api';
  * server-side conversation persistence, per Plan B spec §7.5).
  *
  * An error turn's `code` is `AskError.code` (see `../api.ts`) — the stable
- * taxonomy `errorMessageKey` maps to a localized `ai.error.<code>` message.
- * `message` is kept only as the non-localized fallback for `console.error`/
- * debugging, never rendered directly (see `ChatTurnRow`).
+ * taxonomy `errorMessageKey` (`../aiErrorCode.ts`, shared with
+ * `SetupChecklist.tsx`'s rebuild errors) maps to a localized
+ * `ai.error.<code>` message. `message` is kept only as the non-localized
+ * fallback for `console.error`/debugging, never rendered directly (see
+ * `ChatTurnRow`).
  */
 export type ChatTurn =
     | { id: string; role: 'user'; text: string }
@@ -30,26 +33,6 @@ export type ChatTurn =
           backend?: string;
           model?: string;
       };
-
-// Known `ai.error.*` codes — an unrecognized/absent code falls back to
-// `ai.error.unknown` so the user never sees a raw/untranslated string.
-const KNOWN_AI_ERROR_CODES = new Set([
-    'quota_exhausted',
-    'auth',
-    'model_not_found',
-    'model_incompatible',
-    'unreachable',
-    'timeout',
-    'malformed_response',
-    'misconfigured',
-    'kb_disabled',
-    'embedding_model_missing',
-    'network',
-]);
-
-function errorMessageKey(code: string): string {
-    return `ai.error.${KNOWN_AI_ERROR_CODES.has(code) ? code : 'unknown'}`;
-}
 
 // Codes whose fix is "go change something in AI settings" get the inline
 // "Open AI settings" hint. No clean hook to actually OPEN the settings modal

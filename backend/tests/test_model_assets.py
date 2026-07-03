@@ -59,6 +59,24 @@ def test_get_manifest_returns_none_for_unknown_model() -> None:
     assert get_manifest("not-a-real-model") is None
 
 
+def test_manifest_urls_are_pinned_to_a_commit_sha_not_the_mutable_main_ref() -> None:
+    """Finding 4 (P-4 review), supply chain: `main` is a mutable ref an
+    upstream maintainer can force-push/overwrite at any time, silently
+    serving different bytes at the SAME url this manifest pins a sha256
+    for -- the sha256 check alone only catches that AFTER a 1GB+ download.
+    Every asset url must instead resolve a specific, immutable commit."""
+    manifest = get_manifest("granite-embedding-278m-multilingual")
+    assert manifest is not None
+    for asset in manifest.assets:
+        assert "/resolve/main/" not in asset.url
+        assert "/resolve/" in asset.url
+        revision = asset.url.split("/resolve/", 1)[1].split("/", 1)[0]
+        # A git commit sha is 40 lowercase-hex characters -- not a movable
+        # ref name like "main"/"master".
+        assert len(revision) == 40
+        assert all(c in "0123456789abcdef" for c in revision)
+
+
 def test_download_status_as_dict_shape() -> None:
     status = DownloadStatus(
         state="downloading", model="m", bytes_done=1, bytes_total=2, reason=None
@@ -296,6 +314,36 @@ async def test_http_failure_sets_error_state_and_cleans_up(
     assert status["reason"] == "download_failed"
     assert not (models_dir / "test-model").exists()
     assert not (models_dir / ".test-model.download").exists()
+
+
+@pytest.mark.asyncio
+async def test_mkdir_failure_before_any_network_call_sets_error_not_stuck_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Finding 4 (P-4 review): a failure creating `models_dir`/the temp
+    download dir (permission denied, disk full, ...) must land in the
+    terminal `"error"` state, never leave `status()` stuck reporting
+    `"downloading"` forever. The mkdir/rmtree preamble used to run BEFORE
+    the try/except in `_run` -- any exception there propagated straight out
+    of the background task with no state ever recorded, so the UI's poller
+    would show a phantom in-progress download that had already silently
+    died. Simulated here with a plain FILE sitting where `models_dir` needs
+    to be a directory (`Path.mkdir(exist_ok=True)` raises `FileExistsError`
+    for a non-directory occupant) -- same "preamble raises before any
+    network call" code path a real permission/disk error would hit.
+    """
+    import backend.services.model_assets as mod
+
+    monkeypatch.setitem(mod._MANIFESTS, "test-model", _TEST_MANIFEST)
+    models_dir = tmp_path / "models"
+    models_dir.write_text("not a directory", encoding="utf-8")
+    manager = ModelDownloadManager(models_dir=models_dir)
+
+    await manager.start("test-model")
+
+    status = manager.status()
+    assert status["state"] == "error"
+    assert status["reason"] == "download_failed"
 
 
 @pytest.mark.asyncio

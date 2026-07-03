@@ -29,7 +29,14 @@ import pytest
 from backend.services.knowledge_store import SqliteKnowledgeStore
 from backend.services.settings_store import load_config
 from pysaka.knowledge.llm import FakeLLMClient, LLMResponse, ToolCall
-from pysaka.knowledge.models import Answer, Chunk, Document, Scope, SourceRef
+from pysaka.knowledge.models import (
+    Answer,
+    Chunk,
+    Document,
+    Scope,
+    SearchFilters,
+    SourceRef,
+)
 
 _SERVICE = "hinatazaka46"
 _MSG_ID = 500001
@@ -56,6 +63,17 @@ def _embedder() -> FakeEmbedder:
     # index-time embeds the passage (chunk context_text == the message text);
     # ask-time embeds the query "ライブ". Same vector -> cosine 1.
     return FakeEmbedder({_MSG_TEXT: [1.0, 0.0], "ライブ": [1.0, 0.0]})
+
+
+class _DifferentDimEmbedder:
+    """A distinct (dim=4) embedder config -- used by `TestFingerprint` to
+    simulate a DIFFERENT model becoming active (an embedder-fingerprint
+    mismatch), without needing real ONNX weights."""
+
+    dim = 4
+
+    def embed(self, texts: list[str], kind: str = "passage") -> list[list[float]]:
+        return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
 def _write_reference_data(data_dir: Path) -> None:
@@ -1489,9 +1507,15 @@ class TestFingerprint:
         assert svc2._read_reindex_required() is False
 
     @pytest.mark.asyncio
-    async def test_mismatch_wipes_vectors_sets_reindex_required_and_blocks_writes(
+    async def test_mismatch_flag_gates_without_wiping_vectors_and_blocks_writes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """P-4 review, Finding 2 (ADJUDICATED): a fingerprint mismatch must
+        flag-gate, NOT wipe. The old (dim=2) vectors stay on disk, fully
+        intact and searchable in THEIR OWN space, even after a mismatch is
+        detected for a fresh (dim=4) embedder config -- only
+        `reindex_required` flips, and incremental writes are still blocked
+        pending Rebuild (unchanged from before this fix)."""
         from backend.services import knowledge_service as ks
 
         data_dir = tmp_path / "data"
@@ -1513,26 +1537,103 @@ class TestFingerprint:
         await svc.index_members([(group, member)], _SERVICE)
         assert store.search([1.0, 0.0], k=5) != []
 
-        # Simulate a DIFFERENT embedding model (different dim) becoming active
-        # for a FRESH service instance over the same db.
-        class DifferentDimEmbedder:
-            dim = 4
-
-            def embed(self, texts, kind="passage"):
-                return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
-
         svc2 = ks.KnowledgeService(
-            store=store, embedder=DifferentDimEmbedder(), llm=None, data_dir=data_dir
+            store=store, embedder=_DifferentDimEmbedder(), llm=None, data_dir=data_dir
         )
         assert await svc2._ensure_embedder() is True
 
         assert svc2._read_reindex_required() is True
-        # Every previously-persisted vector is gone -- no mixed vector space.
-        assert store.search([1.0, 0.0, 0.0, 0.0], k=5) == []
+        # The OLD vectors are UNTOUCHED -- still on disk, still searchable in
+        # their own (dim=2) space. This is the whole point of flag-gating
+        # instead of wiping: nothing was ever deleted.
+        assert store.search([1.0, 0.0], k=5) != []
+        row_count = store._conn.execute("SELECT COUNT(*) FROM kb_vectors").fetchone()[0]
+        assert row_count == 1
 
-        # Incremental writes are blocked until Rebuild.
+        # Incremental writes are still blocked until Rebuild (unchanged).
         changed = await svc2.index_members([(group, member)], _SERVICE)
         assert changed == 0
+
+    @pytest.mark.asyncio
+    async def test_mismatch_disables_vector_arm_at_retriever_assembly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P-4 review, Finding 2: while `reindex_required` is set, retriever
+        assembly must hand `HybridRetriever` a `_NullVectorStore` instead of
+        the real (still-populated, but STALE-model) store -- proved here by
+        spying on the real store's `search()` and asserting it's NEVER
+        called during a search, while the lexical arm still finds the doc
+        (grounded, just not semantically ranked)."""
+        from backend.services import knowledge_service as ks
+
+        data_dir = tmp_path / "data"
+        _write_reference_data(data_dir)
+        messages_file = tmp_path / "messages.json"
+        _write_messages_file(messages_file)
+        monkeypatch.setattr(
+            ks,
+            "resolve_messages_file",
+            lambda service, group_id, member_id: messages_file,
+        )
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(
+            store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+        )
+        group = {"id": 94, "name": "日向坂46"}
+        member = {"id": 145, "name": "佐藤 花"}
+        await svc.index_members([(group, member)], _SERVICE)
+
+        svc2 = ks.KnowledgeService(
+            store=store, embedder=_DifferentDimEmbedder(), llm=None, data_dir=data_dir
+        )
+        assert await svc2._ensure_embedder() is True
+        assert svc2._read_reindex_required() is True
+
+        search_spy = MagicMock(wraps=store.search)
+        monkeypatch.setattr(store, "search", search_spy)
+
+        _doc_store, retriever = svc2._ensure_retriever_cached(_SERVICE)
+        hits = retriever.search(
+            SearchFilters(
+                scope=Scope(service=_SERVICE), query="ライブ", sort="relevant", limit=5
+            )
+        )
+
+        search_spy.assert_not_called()
+        # Still grounded via the lexical arm alone -- degraded ranking, not
+        # zero results.
+        assert [hit.doc_id for hit in hits] == [_DOC_ID]
+
+    @pytest.mark.asyncio
+    async def test_fingerprint_flip_back_to_matching_model_clears_flag_without_rebuild(
+        self, tmp_path: Path
+    ) -> None:
+        """P-4 review, Finding 2: flipping the embedding model back to
+        whatever it was when the persisted vectors were embedded must
+        restore full (vector + lexical) search WITHOUT a rebuild -- the
+        stored fingerprint is deliberately never overwritten on a mismatch
+        (see `_check_fingerprint`), so the ORIGINAL config matching it again
+        reads as a MATCH, not yet another mismatch, and the flag clears
+        instantly with zero data ever having moved."""
+        from backend.services import knowledge_service as ks
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        assert await svc._ensure_embedder() is True
+        assert svc._read_reindex_required() is False
+
+        svc2 = ks.KnowledgeService(
+            store=store, embedder=_DifferentDimEmbedder(), llm=None
+        )
+        assert await svc2._ensure_embedder() is True
+        assert svc2._read_reindex_required() is True
+
+        # Flip back: a THIRD service instance, same (original) embedder config.
+        svc3 = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        assert await svc3._ensure_embedder() is True
+
+        assert svc3._read_reindex_required() is False
 
     @pytest.mark.asyncio
     async def test_rebuild_clears_reindex_required_and_rewrites_fingerprint(
@@ -1557,6 +1658,80 @@ class TestFingerprint:
 
         assert svc._read_reindex_required() is False
         assert store.get_meta("embedder_fingerprint") is not None
+
+    @pytest.mark.asyncio
+    async def test_rebuild_force_reembeds_when_reindex_required_was_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """P-4 review, Finding 2: a Rebuild while `reindex_required` is set
+        must re-embed EVERY doc regardless of content-hash (`_persist`'s
+        `force` param) -- the doc TEXT never changed, only the active
+        embedding model did, so the ordinary hash-diff fast path would
+        otherwise skip re-embedding entirely and leave the stale
+        (wrong-space) vector in place forever. This is the mechanism that
+        makes flag-gating (instead of the old eager wipe) actually correct:
+        Rebuild is what forces the re-embed, on demand.
+
+        Drives this through the REAL end-to-end flow (no manually-poked
+        `reindex_required`): the second `rebuild()` call's OWN
+        `_ensure_embedder()` detects the dim mismatch against the first
+        rebuild's baseline and sets the flag itself, moments before
+        `_rebuild_impl` reads it back to decide whether to force."""
+        from backend.services import knowledge_service as ks
+
+        data_dir = tmp_path / "data"
+        _write_reference_data(data_dir)
+        messages_file = tmp_path / "messages.json"
+        _write_messages_file(messages_file)
+        monkeypatch.setattr(
+            ks,
+            "resolve_messages_file",
+            lambda service, group_id, member_id: messages_file,
+        )
+        monkeypatch.setattr(
+            ks, "resolve_service_path", lambda service: tmp_path / "no-such-blogs-dir"
+        )
+        _isolate_settings(tmp_path, monkeypatch)
+        group = {"id": 94, "name": "日向坂46"}
+        member = {"id": 145, "name": "佐藤 花"}
+        monkeypatch.setattr(
+            ks.KnowledgeService,
+            "_discover_message_members",
+            staticmethod(lambda service: [(group, member)]),
+        )
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(
+            store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+        )
+        await svc.rebuild(
+            _SERVICE
+        )  # first rebuild: persists the doc + its (dim=2) vector
+        assert store.documents_for_service(_SERVICE)
+
+        class CountingEmbedder:
+            """A DIFFERENT (dim=4) config -- the mismatch `svc2.rebuild()`
+            itself will detect and flag, before force-re-embedding with it."""
+
+            dim = 4
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, texts, kind="passage"):
+                self.calls += 1
+                return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
+
+        counting = CountingEmbedder()
+        svc2 = ks.KnowledgeService(
+            store=store, embedder=counting, llm=None, data_dir=data_dir
+        )
+
+        changed = await svc2.rebuild(_SERVICE)
+
+        assert changed == 1  # re-embedded despite the content hash being unchanged
+        assert counting.calls > 0
+        assert svc2._read_reindex_required() is False
 
 
 # ---------------------------------------------------------------------------

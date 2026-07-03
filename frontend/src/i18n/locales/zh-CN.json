@@ -478,6 +478,8 @@
       "kb_disabled": "知识库聊天机器人已关闭。请到“设置 → AI”启用它。",
       "embedding_model_missing": "嵌入模型尚未安装。请到“设置 → AI”下载以启用知识库聊天机器人。",
       "network": "无法连接到 SakaDesk 的后端。请检查网络连接后重试。",
+      "not_configured": "知识库需要先安装嵌入模型才能建立索引。请到“设置 → AI”下载。",
+      "already_running": "该服务的索引重建已经在进行中，请稍后再试。",
       "unknown": "回答问题时出了点问题。请再试一次。",
       "retryAfter": "你可以在 {{seconds}} 秒后重试。",
       "openSettingsHint": "打开“设置 → AI”来解决此问题。"

@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, CircleDashed, Download, Loader2, RefreshCw, X } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
+import { errorMessageKey } from '../aiErrorCode';
 
 /** `GET /api/ai/readiness`'s shape (`backend/services/knowledge_service.py`'s
  * `compute_readiness()`) -- independent, never-500 checks probed WITHOUT
@@ -103,6 +104,14 @@ export const SetupChecklist: React.FC<SetupChecklistProps> = ({ onReady }) => {
     const [readiness, setReadiness] = useState<Readiness | null>(null);
     const [download, setDownload] = useState<DownloadStatus | null>(null);
     const [rebuilding, setRebuilding] = useState(false);
+    // The i18n key (`ai.error.<code>`) for the most recent `POST /api/ai/
+    // index/rebuild` failure, or `null` once cleared -- P-4 review, Finding
+    // 1: `handleBuildIndex` used to only catch NETWORK failures (a rejected
+    // fetch promise); a non-2xx response (409 `not_configured`/
+    // `already_running`/`kb_disabled`) resolved normally and was silently
+    // dropped, leaving the user staring at a spinner that finished with no
+    // explanation. See `handleBuildIndex` below.
+    const [buildErrorKey, setBuildErrorKey] = useState<string | null>(null);
     const readinessTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const downloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const readyFiredRef = useRef(false);
@@ -189,13 +198,33 @@ export const SetupChecklist: React.FC<SetupChecklistProps> = ({ onReady }) => {
     const handleBuildIndex = useCallback(() => {
         if (!activeService) return;
         setRebuilding(true);
+        setBuildErrorKey(null);
         fetch('/api/ai/index/rebuild', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service: activeService }),
         })
+            .then(async (res) => {
+                if (res.ok) return;
+                // Non-2xx (P-4 review, Finding 1): a 409 `not_configured`
+                // (the embedding model was never installed, or the in-app
+                // download hasn't been picked up yet), `already_running`, or
+                // `kb_disabled` must be VISIBLE, not silently swallowed --
+                // parse the JSON error body (FastAPI wraps it in `detail`)
+                // and show the typed message via the shared `ai.error.<code>`
+                // i18n mapping (same taxonomy `ChatWindow.tsx`'s ask errors
+                // use, see `../aiErrorCode.ts`).
+                const body: unknown = await res.json().catch(() => null);
+                const detail = (
+                    body && typeof body === 'object' && 'detail' in body
+                        ? (body as { detail: unknown }).detail
+                        : body
+                ) as { code?: string } | null;
+                setBuildErrorKey(errorMessageKey(detail?.code ?? 'unknown'));
+            })
             .catch((err: unknown) => {
                 console.error('[SetupChecklist] Failed to start index rebuild:', err);
+                setBuildErrorKey(errorMessageKey('network'));
             })
             .finally(() => {
                 setRebuilding(false);
@@ -293,7 +322,9 @@ export const SetupChecklist: React.FC<SetupChecklistProps> = ({ onReady }) => {
                         {t('ai.setup.buildIndex')}
                     </button>
                 }
-            />
+            >
+                {buildErrorKey && <p className="text-xs text-red-600 mt-1">{t(buildErrorKey)}</p>}
+            </ChecklistRow>
         </div>
     );
 };
