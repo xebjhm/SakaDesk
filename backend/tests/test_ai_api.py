@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
@@ -20,11 +21,32 @@ from fastapi.testclient import TestClient
 
 import backend.api.ai as ai_module
 from backend.main import app
+from backend.services.knowledge_service import KnowledgeMisconfigured
 from backend.services.llm_client import LLMBackendError
 from backend.services.settings_store import _SETTINGS_DEFAULTS, load_config
 from pysaka.knowledge.models import Answer, AnswerSentence, Citation, Scope, SourceRef
 
 client = TestClient(app)
+
+
+def _extract_event_data(text: str, event: str) -> dict:
+    """Parse the JSON `data:` payload of the first `event: <event>` block in raw SSE text."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line == f"event: {event}":
+            data_line = lines[i + 1]
+            assert data_line.startswith("data:")
+            return json.loads(data_line[len("data:") :].strip())
+    raise AssertionError(f"no 'event: {event}' block found in SSE stream:\n{text}")
+
+
+def _isolate_settings(tmp_path, monkeypatch) -> None:
+    """Point `settings_store` at a fresh tmp file so error-payload `backend`/`model`
+    assertions are deterministic (not whatever real settings.json happens to exist)."""
+    monkeypatch.setattr(
+        "backend.services.settings_store.get_settings_path",
+        lambda: tmp_path / "settings.json",
+    )
 
 
 def _validated_answer() -> Answer:
@@ -246,6 +268,118 @@ class TestAskSSE:
         assert r.status_code == 400
 
 
+class TestAskSSEErrorContract:
+    """`event: error` payload shape: `{code, message, retryAfterS?, backend, model}`."""
+
+    def _ask(self):
+        return client.post(
+            "/api/ai/ask",
+            json={
+                "question": "何を食べた?",
+                "service": "hinatazaka46",
+                "tz": "Asia/Tokyo",
+            },
+        )
+
+    def test_quota_exhausted_carries_code_and_retry_after_s(
+        self, tmp_path, monkeypatch
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = LLMBackendError(
+                "quota exceeded",
+                kind="quota_exhausted",
+                status_code=429,
+                retry_after_s=12.5,
+            )
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "quota_exhausted"
+        assert data["retryAfterS"] == 12.5
+        assert data["backend"] == "cloud"
+        assert data["model"] == "gemini-2.5-flash"
+        assert data["message"]
+        assert "Traceback" not in r.text
+
+    @pytest.mark.parametrize(
+        "kind",
+        [
+            "auth",
+            "model_not_found",
+            "model_incompatible",
+            "unreachable",
+            "timeout",
+            "malformed_response",
+        ],
+    )
+    def test_each_llm_error_kind_streams_matching_code(
+        self, tmp_path, monkeypatch, kind
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = LLMBackendError("boom", kind=kind)
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == kind
+        assert "retryAfterS" not in data  # omitted (not present), never emitted as null
+        assert data["message"]
+        # Never the raw exception message (which could echo a provider body).
+        assert "boom" not in r.text
+
+    def test_misconfigured_streams_misconfigured_code(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = KnowledgeMisconfigured(
+                "no LLM client configured"
+            )
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "misconfigured"
+        assert data["message"]
+
+    def test_generic_failure_streams_unknown_code_and_no_raw_exception_text(
+        self, tmp_path, monkeypatch
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = RuntimeError(
+                "super secret internal detail"
+            )
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "unknown"
+        assert "super secret internal detail" not in r.text
+
+    def test_backend_and_model_reflect_the_configured_llm(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "local",
+                            "base_url": "http://localhost:11434/v1",
+                            "model": "qwen2.5:14b",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = LLMBackendError("x", kind="timeout")
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["backend"] == "local"
+        assert data["model"] == "qwen2.5:14b"
+
+
 class TestIndexStatus:
     """GET /api/ai/index/status."""
 
@@ -268,6 +402,17 @@ class TestIndexStatus:
         assert r.status_code == 200
         svc.status.assert_called_once_with(None)
 
+    def test_status_misconfigured_returns_typed_error_not_500(self):
+        with patch(
+            "backend.api.ai.get_knowledge_service",
+            AsyncMock(
+                side_effect=KnowledgeMisconfigured("embedding model dir not found")
+            ),
+        ):
+            r = client.get("/api/ai/index/status")
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "misconfigured"
+
 
 class TestIndexRebuild:
     """POST /api/ai/index/rebuild."""
@@ -285,6 +430,17 @@ class TestIndexRebuild:
             r = client.post("/api/ai/index/rebuild", json={"service": "nope"})
         assert r.status_code == 400
         svc.rebuild.assert_not_called()
+
+    def test_rebuild_misconfigured_returns_typed_error_not_500(self):
+        with patch(
+            "backend.api.ai.get_knowledge_service",
+            AsyncMock(
+                side_effect=KnowledgeMisconfigured("embedding model dir not found")
+            ),
+        ):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "misconfigured"
 
 
 class TestHardwareSuggestion:

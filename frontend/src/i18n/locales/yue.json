@@ -442,7 +442,21 @@
         "thinking": "諗緊…",
         "verifying": "核實緊來源…",
         "noEvidence": "喺已同步嘅內容度搵唔到答案。",
-        "sourceLabel": "來源"
+        "sourceLabel": "來源",
+        "error": {
+            "quota_exhausted": "{{model}} 用量去到上限。請遲啲再試，或者去「設定 → AI」轉第個模型。",
+            "auth": "AI 供應商拒絕咗個 API key。請去「設定 → AI」檢查個 API key。",
+            "model_not_found": "而家設定嘅後端用唔到 {{model}} 呢個模型。請去「設定 → AI」揀第個。",
+            "model_incompatible": "{{model}} 唔係好識用知識庫工具。不如試吓 gemini-2.5-flash（雲端）或者 qwen2.5:14b（本機）啦。",
+            "unreachable": "連唔到而家設定嘅 AI 後端。如果你用緊本機模型，請確認 Ollama（或者本機伺服器）有冇開緊。",
+            "timeout": "AI 後端回應太耐。請再試多次。",
+            "malformed_response": "AI 後端傳返啲解讀唔到嘅嘢。請再試多次。",
+            "misconfigured": "知識庫聊天機械人重未設定好。請去「設定 → AI」設定吓。",
+            "network": "連唔到 SakaDesk 嘅後端。請檢查網絡連線之後再試。",
+            "unknown": "答問題嗰陣出咗問題。請再試多次。",
+            "retryAfter": "你可以喺 {{seconds}} 秒之後再試。",
+            "openSettingsHint": "開返「設定 → AI」嚟解決呢個問題。"
+        }
     },
     "voicePlayer": {
         "speed": "播放速度",

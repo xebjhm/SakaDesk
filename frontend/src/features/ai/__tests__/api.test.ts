@@ -1,6 +1,6 @@
 // frontend/src/features/ai/__tests__/api.test.ts
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { askKnowledge } from '../api';
+import { askKnowledge, AskError } from '../api';
 
 /** Builds a `ReadableStream<Uint8Array>` that yields `chunks` one per read
  * (i.e. one `reader.read()` resolves per array entry), then closes. Lets
@@ -121,10 +121,82 @@ describe('askKnowledge', () => {
     );
   });
 
+  it('rejects with a typed AskError carrying the backend code and params', async () => {
+    mockFetchStream([
+      sse('error', {
+        code: 'quota_exhausted',
+        message: 'The AI provider quota was reached.',
+        retryAfterS: 12.5,
+        backend: 'cloud',
+        model: 'gemini-2.5-flash',
+      }),
+    ]);
+
+    let caught: unknown;
+    try {
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(AskError);
+    const err = caught as AskError;
+    expect(err.code).toBe('quota_exhausted');
+    expect(err.message).toBe('The AI provider quota was reached.');
+    expect(err.retryAfterS).toBe(12.5);
+    expect(err.backend).toBe('cloud');
+    expect(err.model).toBe('gemini-2.5-flash');
+  });
+
+  it('defaults AskError.code to "unknown" when the error event omits it', async () => {
+    mockFetchStream([sse('error', { message: 'legacy shape' })]);
+
+    let caught: unknown;
+    try {
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(AskError);
+    expect((caught as AskError).code).toBe('unknown');
+    expect((caught as AskError).retryAfterS).toBeUndefined();
+  });
+
   it('rejects on a non-ok HTTP response', async () => {
     mockFetchStream([], { ok: false, status: 500 });
 
     await expect(askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn())).rejects.toThrow(/500/);
+  });
+
+  it('rejects with a "network" AskError on a non-ok HTTP response', async () => {
+    mockFetchStream([], { ok: false, status: 500 });
+
+    let caught: unknown;
+    try {
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(AskError);
+    expect((caught as AskError).code).toBe('network');
+  });
+
+  it('rejects with a "network" AskError on a fetch network failure', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    let caught: unknown;
+    try {
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(AskError);
+    expect((caught as AskError).code).toBe('network');
+    expect((caught as AskError).message).toBe('network down');
   });
 
   it('buffers a partial chunk: the answer JSON split across two stream reads', async () => {

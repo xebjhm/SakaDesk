@@ -60,6 +60,7 @@ from pydantic import BaseModel
 from backend.services.hardware import detect_hardware, suggest_llm_backend
 from backend.services.knowledge_service import (
     KnowledgeMisconfigured,
+    KnowledgeService,
     get_knowledge_service,
     invalidate_llm_client,
 )
@@ -77,9 +78,35 @@ _HEARTBEAT_INTERVAL_S = 1.0
 
 _VALID_LLM_BACKENDS = {"cloud", "local"}
 
-# User-safe error messages -- never include raw exception text (which may echo
-# provider response bodies or other details we don't want on the wire twice).
-_LLM_ERROR_MESSAGE = (
+# User-safe FALLBACK error text for old clients that don't yet understand the
+# structured `code` field -- never raw exception text (which may echo provider
+# response bodies or other details we don't want on the wire twice). New
+# clients key off `code` (== `LLMBackendError.kind`, or one of `misconfigured`/
+# `unknown`) and localize it themselves; `message` is never the sole signal.
+_LLM_ERROR_MESSAGES: dict[str, str] = {
+    "quota_exhausted": (
+        "The AI provider's usage quota was reached. Try again later, or switch "
+        "models in AI settings."
+    ),
+    "auth": "The AI provider rejected the API key. Check the AI settings.",
+    "model_not_found": (
+        "The selected model isn't available on the configured backend. Pick "
+        "another in AI settings."
+    ),
+    "model_incompatible": (
+        "This model doesn't reliably support the knowledge tools. Try a "
+        "different model in AI settings."
+    ),
+    "unreachable": (
+        "Couldn't reach the configured AI backend. Check your connection, or "
+        "that a local server (e.g. Ollama) is running."
+    ),
+    "timeout": "The AI backend took too long to respond. Please try again.",
+    "malformed_response": (
+        "The AI backend returned an unexpected response. Please try again."
+    ),
+}
+_LLM_ERROR_FALLBACK_MESSAGE = (
     "The configured AI backend is unavailable. Check the AI settings and try again."
 )
 _MISCONFIGURED_MESSAGE = (
@@ -122,6 +149,36 @@ class LLMConfigRequest(BaseModel):
 def _format_sse(event: str, data: dict) -> str:
     payload = json.dumps(data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"
+
+
+async def _current_llm_backend_model() -> tuple[str | None, str | None]:
+    """The currently-configured `knowledge_base.llm` `(backend, model)`, for the
+    error event's `backend`/`model` fields -- read fresh from settings (not
+    cached on the failed `LLMBackendError`) so it reflects reality even when the
+    failure was `KnowledgeMisconfigured`/a generic exception with nothing to ask."""
+    config = await load_config()
+    llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
+    return llm_config.get("backend"), llm_config.get("model")
+
+
+def _serialize_error_event(
+    code: str,
+    message: str,
+    *,
+    retry_after_s: float | None,
+    backend: str | None,
+    model: str | None,
+) -> dict:
+    """`{code, message, retryAfterS?, backend, model}` -- the SSE `event: error` contract.
+
+    `code` is what the frontend keys off (`ai.error.<code>` i18n lookup);
+    `message` is a safe English fallback for old, not-yet-updated clients.
+    `retryAfterS` is omitted entirely (not sent as `null`) when unknown.
+    """
+    data: dict = {"code": code, "message": message, "backend": backend, "model": model}
+    if retry_after_s is not None:
+        data["retryAfterS"] = retry_after_s
+    return data
 
 
 def _serialize_ref(ref: SourceRef) -> dict:
@@ -238,17 +295,55 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
             if not task.done():
                 yield _format_sse("progress", {"stage": "thinking"})
         answer = await task
-    except LLMBackendError:
-        logger.warning("ai.ask.llm_backend_error", service=scope.service)
-        yield _format_sse("error", {"message": _LLM_ERROR_MESSAGE})
+    except LLMBackendError as exc:
+        # `exc.kind`/`status_code` are logged for diagnostics; `str(exc)` (which
+        # may include a raw provider response body snippet -- see
+        # `llm_client.py`) is deliberately NEVER put on the wire.
+        logger.warning(
+            "ai.ask.llm_backend_error",
+            service=scope.service,
+            kind=exc.kind,
+            status_code=exc.status_code,
+        )
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                exc.kind,
+                _LLM_ERROR_MESSAGES.get(exc.kind, _LLM_ERROR_FALLBACK_MESSAGE),
+                retry_after_s=exc.retry_after_s,
+                backend=backend,
+                model=model,
+            ),
+        )
         return
     except KnowledgeMisconfigured:
         logger.warning("ai.ask.misconfigured", service=scope.service)
-        yield _format_sse("error", {"message": _MISCONFIGURED_MESSAGE})
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "misconfigured",
+                _MISCONFIGURED_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
         return
     except Exception:  # noqa: BLE001 - last-resort guard: an SSE client must never see a raw 500 mid-stream
         logger.error("ai.ask.failed", service=scope.service, exc_info=True)
-        yield _format_sse("error", {"message": _GENERIC_ERROR_MESSAGE})
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "unknown",
+                _GENERIC_ERROR_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
         return
 
     yield _format_sse("answer", _serialize_answer(answer))
@@ -283,6 +378,19 @@ async def ask(http_request: Request, body: AskRequest) -> StreamingResponse:
     )
 
 
+async def _get_knowledge_service_or_409() -> KnowledgeService:
+    """`get_knowledge_service()`, translating `KnowledgeMisconfigured` (e.g. no
+    embedding model installed yet) into a typed 409 instead of a raw 500 --
+    the non-SSE counterpart of `_ask_event_stream`'s `code: "misconfigured"`."""
+    try:
+        return await get_knowledge_service()
+    except KnowledgeMisconfigured as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "misconfigured", "message": _MISCONFIGURED_MESSAGE},
+        ) from exc
+
+
 @router.get("/index/status")
 async def index_status(service: str | None = Query(None)) -> dict:
     if service is not None:
@@ -290,7 +398,7 @@ async def index_status(service: str | None = Query(None)) -> dict:
             validate_service(service)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-    svc = await get_knowledge_service()
+    svc = await _get_knowledge_service_or_409()
     return svc.status(service)
 
 
@@ -301,7 +409,7 @@ async def index_rebuild(request: RebuildRequest) -> dict:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    svc = await get_knowledge_service()
+    svc = await _get_knowledge_service_or_409()
     asyncio.create_task(_run_rebuild(svc, request.service))
     return {"ok": True}
 

@@ -172,6 +172,36 @@ async def test_ask_returns_validated_answer_with_surfaced_citation(
 
 
 @pytest.mark.asyncio
+async def test_ask_raises_llm_backend_error_model_incompatible_after_repeated_invalid_tool_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A model that keeps emitting unparseable tool-call arguments must abort the
+    ask with a typed `LLMBackendError(kind="model_incompatible")` -- not let
+    pysaka's `ToolCallingUnreliableError` (a pure/UI-agnostic engine exception)
+    leak past this SakaDesk integration boundary unchanged."""
+    from backend.services.llm_client import LLMBackendError
+
+    script = [
+        LLMResponse(
+            tool_calls=[
+                ToolCall("search", {}, id=f"call_{i}", invalid_reason="bad json")
+            ]
+        )
+        for i in range(5)
+    ]
+    svc, _store = await _build_indexed_service(
+        tmp_path, monkeypatch, FakeLLMClient(script)
+    )
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await svc.ask(
+            "model that can't drive tools", Scope(service=_SERVICE), timezone.utc
+        )
+
+    assert exc_info.value.kind == "model_incompatible"
+
+
+@pytest.mark.asyncio
 async def test_ask_no_match_returns_no_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

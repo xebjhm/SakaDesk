@@ -48,6 +48,7 @@ from pysaka.knowledge import (
     MentionDetector,
     PureLexicalIndex,
     Scope,
+    ToolCallingUnreliableError,
     ToolRunner,
     chunk_documents,
     ingest_blog,
@@ -57,7 +58,7 @@ from pysaka.knowledge.llm import LLMClient
 from pysaka.knowledge.protocols import Embedder
 
 from backend.services.knowledge_store import SqliteKnowledgeStore
-from backend.services.llm_client import build_llm_client_from_settings
+from backend.services.llm_client import LLMBackendError, build_llm_client_from_settings
 from backend.services.path_resolver import resolve_messages_file, resolve_service_path
 from backend.services.platform import get_app_data_dir
 from backend.services.settings_store import load_config
@@ -352,9 +353,20 @@ class KnowledgeService:
         `OpenAICompatLLMClient` retain any loop-bound resources across `await`s —
         the LLM client opens and closes a fresh `httpx.AsyncClient` inside each
         `chat()` call, so nothing is pinned to the event loop that creates it.
+
+        `pysaka.knowledge.ToolCallingUnreliableError` (raised when the model
+        repeatedly emits unparseable tool-call arguments — see `agent.py`) is
+        pysaka's own pure/UI-agnostic exception; it's caught right at this
+        integration boundary and re-raised as a typed `LLMBackendError(kind=
+        "model_incompatible")` so `backend/api/ai.py` has exactly ONE exception
+        type to handle for every LLM-taxonomy failure, regardless of whether it
+        originated in the HTTP client or the agent's tool-calling loop.
         """
         agent = self._build_agent(scope.service, llm)
-        return asyncio.run(agent.answer(question, scope, history))
+        try:
+            return asyncio.run(agent.answer(question, scope, history))
+        except ToolCallingUnreliableError as exc:
+            raise LLMBackendError(str(exc), kind="model_incompatible") from exc
 
     def reload_llm(self, llm: LLMClient | None) -> None:
         """Swap in a freshly-built LLM client (e.g. after `settings.knowledge_base.llm` changes).

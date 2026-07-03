@@ -292,6 +292,396 @@ async def test_chat_raises_clear_error_on_http_failure():
 
     assert "500" in str(exc_info.value)
     assert "internal error" in str(exc_info.value)
+    # Unclassified HTTP failures fall back to malformed_response.
+    assert exc_info.value.kind == "malformed_response"
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.retry_after_s is None
+
+
+# --- error taxonomy (kind / status_code / retry_after_s) -----------------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_429_with_retry_after_header_classifies_as_quota_exhausted():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            429, headers={"Retry-After": "42"}, json={"error": "quota exceeded"}
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "quota_exhausted"
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.retry_after_s == 42.0
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_429_gemini_retry_delay_body_classifies_retry_after():
+    """No `Retry-After` header -- parsed from Gemini's `RetryInfo` detail instead."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "error": {
+                    "code": 429,
+                    "message": "You exceeded your current quota. Please retry in 34.5s.",
+                    "status": "RESOURCE_EXHAUSTED",
+                    "details": [
+                        {
+                            "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                            "retryDelay": "34.5s",
+                        }
+                    ],
+                }
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "quota_exhausted"
+    assert exc_info.value.retry_after_s == 34.5
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_429_message_text_retry_in_seconds_fallback():
+    """No header, no `RetryInfo` detail -- fall back to parsing "retry in Xs" from the message."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            429,
+            json={
+                "error": {"message": "Rate limited. Please retry in 7s and try again."}
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "quota_exhausted"
+    assert exc_info.value.retry_after_s == 7.0
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_429_without_any_retry_info_leaves_retry_after_none():
+    respx.post(CHAT_URL).mock(return_value=httpx.Response(429, text="rate limited"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "quota_exhausted"
+    assert exc_info.value.retry_after_s is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_401_classifies_as_auth():
+    respx.post(CHAT_URL).mock(return_value=httpx.Response(401, text="unauthorized"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "auth"
+    assert exc_info.value.status_code == 401
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_403_classifies_as_auth():
+    respx.post(CHAT_URL).mock(return_value=httpx.Response(403, text="forbidden"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "auth"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_404_classifies_as_model_not_found():
+    """Covers both a plain 404 and Ollama's model-missing 404 body shape."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            404, json={"error": "model 'qwen2.5:14b' not found, try pulling it first"}
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "model_not_found"
+    assert exc_info.value.status_code == 404
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_400_with_thought_signature_classifies_as_model_incompatible():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            400,
+            json={
+                "error": {
+                    "message": "Unable to submit request because thought_signature is missing"
+                }
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "model_incompatible"
+    assert exc_info.value.status_code == 400
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_400_without_thought_signature_classifies_as_malformed_response():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(400, json={"error": {"message": "bad request"}})
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "malformed_response"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_connect_error_classifies_as_unreachable():
+    respx.post(CHAT_URL).mock(side_effect=httpx.ConnectError("connection refused"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "unreachable"
+    assert exc_info.value.status_code is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_connect_timeout_classifies_as_unreachable():
+    respx.post(CHAT_URL).mock(side_effect=httpx.ConnectTimeout("timed out connecting"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "unreachable"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_read_timeout_classifies_as_timeout():
+    respx.post(CHAT_URL).mock(side_effect=httpx.ReadTimeout("read timed out"))
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "timeout"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_invalid_json_response_classifies_as_malformed_response():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, content=b"not json", headers={"Content-Type": "application/json"}
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "malformed_response"
+    assert exc_info.value.status_code is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_unexpected_response_shape_classifies_as_malformed_response():
+    """A `choices[0]` that isn't even an object is a structural shape failure at
+    the RESPONSE ENVELOPE level -- distinct from a malformed per-tool-call
+    `function`/`arguments`, which is self-correctable (see the invalid-tool-call
+    tests below) rather than a whole-`chat()` failure."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(200, json={"choices": ["not-an-object"]})
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    with pytest.raises(LLMBackendError) as exc_info:
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert exc_info.value.kind == "malformed_response"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_tool_call_missing_function_key_entirely_is_still_recoverable():
+    """A tool call missing the whole `function` object (not just `arguments`) is
+    STILL a per-call self-correction case, not a `chat()`-level crash -- the model
+    gets an actionable "invalid tool call, retry" message either way."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"choices": [{"message": {"tool_calls": [{"id": "call_1"}]}}]},
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+
+    assert len(resp.tool_calls) == 1
+    assert resp.tool_calls[0].invalid_reason is not None
+    assert resp.tool_calls[0].id == "call_1"
+
+
+def test_llm_backend_error_defaults_to_malformed_response_kind():
+    exc = LLMBackendError("boom")
+    assert exc.kind == "malformed_response"
+    assert exc.status_code is None
+    assert exc.retry_after_s is None
+
+
+# --- malformed tool-call arguments (self-correction, not a crash) --------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_unparseable_tool_call_arguments_returns_invalid_flagged_call():
+    """A truncated/invalid JSON `arguments` string must not raise -- it must come
+    back as a `ToolCall` with `invalid_reason` set, so the agent loop can feed an
+    error back to the model instead of the whole ask crashing."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "search",
+                                        "arguments": '{"query": "unterminated',
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+
+    assert len(resp.tool_calls) == 1
+    call = resp.tool_calls[0]
+    assert call.name == "search"
+    assert call.arguments == {}
+    assert call.id == "call_1"
+    assert call.invalid_reason is not None
+    assert "search" in call.invalid_reason
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_tool_call_missing_function_name_returns_invalid_flagged_call():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {"arguments": "{}"},
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+
+    assert len(resp.tool_calls) == 1
+    assert resp.tool_calls[0].invalid_reason is not None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_mixed_valid_and_invalid_tool_calls_only_flags_the_bad_one():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "search",
+                                        "arguments": '{"query": "ok"}',
+                                    },
+                                },
+                                {
+                                    "id": "call_2",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "aggregate",
+                                        "arguments": "not json at all",
+                                    },
+                                },
+                            ]
+                        }
+                    }
+                ]
+            },
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+
+    assert len(resp.tool_calls) == 2
+    assert resp.tool_calls[0].invalid_reason is None
+    assert resp.tool_calls[0].arguments == {"query": "ok"}
+    assert resp.tool_calls[1].invalid_reason is not None
+    assert resp.tool_calls[1].name == "aggregate"
 
 
 # --- small pure-function edge cases (internal helpers) ---------------------------------------

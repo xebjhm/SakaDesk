@@ -93,12 +93,66 @@ describe('AiFeature', () => {
         expect(container.querySelector('.text-red-700')).toBeNull();
     });
 
-    it('renders a visible error state (not a crash) when askKnowledge rejects', async () => {
-        mockAskKnowledge.mockRejectedValue(new Error('The request failed unexpectedly.'));
+    it('renders a visible, localized error state (not a crash, not raw English) when askKnowledge rejects with no code', async () => {
+        // A legacy/uncoded rejection (e.g. a bare network Error) must still render
+        // a friendly, localized message — never the raw exception text on the wire.
+        mockAskKnowledge.mockRejectedValue(new Error('some internal detail leaked here'));
 
         render(<AiFeature />);
         await askQuestion('will this fail?');
 
-        expect(await screen.findByText('The request failed unexpectedly.')).toBeInTheDocument();
+        expect(
+            await screen.findByText('Something went wrong answering that. Please try again.')
+        ).toBeInTheDocument();
+        expect(screen.queryByText('some internal detail leaked here')).toBeNull();
+    });
+
+    it('renders the quota_exhausted copy (not the generic fallback) for a coded AskError, with the model interpolated', async () => {
+        const quotaError = Object.assign(new Error('raw provider quota message'), {
+            code: 'quota_exhausted',
+            model: 'gemini-2.5-flash',
+            backend: 'cloud',
+        });
+        mockAskKnowledge.mockRejectedValue(quotaError);
+
+        render(<AiFeature />);
+        await askQuestion('will this hit quota?');
+
+        const message = await screen.findByText(/usage limit/i);
+        expect(message.textContent).toContain('gemini-2.5-flash');
+        // Never the generic fallback, and never the raw provider text.
+        expect(
+            screen.queryByText('Something went wrong answering that. Please try again.')
+        ).toBeNull();
+        expect(screen.queryByText('raw provider quota message')).toBeNull();
+        // Quota is one of the codes that gets the "open AI settings" hint.
+        expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+    });
+
+    it('shows a retry-after hint when the error carries retryAfterS', async () => {
+        const quotaError = Object.assign(new Error('quota'), {
+            code: 'quota_exhausted',
+            model: 'gemini-2.5-flash',
+            retryAfterS: 42,
+        });
+        mockAskKnowledge.mockRejectedValue(quotaError);
+
+        render(<AiFeature />);
+        await askQuestion('will this hit quota?');
+
+        expect(await screen.findByText('You can try again in 42s.')).toBeInTheDocument();
+    });
+
+    it('renders the unreachable copy without an "open settings" hint (not one of the settings-fixable codes)', async () => {
+        const unreachableError = Object.assign(new Error('connect failed'), {
+            code: 'unreachable',
+        });
+        mockAskKnowledge.mockRejectedValue(unreachableError);
+
+        render(<AiFeature />);
+        await askQuestion('will this be unreachable?');
+
+        expect(await screen.findByText(/ollama/i)).toBeInTheDocument();
+        expect(screen.queryByText('Open AI settings to fix this.')).toBeNull();
     });
 });

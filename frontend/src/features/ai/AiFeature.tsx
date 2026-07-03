@@ -32,6 +32,33 @@ function progressLabelKey(stage: string): string {
     return PROGRESS_LABEL_KEYS[stage] ?? 'ai.thinking';
 }
 
+/**
+ * Extracts `ErrorTurn` fields from a rejected `askKnowledge` promise. Duck-typed
+ * (checks for a `.code` string property) rather than `instanceof AskError` so a
+ * plain `Error` (a legacy/uncoded rejection, or any other unexpected throw)
+ * degrades gracefully to `code: 'unknown'` instead of crashing.
+ */
+function askErrorFields(err: unknown): {
+    code: string;
+    message: string;
+    retryAfterS?: number;
+    backend?: string;
+    model?: string;
+} {
+    const message = err instanceof Error ? err.message : String(err);
+    if (err && typeof err === 'object') {
+        const obj = err as Record<string, unknown>;
+        return {
+            code: typeof obj.code === 'string' ? obj.code : 'unknown',
+            message,
+            retryAfterS: typeof obj.retryAfterS === 'number' ? obj.retryAfterS : undefined,
+            backend: typeof obj.backend === 'string' ? obj.backend : undefined,
+            model: typeof obj.model === 'string' ? obj.model : undefined,
+        };
+    }
+    return { code: 'unknown', message };
+}
+
 /** Immutably replaces the turn with `id` within `service`'s thread. */
 function replaceTurn(
     threads: Record<string, ChatTurn[]>,
@@ -114,7 +141,7 @@ export const AiFeature: React.FC = () => {
                         id: assistantId,
                         role: 'assistant',
                         state: 'error',
-                        message: err instanceof Error ? err.message : String(err),
+                        ...askErrorFields(err),
                     }))
                 );
             });

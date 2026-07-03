@@ -442,7 +442,21 @@
     "thinking": "思考中…",
     "verifying": "正在核實來源…",
     "noEvidence": "在已同步的內容中找不到相關答案。",
-    "sourceLabel": "來源"
+    "sourceLabel": "來源",
+    "error": {
+      "quota_exhausted": "已達到 {{model}} 的用量上限。請稍後再試，或到「設定 → AI」切換模型。",
+      "auth": "AI 供應商拒絕了這組 API 金鑰。請到「設定 → AI」檢查 API 金鑰。",
+      "model_not_found": "模型 {{model}} 在目前設定的後端無法使用。請到「設定 → AI」改選其他模型。",
+      "model_incompatible": "{{model}} 無法可靠地支援知識庫工具。請改用 gemini-2.5-flash（雲端）或 qwen2.5:14b（本機）。",
+      "unreachable": "無法連線到已設定的 AI 後端。如果你使用的是本機模型，請確認 Ollama（或本機伺服器）正在執行。",
+      "timeout": "AI 後端回應逾時。請再試一次。",
+      "malformed_response": "AI 後端回傳了無法解析的內容。請再試一次。",
+      "misconfigured": "知識庫聊天機器人尚未設定。請到「設定 → AI」完成設定。",
+      "network": "無法連線到 SakaDesk 的後端。請檢查網路連線後再試一次。",
+      "unknown": "回答問題時發生問題。請再試一次。",
+      "retryAfter": "你可以在 {{seconds}} 秒後重試。",
+      "openSettingsHint": "開啟「設定 → AI」來解決此問題。"
+    }
   },
   "voicePlayer": {
     "speed": "播放速度",

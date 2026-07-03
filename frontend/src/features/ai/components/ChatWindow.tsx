@@ -8,13 +8,58 @@ import type { AskAnswer, AskCitation } from '../api';
 /**
  * One turn in the local, per-service chat thread (client-side only — no
  * server-side conversation persistence, per Plan B spec §7.5).
+ *
+ * An error turn's `code` is `AskError.code` (see `../api.ts`) — the stable
+ * taxonomy `errorMessageKey` maps to a localized `ai.error.<code>` message.
+ * `message` is kept only as the non-localized fallback for `console.error`/
+ * debugging, never rendered directly (see `ChatTurnRow`).
  */
 export type ChatTurn =
     | { id: string; role: 'user'; text: string }
     | { id: string; role: 'assistant'; state: 'streaming'; progressLabel: string }
     | { id: string; role: 'assistant'; state: 'answered'; answer: AskAnswer }
     | { id: string; role: 'assistant'; state: 'noEvidence' }
-    | { id: string; role: 'assistant'; state: 'error'; message: string };
+    | {
+          id: string;
+          role: 'assistant';
+          state: 'error';
+          code: string;
+          message: string;
+          retryAfterS?: number;
+          backend?: string;
+          model?: string;
+      };
+
+// Known `ai.error.*` codes — an unrecognized/absent code falls back to
+// `ai.error.unknown` so the user never sees a raw/untranslated string.
+const KNOWN_AI_ERROR_CODES = new Set([
+    'quota_exhausted',
+    'auth',
+    'model_not_found',
+    'model_incompatible',
+    'unreachable',
+    'timeout',
+    'malformed_response',
+    'misconfigured',
+    'network',
+]);
+
+function errorMessageKey(code: string): string {
+    return `ai.error.${KNOWN_AI_ERROR_CODES.has(code) ? code : 'unknown'}`;
+}
+
+// Codes whose fix is "go change something in AI settings" get the inline
+// "Open AI settings" hint. No clean hook to actually OPEN the settings modal
+// reaches this deep (it's local state in `shell/App.tsx`'s `useSettings`,
+// not exposed via the app store or a context) — see Plan B Task 1's report
+// for the follow-up — so this renders as hint TEXT, not a button, for now.
+const SETTINGS_HINT_CODES = new Set([
+    'quota_exhausted',
+    'auth',
+    'misconfigured',
+    'model_not_found',
+    'model_incompatible',
+]);
 
 interface ChatWindowProps {
     turns: ChatTurn[];
@@ -160,9 +205,24 @@ const ChatTurnRow: React.FC<{ turn: ChatTurn }> = ({ turn }) => {
                 )}
 
                 {turn.state === 'error' && (
-                    <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-red-50 border border-red-200 text-red-700 px-4 py-2 text-sm">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        {turn.message}
+                    <div className="flex flex-col gap-1 rounded-2xl rounded-tl-sm bg-red-50 border border-red-200 text-red-700 px-4 py-2 text-sm">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            {t(errorMessageKey(turn.code), {
+                                model: turn.model ?? '',
+                                backend: turn.backend ?? '',
+                            })}
+                        </div>
+                        {typeof turn.retryAfterS === 'number' && (
+                            <div className="pl-6 text-xs text-red-600/80">
+                                {t('ai.error.retryAfter', { seconds: Math.ceil(turn.retryAfterS) })}
+                            </div>
+                        )}
+                        {SETTINGS_HINT_CODES.has(turn.code) && (
+                            <div className="pl-6 text-xs text-red-600/80">
+                                {t('ai.error.openSettingsHint')}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

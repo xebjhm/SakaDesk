@@ -18,8 +18,9 @@ and OS-keyring credential storage.
 from __future__ import annotations
 
 import json
+import re
 from collections import deque
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 import structlog
@@ -33,6 +34,33 @@ logger = structlog.get_logger(__name__)
 
 _DEFAULT_TIMEOUT = 120.0
 _ERROR_BODY_SNIPPET_LEN = 500
+
+# Stable taxonomy the UI keys off (`ai.py`'s SSE `event: error` -> frontend
+# `ai.error.<kind>` i18n keys). `malformed_response` is also the fallback for
+# any HTTP failure this module doesn't have a more specific classification
+# for (an unexpected status code, or a 2xx response whose body/shape we can't
+# parse) -- "the backend responded, but not in a way we can make sense of".
+LLMErrorKind = Literal[
+    "quota_exhausted",
+    "auth",
+    "model_not_found",
+    "model_incompatible",
+    "unreachable",
+    "timeout",
+    "malformed_response",
+]
+
+# Marker Gemini's openai-compat endpoint includes in a 400 response body when a
+# function-calling request is missing/misusing `thought_signature` -- observed
+# for models that don't support tool calling the way this client drives it.
+_THOUGHT_SIGNATURE_MARKER = "thought_signature"
+
+# Gemini's quota-exceeded body embeds a human-readable "Please retry in Xs"
+# hint in `error.message`, and/or a structured `RetryInfo` detail with a
+# `retryDelay` field shaped like "34s" / "34.5s". Try the structured form
+# first; fall back to the free-text regex.
+_RETRY_DELAY_RE = re.compile(r"^(\d+(?:\.\d+)?)s$")
+_RETRY_IN_SECONDS_RE = re.compile(r"retry in\s+(\d+(?:\.\d+)?)\s*s", re.IGNORECASE)
 
 # Shared with `backend.api.translation`'s `_API_KEY_CREDENTIAL_GROUP`: the KB chatbot's
 # cloud backend reuses the same OS-keyring entry as translation, since both are "the
@@ -50,7 +78,35 @@ _LOCAL_DEFAULT_MODEL = "qwen2.5:14b"
 
 
 class LLMBackendError(RuntimeError):
-    """Raised when an OpenAI-compatible LLM backend returns a non-2xx HTTP response."""
+    """Raised when a call to an OpenAI-compatible LLM backend fails.
+
+    `kind` (`LLMErrorKind`) is the stable, typed taxonomy the UI keys off --
+    `backend/api/ai.py`'s SSE `event: error` carries it as `code`, which the
+    frontend maps to a localized `ai.error.<code>` message. It is NEVER derived
+    from `str(self)`: that message may include a raw provider response body
+    snippet (see `chat()`), which is log-only and must never reach the wire.
+
+    `status_code` is the HTTP status when the failure came from an HTTP
+    response (`None` for transport-level failures -- connect/timeout -- and for
+    `kind="model_incompatible"` raised from the agent's tool-calling loop
+    rather than an HTTP response). `retry_after_s` is populated only when the
+    provider told us how long to wait (a `Retry-After` header, or Gemini's
+    `RetryInfo` detail / "Please retry in Xs" message text) -- almost always
+    alongside `kind="quota_exhausted"`.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        kind: LLMErrorKind = "malformed_response",
+        status_code: int | None = None,
+        retry_after_s: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.status_code = status_code
+        self.retry_after_s = retry_after_s
 
 
 class OpenAICompatLLMClient:
@@ -93,23 +149,68 @@ class OpenAICompatLLMClient:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         url = f"{self._base_url}/chat/completions"
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code >= 400:
-                body_snippet = resp.text[:_ERROR_BODY_SNIPPET_LEN]
-                logger.warning(
-                    "llm_client.http_error",
-                    url=url,
-                    status=resp.status_code,
-                    body=body_snippet,
-                )
-                raise LLMBackendError(
-                    f"OpenAI-compatible LLM backend at {url} returned "
-                    f"HTTP {resp.status_code}: {body_snippet}"
-                )
-            data = resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+        except httpx.ConnectError as exc:
+            logger.warning("llm_client.unreachable", url=url, error=str(exc))
+            raise LLMBackendError(
+                f"could not connect to LLM backend at {url}: {exc}", kind="unreachable"
+            ) from exc
+        except httpx.ConnectTimeout as exc:
+            logger.warning("llm_client.unreachable_timeout", url=url, error=str(exc))
+            raise LLMBackendError(
+                f"timed out connecting to LLM backend at {url}: {exc}",
+                kind="unreachable",
+            ) from exc
+        except httpx.TimeoutException as exc:
+            logger.warning("llm_client.timeout", url=url, error=str(exc))
+            raise LLMBackendError(
+                f"LLM backend at {url} timed out after {self._timeout}s: {exc}",
+                kind="timeout",
+            ) from exc
 
-        return _parse_openai_response(data)
+        if resp.status_code >= 400:
+            body_snippet = resp.text[:_ERROR_BODY_SNIPPET_LEN]
+            kind, retry_after_s = _classify_http_error(resp)
+            logger.warning(
+                "llm_client.http_error",
+                url=url,
+                status=resp.status_code,
+                kind=kind,
+                body=body_snippet,
+            )
+            raise LLMBackendError(
+                f"OpenAI-compatible LLM backend at {url} returned "
+                f"HTTP {resp.status_code}: {body_snippet}",
+                kind=kind,
+                status_code=resp.status_code,
+                retry_after_s=retry_after_s,
+            )
+
+        try:
+            data = resp.json()
+        except json.JSONDecodeError as exc:
+            logger.warning("llm_client.invalid_json_response", url=url, error=str(exc))
+            raise LLMBackendError(
+                f"LLM backend at {url} returned a 2xx response with invalid JSON",
+                kind="malformed_response",
+            ) from exc
+
+        try:
+            return _parse_openai_response(data)
+        except (KeyError, TypeError, IndexError, AttributeError) as exc:
+            # Structural failures of the RESPONSE ENVELOPE itself (e.g. `choices[0]`
+            # isn't even an object) -- distinct from a malformed per-tool-call
+            # `function`/`arguments`, which `_parse_tool_call` already handles as a
+            # per-call `invalid_reason` rather than raising.
+            logger.warning(
+                "llm_client.unexpected_response_shape", url=url, error=str(exc)
+            )
+            raise LLMBackendError(
+                f"LLM backend at {url} returned an unexpected response shape",
+                kind="malformed_response",
+            ) from exc
 
 
 def _to_openai_messages(messages: list[dict]) -> list[dict]:
@@ -202,17 +303,53 @@ def _parse_openai_response(data: dict) -> LLMResponse:
     message = choices[0].get("message") or {}
     raw_tool_calls = message.get("tool_calls")
     if raw_tool_calls:
-        tool_calls = [
-            ToolCall(
-                name=tc["function"]["name"],
-                arguments=_parse_tool_arguments(tc["function"].get("arguments")),
-                id=tc.get("id", ""),
-            )
-            for tc in raw_tool_calls
-        ]
+        tool_calls = [_parse_tool_call(tc) for tc in raw_tool_calls]
         return LLMResponse(text=None, tool_calls=tool_calls)
 
     return LLMResponse(text=message.get("content") or "", tool_calls=[])
+
+
+def _parse_tool_call(tc: Any) -> ToolCall:
+    """Parse one raw OpenAI `tool_calls[]` entry into a `ToolCall`.
+
+    Weak/local models routinely emit truncated or malformed `arguments` JSON --
+    or an unexpected shape for the call entry itself (missing `function`/`name`
+    entirely). Rather than letting `JSONDecodeError`/`KeyError`/`TypeError`
+    escape `chat()` and crash the whole ask (see the "malformed tool calls
+    crash the whole ask" finding), any parse failure here is caught and turned
+    into a `ToolCall` with `invalid_reason` set -- `KnowledgeAgent` feeds that
+    back to the model as a `{"error": ...}` tool result instead of dispatching
+    it to `ToolRunner`, giving the model a chance to self-correct within its
+    step budget instead of aborting the ask.
+    """
+    call_id = tc.get("id", "") if isinstance(tc, dict) else ""
+    try:
+        function = tc["function"]
+        name = function["name"]
+        arguments = _parse_tool_arguments(function.get("arguments"))
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        name = _best_effort_tool_name(tc)
+        logger.warning(
+            "llm_client.malformed_tool_call", tool_name=name or None, error=str(exc)
+        )
+        reason = (
+            f"invalid arguments for tool '{name}': emit valid JSON matching its schema and retry"
+            if name
+            else "invalid tool call: the tool name/arguments could not be parsed -- retry with valid JSON"
+        )
+        return ToolCall(name=name, arguments={}, id=call_id, invalid_reason=reason)
+    return ToolCall(name=name, arguments=arguments, id=call_id)
+
+
+def _best_effort_tool_name(tc: Any) -> str:
+    """Recover a tool `name` for the error message even when `tc`'s shape is malformed."""
+    if isinstance(tc, dict):
+        function = tc.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+            if isinstance(name, str):
+                return name
+    return ""
 
 
 def _parse_tool_arguments(arguments: Any) -> dict:
@@ -222,6 +359,61 @@ def _parse_tool_arguments(arguments: Any) -> dict:
     if isinstance(arguments, str):
         return json.loads(arguments) if arguments else {}
     return {}
+
+
+def _classify_http_error(resp: httpx.Response) -> tuple[LLMErrorKind, float | None]:
+    """Classify a non-2xx HTTP response into `(kind, retry_after_s)`.
+
+    See `LLMErrorKind` for the taxonomy; anything not explicitly recognized
+    here falls back to `malformed_response` (a response we got, but can't
+    trust/make sense of).
+    """
+    status = resp.status_code
+    if status == 429:
+        return "quota_exhausted", _parse_retry_after(resp)
+    if status in (401, 403):
+        return "auth", None
+    if status == 404:
+        return "model_not_found", None
+    if status == 400 and _THOUGHT_SIGNATURE_MARKER in resp.text:
+        return "model_incompatible", None
+    return "malformed_response", None
+
+
+def _parse_retry_after(resp: httpx.Response) -> float | None:
+    """Best-effort seconds-to-wait from a 429: `Retry-After` header, else Gemini's
+    `RetryInfo` detail (`retryDelay: "34s"`), else a "Please retry in Xs" message."""
+    header = resp.headers.get("Retry-After")
+    if header:
+        try:
+            return float(header)
+        except ValueError:
+            pass  # HTTP-date form -- not worth parsing for this use case
+
+    try:
+        body = resp.json()
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error")
+    if not isinstance(error, dict):
+        return None
+
+    for detail in error.get("details") or []:
+        if isinstance(detail, dict):
+            delay = detail.get("retryDelay")
+            if isinstance(delay, str):
+                match = _RETRY_DELAY_RE.match(delay.strip())
+                if match:
+                    return float(match.group(1))
+
+    message = error.get("message")
+    if isinstance(message, str):
+        match = _RETRY_IN_SECONDS_RE.search(message)
+        if match:
+            return float(match.group(1))
+    return None
 
 
 async def build_llm_client_from_settings() -> OpenAICompatLLMClient | None:

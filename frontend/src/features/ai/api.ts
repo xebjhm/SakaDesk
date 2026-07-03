@@ -26,6 +26,41 @@ export interface AskOptions {
   conversationId?: string;
 }
 
+/** Extra fields an `AskError` may carry alongside its stable `code`. */
+export interface AskErrorParams {
+  retryAfterS?: number;
+  backend?: string;
+  model?: string;
+}
+
+/**
+ * Typed rejection for a failed `askKnowledge` call. `code` is the stable
+ * taxonomy the UI keys off (`ai.error.<code>` i18n lookup, see
+ * `ChatWindow.tsx`'s `ErrorTurn`) -- mirrors `backend/api/ai.py`'s SSE
+ * `event: error` `{code, message, retryAfterS?, backend, model}` contract for
+ * a structured server error, plus two client-only codes for failures that
+ * never reach that contract: `'network'` (the fetch itself failed, or the
+ * server responded but not with the SSE stream at all) and `'unknown'` (a
+ * malformed/truncated stream with no terminal event). `.message` is always
+ * still set (subclassing `Error`) so a caller that only reads `.message`
+ * (old code, `console.error`, etc.) keeps working.
+ */
+export class AskError extends Error {
+  readonly code: string;
+  readonly retryAfterS?: number;
+  readonly backend?: string;
+  readonly model?: string;
+
+  constructor(code: string, message: string, params?: AskErrorParams) {
+    super(message);
+    this.name = 'AskError';
+    this.code = code;
+    this.retryAfterS = params?.retryAfterS;
+    this.backend = params?.backend;
+    this.model = params?.model;
+  }
+}
+
 /** Raw `event: answer` payload as serialized by `_serialize_answer` — when
  * `noEvidence` is true the backend omits `sentences`/`citations` entirely. */
 interface RawAskAnswer {
@@ -113,16 +148,16 @@ export function askKnowledge(
           }),
         });
       } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)));
+        reject(new AskError('network', err instanceof Error ? err.message : String(err)));
         return;
       }
 
       if (!response.ok) {
-        reject(new Error(`Failed to ask knowledge base: ${response.status}`));
+        reject(new AskError('network', `Failed to ask knowledge base: ${response.status}`));
         return;
       }
       if (!response.body) {
-        reject(new Error('AI ask response has no readable body'));
+        reject(new AskError('network', 'AI ask response has no readable body'));
         return;
       }
 
@@ -144,8 +179,20 @@ export function askKnowledge(
             return true;
           }
           case 'error': {
-            const payload = JSON.parse(evt.data) as { message?: string };
-            reject(new Error(payload.message ?? 'AI ask failed'));
+            const payload = JSON.parse(evt.data) as {
+              code?: string;
+              message?: string;
+              retryAfterS?: number;
+              backend?: string | null;
+              model?: string | null;
+            };
+            reject(
+              new AskError(payload.code ?? 'unknown', payload.message ?? 'AI ask failed', {
+                retryAfterS: payload.retryAfterS,
+                backend: payload.backend ?? undefined,
+                model: payload.model ?? undefined,
+              })
+            );
             return true;
           }
           default:
@@ -189,10 +236,10 @@ export function askKnowledge(
         }
 
         if (!settled) {
-          reject(new Error('AI ask stream ended without a terminal event'));
+          reject(new AskError('unknown', 'AI ask stream ended without a terminal event'));
         }
       } catch (err) {
-        reject(err instanceof Error ? err : new Error(String(err)));
+        reject(new AskError('network', err instanceof Error ? err.message : String(err)));
       } finally {
         reader.releaseLock();
       }
