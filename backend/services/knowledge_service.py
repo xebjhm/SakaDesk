@@ -73,6 +73,7 @@ from backend.services.knowledge_store import (
     SqliteKnowledgeStore,
 )
 from backend.services.llm_client import LLMBackendError, build_llm_client_from_settings
+from backend.services.llm_usage import on_llm_request
 from backend.services.path_resolver import resolve_messages_file, resolve_service_path
 from backend.services.platform import get_app_data_dir
 from backend.services.settings_store import load_config, update_config
@@ -999,7 +1000,7 @@ class KnowledgeService:
             # the plaintext fallback engages). Rebuilding here is cheap (a settings
             # read + keyring load), so a transient failure never bricks the chatbot
             # until restart.
-            self._llm = await build_llm_client_from_settings()
+            self._llm = await build_llm_client_from_settings(on_request=on_llm_request)
             if self._llm is not None:
                 logger.info("knowledge_service.llm_client_recovered")
         if self._llm is None:
@@ -1534,7 +1535,7 @@ async def get_knowledge_service() -> KnowledgeService:
             except KnowledgeStoreVersionError as exc:
                 raise KnowledgeMisconfigured(str(exc)) from exc
             embedder = await _build_embedder()
-            llm = await build_llm_client_from_settings()
+            llm = await build_llm_client_from_settings(on_request=on_llm_request)
             _knowledge_service = KnowledgeService(
                 store=store, embedder=embedder, llm=llm
             )
@@ -1626,7 +1627,7 @@ async def invalidate_llm_client() -> None:
     """
     if _knowledge_service is None:
         return
-    llm = await build_llm_client_from_settings()
+    llm = await build_llm_client_from_settings(on_request=on_llm_request)
     _knowledge_service.reload_llm(llm)
 
 

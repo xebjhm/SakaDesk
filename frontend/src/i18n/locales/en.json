@@ -107,7 +107,34 @@
     "kbBaseUrl": "Base URL",
     "kbDetectHardware": "Detect hardware",
     "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}",
-    "kbReindexRequired": "The embedding model changed — rebuild the index to keep search results accurate."
+    "kbReindexRequired": "The embedding model changed — rebuild the index to keep search results accurate.",
+    "kbCustomModel": "Custom…",
+    "kbCustomModelPlaceholder": "Enter a model id",
+    "kbModelTier": {
+      "recommended": "Recommended",
+      "degraded": "Use with caution",
+      "blocked": "Blocked",
+      "unknown": "Unverified"
+    },
+    "kbModelNote": {
+      "flashLiteWeakToolCalling": "May skip tool calls on answerable questions — prefer gemini-2.5-flash for reliability.",
+      "gemini3ThoughtSignatureIncompatible": "Not compatible with this app's tool-calling integration yet — pick a gemini-2.5 model instead.",
+      "gemini20ZeroFreeQuota": "No free quota observed for this model — likely to hit quota limits immediately.",
+      "deepModeSlower": "Deep mode — slower and more thorough (about a minute per question).",
+      "recommendedSmallerFaster": "Smaller and faster — a good fit for less VRAM.",
+      "skippedToolCallOnJapanese": "May skip tool calls on some questions — prefer qwen3:30b for reliability."
+    },
+    "kbTest": "Test",
+    "kbTesting": "Testing…",
+    "kbTestVerdictOk": "Connected — tool calls work.",
+    "kbTestVerdictNoToolCall": "Connected, but this model answered without using the tool — it may give unreliable answers.",
+    "kbTestLatency": "{{ms}} ms",
+    "kbOllamaUnreachable": "Can't reach a local server at this address.",
+    "kbOllamaInstallHint": "Make sure Ollama is running, or install it from ollama.com.",
+    "kbModelNotInstalled": "Not installed yet — run:",
+    "kbCopyPullCommand": "Copy",
+    "kbCopiedPullCommand": "Copied!",
+    "kbUsageToday": "{{count}} of {{limit}} requests used today"
   },
   "time": {
     "minute": "{{count}} minute",
@@ -481,9 +508,26 @@
       "network": "Couldn't reach SakaDesk's backend. Check your connection and try again.",
       "not_configured": "The knowledge chatbot needs the embedding model installed before it can build an index. Download it in AI settings.",
       "already_running": "An index rebuild is already running for this service. It'll finish shortly — no need to try again.",
+      "model_blocked": "This model is blocked for the knowledge chatbot — it's known not to work with this app's tool-calling integration. Pick another model in AI settings.",
+      "cloud_consent_required": "This question would be sent to a cloud AI provider. Review and accept the privacy notice in AI settings, or switch to a local model.",
       "unknown": "Something went wrong answering that. Please try again.",
       "retryAfter": "You can try again in {{seconds}}s.",
       "openSettingsHint": "Open AI settings to fix this."
+    },
+    "quota": {
+      "left": "~{{count}} question left today",
+      "left_other": "~{{count}} questions left today",
+      "none": "No questions left today — try again tomorrow, or switch to a local model."
+    },
+    "cloudConsent": {
+      "title": "Before this question leaves your device",
+      "body": "Your question and excerpts of your synced content will be sent to {{provider}} to generate an answer. This only happens for the Cloud backend — nothing is sent anywhere when using a Local model.",
+      "accept": "I understand, continue",
+      "decline": "Cancel"
+    },
+    "badge": {
+      "cloud": "Cloud — data leaves this device",
+      "local": "Local — on-device"
     }
   },
   "voicePlayer": {

@@ -34,6 +34,10 @@ export const KNOWN_AI_ERROR_CODES = new Set([
     // `POST /api/ai/index/rebuild` 409 codes (P-4 review, Finding 1).
     'not_configured',
     'already_running',
+    // Product-wave Task 5: `PUT /api/ai/config` 400 (item 1) and the `/ask`
+    // SSE `event: error` cloud-consent gate (item 5).
+    'model_blocked',
+    'cloud_consent_required',
 ]);
 
 /** i18n key for a KB-chatbot error `code` -- see `KNOWN_AI_ERROR_CODES`. */

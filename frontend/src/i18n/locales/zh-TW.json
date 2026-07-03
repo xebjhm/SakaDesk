@@ -106,7 +106,34 @@
     "kbBaseUrl": "伺服器網址",
     "kbDetectHardware": "偵測硬體",
     "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}",
-    "kbReindexRequired": "嵌入模型已變更——請重建索引以保持搜尋結果準確。"
+    "kbReindexRequired": "嵌入模型已變更——請重建索引以保持搜尋結果準確。",
+    "kbCustomModel": "自訂…",
+    "kbCustomModelPlaceholder": "輸入模型 ID",
+    "kbModelTier": {
+      "recommended": "建議",
+      "degraded": "謹慎使用",
+      "blocked": "已封鎖",
+      "unknown": "未驗證"
+    },
+    "kbModelNote": {
+      "flashLiteWeakToolCalling": "在可回答的問題上可能跳過工具呼叫——如需可靠性請改用 gemini-2.5-flash。",
+      "gemini3ThoughtSignatureIncompatible": "目前與本應用程式的工具呼叫整合不相容——請改選 gemini-2.5 系列模型。",
+      "gemini20ZeroFreeQuota": "未觀察到此模型有免費額度，很可能立即觸發用量上限。",
+      "deepModeSlower": "深度模式——速度較慢但更細緻（每個問題約需一分鐘）。",
+      "recommendedSmallerFaster": "體積較小、速度較快——適合顯示卡記憶體較少的裝置。",
+      "skippedToolCallOnJapanese": "在部分問題上可能跳過工具呼叫——如需可靠性請改用 qwen3:30b。"
+    },
+    "kbTest": "測試",
+    "kbTesting": "測試中…",
+    "kbTestVerdictOk": "連線成功——工具呼叫正常運作。",
+    "kbTestVerdictNoToolCall": "已連線，但這個模型沒有呼叫工具就直接回答——回答可能不可靠。",
+    "kbTestLatency": "{{ms}} 毫秒",
+    "kbOllamaUnreachable": "無法連線到這個位址的本機伺服器。",
+    "kbOllamaInstallHint": "請確認 Ollama 正在執行，或到 ollama.com 安裝。",
+    "kbModelNotInstalled": "尚未安裝——請執行：",
+    "kbCopyPullCommand": "複製",
+    "kbCopiedPullCommand": "已複製！",
+    "kbUsageToday": "今天已使用 {{count}} / {{limit}} 次"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -480,9 +507,26 @@
       "network": "無法連線到 SakaDesk 的後端。請檢查網路連線後再試一次。",
       "not_configured": "知識庫需要先安裝嵌入模型才能建立索引。請到「設定 → AI」下載。",
       "already_running": "這個服務的索引重建已經在執行中，請稍後再試。",
+      "model_blocked": "這個模型已被知識庫聊天機器人封鎖——已知無法配合本應用程式的工具呼叫整合使用。請到「設定 → AI」改選其他模型。",
+      "cloud_consent_required": "這個問題會被傳送給雲端 AI 供應商。請到「設定 → AI」檢視並同意隱私權聲明，或改用本機模型。",
       "unknown": "回答問題時發生問題。請再試一次。",
       "retryAfter": "你可以在 {{seconds}} 秒後重試。",
       "openSettingsHint": "開啟「設定 → AI」來解決此問題。"
+    },
+    "quota": {
+      "left": "今天還可以問大約 {{count}} 個問題",
+      "left_other": "今天還可以問大約 {{count}} 個問題",
+      "none": "今天的提問次數已經用完——請明天再試，或改用本機模型。"
+    },
+    "cloudConsent": {
+      "title": "在這個問題離開你的裝置之前",
+      "body": "你的問題與已同步內容的摘錄會被傳送給 {{provider}} 以產生答案。這只會在使用雲端後端時發生——使用本機模型時不會傳送任何內容。",
+      "accept": "我瞭解，繼續",
+      "decline": "取消"
+    },
+    "badge": {
+      "cloud": "雲端 — 資料會離開這台裝置",
+      "local": "本機 — 在裝置上處理"
     }
   },
   "voicePlayer": {

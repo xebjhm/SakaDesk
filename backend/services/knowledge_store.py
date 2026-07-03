@@ -102,6 +102,28 @@ _SCHEMA_V2_STATEMENTS: tuple[str, ...] = (
     """,
 )
 
+# Migration 3 (Product-wave Task 5, item 3): `kb_usage`, the LLM request
+# ledger backing `GET /api/ai/usage`'s "~N questions left today" meter --
+# see `backend.services.llm_usage`. That module deliberately does NOT go
+# through `SqliteKnowledgeStore`/`self._conn` for its reads/writes (a usage
+# write can happen while `KnowledgeService._store_lock` is held for an
+# in-flight ask -- see `llm_usage`'s module docstring for the deadlock
+# rationale); it opens its own tiny connection straight to this same db file
+# instead. This migration exists anyway so `PRAGMA user_version`/the
+# `_MIGRATIONS` history stays the single source of truth for this file's
+# schema, and so a fresh install that never happens to call `llm_usage`
+# before `SqliteKnowledgeStore` still ends up with the table.
+_SCHEMA_V3_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS kb_usage (
+        model TEXT NOT NULL,
+        day TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (model, day)
+    )
+    """,
+)
+
 
 def _migrate_to_v1(conn: sqlite3.Connection) -> None:
     for statement in _SCHEMA_V1_STATEMENTS:
@@ -113,12 +135,18 @@ def _migrate_to_v2(conn: sqlite3.Connection) -> None:
         conn.execute(statement)
 
 
+def _migrate_to_v3(conn: sqlite3.Connection) -> None:
+    for statement in _SCHEMA_V3_STATEMENTS:
+        conn.execute(statement)
+
+
 # Index `i` migrates a db from version `i` to version `i + 1`. Append here,
 # never edit/remove a past entry -- a released migration is a historical
 # fact for every db file that already ran it.
 _MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
     _migrate_to_v1,
     _migrate_to_v2,
+    _migrate_to_v3,
 ]
 _LATEST_SCHEMA_VERSION = len(_MIGRATIONS)
 

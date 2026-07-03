@@ -1,20 +1,33 @@
 // frontend/src/features/ai/__tests__/AiFeature.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiFeature } from '../AiFeature';
 import type { AskAnswer } from '../api';
+
+interface FetchStubOverrides {
+    /** `GET /api/ai/config`'s response -- defaults to an empty object (no
+     * `backend` field), which keeps `AiFeature`'s cloud-consent gate a no-op
+     * for every pre-existing test below (`backendKind` stays `null`). */
+    config?: Record<string, unknown>;
+    /** `GET /api/ai/consent`'s response. */
+    consent?: Record<string, unknown>;
+    /** `GET /api/ai/usage`'s response. */
+    usage?: Record<string, unknown>;
+    onConsentPost?: () => void;
+}
 
 // `ChatWindow`'s empty state now mounts `SetupChecklist`, which fetches
 // `GET /api/ai/readiness` on mount (Product-wave Task 4, item 3) and keeps
 // the chat input disabled until it reports fully configured -- stub a
 // permanently-ready response so these ask-flow tests (which predate that
 // gate) keep exercising the input the moment it renders, same as before.
-function stubReadyFetch() {
+function stubReadyFetch(overrides: FetchStubOverrides = {}) {
     vi.stubGlobal(
         'fetch',
-        vi.fn((input: string | URL | Request) => {
+        vi.fn((input: string | URL | Request, init?: RequestInit) => {
             const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
             if (url === '/api/ai/readiness') {
                 return Promise.resolve({
                     ok: true,
@@ -27,15 +40,44 @@ function stubReadyFetch() {
                         }),
                 });
             }
+            if (url === '/api/ai/config' && method === 'GET') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(overrides.config ?? {}) });
+            }
+            if (url === '/api/ai/consent' && method === 'GET') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve(overrides.consent ?? { granted: false, consentedAt: null }),
+                });
+            }
+            if (url === '/api/ai/consent' && method === 'POST') {
+                overrides.onConsentPost?.();
+                return Promise.resolve({
+                    ok: true,
+                    json: () => Promise.resolve({ ok: true, consentedAt: '2026-07-01T00:00:00+00:00' }),
+                });
+            }
+            if (url === '/api/ai/usage') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve(
+                            overrides.usage ?? { model: 'x', requestsToday: 0, dailyLimit: null, estQuestionsLeft: null }
+                        ),
+                });
+            }
             return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
         })
     );
 }
 
 const { mockAskKnowledge } = vi.hoisted(() => ({ mockAskKnowledge: vi.fn() }));
-vi.mock('../api', () => ({
-    askKnowledge: mockAskKnowledge,
-}));
+vi.mock('../api', async (importOriginal) => {
+    // Keep the REAL `providerNameFromBaseUrl`/`canonicalMemberId` (pure helpers
+    // `AiFeature` also imports from this module) — only `askKnowledge` (the
+    // SSE network call) is mocked.
+    const actual = await importOriginal<typeof import('../api')>();
+    return { ...actual, askKnowledge: mockAskKnowledge };
+});
 
 const { mockNavigateToSource } = vi.hoisted(() => ({ mockNavigateToSource: vi.fn() }));
 vi.mock('../../../utils/navigateToSource', () => ({
@@ -210,5 +252,139 @@ describe('AiFeature', () => {
 
         expect(await screen.findByText(/ollama/i)).toBeInTheDocument();
         expect(screen.queryByText('Open AI settings to fix this.')).toBeNull();
+    });
+
+    describe('cloud-privacy consent gate (Product-wave Task 5, item 5)', () => {
+        const CLOUD_CONFIG = {
+            backend: 'cloud',
+            base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+            model: 'gemini-2.5-flash',
+        };
+        const NOT_CONSENTED = { granted: false, consentedAt: null };
+
+        it('shows the consent modal before the first cloud ask, without calling askKnowledge', async () => {
+            stubReadyFetch({ config: CLOUD_CONFIG, consent: NOT_CONSENTED });
+
+            render(<AiFeature />);
+            await askQuestion('will this ask the cloud?');
+
+            expect(await screen.findByText('Before this question leaves your device')).toBeInTheDocument();
+            expect(screen.getByText(/Google/)).toBeInTheDocument();
+            expect(mockAskKnowledge).not.toHaveBeenCalled();
+        });
+
+        it('declining the modal never sends the question', async () => {
+            stubReadyFetch({ config: CLOUD_CONFIG, consent: NOT_CONSENTED });
+
+            render(<AiFeature />);
+            await askQuestion('will this ask the cloud?');
+            await screen.findByText('Before this question leaves your device');
+
+            await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+            expect(mockAskKnowledge).not.toHaveBeenCalled();
+            expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
+        });
+
+        it('accepting the modal POSTs /api/ai/consent and sends the pending question', async () => {
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            const onConsentPost = vi.fn();
+            stubReadyFetch({ config: CLOUD_CONFIG, consent: NOT_CONSENTED, onConsentPost });
+
+            render(<AiFeature />);
+            await askQuestion('will this ask the cloud?');
+            await screen.findByText('Before this question leaves your device');
+
+            await userEvent.click(screen.getByRole('button', { name: 'I understand, continue' }));
+
+            await waitFor(() => expect(onConsentPost).toHaveBeenCalled());
+            await waitFor(() =>
+                expect(mockAskKnowledge).toHaveBeenCalledWith(
+                    'hinatazaka46',
+                    'will this ask the cloud?',
+                    expect.any(String),
+                    expect.any(Function)
+                )
+            );
+            expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
+        });
+
+        it('the local backend never shows the consent modal', async () => {
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            stubReadyFetch({
+                config: { backend: 'local', base_url: 'http://localhost:11434/v1', model: 'qwen3:30b' },
+                consent: NOT_CONSENTED,
+            });
+
+            render(<AiFeature />);
+            await askQuestion('local question');
+
+            expect(mockAskKnowledge).toHaveBeenCalled();
+            expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
+        });
+
+        it('an already-granted consent never shows the modal', async () => {
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            stubReadyFetch({
+                config: CLOUD_CONFIG,
+                consent: { granted: true, consentedAt: '2026-06-01T00:00:00+00:00' },
+            });
+
+            render(<AiFeature />);
+            await askQuestion('already consented');
+
+            expect(mockAskKnowledge).toHaveBeenCalled();
+            expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
+        });
+    });
+
+    describe('usage meter + backend badge (Product-wave Task 5, items 3 + 5)', () => {
+        it('renders the composer usage meter with the remaining question estimate', async () => {
+            stubReadyFetch({
+                usage: { model: 'gemini-2.5-flash', requestsToday: 4, dailyLimit: 20, estQuestionsLeft: 4 },
+            });
+
+            render(<AiFeature />);
+            await screen.findByPlaceholderText('Ask a question...');
+
+            expect(await screen.findByText('~4 questions left today')).toBeInTheDocument();
+        });
+
+        it('renders no meter at all when the backend is unlimited', async () => {
+            stubReadyFetch({
+                usage: { model: 'qwen3:30b', requestsToday: 10, dailyLimit: null, estQuestionsLeft: null },
+            });
+
+            render(<AiFeature />);
+            await screen.findByPlaceholderText('Ask a question...');
+
+            expect(screen.queryByTestId('usage-meter')).not.toBeInTheDocument();
+        });
+
+        it('renders the Cloud badge when the configured backend is cloud', async () => {
+            stubReadyFetch({
+                config: {
+                    backend: 'cloud',
+                    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+                    model: 'gemini-2.5-flash',
+                },
+            });
+
+            render(<AiFeature />);
+            await screen.findByPlaceholderText('Ask a question...');
+
+            expect(await screen.findByText('Cloud — data leaves this device')).toBeInTheDocument();
+        });
+
+        it('renders the Local badge when the configured backend is local', async () => {
+            stubReadyFetch({
+                config: { backend: 'local', base_url: 'http://localhost:11434/v1', model: 'qwen3:30b' },
+            });
+
+            render(<AiFeature />);
+            await screen.findByPlaceholderText('Ask a question...');
+
+            expect(await screen.findByText('Local — on-device')).toBeInTheDocument();
+        });
     });
 });

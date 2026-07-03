@@ -106,7 +106,34 @@
     "kbBaseUrl": "ベースURL",
     "kbDetectHardware": "ハードウェアを検出",
     "kbSuggestion": "{{gpu}}・{{vram}}GB → {{target}}",
-    "kbReindexRequired": "埋め込みモデルが変更されました。検索結果を正確に保つためにインデックスを再作成してください。"
+    "kbReindexRequired": "埋め込みモデルが変更されました。検索結果を正確に保つためにインデックスを再作成してください。",
+    "kbCustomModel": "カスタム…",
+    "kbCustomModelPlaceholder": "モデルIDを入力",
+    "kbModelTier": {
+      "recommended": "推奨",
+      "degraded": "注意して使用",
+      "blocked": "ブロック中",
+      "unknown": "未検証"
+    },
+    "kbModelNote": {
+      "flashLiteWeakToolCalling": "回答可能な質問でもツール呼び出しをスキップすることがあります。信頼性を重視するなら gemini-2.5-flash をお勧めします。",
+      "gemini3ThoughtSignatureIncompatible": "このアプリのツール呼び出し連携にまだ対応していません。代わりに gemini-2.5 系のモデルを選んでください。",
+      "gemini20ZeroFreeQuota": "このモデルには無料利用枠が確認されていません。すぐに利用上限に達する可能性があります。",
+      "deepModeSlower": "ディープモード — より低速ですが、より丁寧に回答します（1問あたり約1分）。",
+      "recommendedSmallerFaster": "小型で高速 — VRAMが少ない環境に適しています。",
+      "skippedToolCallOnJapanese": "一部の質問でツール呼び出しをスキップすることがあります。信頼性を重視するなら qwen3:30b をお勧めします。"
+    },
+    "kbTest": "テスト",
+    "kbTesting": "テスト中…",
+    "kbTestVerdictOk": "接続成功 — ツール呼び出しは正常に動作します。",
+    "kbTestVerdictNoToolCall": "接続はできましたが、このモデルはツールを使わずに応答しました。回答の信頼性が低い可能性があります。",
+    "kbTestLatency": "{{ms}} ms",
+    "kbOllamaUnreachable": "このアドレスのローカルサーバーに接続できません。",
+    "kbOllamaInstallHint": "Ollamaが起動しているか確認するか、ollama.com からインストールしてください。",
+    "kbModelNotInstalled": "まだインストールされていません。次のコマンドを実行してください:",
+    "kbCopyPullCommand": "コピー",
+    "kbCopiedPullCommand": "コピーしました！",
+    "kbUsageToday": "本日の利用: {{count}} / {{limit}} 回"
   },
   "time": {
     "minute": "{{count}}分",
@@ -480,9 +507,26 @@
       "network": "SakaDeskのバックエンドに接続できません。インターネット接続を確認してもう一度お試しください。",
       "not_configured": "埋め込みモデルをインストールしてからインデックスを作成できます。設定 → AI でダウンロードしてください。",
       "already_running": "このサービスのインデックス作成はすでに実行中です。しばらくしてからもう一度お試しください。",
+      "model_blocked": "このモデルはナレッジチャットボットではブロックされています。このアプリのツール呼び出し連携では動作しないことが分かっています。設定 → AI で別のモデルを選んでください。",
+      "cloud_consent_required": "この質問はクラウドAIプロバイダーに送信されます。設定 → AI でプライバシー通知を確認・同意するか、ローカルモデルに切り替えてください。",
       "unknown": "回答の生成中に問題が発生しました。もう一度お試しください。",
       "retryAfter": "{{seconds}}秒後にもう一度お試しいただけます。",
       "openSettingsHint": "設定 → AI を開いて解決してください。"
+    },
+    "quota": {
+      "left": "本日はあと約{{count}}件質問できます",
+      "left_other": "本日はあと約{{count}}件質問できます",
+      "none": "本日の質問回数が上限に達しました。明日また試すか、ローカルモデルに切り替えてください。"
+    },
+    "cloudConsent": {
+      "title": "この質問を送信する前に",
+      "body": "あなたの質問と同期済みコンテンツの抜粋が、回答生成のために{{provider}}へ送信されます。これはクラウドバックエンドを使用する場合のみです — ローカルモデル使用時は何も送信されません。",
+      "accept": "理解した上で続ける",
+      "decline": "キャンセル"
+    },
+    "badge": {
+      "cloud": "クラウド — データが端末外に送信されます",
+      "local": "ローカル — 端末内で処理"
     }
   },
   "voicePlayer": {

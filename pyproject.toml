@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.14.13",
     "pre-commit>=4.5.1",
     "respx>=0.22.0",
+    "time-machine>=3.2.0",
 ]
 
 [tool.pytest.ini_options]

@@ -22,7 +22,11 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from zoneinfo import ZoneInfo
 
+import httpx
 import pytest
+import respx
+import structlog.testing
+import time_machine
 from fastapi.testclient import TestClient
 
 import backend.api.ai as ai_module
@@ -39,10 +43,28 @@ from pysaka.knowledge.models import Answer, AnswerSentence, Citation, Scope, Sou
 
 client = TestClient(app)
 
+# Captured at import time, BEFORE the module's autouse
+# `_cloud_consent_granted_by_default` fixture monkeypatches
+# `ai_module._cloud_consent_required` per-test -- `TestCloudConsentGating`
+# needs the REAL function (not whatever the module attribute currently
+# points at, which during a test IS the autouse mock).
+_real_cloud_consent_required = ai_module._cloud_consent_required
+
 
 @pytest.fixture(autouse=True)
 def _kb_enabled_by_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=True))
+
+
+@pytest.fixture(autouse=True)
+def _cloud_consent_granted_by_default(monkeypatch: pytest.MonkeyPatch):
+    """Mirrors `_kb_enabled_by_default`: every pre-existing ask test below
+    keeps exercising the "consent already granted" path without having to
+    isolate settings itself; `TestCloudConsentGating` overrides this locally
+    to cover the actual gating behavior (item 5)."""
+    monkeypatch.setattr(
+        ai_module, "_cloud_consent_required", AsyncMock(return_value=False)
+    )
 
 
 def _extract_event_data(text: str, event: str) -> dict:
@@ -867,7 +889,14 @@ class TestConfig:
                 },
             )
         assert r.status_code == 200
-        assert r.json() == {"ok": True}
+        # `qwen2.5:14b` (local) is a curated `degraded` entry (Task 5, item 1:
+        # "skipped a tool call on a JP question, observed live") -- the
+        # response echoes the registry verdict so the UI can warn.
+        assert r.json() == {
+            "ok": True,
+            "tier": "degraded",
+            "noteKey": "skippedToolCallOnJapanese",
+        }
         mock_invalidate.assert_awaited_once()
 
         r2 = client.get("/api/ai/config")
@@ -875,6 +904,7 @@ class TestConfig:
             "backend": "local",
             "base_url": "http://localhost:11434/v1",
             "model": "qwen2.5:14b",
+            "daily_limit": None,
         }
 
     def test_put_config_does_not_alias_shared_defaults(self, tmp_path, monkeypatch):
@@ -920,6 +950,7 @@ class TestConfig:
             "backend": "local",
             "base_url": "http://localhost:11434/v1",
             "model": "qwen2.5:14b",
+            "daily_limit": None,
         }
 
     def test_put_config_invalid_backend_returns_4xx(self, tmp_path, monkeypatch):
@@ -1324,3 +1355,612 @@ class TestModelDownloadEndpoints:
         await asyncio.gather(*pending, return_exceptions=True)
         await asyncio.sleep(0)
         manager.start.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5: curated model registry + blocked-pattern rejection
+# ---------------------------------------------------------------------------
+
+
+class TestPutConfigBlockedModel:
+    def test_blocked_pattern_returns_400_model_blocked(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "cloud",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "model": "gemini-3-pro",
+                },
+            )
+        assert r.status_code == 400
+        assert r.json()["detail"]["code"] == "model_blocked"
+        assert r.json()["detail"]["message"]
+        assert r.json()["detail"]["noteKey"]
+
+    def test_blocked_model_is_never_persisted(self, tmp_path, monkeypatch):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "cloud",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "model": "gemini-3-pro",
+                },
+            )
+        assert not settings_path.exists()
+
+    def test_recommended_model_response_has_no_note(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "cloud",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "model": "gemini-2.5-flash",
+                },
+            )
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "tier": "recommended", "noteKey": None}
+
+    def test_unknown_model_is_accepted_with_unknown_tier(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "local",
+                    "base_url": "http://localhost:11434/v1",
+                    "model": "llama3",
+                },
+            )
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "tier": "unknown", "noteKey": None}
+
+    def test_put_config_preserves_an_existing_daily_limit_override(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "cloud",
+                            "base_url": "x",
+                            "model": "gemini-2.5-flash",
+                            "daily_limit": 5,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch("backend.api.ai.invalidate_llm_client", AsyncMock()):
+            r = client.put(
+                "/api/ai/config",
+                json={
+                    "backend": "cloud",
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                    "model": "gemini-2.5-flash",
+                },
+            )
+        assert r.status_code == 200
+        cfg = asyncio.run(load_config())
+        assert cfg["knowledge_base"]["llm"]["daily_limit"] == 5
+
+
+class TestListModels:
+    def test_cloud_returns_curated_entries_only(self):
+        r = client.get("/api/ai/models", params={"backend": "cloud"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["backend"] == "cloud"
+        ids = {m["id"] for m in body["models"]}
+        assert ids == {"gemini-2.5-flash", "gemini-2.5-flash-lite"}
+        by_id = {m["id"]: m for m in body["models"]}
+        assert by_id["gemini-2.5-flash"]["tier"] == "recommended"
+        assert by_id["gemini-2.5-flash-lite"]["tier"] == "degraded"
+        assert "ollamaReachable" not in body
+
+    def test_invalid_backend_returns_400(self):
+        r = client.get("/api/ai/models", params={"backend": "carrier-pigeon"})
+        assert r.status_code == 400
+
+    def test_local_merges_curated_with_live_probed_models(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        fake_probe = AsyncMock(
+            return_value={"reachable": True, "models": ["qwen3:30b", "a-custom-model"]}
+        )
+        with patch("backend.api.ai.ollama.probe", fake_probe):
+            r = client.get(
+                "/api/ai/models",
+                params={"backend": "local", "base_url": "http://localhost:11434/v1"},
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ollamaReachable"] is True
+        by_id = {m["id"]: m for m in body["models"]}
+        # Curated + installed.
+        assert by_id["qwen3:30b"]["tier"] == "recommended"
+        assert by_id["qwen3:30b"]["installed"] is True
+        # Curated but NOT installed.
+        assert by_id["qwen2.5:14b"]["installed"] is False
+        # Live but not curated -- unknown tier, still surfaced.
+        assert by_id["a-custom-model"] == {
+            "id": "a-custom-model",
+            "tier": "unknown",
+            "noteKey": None,
+            "installed": True,
+        }
+        fake_probe.assert_awaited_once_with("http://localhost:11434/v1")
+
+    def test_local_unreachable_still_returns_the_curated_list(
+        self, tmp_path, monkeypatch
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
+        fake_probe = AsyncMock(return_value={"reachable": False, "models": []})
+        with patch("backend.api.ai.ollama.probe", fake_probe):
+            r = client.get(
+                "/api/ai/models",
+                params={"backend": "local", "base_url": "http://localhost:11434/v1"},
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ollamaReachable"] is False
+        assert all(not m["installed"] for m in body["models"])
+
+    def test_local_without_base_url_param_falls_back_to_configured_settings(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "local",
+                            "base_url": "http://myhost:9999/v1",
+                            "model": "m",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        fake_probe = AsyncMock(return_value={"reachable": True, "models": []})
+        with patch("backend.api.ai.ollama.probe", fake_probe):
+            client.get("/api/ai/models", params={"backend": "local"})
+        fake_probe.assert_awaited_once_with("http://myhost:9999/v1")
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5, item 2: POST /api/ai/config/test
+# ---------------------------------------------------------------------------
+
+
+class TestConfigTest:
+    _URL = "http://localhost:11434/v1/chat/completions"
+
+    def _post(self, backend="local", base_url="http://localhost:11434/v1", model="m"):
+        return client.post(
+            "/api/ai/config/test",
+            json={"backend": backend, "base_url": base_url, "model": model},
+        )
+
+    @respx.mock
+    def test_forced_tool_call_response_is_ok(self):
+        respx.post(self._URL).mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "probe_tool",
+                                            "arguments": '{"ack": true}',
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+        r = self._post()
+        assert r.status_code == 200
+        body = r.json()
+        assert body["ok"] is True
+        assert body["verdict"] == "ok"
+        assert isinstance(body["latencyMs"], int)
+
+    @respx.mock
+    def test_text_only_response_is_no_tool_call(self):
+        respx.post(self._URL).mock(
+            return_value=httpx.Response(
+                200, json={"choices": [{"message": {"content": "I can't do that"}}]}
+            )
+        )
+        r = self._post()
+        body = r.json()
+        assert body == {
+            "ok": False,
+            "verdict": "no_tool_call",
+            "latencyMs": body["latencyMs"],
+        }
+
+    @respx.mock
+    def test_429_is_quota_exhausted(self):
+        respx.post(self._URL).mock(
+            return_value=httpx.Response(429, text="rate limited")
+        )
+        r = self._post()
+        body = r.json()
+        assert body["ok"] is False
+        assert body["verdict"] == "quota_exhausted"
+
+    @respx.mock
+    def test_connect_error_is_unreachable(self):
+        respx.post(self._URL).mock(side_effect=httpx.ConnectError("refused"))
+        r = self._post()
+        assert r.json()["verdict"] == "unreachable"
+
+    @respx.mock
+    def test_401_is_auth(self):
+        respx.post(self._URL).mock(
+            return_value=httpx.Response(401, text="unauthorized")
+        )
+        r = self._post()
+        assert r.json()["verdict"] == "auth"
+
+    def test_invalid_backend_returns_400(self):
+        r = self._post(backend="carrier-pigeon")
+        assert r.status_code == 400
+
+    def test_empty_model_returns_400(self):
+        r = self._post(model="  ")
+        assert r.status_code == 400
+
+    def test_empty_base_url_returns_400(self):
+        r = self._post(base_url="  ")
+        assert r.status_code == 400
+
+    @respx.mock
+    def test_draft_config_is_never_persisted(self, tmp_path, monkeypatch):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        respx.post(self._URL).mock(
+            return_value=httpx.Response(
+                200, json={"choices": [{"message": {"content": "x"}}]}
+            )
+        )
+        r = self._post(model="totally-different-untested-model")
+        assert r.status_code == 200
+        assert not settings_path.exists()
+
+    @respx.mock
+    def test_cloud_backend_loads_api_key_from_keyring_and_never_logs_it(self):
+        route = respx.post("https://example.test/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "1",
+                                        "type": "function",
+                                        "function": {
+                                            "name": "probe_tool",
+                                            "arguments": "{}",
+                                        },
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+            )
+        )
+        with patch("backend.services.llm_client.get_token_manager") as mock_tm:
+            mock_tm.return_value.store.load.return_value = {
+                "api_key": "super-secret-key"
+            }
+            with structlog.testing.capture_logs() as captured_logs:
+                r = self._post(
+                    backend="cloud",
+                    base_url="https://example.test/v1",
+                    model="gemini-x",
+                )
+
+        assert r.status_code == 200
+        assert (
+            route.calls[0].request.headers["Authorization"] == "Bearer super-secret-key"
+        )
+        assert "super-secret-key" not in r.text
+        assert all(
+            "super-secret-key" not in json.dumps(entry, default=str)
+            for entry in captured_logs
+        )
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5, item 4: GET /api/ai/local/probe
+# ---------------------------------------------------------------------------
+
+
+class TestLocalProbeEndpoint:
+    def test_passes_through_ollama_probe(self):
+        fake_probe = AsyncMock(
+            return_value={"reachable": True, "models": ["qwen3:30b"]}
+        )
+        with patch("backend.api.ai.ollama.probe", fake_probe):
+            r = client.get(
+                "/api/ai/local/probe", params={"base_url": "http://localhost:11434/v1"}
+            )
+        assert r.status_code == 200
+        assert r.json() == {"reachable": True, "models": ["qwen3:30b"]}
+        fake_probe.assert_awaited_once_with("http://localhost:11434/v1")
+
+    def test_missing_base_url_returns_422(self):
+        r = client.get("/api/ai/local/probe")
+        assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5, item 3: GET /api/ai/usage + quota-error enrichment
+# ---------------------------------------------------------------------------
+
+
+class TestUsageEndpoint:
+    def test_defaults_to_the_configured_cloud_model(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        _isolate_settings(tmp_path, monkeypatch)
+        r = client.get("/api/ai/usage")
+        assert r.status_code == 200
+        assert r.json() == {
+            "model": "gemini-2.5-flash",
+            "requestsToday": 0,
+            "dailyLimit": 20,
+            "estQuestionsLeft": 5,
+        }
+
+    def test_reflects_recorded_requests(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        _isolate_settings(tmp_path, monkeypatch)
+        from backend.services.llm_usage import record_request
+
+        record_request("gemini-2.5-flash")
+        record_request("gemini-2.5-flash")
+        r = client.get("/api/ai/usage")
+        body = r.json()
+        assert body["requestsToday"] == 2
+        assert body["estQuestionsLeft"] == 4  # (20-2)//4
+
+    def test_local_backend_is_unlimited(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "local",
+                            "base_url": "http://localhost:11434/v1",
+                            "model": "qwen3:30b",
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        r = client.get("/api/ai/usage")
+        body = r.json()
+        assert body["dailyLimit"] is None
+        assert body["estQuestionsLeft"] is None
+
+    def test_settings_override_wins(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "cloud",
+                            "base_url": "x",
+                            "model": "gemini-2.5-flash",
+                            "daily_limit": 8,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        r = client.get("/api/ai/usage")
+        assert r.json()["dailyLimit"] == 8
+
+
+class TestQuotaErrorEnrichment:
+    def test_quota_exhausted_sse_event_carries_usage_numbers(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        _isolate_settings(tmp_path, monkeypatch)
+        from backend.services.llm_usage import record_request
+
+        record_request("gemini-2.5-flash")
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = LLMBackendError(
+                "quota exceeded", kind="quota_exhausted", status_code=429
+            )
+            r = client.post(
+                "/api/ai/ask",
+                json={"question": "?", "service": "hinatazaka46", "tz": "Asia/Tokyo"},
+            )
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "quota_exhausted"
+        assert data["requestsToday"] == 1
+        assert data["dailyLimit"] == 20
+        assert data["estQuestionsLeft"] == 4
+
+    def test_non_quota_error_has_no_usage_numbers(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = LLMBackendError("x", kind="timeout")
+            r = client.post(
+                "/api/ai/ask",
+                json={"question": "?", "service": "hinatazaka46", "tz": "Asia/Tokyo"},
+            )
+        data = _extract_event_data(r.text, "error")
+        assert "requestsToday" not in data
+        assert "estQuestionsLeft" not in data
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5, item 5: cloud consent
+# ---------------------------------------------------------------------------
+
+
+class TestCloudConsentEndpoints:
+    def test_get_defaults_to_not_granted(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        r = client.get("/api/ai/consent")
+        assert r.json() == {"granted": False, "consentedAt": None}
+
+    def test_post_grants_and_persists_a_timestamp(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with time_machine.travel("2026-07-01T12:00:00+00:00", tick=False):
+            r = client.post("/api/ai/consent")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+        assert r.json()["consentedAt"] == "2026-07-01T12:00:00+00:00"
+
+        r2 = client.get("/api/ai/consent")
+        assert r2.json() == {
+            "granted": True,
+            "consentedAt": "2026-07-01T12:00:00+00:00",
+        }
+
+
+class TestCloudConsentGating:
+    """`_run_ask`'s consent gate (item 5) -- overrides the module's autouse
+    `_cloud_consent_granted_by_default` patch locally to exercise the real
+    settings-driven check."""
+
+    def _ask(self):
+        return client.post(
+            "/api/ai/ask",
+            json={"question": "?", "service": "hinatazaka46", "tz": "Asia/Tokyo"},
+        )
+
+    def test_cloud_backend_without_consent_streams_cloud_consent_required(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(
+            ai_module, "_cloud_consent_required", _real_cloud_consent_required
+        )
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {"backend": "cloud"},
+                        "cloud_consent": False,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "cloud_consent_required"
+        assert data["message"]
+        g.assert_not_called()
+
+    def test_cloud_backend_with_consent_proceeds(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            ai_module, "_cloud_consent_required", _real_cloud_consent_required
+        )
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {"backend": "cloud"},
+                        "cloud_consent": True,
+                        "cloud_consent_at": "2026-07-01T00:00:00+00:00",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = self._ask()
+        assert "event: answer" in r.text
+        g.assert_called_once()
+
+    def test_local_backend_never_requires_consent(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            ai_module, "_cloud_consent_required", _real_cloud_consent_required
+        )
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {
+                            "backend": "local",
+                            "base_url": "http://localhost:11434/v1",
+                            "model": "m",
+                        },
+                        "cloud_consent": False,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = self._ask()
+        assert "event: answer" in r.text
+        g.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cloud_consent_required_helper_reads_settings_directly(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = _isolate_settings(tmp_path, monkeypatch)
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"llm": {"backend": "cloud"}}}),
+            encoding="utf-8",
+        )
+        assert await _real_cloud_consent_required() is True
+
+        settings_path.write_text(
+            json.dumps(
+                {
+                    "knowledge_base": {
+                        "llm": {"backend": "local"},
+                        "cloud_consent": False,
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert await _real_cloud_consent_required() is False

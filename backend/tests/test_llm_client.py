@@ -24,6 +24,7 @@ from backend.services.llm_client import (
     _parse_openai_response,
     _parse_tool_arguments,
     _to_openai_messages,
+    build_llm_client_from_draft,
     build_llm_client_from_settings,
 )
 
@@ -844,3 +845,190 @@ async def test_build_from_settings_local_defaults_when_partial_config():
 
     body = json.loads(route.calls[0].request.content)
     assert body["model"] == "qwen2.5:14b"
+
+
+# --- `on_request` usage-tracking hook (Product-wave Task 5, item 3) ------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_success_calls_on_request_with_success_outcome():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    calls: list[tuple[str, str]] = []
+    client = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1",
+        model="qwen3:30b",
+        on_request=lambda model, outcome: calls.append((model, outcome)),
+    )
+    await client.chat([{"role": "user", "content": "hi"}])
+
+    assert calls == [("qwen3:30b", "success")]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_429_calls_on_request_with_quota_exceeded_outcome():
+    respx.post(CHAT_URL).mock(return_value=httpx.Response(429, text="rate limited"))
+    calls: list[tuple[str, str]] = []
+    client = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1",
+        model="qwen3:30b",
+        on_request=lambda model, outcome: calls.append((model, outcome)),
+    )
+    with pytest.raises(LLMBackendError):
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert calls == [("qwen3:30b", "quota_exceeded")]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_non_quota_error_does_not_call_on_request():
+    """A connect error / auth failure / non-429 error never actually
+    consumed provider quota -- must not be recorded."""
+    respx.post(CHAT_URL).mock(return_value=httpx.Response(401, text="unauthorized"))
+    calls: list[tuple[str, str]] = []
+    client = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1",
+        model="m",
+        on_request=lambda model, outcome: calls.append((model, outcome)),
+    )
+    with pytest.raises(LLMBackendError):
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert calls == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_connect_error_does_not_call_on_request():
+    respx.post(CHAT_URL).mock(side_effect=httpx.ConnectError("refused"))
+    calls: list[tuple[str, str]] = []
+    client = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1",
+        model="m",
+        on_request=lambda model, outcome: calls.append((model, outcome)),
+    )
+    with pytest.raises(LLMBackendError):
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert calls == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_without_on_request_configured_is_a_silent_noop():
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+    assert resp.text == "ok"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_on_request_callback_raising_does_not_break_a_successful_chat():
+    """A broken usage-tracking callback must never turn a successful chat()
+    into a crash -- logged and swallowed."""
+    respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+
+    def _boom(model: str, outcome: str) -> None:
+        raise RuntimeError("usage db is on fire")
+
+    client = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1", model="m", on_request=_boom
+    )
+    resp = await client.chat([{"role": "user", "content": "hi"}])
+    assert resp.text == "ok"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_settings_wires_on_request_into_the_built_client():
+    config = {
+        "knowledge_base": {
+            "llm": {
+                "backend": "local",
+                "base_url": "http://localhost:9999/v1",
+                "model": "m",
+            }
+        }
+    }
+    respx.post("http://localhost:9999/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    calls: list[tuple[str, str]] = []
+
+    with patch(
+        "backend.services.llm_client.load_config",
+        new_callable=AsyncMock,
+        return_value=config,
+    ):
+        client = await build_llm_client_from_settings(
+            on_request=lambda model, outcome: calls.append((model, outcome))
+        )
+        assert client is not None
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert calls == [("m", "success")]
+
+
+# --- `build_llm_client_from_draft` (Product-wave Task 5, item 2) --------------------------
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_local_never_reads_settings_or_keyring():
+    respx.post("http://localhost:9999/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with patch(
+        "backend.services.llm_client.load_config",
+        new_callable=AsyncMock,
+        side_effect=AssertionError("must not read settings for a draft client"),
+    ):
+        client = build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
+        resp = await client.chat([{"role": "user", "content": "hi"}])
+    assert resp.text == "ok"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_cloud_loads_the_keyring_api_key():
+    route = respx.post("https://example.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with patch("backend.services.llm_client.get_token_manager") as mock_tm:
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = build_llm_client_from_draft(
+            "cloud", "https://example.test/v1", "gemini-x"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert route.calls[0].request.headers["Authorization"] == "Bearer secret-key"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_never_wires_on_request():
+    """A config-test round-trip must never be recorded against the usage
+    ledger -- proven by asserting the built client's `_on_request` is unset."""
+    client = build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
+    assert client._on_request is None

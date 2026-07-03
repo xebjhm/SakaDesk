@@ -405,7 +405,7 @@ async def test_ask_lazily_rebuilds_llm_client_when_none(
 
     script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
 
-    async def _fake_build() -> FakeLLMClient:
+    async def _fake_build(on_request=None) -> FakeLLMClient:
         return FakeLLMClient(script)
 
     monkeypatch.setattr(ks, "build_llm_client_from_settings", _fake_build)
@@ -444,7 +444,7 @@ async def test_ask_raises_misconfigured_when_llm_still_unbuildable(
 ) -> None:
     from backend.services import knowledge_service as ks
 
-    async def _fake_build() -> None:
+    async def _fake_build(on_request=None) -> None:
         return None
 
     monkeypatch.setattr(ks, "build_llm_client_from_settings", _fake_build)
@@ -498,7 +498,7 @@ async def test_get_knowledge_service_concurrent_calls_build_exactly_one_instance
         build_count["embedder"] += 1
         return object()
 
-    async def fake_build_llm() -> None:
+    async def fake_build_llm(on_request=None) -> None:
         build_count["llm"] += 1
         return None
 

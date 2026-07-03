@@ -1,9 +1,10 @@
 // frontend/src/features/ai/components/ChatWindow.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertCircle, Bot, Loader2, Send, Sparkles, SearchX } from 'lucide-react';
+import { AlertCircle, Bot, Cloud, HardDrive, Loader2, Send, Sparkles, SearchX } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { CitationChip } from './CitationChip';
 import { SetupChecklist } from './SetupChecklist';
+import { UsageMeter } from './UsageMeter';
 import { errorMessageKey } from '../aiErrorCode';
 import type { AskAnswer, AskCitation } from '../api';
 
@@ -16,7 +17,10 @@ import type { AskAnswer, AskCitation } from '../api';
  * `SetupChecklist.tsx`'s rebuild errors) maps to a localized
  * `ai.error.<code>` message. `message` is kept only as the non-localized
  * fallback for `console.error`/debugging, never rendered directly (see
- * `ChatTurnRow`).
+ * `ChatTurnRow`). `requestsToday`/`dailyLimit`/`estQuestionsLeft`
+ * (Product-wave Task 5, item 3) are only ever present alongside
+ * `code === 'quota_exhausted'` — the usage-meter numbers the backend
+ * enriches that specific SSE error with.
  */
 export type ChatTurn =
     | { id: string; role: 'user'; text: string }
@@ -32,6 +36,9 @@ export type ChatTurn =
           retryAfterS?: number;
           backend?: string;
           model?: string;
+          requestsToday?: number;
+          dailyLimit?: number;
+          estQuestionsLeft?: number;
       };
 
 // Codes whose fix is "go change something in AI settings" get the inline
@@ -47,6 +54,7 @@ const SETTINGS_HINT_CODES = new Set([
     'model_not_found',
     'model_incompatible',
     'embedding_model_missing',
+    'cloud_consent_required',
 ]);
 
 interface ChatWindowProps {
@@ -55,6 +63,14 @@ interface ChatWindowProps {
     /** True while the latest turn is still streaming — disables the input
      * so a second question can't be submitted mid-ask. */
     disabled?: boolean;
+    /** The currently-configured `knowledge_base.llm.backend` (Product-wave
+     * Task 5, item 5) — drives the permanent Cloud/Local header badge.
+     * `null`/`undefined` while `AiFeature` hasn't fetched `/api/ai/config`
+     * yet — the badge simply doesn't render until it's known. */
+    backendKind?: 'cloud' | 'local' | null;
+    /** Bumped by `AiFeature` after every ask settles so the composer's
+     * `UsageMeter` refetches and reflects the just-recorded request. */
+    usageRefreshKey?: number;
 }
 
 /**
@@ -72,7 +88,13 @@ function resolveCitations(citationIds: string[], citations: AskCitation[]): AskC
         .filter((c): c is AskCitation => c !== undefined);
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled = false }) => {
+export const ChatWindow: React.FC<ChatWindowProps> = ({
+    turns,
+    onSend,
+    disabled = false,
+    backendKind = null,
+    usageRefreshKey,
+}) => {
     const { t } = useTranslation();
     const [value, setValue] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -116,6 +138,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
             <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
                 <Bot className="w-5 h-5 text-blue-500" />
                 <h2 className="text-sm font-semibold text-gray-800">{t('ai.title')}</h2>
+                {/* Permanent Cloud/Local badge (Product-wave Task 5, item 5) --
+                    "data leaves this device" vs "on-device", so the trust
+                    signal is visible on every turn, not just at consent time. */}
+                {backendKind && (
+                    <span
+                        data-testid="ai-backend-badge"
+                        className={`ml-auto flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full ${
+                            backendKind === 'cloud'
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-green-50 text-green-700'
+                        }`}
+                    >
+                        {backendKind === 'cloud' ? (
+                            <Cloud className="w-3 h-3" />
+                        ) : (
+                            <HardDrive className="w-3 h-3" />
+                        )}
+                        {t(backendKind === 'cloud' ? 'ai.badge.cloud' : 'ai.badge.local')}
+                    </span>
+                )}
             </div>
 
             {/* Message list */}
@@ -131,6 +173,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
                 {turns.map((turn) => (
                     <ChatTurnRow key={turn.id} turn={turn} />
                 ))}
+            </div>
+
+            {/* Usage meter (Product-wave Task 5, item 3) -- renders nothing
+                when the configured model has no daily limit. */}
+            <div className="px-4 pt-2 shrink-0">
+                <UsageMeter refreshKey={usageRefreshKey} />
             </div>
 
             {/* Input */}
@@ -218,6 +266,16 @@ const ChatTurnRow: React.FC<{ turn: ChatTurn }> = ({ turn }) => {
                         {typeof turn.retryAfterS === 'number' && (
                             <div className="pl-6 text-xs text-red-600/80">
                                 {t('ai.error.retryAfter', { seconds: Math.ceil(turn.retryAfterS) })}
+                            </div>
+                        )}
+                        {/* Usage-meter numbers a `quota_exhausted` error is enriched
+                            with (Product-wave Task 5, item 3) -- reconciles the
+                            composer's meter with the REAL 429 that just landed. */}
+                        {turn.code === 'quota_exhausted' && typeof turn.estQuestionsLeft === 'number' && (
+                            <div className="pl-6 text-xs text-red-600/80">
+                                {turn.estQuestionsLeft > 0
+                                    ? t('ai.quota.left', { count: turn.estQuestionsLeft })
+                                    : t('ai.quota.none')}
                             </div>
                         )}
                         {SETTINGS_HINT_CODES.has(turn.code) && (

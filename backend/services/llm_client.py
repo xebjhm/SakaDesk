@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import re
 from collections import deque
-from typing import Any, Literal, cast
+from typing import Any, Callable, Literal, cast
 
 import httpx
 import structlog
@@ -116,6 +116,20 @@ class OpenAICompatLLMClient:
     OpenAI itself) and local backends (Ollama, llama.cpp) -- only `base_url`/`model`/
     `api_key` change between them. `api_key` is optional since most local servers don't
     require one; when set, it's sent as `Authorization: Bearer <api_key>`.
+
+    `on_request` (Product-wave Task 5, item 3) is an optional
+    `(model, outcome) -> None` callback invoked once per `chat()` call that
+    actually reaches the provider -- on a successful response AND on a 429
+    (`outcome` is `"success"`/`"quota_exceeded"` respectively; every OTHER
+    failure kind is deliberately NOT counted, see `chat()`'s call sites
+    below). Never invoked for a call that never left this process (e.g. a
+    connect error). `build_llm_client_from_settings()` wires this to
+    `backend.services.llm_usage.on_llm_request`; a draft config probed by
+    `POST /api/ai/config/test` deliberately leaves this `None` -- a
+    connectivity test is not a real user question and must never consume
+    quota-meter budget. Exceptions raised BY the callback are logged and
+    swallowed, never allowed to turn a successful/classified `chat()` call
+    into an unrelated crash.
     """
 
     def __init__(
@@ -124,11 +138,23 @@ class OpenAICompatLLMClient:
         model: str,
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT,
+        on_request: Callable[[str, str], None] | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._timeout = timeout
+        self._on_request = on_request
+
+    def _notify_request(self, outcome: str) -> None:
+        if self._on_request is None:
+            return
+        try:
+            self._on_request(self._model, outcome)
+        except Exception:  # noqa: BLE001 - a usage-tracking callback must never break chat()
+            logger.warning(
+                "llm_client.on_request_callback_failed", outcome=outcome, exc_info=True
+            )
 
     async def chat(
         self, messages: list[dict], tools: list[dict] | None = None
@@ -180,6 +206,12 @@ class OpenAICompatLLMClient:
                 kind=kind,
                 body=body_snippet,
             )
+            if kind == "quota_exhausted":
+                # A 429 still means the request was actually sent and counted
+                # against the provider's quota -- must not be silently
+                # excluded from the usage ledger (see `_notify_request`'s
+                # docstring / the pre-Task-5 quota-blindness bug).
+                self._notify_request("quota_exceeded")
             raise LLMBackendError(
                 f"OpenAI-compatible LLM backend at {url} returned "
                 f"HTTP {resp.status_code}: {body_snippet}",
@@ -198,7 +230,7 @@ class OpenAICompatLLMClient:
             ) from exc
 
         try:
-            return _parse_openai_response(data)
+            response = _parse_openai_response(data)
         except (KeyError, TypeError, IndexError, AttributeError) as exc:
             # Structural failures of the RESPONSE ENVELOPE itself (e.g. `choices[0]`
             # isn't even an object) -- distinct from a malformed per-tool-call
@@ -211,6 +243,9 @@ class OpenAICompatLLMClient:
                 f"LLM backend at {url} returned an unexpected response shape",
                 kind="malformed_response",
             ) from exc
+
+        self._notify_request("success")
+        return response
 
 
 def _to_openai_messages(messages: list[dict]) -> list[dict]:
@@ -416,7 +451,9 @@ def _parse_retry_after(resp: httpx.Response) -> float | None:
     return None
 
 
-async def build_llm_client_from_settings() -> OpenAICompatLLMClient | None:
+async def build_llm_client_from_settings(
+    on_request: Callable[[str, str], None] | None = None,
+) -> OpenAICompatLLMClient | None:
     """Build the KB chatbot's `LLMClient` from `settings.knowledge_base.llm`.
 
     Reads `{backend, base_url, model}` defensively (`.get(..., {})` chains + per-field
@@ -429,6 +466,13 @@ async def build_llm_client_from_settings() -> OpenAICompatLLMClient | None:
       with translation's `"llm_provider_api_key"` credential group. Returns `None` only
       in this case, when no key is stored -- there's nothing usable to build a client
       with.
+
+    `on_request` (Product-wave Task 5, item 3) is threaded straight through to
+    the built client's `OpenAICompatLLMClient(on_request=...)` -- callers that
+    want usage-ledger tracking (`KnowledgeService`'s three build sites) pass
+    `backend.services.llm_usage.on_llm_request`; callers that must NOT record
+    usage (e.g. `compute_readiness()`'s `_probe_llm`, which never calls
+    `.chat()` anyway, or a future draft-config probe) simply omit it.
     """
     config = await load_config()
     kb_config = config.get("knowledge_base") or {}
@@ -439,7 +483,9 @@ async def build_llm_client_from_settings() -> OpenAICompatLLMClient | None:
     if backend == "local":
         base_url = llm_config.get("base_url") or _LOCAL_DEFAULT_BASE_URL
         model = llm_config.get("model") or _LOCAL_DEFAULT_MODEL
-        return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=None)
+        return OpenAICompatLLMClient(
+            base_url=base_url, model=model, api_key=None, on_request=on_request
+        )
 
     base_url = llm_config.get("base_url") or _CLOUD_DEFAULT_BASE_URL
     model = llm_config.get("model") or _CLOUD_DEFAULT_MODEL
@@ -447,7 +493,29 @@ async def build_llm_client_from_settings() -> OpenAICompatLLMClient | None:
     if not api_key:
         logger.info("llm_client.build_from_settings.no_api_key", backend=backend)
         return None
-    return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=api_key)
+    return OpenAICompatLLMClient(
+        base_url=base_url, model=model, api_key=api_key, on_request=on_request
+    )
+
+
+def build_llm_client_from_draft(
+    backend: str, base_url: str, model: str
+) -> OpenAICompatLLMClient:
+    """Build an `OpenAICompatLLMClient` from an explicit, NOT-YET-PERSISTED
+    `(backend, base_url, model)` -- `POST /api/ai/config/test`'s draft-config
+    probe (Product-wave Task 5, item 2). Mirrors `build_llm_client_from_settings`'s
+    cloud/local key-loading logic but never reads `settings.knowledge_base.llm`
+    itself, so a config can be validated BEFORE it's saved.
+
+    Deliberately never wires `on_request`: a connectivity test round-trip is
+    not a real user question and must never be recorded against the usage
+    ledger/quota meter.
+    """
+    if backend == "local":
+        return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=None)
+    return OpenAICompatLLMClient(
+        base_url=base_url, model=model, api_key=_load_cloud_api_key()
+    )
 
 
 def _load_cloud_api_key() -> str | None:

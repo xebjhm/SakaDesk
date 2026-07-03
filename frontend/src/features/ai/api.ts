@@ -43,11 +43,37 @@ export function canonicalMemberId(service: string, blogId: number | string): str
   return `${service}:${blogId}`;
 }
 
+/** Known cloud LLM API hostnames -> a human-readable provider name, for the
+ * cloud-consent modal's privacy copy (Product-wave Task 5, item 5: "name
+ * the provider dynamically"). Falls back to the bare hostname for anything
+ * not in this map (e.g. a self-hosted OpenAI-compatible cloud proxy), and
+ * to a generic phrase if `base_url` isn't even a parseable URL.
+ */
+const KNOWN_CLOUD_PROVIDER_HOSTS: Record<string, string> = {
+  'generativelanguage.googleapis.com': 'Google',
+  'api.openai.com': 'OpenAI',
+};
+
+export function providerNameFromBaseUrl(baseUrl: string): string {
+  try {
+    const hostname = new URL(baseUrl).hostname;
+    return KNOWN_CLOUD_PROVIDER_HOSTS[hostname] ?? hostname;
+  } catch {
+    return 'the AI provider';
+  }
+}
+
 /** Extra fields an `AskError` may carry alongside its stable `code`. */
 export interface AskErrorParams {
   retryAfterS?: number;
   backend?: string;
   model?: string;
+  /** Only ever present alongside `code === 'quota_exhausted'` (Product-wave
+   * Task 5, item 3) -- the usage-meter numbers the backend enriches that
+   * specific SSE error with. */
+  requestsToday?: number;
+  dailyLimit?: number;
+  estQuestionsLeft?: number;
 }
 
 /**
@@ -67,6 +93,9 @@ export class AskError extends Error {
   readonly retryAfterS?: number;
   readonly backend?: string;
   readonly model?: string;
+  readonly requestsToday?: number;
+  readonly dailyLimit?: number;
+  readonly estQuestionsLeft?: number;
 
   constructor(code: string, message: string, params?: AskErrorParams) {
     super(message);
@@ -75,6 +104,9 @@ export class AskError extends Error {
     this.retryAfterS = params?.retryAfterS;
     this.backend = params?.backend;
     this.model = params?.model;
+    this.requestsToday = params?.requestsToday;
+    this.dailyLimit = params?.dailyLimit;
+    this.estQuestionsLeft = params?.estQuestionsLeft;
   }
 }
 
@@ -202,12 +234,18 @@ export function askKnowledge(
               retryAfterS?: number;
               backend?: string | null;
               model?: string | null;
+              requestsToday?: number;
+              dailyLimit?: number;
+              estQuestionsLeft?: number;
             };
             reject(
               new AskError(payload.code ?? 'unknown', payload.message ?? 'AI ask failed', {
                 retryAfterS: payload.retryAfterS,
                 backend: payload.backend ?? undefined,
                 model: payload.model ?? undefined,
+                requestsToday: payload.requestsToday,
+                dailyLimit: payload.dailyLimit,
+                estQuestionsLeft: payload.estQuestionsLeft,
               })
             );
             return true;

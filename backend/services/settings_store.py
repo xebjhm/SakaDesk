@@ -49,7 +49,19 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
             "backend": "cloud",
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "model": "gemini-2.5-flash",
+            # User-overridable daily request-count cap for the usage meter
+            # (`GET /api/ai/usage`) -- `None` = use the curated default from
+            # `backend.services.llm_usage._DAILY_LIMITS` (cloud) or unlimited
+            # (local). See Product-wave Task 5, item 3.
+            "daily_limit": None,
         },
+        # One-time cloud-privacy consent gate (Product-wave Task 5, item 5):
+        # `POST /api/ai/ask` on a "cloud" backend is refused with the typed
+        # SSE error `cloud_consent_required` until this is `True` -- set by
+        # `POST /api/ai/consent`, never by `PUT /config`. The Local backend
+        # never checks this (nothing leaves the device).
+        "cloud_consent": False,
+        "cloud_consent_at": None,
     },
     # Note: KB chatbot's cloud API key reuses translation's keyring entry, not here
 }

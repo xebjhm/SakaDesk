@@ -284,6 +284,11 @@ def test_ask_e2e_over_synthetic_corpus(
         # pipeline, not the enabled gate (covered separately in test_ai_api.py
         # and test_knowledge_service.py), so the KB must read as enabled here.
         patch("backend.api.ai.kb_enabled", new=AsyncMock(return_value=True)),
+        # Same reasoning for Task 5's cloud-consent gate -- not what this
+        # pipeline test is about (covered in test_ai_api.py).
+        patch(
+            "backend.api.ai._cloud_consent_required", new=AsyncMock(return_value=False)
+        ),
     ):
         mock_get_svc.return_value = svc
 

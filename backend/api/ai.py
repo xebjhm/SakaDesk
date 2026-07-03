@@ -72,7 +72,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from datetime import tzinfo
+import time
+from datetime import datetime, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -80,6 +81,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
+from backend.services import llm_usage, ollama
 from backend.services.background_tasks import track_background_task
 from backend.services.hardware import detect_hardware, suggest_llm_backend
 from backend.services.knowledge_service import (
@@ -95,7 +97,11 @@ from backend.services.knowledge_service import (
     resolve_embedding_model_name,
     schedule_initial_build_all,
 )
-from backend.services.llm_client import LLMBackendError
+from backend.services.llm_client import (
+    LLMBackendError,
+    build_llm_client_from_draft,
+)
+from backend.services.llm_models import curated_for_backend, lookup_model
 from backend.services.model_assets import get_manifest, get_model_download_manager
 from backend.services.service_utils import validate_service
 from backend.services.settings_store import load_config, update_config
@@ -163,6 +169,17 @@ _ALREADY_RUNNING_MESSAGE = (
     "An index rebuild is already running for this service. It'll finish "
     "shortly -- no need to try again."
 )
+# Product-wave Task 5, item 5: the one-time cloud-privacy consent gate.
+_CLOUD_CONSENT_REQUIRED_MESSAGE = (
+    "This question would be sent to a cloud AI provider. Review and accept "
+    "the privacy notice in AI settings first, or switch to a local model."
+)
+# Product-wave Task 5, item 1: `PUT /config` rejecting a blocked model.
+_MODEL_BLOCKED_MESSAGE = (
+    "This model is blocked for the knowledge chatbot -- it's known not to "
+    "work with this app's tool-calling integration. Pick another model in "
+    "AI settings."
+)
 
 # `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
 # "hinatazaka46:12" -- what `doc.author_id`/`Scope.member_id` are always
@@ -218,6 +235,15 @@ class KbEnabledRequest(BaseModel):
     enabled: bool
 
 
+class CloudConsentRequired(RuntimeError):
+    """Raised by `_run_ask` when the configured `knowledge_base.llm.backend`
+    is `"cloud"` and the user hasn't yet granted the one-time cloud-privacy
+    consent (`settings.knowledge_base.cloud_consent`, Product-wave Task 5,
+    item 5 -- see `POST /api/ai/consent`). The Local backend never raises
+    this: nothing leaves the device, so there's nothing to consent to.
+    """
+
+
 # ----------------------------------------------------------------------------
 # SSE helpers
 # ----------------------------------------------------------------------------
@@ -245,16 +271,25 @@ def _serialize_error_event(
     retry_after_s: float | None,
     backend: str | None,
     model: str | None,
+    extra: dict | None = None,
 ) -> dict:
-    """`{code, message, retryAfterS?, backend, model}` -- the SSE `event: error` contract.
+    """`{code, message, retryAfterS?, backend, model, ...extra}` -- the SSE
+    `event: error` contract.
 
     `code` is what the frontend keys off (`ai.error.<code>` i18n lookup);
     `message` is a safe English fallback for old, not-yet-updated clients.
     `retryAfterS` is omitted entirely (not sent as `null`) when unknown.
+    `extra` (Product-wave Task 5, item 3) merges in additional fields --
+    currently just the usage-meter numbers a `quota_exhausted` error is
+    enriched with (`requestsToday`/`dailyLimit`/`estQuestionsLeft`), so the
+    ErrorTurn can show them alongside the quota-exceeded copy without a
+    second round-trip to `GET /api/ai/usage`.
     """
     data: dict = {"code": code, "message": message, "backend": backend, "model": model}
     if retry_after_s is not None:
         data["retryAfterS"] = retry_after_s
+    if extra:
+        data.update(extra)
     return data
 
 
@@ -304,19 +339,38 @@ def _serialize_answer(answer: Answer) -> dict:
     }
 
 
+async def _cloud_consent_required() -> bool:
+    """Whether the CURRENTLY configured backend is `"cloud"` and the user
+    hasn't granted `knowledge_base.cloud_consent` yet (Product-wave Task 5,
+    item 5). A cheap settings-only read -- checked before
+    `get_knowledge_service()` so a not-yet-consented cloud ask never builds
+    the embedder/store/LLM client either (same "cheap gate first" pattern as
+    `kb_enabled()`)."""
+    config = await load_config()
+    kb_config = config.get("knowledge_base") or {}
+    llm_config = kb_config.get("llm") or {}
+    backend = llm_config.get("backend") or "cloud"
+    if backend != "cloud":
+        return False
+    return not bool(kb_config.get("cloud_consent", False))
+
+
 async def _run_ask(
     question: str, scope: Scope, tz: tzinfo, history: list[dict] | None
 ) -> Answer:
-    """Check `kb_enabled()`, look up the service, and run `ask()` -- all inside
-    the same task, so every failure mode (disabled, `KnowledgeMisconfigured`, an
-    LLM/provider failure) surfaces through the same in-band `event: error` path.
+    """Check `kb_enabled()` and cloud consent, look up the service, and run
+    `ask()` -- all inside the same task, so every failure mode (disabled,
+    consent required, `KnowledgeMisconfigured`, an LLM/provider failure)
+    surfaces through the same in-band `event: error` path.
 
-    The `kb_enabled()` check runs BEFORE `get_knowledge_service()` so a disabled
-    KB never builds the embedder/store/LLM client just to answer a question no
-    one is allowed to ask yet (mirrors the index hooks' guard).
+    Both gates run BEFORE `get_knowledge_service()` so a disabled/not-yet-
+    consented KB never builds the embedder/store/LLM client just to answer a
+    question no one is allowed to ask yet (mirrors the index hooks' guard).
     """
     if not await kb_enabled():
         raise KnowledgeDisabled()
+    if await _cloud_consent_required():
+        raise CloudConsentRequired()
     svc = await get_knowledge_service()
     return await svc.ask(question, scope, tz, history)
 
@@ -422,6 +476,28 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
             status_code=exc.status_code,
         )
         backend, model = await _current_llm_backend_model()
+        extra = None
+        if exc.kind == "quota_exhausted" and model is not None:
+            # Enrich with the usage-meter numbers (Product-wave Task 5, item
+            # 3) so the ErrorTurn can show "~N left today" copy without a
+            # second `GET /api/ai/usage` round-trip. Best-effort: a usage-DB
+            # read failure must never turn an already-classified quota error
+            # into a 500 -- `llm_usage.usage_snapshot` itself never raises
+            # (see that module's docstring), but the `model is not None`
+            # guard above is the belt for the (rare) case settings couldn't
+            # even be read.
+            config = await load_config()
+            override = ((config.get("knowledge_base") or {}).get("llm") or {}).get(
+                "daily_limit"
+            )
+            snapshot = await asyncio.to_thread(
+                llm_usage.usage_snapshot, model, backend or "cloud", override
+            )
+            extra = {
+                "requestsToday": snapshot["requestsToday"],
+                "dailyLimit": snapshot["dailyLimit"],
+                "estQuestionsLeft": snapshot["estQuestionsLeft"],
+            }
         yield _format_sse(
             "error",
             _serialize_error_event(
@@ -430,6 +506,7 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
                 retry_after_s=exc.retry_after_s,
                 backend=backend,
                 model=model,
+                extra=extra,
             ),
         )
         return
@@ -473,6 +550,20 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
             _serialize_error_event(
                 "kb_disabled",
                 _KB_DISABLED_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
+        return
+    except CloudConsentRequired:
+        logger.info("ai.ask.cloud_consent_required", service=scope.service)
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "cloud_consent_required",
+                _CLOUD_CONSENT_REQUIRED_MESSAGE,
                 retry_after_s=None,
                 backend=backend,
                 model=model,
@@ -671,6 +762,13 @@ async def get_ai_config() -> dict:
 
 @router.put("/config")
 async def put_ai_config(request: LLMConfigRequest) -> dict:
+    """Persist `settings.knowledge_base.llm`. Product-wave Task 5, item 1:
+    REJECTS a `blocked` model (400 `model_blocked`, i18n'd via the frontend's
+    `ai.error.model_blocked` key) before persisting anything; a `degraded`
+    or `unknown` model is accepted, but the response's `tier`/`noteKey`
+    carry the registry's verdict so `KbBackendSelector` can show a warning
+    (`backend.services.llm_models.lookup_model`).
+    """
     if request.backend not in _VALID_LLM_BACKENDS:
         raise HTTPException(
             status_code=400,
@@ -681,6 +779,17 @@ async def put_ai_config(request: LLMConfigRequest) -> dict:
     if not request.model.strip():
         raise HTTPException(status_code=400, detail="model must not be empty")
 
+    lookup = lookup_model(request.backend, request.model)  # type: ignore[arg-type]
+    if lookup.tier == "blocked":
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "model_blocked",
+                "message": _MODEL_BLOCKED_MESSAGE,
+                "noteKey": lookup.note_key,
+            },
+        )
+
     def _update(config: dict) -> None:
         # Copy rather than mutate `config["knowledge_base"]` in place: when the
         # key is absent on disk, `load_config()`'s shallow default-merge leaves
@@ -688,17 +797,240 @@ async def put_ai_config(request: LLMConfigRequest) -> dict:
         # object, and mutating that in place would corrupt the process-wide
         # defaults for every other settings read for the rest of the process.
         kb_config = dict(config.get("knowledge_base") or {})
+        # Preserve `daily_limit` (Task 5, item 3): this form never edits it --
+        # that's a distinct concept (`PUT /config` is LLM connection settings
+        # only), so a PUT here must not silently clobber a previously-set
+        # override.
+        existing_llm = kb_config.get("llm") or {}
         kb_config["llm"] = {
             "backend": request.backend,
             "base_url": request.base_url,
             "model": request.model,
+            "daily_limit": existing_llm.get("daily_limit"),
         }
         config["knowledge_base"] = kb_config
 
     await update_config(_update)
     await invalidate_llm_client()
-    logger.info("ai.config.updated", backend=request.backend)
-    return {"ok": True}
+    logger.info(
+        "ai.config.updated",
+        backend=request.backend,
+        model=request.model,
+        tier=lookup.tier,
+    )
+    return {"ok": True, "tier": lookup.tier, "noteKey": lookup.note_key}
+
+
+@router.get("/models")
+async def list_models(
+    backend: str = Query(...), base_url: str | None = Query(None)
+) -> dict:
+    """`{backend, models: [{id, tier, noteKey, installed?}], ollamaReachable?}`
+    -- the curated registry (Product-wave Task 5, item 1), merged with LIVE
+    Ollama-probed models for the local backend (item 4) so the picker's
+    select shows what's ACTUALLY installed, not just the curated list.
+
+    `base_url` optionally overrides the probe target (e.g. a draft base URL
+    the user hasn't saved yet); defaults to the configured
+    `knowledge_base.llm.base_url` when omitted. Ignored for `backend=cloud`
+    (nothing to probe -- cloud models aren't "installed").
+    """
+    if backend not in _VALID_LLM_BACKENDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid backend: {backend!r} (expected 'cloud' or 'local')",
+        )
+    curated = curated_for_backend(backend)  # type: ignore[arg-type]
+    if backend == "cloud":
+        return {
+            "backend": backend,
+            "models": [
+                {"id": m.id, "tier": m.tier, "noteKey": m.note_key} for m in curated
+            ],
+        }
+
+    if base_url is None:
+        config = await load_config()
+        llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
+        base_url = llm_config.get("base_url") or "http://localhost:11434/v1"
+
+    probe_result = await ollama.probe(base_url)
+    live_ids = set(probe_result["models"])
+    curated_ids = {m.id for m in curated}
+
+    models = [
+        {
+            "id": m.id,
+            "tier": m.tier,
+            "noteKey": m.note_key,
+            "installed": m.id in live_ids,
+        }
+        for m in curated
+    ]
+    for live_id in probe_result["models"]:
+        if live_id not in curated_ids:
+            models.append(
+                {"id": live_id, "tier": "unknown", "noteKey": None, "installed": True}
+            )
+
+    return {
+        "backend": backend,
+        "models": models,
+        "ollamaReachable": probe_result["reachable"],
+    }
+
+
+@router.get("/local/probe")
+async def local_probe(base_url: str = Query(...)) -> dict:
+    """`{reachable, models}` for the local server at `base_url` (Product-wave
+    Task 5, item 4) -- a thin passthrough to `backend.services.ollama.probe`,
+    exposed as its own endpoint (rather than folded only into `/models`) so
+    the frontend can probe reachability independently of the curated
+    registry (e.g. to render the "Ollama not running" hint immediately on
+    switching to Local, before deciding what to show in the model select).
+    """
+    result = await ollama.probe(base_url)
+    return result
+
+
+# `probe_tool` -- the single dummy tool `POST /config/test` forces the model
+# to call. Deliberately trivial (one boolean arg): the point is proving the
+# backend/model can drive OpenAI-style tool-calling AT ALL, not exercising
+# any real KB tool schema.
+_CONFIG_TEST_TOOL_SCHEMA = {
+    "name": "probe_tool",
+    "description": (
+        "Call this to confirm you can use tools. Always call it -- never "
+        "answer with plain text."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "ack": {"type": "boolean", "description": "Always true."},
+        },
+        "required": ["ack"],
+    },
+}
+_CONFIG_TEST_MESSAGES = [
+    {
+        "role": "system",
+        "content": (
+            "You are being connectivity-tested. You MUST call the "
+            '`probe_tool` function with {"ack": true}. Do not respond '
+            "with plain text."
+        ),
+    },
+    {"role": "user", "content": "Run the connectivity test."},
+]
+
+
+@router.post("/config/test")
+async def test_ai_config(request: LLMConfigRequest) -> dict:
+    """One minimal forced-tool-call round-trip against the DRAFT config in
+    the request body -- NEVER persisted (Product-wave Task 5, item 2). Backs
+    `KbBackendSelector`'s "Test" button (next to Save): catches auth, a wrong
+    `base_url`, incompatibility, AND a weak model that answers without
+    calling the tool, all in one request.
+
+    `verdict` is `"ok"` (the model called `probe_tool`), `"no_tool_call"`
+    (it answered with plain text instead -- a weak-tool-calling model, the
+    live-observed `gemini-2.5-flash-lite`/`qwen2.5:14b` failure mode), or an
+    `LLMBackendError.kind` (`auth`, `quota_exhausted`, `unreachable`, ...).
+    `ok` mirrors `verdict == "ok"`. The API key is never read from the
+    request body (there is no such field) or logged -- `build_llm_client_
+    from_draft` loads it from the OS keyring exactly like the real client
+    does, and only `backend`/`model`/the classified `verdict` are logged
+    below, never the key or any response content.
+    """
+    if request.backend not in _VALID_LLM_BACKENDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid backend: {request.backend!r} (expected 'cloud' or 'local')",
+        )
+    if not request.base_url.strip():
+        raise HTTPException(status_code=400, detail="base_url must not be empty")
+    if not request.model.strip():
+        raise HTTPException(status_code=400, detail="model must not be empty")
+
+    client = build_llm_client_from_draft(
+        request.backend, request.base_url, request.model
+    )
+    start = time.monotonic()
+    try:
+        response = await client.chat(
+            _CONFIG_TEST_MESSAGES, tools=[_CONFIG_TEST_TOOL_SCHEMA]
+        )
+    except LLMBackendError as exc:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        logger.info(
+            "ai.config_test.result",
+            backend=request.backend,
+            model=request.model,
+            verdict=exc.kind,
+            latency_ms=latency_ms,
+        )
+        return {"ok": False, "verdict": exc.kind, "latencyMs": latency_ms}
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+    verdict = "ok" if response.tool_calls else "no_tool_call"
+    logger.info(
+        "ai.config_test.result",
+        backend=request.backend,
+        model=request.model,
+        verdict=verdict,
+        latency_ms=latency_ms,
+    )
+    return {"ok": verdict == "ok", "verdict": verdict, "latencyMs": latency_ms}
+
+
+@router.get("/usage")
+async def get_usage() -> dict:
+    """`{model, requestsToday, dailyLimit, estQuestionsLeft}` (Product-wave
+    Task 5, item 3) -- backs the composer/settings "~N questions left today"
+    meter. `estQuestionsLeft` is `None` (omitted as JSON `null`, same as
+    every other optional field this router serializes) when `dailyLimit` is
+    unlimited (local backend, or a cloud model with no known free-tier cap).
+    """
+    config = await load_config()
+    llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
+    backend = llm_config.get("backend") or "cloud"
+    model = llm_config.get("model") or "gemini-2.5-flash"
+    override = llm_config.get("daily_limit")
+    return await asyncio.to_thread(llm_usage.usage_snapshot, model, backend, override)
+
+
+@router.get("/consent")
+async def get_cloud_consent() -> dict:
+    """`{granted, consentedAt}` -- current state of the one-time cloud-
+    privacy consent (Product-wave Task 5, item 5)."""
+    config = await load_config()
+    kb_config = config.get("knowledge_base") or {}
+    return {
+        "granted": bool(kb_config.get("cloud_consent", False)),
+        "consentedAt": kb_config.get("cloud_consent_at"),
+    }
+
+
+@router.post("/consent")
+async def grant_cloud_consent() -> dict:
+    """Records the one-time cloud-privacy consent (Product-wave Task 5, item
+    5): "your question and excerpts of your synced content are sent to
+    <provider>". Persists `knowledge_base.cloud_consent=True` plus a UTC
+    timestamp; there is no request body (granting consent is the only thing
+    this endpoint does -- declining is purely client-side: the modal just
+    doesn't call this, and the ask stays unsent, see `CloudConsentRequired`).
+    """
+    consented_at = datetime.now(timezone.utc).isoformat()
+
+    def _update(config: dict) -> None:
+        kb_config = dict(config.get("knowledge_base") or {})
+        kb_config["cloud_consent"] = True
+        kb_config["cloud_consent_at"] = consented_at
+        config["knowledge_base"] = kb_config
+
+    await update_config(_update)
+    logger.info("ai.consent.granted")
+    return {"ok": True, "consentedAt": consented_at}
 
 
 @router.get("/enabled")

@@ -1,10 +1,11 @@
 // frontend/src/features/ai/AiFeature.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import { askKnowledge } from './api';
+import { askKnowledge, providerNameFromBaseUrl } from './api';
 import { ChatWindow } from './components/ChatWindow';
 import type { ChatTurn } from './components/ChatWindow';
+import { CloudConsentModal } from './components/CloudConsentModal';
 
 // Monotonic id generator for chat turns — deterministic and dependency-free
 // (no crypto.randomUUID needed for a purely local, non-persisted thread).
@@ -48,6 +49,9 @@ function askErrorFields(err: unknown): {
     retryAfterS?: number;
     backend?: string;
     model?: string;
+    requestsToday?: number;
+    dailyLimit?: number;
+    estQuestionsLeft?: number;
 } {
     const message = err instanceof Error ? err.message : String(err);
     if (err && typeof err === 'object') {
@@ -58,6 +62,10 @@ function askErrorFields(err: unknown): {
             retryAfterS: typeof obj.retryAfterS === 'number' ? obj.retryAfterS : undefined,
             backend: typeof obj.backend === 'string' ? obj.backend : undefined,
             model: typeof obj.model === 'string' ? obj.model : undefined,
+            requestsToday: typeof obj.requestsToday === 'number' ? obj.requestsToday : undefined,
+            dailyLimit: typeof obj.dailyLimit === 'number' ? obj.dailyLimit : undefined,
+            estQuestionsLeft:
+                typeof obj.estQuestionsLeft === 'number' ? obj.estQuestionsLeft : undefined,
         };
     }
     return { code: 'unknown', message };
@@ -89,10 +97,54 @@ function replaceTurn(
  * inline citation chips), a `noEvidence` turn, or — on a rejected promise —
  * an `error` turn, so a failed ask never crashes the UI.
  */
+/** `GET /api/ai/config`'s shape (only the fields this component reads). */
+interface AiConfigResponse {
+    backend?: 'cloud' | 'local';
+    base_url?: string;
+}
+
 export const AiFeature: React.FC = () => {
     const { t } = useTranslation();
     const activeService = useAppStore((state) => state.activeService);
     const [threadsByService, setThreadsByService] = useState<Record<string, ChatTurn[]>>({});
+
+    // Cloud-privacy consent gate (Product-wave Task 5, item 5): the backend
+    // enforces this independently too (`cloud_consent_required` SSE error --
+    // see `askErrorFields`/`ChatWindow`'s ErrorTurn), so a stale/raced value
+    // here can never actually leak a question -- this is purely to show the
+    // one-time modal BEFORE the network round-trip a doomed request would
+    // otherwise cost.
+    const [backendKind, setBackendKind] = useState<'cloud' | 'local' | null>(null);
+    const [cloudProvider, setCloudProvider] = useState('the AI provider');
+    const [consentGranted, setConsentGranted] = useState<boolean | null>(null);
+    const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+    // Bumped after every ask settles so `UsageMeter` (rendered by
+    // `ChatWindow`) refetches `GET /api/ai/usage` and reflects the just-
+    // recorded request instead of staying stale until the next mount.
+    const [usageRefreshKey, setUsageRefreshKey] = useState(0);
+
+    useEffect(() => {
+        fetch('/api/ai/config')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: AiConfigResponse | null) => {
+                if (!data) return;
+                if (data.backend === 'cloud' || data.backend === 'local') setBackendKind(data.backend);
+                if (data.base_url) setCloudProvider(providerNameFromBaseUrl(data.base_url));
+            })
+            .catch((err: unknown) => {
+                console.error('[AiFeature] Failed to fetch AI config:', err);
+            });
+
+        fetch('/api/ai/consent')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: { granted?: boolean } | null) => {
+                setConsentGranted(typeof data?.granted === 'boolean' ? data.granted : false);
+            })
+            .catch((err: unknown) => {
+                console.error('[AiFeature] Failed to fetch cloud consent state:', err);
+                setConsentGranted(false);
+            });
+    }, []);
 
     if (!activeService) {
         return (
@@ -105,7 +157,7 @@ export const AiFeature: React.FC = () => {
     const turns = threadsByService[activeService] ?? [];
     const isStreaming = turns.some((turn) => turn.role === 'assistant' && turn.state === 'streaming');
 
-    const handleSend = (question: string) => {
+    const sendQuestion = (question: string) => {
         const service = activeService;
         const userId = nextTurnId();
         const assistantId = nextTurnId();
@@ -148,8 +200,57 @@ export const AiFeature: React.FC = () => {
                         ...askErrorFields(err),
                     }))
                 );
+            })
+            .finally(() => setUsageRefreshKey((k) => k + 1));
+    };
+
+    const handleSend = (question: string) => {
+        if (backendKind === 'cloud' && consentGranted === false) {
+            // Ask stays UNSENT until the modal is resolved one way or another.
+            setPendingQuestion(question);
+            return;
+        }
+        sendQuestion(question);
+    };
+
+    const handleConsentAccept = () => {
+        const question = pendingQuestion;
+        setPendingQuestion(null);
+        fetch('/api/ai/consent', { method: 'POST' })
+            .then((res) => {
+                if (res.ok) setConsentGranted(true);
+            })
+            .catch((err: unknown) => {
+                console.error('[AiFeature] Failed to record cloud consent:', err);
+            })
+            .finally(() => {
+                // Send regardless of whether the persist call itself
+                // succeeded -- the backend enforces the SAME gate on `/ask`
+                // independently, so a failed persist just means the user
+                // sees the modal again next time, not a silently-lost ask.
+                if (question) sendQuestion(question);
             });
     };
 
-    return <ChatWindow turns={turns} onSend={handleSend} disabled={isStreaming} />;
+    const handleConsentDecline = () => {
+        setPendingQuestion(null);
+    };
+
+    return (
+        <>
+            <ChatWindow
+                turns={turns}
+                onSend={handleSend}
+                disabled={isStreaming}
+                backendKind={backendKind}
+                usageRefreshKey={usageRefreshKey}
+            />
+            <CloudConsentModal
+                isOpen={pendingQuestion !== null}
+                provider={cloudProvider}
+                onAccept={handleConsentAccept}
+                onDecline={handleConsentDecline}
+            />
+        </>
+    );
 };

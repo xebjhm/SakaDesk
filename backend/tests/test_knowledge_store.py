@@ -334,14 +334,19 @@ class TestMigrations:
         conn:` block `_run_migrations` used to wrap it in), so a
         mid-migration failure used to leave the DDL that ran before the
         failure (and even the `user_version` bump right after it) committed
-        anyway. This injects a THIRD migration (beyond the two real ones,
-        via a monkeypatched `_MIGRATIONS`) that creates one table
-        successfully and then hits an invalid statement -- with the fix,
-        NEITHER that table NOR the version bump may survive, and the two
-        real migrations' data (already committed in their own, earlier,
-        successful transactions) must be untouched.
+        anyway. This injects ONE MORE migration (beyond however many real
+        ones currently exist, via a monkeypatched `_MIGRATIONS`) that
+        creates one table successfully and then hits an invalid statement --
+        with the fix, NEITHER that table NOR the version bump may survive,
+        and every real migration's data (already committed in its own,
+        earlier, successful transaction) must be untouched. Reads the real
+        migration count from `store_module._MIGRATIONS` rather than
+        hardcoding it, so this stays correct as new migrations are appended
+        (e.g. Task 5's `kb_usage`, migration 3).
         """
         import backend.services.knowledge_store as store_module
+
+        real_migration_count = len(store_module._MIGRATIONS)
 
         def _broken_migration(conn: sqlite3.Connection) -> None:
             conn.execute("CREATE TABLE kb_partial_migration_marker (id INTEGER)")
@@ -352,19 +357,24 @@ class TestMigrations:
             "_MIGRATIONS",
             [*store_module._MIGRATIONS, _broken_migration],
         )
-        monkeypatch.setattr(store_module, "_LATEST_SCHEMA_VERSION", 3)
+        monkeypatch.setattr(
+            store_module, "_LATEST_SCHEMA_VERSION", real_migration_count + 1
+        )
 
         db_path = tmp_path / "knowledge_index.db"
         with pytest.raises(sqlite3.OperationalError):
             SqliteKnowledgeStore(db_path)
 
-        # A fresh connection to the same file: migrations 1-2 must have
+        # A fresh connection to the same file: every REAL migration must have
         # committed (each ran in ITS OWN, already-successful transaction,
-        # before migration 3 ever started), but migration 3's partial DDL
-        # and its version bump must both be gone.
+        # before the broken one ever started), but its partial DDL and
+        # version bump must both be gone.
         conn = sqlite3.connect(str(db_path))
         try:
-            assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+            assert (
+                conn.execute("PRAGMA user_version").fetchone()[0]
+                == real_migration_count
+            )
             conn.execute("SELECT key, value FROM kb_meta")  # migration 2 intact
             with pytest.raises(sqlite3.OperationalError, match="no such table"):
                 conn.execute("SELECT * FROM kb_partial_migration_marker")
@@ -421,6 +431,61 @@ class TestKbMeta:
         s2 = SqliteKnowledgeStore(db_path)
         assert s2.get_meta("k") == "v"
         s2.close()
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 5, item 3: migration 3 -- `kb_usage` (the LLM request
+# ledger, see `backend.services.llm_usage`).
+# ---------------------------------------------------------------------------
+
+
+class TestKbUsageMigration:
+    def test_fresh_db_creates_kb_usage_table(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "knowledge_index.db"
+        s = SqliteKnowledgeStore(db_path)
+        s.close()
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == (
+                _LATEST_SCHEMA_VERSION
+            )
+            # No error -- the table exists with the expected columns.
+            conn.execute("SELECT model, day, count FROM kb_usage")
+        finally:
+            conn.close()
+
+    def test_v2_db_migrates_forward_to_v3_and_gains_kb_usage(
+        self, tmp_path: Path
+    ) -> None:
+        """A db that already ran migrations 1+2 (pre-Task-5) must pick up
+        migration 3 on next open, landing at the latest version with
+        `kb_usage` present and everything else untouched."""
+        db_path = tmp_path / "knowledge_index.db"
+        s = SqliteKnowledgeStore(db_path)
+        s.set_meta("probe", "still-here")
+        # Force this file back to `user_version = 2` (as if it had been
+        # created by a SakaDesk build before this migration existed).
+        s._conn.execute("PRAGMA user_version = 2")
+        s.close()
+
+        conn = sqlite3.connect(str(db_path))
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        conn.close()
+
+        s2 = SqliteKnowledgeStore(db_path)
+        try:
+            assert s2._conn.execute("PRAGMA user_version").fetchone()[0] == (
+                _LATEST_SCHEMA_VERSION
+            )
+            s2._conn.execute("SELECT model, day, count FROM kb_usage")
+            assert s2.get_meta("probe") == "still-here"
+        finally:
+            s2.close()
+
+    def test_migrations_list_now_has_three_entries(self) -> None:
+        assert len(_MIGRATIONS) == 3
+        assert _LATEST_SCHEMA_VERSION == 3
 
 
 # NOTE: `TestWipeVectorsAndContentHashes` (covering the now-removed
