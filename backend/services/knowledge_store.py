@@ -118,6 +118,28 @@ class SqliteKnowledgeStore:
     # Document persistence
     # ------------------------------------------------------------------
 
+    def changed_document_ids(self, docs: list[Document]) -> list[str]:
+        """The `doc_id`s in `docs` that are new or whose content changed — READ-ONLY.
+
+        Same content-hash comparison as `upsert_documents`, but without writing,
+        so callers can embed a changed doc's chunks FIRST and only then upsert
+        (mark it done). If the process dies mid-embed, the doc stays "changed"
+        and the next index pass retries it — vectors are INSERT OR REPLACE, so
+        the retry is idempotent. Persisting the doc row first would strand its
+        unembedded chunks permanently (the content-hash skip would never
+        revisit them).
+        """
+        changed: list[str] = []
+        for doc in docs:
+            new_hash = DocumentStore.content_hash(doc)
+            row = self._conn.execute(
+                "SELECT content_hash FROM kb_documents WHERE doc_id = ?",
+                (doc.doc_id,),
+            ).fetchone()
+            if row is None or row[0] != new_hash:
+                changed.append(doc.doc_id)
+        return changed
+
     def upsert_documents(self, docs: list[Document]) -> list[str]:
         """Insert or update `docs`, keyed by `doc_id`.
 

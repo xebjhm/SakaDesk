@@ -73,6 +73,10 @@ _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 # clear error is raised if the resolved dir is absent — see `_build_embedder`.
 _DEFAULT_EMBEDDING_MODEL = "granite-embedding-278m-multilingual"
 
+# Chunks embedded per `Embedder.embed` call during indexing — batching amortizes
+# ONNX tokenization/inference overhead vs per-chunk calls (see `_persist`).
+_EMBED_BATCH_SIZE = 32
+
 
 def _roster_short_name(service: str) -> str:
     """`data/members/<short>.json` stem for `service` (the id with "46" stripped)."""
@@ -231,19 +235,32 @@ class KnowledgeService:
         return self._persist(docs, reference)
 
     def _persist(self, docs: list[Document], reference: _Reference) -> int:
-        """Mention-detect, hash-dedupe-persist, then embed ONLY changed docs' chunks."""
+        """Mention-detect, embed ONLY changed docs' chunks, THEN hash-dedupe-persist.
+
+        Ordering is deliberate: vectors are embedded and stored BEFORE the doc
+        rows are upserted, so an interruption mid-embed leaves the docs
+        "changed" and the next index pass retries them (vector writes are
+        idempotent). Upserting docs first would mark them done and strand any
+        not-yet-embedded chunks permanently. Embedding runs in batches — the
+        ONNX tokenizer/session amortizes far better over a batch than
+        per-chunk calls, and each batch is one vector-store add.
+        """
         if not docs:
             return 0
         for doc in docs:
             doc.mentions = reference.detector.detect(doc.text, doc.author_id)
-        changed_ids = set(self._store.upsert_documents(docs))
+        changed_ids = set(self._store.changed_document_ids(docs))
         if not changed_ids:
             return 0
         changed_docs = [doc for doc in docs if doc.doc_id in changed_ids]
         chunks = chunk_documents(changed_docs)
-        for chunk in chunks:
-            vector = self._embedder.embed([chunk.context_text], kind="passage")[0]
-            self._store.add([chunk.chunk_id], [vector])
+        for start in range(0, len(chunks), _EMBED_BATCH_SIZE):
+            batch = chunks[start : start + _EMBED_BATCH_SIZE]
+            vectors = self._embedder.embed(
+                [chunk.context_text for chunk in batch], kind="passage"
+            )
+            self._store.add([chunk.chunk_id for chunk in batch], vectors)
+        self._store.upsert_documents(changed_docs)
         logger.info(
             "knowledge_service.indexed",
             changed=len(changed_ids),

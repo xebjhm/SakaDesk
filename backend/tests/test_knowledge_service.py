@@ -284,3 +284,57 @@ async def test_index_members_skips_member_with_missing_messages_file(
 
     docs = store.documents_for_service(_SERVICE)
     assert len(docs) == 1
+
+
+class ExplodingThenWorkingEmbedder:
+    """Embedder that raises on the first call, then delegates — simulates a crash mid-index."""
+
+    dim = 2
+
+    def __init__(self, inner: FakeEmbedder) -> None:
+        self._inner = inner
+        self.calls = 0
+
+    def embed(self, texts: list[str], kind: str = "passage") -> list[list[float]]:
+        self.calls += 1
+        if self.calls == 1:
+            raise RuntimeError("simulated crash mid-embedding")
+        return self._inner.embed(texts, kind)
+
+
+@pytest.mark.asyncio
+async def test_interrupted_embedding_does_not_strand_docs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Vectors are persisted BEFORE doc rows are marked done: an index pass that
+    dies mid-embed leaves the docs "changed", so the next pass retries and fully
+    indexes them (no permanently vector-less documents)."""
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    embedder = ExplodingThenWorkingEmbedder(_embedder())
+    svc = ks.KnowledgeService(
+        store=store, embedder=embedder, llm=None, data_dir=data_dir
+    )
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        await svc.index_members([(group, member)], _SERVICE)
+    # The doc must NOT have been marked done by the failed pass...
+    assert store.documents_for_service(_SERVICE) == []
+
+    # ...so a retry picks it up and completes doc + vector persistence.
+    indexed = await svc.index_members([(group, member)], _SERVICE)
+    assert indexed == 1
+    docs = store.documents_for_service(_SERVICE)
+    assert len(docs) == 1
+    assert store.search([1.0, 0.0], k=1)[0][0].startswith(docs[0].doc_id)
