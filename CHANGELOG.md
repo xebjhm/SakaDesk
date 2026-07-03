@@ -22,11 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Streamed over SSE (progress heartbeat, then one terminal answer/error
   event). Configured from Settings → AI: backend switch (cloud/local), model,
   index status, and a manual rebuild-index action.
+  Includes typed, recoverable error handling with localized copy, a usage
+  meter with quota pre-empt for cloud backends, a curated model registry
+  with live Ollama model detection, first-run setup (in-app embedding-model
+  download, GPU auto-detection), a one-time cloud-privacy consent, and
+  durable multi-turn chat threads with a working Stop.
   _Known limitations:_ voice-message transcripts are not indexed yet (only
-  synced text/blog content); message citations from the knowledge base carry
-  lower-fidelity group metadata than search citations (no group name or
-  group-chat flag on the deep-link); chat history does not persist across tab
-  switches.
+  synced text/blog content); chat history does not persist across app
+  restarts.
+- **Verify & Fix media** (Settings → Sync): scans downloaded messages and
+  re-downloads any missing images/videos, per service.
+
+### Fixed
+- Interrupted syncs no longer permanently skip message media — the sync cursor is
+  held behind any message whose media has not been confirmed on disk.
 
 ## [0.3.0] - 2026-07-01
 

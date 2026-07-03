@@ -29,6 +29,8 @@ export function getSyncPhaseName(
         discovering: t('sync.phaseDiscovering'),
         syncing: t('sync.phaseSyncing'),
         downloading: t('sync.phaseDownloading'),
+        verifying: t('sync.phaseVerifying'),
+        repairing: t('sync.phaseRepairing'),
     };
     return phaseNameMap[syncProgress.phase || ''] || syncProgress.phase_name || t('sync.starting');
 }
@@ -38,6 +40,10 @@ export function getSyncUnitLabel(
     syncProgress: SyncProgress,
     t: (key: string) => string,
 ): string {
+    // The verify/fix flow reuses phase_number 1/2 with different meanings than the
+    // regular sync flow (which uses 1/2/3), so disambiguate by phase name first.
+    if (syncProgress.phase === 'verifying') return t('sync.members');
+    if (syncProgress.phase === 'repairing') return t('sync.files');
     if (syncProgress.phase_number === 2) return t('sync.members');
     if (syncProgress.phase_number === 3) return t('sync.files');
     return t('sync.items');

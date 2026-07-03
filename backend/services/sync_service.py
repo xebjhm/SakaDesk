@@ -34,6 +34,21 @@ logger = structlog.get_logger(__name__)
 DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
 
 
+def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
+    """Earliest cursor to re-fetch a group's timeline from: None (full history)
+    if any missing item lacks a timestamp, else min(ts) minus a 5-min overlap."""
+    if any(not ts for ts in missing_timestamps):
+        return None
+    earliest = min(missing_timestamps)
+    try:
+        dt = datetime.fromisoformat(earliest.replace("Z", "+00:00")) - timedelta(
+            seconds=300
+        )
+        return dt.isoformat().replace("+00:00", "Z")
+    except (ValueError, TypeError):
+        return None
+
+
 class SyncService:
     """
     Per-service sync orchestrator for SakaDesk.
@@ -60,6 +75,15 @@ class SyncService:
     def _get_group(self) -> Group:
         """Get Group enum for this service."""
         return get_service_enum(self._service)
+
+    def _resolve_service_paths(self, app_settings: dict) -> None:
+        """Set output_dir / service_data_dir / metadata_file for this service."""
+        self.output_dir = Path(
+            app_settings.get("output_dir", str(get_default_output_dir()))
+        )
+        service_display = get_service_display_name(self._service)
+        self.service_data_dir = self.output_dir / service_display
+        self.metadata_file = self.service_data_dir / "sync_metadata.json"
 
     async def load_config(self):
         """Load config from pysaka's TokenManager (WCM on Windows)."""
@@ -136,6 +160,80 @@ class SyncService:
                 os.unlink(tmp_path)
             raise
 
+    async def _authenticated_client(self, session: aiohttp.ClientSession) -> Client:
+        """Build an authenticated Client for this service, refreshing the token if
+        needed. Verifies a failed refresh with a live get_groups call before giving
+        up; deletes a truly-expired session and raises SessionExpiredError."""
+        config = await self.load_config()
+        token = config.get("access_token")
+        if not token:
+            raise Exception("Not authenticated")
+
+        auth_dir = str(get_session_dir())
+        client = Client(
+            group=self._get_group(),
+            access_token=token,
+            cookies=config.get("cookies"),
+            app_id=config.get("x-talk-app-id"),
+            user_agent=config.get("user-agent"),
+            auth_dir=auth_dir,
+        )
+
+        try:
+            await client.refresh_if_needed(session, min_seconds_remaining=300)
+        except (SessionExpiredError, RefreshFailedError) as refresh_err:
+            logger.warning(
+                "Token refresh failed - verifying token validity",
+                error_type=type(refresh_err).__name__,
+                error=str(refresh_err),
+            )
+            try:
+                test_groups = await client.get_groups(session, include_inactive=False)
+                if test_groups is not None:
+                    logger.info(
+                        "Token is still valid despite refresh failure - continuing",
+                        groups_found=len(test_groups),
+                    )
+                else:
+                    logger.error("Token verification failed - session is truly expired")
+                    tm = get_token_manager()
+                    tm.delete_session(self._service)
+                    raise SessionExpiredError("Session expired") from refresh_err
+            except SessionExpiredError:
+                logger.error("Token verification confirmed session is expired")
+                tm = get_token_manager()
+                tm.delete_session(self._service)
+                raise
+
+        if client.access_token != token:
+            logger.info(
+                "Tokens refreshed during auth check - saving to storage",
+                extra={
+                    "has_new_cookies": bool(client.cookies),
+                    "cookie_count": len(client.cookies) if client.cookies else 0,
+                    "cookie_keys": list(client.cookies.keys())
+                    if client.cookies
+                    else [],
+                },
+            )
+            try:
+                tm = get_token_manager()
+                tm.save_session(
+                    self._service,
+                    client.access_token,
+                    client.refresh_token,
+                    client.cookies,
+                )
+                logger.info("Refreshed tokens saved successfully to TokenManager")
+            except Exception as e:
+                logger.error(
+                    "Failed to save refreshed tokens", error=str(e), exc_info=True
+                )
+        else:
+            logger.debug("Token unchanged after refresh check, no save needed")
+
+        return client
+
     async def start_sync(
         self,
         include_inactive: bool = True,
@@ -166,14 +264,8 @@ class SyncService:
                 progress.error("Output folder not configured")
                 return
 
-            self.output_dir = Path(
-                app_settings.get("output_dir", str(get_default_output_dir()))
-            )
-
-            # Per-service data directory for state files
-            service_display = get_service_display_name(self._service)
-            self.service_data_dir = self.output_dir / service_display
-            self.metadata_file = self.service_data_dir / "sync_metadata.json"
+            self._resolve_service_paths(app_settings)
+            assert self.metadata_file is not None  # set by _resolve_service_paths
 
             # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
             if force_resync:
@@ -185,15 +277,6 @@ class SyncService:
                 state_file = self.service_data_dir / "sync_state.json"
                 if state_file.exists():
                     state_file.unlink()
-
-            # Load credentials from pysaka's TokenManager (same as CLI)
-            config = await self.load_config()
-            token = config.get("access_token")
-            if not token:
-                raise Exception("Not authenticated")
-
-            # Get auth_dir for headless refresh (from platform settings)
-            auth_dir = str(get_session_dir())
 
             # Detect if fresh sync for THIS service (empty service dir or just metadata)
             existing_files = (
@@ -217,87 +300,7 @@ class SyncService:
 
             connector = aiohttp.TCPConnector(limit=20)
             async with aiohttp.ClientSession(connector=connector) as session:
-                client = Client(
-                    group=self._get_group(),
-                    access_token=token,
-                    cookies=config.get("cookies"),
-                    app_id=config.get("x-talk-app-id"),
-                    user_agent=config.get("user-agent"),
-                    auth_dir=auth_dir,
-                )
-
-                # Lazy refresh - only refresh if token expires within 5 minutes
-                # This reduces API calls and makes usage less detectable
-                try:
-                    await client.refresh_if_needed(session, min_seconds_remaining=300)
-                except (SessionExpiredError, RefreshFailedError) as refresh_err:
-                    # Token refresh mechanism failed - but the token itself might
-                    # still be valid (e.g., fresh token where JWT parsing failed
-                    # or cookies don't work for the refresh endpoint).
-                    # Verify with a real API call before giving up.
-                    logger.warning(
-                        "Token refresh failed - verifying token validity",
-                        error_type=type(refresh_err).__name__,
-                        error=str(refresh_err),
-                    )
-                    try:
-                        test_groups = await client.get_groups(
-                            session, include_inactive=False
-                        )
-                        if test_groups is not None:
-                            logger.info(
-                                "Token is still valid despite refresh failure - continuing sync",
-                                groups_found=len(test_groups),
-                            )
-                        else:
-                            # get_groups returned None - token is invalid
-                            logger.error(
-                                "Token verification failed - session is truly expired"
-                            )
-                            tm = get_token_manager()
-                            tm.delete_session(self._service)
-                            raise SessionExpiredError(
-                                "Session expired"
-                            ) from refresh_err
-                    except SessionExpiredError:
-                        logger.error("Token verification confirmed session is expired")
-                        tm = get_token_manager()
-                        tm.delete_session(self._service)
-                        raise
-
-                # Save refreshed tokens if they changed (CLI pattern)
-                if client.access_token != token:
-                    logger.info(
-                        "Tokens refreshed during auth check - saving to storage",
-                        extra={
-                            "has_new_cookies": bool(client.cookies),
-                            "cookie_count": len(client.cookies)
-                            if client.cookies
-                            else 0,
-                            "cookie_keys": list(client.cookies.keys())
-                            if client.cookies
-                            else [],
-                        },
-                    )
-                    try:
-                        tm = get_token_manager()
-                        tm.save_session(
-                            self._service,
-                            client.access_token,
-                            client.refresh_token,
-                            client.cookies,
-                        )
-                        logger.info(
-                            "Refreshed tokens saved successfully to TokenManager"
-                        )
-                    except Exception as e:
-                        logger.error(
-                            "Failed to save refreshed tokens",
-                            error=str(e),
-                            exc_info=True,
-                        )
-                else:
-                    logger.debug("Token unchanged after refresh check, no save needed")
+                client = await self._authenticated_client(session)
 
                 # Create fresh SyncManager each sync (don't cache stale client)
                 # Use service_data_dir so sync_state.json is per-service
@@ -829,3 +832,116 @@ class SyncService:
         (Placeholder during architecture refactor)
         """
         return 0
+
+    async def verify_and_fix_media(self) -> dict[str, int]:
+        """Scan every member's messages.json for missing media (absent/0-byte) and
+        backfill it using fresh timeline URLs. One-click, per-service, idempotent."""
+        totals = {
+            "members": 0,
+            "checked": 0,
+            "missing": 0,
+            "repaired": 0,
+            "failed": 0,
+            "still_missing": 0,
+        }
+        if self.running:
+            return totals
+        self.running = True
+        progress = progress_manager.get(self._service)
+        try:
+            app_settings = await self.load_app_settings()
+            if not app_settings.get("is_configured"):
+                logger.warning(
+                    "Verify skipped - configuration incomplete",
+                    is_configured=app_settings.get("is_configured"),
+                    has_output_dir=bool(app_settings.get("output_dir")),
+                )
+                progress.error("Output folder not configured")
+                return totals
+
+            self._resolve_service_paths(app_settings)
+            messages_root = self.service_data_dir / "messages"
+
+            progress.reset()
+            progress.start_phase("verifying", "Verifying", 1, 0, "members")
+
+            if not messages_root.exists():
+                progress.complete()
+                progress.set_result(totals)
+                return totals
+
+            connector = aiohttp.TCPConnector(limit=20)
+            async with aiohttp.ClientSession(connector=connector) as session:
+                client = await self._authenticated_client(session)
+                # Always build a fresh manager with the freshly-authenticated client — never
+                # reuse a cached client whose token may have expired (mirrors start_sync).
+                manager = SyncManager(client, self.service_data_dir)
+                self.manager = manager
+
+                # Phase 1: offline scan, group gaps by group id.
+                gaps_by_group: dict[int, list[tuple[Path, list]]] = defaultdict(list)
+                for group_dir in sorted(
+                    p for p in messages_root.iterdir() if p.is_dir()
+                ):
+                    try:
+                        gid = int(group_dir.name.split(" ", 1)[0])
+                    except (ValueError, IndexError):
+                        continue
+                    for member_dir in sorted(
+                        p for p in group_dir.iterdir() if p.is_dir()
+                    ):
+                        if not (member_dir / "messages.json").exists():
+                            continue
+                        totals["members"] += 1
+                        scan = await asyncio.to_thread(
+                            manager.scan_member_media, member_dir
+                        )
+                        totals["checked"] += scan["checked"]
+                        if scan["missing"]:
+                            totals["missing"] += len(scan["missing"])
+                            gaps_by_group[gid].append((member_dir, scan["missing"]))
+                        progress.update(1, detail=f"{member_dir.name}")
+
+                # Phase 2: per-group fresh timeline fetch + reconcile.
+                if totals["missing"] == 0:
+                    progress.complete()
+                    progress.set_result(totals)
+                    return totals
+
+                progress.start_phase(
+                    "repairing", "Repairing Media", 2, totals["missing"], "files"
+                )
+                done = 0
+                for gid, members in gaps_by_group.items():
+                    since_ts = _compute_group_since_ts(
+                        [d["timestamp"] for _, miss in members for d in miss]
+                    )
+                    timeline = await manager.client.get_messages(
+                        session, gid, since_ts=since_ts
+                    )
+                    for member_dir, missing in members:
+                        base = done
+
+                        async def _cb(c, t, _base=base):
+                            progress.set_completed(
+                                _base + c, detail=f"{_base + c:,} files"
+                            )
+
+                        report = await manager.reconcile_member_media(
+                            session,
+                            member_dir,
+                            missing,
+                            timeline,
+                            progress_callback=_cb,
+                        )
+                        done += len(missing)
+                        totals["repaired"] += report["repaired"]
+                        totals["failed"] += report["failed"]
+                        totals["still_missing"] += report["still_missing"]
+
+            progress.complete()
+            progress.set_result(totals)
+            logger.info("verify_complete", service=self._service, **totals)
+            return totals
+        finally:
+            self.running = False
