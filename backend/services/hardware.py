@@ -131,6 +131,12 @@ def _detect_nvidia_gpu() -> tuple[str | None, float | None]:
             text=True,
             timeout=_NVIDIA_SMI_TIMEOUT,
             check=False,
+            # Windows: the windowed GUI build has no console, so each
+            # subprocess.run would otherwise pop a visible console window --
+            # and detect_hardware() is polled by the frontend, so it flashes
+            # repeatedly. CREATE_NO_WINDOW suppresses it. The attribute only
+            # exists on Windows; 0 is a no-op everywhere else.
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
         if result.returncode == 0 and result.stdout.strip():
             first_line = result.stdout.strip().splitlines()[0]

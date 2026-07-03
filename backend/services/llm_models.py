@@ -91,6 +91,22 @@ _CLOUD_EXACT: tuple[_ExactRule, ...] = (
         evidence="Live testing: reliable forced tool-calling, grounded answers.",
     ),
     _ExactRule(
+        # Exact rule overrides the broad `^gemini-3` block below: re-verified
+        # 2026-07-04 that the OpenAI-compat 2-turn tool-calling round-trip now
+        # returns HTTP 200 for this model (the gemini-3.x `thought_signature`
+        # 400 no longer reproduces for gemini-3.5-flash). Same ~20 req/day free
+        # tier as gemini-2.5-flash.
+        id="gemini-3.5-flash",
+        backend="cloud",
+        tier="recommended",
+        note_key=None,
+        evidence=(
+            "Re-verified 2026-07-04: OpenAI-compat forced tool-calling "
+            "round-trip returns HTTP 200; the gemini-3.x thought_signature 400 "
+            "no longer reproduces for this model."
+        ),
+    ),
+    _ExactRule(
         id="gemini-2.5-flash-lite",
         backend="cloud",
         tier="degraded",
