@@ -338,3 +338,42 @@ async def test_interrupted_embedding_does_not_strand_docs(
     docs = store.documents_for_service(_SERVICE)
     assert len(docs) == 1
     assert store.search([1.0, 0.0], k=1)[0][0].startswith(docs[0].doc_id)
+
+
+@pytest.mark.asyncio
+async def test_ask_lazily_rebuilds_llm_client_when_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A service whose LLM client is None (key unavailable at startup — e.g. a
+    transient keyring failure, or the user configures the key after app start)
+    retries `build_llm_client_from_settings()` on ask instead of staying
+    permanently misconfigured until restart."""
+    from backend.services import knowledge_service as ks
+
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+
+    async def _fake_build() -> FakeLLMClient:
+        return FakeLLMClient(script)
+
+    monkeypatch.setattr(ks, "build_llm_client_from_settings", _fake_build)
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm=None)
+
+    answer = await svc.ask("anything", Scope(service=_SERVICE), timezone.utc)
+
+    assert answer.no_evidence is True  # the lazily-built client answered
+
+
+@pytest.mark.asyncio
+async def test_ask_raises_misconfigured_when_llm_still_unbuildable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    async def _fake_build() -> None:
+        return None
+
+    monkeypatch.setattr(ks, "build_llm_client_from_settings", _fake_build)
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm=None)
+
+    with pytest.raises(ks.KnowledgeMisconfigured):
+        await svc.ask("anything", Scope(service=_SERVICE), timezone.utc)

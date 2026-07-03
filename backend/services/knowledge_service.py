@@ -298,6 +298,17 @@ class KnowledgeService:
         (Task 5); it is not consulted here yet.
         """
         if self._llm is None:
+            # Lazy retry, not a permanent verdict: the client can be absent because
+            # the key/config wasn't available when the singleton was built (user
+            # configures the key after app start, or the OS keyring hiccups during
+            # startup — observed on WSL, where the DBus keyring fails once before
+            # the plaintext fallback engages). Rebuilding here is cheap (a settings
+            # read + keyring load), so a transient failure never bricks the chatbot
+            # until restart.
+            self._llm = await build_llm_client_from_settings()
+            if self._llm is not None:
+                logger.info("knowledge_service.llm_client_recovered")
+        if self._llm is None:
             raise KnowledgeMisconfigured(
                 "no LLM client configured for the knowledge chatbot"
             )
