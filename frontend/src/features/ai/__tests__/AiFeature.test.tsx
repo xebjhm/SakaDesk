@@ -1,9 +1,11 @@
 // frontend/src/features/ai/__tests__/AiFeature.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiFeature } from '../AiFeature';
+import { AskError } from '../api';
 import type { AskAnswer } from '../api';
+import { useAppStore } from '../../../store/appStore';
 
 interface FetchStubOverrides {
     /** `GET /api/ai/config`'s response -- defaults to an empty object (no
@@ -90,11 +92,20 @@ vi.mock('../../../utils/navigateToSource', () => ({
     navigateToSource: mockNavigateToSource,
 }));
 
-// Selector-aware mock — AiFeature calls `useAppStore((state) => state.activeService)`.
-vi.mock('../../../store/appStore', () => ({
-    useAppStore: (selector: (state: { activeService: string | null }) => unknown) =>
-        selector({ activeService: 'hinatazaka46' }),
-}));
+// The REAL zustand store (Product-wave Task 6) — `AiFeature` now reads/writes
+// `aiThreadsByService`/`aiIsAsking`/`aiAbortControllers` through it directly,
+// so a hand-rolled selector-only mock (the old approach) can no longer stand
+// in for it. `resetAiStore` below re-seeds just the fields these tests touch
+// before each test, mirroring `store/appStore.test.ts`'s own convention of
+// resetting via `useAppStore.setState(...)` rather than mocking the module.
+function resetAiStore(activeService: string | null = 'hinatazaka46') {
+    useAppStore.setState({
+        activeService,
+        aiThreadsByService: {},
+        aiIsAsking: {},
+        aiAbortControllers: {},
+    });
+}
 
 const ANSWERED: AskAnswer = {
     sentences: [{ text: '焼肉を食べました。', citationIds: ['msg:hinatazaka46:42'] }],
@@ -131,6 +142,7 @@ describe('AiFeature', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         stubReadyFetch();
+        resetAiStore();
     });
 
     afterEach(() => {
@@ -150,7 +162,8 @@ describe('AiFeature', () => {
             'hinatazaka46',
             '何を食べた?',
             expect.any(String),
-            expect.any(Function)
+            expect.any(Function),
+            expect.objectContaining({ signal: expect.anything(), history: [] })
         );
 
         expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
@@ -309,7 +322,8 @@ describe('AiFeature', () => {
                     'hinatazaka46',
                     'will this ask the cloud?',
                     expect.any(String),
-                    expect.any(Function)
+                    expect.any(Function),
+                    expect.objectContaining({ signal: expect.anything(), history: [] })
                 )
             );
             expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
@@ -478,7 +492,8 @@ describe('AiFeature', () => {
                 'hinatazaka46',
                 'still have quota?',
                 expect.any(String),
-                expect.any(Function)
+                expect.any(Function),
+                expect.objectContaining({ signal: expect.anything(), history: [] })
             );
         });
 
@@ -495,6 +510,187 @@ describe('AiFeature', () => {
             await askQuestion('local question with a stale zero usage number');
 
             expect(mockAskKnowledge).toHaveBeenCalled();
+        });
+    });
+
+    describe('durable thread (Product-wave Task 6, item 1)', () => {
+        it('the thread survives AiFeature unmounting and remounting', async () => {
+            mockAskKnowledge.mockResolvedValue(ANSWERED);
+
+            const { unmount } = render(<AiFeature />);
+            await askQuestion('何を食べた?');
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+
+            unmount();
+            render(<AiFeature />);
+
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+            // Remounting must not re-fire the ask.
+            expect(mockAskKnowledge).toHaveBeenCalledTimes(1);
+        });
+
+        it('an answer resolving while AiFeature is unmounted still lands in the thread on remount', async () => {
+            let resolveAsk: (value: AskAnswer) => void = () => {};
+            mockAskKnowledge.mockImplementation(
+                (_service, _question, _tz, onProgress: (label: string) => void) => {
+                    onProgress('thinking');
+                    return new Promise<AskAnswer>((resolve) => {
+                        resolveAsk = resolve;
+                    });
+                }
+            );
+
+            const { unmount } = render(<AiFeature />);
+            await askQuestion('何を食べた?');
+            await screen.findByText('Thinking…');
+
+            // The component tree is gone BEFORE the ask settles -- the
+            // original bug (local `useState` in `AiFeature`) discarded this
+            // update entirely once the owning component instance was torn
+            // down. The store-backed version must not.
+            unmount();
+            resolveAsk(ANSWERED);
+            await waitFor(() => {
+                const thread = useAppStore.getState().getAiThread('hinatazaka46');
+                expect(thread.some((t) => t.role === 'assistant' && t.state === 'answered')).toBe(
+                    true
+                );
+            });
+
+            render(<AiFeature />);
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+        });
+
+        it('the thread survives a citation-navigation-style feature switch (the real mechanism navigateToSource uses)', async () => {
+            mockAskKnowledge.mockResolvedValue(ANSWERED);
+
+            const { unmount } = render(<AiFeature />);
+            await askQuestion('何を食べた?');
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+
+            // `navigateToSource` (mocked to a spy elsewhere in this file) is
+            // itself just a `setActiveFeature` call under the hood -- which
+            // is what actually unmounts `AiFeature` in the running app
+            // (`ContentArea` switches on `activeFeature`). Exercise that
+            // same store call directly, on the REAL store, then simulate the
+            // resulting unmount/remount.
+            unmount();
+            useAppStore.getState().setActiveFeature('hinatazaka46', 'blogs');
+            useAppStore.getState().setActiveFeature('hinatazaka46', 'ai');
+
+            render(<AiFeature />);
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+        });
+    });
+
+    describe('clear thread (Product-wave Task 6, item 1)', () => {
+        it('clears only the active service thread, leaving other services untouched', async () => {
+            mockAskKnowledge.mockResolvedValue(ANSWERED);
+            useAppStore
+                .getState()
+                .appendAiTurns('sakurazaka46', [
+                    { id: 'other-1', role: 'user', text: 'other service question', createdAt: 1 },
+                ]);
+
+            render(<AiFeature />);
+            await askQuestion('何を食べた?');
+            expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
+
+            await userEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+
+            expect(screen.queryByText('焼肉を食べました。')).not.toBeInTheDocument();
+            expect(useAppStore.getState().getAiThread('hinatazaka46')).toEqual([]);
+            expect(useAppStore.getState().getAiThread('sakurazaka46')).toHaveLength(1);
+        });
+    });
+
+    describe('stop (Product-wave Task 6, item 2)', () => {
+        it('aborting mid-stream renders a "stopped" turn (not an error), re-enables Send, and a second ask still works', async () => {
+            mockAskKnowledge.mockImplementation(
+                (
+                    _service,
+                    _question,
+                    _tz,
+                    onProgress: (label: string) => void,
+                    opts?: { signal?: AbortSignal }
+                ) => {
+                    onProgress('thinking');
+                    return new Promise<AskAnswer>((_resolve, reject) => {
+                        opts?.signal?.addEventListener('abort', () => {
+                            reject(new AskError('aborted', 'The request was stopped.'));
+                        });
+                    });
+                }
+            );
+
+            render(<AiFeature />);
+            await askQuestion('will this be stopped?');
+
+            const stopButton = await screen.findByRole('button', { name: 'Stop' });
+            await userEvent.click(stopButton);
+
+            expect(await screen.findByText('You stopped this answer.')).toBeInTheDocument();
+            // Non-error styling: no red error box for the stopped turn.
+            expect(document.querySelector('.text-red-700')).toBeNull();
+            expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+
+            // A second ask afterwards must still work normally (the lock/
+            // abort-controller bookkeeping doesn't wedge the next ask).
+            mockAskKnowledge.mockResolvedValue({
+                sentences: [],
+                citations: [],
+                noEvidence: true,
+            } as AskAnswer);
+            await askQuestion('does it still work?');
+            expect(
+                await screen.findByText(
+                    "I couldn't find anything in your synced content to answer that."
+                )
+            ).toBeInTheDocument();
+        });
+    });
+
+    describe('composer (Product-wave Task 6, item 4)', () => {
+        it('the text input stays enabled and typeable while an ask is in flight; only Send/Stop swaps', async () => {
+            mockAskKnowledge.mockImplementation(
+                (_service, _question, _tz, onProgress: (label: string) => void) => {
+                    onProgress('thinking');
+                    return new Promise<AskAnswer>(() => {
+                        // Never resolves -- this test only cares about the
+                        // in-flight state.
+                    });
+                }
+            );
+
+            render(<AiFeature />);
+            await askQuestion('slow question');
+
+            const textarea = await screen.findByPlaceholderText('Ask a question...');
+            expect(textarea).not.toBeDisabled();
+            expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Send' })).not.toBeInTheDocument();
+
+            // The user can keep typing their NEXT question while this one streams.
+            await userEvent.type(textarea, 'next question');
+            expect(textarea).toHaveValue('next question');
+        });
+
+        it('Enter submits the question; Shift+Enter does not', async () => {
+            mockAskKnowledge.mockResolvedValue({
+                sentences: [],
+                citations: [],
+                noEvidence: true,
+            } as AskAnswer);
+
+            render(<AiFeature />);
+            const textarea = await screen.findByPlaceholderText('Ask a question...');
+            await userEvent.type(textarea, 'a question');
+
+            fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true, code: 'Enter' });
+            expect(mockAskKnowledge).not.toHaveBeenCalled();
+
+            fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false, code: 'Enter' });
+            await waitFor(() => expect(mockAskKnowledge).toHaveBeenCalledTimes(1));
         });
     });
 });

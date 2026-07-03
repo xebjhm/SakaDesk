@@ -225,6 +225,60 @@ async def test_ask_raises_llm_backend_error_model_incompatible_after_repeated_in
 
 
 @pytest.mark.asyncio
+async def test_ask_with_history_forwards_prior_turns_to_llm_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Product-wave Task 6, item 3: a follow-up question ("she said what
+    else?") must reach the LLM with the prior turns present -- proves the
+    full `KnowledgeService.ask(..., history=...)` -> `KnowledgeAgent.ask` wire
+    end-to-end (not just that `ai.py` forwards its own param -- see
+    `backend/tests/test_ai_api.py::TestAskHistory` for that boundary)."""
+    # No tools needed this time -- straight to a final answer -- so the
+    # single captured `chat()` call's `messages` list is exactly what
+    # `KnowledgeAgent.ask` built: [system, *history, user].
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    llm = FakeLLMClient(script)
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm)
+
+    history = [
+        {"role": "user", "content": "焼肉好き?"},
+        {"role": "assistant", "content": "はい、焼肉が好きです。"},
+    ]
+    await svc.ask(
+        "彼女は他に何か言ってた?",
+        Scope(service=_SERVICE),
+        timezone.utc,
+        history=history,
+    )
+
+    assert len(llm.calls) == 1
+    messages, _tools = llm.calls[0]
+    assert messages[0]["role"] == "system"
+    assert messages[1] == {"role": "user", "content": "焼肉好き?"}
+    assert messages[2] == {"role": "assistant", "content": "はい、焼肉が好きです。"}
+    assert messages[3] == {"role": "user", "content": "彼女は他に何か言ってた?"}
+
+
+@pytest.mark.asyncio
+async def test_ask_without_history_behaves_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`history=None` (the default) must produce the exact same messages
+    shape as before this feature existed -- just [system, user]."""
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    llm = FakeLLMClient(script)
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm)
+
+    await svc.ask("who mentioned nobody", Scope(service=_SERVICE), timezone.utc)
+
+    assert len(llm.calls) == 1
+    messages, _tools = llm.calls[0]
+    assert len(messages) == 2
+    assert messages[0]["role"] == "system"
+    assert messages[1] == {"role": "user", "content": "who mentioned nobody"}
+
+
+@pytest.mark.asyncio
 async def test_ask_no_match_returns_no_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

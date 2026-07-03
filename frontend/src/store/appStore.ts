@@ -38,6 +38,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { DEFAULT_SERVICE_ORDER } from '../data/services';
 import type { RecentPost } from '../types';
+import type { ChatTurn } from '../features/ai/types';
 
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
@@ -208,6 +209,42 @@ interface AppState {
     transcriptionEnabled: boolean;
     /** Set the top-level transcription feature toggle. */
     setTranscriptionEnabled: (enabled: boolean) => void;
+
+    // ─── AI Chat Threads (Product-wave Task 6) ─────────────────────────────
+    // Lifted out of `AiFeature`'s local component state: a tab switch (or a
+    // citation chip's `navigateToSource`, which changes `activeFeature` and
+    // unmounts `AiFeature`) used to silently drop the whole conversation --
+    // living here instead means the thread (and an ask still in flight)
+    // survives a remount. Client-side only, same as before (no server-side
+    // conversation persistence, Plan B spec §7.5) -- and deliberately NOT
+    // included in `partialize` below, so it does NOT survive an app restart,
+    // only in-session remounts.
+
+    /** Per-service chat thread. */
+    aiThreadsByService: Record<string, ChatTurn[]>;
+    /** Append one or more turns to a service's thread. */
+    appendAiTurns: (service: string, turns: ChatTurn[]) => void;
+    /** Replace a single turn by id within a service's thread (no-op if the id
+     * isn't found -- e.g. a stale closure from an already-cleared thread). */
+    replaceAiTurn: (service: string, id: string, updater: (turn: ChatTurn) => ChatTurn) => void;
+    /** Empty a service's thread ("clear thread" button) -- other services'
+     * threads are untouched. */
+    clearAiThread: (service: string) => void;
+    /** Get a service's thread (defaults to empty). */
+    getAiThread: (service: string) => ChatTurn[];
+
+    /** Whether an ask is currently in flight for a service -- drives the
+     * composer's Send/Stop swap and stays true across an `AiFeature` remount
+     * (the fetch itself is independent of any component's lifetime). */
+    aiIsAsking: Record<string, boolean>;
+    setAiIsAsking: (service: string, asking: boolean) => void;
+
+    /** The `AbortController` for a service's in-flight ask, if any -- lets a
+     * freshly (re)mounted `ChatWindow`'s Stop button cancel an ask that a
+     * PREVIOUS `AiFeature` instance started. Not persisted (not JSON-
+     * serializable, and not meaningful across a restart anyway). */
+    aiAbortControllers: Record<string, AbortController>;
+    setAiAbortController: (service: string, controller: AbortController | null) => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -358,6 +395,46 @@ export const useAppStore = create<AppState>()(
             setTranslationEnabled: (enabled) => set({ translationEnabled: enabled }),
             transcriptionEnabled: true,
             setTranscriptionEnabled: (enabled) => set({ transcriptionEnabled: enabled }),
+
+            aiThreadsByService: {},
+            appendAiTurns: (service, turns) =>
+                set((state) => ({
+                    aiThreadsByService: {
+                        ...state.aiThreadsByService,
+                        [service]: [...(state.aiThreadsByService[service] ?? []), ...turns],
+                    },
+                })),
+            replaceAiTurn: (service, id, updater) =>
+                set((state) => {
+                    const existing = state.aiThreadsByService[service] ?? [];
+                    return {
+                        aiThreadsByService: {
+                            ...state.aiThreadsByService,
+                            [service]: existing.map((turn) => (turn.id === id ? updater(turn) : turn)),
+                        },
+                    };
+                }),
+            clearAiThread: (service) =>
+                set((state) => ({
+                    aiThreadsByService: { ...state.aiThreadsByService, [service]: [] },
+                })),
+            getAiThread: (service) => get().aiThreadsByService[service] ?? [],
+
+            aiIsAsking: {},
+            setAiIsAsking: (service, asking) =>
+                set((state) => ({ aiIsAsking: { ...state.aiIsAsking, [service]: asking } })),
+
+            aiAbortControllers: {},
+            setAiAbortController: (service, controller) =>
+                set((state) => {
+                    const next = { ...state.aiAbortControllers };
+                    if (controller) {
+                        next[service] = controller;
+                    } else {
+                        delete next[service];
+                    }
+                    return { aiAbortControllers: next };
+                }),
         }),
         {
             name: 'sakadesk-app-state',

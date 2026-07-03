@@ -407,6 +407,140 @@ class TestAskMemberIdValidation:
         assert r.status_code == 200
 
 
+class TestAskHistory:
+    """`AskRequest.history` -- Product-wave Task 6, item 3: real multi-turn.
+
+    `ai.py` used to hardcode `None` regardless of what the client sent even
+    though `KnowledgeService.ask`/`KnowledgeAgent.ask` already accepted a
+    `history` param -- these tests pin the endpoint-level contract: a
+    follow-up question's prior turns actually reach `svc.ask` (positional arg
+    index 3, mirroring `TestAskMemberIdValidation`'s `await_args.args[...]`
+    pattern), role/content are validated, and an oversized history is
+    rejected (422) rather than silently truncated.
+    """
+
+    def test_history_forwarded_to_knowledge_service_ask(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "彼女は他に何か言ってた?",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": [
+                        {"role": "user", "content": "焼肉好き?"},
+                        {"role": "assistant", "content": "はい、焼肉が好きです。"},
+                    ],
+                },
+            )
+        assert r.status_code == 200
+        g.return_value.ask.assert_awaited_once()
+        history_arg = g.return_value.ask.await_args.args[3]
+        assert history_arg == [
+            {"role": "user", "content": "焼肉好き?"},
+            {"role": "assistant", "content": "はい、焼肉が好きです。"},
+        ]
+
+    def test_omitted_history_forwards_none(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = client.post(
+                "/api/ai/ask",
+                json={"question": "q", "service": "hinatazaka46", "tz": "Asia/Tokyo"},
+            )
+        assert r.status_code == 200
+        history_arg = g.return_value.ask.await_args.args[3]
+        assert history_arg is None
+
+    def test_empty_history_list_forwards_none(self):
+        # An empty list is falsy -- `ai.py`'s `ask()` converts it to `None`
+        # the same as an omitted field, rather than forwarding `[]` (an empty
+        # history list adds nothing but a wasted `messages.extend([])` in
+        # `KnowledgeAgent.ask`, so collapsing it up front is simpler than
+        # asking every downstream layer to treat `[]` and `None` as equivalent).
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "q",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": [],
+                },
+            )
+        assert r.status_code == 200
+        assert g.return_value.ask.await_args.args[3] is None
+
+    def test_history_with_invalid_role_returns_422(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "q",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": [{"role": "system", "content": "x"}],
+                },
+            )
+        assert r.status_code == 422
+        g.return_value.ask.assert_not_called()
+
+    def test_history_missing_content_returns_422(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "q",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": [{"role": "user"}],
+                },
+            )
+        assert r.status_code == 422
+        g.return_value.ask.assert_not_called()
+
+    def test_history_exceeding_cap_returns_422_not_truncated(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            oversized = [{"role": "user", "content": f"q{i}"} for i in range(13)]
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "q",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": oversized,
+                },
+            )
+        assert r.status_code == 422
+        assert "at most 12" in json.dumps(r.json())
+        g.return_value.ask.assert_not_called()
+
+    def test_history_exactly_at_cap_is_accepted(self):
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.return_value = _validated_answer()
+            exactly_cap = [{"role": "user", "content": f"q{i}"} for i in range(12)]
+            r = client.post(
+                "/api/ai/ask",
+                json={
+                    "question": "q",
+                    "service": "hinatazaka46",
+                    "tz": "Asia/Tokyo",
+                    "history": exactly_cap,
+                },
+            )
+        assert r.status_code == 200
+        assert len(g.return_value.ask.await_args.args[3]) == 12
+
+
 class TestAskSSEErrorContract:
     """`event: error` payload shape: `{code, message, retryAfterS?, backend, model}`."""
 
@@ -1061,6 +1195,134 @@ class TestAskDisconnect:
         # "exception was never retrieved" warning).
         await asyncio.sleep(0)
         assert task not in ai_module._pending_ask_tasks
+
+
+class TestAskDeadline:
+    """`_ask_event_stream`'s overall wall-clock deadline (Product-wave Task 6,
+    item 2) -- same "detach, don't cancel" shape as `TestAskDisconnect`, just
+    triggered by our own budget instead of the client going away.
+    """
+
+    @pytest.mark.asyncio
+    async def test_deadline_exceeded_emits_typed_timeout_error_and_detaches(self):
+        lock = asyncio.Lock()
+
+        async def slow_ask(question, scope, tz, history):
+            async with lock:
+                await asyncio.sleep(0.3)
+            return _validated_answer()
+
+        svc = AsyncMock()
+        svc.ask = AsyncMock(side_effect=slow_ask)
+        svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
+
+        class FakeRequest:
+            """Always connected -- isolates the deadline path from the
+            disconnect path (covered separately by `TestAskDisconnect`)."""
+
+            async def is_disconnected(self) -> bool:
+                return False
+
+        scope = Scope(service="hinatazaka46", group_ids=[], member_id=None)
+        tasks_before = set(ai_module._pending_ask_tasks)
+
+        with (
+            patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)),
+            patch("backend.api.ai._HEARTBEAT_INTERVAL_S", 0.01),
+            patch("backend.api.ai._ask_deadline_seconds", AsyncMock(return_value=0.02)),
+        ):
+            events = [
+                event
+                async for event in ai_module._ask_event_stream(
+                    FakeRequest(), "何を食べた?", scope, ZoneInfo("Asia/Tokyo")
+                )
+            ]
+
+        assert any("event: error" in e for e in events)
+        assert all("event: answer" not in e for e in events)
+        error_event = next(e for e in events if "event: error" in e)
+        data = _extract_event_data(error_event, "error")
+        assert data["code"] == "timeout"
+        assert data["message"]
+
+        # Detached (not cancelled) into the module-level registry -- same
+        # contract as a disconnect: the worker (and the lock it holds) is
+        # left to finish naturally.
+        new_tasks = set(ai_module._pending_ask_tasks) - tasks_before
+        assert len(new_tasks) == 1
+        task = new_tasks.pop()
+        assert not task.cancelled()
+
+        answer = await asyncio.wait_for(asyncio.shield(task), timeout=2)
+        assert answer is not None
+        assert not lock.locked()
+        svc.ask.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_generous_deadline_never_fires_for_a_fast_ask(self):
+        """Sanity check the OTHER direction: a normal, fast ask under the
+        (test-scale) deadline still streams a real `event: answer`, not a
+        spurious timeout."""
+        svc = AsyncMock()
+        svc.ask = AsyncMock(return_value=_validated_answer())
+        svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
+
+        class FakeRequest:
+            async def is_disconnected(self) -> bool:
+                return False
+
+        scope = Scope(service="hinatazaka46", group_ids=[], member_id=None)
+
+        with (
+            patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)),
+            patch("backend.api.ai._HEARTBEAT_INTERVAL_S", 0.01),
+            patch("backend.api.ai._ask_deadline_seconds", AsyncMock(return_value=5.0)),
+        ):
+            events = [
+                event
+                async for event in ai_module._ask_event_stream(
+                    FakeRequest(), "何を食べた?", scope, ZoneInfo("Asia/Tokyo")
+                )
+            ]
+
+        assert any("event: answer" in e for e in events)
+        assert all("event: error" not in e for e in events)
+
+    @pytest.mark.asyncio
+    async def test_ask_deadline_seconds_falls_back_to_default_when_unset(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = tmp_path / "settings.json"
+        monkeypatch.setattr(
+            "backend.services.settings_store.get_settings_path", lambda: settings_path
+        )
+        assert await ai_module._ask_deadline_seconds() == 300.0
+
+    @pytest.mark.asyncio
+    async def test_ask_deadline_seconds_reads_configured_override(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = tmp_path / "settings.json"
+        monkeypatch.setattr(
+            "backend.services.settings_store.get_settings_path", lambda: settings_path
+        )
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"ask_deadline_s": 45}}), encoding="utf-8"
+        )
+        assert await ai_module._ask_deadline_seconds() == 45.0
+
+    @pytest.mark.asyncio
+    async def test_ask_deadline_seconds_ignores_a_non_positive_override(
+        self, tmp_path, monkeypatch
+    ):
+        settings_path = tmp_path / "settings.json"
+        monkeypatch.setattr(
+            "backend.services.settings_store.get_settings_path", lambda: settings_path
+        )
+        settings_path.write_text(
+            json.dumps({"knowledge_base": {"ask_deadline_s": 0}}), encoding="utf-8"
+        )
+        assert await ai_module._ask_deadline_seconds() == 300.0
 
 
 # ---------------------------------------------------------------------------

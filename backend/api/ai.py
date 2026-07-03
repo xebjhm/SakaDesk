@@ -26,9 +26,25 @@ self._store_lock:` block and free the lock *while the orphaned worker thread kep
 running*, letting a concurrent index/ask race that orphaned thread over the shared
 sqlite/vector store. So the task is instead detached into the module-level
 `_pending_ask_tasks` set (via `add_done_callback`) and left to finish naturally --
-bounded by `OpenAICompatLLMClient`'s ~120s httpx timeout, so the lock is never
-held indefinitely -- which also guarantees its exception (if any) is always
-retrieved even though nothing `await`s it directly anymore.
+which also guarantees its exception (if any) is always retrieved even though
+nothing `await`s it directly anymore.
+
+**The worker is NOT tightly bounded (Product-wave Task 6).** A previous version
+of this docstring claimed the orphaned task was "bounded by ~120s" -- that was
+wrong and under-counted by up to 6x: `KnowledgeAgent` runs up to `max_steps`
+(6) sequential LLM calls, each with its own ~120s `OpenAICompatLLMClient`
+httpx timeout, plus embedding/tool-call time in between, so the detached
+worker (and the `_store_lock` it holds) can legitimately run for several
+minutes in the worst case -- see `pwave-confirmed-bugs.md`'s "no cancel"
+finding. What IS bounded is the STREAM the client sees: `_ask_event_stream`
+separately enforces an overall wall-clock `ask_deadline_s` (settings
+`knowledge_base.ask_deadline_s`, default 300s -- see `_ask_deadline_seconds`)
+that's independent of any single LLM call's timeout. Once that deadline
+passes, the generator emits a typed `event: error {code: "timeout"}` and
+detaches -- the SAME "let it finish, don't cancel" reasoning as an actual
+disconnect (below) -- so the user is never left waiting past the deadline
+even though the orphaned worker may still be running underneath, still
+holding the lock, for however much longer `max_steps` gives it.
 
 **Citation `ref` serialization.** Each `Citation.source_ref` (`pysaka.knowledge
 .models.SourceRef`) is translated into the frontend's `CitationReference` shape
@@ -74,6 +90,7 @@ import json
 import re
 import time
 from datetime import datetime, timezone, tzinfo
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
@@ -180,6 +197,14 @@ _MODEL_BLOCKED_MESSAGE = (
     "work with this app's tool-calling integration. Pick another model in "
     "AI settings."
 )
+# Product-wave Task 6, item 2: the overall ask-deadline SSE timeout. Reuses
+# the SAME `code: "timeout"` the frontend already renders for a single LLM
+# call's httpx timeout (`ai.error.timeout` -- no new i18n key needed) since
+# both boil down to the same user-facing fact: the chatbot took too long.
+_ASK_DEADLINE_MESSAGE = (
+    "The knowledge chatbot took too long to answer within the time limit. "
+    "Please try again."
+)
 
 # `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
 # "hinatazaka46:12" -- what `doc.author_id`/`Scope.member_id` are always
@@ -190,10 +215,33 @@ _MODEL_BLOCKED_MESSAGE = (
 # zero documents instead of erroring.
 _CANONICAL_MEMBER_ID_RE = re.compile(r"^\S+:\d+$")
 
+# Product-wave Task 6, item 3: `AskRequest.history`'s server-side cap. The
+# frontend derives at most ~6 exchanges (12 messages: user text verbatim +
+# the previous assistant answer's sentences joined -- see `AiFeature.tsx`'s
+# `deriveHistory`) so a well-behaved client never hits this; it exists as a
+# belt-and-braces guard against a buggy/future client sending an unbounded
+# history and blowing up the per-ask LLM prompt size. Chosen design: REJECT
+# (422) rather than silently truncate -- an oversized request is a client
+# bug worth surfacing, not a user-visible request to silently reinterpret.
+_MAX_HISTORY_MESSAGES = 12
+
 
 # ----------------------------------------------------------------------------
 # Request/response models
 # ----------------------------------------------------------------------------
+
+
+class HistoryMessage(BaseModel):
+    """One prior chat turn, in the shape `pysaka.knowledge.KnowledgeAgent.ask`/
+    `.answer` already expect for their `history: list[dict] | None` param
+    (spliced verbatim between the system prompt and the new user question --
+    see `agent.py`'s `ask()`): `{"role": "user" | "assistant", "content": str}`.
+    No `tool`/`system` turns -- those are internal to one agent loop's own
+    scratch messages, never part of the cross-ask conversation history the
+    frontend reconstructs from the rendered thread."""
+
+    role: Literal["user", "assistant"]
+    content: str
 
 
 class AskRequest(BaseModel):
@@ -205,6 +253,15 @@ class AskRequest(BaseModel):
     # Accepted for forward-compatibility with a future conversation store; not
     # yet resolved into `history` here (no conversation-store seam exists yet).
     conversation_id: str | None = None
+    # Product-wave Task 6, item 3: prior turns for a multi-turn follow-up
+    # ("she said what else?"), derived client-side from the rendered thread
+    # (`AiFeature.tsx`'s `deriveHistory`: last ~6 exchanges, user text
+    # verbatim, assistant = the answer sentences joined, no citations/refs).
+    # `None`/omitted means "no history" (first question in a thread, or a
+    # thread that was just cleared) -- forwarded to `KnowledgeService.ask`
+    # unchanged, which was already threading it into `KnowledgeAgent`; only
+    # this endpoint used to hardcode `None` regardless of what the client sent.
+    history: list[HistoryMessage] | None = None
 
     @field_validator("member_id")
     @classmethod
@@ -217,6 +274,20 @@ class AskRequest(BaseModel):
             raise ValueError(
                 "member_id must be a canonical id shaped '<service>:<blog_id>' "
                 "(e.g. 'hinatazaka46:12')"
+            )
+        return value
+
+    @field_validator("history")
+    @classmethod
+    def _history_must_not_exceed_cap(
+        cls, value: list[HistoryMessage] | None
+    ) -> list[HistoryMessage] | None:
+        """Reject (422) rather than silently truncate an oversized `history`
+        -- see `_MAX_HISTORY_MESSAGES`'s docstring for why."""
+        if value is not None and len(value) > _MAX_HISTORY_MESSAGES:
+            raise ValueError(
+                f"history must contain at most {_MAX_HISTORY_MESSAGES} messages "
+                f"(got {len(value)})"
             )
         return value
 
@@ -262,6 +333,28 @@ async def _current_llm_backend_model() -> tuple[str | None, str | None]:
     config = await load_config()
     llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
     return llm_config.get("backend"), llm_config.get("model")
+
+
+# Fallback when `knowledge_base.ask_deadline_s` is absent/invalid (e.g. an old
+# settings.json written before this key existed) -- mirrors
+# `_SETTINGS_DEFAULTS`'s own default (settings_store.py) so a fresh install
+# and a pre-existing one behave the same.
+_DEFAULT_ASK_DEADLINE_S = 300.0
+
+
+async def _ask_deadline_seconds() -> float:
+    """The configured `knowledge_base.ask_deadline_s` (Product-wave Task 6,
+    item 2) -- the overall wall-clock budget `_ask_event_stream` gives ONE
+    ask's SSE stream before detaching with a typed `timeout` error. See the
+    module docstring's "worker is NOT tightly bounded" section for why this
+    is deliberately NOT the same thing as bounding the background worker.
+    """
+    config = await load_config()
+    kb_config = config.get("knowledge_base") or {}
+    value = kb_config.get("ask_deadline_s")
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return _DEFAULT_ASK_DEADLINE_S
 
 
 def _serialize_error_event(
@@ -425,13 +518,29 @@ def _on_ask_task_done(task: asyncio.Task) -> None:
         logger.error("ai.ask.background_task_failed", exc_info=exc)
 
 
-async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: tzinfo):
+async def _ask_event_stream(
+    request: Request,
+    question: str,
+    scope: Scope,
+    tz: tzinfo,
+    history: list[dict] | None = None,
+):
     # Immediate "thinking" feedback -- guarantees the client sees at least one
     # progress event even if `ask()` resolves faster than the heartbeat interval.
     yield _format_sse("progress", {"stage": "thinking"})
 
+    # Product-wave Task 6, item 2: the overall wall-clock budget for the
+    # STREAM (not the worker -- see `_ask_deadline_seconds`'s docstring). Read
+    # BEFORE creating the task, and awaited to completion here -- both so a
+    # mid-ask settings change can't retroactively shorten/lengthen an ask
+    # already in flight, and so this `load_config()` call never genuinely
+    # races the task's OWN settings reads (`_run_ask`'s `_cloud_consent_
+    # required`) for `settings_store`'s shared lock within the same request.
+    ask_deadline_s = await _ask_deadline_seconds()
+    deadline_at = time.monotonic() + ask_deadline_s
+
     task: asyncio.Task[Answer] = asyncio.create_task(
-        _run_ask(question, scope, tz, None)
+        _run_ask(question, scope, tz, history)
     )
     _pending_ask_tasks.add(task)
     task.add_done_callback(_on_ask_task_done)
@@ -455,13 +564,40 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
                 # another ask acquire the freed lock and race that orphaned
                 # thread (a torn read/write). So instead we let `task` run to
                 # natural completion (it's already detached into
-                # `_pending_ask_tasks`, above) -- bounded by
-                # `OpenAICompatLLMClient`'s ~120s httpx timeout, so the lock
-                # can never be held forever even with no one left to hear the
-                # answer.
+                # `_pending_ask_tasks`, above) -- see the module docstring's
+                # "worker is NOT tightly bounded" section for how long that
+                # can actually take; NOT the ~120s a stale comment here used
+                # to claim.
                 logger.info("ai.ask.client_disconnected", service=scope.service)
                 return
-            await asyncio.wait({task}, timeout=_HEARTBEAT_INTERVAL_S)
+            if time.monotonic() >= deadline_at:
+                # Same detach-don't-cancel reasoning as a disconnect, just
+                # triggered by our OWN wall-clock budget instead of the
+                # client going away -- the difference is the client is still
+                # here, so it gets a typed error instead of silence.
+                logger.info(
+                    "ai.ask.deadline_exceeded",
+                    service=scope.service,
+                    deadline_s=ask_deadline_s,
+                )
+                backend, model = await _current_llm_backend_model()
+                yield _format_sse(
+                    "error",
+                    _serialize_error_event(
+                        "timeout",
+                        _ASK_DEADLINE_MESSAGE,
+                        retry_after_s=None,
+                        backend=backend,
+                        model=model,
+                    ),
+                )
+                return
+            await asyncio.wait(
+                {task},
+                timeout=min(
+                    _HEARTBEAT_INTERVAL_S, max(deadline_at - time.monotonic(), 0)
+                ),
+            )
             if not task.done():
                 yield _format_sse("progress", await _heartbeat_payload(scope.service))
         answer = await task
@@ -610,9 +746,16 @@ async def ask(http_request: Request, body: AskRequest) -> StreamingResponse:
         group_ids=body.group_ids or [],
         member_id=body.member_id,
     )
-    logger.info("ai.ask.start", service=body.service, tz=body.tz)
+    history = (
+        [{"role": m.role, "content": m.content} for m in body.history]
+        if body.history
+        else None
+    )
+    logger.info(
+        "ai.ask.start", service=body.service, tz=body.tz, history_len=len(history or [])
+    )
     return StreamingResponse(
-        _ask_event_stream(http_request, body.question, scope, tz),
+        _ask_event_stream(http_request, body.question, scope, tz, history),
         media_type="text/event-stream",
     )
 

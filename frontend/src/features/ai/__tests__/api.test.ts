@@ -272,6 +272,91 @@ describe('askKnowledge', () => {
       conversation_id: 'conv-1',
     });
   });
+
+  describe('history (Product-wave Task 6, item 3)', () => {
+    it('posts opts.history verbatim in the request body', async () => {
+      const fetchMock = mockFetchStream([sse('answer', MESSAGE_ANSWER)]);
+      const history = [
+        { role: 'user' as const, content: '焼肉好き?' },
+        { role: 'assistant' as const, content: 'はい、焼肉が好きです。' },
+      ];
+
+      await askKnowledge('hinatazaka46', '彼女は他に何か言ってた?', 'Asia/Tokyo', vi.fn(), {
+        history,
+      });
+
+      const call = fetchMock.mock.calls[0][1] as RequestInit;
+      const body = JSON.parse(call.body as string);
+      expect(body.history).toEqual(history);
+    });
+
+    it('omits the history key entirely when opts.history is not passed', async () => {
+      const fetchMock = mockFetchStream([sse('answer', MESSAGE_ANSWER)]);
+
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+
+      const call = fetchMock.mock.calls[0][1] as RequestInit;
+      const body = JSON.parse(call.body as string);
+      expect('history' in body).toBe(false);
+    });
+  });
+
+  describe('AbortSignal (Product-wave Task 6, item 2)', () => {
+    it('wires opts.signal into the fetch call', async () => {
+      const fetchMock = mockFetchStream([sse('answer', MESSAGE_ANSWER)]);
+      const controller = new AbortController();
+
+      await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn(), {
+        signal: controller.signal,
+      });
+
+      const init = fetchMock.mock.calls[0][1] as RequestInit;
+      expect(init.signal).toBe(controller.signal);
+    });
+
+    it('rejects with a typed "aborted" AskError (not "network") when fetch itself rejects with an AbortError', async () => {
+      const abortError = new DOMException('The user aborted a request.', 'AbortError');
+      const fetchMock = vi.fn().mockRejectedValue(abortError);
+      vi.stubGlobal('fetch', fetchMock);
+
+      let caught: unknown;
+      try {
+        await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(AskError);
+      expect((caught as AskError).code).toBe('aborted');
+    });
+
+    it('rejects with a typed "aborted" AskError when the stream read itself throws an AbortError mid-stream', async () => {
+      const abortError = new DOMException('The user aborted a request.', 'AbortError');
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: new ReadableStream<Uint8Array>({
+          start() {
+            // Never enqueue/close -- the read itself will reject.
+          },
+          pull() {
+            return Promise.reject(abortError);
+          },
+        }),
+      } as unknown as Response);
+      vi.stubGlobal('fetch', fetchMock);
+
+      let caught: unknown;
+      try {
+        await askKnowledge('hinatazaka46', 'q', 'Asia/Tokyo', vi.fn());
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(AskError);
+      expect((caught as AskError).code).toBe('aborted');
+    });
+  });
 });
 
 describe('canonicalMemberId', () => {

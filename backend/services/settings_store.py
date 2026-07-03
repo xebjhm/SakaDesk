@@ -62,6 +62,13 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
         # never checks this (nothing leaves the device).
         "cloud_consent": False,
         "cloud_consent_at": None,
+        # Overall wall-clock budget (seconds) `POST /api/ai/ask`'s SSE stream
+        # gives one ask before detaching with a typed `event: error
+        # {code: "timeout"}` (Product-wave Task 6, item 2). Generous default --
+        # this bounds what the USER waits for, not the worker (see
+        # `backend/api/ai.py`'s `_ask_event_stream`/`_ask_deadline_seconds`
+        # docstrings for why those are two different things).
+        "ask_deadline_s": 300,
     },
     # Note: KB chatbot's cloud API key reuses translation's keyring entry, not here
 }

@@ -20,6 +20,19 @@ export interface AskAnswer {
   noEvidence: boolean;
 }
 
+/**
+ * One prior chat turn, in the exact shape `backend/api/ai.py`'s
+ * `AskRequest.history` (`HistoryMessage`) expects -- which is itself
+ * `pysaka.knowledge.KnowledgeAgent.ask`'s `history: list[dict] | None` shape,
+ * spliced verbatim between the system prompt and the new question. No
+ * `citationIds`/refs -- see `deriveHistory` in `../AiFeature.tsx` for how
+ * these are built from the rendered thread.
+ */
+export interface AskHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface AskOptions {
   groupIds?: number[];
   /**
@@ -32,6 +45,17 @@ export interface AskOptions {
    */
   memberId?: string;
   conversationId?: string;
+  /** Prior turns for a multi-turn follow-up (Product-wave Task 6, item 3).
+   * Server-capped at 12 messages (`backend/api/ai.py`'s
+   * `_MAX_HISTORY_MESSAGES`) -- an oversized list is REJECTED (422), not
+   * truncated, so keep this at the ~6-exchange window `deriveHistory`
+   * already enforces. */
+  history?: AskHistoryMessage[];
+  /** Aborts the underlying `fetch` (Stop button, Product-wave Task 6, item
+   * 2) -- rejects the returned promise with `AskError('aborted', ...)`
+   * instead of `'network'`, so callers can render a distinct non-error
+   * "stopped" state. */
+  signal?: AbortSignal;
 }
 
 /** Builds the canonical member id `askKnowledge`'s `AskOptions.memberId`
@@ -164,14 +188,30 @@ function normalizeAnswer(raw: RawAskAnswer): AskAnswer {
   };
 }
 
+/** True for the `DOMException`/`Error` `fetch`/`ReadableStream` throws when an
+ * in-flight request is aborted via `AbortController.abort()` -- duck-typed
+ * purely on `.name` (NOT `instanceof DOMException`/`instanceof Error`): a
+ * browser's real `DOMException` extends `Error`, but jsdom's (the test
+ * environment) does not, and some environments/polyfills throw a plain
+ * `Error` with the same `name` instead. */
+function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: unknown }).name === 'AbortError'
+  );
+}
+
 /**
  * Calls `/api/ai/ask` and consumes its two-pass SSE stream.
  *
  * `onProgress` is invoked once per `event: progress` heartbeat with a
  * human-ish stage label. The returned promise resolves with the single
  * terminal `event: answer` payload, or rejects on `event: error`, a non-ok
- * HTTP response, a stream that ends without a terminal event, or a network
- * failure.
+ * HTTP response, a stream that ends without a terminal event, a network
+ * failure, or `opts.signal` firing (Stop button, Product-wave Task 6, item 2
+ * -- rejects with `AskError('aborted', ...)`, distinct from `'network'`, so
+ * callers can render a non-error "stopped" state instead of a real failure).
  */
 export function askKnowledge(
   service: string,
@@ -187,6 +227,7 @@ export function askKnowledge(
         response = await fetch('/api/ai/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: opts?.signal,
           body: JSON.stringify({
             question,
             service,
@@ -194,10 +235,15 @@ export function askKnowledge(
             group_ids: opts?.groupIds,
             member_id: opts?.memberId,
             conversation_id: opts?.conversationId,
+            history: opts?.history,
           }),
         });
       } catch (err) {
-        reject(new AskError('network', err instanceof Error ? err.message : String(err)));
+        if (isAbortError(err)) {
+          reject(new AskError('aborted', 'The request was stopped.'));
+        } else {
+          reject(new AskError('network', err instanceof Error ? err.message : String(err)));
+        }
         return;
       }
 
@@ -294,7 +340,11 @@ export function askKnowledge(
           reject(new AskError('unknown', 'AI ask stream ended without a terminal event'));
         }
       } catch (err) {
-        reject(new AskError('network', err instanceof Error ? err.message : String(err)));
+        if (isAbortError(err)) {
+          reject(new AskError('aborted', 'The request was stopped.'));
+        } else {
+          reject(new AskError('network', err instanceof Error ? err.message : String(err)));
+        }
       } finally {
         reader.releaseLock();
       }

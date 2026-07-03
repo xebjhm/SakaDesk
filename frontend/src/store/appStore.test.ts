@@ -212,4 +212,108 @@ describe('appStore', () => {
             expect(getSelectedConversation('sakurazaka46')).toEqual(conv2)
         })
     })
+
+    describe('aiThreadsByService (Product-wave Task 6)', () => {
+        beforeEach(() => {
+            useAppStore.setState({ aiThreadsByService: {}, aiIsAsking: {}, aiAbortControllers: {} })
+        })
+
+        it('should default to an empty thread', () => {
+            expect(useAppStore.getState().getAiThread('hinatazaka46')).toEqual([])
+        })
+
+        it('should append turns to a service thread', () => {
+            const { appendAiTurns, getAiThread } = useAppStore.getState()
+            appendAiTurns('hinatazaka46', [
+                { id: 't1', role: 'user', text: 'question', createdAt: 1 },
+            ])
+            expect(getAiThread('hinatazaka46')).toEqual([
+                { id: 't1', role: 'user', text: 'question', createdAt: 1 },
+            ])
+        })
+
+        it('should replace a turn by id, leaving others untouched', () => {
+            const { appendAiTurns, replaceAiTurn, getAiThread } = useAppStore.getState()
+            appendAiTurns('hinatazaka46', [
+                { id: 't1', role: 'user', text: 'q', createdAt: 1 },
+                { id: 't2', role: 'assistant', state: 'streaming', progressLabel: 'Thinking…', createdAt: 1 },
+            ])
+            replaceAiTurn('hinatazaka46', 't2', () => ({
+                id: 't2',
+                role: 'assistant',
+                state: 'noEvidence',
+                createdAt: 1,
+            }))
+            const thread = getAiThread('hinatazaka46')
+            expect(thread[0]).toEqual({ id: 't1', role: 'user', text: 'q', createdAt: 1 })
+            expect(thread[1]).toEqual({ id: 't2', role: 'assistant', state: 'noEvidence', createdAt: 1 })
+        })
+
+        it('should keep independent threads per service', () => {
+            const { appendAiTurns, getAiThread } = useAppStore.getState()
+            appendAiTurns('hinatazaka46', [{ id: 'a', role: 'user', text: 'a', createdAt: 1 }])
+            appendAiTurns('sakurazaka46', [{ id: 'b', role: 'user', text: 'b', createdAt: 1 }])
+            expect(getAiThread('hinatazaka46')).toHaveLength(1)
+            expect(getAiThread('sakurazaka46')).toHaveLength(1)
+            expect(getAiThread('hinatazaka46')[0].id).toBe('a')
+        })
+
+        it('clearAiThread should empty only the targeted service thread', () => {
+            const { appendAiTurns, clearAiThread, getAiThread } = useAppStore.getState()
+            appendAiTurns('hinatazaka46', [{ id: 'a', role: 'user', text: 'a', createdAt: 1 }])
+            appendAiTurns('sakurazaka46', [{ id: 'b', role: 'user', text: 'b', createdAt: 1 }])
+            clearAiThread('hinatazaka46')
+            expect(getAiThread('hinatazaka46')).toEqual([])
+            expect(getAiThread('sakurazaka46')).toHaveLength(1)
+        })
+
+        it('a thread survives being read again after a simulated remount (state lives outside any component)', () => {
+            // Regression test for the original bug: `AiFeature` used to hold
+            // `threadsByService` in local `useState`, so unmounting/remounting
+            // the component reset it to `{}`. Now it's store state -- reading
+            // it "again" (simulating a fresh component mount) must see the
+            // same data, with no unmount step required to prove it (the store
+            // is a module singleton, independent of React's component tree).
+            const { appendAiTurns } = useAppStore.getState()
+            appendAiTurns('hinatazaka46', [
+                { id: 't1', role: 'user', text: 'what did she eat', createdAt: 1 },
+                { id: 't2', role: 'assistant', state: 'noEvidence', createdAt: 1 },
+            ])
+            // Fresh `getState()` call, as a newly mounted component would do.
+            expect(useAppStore.getState().getAiThread('hinatazaka46')).toHaveLength(2)
+        })
+    })
+
+    describe('aiIsAsking (Product-wave Task 6)', () => {
+        beforeEach(() => {
+            useAppStore.setState({ aiIsAsking: {} })
+        })
+
+        it('should default to false', () => {
+            expect(useAppStore.getState().aiIsAsking['hinatazaka46']).toBeUndefined()
+        })
+
+        it('should set per-service asking state independently', () => {
+            const { setAiIsAsking } = useAppStore.getState()
+            setAiIsAsking('hinatazaka46', true)
+            expect(useAppStore.getState().aiIsAsking['hinatazaka46']).toBe(true)
+            expect(useAppStore.getState().aiIsAsking['sakurazaka46']).toBeUndefined()
+        })
+    })
+
+    describe('aiAbortControllers (Product-wave Task 6)', () => {
+        beforeEach(() => {
+            useAppStore.setState({ aiAbortControllers: {} })
+        })
+
+        it('should store and clear a controller per service', () => {
+            const { setAiAbortController } = useAppStore.getState()
+            const controller = new AbortController()
+            setAiAbortController('hinatazaka46', controller)
+            expect(useAppStore.getState().aiAbortControllers['hinatazaka46']).toBe(controller)
+
+            setAiAbortController('hinatazaka46', null)
+            expect(useAppStore.getState().aiAbortControllers['hinatazaka46']).toBeUndefined()
+        })
+    })
 })

@@ -2,10 +2,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import { askKnowledge, providerNameFromBaseUrl } from './api';
+import { askKnowledge, AskError, providerNameFromBaseUrl } from './api';
 import { ChatWindow } from './components/ChatWindow';
-import type { ChatTurn } from './components/ChatWindow';
 import { CloudConsentModal } from './components/CloudConsentModal';
+import { deriveHistory } from './deriveHistory';
 
 // Monotonic id generator for chat turns — deterministic and dependency-free
 // (no crypto.randomUUID needed for a purely local, non-persisted thread).
@@ -71,31 +71,24 @@ function askErrorFields(err: unknown): {
     return { code: 'unknown', message };
 }
 
-/** Immutably replaces the turn with `id` within `service`'s thread. */
-function replaceTurn(
-    threads: Record<string, ChatTurn[]>,
-    service: string,
-    id: string,
-    updater: (turn: ChatTurn) => ChatTurn
-): Record<string, ChatTurn[]> {
-    const existing = threads[service] ?? [];
-    return {
-        ...threads,
-        [service]: existing.map((turn) => (turn.id === id ? updater(turn) : turn)),
-    };
-}
-
 /**
  * `AiFeature` — the KB-chatbot chat UI. Mirrors `BlogsFeature`'s structure:
  * reads `activeService` from the app store, renders a "select a service"
  * placeholder when there isn't one.
  *
- * Chat history is local, per-service component state — client-side only,
- * per Plan B spec §7.5 (no server-side conversation persistence/store). Each
- * submitted question streams progress via `askKnowledge`'s `onProgress`
- * callback, then resolves into either an `answered` turn (sentences with
- * inline citation chips), a `noEvidence` turn, or — on a rejected promise —
- * an `error` turn, so a failed ask never crashes the UI.
+ * Chat threads live in the global `appStore` (Product-wave Task 6) -- not
+ * local component state -- so a tab switch (including a citation chip's
+ * `navigateToSource`, which changes `activeFeature` and unmounts this
+ * component) no longer destroys the conversation, and an answer that
+ * resolves while `AiFeature` is unmounted still lands in the thread when the
+ * user comes back. Still client-side only, per Plan B spec §7.5 (no
+ * server-side conversation persistence) -- and does not survive an app
+ * restart, only in-session remounts (see `appStore.ts`'s `aiThreadsByService`
+ * docstring). Each submitted question streams progress via `askKnowledge`'s
+ * `onProgress` callback, then resolves into either an `answered` turn
+ * (sentences with inline citation chips), a `noEvidence` turn, a `stopped`
+ * turn (the user hit Stop), or — on any other rejected promise — an `error`
+ * turn, so a failed ask never crashes the UI.
  */
 /** `GET /api/ai/config`'s shape (only the fields this component reads). */
 interface AiConfigResponse {
@@ -114,7 +107,13 @@ interface AiUsageResponse {
 export const AiFeature: React.FC = () => {
     const { t } = useTranslation();
     const activeService = useAppStore((state) => state.activeService);
-    const [threadsByService, setThreadsByService] = useState<Record<string, ChatTurn[]>>({});
+    const threadsByService = useAppStore((state) => state.aiThreadsByService);
+    const isAskingByService = useAppStore((state) => state.aiIsAsking);
+    const appendAiTurns = useAppStore((state) => state.appendAiTurns);
+    const replaceAiTurn = useAppStore((state) => state.replaceAiTurn);
+    const clearAiThread = useAppStore((state) => state.clearAiThread);
+    const setAiIsAsking = useAppStore((state) => state.setAiIsAsking);
+    const setAiAbortController = useAppStore((state) => state.setAiAbortController);
 
     // Cloud-privacy consent gate (Product-wave Task 5, item 5): the backend
     // enforces this independently too (`cloud_consent_required` SSE error --
@@ -180,53 +179,77 @@ export const AiFeature: React.FC = () => {
     }
 
     const turns = threadsByService[activeService] ?? [];
-    const isStreaming = turns.some((turn) => turn.role === 'assistant' && turn.state === 'streaming');
+    const isAsking = isAskingByService[activeService] ?? false;
 
     const sendQuestion = (question: string) => {
         const service = activeService;
         const userId = nextTurnId();
         const assistantId = nextTurnId();
+        const history = deriveHistory(threadsByService[service] ?? []);
+        const now = Date.now();
 
-        setThreadsByService((prev) => ({
-            ...prev,
-            [service]: [
-                ...(prev[service] ?? []),
-                { id: userId, role: 'user', text: question },
-                { id: assistantId, role: 'assistant', state: 'streaming', progressLabel: t('ai.thinking') },
-            ],
-        }));
+        appendAiTurns(service, [
+            { id: userId, role: 'user', text: question, createdAt: now },
+            {
+                id: assistantId,
+                role: 'assistant',
+                state: 'streaming',
+                progressLabel: t('ai.thinking'),
+                createdAt: now,
+            },
+        ]);
+        setAiIsAsking(service, true);
+
+        const controller = new AbortController();
+        setAiAbortController(service, controller);
 
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        askKnowledge(service, question, tz, (label) => {
-            setThreadsByService((prev) =>
-                replaceTurn(prev, service, assistantId, (turn) =>
+        askKnowledge(
+            service,
+            question,
+            tz,
+            (label) => {
+                replaceAiTurn(service, assistantId, (turn) =>
                     turn.role === 'assistant' && turn.state === 'streaming'
                         ? { ...turn, progressLabel: t(progressLabelKey(label)) }
                         : turn
-                )
-            );
-        })
+                );
+            },
+            { signal: controller.signal, history }
+        )
             .then((answer) => {
-                setThreadsByService((prev) =>
-                    replaceTurn(prev, service, assistantId, () =>
-                        answer.noEvidence
-                            ? { id: assistantId, role: 'assistant', state: 'noEvidence' }
-                            : { id: assistantId, role: 'assistant', state: 'answered', answer }
-                    )
+                replaceAiTurn(service, assistantId, (turn) =>
+                    answer.noEvidence
+                        ? { id: assistantId, role: 'assistant', state: 'noEvidence', createdAt: turn.createdAt }
+                        : { id: assistantId, role: 'assistant', state: 'answered', answer, createdAt: turn.createdAt }
                 );
             })
             .catch((err: unknown) => {
-                setThreadsByService((prev) =>
-                    replaceTurn(prev, service, assistantId, () => ({
+                if (err instanceof AskError && err.code === 'aborted') {
+                    // Stop button (Product-wave Task 6, item 2) -- a deliberate
+                    // user action, never an error turn.
+                    replaceAiTurn(service, assistantId, (turn) => ({
                         id: assistantId,
                         role: 'assistant',
-                        state: 'error',
-                        ...askErrorFields(err),
-                    }))
-                );
+                        state: 'stopped',
+                        createdAt: turn.createdAt,
+                    }));
+                    return;
+                }
+                replaceAiTurn(service, assistantId, (turn) => ({
+                    id: assistantId,
+                    role: 'assistant',
+                    state: 'error',
+                    createdAt: turn.createdAt,
+                    ...askErrorFields(err),
+                }));
             })
-            .finally(() => setUsageRefreshKey((k) => k + 1));
+            .finally(() => {
+                setAiIsAsking(service, false);
+                setAiAbortController(service, null);
+                setUsageRefreshKey((k) => k + 1);
+            });
     };
 
     /**
@@ -248,25 +271,23 @@ export const AiFeature: React.FC = () => {
         if (!service || !usage) return;
         const userId = nextTurnId();
         const assistantId = nextTurnId();
-        setThreadsByService((prev) => ({
-            ...prev,
-            [service]: [
-                ...(prev[service] ?? []),
-                { id: userId, role: 'user', text: question },
-                {
-                    id: assistantId,
-                    role: 'assistant',
-                    state: 'error',
-                    code: 'quota_exhausted',
-                    message: 'quota exhausted -- pre-empted client-side, no request sent',
-                    backend: 'cloud',
-                    model: usage.model,
-                    requestsToday: usage.requestsToday,
-                    dailyLimit: usage.dailyLimit ?? undefined,
-                    estQuestionsLeft: usage.estQuestionsLeft ?? undefined,
-                },
-            ],
-        }));
+        const now = Date.now();
+        appendAiTurns(service, [
+            { id: userId, role: 'user', text: question, createdAt: now },
+            {
+                id: assistantId,
+                role: 'assistant',
+                state: 'error',
+                code: 'quota_exhausted',
+                message: 'quota exhausted -- pre-empted client-side, no request sent',
+                backend: 'cloud',
+                model: usage.model,
+                requestsToday: usage.requestsToday,
+                dailyLimit: usage.dailyLimit ?? undefined,
+                estQuestionsLeft: usage.estQuestionsLeft ?? undefined,
+                createdAt: now,
+            },
+        ]);
     };
 
     const handleSend = (question: string) => {
@@ -280,6 +301,14 @@ export const AiFeature: React.FC = () => {
             return;
         }
         sendQuestion(question);
+    };
+
+    const handleStop = () => {
+        useAppStore.getState().aiAbortControllers[activeService]?.abort();
+    };
+
+    const handleClearThread = () => {
+        clearAiThread(activeService);
     };
 
     const handleConsentAccept = () => {
@@ -310,7 +339,9 @@ export const AiFeature: React.FC = () => {
             <ChatWindow
                 turns={turns}
                 onSend={handleSend}
-                disabled={isStreaming}
+                onStop={handleStop}
+                onClearThread={handleClearThread}
+                isAsking={isAsking}
                 backendKind={backendKind}
                 usageRefreshKey={usageRefreshKey}
             />
