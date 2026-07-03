@@ -1,5 +1,5 @@
 // frontend/src/features/ai/components/CloudConsentModal.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Cloud } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { useModalClose } from '../../../core/common/useModalClose';
@@ -33,7 +33,24 @@ export const CloudConsentModal: React.FC<CloudConsentModalProps> = ({
     const { t } = useTranslation();
     const handleBackdropClick = useModalClose(isOpen, onDecline);
 
+    // Double-submit guard (P-5 review, minors): `onAccept` fires an
+    // uncancellable `POST /api/ai/consent` and sends the pending question --
+    // a second click before this instance has actually unmounted (e.g. two
+    // clicks landing in the same event-loop tick) must not fire it twice.
+    // Reset whenever the modal (re)opens for a NEW pending question, not a
+    // continuation of a previous in-flight accept.
+    const [isAccepting, setIsAccepting] = useState(false);
+    useEffect(() => {
+        if (isOpen) setIsAccepting(false);
+    }, [isOpen]);
+
     if (!isOpen) return null;
+
+    const handleAcceptClick = () => {
+        if (isAccepting) return;
+        setIsAccepting(true);
+        onAccept();
+    };
 
     return (
         <div
@@ -64,8 +81,9 @@ export const CloudConsentModal: React.FC<CloudConsentModalProps> = ({
                         </button>
                         <button
                             type="button"
-                            onClick={onAccept}
-                            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                            onClick={handleAcceptClick}
+                            disabled={isAccepting}
+                            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                             {t('ai.cloudConsent.accept')}
                         </button>

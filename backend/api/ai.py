@@ -939,8 +939,18 @@ async def test_ai_config(request: LLMConfigRequest) -> dict:
     `ok` mirrors `verdict == "ok"`. The API key is never read from the
     request body (there is no such field) or logged -- `build_llm_client_
     from_draft` loads it from the OS keyring exactly like the real client
-    does, and only `backend`/`model`/the classified `verdict` are logged
-    below, never the key or any response content.
+    does (P-5 review, Finding 1: only for a base_url host on its trusted
+    allow-list -- see that function's docstring), and only `backend`/
+    `model`/the classified `verdict` are logged below, never the key or any
+    response content.
+
+    P-5 review, minors: deliberately NOT gated behind the cloud-privacy
+    consent check (`_cloud_consent_required`/`CloudConsentRequired`) that
+    `/ask` enforces. This is a documented choice, not an oversight: the
+    probe sends a fixed, canned `_CONFIG_TEST_MESSAGES` payload -- never any
+    user content (no synced blog/message text, no free-form question) -- so
+    there is nothing consent-relevant leaving the device here, unlike a real
+    `/ask`.
     """
     if request.backend not in _VALID_LLM_BACKENDS:
         raise HTTPException(
@@ -952,7 +962,7 @@ async def test_ai_config(request: LLMConfigRequest) -> dict:
     if not request.model.strip():
         raise HTTPException(status_code=400, detail="model must not be empty")
 
-    client = build_llm_client_from_draft(
+    client = await build_llm_client_from_draft(
         request.backend, request.base_url, request.model
     )
     start = time.monotonic()

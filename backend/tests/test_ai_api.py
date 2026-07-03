@@ -1647,8 +1647,16 @@ class TestConfigTest:
         assert not settings_path.exists()
 
     @respx.mock
-    def test_cloud_backend_loads_api_key_from_keyring_and_never_logs_it(self):
-        route = respx.post("https://example.test/v1/chat/completions").mock(
+    def test_cloud_backend_trusted_host_loads_api_key_from_keyring_and_never_logs_it(
+        self, tmp_path, monkeypatch
+    ):
+        """The known Gemini host is always on the trusted allow-list (P-5
+        review, Finding 1) -- proves the keyring key IS attached for it, and
+        never logged."""
+        _isolate_settings(tmp_path, monkeypatch)
+        route = respx.post(
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+        ).mock(
             return_value=httpx.Response(
                 200,
                 json={
@@ -1678,7 +1686,7 @@ class TestConfigTest:
             with structlog.testing.capture_logs() as captured_logs:
                 r = self._post(
                     backend="cloud",
-                    base_url="https://example.test/v1",
+                    base_url="https://generativelanguage.googleapis.com/v1beta/openai",
                     model="gemini-x",
                 )
 
@@ -1687,6 +1695,45 @@ class TestConfigTest:
             route.calls[0].request.headers["Authorization"] == "Bearer super-secret-key"
         )
         assert "super-secret-key" not in r.text
+        assert all(
+            "super-secret-key" not in json.dumps(entry, default=str)
+            for entry in captured_logs
+        )
+
+    @respx.mock
+    def test_cloud_backend_untrusted_host_never_receives_the_key(
+        self, tmp_path, monkeypatch
+    ):
+        """P-5 review, Finding 1 (IMPORTANT -- exfiltration oracle): a draft
+        `base_url` the user hasn't already committed to (via Save, or the
+        known Gemini endpoint) must never receive the real API key, even
+        though the probe itself still runs (so a legit custom endpoint
+        failure stays diagnosable). Logs the refusal (no key material)
+        instead of silently doing nothing."""
+        _isolate_settings(tmp_path, monkeypatch)
+        route = respx.post("https://example.test/v1/chat/completions").mock(
+            return_value=httpx.Response(
+                200, json={"choices": [{"message": {"content": "no tool call"}}]}
+            )
+        )
+        with patch("backend.services.llm_client.get_token_manager") as mock_tm:
+            mock_tm.return_value.store.load.return_value = {
+                "api_key": "super-secret-key"
+            }
+            with structlog.testing.capture_logs() as captured_logs:
+                r = self._post(
+                    backend="cloud",
+                    base_url="https://example.test/v1",
+                    model="gemini-x",
+                )
+
+        assert r.status_code == 200
+        assert "Authorization" not in route.calls[0].request.headers
+        assert "super-secret-key" not in r.text
+        assert any(
+            entry.get("event") == "llm_client.draft_key_attach_refused"
+            for entry in captured_logs
+        )
         assert all(
             "super-secret-key" not in json.dumps(entry, default=str)
             for entry in captured_logs

@@ -11,9 +11,10 @@ interface UsageResponse {
 }
 
 /** Below this many estimated questions left, the meter switches to its amber
- * "running low" styling -- same threshold `ChatWindow`'s pre-empt check
- * (Product-wave Task 5, item 3) uses to decide whether to even attempt an
- * ask.  */
+ * "running low" styling -- purely cosmetic, a lower bar than the actual
+ * pre-empt gate. `AiFeature`'s quota pre-empt (P-5 review, item 2) only
+ * blocks submission at exactly `estQuestionsLeft === 0`; this component
+ * never decides whether an ask may be attempted. */
 const LOW_THRESHOLD = 3;
 
 export interface UsageMeterProps {

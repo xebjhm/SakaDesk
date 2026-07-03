@@ -103,6 +103,14 @@ interface AiConfigResponse {
     base_url?: string;
 }
 
+/** `GET /api/ai/usage`'s shape (only the fields this component reads). */
+interface AiUsageResponse {
+    model?: string;
+    requestsToday?: number;
+    dailyLimit?: number | null;
+    estQuestionsLeft?: number | null;
+}
+
 export const AiFeature: React.FC = () => {
     const { t } = useTranslation();
     const activeService = useAppStore((state) => state.activeService);
@@ -122,6 +130,23 @@ export const AiFeature: React.FC = () => {
     // `ChatWindow`) refetches `GET /api/ai/usage` and reflects the just-
     // recorded request instead of staying stale until the next mount.
     const [usageRefreshKey, setUsageRefreshKey] = useState(0);
+
+    // Quota pre-empt (P-5 review, item 2): cached independently of
+    // `UsageMeter`'s own fetch -- that one only RENDERS the meter; this one
+    // GATES whether `sendQuestion` may even fire (see `handleSend`).
+    // Refetched on the same triggers as the meter (`usageRefreshKey`: mount
+    // + after every completed ask) -- never per keystroke, and never a
+    // second fetch beyond what already happens on those triggers.
+    const [usage, setUsage] = useState<AiUsageResponse | null>(null);
+
+    useEffect(() => {
+        fetch('/api/ai/usage')
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data: AiUsageResponse | null) => setUsage(data))
+            .catch((err: unknown) => {
+                console.error('[AiFeature] Failed to fetch AI usage:', err);
+            });
+    }, [usageRefreshKey]);
 
     useEffect(() => {
         fetch('/api/ai/config')
@@ -204,7 +229,51 @@ export const AiFeature: React.FC = () => {
             .finally(() => setUsageRefreshKey((k) => k + 1));
     };
 
+    /**
+     * Pre-empts the ask entirely when the cloud backend already reports zero
+     * estimated questions left for today (P-5 review, item 2) -- submitting
+     * would just be a request we already know will come back
+     * `quota_exhausted`. Synthesizes the SAME `error` turn shape a REAL SSE
+     * `quota_exhausted` error would produce (`askErrorFields`'s shape), so
+     * `ChatWindow` renders it with the existing `ai.error.quota_exhausted`
+     * copy, the "Open AI settings" hint (`quota_exhausted` is already in
+     * `SETTINGS_HINT_CODES`), AND `ai.quota.none`'s "switch to a local
+     * model" wording -- no new UI/i18n needed, matching the existing
+     * settings-hint pattern exactly rather than inventing a new one.
+     * `askKnowledge` is never called; the composer stays enabled throughout
+     * (this never sets any turn to `state: 'streaming'`).
+     */
+    const preemptQuotaExhausted = (question: string) => {
+        const service = activeService;
+        if (!service || !usage) return;
+        const userId = nextTurnId();
+        const assistantId = nextTurnId();
+        setThreadsByService((prev) => ({
+            ...prev,
+            [service]: [
+                ...(prev[service] ?? []),
+                { id: userId, role: 'user', text: question },
+                {
+                    id: assistantId,
+                    role: 'assistant',
+                    state: 'error',
+                    code: 'quota_exhausted',
+                    message: 'quota exhausted -- pre-empted client-side, no request sent',
+                    backend: 'cloud',
+                    model: usage.model,
+                    requestsToday: usage.requestsToday,
+                    dailyLimit: usage.dailyLimit ?? undefined,
+                    estQuestionsLeft: usage.estQuestionsLeft ?? undefined,
+                },
+            ],
+        }));
+    };
+
     const handleSend = (question: string) => {
+        if (backendKind === 'cloud' && usage?.estQuestionsLeft === 0) {
+            preemptQuotaExhausted(question);
+            return;
+        }
         if (backendKind === 'cloud' && consentGranted === false) {
             // Ask stays UNSENT until the modal is resolved one way or another.
             setPendingQuestion(question);

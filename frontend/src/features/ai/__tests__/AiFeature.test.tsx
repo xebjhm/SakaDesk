@@ -15,6 +15,10 @@ interface FetchStubOverrides {
     /** `GET /api/ai/usage`'s response. */
     usage?: Record<string, unknown>;
     onConsentPost?: () => void;
+    /** When set, `POST /api/ai/consent`'s response doesn't resolve until this
+     * promise settles -- lets a test hold the request "in flight" to exercise
+     * the accept button's double-submit guard. */
+    consentPostGate?: Promise<void>;
 }
 
 // `ChatWindow`'s empty state now mounts `SetupChecklist`, which fetches
@@ -51,10 +55,12 @@ function stubReadyFetch(overrides: FetchStubOverrides = {}) {
             }
             if (url === '/api/ai/consent' && method === 'POST') {
                 overrides.onConsentPost?.();
-                return Promise.resolve({
-                    ok: true,
-                    json: () => Promise.resolve({ ok: true, consentedAt: '2026-07-01T00:00:00+00:00' }),
-                });
+                const respond = () =>
+                    Promise.resolve({
+                        ok: true,
+                        json: () => Promise.resolve({ ok: true, consentedAt: '2026-07-01T00:00:00+00:00' }),
+                    });
+                return overrides.consentPostGate ? overrides.consentPostGate.then(respond) : respond();
             }
             if (url === '/api/ai/usage') {
                 return Promise.resolve({
@@ -309,6 +315,34 @@ describe('AiFeature', () => {
             expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
         });
 
+        it('a slow /api/ai/consent POST still only fires once, even racing a second submit attempt', async () => {
+            // `AiFeature` itself already closes the modal synchronously on the
+            // FIRST click (see `handleConsentAccept`); this proves that path
+            // stays a single POST even when the request is slow -- the
+            // button's own double-submit guard is unit-tested directly in
+            // `CloudConsentModal.test.tsx` (this component unmounting on
+            // click means a real second click on the same node isn't
+            // reachable from here).
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            let releaseConsentPost: () => void = () => {};
+            const consentPostGate = new Promise<void>((resolve) => {
+                releaseConsentPost = resolve;
+            });
+            const onConsentPost = vi.fn();
+            stubReadyFetch({ config: CLOUD_CONFIG, consent: NOT_CONSENTED, onConsentPost, consentPostGate });
+
+            render(<AiFeature />);
+            await askQuestion('will this ask the cloud?');
+            await screen.findByText('Before this question leaves your device');
+
+            await userEvent.click(screen.getByRole('button', { name: 'I understand, continue' }));
+            expect(screen.queryByText('Before this question leaves your device')).not.toBeInTheDocument();
+
+            releaseConsentPost();
+            await waitFor(() => expect(mockAskKnowledge).toHaveBeenCalled());
+            expect(onConsentPost).toHaveBeenCalledTimes(1);
+        });
+
         it('the local backend never shows the consent modal', async () => {
             mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
             stubReadyFetch({
@@ -385,6 +419,82 @@ describe('AiFeature', () => {
             await screen.findByPlaceholderText('Ask a question...');
 
             expect(await screen.findByText('Local — on-device')).toBeInTheDocument();
+        });
+    });
+
+    describe('quota pre-empt (P-5 review, item 2)', () => {
+        const CLOUD_CONFIG = {
+            backend: 'cloud',
+            base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+            model: 'gemini-2.5-flash',
+        };
+        const GRANTED = { granted: true, consentedAt: '2026-06-01T00:00:00+00:00' };
+
+        it('pre-empts the ask when estQuestionsLeft is 0 on the cloud backend: renders the quota turn, never calls askKnowledge', async () => {
+            stubReadyFetch({
+                config: CLOUD_CONFIG,
+                consent: GRANTED,
+                usage: { model: 'gemini-2.5-flash', requestsToday: 20, dailyLimit: 20, estQuestionsLeft: 0 },
+            });
+
+            render(<AiFeature />);
+            // Wait for the usage fetch to settle before submitting -- otherwise
+            // the click could race the still-in-flight `GET /api/ai/usage`.
+            await screen.findByText('No questions left today — try again tomorrow, or switch to a local model.');
+
+            await askQuestion('any questions left today?');
+
+            expect(mockAskKnowledge).not.toHaveBeenCalled();
+            // Reuses the existing quota_exhausted copy (with the model interpolated)...
+            const message = await screen.findByText(/usage limit/i);
+            expect(message.textContent).toContain('gemini-2.5-flash');
+            // ...the existing "switch to a local model" wording (ai.quota.none) --
+            // rendered TWICE: once in the ErrorTurn, once in the composer's
+            // own `UsageMeter` (which independently reads the same zero)...
+            expect(
+                screen.getAllByText('No questions left today — try again tomorrow, or switch to a local model.')
+                    .length
+            ).toBeGreaterThanOrEqual(2);
+            // ...and the existing "open AI settings" action/hint.
+            expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+            // The composer stays enabled -- the user can still switch backends and retry.
+            expect(screen.getByPlaceholderText('Ask a question...')).not.toBeDisabled();
+        });
+
+        it('proceeds with the ask normally when estQuestionsLeft is above zero on the cloud backend', async () => {
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            stubReadyFetch({
+                config: CLOUD_CONFIG,
+                consent: GRANTED,
+                usage: { model: 'gemini-2.5-flash', requestsToday: 5, dailyLimit: 20, estQuestionsLeft: 15 },
+            });
+
+            render(<AiFeature />);
+            await screen.findByText('~15 questions left today');
+
+            await askQuestion('still have quota?');
+
+            expect(mockAskKnowledge).toHaveBeenCalledWith(
+                'hinatazaka46',
+                'still have quota?',
+                expect.any(String),
+                expect.any(Function)
+            );
+        });
+
+        it('the local backend never pre-empts, even if the cached usage happens to read zero', async () => {
+            mockAskKnowledge.mockResolvedValue({ sentences: [], citations: [], noEvidence: true } as AskAnswer);
+            stubReadyFetch({
+                config: { backend: 'local', base_url: 'http://localhost:11434/v1', model: 'qwen3:30b' },
+                usage: { model: 'qwen3:30b', requestsToday: 20, dailyLimit: 20, estQuestionsLeft: 0 },
+            });
+
+            render(<AiFeature />);
+            await screen.findByText('No questions left today — try again tomorrow, or switch to a local model.');
+
+            await askQuestion('local question with a stale zero usage number');
+
+            expect(mockAskKnowledge).toHaveBeenCalled();
         });
     });
 });

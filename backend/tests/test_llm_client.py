@@ -1002,23 +1002,118 @@ async def test_build_from_draft_local_never_reads_settings_or_keyring():
         new_callable=AsyncMock,
         side_effect=AssertionError("must not read settings for a draft client"),
     ):
-        client = build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
+        client = await build_llm_client_from_draft(
+            "local", "http://localhost:9999/v1", "m"
+        )
         resp = await client.chat([{"role": "user", "content": "hi"}])
     assert resp.text == "ok"
 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_build_from_draft_cloud_loads_the_keyring_api_key():
+async def test_build_from_draft_local_backend_never_attaches_a_key():
+    """Sanity: `backend == "local"` never even looks at the trusted-host
+    allow-list -- `api_key` is always `None`, unconditionally."""
+    route = respx.post("http://localhost:9999/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    client = await build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
+    await client.chat([{"role": "user", "content": "hi"}])
+
+    assert "Authorization" not in route.calls[0].request.headers
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_refuses_key_for_unknown_host():
+    """P-5 review, Finding 1 (IMPORTANT -- exfiltration oracle): a draft
+    `base_url` on a host the user hasn't already committed to (via the known
+    Gemini endpoint, or a previously-Saved cloud base_url) must NEVER receive
+    the real keyring API key -- otherwise the Test button lets anyone who can
+    reach this endpoint redirect the user's real key to an arbitrary host
+    just by typing it into the settings form."""
     route = respx.post("https://example.test/v1/chat/completions").mock(
         return_value=httpx.Response(
             200, json={"choices": [{"message": {"content": "ok"}}]}
         )
     )
-    with patch("backend.services.llm_client.get_token_manager") as mock_tm:
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value={},  # defaults resolve to the Gemini host, not example.test
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
         mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
-        client = build_llm_client_from_draft(
+        client = await build_llm_client_from_draft(
             "cloud", "https://example.test/v1", "gemini-x"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert "Authorization" not in route.calls[0].request.headers
+    # The keyring is never even consulted for an untrusted host.
+    mock_tm.assert_not_called()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_refuses_key_for_lookalike_host():
+    """A host that merely embeds the trusted Gemini hostname as a substring
+    (a spoofed subdomain) must not be trusted -- exact hostname equality
+    only, never substring/`endswith` matching."""
+    lookalike = "generativelanguage.googleapis.com.evil.example"
+    route = respx.post(f"https://{lookalike}/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud", f"https://{lookalike}/v1", "gemini-2.5-flash"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert "Authorization" not in route.calls[0].request.headers
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_gemini_host_always_trusted_even_when_saved_backend_is_local():
+    route = respx.post(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value={
+                "knowledge_base": {
+                    "llm": {"backend": "local", "base_url": "http://localhost:11434/v1"}
+                }
+            },
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini-2.5-flash",
         )
         await client.chat([{"role": "user", "content": "hi"}])
 
@@ -1027,8 +1122,96 @@ async def test_build_from_draft_cloud_loads_the_keyring_api_key():
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_build_from_draft_attaches_key_when_host_matches_saved_cloud_base_url():
+    """A draft `base_url` on the SAME host as the currently-saved cloud
+    base_url is trusted -- the user already committed to this host via Save
+    (e.g. a legit custom OpenAI-compatible proxy), so re-testing an edit to
+    path/query on that same host shouldn't require a Save round-trip first."""
+    saved_config = {
+        "knowledge_base": {
+            "llm": {
+                "backend": "cloud",
+                "base_url": "https://my-proxy.example.com/v1",
+                "model": "gemini-x",
+            }
+        }
+    }
+    route = respx.post("https://my-proxy.example.com/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value=saved_config,
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud", "https://my-proxy.example.com/v1", "gemini-x"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert route.calls[0].request.headers["Authorization"] == "Bearer secret-key"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_refuses_key_when_saved_backend_is_local_even_if_host_matches():
+    """The saved `base_url` only counts as a trusted CLOUD host when the
+    saved `backend` is itself `"cloud"` -- `base_url` is a single settings
+    field shared by both backends, so when the saved backend is `"local"`
+    that field holds a local server URL the user never committed to for
+    cloud traffic, even if a draft happens to share its host string."""
+    route = respx.post("https://example.test/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value={
+                "knowledge_base": {
+                    "llm": {"backend": "local", "base_url": "https://example.test/v1"}
+                }
+            },
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud", "https://example.test/v1", "m"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert "Authorization" not in route.calls[0].request.headers
+
+
+def test_extract_host_lowercases_and_ignores_port():
+    from backend.services.llm_client import _extract_host
+
+    assert (
+        _extract_host("https://GenerativeLanguage.GoogleAPIs.com:443/v1")
+        == "generativelanguage.googleapis.com"
+    )
+
+
+def test_extract_host_returns_none_when_the_url_has_no_host():
+    from backend.services.llm_client import _extract_host
+
+    assert _extract_host("not a url at all") is None
+    assert _extract_host("") is None
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_build_from_draft_never_wires_on_request():
     """A config-test round-trip must never be recorded against the usage
     ledger -- proven by asserting the built client's `_on_request` is unset."""
-    client = build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
+    client = await build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
     assert client._on_request is None

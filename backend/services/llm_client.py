@@ -21,6 +21,7 @@ import json
 import re
 from collections import deque
 from typing import Any, Callable, Literal, cast
+from urllib.parse import urlparse
 
 import httpx
 import structlog
@@ -75,6 +76,13 @@ _CLOUD_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/open
 _CLOUD_DEFAULT_MODEL = "gemini-2.5-flash"
 _LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1"
 _LOCAL_DEFAULT_MODEL = "qwen2.5:14b"
+
+# P-5 review, Finding 1 (IMPORTANT): the host a DRAFT `POST /api/ai/config/test`
+# base_url is allowed to receive the real keyring API key for. Derived from
+# `_CLOUD_DEFAULT_BASE_URL` (rather than a second hardcoded literal) so the two
+# can never drift apart. See `_draft_key_host_is_trusted`'s docstring for the
+# full threat model.
+_TRUSTED_DRAFT_KEY_HOST = urlparse(_CLOUD_DEFAULT_BASE_URL).hostname
 
 
 class LLMBackendError(RuntimeError):
@@ -498,7 +506,7 @@ async def build_llm_client_from_settings(
     )
 
 
-def build_llm_client_from_draft(
+async def build_llm_client_from_draft(
     backend: str, base_url: str, model: str
 ) -> OpenAICompatLLMClient:
     """Build an `OpenAICompatLLMClient` from an explicit, NOT-YET-PERSISTED
@@ -507,15 +515,88 @@ def build_llm_client_from_draft(
     cloud/local key-loading logic but never reads `settings.knowledge_base.llm`
     itself, so a config can be validated BEFORE it's saved.
 
+    P-5 review, Finding 1 (IMPORTANT -- exfiltration oracle): for `backend ==
+    "cloud"`, the real keyring API key is attached ONLY when `base_url`'s host
+    is trusted (`_draft_key_host_is_trusted`) -- NOT for every draft
+    `base_url` unconditionally, which would let anyone who can reach this
+    endpoint (the draft `base_url` is fully attacker/user-controlled request
+    body) redirect the user's real cloud API key to an arbitrary host just by
+    typing it into the settings form and clicking Test. When the host isn't
+    trusted, `api_key=None` -- the probe still runs and fails with `auth` (no
+    key) or `unreachable`, which is a safe, informative outcome; it never
+    silently drops the request. This function is now `async` (it may need to
+    read `settings.knowledge_base.llm` to resolve the saved-cloud-host branch
+    of the allow-list) -- see `_draft_key_host_is_trusted`.
+
     Deliberately never wires `on_request`: a connectivity test round-trip is
     not a real user question and must never be recorded against the usage
     ledger/quota meter.
     """
     if backend == "local":
         return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=None)
-    return OpenAICompatLLMClient(
-        base_url=base_url, model=model, api_key=_load_cloud_api_key()
-    )
+
+    api_key: str | None = None
+    if await _draft_key_host_is_trusted(base_url):
+        api_key = _load_cloud_api_key()
+    else:
+        logger.warning(
+            "llm_client.draft_key_attach_refused",
+            draft_host=_extract_host(base_url),
+        )
+    return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=api_key)
+
+
+def _extract_host(url: str) -> str | None:
+    """Lowercased hostname from `url`, or `None` when it's unparseable or has
+    no host at all. `urlparse(...).hostname` already lowercases per RFC 3986,
+    but the explicit `.lower()` keeps that guarantee independent of urllib's
+    implementation detail -- callers must never compare hosts case-sensitively
+    or via substring/`endswith` matching (a look-alike host like
+    `generativelanguage.googleapis.com.evil.example` must NOT match)."""
+    try:
+        hostname = urlparse(url).hostname
+    except ValueError:
+        return None
+    return hostname.lower() if hostname else None
+
+
+async def _draft_key_host_is_trusted(draft_base_url: str) -> bool:
+    """Whether `draft_base_url` (a `POST /api/ai/config/test` request body
+    field -- fully user-controlled, not-yet-saved) may receive the real
+    cloud API key (P-5 review, Finding 1).
+
+    Trusted iff the draft's host, compared case-insensitively by EXACT
+    hostname equality (never substring/`endswith`), is either:
+      - the known Gemini host (`_TRUSTED_DRAFT_KEY_HOST`), or
+      - the host of the CURRENTLY-SAVED `knowledge_base.llm.base_url`, but
+        only when the saved `backend` is itself `"cloud"` -- `base_url` is a
+        single shared settings field for both backends, so when the saved
+        backend is `"local"` that field holds a local server URL, not a
+        cloud proxy the user ever actually committed to via Save.
+
+    This is deliberately narrower than "any base_url the user typed" -- a
+    draft `base_url` is exactly what an attacker (a malicious settings-import,
+    a compromised extension, or just a user copy-pasting a bad link) would
+    control to turn the Test button into a way to exfiltrate whatever's in
+    the OS keyring to an arbitrary host. Restricting to hosts the user has
+    ALREADY explicitly committed to (the official Gemini endpoint, or a
+    custom proxy they already Saved) closes that hole while still letting a
+    legitimate custom-proxy edit be re-tested without a Save round-trip
+    first.
+    """
+    draft_host = _extract_host(draft_base_url)
+    if draft_host is None:
+        return False
+    if draft_host == _TRUSTED_DRAFT_KEY_HOST:
+        return True
+
+    config = await load_config()
+    llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
+    if (llm_config.get("backend") or "cloud") != "cloud":
+        return False
+    saved_base_url = llm_config.get("base_url") or _CLOUD_DEFAULT_BASE_URL
+    saved_host = _extract_host(saved_base_url)
+    return saved_host is not None and draft_host == saved_host
 
 
 def _load_cloud_api_key() -> str | None:
