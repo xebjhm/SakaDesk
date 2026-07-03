@@ -38,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import threading
 from collections import Counter
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
@@ -979,6 +980,8 @@ class KnowledgeService:
         scope: Scope,
         tz: tzinfo,
         history: list[dict] | None = None,
+        *,
+        cancel_event: threading.Event | None = None,
     ) -> Answer:
         """Answer `question` over `scope`'s persisted corpus; returns a VALIDATED `Answer`.
 
@@ -991,6 +994,18 @@ class KnowledgeService:
         resolve against the real clock in the user's zone, and the tool runner
         localizes naive `date_from`/`date_to` tool-call args to it instead of
         UTC.
+
+        `cancel_event` (final review, Finding 1 -- the dropped P6 brief item)
+        is the cooperative-cancel seam: a `threading.Event` the CALLER sets
+        from outside this worker thread (e.g. `backend/api/ai.py`'s
+        `_ask_event_stream`, on client disconnect or its own ask-deadline
+        expiry) to ask the in-flight `KnowledgeAgent` loop to stop at the next
+        opportunity. Threaded through to `_run_ask_blocking` as
+        `should_abort=cancel_event.is_set` -- `is_set` is a plain, thread-safe
+        read, so polling it from the worker thread while the event-loop thread
+        sets it needs no lock of its own. See `pysaka.knowledge.agent
+        .AskCancelled` for exactly when it's checked and what raising it does
+        to `_store_lock`.
         """
         if self._llm is None:
             # Lazy retry, not a permanent verdict: the client can be absent because
@@ -1030,10 +1045,13 @@ class KnowledgeService:
         #     and blocking LLM HTTP calls; offloading the entire thing keeps the
         #     event loop free rather than just the retriever build.
         # Trade-off: an ask now pauses background indexing (and other asks) for
-        # its full duration. Acceptable for a single-user desktop app.
+        # its full duration -- bounded, since the P6 cooperative-cancel seam
+        # (`cancel_event`/`AskCancelled`, above), to roughly the CURRENT step
+        # of the agent loop rather than the whole thing. Acceptable for a
+        # single-user desktop app.
         async with self._store_lock:
             return await asyncio.to_thread(
-                self._run_ask_blocking, question, scope, llm, tz, history
+                self._run_ask_blocking, question, scope, llm, tz, history, cancel_event
             )
 
     def _run_ask_blocking(
@@ -1043,6 +1061,7 @@ class KnowledgeService:
         llm: LLMClient,
         tz: tzinfo,
         history: list[dict] | None,
+        cancel_event: threading.Event | None = None,
     ) -> Answer:
         """Build the retriever+agent over the persisted store and run the agent, synchronously.
 
@@ -1065,10 +1084,22 @@ class KnowledgeService:
         "model_incompatible")` so `backend/api/ai.py` has exactly ONE exception
         type to handle for every LLM-taxonomy failure, regardless of whether it
         originated in the HTTP client or the agent's tool-calling loop.
+
+        `cancel_event` becomes `should_abort=cancel_event.is_set` for
+        `agent.answer()` -- `None` when no cancel event was given, which
+        `KnowledgeAgent` treats as "never abort" (see `ask`'s docstring for
+        the full seam). A resulting `pysaka.knowledge.AskCancelled` is
+        deliberately NOT caught here -- unlike `ToolCallingUnreliableError`,
+        it isn't a backend failure to translate into `LLMBackendError`; it
+        propagates as-is so the caller (`ask()`, then `backend/api/ai.py`)
+        can tell "the model failed" apart from "we asked it to stop."
         """
         agent = self._build_agent(scope.service, llm, tz)
+        should_abort = cancel_event.is_set if cancel_event is not None else None
         try:
-            return asyncio.run(agent.answer(question, scope, history))
+            return asyncio.run(
+                agent.answer(question, scope, history, should_abort=should_abort)
+            )
         except ToolCallingUnreliableError as exc:
             raise LLMBackendError(str(exc), kind="model_incompatible") from exc
 

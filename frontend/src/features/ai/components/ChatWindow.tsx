@@ -149,9 +149,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
 
     // Enter = send, Shift+Enter = newline (Product-wave Task 6, item 4).
     // While `isAsking`, Enter is a no-op (mirrors the Send button being
-    // swapped for Stop) -- but the user can still keep TYPING their next
-    // question, which submits the moment the current answer settles and
-    // Send reappears.
+    // swapped for Stop) -- the user can still keep TYPING their next
+    // question in the meantime, but it is NOT auto-submitted once the
+    // current answer settles: Send reappears and the user must press
+    // Enter/Send again themselves (zero-drift fix, final review: this
+    // comment previously claimed an auto-submit-on-settle behavior that was
+    // never actually implemented).
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();

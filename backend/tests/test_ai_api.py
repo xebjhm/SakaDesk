@@ -1124,8 +1124,10 @@ class TestAskDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_stops_stream_but_lets_ask_finish_and_release_lock(self):
         lock = asyncio.Lock()
+        captured_cancel_events: list = []
 
-        async def slow_ask(question, scope, tz, history):
+        async def slow_ask(question, scope, tz, history, cancel_event=None):
+            captured_cancel_events.append(cancel_event)
             async with lock:
                 await asyncio.sleep(0.2)
             return _validated_answer()
@@ -1174,6 +1176,18 @@ class TestAskDisconnect:
         assert all("event: answer" not in e for e in events)
         assert fake_request.disconnect_calls >= 1
 
+        # Finding 1 (final review, the dropped P6 brief item): a disconnect
+        # must SET `cancel_event` before this generator detaches -- the
+        # cooperative-cancel seam `KnowledgeService.ask()`/`KnowledgeAgent
+        # .ask()` poll to unwind early instead of running the whole bounded
+        # loop to completion. (This fake `slow_ask` ignores it -- a real
+        # `KnowledgeAgent` would raise `AskCancelled` from inside instead --
+        # so the rest of this test's "runs to natural completion" assertions
+        # below still hold for this double.)
+        assert len(captured_cancel_events) == 1
+        assert captured_cancel_events[0] is not None
+        assert captured_cancel_events[0].is_set()
+
         # The ask task was detached (NOT cancelled) into the module-level
         # registry when the generator returned early.
         new_tasks = set(ai_module._pending_ask_tasks) - tasks_before
@@ -1206,8 +1220,10 @@ class TestAskDeadline:
     @pytest.mark.asyncio
     async def test_deadline_exceeded_emits_typed_timeout_error_and_detaches(self):
         lock = asyncio.Lock()
+        captured_cancel_events: list = []
 
-        async def slow_ask(question, scope, tz, history):
+        async def slow_ask(question, scope, tz, history, cancel_event=None):
+            captured_cancel_events.append(cancel_event)
             async with lock:
                 await asyncio.sleep(0.3)
             return _validated_answer()
@@ -1244,6 +1260,13 @@ class TestAskDeadline:
         data = _extract_event_data(error_event, "error")
         assert data["code"] == "timeout"
         assert data["message"]
+
+        # Finding 1 (final review): the deadline path also SETS
+        # `cancel_event` before detaching -- same seam as the disconnect path
+        # (see `TestAskDisconnect`'s equivalent assertion).
+        assert len(captured_cancel_events) == 1
+        assert captured_cancel_events[0] is not None
+        assert captured_cancel_events[0].is_set()
 
         # Detached (not cancelled) into the module-level registry -- same
         # contract as a disconnect: the worker (and the lock it holds) is
@@ -1323,6 +1346,91 @@ class TestAskDeadline:
             json.dumps({"knowledge_base": {"ask_deadline_s": 0}}), encoding="utf-8"
         )
         assert await ai_module._ask_deadline_seconds() == 300.0
+
+
+class TestAskCancelledHandling:
+    """Finding 1 (final review): what happens to an `AskCancelled` raised by
+    the detached worker task -- as opposed to `TestAskDisconnect`/
+    `TestAskDeadline` above, which only prove `cancel_event` gets SET.
+    """
+
+    @pytest.mark.asyncio
+    async def test_on_ask_task_done_logs_info_not_error_for_ask_cancelled(self):
+        """The done-callback must tell an intentional cancellation (we set
+        `cancel_event` ourselves) apart from a genuine backend failure: INFO,
+        not the ERROR level `background_task_failed` uses."""
+        from pysaka.knowledge import AskCancelled
+
+        async def _raise_cancelled():
+            raise AskCancelled("ask cancelled before LLM call")
+
+        task = asyncio.create_task(_raise_cancelled())
+        with pytest.raises(AskCancelled):
+            await task
+
+        with structlog.testing.capture_logs() as captured_logs:
+            ai_module._on_ask_task_done(task)
+
+        events = [entry["event"] for entry in captured_logs]
+        assert "ai.ask.background_task_cancelled" in events
+        assert "ai.ask.background_task_failed" not in events
+        cancelled_entry = next(
+            e for e in captured_logs if e["event"] == "ai.ask.background_task_cancelled"
+        )
+        assert cancelled_entry["log_level"] == "info"
+
+    @pytest.mark.asyncio
+    async def test_on_ask_task_done_still_logs_error_for_a_real_failure(self):
+        """Sanity check the OTHER direction: a non-`AskCancelled` exception
+        must still be logged at ERROR, same as before this finding's fix."""
+
+        async def _raise_boom():
+            raise RuntimeError("boom")
+
+        task = asyncio.create_task(_raise_boom())
+        with pytest.raises(RuntimeError):
+            await task
+
+        with structlog.testing.capture_logs() as captured_logs:
+            ai_module._on_ask_task_done(task)
+
+        events = [entry["event"] for entry in captured_logs]
+        assert "ai.ask.background_task_failed" in events
+        assert "ai.ask.background_task_cancelled" not in events
+        failed_entry = next(
+            e for e in captured_logs if e["event"] == "ai.ask.background_task_failed"
+        )
+        assert failed_entry["log_level"] == "error"
+
+    @pytest.mark.asyncio
+    async def test_ask_event_stream_swallows_ask_cancelled_without_an_error_event(self):
+        """Defensive guard (see `_ask_event_stream`'s `except AskCancelled`
+        comment): if the awaited `task` itself raised `AskCancelled` in the
+        live (not-yet-detached) path, the stream must end quietly -- no raw
+        exception, no spurious `event: error` -- since a self-requested
+        cancellation is not a failure the client needs telling about."""
+        from pysaka.knowledge import AskCancelled
+
+        svc = AsyncMock()
+        svc.ask = AsyncMock(side_effect=AskCancelled("cancelled"))
+        svc.index_progress = MagicMock(return_value=dict(_IDLE_PROGRESS))
+
+        class FakeRequest:
+            async def is_disconnected(self) -> bool:
+                return False
+
+        scope = Scope(service="hinatazaka46", group_ids=[], member_id=None)
+
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            events = [
+                event
+                async for event in ai_module._ask_event_stream(
+                    FakeRequest(), "何を食べた?", scope, ZoneInfo("Asia/Tokyo")
+                )
+            ]
+
+        assert all("event: error" not in e for e in events)
+        assert all("event: answer" not in e for e in events)
 
 
 # ---------------------------------------------------------------------------

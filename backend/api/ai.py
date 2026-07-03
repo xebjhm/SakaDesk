@@ -17,34 +17,55 @@ rather than an unhandled exception mid-stream (the HTTP status is already 200 by
 the time any of this runs).
 
 **Client disconnect.** The heartbeat loop polls `request.is_disconnected()` each
-cycle; once the client is gone, the generator stops emitting entirely (no more
-heartbeats, no terminal event) but deliberately does NOT `task.cancel()` the
-in-flight ask. `KnowledgeService.ask()` holds `_store_lock` for the duration of a
-worker thread (`asyncio.to_thread`) that the event loop cannot preempt --
-cancelling the awaiting coroutine would only unwind the `async with
-self._store_lock:` block and free the lock *while the orphaned worker thread kept
-running*, letting a concurrent index/ask race that orphaned thread over the shared
-sqlite/vector store. So the task is instead detached into the module-level
-`_pending_ask_tasks` set (via `add_done_callback`) and left to finish naturally --
-which also guarantees its exception (if any) is always retrieved even though
-nothing `await`s it directly anymore.
+cycle; once the client is gone, the generator SETS `cancel_event` (see below),
+then stops emitting entirely (no more heartbeats, no terminal event) -- but
+still deliberately does NOT `task.cancel()` the in-flight ask. `KnowledgeService
+.ask()` holds `_store_lock` for the duration of a worker thread (`asyncio
+.to_thread`) that the event loop cannot preempt -- cancelling the awaiting
+coroutine would only unwind the `async with self._store_lock:` block and free
+the lock *while the orphaned worker thread kept running*, letting a concurrent
+index/ask race that orphaned thread over the shared sqlite/vector store. So the
+task is instead detached into the module-level `_pending_ask_tasks` set (via
+`add_done_callback`) and left to finish naturally -- which also guarantees its
+exception (if any) is always retrieved even though nothing `await`s it directly
+anymore.
 
-**The worker is NOT tightly bounded (Product-wave Task 6).** A previous version
-of this docstring claimed the orphaned task was "bounded by ~120s" -- that was
-wrong and under-counted by up to 6x: `KnowledgeAgent` runs up to `max_steps`
-(6) sequential LLM calls, each with its own ~120s `OpenAICompatLLMClient`
-httpx timeout, plus embedding/tool-call time in between, so the detached
-worker (and the `_store_lock` it holds) can legitimately run for several
-minutes in the worst case -- see `pwave-confirmed-bugs.md`'s "no cancel"
-finding. What IS bounded is the STREAM the client sees: `_ask_event_stream`
-separately enforces an overall wall-clock `ask_deadline_s` (settings
-`knowledge_base.ask_deadline_s`, default 300s -- see `_ask_deadline_seconds`)
-that's independent of any single LLM call's timeout. Once that deadline
-passes, the generator emits a typed `event: error {code: "timeout"}` and
-detaches -- the SAME "let it finish, don't cancel" reasoning as an actual
-disconnect (below) -- so the user is never left waiting past the deadline
-even though the orphaned worker may still be running underneath, still
-holding the lock, for however much longer `max_steps` gives it.
+**Cooperative cancel, not hard cancel (final review, Finding 1 -- the dropped
+P6 brief item).** `_ask_event_stream` creates one `threading.Event`
+(`cancel_event`) per ask and threads it through `_run_ask` ->
+`KnowledgeService.ask()` -> `KnowledgeAgent.ask()`'s `should_abort` (see
+`pysaka.knowledge.agent.AskCancelled`), which the agent polls BETWEEN steps --
+before each LLM call, after each tool-call batch. `cancel_event` is SET right
+before this generator detaches, either on disconnect (above) or on deadline
+expiry (below) -- Stop is covered by disconnect, since the frontend's abort
+closes the SSE connection the same way a network drop would. This does not
+replace the "detach, don't cancel" design above (the worker thread still can't
+be preempted mid-step -- an in-flight LLM HTTP call still runs to its own
+timeout), but it shrinks `_store_lock`'s worst case from "the rest of
+`max_steps` sequential LLM calls" down to "however long the current step takes
+to finish" -- a queued retry no longer has to queue behind an abandoned ask for
+the full bounded-loop duration. A worker that raises `AskCancelled` after this
+generator has already detached is logged at INFO by `_on_ask_task_done` (not
+ERROR): it's an intentional, requested stop, not a backend failure.
+
+**The worker is still not TIGHTLY bounded.** Even with cooperative cancel, a
+single in-flight LLM call's own ~120s `OpenAICompatLLMClient` httpx timeout is
+NOT interrupted mid-call (`should_abort` is only checked between steps, never
+during one) -- so the worst case for one step is that timeout, not instant.
+Across a whole ask, `KnowledgeAgent` still runs up to `max_steps` (6)
+sequential LLM calls in the ABSENCE of a cancel signal, each with that same
+~120s budget, plus embedding/tool-call time in between -- see
+`pwave-confirmed-bugs.md`'s original "no cancel" finding for the worst case
+this replaces. What IS (and always was) bounded is the STREAM the client sees:
+`_ask_event_stream` separately enforces an overall wall-clock `ask_deadline_s`
+(settings `knowledge_base.ask_deadline_s`, default 300s -- see
+`_ask_deadline_seconds`) that's independent of any single LLM call's timeout.
+Once that deadline passes, the generator emits a typed `event: error {code:
+"timeout"}` and detaches -- the SAME "let it finish, don't cancel" reasoning as
+an actual disconnect (above) -- so the user is never left waiting past the
+deadline, and (with the cooperative-cancel seam above) the orphaned worker
+itself now also unwinds within roughly one step instead of running unbounded
+underneath.
 
 **Citation `ref` serialization.** Each `Citation.source_ref` (`pysaka.knowledge
 .models.SourceRef`) is translated into the frontend's `CitationReference` shape
@@ -88,6 +109,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import threading
 import time
 from datetime import datetime, timezone, tzinfo
 from typing import Literal
@@ -96,7 +118,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from backend.services import llm_usage, ollama
 from backend.services.background_tasks import track_background_task
@@ -122,7 +144,7 @@ from backend.services.llm_models import curated_for_backend, lookup_model
 from backend.services.model_assets import get_manifest, get_model_download_manager
 from backend.services.service_utils import validate_service
 from backend.services.settings_store import load_config, update_config
-from pysaka.knowledge import Answer, Citation, Scope, SourceRef
+from pysaka.knowledge import Answer, AskCancelled, Citation, Scope, SourceRef
 
 logger = structlog.get_logger(__name__)
 
@@ -225,6 +247,16 @@ _CANONICAL_MEMBER_ID_RE = re.compile(r"^\S+:\d+$")
 # bug worth surfacing, not a user-visible request to silently reinterpret.
 _MAX_HISTORY_MESSAGES = 12
 
+# Final review, minors: a generous per-message character cap on `question`
+# and every `history[].content` -- belt-and-braces against a buggy/future
+# client (or a pasted wall of text) blowing up the per-ask LLM prompt size
+# the same way `_MAX_HISTORY_MESSAGES` guards message COUNT. 4000 chars is
+# well beyond any real question or a rendered answer's joined sentences, so
+# no well-behaved client should ever hit this; pydantic's built-in
+# `max_length` rejects an over-long value with a typed 422, same "reject,
+# don't silently truncate" choice as `_MAX_HISTORY_MESSAGES`.
+_MAX_MESSAGE_LENGTH = 4000
+
 
 # ----------------------------------------------------------------------------
 # Request/response models
@@ -241,11 +273,11 @@ class HistoryMessage(BaseModel):
     frontend reconstructs from the rendered thread."""
 
     role: Literal["user", "assistant"]
-    content: str
+    content: str = Field(max_length=_MAX_MESSAGE_LENGTH)
 
 
 class AskRequest(BaseModel):
-    question: str
+    question: str = Field(max_length=_MAX_MESSAGE_LENGTH)
     service: str
     group_ids: list[int] | None = None
     member_id: str | None = None  # pysaka CanonicalId, e.g. "hinatazaka46:12"
@@ -449,7 +481,11 @@ async def _cloud_consent_required() -> bool:
 
 
 async def _run_ask(
-    question: str, scope: Scope, tz: tzinfo, history: list[dict] | None
+    question: str,
+    scope: Scope,
+    tz: tzinfo,
+    history: list[dict] | None,
+    cancel_event: threading.Event | None = None,
 ) -> Answer:
     """Check `kb_enabled()` and cloud consent, look up the service, and run
     `ask()` -- all inside the same task, so every failure mode (disabled,
@@ -459,13 +495,17 @@ async def _run_ask(
     Both gates run BEFORE `get_knowledge_service()` so a disabled/not-yet-
     consented KB never builds the embedder/store/LLM client just to answer a
     question no one is allowed to ask yet (mirrors the index hooks' guard).
+
+    `cancel_event` (final review, Finding 1) is threaded straight through to
+    `KnowledgeService.ask()` -- see that method and `_ask_event_stream` (which
+    creates and sets it) for the cooperative-cancel seam this implements.
     """
     if not await kb_enabled():
         raise KnowledgeDisabled()
     if await _cloud_consent_required():
         raise CloudConsentRequired()
     svc = await get_knowledge_service()
-    return await svc.ask(question, scope, tz, history)
+    return await svc.ask(question, scope, tz, history, cancel_event=cancel_event)
 
 
 async def _heartbeat_payload(service: str) -> dict:
@@ -514,8 +554,19 @@ def _on_ask_task_done(task: asyncio.Task) -> None:
     if task.cancelled():
         return
     exc = task.exception()
-    if exc is not None:
-        logger.error("ai.ask.background_task_failed", exc_info=exc)
+    if exc is None:
+        return
+    if isinstance(exc, AskCancelled):
+        # Final review, Finding 1: the ONLY way this task ever raises
+        # `AskCancelled` is `_ask_event_stream` setting `cancel_event` itself
+        # (on disconnect or its own deadline) -- always immediately before
+        # THAT generator already returned/yielded its own terminal event. By
+        # the time this callback runs, the stream is already done with this
+        # ask, so there is nothing left to emit; log at INFO (an intentional,
+        # requested stop), not the ERROR level a genuine backend failure gets.
+        logger.info("ai.ask.background_task_cancelled")
+        return
+    logger.error("ai.ask.background_task_failed", exc_info=exc)
 
 
 async def _ask_event_stream(
@@ -539,8 +590,25 @@ async def _ask_event_stream(
     ask_deadline_s = await _ask_deadline_seconds()
     deadline_at = time.monotonic() + ask_deadline_s
 
+    # Final review, Finding 1 (the dropped P6 brief item): the cooperative-
+    # cancel seam. Threaded through `_run_ask` -> `KnowledgeService.ask()` ->
+    # `KnowledgeAgent.ask()`'s `should_abort` (see `pysaka.knowledge.agent
+    # .AskCancelled`), which polls it BETWEEN steps -- before each LLM call,
+    # after each tool-call batch -- and raises to unwind. SET below on
+    # disconnect and on deadline expiry (Stop is covered by disconnect: the
+    # frontend's abort closes the SSE connection, which `is_disconnected()`
+    # observes the same way), always immediately before this generator itself
+    # detaches. This does NOT replace the "detach, don't cancel" design below
+    # -- the worker thread still can't be preempted mid-step, so an in-flight
+    # LLM HTTP call still runs to its own timeout -- but it shrinks
+    # `_store_lock`'s worst-case hold time from "the rest of `max_steps`
+    # sequential LLM calls" (up to several minutes) down to "however long the
+    # CURRENT step takes to finish" -- one LLM call or tool batch, typically
+    # seconds.
+    cancel_event = threading.Event()
+
     task: asyncio.Task[Answer] = asyncio.create_task(
-        _run_ask(question, scope, tz, history)
+        _run_ask(question, scope, tz, history, cancel_event)
     )
     _pending_ask_tasks.add(task)
     task.add_done_callback(_on_ask_task_done)
@@ -564,17 +632,22 @@ async def _ask_event_stream(
                 # another ask acquire the freed lock and race that orphaned
                 # thread (a torn read/write). So instead we let `task` run to
                 # natural completion (it's already detached into
-                # `_pending_ask_tasks`, above) -- see the module docstring's
-                # "worker is NOT tightly bounded" section for how long that
-                # can actually take; NOT the ~120s a stale comment here used
-                # to claim.
+                # `_pending_ask_tasks`, above) -- but we DO set `cancel_event`
+                # first, so the agent loop stops cooperatively at its next
+                # between-steps check instead of running the FULL bounded loop
+                # to completion; see this function's `cancel_event` comment,
+                # above, for how much that shrinks the worst case.
+                cancel_event.set()
                 logger.info("ai.ask.client_disconnected", service=scope.service)
                 return
             if time.monotonic() >= deadline_at:
                 # Same detach-don't-cancel reasoning as a disconnect, just
                 # triggered by our OWN wall-clock budget instead of the
                 # client going away -- the difference is the client is still
-                # here, so it gets a typed error instead of silence.
+                # here, so it gets a typed error instead of silence. Also
+                # sets `cancel_event` for the same reason as the disconnect
+                # branch above.
+                cancel_event.set()
                 logger.info(
                     "ai.ask.deadline_exceeded",
                     service=scope.service,
@@ -601,6 +674,19 @@ async def _ask_event_stream(
             if not task.done():
                 yield _format_sse("progress", await _heartbeat_payload(scope.service))
         answer = await task
+    except AskCancelled:
+        # Defensive guard against the double-path (see `cancel_event`'s
+        # comment above and `_on_ask_task_done`): in the current design,
+        # `cancel_event` is only ever set immediately before THIS generator
+        # itself returns/yields-then-returns (the two branches above), so in
+        # practice `await task` above is never reached once it's set --
+        # `_on_ask_task_done` is what actually observes an `AskCancelled`
+        # from an already-detached task. This branch exists so that can never
+        # change out from under this function and leak a raw exception onto
+        # the SSE stream; no error event is emitted (the ask was cancelled by
+        # OUR OWN request, not a failure the client needs telling about).
+        logger.info("ai.ask.cancelled", service=scope.service)
+        return
     except LLMBackendError as exc:
         # `exc.kind`/`status_code` are logged for diagnostics; `str(exc)` (which
         # may include a raw provider response body snippet -- see

@@ -84,6 +84,37 @@ _LOCAL_DEFAULT_MODEL = "qwen2.5:14b"
 # full threat model.
 _TRUSTED_DRAFT_KEY_HOST = urlparse(_CLOUD_DEFAULT_BASE_URL).hostname
 
+# Final-review Finding 2: hosts plain `http://` is trusted for even though it
+# isn't `https://` -- a local proxy on the loopback interface never puts the
+# key on a real network, so there's nothing to intercept. Every other host
+# must be `https://` or the key is withheld -- see `_url_scheme_allows_key`.
+_LOCAL_HTTP_KEY_HOSTS = {"localhost", "127.0.0.1"}
+
+
+def _url_scheme_allows_key(url: str) -> bool:
+    """Whether `url`'s scheme is safe to attach the real keyring API key to.
+
+    Final-review Finding 2: both key-attachment sites (the draft-config probe
+    in `_draft_key_host_is_trusted` and the saved-config path in
+    `build_llm_client_from_settings`) used to trust a host purely by hostname
+    equality, with no scheme check at all -- so a plain `http://` URL to an
+    otherwise-trusted host (or, for the saved-config path, ANY host at all)
+    would still send the real API key in cleartext over the network. Required
+    here: `https` unconditionally, or `http` ONLY for `localhost`/`127.0.0.1`
+    (a local proxy on the loopback interface, which never leaves the
+    machine). Any other scheme (or an unparseable `url`) is refused.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    scheme = (parsed.scheme or "").lower()
+    if scheme == "https":
+        return True
+    if scheme == "http":
+        return (parsed.hostname or "").lower() in _LOCAL_HTTP_KEY_HOSTS
+    return False
+
 
 class LLMBackendError(RuntimeError):
     """Raised when a call to an OpenAI-compatible LLM backend fails.
@@ -497,6 +528,18 @@ async def build_llm_client_from_settings(
 
     base_url = llm_config.get("base_url") or _CLOUD_DEFAULT_BASE_URL
     model = llm_config.get("model") or _CLOUD_DEFAULT_MODEL
+    if not _url_scheme_allows_key(base_url):
+        # Final-review Finding 2: never attach the real key to a non-HTTPS
+        # (non-loopback) saved base_url -- e.g. `settings.json` hand-edited or
+        # restored from an untrusted export. Treated the same as "no key
+        # available": there is nothing usable to build a real cloud client
+        # with, so `ask()` surfaces the normal `KnowledgeMisconfigured` path
+        # rather than silently sending the key in cleartext.
+        logger.warning(
+            "llm_client.build_from_settings.key_attach_refused",
+            host=_extract_host(base_url),
+        )
+        return None
     api_key = _load_cloud_api_key()
     if not api_key:
         logger.info("llm_client.build_from_settings.no_api_key", backend=backend)
@@ -565,8 +608,10 @@ async def _draft_key_host_is_trusted(draft_base_url: str) -> bool:
     field -- fully user-controlled, not-yet-saved) may receive the real
     cloud API key (P-5 review, Finding 1).
 
-    Trusted iff the draft's host, compared case-insensitively by EXACT
-    hostname equality (never substring/`endswith`), is either:
+    Trusted iff the draft's SCHEME is safe for a real key (`https`, or `http`
+    only for `localhost`/`127.0.0.1` -- Final-review Finding 2, see
+    `_url_scheme_allows_key`) AND its host, compared case-insensitively by
+    EXACT hostname equality (never substring/`endswith`), is either:
       - the known Gemini host (`_TRUSTED_DRAFT_KEY_HOST`), or
       - the host of the CURRENTLY-SAVED `knowledge_base.llm.base_url`, but
         only when the saved `backend` is itself `"cloud"` -- `base_url` is a
@@ -578,12 +623,15 @@ async def _draft_key_host_is_trusted(draft_base_url: str) -> bool:
     draft `base_url` is exactly what an attacker (a malicious settings-import,
     a compromised extension, or just a user copy-pasting a bad link) would
     control to turn the Test button into a way to exfiltrate whatever's in
-    the OS keyring to an arbitrary host. Restricting to hosts the user has
-    ALREADY explicitly committed to (the official Gemini endpoint, or a
-    custom proxy they already Saved) closes that hole while still letting a
-    legitimate custom-proxy edit be re-tested without a Save round-trip
-    first.
+    the OS keyring to an arbitrary host -- including over plain HTTP, where
+    it would additionally be sent in cleartext on the wire. Restricting to
+    HTTPS (or loopback HTTP, for a local proxy) hosts the user has ALREADY
+    explicitly committed to (the official Gemini endpoint, or a custom proxy
+    they already Saved) closes that hole while still letting a legitimate
+    custom-proxy edit be re-tested without a Save round-trip first.
     """
+    if not _url_scheme_allows_key(draft_base_url):
+        return False
     draft_host = _extract_host(draft_base_url)
     if draft_host is None:
         return False

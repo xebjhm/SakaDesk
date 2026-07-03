@@ -1192,6 +1192,188 @@ async def test_build_from_draft_refuses_key_when_saved_backend_is_local_even_if_
     assert "Authorization" not in route.calls[0].request.headers
 
 
+# --- `_url_scheme_allows_key` (final review, Finding 2) --------------------------------
+
+
+def test_url_scheme_allows_key_https_trusted_host_returns_true():
+    from backend.services.llm_client import _url_scheme_allows_key
+
+    assert (
+        _url_scheme_allows_key(
+            "https://generativelanguage.googleapis.com/v1beta/openai"
+        )
+        is True
+    )
+
+
+def test_url_scheme_allows_key_http_non_local_host_returns_false():
+    """A plain-HTTP URL to a real (non-loopback) host must never receive the
+    real key -- it would traverse the network in cleartext even if the host
+    itself is otherwise "trusted" by hostname."""
+    from backend.services.llm_client import _url_scheme_allows_key
+
+    assert (
+        _url_scheme_allows_key("http://generativelanguage.googleapis.com/v1beta/openai")
+        is False
+    )
+
+
+def test_url_scheme_allows_key_http_localhost_returns_true():
+    from backend.services.llm_client import _url_scheme_allows_key
+
+    assert _url_scheme_allows_key("http://localhost:11434/v1") is True
+
+
+def test_url_scheme_allows_key_http_127_0_0_1_returns_true():
+    from backend.services.llm_client import _url_scheme_allows_key
+
+    assert _url_scheme_allows_key("http://127.0.0.1:11434/v1") is True
+
+
+def test_url_scheme_allows_key_unparseable_url_returns_false():
+    from backend.services.llm_client import _url_scheme_allows_key
+
+    assert _url_scheme_allows_key("not a url at all") is False
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_settings_cloud_http_non_local_base_url_refuses_key_and_returns_none():
+    """Final-review Finding 2: a saved `cloud` base_url that is plain HTTP
+    (and not loopback) must never get the real keyring key attached -- treated
+    the same as "no key available" (returns `None`) rather than silently
+    building a client that would send the key in cleartext."""
+    config = {
+        "knowledge_base": {
+            "llm": {
+                "backend": "cloud",
+                "base_url": "http://example.test/v1",
+                "model": "gemini-x",
+            }
+        }
+    }
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_settings()
+
+    assert client is None
+    # The keyring is never even consulted for an untrusted scheme/host.
+    mock_tm.assert_not_called()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_settings_cloud_http_localhost_base_url_attaches_key():
+    """The loopback-HTTP carve-out (a local proxy) applies to the saved-config
+    path too, not just the draft-config probe."""
+    config = {
+        "knowledge_base": {
+            "llm": {
+                "backend": "cloud",
+                "base_url": "http://localhost:9999/v1",
+                "model": "gemini-x",
+            }
+        }
+    }
+    route = respx.post("http://localhost:9999/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value=config,
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_settings()
+        assert client is not None
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert route.calls[0].request.headers["Authorization"] == "Bearer secret-key"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_refuses_key_for_http_scheme_on_an_otherwise_trusted_host():
+    """The trusted-Gemini-host draft path (see
+    `test_build_from_draft_gemini_host_always_trusted_even_when_saved_backend_is_local`)
+    must still refuse the key when the draft URL's scheme is downgraded to
+    plain HTTP -- hostname trust alone is not enough."""
+    route = respx.post(
+        "http://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    ).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud",
+            "http://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini-2.5-flash",
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert "Authorization" not in route.calls[0].request.headers
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_build_from_draft_attaches_key_for_http_localhost_matching_saved_host():
+    """`http://localhost` is trusted for the draft path too (a local proxy
+    saved as the `cloud` backend), as long as its host also matches the
+    saved cloud base_url -- same host-matching rule as any other draft host,
+    just with the loopback-HTTP scheme carve-out applied."""
+    saved_config = {
+        "knowledge_base": {
+            "llm": {
+                "backend": "cloud",
+                "base_url": "http://localhost:9999/v1",
+                "model": "gemini-x",
+            }
+        }
+    }
+    route = respx.post("http://localhost:9999/v1/chat/completions").mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    with (
+        patch(
+            "backend.services.llm_client.load_config",
+            new_callable=AsyncMock,
+            return_value=saved_config,
+        ),
+        patch("backend.services.llm_client.get_token_manager") as mock_tm,
+    ):
+        mock_tm.return_value.store.load.return_value = {"api_key": "secret-key"}
+        client = await build_llm_client_from_draft(
+            "cloud", "http://localhost:9999/v1", "gemini-x"
+        )
+        await client.chat([{"role": "user", "content": "hi"}])
+
+    assert route.calls[0].request.headers["Authorization"] == "Bearer secret-key"
+
+
 def test_extract_host_lowercases_and_ignores_port():
     from backend.services.llm_client import _extract_host
 

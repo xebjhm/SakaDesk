@@ -296,6 +296,125 @@ async def test_ask_no_match_returns_no_evidence(
     assert answer.citations == []
 
 
+# --- cancel_event: cooperative-cancel seam (final review, Finding 1 -- the ------
+# dropped P6 brief item) -----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_ask_cancel_event_propagates_ask_cancelled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`cancel_event` is threaded through to `KnowledgeAgent.ask`'s
+    `should_abort` as `cancel_event.is_set`; a pre-set event must raise
+    `pysaka.knowledge.AskCancelled` straight out of `svc.ask` -- not swallow
+    it, not translate it into `LLMBackendError` (unlike
+    `ToolCallingUnreliableError`, this isn't a backend failure)."""
+    from pysaka.knowledge import AskCancelled
+
+    cancel_event = threading.Event()
+    cancel_event.set()  # already cancelled before the ask even starts
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    svc, _store = await _build_indexed_service(
+        tmp_path, monkeypatch, FakeLLMClient(script)
+    )
+
+    with pytest.raises(AskCancelled):
+        await svc.ask(
+            "question",
+            Scope(service=_SERVICE),
+            timezone.utc,
+            cancel_event=cancel_event,
+        )
+
+
+@pytest.mark.asyncio
+async def test_ask_cancel_event_lets_a_queued_ask_proceed_within_one_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Before the `should_abort` seam, a caller that wanted to abandon an ask
+    (Stop/timeout/disconnect) had no way to make the WORKER THREAD stop -- it
+    kept running the full bounded agent loop (up to `max_steps` sequential LLM
+    calls) holding `_store_lock` the whole time, so a subsequent queued ask
+    waited behind the abandoned one for however long that took (up to
+    several minutes -- the dropped P6 brief item).
+
+    With the seam wired (`KnowledgeService.ask(..., cancel_event=...)` ->
+    `KnowledgeAgent.ask(..., should_abort=...)`), setting `cancel_event`
+    unwinds the loop within about ONE step -- proven here with a script that
+    has only ONE entry (a second LLM call, if the loop failed to check
+    `should_abort` and tried one, would blow up with `FakeLLMClient`'s
+    "script exhausted" `IndexError` instead of hanging) and a queued second
+    ask that completes right after. Choreographed deterministically with
+    `threading.Event`s, same idiom as
+    `test_ask_completes_between_index_batches_not_after_whole_index` above.
+    """
+    from pysaka.knowledge import AskCancelled
+
+    order: list[str] = []
+    cancel_event = threading.Event()
+    step1_started = threading.Event()
+    release_step1 = threading.Event()
+
+    class _OneStepThenBlockingLLMClient:
+        """Its one scripted response is a tool call, but the `chat()` call
+        that returns it blocks (on the worker thread) until the test
+        releases it -- a deterministic window to queue a second ask on
+        `_store_lock` before signaling cancellation."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def chat(self, messages, tools=None):
+            self.calls += 1
+            step1_started.set()
+            assert release_step1.wait(timeout=5), (
+                "test deadlock: release_step1 never set"
+            )
+            return LLMResponse(tool_calls=[ToolCall("aggregate", {}, id="call_1")])
+
+    llm = _OneStepThenBlockingLLMClient()
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm)
+
+    async def _run_first_ask() -> None:
+        with pytest.raises(AskCancelled):
+            await svc.ask(
+                "question that gets cancelled",
+                Scope(service=_SERVICE),
+                timezone.utc,
+                cancel_event=cancel_event,
+            )
+        order.append("first_ask_cancelled")
+
+    first_task = asyncio.create_task(_run_first_ask())
+
+    # Wait until the worker thread is inside its (only scripted) LLM call --
+    # `_store_lock` is held right now.
+    assert await asyncio.to_thread(step1_started.wait, 5)
+
+    async def _run_second_ask():
+        svc._llm = FakeLLMClient([LLMResponse(text=json.dumps({"no_evidence": True}))])
+        answer = await svc.ask(
+            "follow-up question", Scope(service=_SERVICE), timezone.utc
+        )
+        order.append("second_ask_done")
+        return answer
+
+    second_task = asyncio.create_task(_run_second_ask())
+    # Give the second ask a real chance to queue on `_store_lock` BEFORE the
+    # first one is cancelled -- same idiom as the lock-fairness test above.
+    await asyncio.sleep(0.05)
+
+    cancel_event.set()  # simulate ai.py's disconnect/deadline handler
+    release_step1.set()  # let the blocked (first) LLM call return
+
+    await first_task
+    answer = await asyncio.wait_for(second_task, timeout=2)
+
+    assert llm.calls == 1  # the cancelled ask never reached a 2nd LLM call
+    assert answer.no_evidence is True
+    assert order == ["first_ask_cancelled", "second_ask_done"]
+
+
 @pytest.mark.asyncio
 async def test_index_members_is_idempotent_via_content_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

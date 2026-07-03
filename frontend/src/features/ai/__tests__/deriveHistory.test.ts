@@ -67,6 +67,49 @@ describe('deriveHistory', () => {
         expect(deriveHistory(turns)).toEqual([{ role: 'user', content: 'q1' }]);
     });
 
+    it('collapses two consecutive user turns (skipped assistant reply in between) into one message', () => {
+        const turns: ChatTurn[] = [
+            userTurn('u1', 'q1'),
+            { id: 'x1', role: 'assistant', state: 'stopped', createdAt: 1 },
+            userTurn('u2', 'q2'),
+        ];
+
+        expect(deriveHistory(turns)).toEqual([{ role: 'user', content: 'q1 q2' }]);
+    });
+
+    it('collapses two consecutive answered assistant turns into one message', () => {
+        const turns: ChatTurn[] = [
+            userTurn('u1', 'q1'),
+            answeredTurn('a1', ['answer one.']),
+            answeredTurn('a2', ['answer two.']),
+        ];
+
+        expect(deriveHistory(turns)).toEqual([
+            { role: 'user', content: 'q1' },
+            { role: 'assistant', content: 'answer one. answer two.' },
+        ]);
+    });
+
+    it('never emits consecutive same-role messages even with several skipped turns in a row', () => {
+        const turns: ChatTurn[] = [
+            userTurn('u1', 'q1'),
+            { id: 's1', role: 'assistant', state: 'streaming', progressLabel: 'Thinking…', createdAt: 1 },
+            userTurn('u2', 'q2'),
+            { id: 'n1', role: 'assistant', state: 'noEvidence', createdAt: 1 },
+            userTurn('u3', 'q3'),
+            answeredTurn('a1', ['ok']),
+        ];
+
+        const history = deriveHistory(turns);
+        expect(history).toEqual([
+            { role: 'user', content: 'q1 q2 q3' },
+            { role: 'assistant', content: 'ok' },
+        ]);
+        for (let i = 1; i < history.length; i += 1) {
+            expect(history[i].role).not.toBe(history[i - 1].role);
+        }
+    });
+
     it('caps at the last MAX_HISTORY_EXCHANGES exchanges (2 messages each)', () => {
         const turns: ChatTurn[] = [];
         for (let i = 0; i < MAX_HISTORY_EXCHANGES + 3; i += 1) {

@@ -23,6 +23,15 @@ export const MAX_HISTORY_EXCHANGES = 6;
  * entirely -- there's nothing useful (or, for an error's raw message, safe)
  * to replay as a prior answer.
  *
+ * Final review (minors): skipping those non-`answered` assistant turns can
+ * leave two `user` turns (or, symmetrically, two `answered` assistant turns)
+ * adjacent in the OUTPUT even though they weren't adjacent in `turns` -- e.g.
+ * a question, a stopped/error reply, then a follow-up question. Some LLM
+ * providers require strict user/assistant alternation in a chat history and
+ * would reject (or silently misbehave on) two consecutive same-role turns,
+ * so `collapseConsecutiveSameRole` merges any such run into one message
+ * before the cap is applied.
+ *
  * `turns` should be the thread BEFORE the new question's own turns are
  * appended (i.e. what `AiFeature` already has in the store at submit time).
  */
@@ -38,5 +47,25 @@ export function deriveHistory(turns: ChatTurn[]): AskHistoryMessage[] {
             });
         }
     }
-    return messages.slice(-MAX_HISTORY_EXCHANGES * 2);
+    return collapseConsecutiveSameRole(messages).slice(-MAX_HISTORY_EXCHANGES * 2);
+}
+
+/**
+ * Merges any run of consecutive same-role messages into a single message
+ * (content joined with a space, in order) -- see `deriveHistory`'s docstring
+ * for why. A no-op when `messages` already strictly alternates roles, which
+ * is the common case (skipped turns are what create a run in the first
+ * place).
+ */
+function collapseConsecutiveSameRole(messages: AskHistoryMessage[]): AskHistoryMessage[] {
+    const collapsed: AskHistoryMessage[] = [];
+    for (const message of messages) {
+        const last = collapsed[collapsed.length - 1];
+        if (last && last.role === message.role) {
+            last.content = `${last.content} ${message.content}`.trim();
+        } else {
+            collapsed.push({ ...message });
+        }
+    }
+    return collapsed;
 }
