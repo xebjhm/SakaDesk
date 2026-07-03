@@ -11,6 +11,11 @@ project_root = Path(SPECPATH).parent.resolve()
 datas = [
     (str(project_root / 'frontend' / 'dist'), 'frontend/dist'),
     (str(project_root / 'pyproject.toml'), '.'),
+    # KB member rosters + seed knowledge live under data/ and are read at
+    # runtime via knowledge_service._DATA_DIR (= <bundle>/_internal/data).
+    # Without this the KB index build fails: "roster file not found:
+    # ...\_internal\data\members\<service>.json".
+    (str(project_root / 'data'), 'data'),
 ]
 binaries = []
 hiddenimports = [
