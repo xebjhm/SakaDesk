@@ -1,9 +1,36 @@
 // frontend/src/features/ai/__tests__/AiFeature.test.tsx
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiFeature } from '../AiFeature';
 import type { AskAnswer } from '../api';
+
+// `ChatWindow`'s empty state now mounts `SetupChecklist`, which fetches
+// `GET /api/ai/readiness` on mount (Product-wave Task 4, item 3) and keeps
+// the chat input disabled until it reports fully configured -- stub a
+// permanently-ready response so these ask-flow tests (which predate that
+// gate) keep exercising the input the moment it renders, same as before.
+function stubReadyFetch() {
+    vi.stubGlobal(
+        'fetch',
+        vi.fn((input: string | URL | Request) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            if (url === '/api/ai/readiness') {
+                return Promise.resolve({
+                    ok: true,
+                    json: () =>
+                        Promise.resolve({
+                            enabled: true,
+                            embeddingModel: { ok: true, model: 'granite-embedding-278m-multilingual' },
+                            llm: { ok: true, backend: 'cloud', model: 'gemini-2.5-flash' },
+                            index: { documentCount: 1 },
+                        }),
+                });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+        })
+    );
+}
 
 const { mockAskKnowledge } = vi.hoisted(() => ({ mockAskKnowledge: vi.fn() }));
 vi.mock('../api', () => ({
@@ -45,7 +72,9 @@ const ANSWERED: AskAnswer = {
 };
 
 async function askQuestion(question: string) {
-    const input = screen.getByPlaceholderText('Ask a question...');
+    // `findByPlaceholderText` (not `getBy...`) so this waits out the async
+    // `SetupChecklist` readiness fetch that gates the input on first mount.
+    const input = await screen.findByPlaceholderText('Ask a question...');
     await userEvent.type(input, question);
     await userEvent.click(screen.getByRole('button', { name: 'Send' }));
 }
@@ -53,6 +82,11 @@ async function askQuestion(question: string) {
 describe('AiFeature', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        stubReadyFetch();
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
     });
 
     it('renders the answer with an inline citation chip, and clicking the chip navigates to the source', async () => {

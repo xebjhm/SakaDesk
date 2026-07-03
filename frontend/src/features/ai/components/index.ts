@@ -4,3 +4,4 @@ export type { ChatTurn } from './ChatWindow';
 export { CitationChip } from './CitationChip';
 export { KnowledgeBaseStatus } from './KnowledgeBaseStatus';
 export { KbBackendSelector } from './KbBackendSelector';
+export { SetupChecklist } from './SetupChecklist';

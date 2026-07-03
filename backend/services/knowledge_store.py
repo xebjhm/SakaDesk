@@ -10,12 +10,32 @@ rehydrated from the persisted vector blobs on open.
 
 All access here is synchronous — the service layer (Task 3) is responsible
 for offloading calls onto a thread via `asyncio.to_thread`.
+
+**Schema migrations (Product-wave Task 4 fold-in).** The db's `PRAGMA
+user_version` (sqlite's built-in per-file integer, 0 on a brand-new file)
+tracks how far this file's schema has progressed. `_MIGRATIONS` is an
+ordered list of plain functions, each taking the schema from version `i` to
+`i + 1`; `_run_migrations` replays whichever suffix of that list a given
+file hasn't run yet, each migration in its OWN transaction immediately
+followed by the version bump (so a mid-migration crash never leaves
+`user_version` claiming a migration completed that didn't). A file at
+`user_version` 0 (created before this runner existed, back when schema init
+was a bare `CREATE TABLE IF NOT EXISTS` block) migrates forward with
+migration 1 being a NO-OP for its already-existing tables (same idempotent
+`CREATE TABLE IF NOT EXISTS` SQL) -- no data is touched, only the version
+counter advances. A brand-new file runs every migration in sequence,
+landing directly on the latest version. Opening a file whose
+`user_version` is NEWER than `_LATEST_SCHEMA_VERSION` (a newer SakaDesk
+version already touched it) refuses to open with a clear
+`KnowledgeStoreVersionError` rather than silently misreading a schema this
+version doesn't understand.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +49,11 @@ from pysaka.knowledge.models import Document, SourceRef
 
 logger = structlog.get_logger(__name__)
 
-_SCHEMA_SQL = """
+# Migration 1: the original (pre-migration-runner) schema -- kb_documents,
+# kb_mentions, kb_vectors. `CREATE TABLE IF NOT EXISTS` makes this a genuine
+# no-op replay for a v0 db that already has these tables (see module
+# docstring), and the normal path for a brand-new file.
+_SCHEMA_V1_SQL = """
 CREATE TABLE IF NOT EXISTS kb_documents (
     doc_id TEXT PRIMARY KEY,
     service TEXT NOT NULL,
@@ -59,6 +83,73 @@ CREATE TABLE IF NOT EXISTS kb_vectors (
     vec BLOB NOT NULL
 );
 """
+
+# Migration 2: `kb_meta`, a generic key/value table -- currently holds the
+# embedder fingerprint (`embedder_fingerprint`) and the reindex-required
+# sentinel (`reindex_required`), see `KnowledgeService._check_fingerprint`.
+_SCHEMA_V2_SQL = """
+CREATE TABLE IF NOT EXISTS kb_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+"""
+
+
+def _migrate_to_v1(conn: sqlite3.Connection) -> None:
+    conn.executescript(_SCHEMA_V1_SQL)
+
+
+def _migrate_to_v2(conn: sqlite3.Connection) -> None:
+    conn.executescript(_SCHEMA_V2_SQL)
+
+
+# Index `i` migrates a db from version `i` to version `i + 1`. Append here,
+# never edit/remove a past entry -- a released migration is a historical
+# fact for every db file that already ran it.
+_MIGRATIONS: list[Callable[[sqlite3.Connection], None]] = [
+    _migrate_to_v1,
+    _migrate_to_v2,
+]
+_LATEST_SCHEMA_VERSION = len(_MIGRATIONS)
+
+
+class KnowledgeStoreVersionError(RuntimeError):
+    """`knowledge_index.db`'s `PRAGMA user_version` is newer than this
+    SakaDesk version's `_LATEST_SCHEMA_VERSION` -- i.e. a newer SakaDesk
+    release already migrated this file forward, and opening it here would
+    mean reading/writing a schema this version doesn't fully understand.
+    Refuses to open rather than risk silent corruption; the fix is
+    upgrading SakaDesk, not touching the db file.
+    """
+
+
+def _run_migrations(conn: sqlite3.Connection) -> None:
+    """Bring `conn`'s db forward to `_LATEST_SCHEMA_VERSION`, or raise
+    `KnowledgeStoreVersionError` if it's already newer than that.
+
+    Each migration runs in its own transaction, immediately followed by its
+    version bump in the SAME transaction (`PRAGMA user_version` can't take a
+    bound parameter, but the value here is always this module's own
+    trusted integer, never external input) -- a crash mid-migration leaves
+    `user_version` at the last successfully-completed step, so the next open
+    resumes from exactly there instead of re-running (or skipping) a step.
+    """
+    current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if current_version > _LATEST_SCHEMA_VERSION:
+        raise KnowledgeStoreVersionError(
+            f"knowledge_index.db is at schema version {current_version}, "
+            f"newer than the {_LATEST_SCHEMA_VERSION} this SakaDesk version "
+            "supports. Upgrade SakaDesk to open it."
+        )
+    for version in range(current_version, _LATEST_SCHEMA_VERSION):
+        migrate = _MIGRATIONS[version]
+        with conn:
+            migrate(conn)
+            conn.execute(f"PRAGMA user_version = {version + 1}")
+        logger.info(
+            "knowledge_store.migrated", from_version=version, to_version=version + 1
+        )
+
 
 _DOCUMENT_COLUMNS = (
     "doc_id, source_ref_json, author_id, timestamp, type, is_favorite, text, has_text"
@@ -91,8 +182,7 @@ class SqliteKnowledgeStore:
         self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=30000")
-        self._conn.executescript(_SCHEMA_SQL)
-        self._conn.commit()
+        _run_migrations(self._conn)
         self._vector_store = NumpyVectorStore()
         self._load_vectors()
         # Bumped by every persisted write (`add`/`upsert_documents`/`remove`) that
@@ -339,3 +429,45 @@ class SqliteKnowledgeStore:
             vector, k, allowed_ids
         )
         return results
+
+    # ------------------------------------------------------------------
+    # kb_meta (Product-wave Task 4 fold-in) — generic key/value metadata.
+    # Interpretation (what a key MEANS) belongs to `KnowledgeService`, e.g.
+    # the `embedder_fingerprint` / `reindex_required` keys -- see
+    # `KnowledgeService._check_fingerprint`. This store only persists bytes.
+    # ------------------------------------------------------------------
+
+    def get_meta(self, key: str) -> str | None:
+        """The stored value for `key`, or `None` if never set."""
+        row = self._conn.execute(
+            "SELECT value FROM kb_meta WHERE key = ?", (key,)
+        ).fetchone()
+        return row[0] if row is not None else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        """Insert or overwrite `key`'s stored value."""
+        self._conn.execute(
+            "INSERT OR REPLACE INTO kb_meta (key, value) VALUES (?, ?)", (key, value)
+        )
+        self._conn.commit()
+
+    def wipe_vectors_and_content_hashes(self) -> None:
+        """Global vector-space reset for an embedder fingerprint mismatch (see
+        `KnowledgeService._check_fingerprint`): deletes every persisted vector
+        (`kb_vectors`, plus the in-memory `NumpyVectorStore` mirror -- leaving
+        the latter stale would let searches keep returning vectors from the
+        OLD embedding model even after the table is cleared) and blanks every
+        document's `content_hash` so the next index/rebuild pass treats the
+        ENTIRE corpus (every service) as changed and re-embeds it. Document
+        rows themselves (text/mentions/source_ref) are left intact -- only
+        the vectors and the hash gating re-embedding are cleared. This is the
+        "do NOT silently mix vector spaces" guard: safer to make search
+        temporarily return nothing for not-yet-rebuilt services than to let
+        two different embedding models' vectors coexist in one search.
+        """
+        self._conn.execute("DELETE FROM kb_vectors")
+        self._conn.execute("UPDATE kb_documents SET content_hash = ''")
+        self._conn.commit()
+        self._vector_store = NumpyVectorStore()
+        self.generation += 1
+        logger.warning("knowledge_store.vectors_wiped")

@@ -7,10 +7,18 @@ searchable) by a fresh instance opened against the same db file.
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from backend.services.knowledge_store import SqliteKnowledgeStore
+import pytest
+
+from backend.services.knowledge_store import (
+    _LATEST_SCHEMA_VERSION,
+    _MIGRATIONS,
+    KnowledgeStoreVersionError,
+    SqliteKnowledgeStore,
+)
 from pysaka.knowledge import VectorStore
 from pysaka.knowledge.models import Document, SourceRef
 
@@ -201,3 +209,188 @@ def test_search_allowed_ids_filter(tmp_path: Path) -> None:
     results = s.search([1.0, 0.0], k=5, allowed_ids={"blog:hinatazaka46:2"})
     assert [id_ for id_, _ in results] == ["blog:hinatazaka46:2"]
     s.close()
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 4, fold-in: PRAGMA user_version migration runner + kb_meta
+# ---------------------------------------------------------------------------
+
+
+class TestMigrations:
+    def test_fresh_db_initializes_straight_to_latest_version(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "knowledge_index.db"
+        s = SqliteKnowledgeStore(db_path)
+        s.close()
+
+        conn = sqlite3.connect(str(db_path))
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            assert version == _LATEST_SCHEMA_VERSION
+            # kb_meta (migration 2) must exist on a totally fresh db too.
+            conn.execute("SELECT key, value FROM kb_meta")
+        finally:
+            conn.close()
+
+    def test_v0_db_with_existing_data_migrates_to_latest_intact(
+        self, tmp_path: Path
+    ) -> None:
+        """A db created before the migration runner existed (`user_version`
+        defaults to 0, tables already created via the old bare `CREATE TABLE
+        IF NOT EXISTS` schema init) must migrate forward to the latest
+        version -- as a no-op for the already-existing tables -- WITHOUT
+        losing any previously-persisted document/vector data."""
+        db_path = tmp_path / "knowledge_index.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(
+            """
+            CREATE TABLE kb_documents (
+                doc_id TEXT PRIMARY KEY,
+                service TEXT NOT NULL,
+                source_ref_json TEXT NOT NULL,
+                author_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                type TEXT NOT NULL,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                text TEXT NOT NULL,
+                has_text INTEGER NOT NULL DEFAULT 0,
+                content_hash TEXT NOT NULL
+            );
+            CREATE TABLE kb_mentions (
+                doc_id TEXT NOT NULL,
+                mentions_id TEXT NOT NULL,
+                PRIMARY KEY (doc_id, mentions_id)
+            );
+            CREATE TABLE kb_vectors (
+                id TEXT PRIMARY KEY,
+                dim INTEGER NOT NULL,
+                vec BLOB NOT NULL
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO kb_documents (doc_id, service, source_ref_json, author_id, "
+            "timestamp, type, is_favorite, text, has_text, content_hash) "
+            "VALUES ('blog:hinatazaka46:1', 'hinatazaka46', '{}', 'hinatazaka46:1', "
+            "'2026-01-01T00:00:00+00:00', 'blog', 0, 'pre-migration text', 1, 'hash1')"
+        )
+        conn.commit()
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 0
+        conn.close()
+
+        s = SqliteKnowledgeStore(db_path)
+        try:
+            row = s._conn.execute(
+                "SELECT text FROM kb_documents WHERE doc_id = ?",
+                ("blog:hinatazaka46:1",),
+            ).fetchone()
+            assert row[0] == "pre-migration text"
+            assert s._conn.execute("PRAGMA user_version").fetchone()[0] == (
+                _LATEST_SCHEMA_VERSION
+            )
+            # kb_meta was created by migration 2 even though the db pre-dated it.
+            s.set_meta("probe", "ok")
+            assert s.get_meta("probe") == "ok"
+        finally:
+            s.close()
+
+    def test_db_with_future_version_refuses_to_open(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "knowledge_index.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute(f"PRAGMA user_version = {_LATEST_SCHEMA_VERSION + 1}")
+        conn.commit()
+        conn.close()
+
+        with pytest.raises(KnowledgeStoreVersionError, match="newer"):
+            SqliteKnowledgeStore(db_path)
+
+    def test_migrations_list_length_matches_latest_version(self) -> None:
+        assert len(_MIGRATIONS) == _LATEST_SCHEMA_VERSION
+
+    def test_reopening_a_fully_migrated_db_is_a_clean_noop(
+        self, tmp_path: Path
+    ) -> None:
+        db_path = tmp_path / "knowledge_index.db"
+        s1 = SqliteKnowledgeStore(db_path)
+        s1.upsert_documents([_doc(1)])
+        s1.close()
+
+        s2 = SqliteKnowledgeStore(db_path)
+        try:
+            assert s2._conn.execute("PRAGMA user_version").fetchone()[0] == (
+                _LATEST_SCHEMA_VERSION
+            )
+            assert s2.get_document("blog:hinatazaka46:1") is not None
+        finally:
+            s2.close()
+
+
+class TestKbMeta:
+    def test_get_meta_missing_key_returns_none(self, tmp_path: Path) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        assert s.get_meta("does-not-exist") is None
+        s.close()
+
+    def test_set_then_get_meta_round_trips(self, tmp_path: Path) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        s.set_meta("embedder_fingerprint", '{"model_name": "x"}')
+        assert s.get_meta("embedder_fingerprint") == '{"model_name": "x"}'
+        s.close()
+
+    def test_set_meta_overwrites_existing_value(self, tmp_path: Path) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        s.set_meta("k", "v1")
+        s.set_meta("k", "v2")
+        assert s.get_meta("k") == "v2"
+        s.close()
+
+    def test_meta_persists_across_reopen(self, tmp_path: Path) -> None:
+        db_path = tmp_path / "knowledge_index.db"
+        s1 = SqliteKnowledgeStore(db_path)
+        s1.set_meta("k", "v")
+        s1.close()
+
+        s2 = SqliteKnowledgeStore(db_path)
+        assert s2.get_meta("k") == "v"
+        s2.close()
+
+
+class TestWipeVectorsAndContentHashes:
+    def test_wipe_clears_vectors_but_keeps_document_rows(self, tmp_path: Path) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        s.upsert_documents([_doc(1), _doc(2)])
+        s.add(["blog:hinatazaka46:1", "blog:hinatazaka46:2"], [[1.0, 0.0], [0.0, 1.0]])
+
+        s.wipe_vectors_and_content_hashes()
+
+        # Vectors are gone, both from the persisted table and the in-memory mirror.
+        assert s.search([1.0, 0.0], k=5) == []
+        row_count = s._conn.execute("SELECT COUNT(*) FROM kb_vectors").fetchone()[0]
+        assert row_count == 0
+        # Document rows (text/mentions) survive untouched.
+        doc = s.get_document("blog:hinatazaka46:1")
+        assert doc is not None
+        assert doc.text == "焼肉1"
+        s.close()
+
+    def test_wipe_blanks_content_hash_so_next_index_pass_reembeds_everything(
+        self, tmp_path: Path
+    ) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        s.upsert_documents([_doc(1)])
+        assert s.changed_document_ids([_doc(1)]) == []  # unchanged before wipe
+
+        s.wipe_vectors_and_content_hashes()
+
+        assert s.changed_document_ids([_doc(1)]) == ["blog:hinatazaka46:1"]
+        s.close()
+
+    def test_wipe_bumps_generation(self, tmp_path: Path) -> None:
+        s = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        s.upsert_documents([_doc(1)])
+        s.add(["blog:hinatazaka46:1"], [[1.0, 0.0]])
+        before = s.generation
+        s.wipe_vectors_and_content_hashes()
+        assert s.generation > before
+        s.close()

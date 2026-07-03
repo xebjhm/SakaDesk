@@ -1548,16 +1548,19 @@ requires-dist = [
     { name = "keyring", specifier = ">=24.0.0" },
     { name = "keyrings-alt", marker = "extra == 'headless'", specifier = ">=4.0" },
     { name = "numpy", marker = "extra == 'embeddings'", specifier = ">=1.24" },
+    { name = "numpy", marker = "extra == 'embeddings-gpu'", specifier = ">=1.24" },
     { name = "onnxruntime", marker = "extra == 'embeddings'", specifier = ">=1.17" },
+    { name = "onnxruntime-gpu", marker = "extra == 'embeddings-gpu'", specifier = ">=1.17" },
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "playwright", specifier = ">=1.40.0" },
     { name = "pyahocorasick", specifier = ">=2.2.0" },
     { name = "pymediainfo", specifier = ">=6.0.0" },
     { name = "structlog", specifier = ">=24.1.0" },
     { name = "tokenizers", marker = "extra == 'embeddings'", specifier = ">=0.15" },
+    { name = "tokenizers", marker = "extra == 'embeddings-gpu'", specifier = ">=0.15" },
     { name = "tzdata", specifier = ">=2025.3" },
 ]
-provides-extras = ["headless", "embeddings"]
+provides-extras = ["headless", "embeddings", "embeddings-gpu"]
 
 [package.metadata.requires-dev]
 dev = [

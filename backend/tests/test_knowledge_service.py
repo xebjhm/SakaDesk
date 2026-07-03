@@ -1297,3 +1297,435 @@ async def test_persist_batched_never_splits_a_multi_chunk_doc_across_embed_calls
     # Every doc's row was persisted (crash-safe upsert-when-fully-embedded).
     persisted = store.documents_for_service(_SERVICE)
     assert {d.doc_id for d in persisted} == {blog_doc_id, *single_doc_ids}
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 4: embedder=None is a STATE, not a crash + lazy pickup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_status_reports_configured_false_when_embedder_missing(
+    tmp_path: Path,
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=None)
+
+    status = svc.status(_SERVICE)
+
+    assert status["configured"] is False
+    assert status["reason"] == "embedding_model_missing"
+    assert status["document_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_status_configured_true_includes_provider_and_reindex_required(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc, _store = await _build_indexed_service(tmp_path, monkeypatch, llm=None)
+
+    status = svc.status(_SERVICE)
+
+    assert status["configured"] is True
+    assert "provider" in status
+    assert status["reindex_required"] is False
+
+
+@pytest.mark.asyncio
+async def test_index_members_skips_quietly_when_embedder_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No model dir on disk (the project-root conftest.py's `SAKADESK_DATA_DIR`
+    # already isolates every test into a fresh, empty temp app-data dir --
+    # see that file's docstring) -- `_build_embedder`'s lazy-retry inside
+    # `_ensure_embedder` must also fail and return None (not raise).
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=None, data_dir=data_dir)
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    changed = await svc.index_members([(group, member)], _SERVICE)
+
+    assert changed == 0
+    assert svc.is_indexing(_SERVICE) is False  # never even claimed the in-flight slot
+    assert store.documents_for_service(_SERVICE) == []
+
+
+@pytest.mark.asyncio
+async def test_index_blogs_skips_quietly_when_embedder_missing(
+    tmp_path: Path,
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=None)
+
+    changed = await svc.index_blogs_for_service(_SERVICE)
+
+    assert changed == 0
+
+
+@pytest.mark.asyncio
+async def test_rebuild_skips_quietly_when_embedder_missing(tmp_path: Path) -> None:
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=None)
+
+    changed = await svc.rebuild(_SERVICE)
+
+    assert changed == 0
+    assert svc.is_indexing(_SERVICE) is False
+
+
+@pytest.mark.asyncio
+async def test_ask_raises_embedding_model_missing_when_embedder_none(
+    tmp_path: Path,
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=FakeLLMClient(script))
+
+    with pytest.raises(ks.EmbeddingModelMissing) as exc_info:
+        await svc.ask("anything", Scope(service=_SERVICE), timezone.utc)
+
+    assert isinstance(exc_info.value, ks.KnowledgeMisconfigured)
+    assert exc_info.value.model
+
+
+@pytest.mark.asyncio
+async def test_embedder_lazily_picked_up_after_model_dir_appears(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The lazy-LLM-retry pattern applies to the embedder too: a `None`
+    embedder at construction time doesn't stay `None` forever -- the next
+    index attempt retries `_build_embedder()`, which picks up a model dir
+    that appeared later (post in-app download) without a restart."""
+    from backend.services import knowledge_service as ks
+
+    data_dir = tmp_path / "data"
+    _write_reference_data(data_dir)
+    messages_file = tmp_path / "messages.json"
+    _write_messages_file(messages_file)
+    monkeypatch.setattr(
+        ks, "resolve_messages_file", lambda service, group_id, member_id: messages_file
+    )
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=None, llm=None, data_dir=data_dir)
+
+    group = {"id": 94, "name": "日向坂46"}
+    member = {"id": 145, "name": "佐藤 花"}
+    # First attempt: still no model dir anywhere -- must skip cleanly.
+    assert await svc.index_members([(group, member)], _SERVICE) == 0
+    assert svc._embedder is None
+
+    # "The model dir appears" -- simulate a completed in-app download by
+    # monkeypatching `_build_embedder` to now succeed (real ONNX weights
+    # aren't available in this test environment).
+    async def _fake_build_embedder() -> object:
+        return _embedder()
+
+    monkeypatch.setattr(ks, "_build_embedder", _fake_build_embedder)
+
+    changed = await svc.index_members([(group, member)], _SERVICE)
+
+    assert changed == 1
+    assert svc._embedder is not None
+    assert store.documents_for_service(_SERVICE)
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 4 fold-in: embedder fingerprint
+# ---------------------------------------------------------------------------
+
+
+class TestFingerprint:
+    @pytest.mark.asyncio
+    async def test_fresh_db_writes_fingerprint_on_first_ensure_embedder(
+        self, tmp_path: Path
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+
+        assert store.get_meta("embedder_fingerprint") is None
+        assert await svc._ensure_embedder() is True
+
+        stored = json.loads(store.get_meta("embedder_fingerprint"))
+        assert stored["dim"] == 2
+        assert stored["model_name"]
+        assert svc._read_reindex_required() is False
+
+    @pytest.mark.asyncio
+    async def test_matching_fingerprint_is_a_noop(self, tmp_path: Path) -> None:
+        from backend.services import knowledge_service as ks
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        await svc._ensure_embedder()
+        first_write = store.get_meta("embedder_fingerprint")
+
+        # A second service instance over the SAME db, same embedder config.
+        svc2 = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        assert await svc2._ensure_embedder() is True
+
+        assert store.get_meta("embedder_fingerprint") == first_write
+        assert svc2._read_reindex_required() is False
+
+    @pytest.mark.asyncio
+    async def test_mismatch_wipes_vectors_sets_reindex_required_and_blocks_writes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        data_dir = tmp_path / "data"
+        _write_reference_data(data_dir)
+        messages_file = tmp_path / "messages.json"
+        _write_messages_file(messages_file)
+        monkeypatch.setattr(
+            ks,
+            "resolve_messages_file",
+            lambda service, group_id, member_id: messages_file,
+        )
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(
+            store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+        )
+        group = {"id": 94, "name": "日向坂46"}
+        member = {"id": 145, "name": "佐藤 花"}
+        await svc.index_members([(group, member)], _SERVICE)
+        assert store.search([1.0, 0.0], k=5) != []
+
+        # Simulate a DIFFERENT embedding model (different dim) becoming active
+        # for a FRESH service instance over the same db.
+        class DifferentDimEmbedder:
+            dim = 4
+
+            def embed(self, texts, kind="passage"):
+                return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
+
+        svc2 = ks.KnowledgeService(
+            store=store, embedder=DifferentDimEmbedder(), llm=None, data_dir=data_dir
+        )
+        assert await svc2._ensure_embedder() is True
+
+        assert svc2._read_reindex_required() is True
+        # Every previously-persisted vector is gone -- no mixed vector space.
+        assert store.search([1.0, 0.0, 0.0, 0.0], k=5) == []
+
+        # Incremental writes are blocked until Rebuild.
+        changed = await svc2.index_members([(group, member)], _SERVICE)
+        assert changed == 0
+
+    @pytest.mark.asyncio
+    async def test_rebuild_clears_reindex_required_and_rewrites_fingerprint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        data_dir = tmp_path / "data"
+        _write_reference_data(data_dir)
+        monkeypatch.setattr(
+            ks, "resolve_service_path", lambda service: tmp_path / "no-such-service-dir"
+        )
+        _isolate_settings(tmp_path, monkeypatch)
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        store.set_meta("reindex_required", "1")
+        svc = ks.KnowledgeService(
+            store=store, embedder=_embedder(), llm=None, data_dir=data_dir
+        )
+
+        await svc.rebuild(_SERVICE)
+
+        assert svc._read_reindex_required() is False
+        assert store.get_meta("embedder_fingerprint") is not None
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 4, item 2: GET /api/ai/readiness -- `compute_readiness()`
+# ---------------------------------------------------------------------------
+
+
+def _write_settings(tmp_path: Path, config: dict) -> None:
+    (tmp_path / "settings.json").write_text(json.dumps(config), encoding="utf-8")
+
+
+class TestComputeReadiness:
+    @pytest.mark.asyncio
+    async def test_all_good(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        model_dir = tmp_path / "models" / "granite-embedding-278m-multilingual"
+        model_dir.mkdir(parents=True)
+        (model_dir / "model.onnx").write_bytes(b"x")
+        (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+        _write_settings(
+            tmp_path,
+            {
+                "knowledge_base": {
+                    "enabled": True,
+                    "llm": {
+                        "backend": "local",
+                        "base_url": "http://localhost:11434/v1",
+                        "model": "qwen2.5:14b",
+                    },
+                }
+            },
+        )
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["enabled"] is True
+        assert readiness["embeddingModel"]["ok"] is True
+        assert (
+            readiness["embeddingModel"]["model"]
+            == "granite-embedding-278m-multilingual"
+        )
+        assert readiness["llm"] == {
+            "ok": True,
+            "backend": "local",
+            "model": "qwen2.5:14b",
+        }
+        assert readiness["index"]["documentCount"] == 0
+
+    @pytest.mark.asyncio
+    async def test_missing_embedding_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["embeddingModel"]["ok"] is False
+        assert readiness["embeddingModel"]["reason"] == "embedding_model_missing"
+        assert "expectedPath" in readiness["embeddingModel"]
+
+    @pytest.mark.asyncio
+    async def test_no_llm_key_configured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        _write_settings(
+            tmp_path,
+            {
+                "knowledge_base": {
+                    "llm": {"backend": "cloud", "base_url": "x", "model": "y"}
+                }
+            },
+        )
+        monkeypatch.setattr(
+            "backend.services.llm_client._load_cloud_api_key", lambda: None
+        )
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["llm"]["ok"] is False
+        assert readiness["llm"]["reason"] == "not_configured"
+        assert readiness["llm"]["backend"] == "cloud"
+
+    @pytest.mark.asyncio
+    async def test_kb_disabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        _write_settings(tmp_path, {"knowledge_base": {"enabled": False}})
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["enabled"] is False
+
+    @pytest.mark.asyncio
+    async def test_index_document_count_reflects_persisted_docs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        store.upsert_documents(
+            [
+                Document(
+                    doc_id="blog:hinatazaka46:1",
+                    source_ref=SourceRef(
+                        service="hinatazaka46", kind="blog", blog_id="1", member_id=1
+                    ),
+                    author_id="hinatazaka46:1",
+                    group="hinatazaka46",
+                    timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    type="blog",
+                    is_favorite=False,
+                    text="x",
+                    has_text=True,
+                )
+            ]
+        )
+        store.close()
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["index"]["documentCount"] == 1
+
+    @pytest.mark.asyncio
+    async def test_never_raises_when_a_probe_explodes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        monkeypatch.setattr(
+            ks,
+            "resolve_embedding_model_name",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        )
+        monkeypatch.setattr(
+            ks,
+            "build_llm_client_from_settings",
+            AsyncMock(side_effect=RuntimeError("boom")),
+        )
+
+        readiness = await ks.compute_readiness()  # must not raise
+
+        assert readiness["embeddingModel"] == {"ok": False, "reason": "probe_failed"}
+        assert readiness["llm"] == {"ok": False, "reason": "probe_failed"}
+
+    @pytest.mark.asyncio
+    async def test_never_raises_on_corrupt_index_db(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setenv("SAKADESK_DATA_DIR", str(tmp_path))
+        (tmp_path / "knowledge_index.db").write_text(
+            "not a sqlite file", encoding="utf-8"
+        )
+
+        readiness = await ks.compute_readiness()
+
+        assert readiness["index"]["documentCount"] == 0

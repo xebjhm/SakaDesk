@@ -64,7 +64,10 @@ from pysaka.knowledge.llm import LLMClient
 from pysaka.knowledge.protocols import Embedder
 
 from backend.services.background_tasks import track_background_task
-from backend.services.knowledge_store import SqliteKnowledgeStore
+from backend.services.knowledge_store import (
+    KnowledgeStoreVersionError,
+    SqliteKnowledgeStore,
+)
 from backend.services.llm_client import LLMBackendError, build_llm_client_from_settings
 from backend.services.path_resolver import resolve_messages_file, resolve_service_path
 from backend.services.platform import get_app_data_dir
@@ -77,13 +80,23 @@ logger = structlog.get_logger(__name__)
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 # Default ONNX embedding model name (settings.knowledge_base.embedding_model may
-# override). The model *assets* are fetched out of band (Task 12 / manual); a
-# clear error is raised if the resolved dir is absent — see `_build_embedder`.
+# override). The model assets can be fetched in-app (`backend/services/model_assets.py`,
+# Product-wave Task 4) or placed manually; either way, a missing model dir is a
+# STATE (`configured: false`), never a crash -- see `_build_embedder`.
 _DEFAULT_EMBEDDING_MODEL = "granite-embedding-278m-multilingual"
 
 # Chunks embedded per `Embedder.embed` call during indexing — batching amortizes
 # ONNX tokenization/inference overhead vs per-chunk calls (see `_persist`).
 _EMBED_BATCH_SIZE = 32
+
+# Embedder fingerprint (Product-wave Task 4 fold-in) — bumped only when the
+# semantics of an already-embedded chunk's vector would change for a reason
+# OTHER than the embedding model itself (e.g. a normalization or chunking
+# algorithm change that alters what a chunk's `context_text` even is). Baked
+# into `_current_fingerprint` alongside model_name/dim -- see
+# `KnowledgeService._check_fingerprint`.
+_NORMALIZER_VERSION = 1
+_CHUNKER_VERSION = 1
 
 
 def _roster_short_name(service: str) -> str:
@@ -125,6 +138,24 @@ class KnowledgeMisconfigured(RuntimeError):
     """Raised when the knowledge engine can't be assembled (e.g. no LLM configured)."""
 
 
+class EmbeddingModelMissing(KnowledgeMisconfigured):
+    """Raised by `ask()` when the embedding model still isn't installed after a
+    lazy-rebuild attempt (see `KnowledgeService._ensure_embedder`).
+
+    A subclass of `KnowledgeMisconfigured` (so any caller that only handles the
+    generic case still degrades safely), but `backend/api/ai.py` catches this
+    FIRST to emit the distinct, actionable SSE code `embedding_model_missing`
+    (new in Product-wave Task 4) instead of the generic `misconfigured` -- the
+    UI can point straight at the in-app model download instead of a vague
+    "check AI settings".
+    """
+
+    def __init__(self, model: str, expected_path: Path) -> None:
+        self.model = model
+        self.expected_path = expected_path
+        super().__init__(f"embedding model not installed: {expected_path}")
+
+
 class KnowledgeDisabled(RuntimeError):
     """Raised (by `backend/api/ai.py`'s `/ask`) when `settings.knowledge_base.enabled`
     is false. Deliberately NOT a subclass of `KnowledgeMisconfigured`: that one means
@@ -151,6 +182,51 @@ async def kb_enabled() -> bool:
     return bool(kb_config.get("enabled", False))
 
 
+async def resolve_embedding_model_name() -> str:
+    """`settings.knowledge_base.embedding_model`, or `_DEFAULT_EMBEDDING_MODEL`."""
+    config = await load_config()
+    kb_config = config.get("knowledge_base") or {}
+    name = kb_config.get("embedding_model") or _DEFAULT_EMBEDDING_MODEL
+    return cast("str", name)
+
+
+def embedding_model_dir(model_name: str) -> Path:
+    """Where `model_name`'s ONNX assets (`model.onnx` + `tokenizer.json`) live,
+    whether placed manually or by `backend/services/model_assets.py`'s in-app
+    download. Shared by `_build_embedder`, the readiness probe, and
+    `model_assets.py` so all three agree on the install target."""
+    return get_app_data_dir() / "models" / model_name
+
+
+def embedding_model_files_present(model_dir: Path) -> bool:
+    """Whether `model_dir` has both files `OnnxEmbedder` requires."""
+    return (model_dir / "model.onnx").exists() and (
+        model_dir / "tokenizer.json"
+    ).exists()
+
+
+async def _current_fingerprint(embedder: Embedder) -> dict:
+    """The fingerprint dict for `embedder`'s ACTIVE config -- compared against
+    `kb_meta['embedder_fingerprint']` by `KnowledgeService._check_fingerprint`.
+
+    Deliberately excludes the execution PROVIDER (CUDA vs CPU vs DirectML):
+    they run the SAME model weights through the SAME math, producing
+    numerically-close vectors of the SAME embedding space (floating-point
+    kernel differences, not a different space) -- so switching GPUs, or
+    falling back to CPU because a driver hiccuped, must never trigger a
+    reindex. Only a genuinely different MODEL, output dimensionality, or a
+    normalizer/chunker version bump changes what a vector even means.
+    `quantization` is reserved for a future non-fp32 embedder variant.
+    """
+    return {
+        "model_name": await resolve_embedding_model_name(),
+        "dim": embedder.dim,
+        "quantization": None,
+        "normalizer_version": _NORMALIZER_VERSION,
+        "chunker_version": _CHUNKER_VERSION,
+    }
+
+
 class KnowledgeService:
     """Wires the pysaka knowledge engine over SakaDesk paths/settings/persistence.
 
@@ -158,12 +234,21 @@ class KnowledgeService:
     `FakeEmbedder` + scripted `FakeLLMClient` + tmp `SqliteKnowledgeStore`;
     `get_knowledge_service()` builds the real ones. `data_dir` is overridable so
     tests can point roster/knowledge loading at a fixture.
+
+    `embedder` may be `None` -- a missing embedding model is a STATE (Product-wave
+    Task 4), not a construction-time crash: `get_knowledge_service()` always
+    succeeds even when the model isn't installed yet, and `status()` reports
+    `configured: false` instead of every KB endpoint 500ing. `_ensure_embedder()`
+    (mirroring `ask()`'s pre-existing lazy `_llm` retry) is called before every
+    index/ask attempt, so a model that gets installed mid-session (the in-app
+    download, or a manual drop-in) is picked up on the very next attempt with no
+    restart required.
     """
 
     def __init__(
         self,
         store: SqliteKnowledgeStore,
-        embedder: Embedder,
+        embedder: Embedder | None,
         llm: LLMClient | None,
         *,
         data_dir: Path | None = None,
@@ -172,6 +257,9 @@ class KnowledgeService:
         self._embedder = embedder
         self._llm = llm
         self._data_dir = data_dir if data_dir is not None else _DATA_DIR
+        # Set once `_check_fingerprint` has run for this process's lifetime (on
+        # the first successful `_ensure_embedder()`) -- see that method.
+        self._fingerprint_checked = False
         # Per-service reference data (registry / aliases / mention detector), built
         # lazily on first use and cached — loading + alias-seeding is pure and stable.
         self._reference: dict[str, _Reference] = {}
@@ -232,6 +320,117 @@ class KnowledgeService:
         ] = {}
 
     # ------------------------------------------------------------------
+    # Embedder: lazy retry + fingerprint (Product-wave Task 4)
+    # ------------------------------------------------------------------
+
+    @property
+    def embedder_provider(self) -> str | None:
+        """The ACTUAL onnxruntime execution provider the current embedder is
+        running on (`OnnxEmbedder.active_provider`), or `None` if there is no
+        embedder yet. `getattr`-guarded: test doubles (`FakeEmbedder`) don't
+        carry this attribute, and that's a legitimate "unknown" rather than
+        an error for anything reading this defensively."""
+        if self._embedder is None:
+            return None
+        return getattr(self._embedder, "active_provider", None)
+
+    async def _ensure_embedder(self) -> bool:
+        """`True` once `self._embedder` is usable, lazily (re)building it from
+        settings first if needed -- mirrors `ask()`'s pre-existing `_llm` lazy
+        retry (see that method): the model dir can appear mid-session (in-app
+        download completes, or a user drops files in manually) without a
+        restart. Also runs the embedder-fingerprint check exactly once per
+        process lifetime, the first time an embedder becomes available (see
+        `_check_fingerprint`) -- "on service init or first index/ask" per the
+        fold-in spec.
+        """
+        if self._embedder is None:
+            embedder = await _build_embedder()
+            if embedder is None:
+                return False
+            self._embedder = embedder
+            logger.info("knowledge_service.embedder_recovered")
+        if not self._fingerprint_checked:
+            await self._check_fingerprint()
+            self._fingerprint_checked = True
+        return True
+
+    async def _check_fingerprint(self) -> None:
+        """Compare the ACTIVE embedder config's fingerprint against
+        `kb_meta['embedder_fingerprint']`.
+
+        - Empty db (key never set) -> write the current fingerprint; nothing
+          persisted yet, nothing to mismatch against.
+        - Match -> no-op.
+        - Mismatch (e.g. `embedding_model` changed in settings, or a
+          normalizer/chunker version bump) -> do NOT silently mix vector
+          spaces: wipe every persisted vector + blank every doc's
+          content_hash (`SqliteKnowledgeStore.wipe_vectors_and_content_hashes`,
+          see its docstring for why a full wipe rather than a partial one),
+          write the NEW fingerprint as the new baseline, and set
+          `kb_meta['reindex_required'] = "1"` -- surfaced in `/readiness` and
+          `/index/status`, and consulted by `index_members`/
+          `index_blogs_for_service` to block further incremental embedding
+          writes until a Rebuild clears it (`_rebuild_impl`). The execution
+          PROVIDER (CUDA vs CPU) is deliberately NOT part of the fingerprint
+          -- see `_current_fingerprint`'s docstring.
+
+        Runs at most once per process lifetime (`_fingerprint_checked`,
+        `_ensure_embedder`) -- changing `embedding_model` at runtime isn't a
+        supported flow today (same as `knowledge_base.llm`, which similarly
+        needs `invalidate_llm_client()`); this only guards against a
+        DIFFERENT SakaDesk install/profile's fingerprint already being on
+        disk (a copied/synced app-data dir, or a downgrade-then-upgrade).
+        """
+        assert self._embedder is not None
+        current = await _current_fingerprint(self._embedder)
+        async with self._store_lock:
+            stored_json = await asyncio.to_thread(
+                self._store.get_meta, "embedder_fingerprint"
+            )
+            if stored_json is None:
+                await asyncio.to_thread(
+                    self._store.set_meta,
+                    "embedder_fingerprint",
+                    json.dumps(current, sort_keys=True),
+                )
+                logger.info("knowledge_service.fingerprint_written", **current)
+                return
+            if json.loads(stored_json) == current:
+                return
+            logger.warning(
+                "knowledge_service.fingerprint_mismatch",
+                stored=json.loads(stored_json),
+                current=current,
+            )
+            await asyncio.to_thread(self._store.wipe_vectors_and_content_hashes)
+            await asyncio.to_thread(
+                self._store.set_meta,
+                "embedder_fingerprint",
+                json.dumps(current, sort_keys=True),
+            )
+            await asyncio.to_thread(self._store.set_meta, "reindex_required", "1")
+            self._retriever_cache.clear()
+
+    def _read_reindex_required(self) -> bool:
+        """Whether `kb_meta['reindex_required']` is set -- an independent,
+        short-lived connection (same rationale as `status()`'s
+        `_read_status_by_type`: never touch the shared connection from the
+        event-loop thread while a worker thread might be writing it)."""
+        conn = sqlite3.connect(str(self._store.db_path))
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            row = conn.execute(
+                "SELECT value FROM kb_meta WHERE key = 'reindex_required'"
+            ).fetchone()
+        except sqlite3.OperationalError:
+            # kb_meta always exists post-migration; defensive fallback only.
+            return False
+        finally:
+            conn.close()
+        return row is not None and row[0] == "1"
+
+    # ------------------------------------------------------------------
     # Reference data (roster + curated aliases / call-names)
     # ------------------------------------------------------------------
 
@@ -268,6 +467,34 @@ class KnowledgeService:
     # Index
     # ------------------------------------------------------------------
 
+    async def _index_preflight_ok(self, service: str, *, action: str) -> bool:
+        """Shared preflight for `index_members`/`index_blogs_for_service` --
+        deliberately NOT used by `rebuild`, which bypasses both checks (fixing
+        either state IS what a rebuild does; see `_rebuild_impl`). Returns
+        `False` after logging exactly ONE `info` line (never a per-sync
+        `warning` -- merges the "bricked first run" duplicate findings, see
+        `pwave-4-brief.md` item 1) when:
+        - there's no embedder to embed with yet (`_ensure_embedder` also
+          lazily retries building it -- see that method), or
+        - an embedder-fingerprint mismatch has blocked incremental embedding
+          writes until the user triggers Rebuild (`_check_fingerprint`).
+        """
+        if not await self._ensure_embedder():
+            logger.info(
+                "knowledge_service.index_skipped_embedding_model_missing",
+                service=service,
+                action=action,
+            )
+            return False
+        if await asyncio.to_thread(self._read_reindex_required):
+            logger.info(
+                "knowledge_service.index_skipped_reindex_required",
+                service=service,
+                action=action,
+            )
+            return False
+        return True
+
     async def index_members(
         self, members: list[tuple[dict, dict]], service: str
     ) -> int:
@@ -278,8 +505,12 @@ class KnowledgeService:
         rebuild, or the startup sweep), this call SKIPS immediately and returns
         0 instead of racing it -- the skipped members are picked up by the next
         pass via content-hash diffing regardless. See `_index_members_impl` for
-        the actual indexing work.
+        the actual indexing work. Also skips (see `_index_preflight_ok`) when
+        there's no embedding model installed yet, or a fingerprint mismatch has
+        blocked writes pending Rebuild.
         """
+        if not await self._index_preflight_ok(service, action="index_members"):
+            return 0
         if not await self._try_acquire_inflight(service):
             logger.info(
                 "knowledge_service.index_members.skipped_inflight", service=service
@@ -372,8 +603,13 @@ class KnowledgeService:
         """Index every `blogs/**/blog.json` under `service`; returns new/changed docs.
 
         Guarded the same way as `index_members` -- see its docstring for the
-        in-flight-registry skip semantics (Finding 1, KB review).
+        in-flight-registry skip semantics (Finding 1, KB review) and the
+        embedder/fingerprint preflight (`_index_preflight_ok`).
         """
+        if not await self._index_preflight_ok(
+            service, action="index_blogs_for_service"
+        ):
+            return 0
         if not await self._try_acquire_inflight(service):
             logger.info(
                 "knowledge_service.index_blogs_for_service.skipped_inflight",
@@ -492,6 +728,10 @@ class KnowledgeService:
         some-but-not-all of one doc's chunks re-embedded while its row/lexical
         text is still the old version.
         """
+        # Every caller reaches this only via `_index_preflight_ok`/`_ensure_embedder`
+        # (directly, or through `_rebuild_impl`, which calls `_ensure_embedder` in
+        # `rebuild()` before it) -- narrows `Embedder | None` for mypy.
+        assert self._embedder is not None
         chunked_doc_ids = {chunk.doc_id for chunk in chunks}
         no_chunk_docs = [
             doc for doc in changed_docs if doc.doc_id not in chunked_doc_ids
@@ -628,6 +868,15 @@ class KnowledgeService:
                 "no LLM client configured for the knowledge chatbot"
             )
         llm = self._llm
+        if not await self._ensure_embedder():
+            # Same "state, not a crash" treatment as the index hooks
+            # (`_index_preflight_ok`), but `ask()` can't just skip quietly --
+            # the user is waiting on an answer, so this surfaces as the typed
+            # `embedding_model_missing` SSE error (`backend/api/ai.py`)
+            # instead of a raw `AttributeError` from calling `.embed()` on
+            # `None` deep inside the agent's tool-calling loop.
+            model_name = await resolve_embedding_model_name()
+            raise EmbeddingModelMissing(model_name, embedding_model_dir(model_name))
         logger.debug("knowledge_service.ask", service=scope.service, tz=str(tz))
         # Hold `_store_lock` for the WHOLE ask (retriever assembly AND the agent's
         # tool-calling loop, which reads the shared NumpyVectorStore via
@@ -763,7 +1012,32 @@ class KnowledgeService:
         progress). Idle-shaped when `service is None` (no single service was
         asked about, so there's nothing meaningful to report) or when `service`
         has no run in flight right now.
+
+        **Never 500s on a missing embedding model (Product-wave Task 4).** When
+        `self._embedder is None`, returns the reduced `{configured: false,
+        reason: "embedding_model_missing", ...}` shape instead of touching the
+        db at all -- there's nothing indexed that could have been embedded.
+        `backend/api/ai.py`'s endpoint layer enriches this further with
+        `model`/`expected_path` (which need an async settings read `status()`
+        deliberately can't do here -- same pattern as its `last_built`
+        enrichment). When configured, also reports `provider` (the ACTUAL
+        onnxruntime execution provider in use) and `reindex_required` (an
+        embedder-fingerprint mismatch blocking incremental writes -- see
+        `_check_fingerprint`).
         """
+        if self._embedder is None:
+            return {
+                "configured": False,
+                "reason": "embedding_model_missing",
+                "service": service,
+                "document_count": 0,
+                "by_type": {},
+                "progress": (
+                    self.index_progress(service)
+                    if service is not None
+                    else _idle_progress(None)
+                ),
+            }
         by_type = self._read_status_by_type(service)
         progress = (
             self.index_progress(service)
@@ -771,10 +1045,13 @@ class KnowledgeService:
             else _idle_progress(None)
         )
         return {
+            "configured": True,
             "service": service,
             "document_count": sum(by_type.values()),
             "by_type": by_type,
             "progress": progress,
+            "provider": self.embedder_provider,
+            "reindex_required": self._read_reindex_required(),
         }
 
     def _read_status_by_type(self, service: str | None) -> dict[str, int]:
@@ -807,7 +1084,20 @@ class KnowledgeService:
         `_deferred_kb_initial_build`) go through this -- exactly the pair the
         review flagged as racing routinely (the startup sweep used to fire with
         zero delay; see that function's docstring for the fix).
+
+        Unlike `index_members`/`index_blogs_for_service`, this does NOT check
+        `reindex_required` -- a rebuild is exactly what CLEARS that state (see
+        `_rebuild_impl`). It still needs an embedder to embed with, though: if
+        none is installed (and the lazy retry in `_ensure_embedder` can't
+        build one either), this skips quietly with one info log, same
+        "state, not a crash" treatment as everywhere else.
         """
+        if not await self._ensure_embedder():
+            logger.info(
+                "knowledge_service.rebuild_skipped_embedding_model_missing",
+                service=service,
+            )
+            return 0
         if not await self._try_acquire_inflight(service):
             logger.info("knowledge_service.rebuild.skipped_inflight", service=service)
             return 0
@@ -849,8 +1139,43 @@ class KnowledgeService:
         changed += await self._index_blogs_impl(service)
         async with self._store_lock:
             await asyncio.to_thread(self._ensure_retriever_cached, service)
+        await self._clear_reindex_required_and_rewrite_fingerprint()
         await self._record_last_built()
         return changed
+
+    async def _clear_reindex_required_and_rewrite_fingerprint(self) -> None:
+        """Called at the end of every successful `_rebuild_impl`: clears the
+        `reindex_required` banner and (re)writes `kb_meta['embedder_fingerprint']`
+        to the current active config.
+
+        `_check_fingerprint`'s mismatch handling already WIPED every vector and
+        blanked every content_hash the moment a mismatch was first detected (so
+        two embedding spaces never coexist in `kb_vectors` -- see that method),
+        and already wrote the new fingerprint as the baseline right then. This
+        step is the USER-FACING half: `reindex_required` stays true (and
+        `index_members`/`index_blogs_for_service` keep skipping incremental
+        writes, see `_index_preflight_ok`) until at least one Rebuild has
+        actually repopulated vectors.
+
+        KNOWN v1 LIMITATION: with multiple synced services sharing this one
+        db, this clears the flag GLOBALLY after the FIRST service's rebuild,
+        even though sibling services haven't re-embedded yet -- they simply
+        read as 0 documents / no evidence (the existing, already-understood
+        "not indexed yet" UX) until their own Rebuild runs, never a silently
+        wrong mixed-space answer (the wipe already prevents that). Rewriting
+        the fingerprint here too is belt-and-braces (it's already correct
+        post-mismatch) and keeps this the one place that writes it on the
+        "happy" (no-mismatch) rebuild path as well.
+        """
+        assert self._embedder is not None
+        current = await _current_fingerprint(self._embedder)
+        async with self._store_lock:
+            await asyncio.to_thread(
+                self._store.set_meta,
+                "embedder_fingerprint",
+                json.dumps(current, sort_keys=True),
+            )
+            await asyncio.to_thread(self._store.set_meta, "reindex_required", "0")
 
     async def _record_last_built(self) -> None:
         """Persist `settings.knowledge_base.last_built = <UTC ISO now>`.
@@ -962,8 +1287,10 @@ _knowledge_service_lock = asyncio.Lock()
 async def get_knowledge_service() -> KnowledgeService:
     """Return the process-wide `KnowledgeService`, building the real collaborators once.
 
-    Builds an `OnnxEmbedder` (model dir under app-data), a `SqliteKnowledgeStore`
-    (`knowledge_index.db`, alongside `search_index.db`), and the LLM client from
+    Builds a `SqliteKnowledgeStore` (`knowledge_index.db`, alongside
+    `search_index.db`), an `OnnxEmbedder` if the model is installed (`None`
+    otherwise -- see `_build_embedder`; a missing model is a STATE, not a
+    construction-time failure, Product-wave Task 4), and the LLM client from
     settings. Async because the LLM client is built from settings + OS keyring.
 
     Both heavy, blocking constructors -- `SqliteKnowledgeStore.__init__`
@@ -971,15 +1298,24 @@ async def get_knowledge_service() -> KnowledgeService:
     `OnnxEmbedder.__init__` (loads a ~1GB ONNX `InferenceSession`, inside
     `_build_embedder`) -- run via `asyncio.to_thread` so the first touch never
     stalls the event loop (and therefore the whole UI/API) for seconds.
+
+    Still raises `KnowledgeMisconfigured` for a genuinely unrecoverable case:
+    `knowledge_index.db`'s `PRAGMA user_version` is newer than this SakaDesk
+    build understands (`KnowledgeStoreVersionError`, see `knowledge_store.py`)
+    -- that one really can't be papered over into a `configured: false` state,
+    since there's no safe way to read the file at all.
     """
     global _knowledge_service
     if _knowledge_service is not None:
         return _knowledge_service
     async with _knowledge_service_lock:
         if _knowledge_service is None:
-            store = await asyncio.to_thread(
-                SqliteKnowledgeStore, get_app_data_dir() / "knowledge_index.db"
-            )
+            try:
+                store = await asyncio.to_thread(
+                    SqliteKnowledgeStore, get_app_data_dir() / "knowledge_index.db"
+                )
+            except KnowledgeStoreVersionError as exc:
+                raise KnowledgeMisconfigured(str(exc)) from exc
             embedder = await _build_embedder()
             llm = await build_llm_client_from_settings()
             _knowledge_service = KnowledgeService(
@@ -1077,19 +1413,179 @@ async def invalidate_llm_client() -> None:
     _knowledge_service.reload_llm(llm)
 
 
-async def _build_embedder() -> Embedder:
-    """Construct the real `OnnxEmbedder` from the settings-selected model dir."""
+async def _build_embedder() -> Embedder | None:
+    """Construct the real `OnnxEmbedder` from the settings-selected model dir,
+    or `None` if it isn't installed yet.
+
+    Product-wave Task 4: a missing model is a STATE (`configured: false`
+    everywhere it's surfaced), never a raised exception here -- callers
+    (`get_knowledge_service`, `KnowledgeService._ensure_embedder`) both treat
+    `None` as "not configured yet, retry later" rather than a hard failure.
+    Also honors `settings.knowledge_base.embedding_provider` (`None` = auto;
+    an explicit onnxruntime provider name to force it) -- logged either way
+    so it's visible in the log breadcrumb which provider actually won.
+    """
     config = await load_config()
     kb_config = config.get("knowledge_base") or {}
     model_name = kb_config.get("embedding_model") or _DEFAULT_EMBEDDING_MODEL
-    model_dir = get_app_data_dir() / "models" / model_name
-    if not model_dir.exists():
-        raise KnowledgeMisconfigured(
-            f"embedding model dir not found: {model_dir} "
-            "(fetch the ONNX model assets first)"
+    model_dir = embedding_model_dir(model_name)
+    if not embedding_model_files_present(model_dir):
+        logger.info(
+            "knowledge_service.embedder_not_configured",
+            model=model_name,
+            expected_path=str(model_dir),
         )
+        return None
     from pysaka.knowledge.backends.onnx_embedder import OnnxEmbedder
+
+    provider_override = kb_config.get("embedding_provider")
+    providers = [provider_override] if provider_override else None
 
     # OnnxEmbedder.__init__ loads a ~1GB ONNX InferenceSession synchronously --
     # off the event loop thread, same reasoning as SqliteKnowledgeStore above.
-    return await asyncio.to_thread(OnnxEmbedder, model_dir)
+    embedder = await asyncio.to_thread(OnnxEmbedder, model_dir, providers)
+    logger.info(
+        "knowledge_service.embedder_built",
+        model=model_name,
+        provider=embedder.active_provider,
+    )
+    return cast("Embedder", embedder)
+
+
+# ------------------------------------------------------------------
+# Readiness (Product-wave Task 4, item 2) -- GET /api/ai/readiness
+# ------------------------------------------------------------------
+
+
+async def compute_readiness() -> dict:
+    """Independent readiness checks for `GET /api/ai/readiness`.
+
+    Deliberately does NOT call `get_knowledge_service()`: building the real
+    embedder alone loads a ~1GB ONNX `InferenceSession`, which this endpoint
+    must never pay just to answer "is it configured?". Instead this reads
+    settings + the filesystem directly, and (for the LLM check) the OS
+    keyring via `build_llm_client_from_settings()` -- which itself never
+    makes a network call, only constructs a client object (see
+    `llm_client.py`). The document count opens its OWN short-lived sqlite
+    connection (mirrors `KnowledgeService.status`'s `_read_status_by_type`).
+
+    Every individual probe is wrapped so a single failing check degrades to
+    `ok: false` instead of raising -- this endpoint must never 500.
+    """
+    enabled = await kb_enabled()
+    embedding_model = await _probe_embedding_model()
+    llm = await _probe_llm()
+    index = await asyncio.to_thread(_probe_index_document_count)
+    return {
+        "enabled": enabled,
+        "embeddingModel": embedding_model,
+        "llm": llm,
+        "index": index,
+    }
+
+
+async def _probe_embedding_model() -> dict:
+    try:
+        model_name = await resolve_embedding_model_name()
+        model_dir = embedding_model_dir(model_name)
+        if not embedding_model_files_present(model_dir):
+            return {
+                "ok": False,
+                "reason": "embedding_model_missing",
+                "model": model_name,
+                "expectedPath": str(model_dir),
+            }
+        provider, provider_confirmed = await asyncio.to_thread(
+            _predict_or_confirm_provider
+        )
+        result = {
+            "ok": True,
+            "model": model_name,
+            "path": str(model_dir),
+            "provider": provider,
+            "providerConfirmed": provider_confirmed,
+        }
+        result["gpuRuntimeMissing"] = await asyncio.to_thread(_gpu_runtime_missing_hint)
+        return result
+    except Exception:  # noqa: BLE001 - readiness must never 500
+        logger.error(
+            "knowledge_service.readiness_embedding_probe_failed", exc_info=True
+        )
+        return {"ok": False, "reason": "probe_failed"}
+
+
+def _predict_or_confirm_provider() -> tuple[str | None, bool]:
+    """The embedding execution provider to report in `/readiness`: the ACTUAL
+    provider already in use if the process-wide `KnowledgeService` singleton
+    happens to be built already (`providerConfirmed: True`), else a
+    best-effort PREDICTION from pysaka's `select_providers()` -- cheap (reads
+    `onnxruntime`'s installed-provider list, never loads the ~1GB model) so
+    the UI has something to show before the first ask/index has happened.
+    """
+    if _knowledge_service is not None and _knowledge_service.embedder_provider:
+        return _knowledge_service.embedder_provider, True
+    try:
+        from pysaka.knowledge.backends.onnx_embedder import select_providers
+
+        return select_providers()[0], False
+    except Exception:  # noqa: BLE001 - best-effort prediction only
+        return None, False
+
+
+def _gpu_runtime_missing_hint() -> bool:
+    """`True` when hardware detection finds a GPU but the installed
+    `onnxruntime` build doesn't report `CUDAExecutionProvider` available --
+    the "GPU detected, GPU runtime not installed" hint (merges 6 duplicate
+    CPU-only-embedder findings, `pwave-4-brief.md` item 5): the machine HAS a
+    capable GPU, but `pysaka[embeddings-gpu]` (`onnxruntime-gpu`) isn't
+    installed, so embedding silently runs on CPU. Best-effort and always
+    safe -- `detect_hardware()` already guards every probe it makes.
+    """
+    try:
+        import onnxruntime as ort
+
+        from backend.services.hardware import detect_hardware
+
+        hw = detect_hardware()
+        if not hw.get("gpu"):
+            return False
+        return "CUDAExecutionProvider" not in ort.get_available_providers()
+    except Exception:  # noqa: BLE001 - best-effort hint only
+        return False
+
+
+async def _probe_llm() -> dict:
+    try:
+        config = await load_config()
+        llm_config = (config.get("knowledge_base") or {}).get("llm") or {}
+        backend = llm_config.get("backend")
+        model = llm_config.get("model")
+        client = await build_llm_client_from_settings()
+        if client is None:
+            return {
+                "ok": False,
+                "backend": backend,
+                "model": model,
+                "reason": "not_configured",
+            }
+        return {"ok": True, "backend": backend, "model": model}
+    except Exception:  # noqa: BLE001 - readiness must never 500
+        logger.error("knowledge_service.readiness_llm_probe_failed", exc_info=True)
+        return {"ok": False, "reason": "probe_failed"}
+
+
+def _probe_index_document_count() -> dict:
+    db_path = get_app_data_dir() / "knowledge_index.db"
+    if not db_path.exists():
+        return {"documentCount": 0}
+    try:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA query_only = ON")
+            row = conn.execute("SELECT COUNT(*) FROM kb_documents").fetchone()
+            return {"documentCount": row[0] if row is not None else 0}
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        logger.warning("knowledge_service.readiness_index_probe_failed", exc_info=True)
+        return {"documentCount": 0}

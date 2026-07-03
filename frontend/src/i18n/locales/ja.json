@@ -105,7 +105,8 @@
     "kbModel": "モデル",
     "kbBaseUrl": "ベースURL",
     "kbDetectHardware": "ハードウェアを検出",
-    "kbSuggestion": "{{gpu}}・{{vram}}GB → {{target}}"
+    "kbSuggestion": "{{gpu}}・{{vram}}GB → {{target}}",
+    "kbReindexRequired": "埋め込みモデルが変更されました。検索結果を正確に保つためにインデックスを再作成してください。"
   },
   "time": {
     "minute": "{{count}}分",
@@ -445,12 +446,26 @@
     "title": "AIアシスタント",
     "welcome": "ブログやメッセージについて何でも聞いてください。引用元付きで回答します。",
     "placeholder": "質問を入力...",
+    "setupRequiredPlaceholder": "下のセットアップを完了するとチャットできます…",
     "send": "送信",
     "thinking": "考え中…",
     "verifying": "情報源を確認中…",
     "indexing": "データをインデックス中…",
     "noEvidence": "同期済みのコンテンツから回答が見つかりませんでした。",
     "sourceLabel": "情報源",
+    "setup": {
+      "checking": "セットアップ状況を確認中…",
+      "embeddingModel": "埋め込みモデル",
+      "downloadModel": "ダウンロード（約1.1GB）",
+      "cancelDownload": "キャンセル",
+      "downloadFailed": "ダウンロードに失敗しました。もう一度お試しください。",
+      "gpuRuntimeMissing": "GPUを検出しましたが、GPUランタイムが未インストールのためCPUで実行しています。",
+      "aiBackend": "AIバックエンド",
+      "configureBackendHint": "下でバックエンドを設定するとチャットボットが有効になります。",
+      "index": "{{count}} 件のドキュメントをインデックス済み",
+      "index_other": "{{count}} 件のドキュメントをインデックス済み",
+      "buildIndex": "作成"
+    },
     "error": {
       "quota_exhausted": "{{model}} の利用上限に達しました。しばらく待つか、設定 → AI で別のモデルに切り替えてください。",
       "auth": "AIプロバイダーにAPIキーが拒否されました。設定 → AI でAPIキーを確認してください。",
@@ -461,6 +476,7 @@
       "malformed_response": "AIバックエンドから理解できない応答が返されました。もう一度お試しください。",
       "misconfigured": "ナレッジチャットボットはまだ設定されていません。設定 → AI で設定してください。",
       "kb_disabled": "ナレッジチャットボットはオフになっています。設定 → AI で有効にしてください。",
+      "embedding_model_missing": "埋め込みモデルがまだインストールされていません。設定 → AI でダウンロードするとナレッジチャットボットが使えます。",
       "network": "SakaDeskのバックエンドに接続できません。インターネット接続を確認してもう一度お試しください。",
       "unknown": "回答の生成中に問題が発生しました。もう一度お試しください。",
       "retryAfter": "{{seconds}}秒後にもう一度お試しいただけます。",

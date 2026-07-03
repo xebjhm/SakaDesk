@@ -28,6 +28,7 @@ from fastapi.testclient import TestClient
 import backend.api.ai as ai_module
 from backend.main import app
 from backend.services.knowledge_service import (
+    EmbeddingModelMissing,
     KnowledgeDisabled,
     KnowledgeMisconfigured,
 )
@@ -1015,3 +1016,240 @@ class TestAskDisconnect:
         # "exception was never retrieved" warning).
         await asyncio.sleep(0)
         assert task not in ai_module._pending_ask_tasks
+
+
+# ---------------------------------------------------------------------------
+# Product-wave Task 4: missing-model-is-a-state, readiness, model download
+# ---------------------------------------------------------------------------
+
+
+def _unconfigured_status() -> dict:
+    return {
+        "configured": False,
+        "reason": "embedding_model_missing",
+        "service": None,
+        "document_count": 0,
+        "by_type": {},
+        "progress": dict(_IDLE_PROGRESS),
+    }
+
+
+class TestAskSSEEmbeddingModelMissing:
+    def _ask(self):
+        return client.post(
+            "/api/ai/ask",
+            json={
+                "question": "何を食べた?",
+                "service": "hinatazaka46",
+                "tz": "Asia/Tokyo",
+            },
+        )
+
+    def test_embedding_model_missing_streams_distinct_code(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = EmbeddingModelMissing(
+                "granite-embedding-278m-multilingual", tmp_path / "models" / "granite"
+            )
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] == "embedding_model_missing"
+        assert data["message"]
+
+    def test_embedding_model_missing_is_not_reported_as_generic_misconfigured(
+        self, tmp_path, monkeypatch
+    ):
+        """`EmbeddingModelMissing` IS a `KnowledgeMisconfigured` subclass --
+        the more specific except clause must win so the UI gets the
+        actionable code, not the generic one."""
+        _isolate_settings(tmp_path, monkeypatch)
+        with patch("backend.api.ai.get_knowledge_service") as g:
+            g.return_value = AsyncMock()
+            g.return_value.ask.side_effect = EmbeddingModelMissing(
+                "granite-embedding-278m-multilingual", tmp_path / "models" / "granite"
+            )
+            r = self._ask()
+        data = _extract_event_data(r.text, "error")
+        assert data["code"] != "misconfigured"
+
+
+class TestIndexStatusUnconfigured:
+    def test_status_returns_200_configured_false_not_500(self):
+        svc = _mock_knowledge_service()
+        svc.status = MagicMock(return_value=_unconfigured_status())
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.get("/api/ai/index/status", params={"service": "hinatazaka46"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["configured"] is False
+        assert body["reason"] == "embedding_model_missing"
+
+    def test_status_unconfigured_is_enriched_with_model_and_expected_path(
+        self, tmp_path, monkeypatch
+    ):
+        _isolate_settings(tmp_path, monkeypatch)
+        svc = _mock_knowledge_service()
+        svc.status = MagicMock(return_value=_unconfigured_status())
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.get("/api/ai/index/status")
+        body = r.json()
+        assert body["model"] == "granite-embedding-278m-multilingual"
+        assert "expected_path" in body
+        assert "granite-embedding-278m-multilingual" in body["expected_path"]
+        # The reduced shape omits `last_built` -- nothing was ever built.
+        assert "last_built" not in body
+
+
+class TestIndexRebuildNotConfigured:
+    def test_rebuild_returns_409_not_configured_when_embedder_missing(self):
+        svc = _mock_knowledge_service()
+        svc.status = MagicMock(return_value=_unconfigured_status())
+        with patch("backend.api.ai.get_knowledge_service", AsyncMock(return_value=svc)):
+            r = client.post("/api/ai/index/rebuild", json={"service": "hinatazaka46"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "not_configured"
+        svc.rebuild.assert_not_called()
+
+
+class TestReadiness:
+    """GET /api/ai/readiness."""
+
+    def test_returns_compute_readiness_verbatim(self):
+        payload = {
+            "enabled": True,
+            "embeddingModel": {"ok": True, "model": "m", "path": "/x"},
+            "llm": {"ok": True, "backend": "cloud", "model": "gemini-2.5-flash"},
+            "index": {"documentCount": 42},
+        }
+        with patch("backend.api.ai.compute_readiness", AsyncMock(return_value=payload)):
+            r = client.get("/api/ai/readiness")
+        assert r.status_code == 200
+        assert r.json() == payload
+
+    def test_returns_200_when_everything_is_unconfigured(self):
+        # `compute_readiness()` itself guards every individual probe against
+        # raising (see `TestComputeReadiness` in `test_knowledge_service.py`)
+        # -- this asserts the endpoint is a thin passthrough that doesn't add
+        # its own error handling that could mask a 200-with-all-false result
+        # as something else.
+        payload = {
+            "enabled": False,
+            "embeddingModel": {"ok": False, "reason": "embedding_model_missing"},
+            "llm": {"ok": False, "reason": "not_configured"},
+            "index": {"documentCount": 0},
+        }
+        with patch("backend.api.ai.compute_readiness", AsyncMock(return_value=payload)):
+            r = client.get("/api/ai/readiness")
+        assert r.status_code == 200
+        assert r.json() == payload
+
+
+class TestModelDownloadEndpoints:
+    def test_start_download_returns_ok_and_schedules_background_task(self):
+        with (
+            patch("backend.api.ai.get_manifest", return_value=MagicMock()),
+            patch("backend.api.ai.get_model_download_manager") as get_mgr,
+        ):
+            manager = MagicMock()
+            manager.status.return_value = {"state": "idle"}
+            manager.start = AsyncMock(return_value=None)
+            get_mgr.return_value = manager
+            r = client.post(
+                "/api/ai/models/download",
+                json={"model": "granite-embedding-278m-multilingual"},
+            )
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "model": "granite-embedding-278m-multilingual"}
+
+    def test_start_download_defaults_model_from_settings(self, tmp_path, monkeypatch):
+        _isolate_settings(tmp_path, monkeypatch)
+        with (
+            patch("backend.api.ai.get_manifest", return_value=MagicMock()),
+            patch("backend.api.ai.get_model_download_manager") as get_mgr,
+        ):
+            manager = MagicMock()
+            manager.status.return_value = {"state": "idle"}
+            manager.start = AsyncMock(return_value=None)
+            get_mgr.return_value = manager
+            r = client.post("/api/ai/models/download", json={})
+        assert r.json()["model"] == "granite-embedding-278m-multilingual"
+
+    def test_start_download_unknown_model_returns_400(self):
+        with patch("backend.api.ai.get_manifest", return_value=None):
+            r = client.post("/api/ai/models/download", json={"model": "not-a-model"})
+        assert r.status_code == 400
+
+    def test_start_download_already_in_progress_returns_409(self):
+        with (
+            patch("backend.api.ai.get_manifest", return_value=MagicMock()),
+            patch("backend.api.ai.get_model_download_manager") as get_mgr,
+        ):
+            manager = MagicMock()
+            manager.status.return_value = {"state": "downloading"}
+            get_mgr.return_value = manager
+            r = client.post("/api/ai/models/download", json={"model": "m"})
+        assert r.status_code == 409
+        assert r.json()["detail"]["code"] == "already_downloading"
+
+    def test_download_status_returns_manager_status(self):
+        with patch("backend.api.ai.get_model_download_manager") as get_mgr:
+            manager = MagicMock()
+            manager.status.return_value = {
+                "state": "downloading",
+                "model": "m",
+                "bytesDone": 10,
+                "bytesTotal": 100,
+                "reason": None,
+            }
+            get_mgr.return_value = manager
+            r = client.get("/api/ai/models/download/status")
+        assert r.status_code == 200
+        assert r.json()["bytesDone"] == 10
+
+    def test_cancel_download_returns_ok_and_whether_anything_was_cancelled(self):
+        with patch("backend.api.ai.get_model_download_manager") as get_mgr:
+            manager = MagicMock()
+            manager.cancel.return_value = True
+            get_mgr.return_value = manager
+            r = client.delete("/api/ai/models/download")
+        assert r.status_code == 200
+        assert r.json() == {"ok": True, "cancelled": True}
+
+    def test_cancel_download_when_nothing_running(self):
+        with patch("backend.api.ai.get_model_download_manager") as get_mgr:
+            manager = MagicMock()
+            manager.cancel.return_value = False
+            get_mgr.return_value = manager
+            r = client.delete("/api/ai/models/download")
+        assert r.json() == {"ok": True, "cancelled": False}
+
+    @pytest.mark.asyncio
+    async def test_background_task_logs_and_does_not_crash_when_manager_start_raises(
+        self,
+    ) -> None:
+        """`manager.start()` raising (e.g. a duplicate-start race that slipped
+        past the endpoint's up-front check) must not surface as an "exception
+        was never retrieved" warning from the retained background task --
+        the `_run()` closure's own try/except logs it instead."""
+        from backend.services import background_tasks as bt
+
+        with (
+            patch("backend.api.ai.get_manifest", return_value=MagicMock()),
+            patch("backend.api.ai.get_model_download_manager") as get_mgr,
+        ):
+            manager = MagicMock()
+            manager.status.return_value = {"state": "idle"}
+            manager.start = AsyncMock(side_effect=RuntimeError("race"))
+            get_mgr.return_value = manager
+            result = await ai_module.start_model_download(
+                ai_module.ModelDownloadRequest(
+                    model="granite-embedding-278m-multilingual"
+                )
+            )
+        assert result["ok"] is True
+
+        pending = {t for t in bt._background_tasks if not t.done()}
+        await asyncio.gather(*pending, return_exceptions=True)
+        await asyncio.sleep(0)
+        manager.start.assert_awaited_once()

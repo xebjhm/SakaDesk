@@ -105,7 +105,8 @@
     "kbModel": "模型",
     "kbBaseUrl": "伺服器網址",
     "kbDetectHardware": "偵測硬體",
-    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}"
+    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}",
+    "kbReindexRequired": "嵌入模型已變更——請重建索引以保持搜尋結果準確。"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -445,12 +446,26 @@
     "title": "AI 助理",
     "welcome": "問我任何關於已同步 Blog 和訊息的問題，我會附上引用來源作答。",
     "placeholder": "輸入問題...",
+    "setupRequiredPlaceholder": "完成下方設定後即可開始聊天…",
     "send": "傳送",
     "thinking": "思考中…",
     "verifying": "正在核實來源…",
     "indexing": "正在為你的資料建立索引…",
     "noEvidence": "在已同步的內容中找不到相關答案。",
     "sourceLabel": "來源",
+    "setup": {
+      "checking": "正在檢查設定狀態…",
+      "embeddingModel": "嵌入模型",
+      "downloadModel": "下載（約 1.1 GB）",
+      "cancelDownload": "取消",
+      "downloadFailed": "下載失敗，請再試一次。",
+      "gpuRuntimeMissing": "偵測到 GPU，但尚未安裝 GPU 執行環境——目前使用 CPU 執行。",
+      "aiBackend": "AI 後端",
+      "configureBackendHint": "請在下方設定後端以啟用聊天機器人。",
+      "index": "已索引 {{count}} 份文件",
+      "index_other": "已索引 {{count}} 份文件",
+      "buildIndex": "建立"
+    },
     "error": {
       "quota_exhausted": "已達到 {{model}} 的用量上限。請稍後再試，或到「設定 → AI」切換模型。",
       "auth": "AI 供應商拒絕了這組 API 金鑰。請到「設定 → AI」檢查 API 金鑰。",
@@ -461,6 +476,7 @@
       "malformed_response": "AI 後端回傳了無法解析的內容。請再試一次。",
       "misconfigured": "知識庫聊天機器人尚未設定。請到「設定 → AI」完成設定。",
       "kb_disabled": "知識庫聊天機器人已關閉。請到「設定 → AI」啟用它。",
+      "embedding_model_missing": "嵌入模型尚未安裝。請到「設定 → AI」下載以啟用知識庫聊天機器人。",
       "network": "無法連線到 SakaDesk 的後端。請檢查網路連線後再試一次。",
       "unknown": "回答問題時發生問題。請再試一次。",
       "retryAfter": "你可以在 {{seconds}} 秒後重試。",

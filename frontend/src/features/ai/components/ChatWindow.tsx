@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Bot, Loader2, Send, Sparkles, SearchX } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { CitationChip } from './CitationChip';
+import { SetupChecklist } from './SetupChecklist';
 import type { AskAnswer, AskCitation } from '../api';
 
 /**
@@ -42,6 +43,7 @@ const KNOWN_AI_ERROR_CODES = new Set([
     'malformed_response',
     'misconfigured',
     'kb_disabled',
+    'embedding_model_missing',
     'network',
 ]);
 
@@ -61,6 +63,7 @@ const SETTINGS_HINT_CODES = new Set([
     'kb_disabled',
     'model_not_found',
     'model_incompatible',
+    'embedding_model_missing',
 ]);
 
 interface ChatWindowProps {
@@ -91,6 +94,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
     const [value, setValue] = useState('');
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // First-run provisioning gate (Product-wave Task 4, item 3): while the
+    // thread is empty and `/api/ai/readiness` hasn't yet confirmed the KB is
+    // fully configured, the `SetupChecklist` replaces the plain welcome copy
+    // and the input stays disabled with an explanatory placeholder -- this
+    // is what replaces the old, misleading "0 documents indexed" the user
+    // used to see with zero explanation. Once `SetupChecklist` reports ready
+    // (or the thread already has turns, i.e. a previous ask already
+    // succeeded), the normal empty-state/input behavior applies.
+    const [setupReady, setSetupReady] = useState(false);
+    const isEmpty = turns.length === 0;
+    const setupBlocking = isEmpty && !setupReady;
+    const inputDisabled = disabled || setupBlocking;
+
     // Auto-scroll to the latest turn whenever the thread changes. jsdom (test
     // environment) doesn't implement `Element.scrollTo`, so guard for it.
     useEffect(() => {
@@ -106,7 +122,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const question = value.trim();
-        if (!question || disabled) return;
+        if (!question || inputDisabled) return;
         onSend(question);
         setValue('');
     };
@@ -121,10 +137,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
 
             {/* Message list */}
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-                {turns.length === 0 && (
-                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 gap-2">
+                {isEmpty && (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-gray-400 gap-3 px-6">
                         <Sparkles className="w-8 h-8" />
                         <p className="text-sm max-w-xs">{t('ai.welcome')}</p>
+                        {!setupReady && <SetupChecklist onReady={() => setSetupReady(true)} />}
                     </div>
                 )}
 
@@ -139,13 +156,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ turns, onSend, disabled 
                     type="text"
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
-                    placeholder={t('ai.placeholder')}
-                    disabled={disabled}
+                    placeholder={setupBlocking ? t('ai.setupRequiredPlaceholder') : t('ai.placeholder')}
+                    disabled={inputDisabled}
                     className="flex-1 text-sm bg-gray-100/60 rounded-full px-4 py-2 outline-none placeholder-gray-400 disabled:opacity-60"
                 />
                 <button
                     type="submit"
-                    disabled={disabled || !value.trim()}
+                    disabled={inputDisabled || !value.trim()}
                     aria-label={t('ai.send')}
                     className="w-9 h-9 shrink-0 rounded-full bg-blue-500 text-white flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors"
                 >

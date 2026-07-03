@@ -106,7 +106,8 @@
     "kbModel": "Model",
     "kbBaseUrl": "Base URL",
     "kbDetectHardware": "Detect hardware",
-    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}"
+    "kbSuggestion": "{{gpu}} · {{vram}} GB → {{target}}",
+    "kbReindexRequired": "The embedding model changed — rebuild the index to keep search results accurate."
   },
   "time": {
     "minute": "{{count}} minute",
@@ -446,12 +447,26 @@
     "title": "AI Assistant",
     "welcome": "Ask me anything about your synced blogs and messages — I'll answer with cited sources.",
     "placeholder": "Ask a question...",
+    "setupRequiredPlaceholder": "Finish setup below to start chatting…",
     "send": "Send",
     "thinking": "Thinking…",
     "verifying": "Verifying sources…",
     "indexing": "Indexing your data…",
     "noEvidence": "I couldn't find anything in your synced content to answer that.",
     "sourceLabel": "Source",
+    "setup": {
+      "checking": "Checking setup…",
+      "embeddingModel": "Embedding model",
+      "downloadModel": "Download (~1.1 GB)",
+      "cancelDownload": "Cancel",
+      "downloadFailed": "Download failed. Try again.",
+      "gpuRuntimeMissing": "GPU detected, but the GPU runtime isn't installed — running on CPU.",
+      "aiBackend": "AI backend",
+      "configureBackendHint": "Configure a backend below to enable the chatbot.",
+      "index": "{{count}} document indexed",
+      "index_other": "{{count}} documents indexed",
+      "buildIndex": "Build"
+    },
     "error": {
       "quota_exhausted": "You've hit the AI provider's usage limit for {{model}}. Try again later, or switch models in AI settings.",
       "auth": "The AI provider rejected the API key. Check the API key in AI settings.",
@@ -462,6 +477,7 @@
       "malformed_response": "The AI backend sent back something we couldn't understand. Please try again.",
       "misconfigured": "The knowledge chatbot isn't set up yet. Open AI settings to configure it.",
       "kb_disabled": "The knowledge chatbot is turned off. Enable it in AI settings.",
+      "embedding_model_missing": "The embedding model isn't installed yet. Download it in AI settings to enable the knowledge chatbot.",
       "network": "Couldn't reach SakaDesk's backend. Check your connection and try again.",
       "unknown": "Something went wrong answering that. Please try again.",
       "retryAfter": "You can try again in {{seconds}}s.",

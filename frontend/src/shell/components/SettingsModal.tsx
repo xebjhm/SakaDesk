@@ -5,7 +5,7 @@ import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../
 import { useModalClose } from '../../core/common/useModalClose';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { KnowledgeBaseStatus, KbBackendSelector } from '../../features/ai/components';
+import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -810,7 +810,9 @@ function AiTab() {
                 </div>
             )}
 
-            {/* Knowledge base (KB chatbot) — index status/rebuild + cloud/local backend switch */}
+            {/* Knowledge base (KB chatbot) — first-run setup checklist, index
+                status/rebuild, and cloud/local backend switch */}
+            <SetupChecklist />
             <KnowledgeBaseStatus />
             <KbBackendSelector />
         </>

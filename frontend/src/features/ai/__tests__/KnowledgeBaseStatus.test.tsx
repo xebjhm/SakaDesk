@@ -223,4 +223,39 @@ describe('KnowledgeBaseStatus', () => {
             await screen.findByText('Enable the knowledge base chatbot above, then try again.')
         ).toBeInTheDocument();
     });
+
+    it('renders the reindex-required banner when the embedder fingerprint mismatched (Product-wave Task 4 fold-in)', async () => {
+        const { impl } = buildFetch({
+            statusOverride: {
+                configured: true,
+                service: 'hinatazaka46',
+                document_count: 5,
+                by_type: { blog: 5 },
+                progress: IDLE_PROGRESS,
+                last_built: null,
+                reindex_required: true,
+            },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KnowledgeBaseStatus />);
+
+        expect(
+            await screen.findByText(
+                'The embedding model changed — rebuild the index to keep search results accurate.'
+            )
+        ).toBeInTheDocument();
+    });
+
+    it('does not render the reindex-required banner when the flag is false', async () => {
+        const { impl } = buildFetch();
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KnowledgeBaseStatus />);
+        await screen.findByText('5 documents indexed');
+
+        expect(
+            screen.queryByText('The embedding model changed — rebuild the index to keep search results accurate.')
+        ).toBeNull();
+    });
 });

@@ -75,15 +75,20 @@ from pydantic import BaseModel, field_validator
 from backend.services.background_tasks import track_background_task
 from backend.services.hardware import detect_hardware, suggest_llm_backend
 from backend.services.knowledge_service import (
+    EmbeddingModelMissing,
     KnowledgeDisabled,
     KnowledgeMisconfigured,
     KnowledgeService,
+    compute_readiness,
+    embedding_model_dir,
     get_knowledge_service,
     invalidate_llm_client,
     kb_enabled,
+    resolve_embedding_model_name,
     schedule_initial_build_all,
 )
 from backend.services.llm_client import LLMBackendError
+from backend.services.model_assets import get_manifest, get_model_download_manager
 from backend.services.service_utils import validate_service
 from backend.services.settings_store import load_config, update_config
 from pysaka.knowledge import Answer, Citation, Scope, SourceRef
@@ -133,6 +138,14 @@ _MISCONFIGURED_MESSAGE = (
 )
 _KB_DISABLED_MESSAGE = "The knowledge chatbot is turned off. Enable it in AI settings."
 _GENERIC_ERROR_MESSAGE = "The request failed unexpectedly."
+_EMBEDDING_MODEL_MISSING_MESSAGE = (
+    "The embedding model isn't installed yet. Download it in AI settings to "
+    "enable the knowledge chatbot."
+)
+_NOT_CONFIGURED_MESSAGE = (
+    "The knowledge chatbot needs the embedding model installed before it can "
+    "build an index. Download it in AI settings."
+)
 
 # `member_id` must be a pysaka `CanonicalId`: f"{service}:{blog_id}" (D8), e.g.
 # "hinatazaka46:12" -- what `doc.author_id`/`Scope.member_id` are always
@@ -403,6 +416,24 @@ async def _ask_event_stream(request: Request, question: str, scope: Scope, tz: t
             ),
         )
         return
+    except EmbeddingModelMissing:
+        # Caught BEFORE the generic `KnowledgeMisconfigured` (it's a subclass
+        # of it, see that class's docstring): a distinct, actionable SSE code
+        # so the UI can point straight at the in-app model download instead
+        # of a vague "check AI settings".
+        logger.info("ai.ask.embedding_model_missing", service=scope.service)
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "embedding_model_missing",
+                _EMBEDDING_MODEL_MISSING_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
+        return
     except KnowledgeMisconfigured:
         logger.warning("ai.ask.misconfigured", service=scope.service)
         backend, model = await _current_llm_backend_model()
@@ -479,9 +510,17 @@ async def ask(http_request: Request, body: AskRequest) -> StreamingResponse:
 
 
 async def _get_knowledge_service_or_409() -> KnowledgeService:
-    """`get_knowledge_service()`, translating `KnowledgeMisconfigured` (e.g. no
-    embedding model installed yet) into a typed 409 instead of a raw 500 --
-    the non-SSE counterpart of `_ask_event_stream`'s `code: "misconfigured"`."""
+    """`get_knowledge_service()`, translating `KnowledgeMisconfigured` into a
+    typed 409 instead of a raw 500 -- the non-SSE counterpart of
+    `_ask_event_stream`'s `code: "misconfigured"`.
+
+    A missing embedding model no longer raises this (Product-wave Task 4:
+    `get_knowledge_service()` always succeeds, building the service with
+    `embedder=None` -- see `KnowledgeService.status()`'s `configured: false`
+    shape for how callers detect that instead). This still fires for the
+    genuinely unrecoverable case: `knowledge_index.db`'s schema version is
+    newer than this SakaDesk build understands.
+    """
     try:
         return await get_knowledge_service()
     except KnowledgeMisconfigured as exc:
@@ -500,6 +539,16 @@ async def index_status(service: str | None = Query(None)) -> dict:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
     svc = await _get_knowledge_service_or_409()
     status = svc.status(service)
+    if not status.get("configured", True):
+        # Never a 500 for a missing embedding model (item 1): `status()`
+        # already reports `configured: false, reason: "embedding_model_missing"`
+        # -- enrich with `model`/`expected_path` here (an async settings read
+        # `status()` deliberately can't do itself, same reasoning as the
+        # `last_built` enrichment below).
+        model_name = await resolve_embedding_model_name()
+        status["model"] = model_name
+        status["expected_path"] = str(embedding_model_dir(model_name))
+        return status
     # `status()` stays sync (see its docstring) and can't `await load_config()`
     # itself, so the settings-owned `last_built` timestamp (Task 3 item 2) is
     # enriched here at the async endpoint layer instead -- `KnowledgeBaseStatus`
@@ -523,6 +572,13 @@ async def index_rebuild(request: RebuildRequest) -> dict:
         )
 
     svc = await _get_knowledge_service_or_409()
+    if not svc.status(request.service).get("configured", True):
+        # No embedding model installed yet -- 409 instead of silently
+        # scheduling a background task that would just skip quietly (item 1).
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "not_configured", "message": _NOT_CONFIGURED_MESSAGE},
+        )
     if svc.is_indexing(request.service):
         # An index/rebuild is already in flight for THIS service -- the
         # per-service in-flight registry (Finding 1, KB review), the actual
@@ -556,6 +612,19 @@ async def hardware_suggestion() -> dict:
     hardware = await asyncio.to_thread(detect_hardware)
     suggestion = suggest_llm_backend(hardware)
     return {"hardware": hardware, "suggestion": suggestion}
+
+
+@router.get("/readiness")
+async def readiness() -> dict:
+    """First-run provisioning checks (Product-wave Task 4, item 2):
+    `{embeddingModel, llm, index, enabled}`, each probed independently and
+    WITHOUT building the full `KnowledgeService` (which would load a ~1GB
+    ONNX model just to answer "is it configured?"). Drives the frontend's
+    `SetupChecklist` (chat empty state + settings). Never 500s -- every
+    individual probe inside `compute_readiness()` degrades to `ok: false`
+    rather than raising.
+    """
+    return await compute_readiness()
 
 
 @router.get("/config")
@@ -627,3 +696,72 @@ async def put_kb_enabled(request: KbEnabledRequest) -> dict:
     if request.enabled and not previously_enabled:
         await schedule_initial_build_all()
     return {"ok": True, "enabled": request.enabled}
+
+
+# ----------------------------------------------------------------------------
+# In-app model download (Product-wave Task 4, item 3)
+#
+# Progress lives on its OWN endpoint (`GET .../download/status`) rather than
+# folded into `/readiness`: download progress changes many times a second
+# while "installed or not" is a coarse boolean the frontend only needs to
+# recheck occasionally -- keeping them separate lets `SetupChecklist` poll
+# progress fast without re-running the (cheap, but not free) readiness probes
+# every tick. Documented here per the brief's "pick one, document" note.
+# ----------------------------------------------------------------------------
+
+
+class ModelDownloadRequest(BaseModel):
+    model: str | None = None  # defaults to the currently-configured embedding model
+
+
+async def _default_download_model_name(request: ModelDownloadRequest) -> str:
+    return request.model or await resolve_embedding_model_name()
+
+
+@router.post("/models/download")
+async def start_model_download(request: ModelDownloadRequest) -> dict:
+    manager = get_model_download_manager()
+    model_name = await _default_download_model_name(request)
+
+    async def _run() -> None:
+        try:
+            await manager.start(model_name)
+        except (ValueError, RuntimeError) as exc:
+            # `manager.status()` already carries its own error state for
+            # download-time failures; a bad model name or a duplicate-start
+            # race is caught here so the background task doesn't just vanish
+            # into `background_tasks`'s `exception was never logged` guard
+            # with nothing surfaced to the poller.
+            logger.warning(
+                "ai.models_download.start_failed", model=model_name, error=str(exc)
+            )
+
+    try:
+        # Fail fast (before scheduling a background task) for the common
+        # synchronous mistakes -- an unknown model name, or a download already
+        # in flight -- so the caller gets an immediate 400/409 instead of
+        # having to poll status() to discover the request was rejected.
+        if get_manifest(model_name) is None:
+            raise HTTPException(
+                status_code=400, detail=f"no pinned manifest for model {model_name!r}"
+            )
+        if manager.status()["state"] in ("downloading", "verifying"):
+            raise HTTPException(status_code=409, detail={"code": "already_downloading"})
+    except HTTPException:
+        raise
+
+    track_background_task(_run(), name="model_download")
+    logger.info("ai.models_download.started", model=model_name)
+    return {"ok": True, "model": model_name}
+
+
+@router.get("/models/download/status")
+async def model_download_status() -> dict:
+    return get_model_download_manager().status()
+
+
+@router.delete("/models/download")
+async def cancel_model_download() -> dict:
+    cancelled = get_model_download_manager().cancel()
+    logger.info("ai.models_download.cancel_requested", cancelled=cancelled)
+    return {"ok": True, "cancelled": cancelled}

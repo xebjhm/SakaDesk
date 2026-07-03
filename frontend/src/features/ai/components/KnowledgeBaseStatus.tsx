@@ -23,6 +23,13 @@ interface RawIndexStatus {
     by_type: Record<string, number>;
     progress: RawProgress;
     last_built: string | null;
+    configured?: boolean;
+    provider?: string | null;
+    /** Embedder-fingerprint mismatch (Product-wave Task 4 fold-in) -- set
+     * when the active embedding model config no longer matches what the
+     * persisted vectors were embedded with. Incremental index writes are
+     * blocked server-side until a Rebuild clears it. */
+    reindex_required?: boolean;
 }
 
 interface Progress {
@@ -43,6 +50,7 @@ interface IndexStatus {
     byType: Record<string, number>;
     progress: Progress;
     lastBuilt: string | null;
+    reindexRequired: boolean;
 }
 
 const IDLE_PROGRESS: Progress = { service: null, phase: 'idle', done: 0, total: 0 };
@@ -64,6 +72,7 @@ function parseStatus(raw: unknown): IndexStatus {
         byType: data?.by_type && typeof data.by_type === 'object' ? data.by_type : {},
         progress,
         lastBuilt: typeof data?.last_built === 'string' ? data.last_built : null,
+        reindexRequired: data?.reindex_required === true,
     };
 }
 
@@ -251,6 +260,12 @@ export const KnowledgeBaseStatus: React.FC = () => {
 
             {rebuildBlocked && (
                 <p className="text-xs text-amber-600 mt-1">{t('settings.kbDisabledHint')}</p>
+            )}
+
+            {activeService && status?.reindexRequired && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2">
+                    {t('settings.kbReindexRequired')}
+                </p>
             )}
         </div>
     );

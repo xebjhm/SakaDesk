@@ -40,6 +40,10 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "knowledge_base": {
         "enabled": False,
         "embedding_model": "granite-embedding-278m-multilingual",
+        # `None` = auto-select (pysaka's `OnnxEmbedder.select_providers()`: prefers
+        # CUDA > DirectML > CoreML, falls back to CPU). Set to an explicit
+        # onnxruntime provider name (e.g. "CPUExecutionProvider") to force it.
+        "embedding_provider": None,
         "last_built": None,
         "llm": {
             "backend": "cloud",
