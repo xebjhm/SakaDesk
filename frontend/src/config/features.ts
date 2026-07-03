@@ -53,12 +53,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureId, FeatureDefinition> = {
 // Which features are available per service
 // For now, only messages is available. Others will be enabled as implemented.
 export const SERVICE_FEATURES: Record<string, FeatureId[]> = {
-    'hinatazaka46': ['messages', 'blogs'],
-    'sakurazaka46': ['messages', 'blogs'],
-    'nogizaka46': ['messages', 'blogs'],
-    'yodel': ['messages'],
+    'hinatazaka46': ['messages', 'blogs', 'ai'],
+    'sakurazaka46': ['messages', 'blogs', 'ai'],
+    'nogizaka46': ['messages', 'blogs', 'ai'],
+    'yodel': ['messages', 'ai'],
     // Default for any service
-    default: ['messages', 'blogs'],
+    default: ['messages', 'blogs', 'ai'],
 };
 
 export function getAvailableFeatures(service: string): FeatureDefinition[] {

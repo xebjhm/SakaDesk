@@ -216,3 +216,85 @@ class TestAsyncApi:
         ):
             result = await update_config(add_key)
         assert result["new_key"] == "new_value"
+
+
+# ── knowledge_base defaults (Task 4) ──────────────────────────────────
+
+
+class TestKnowledgeBaseDefaults:
+    """Tests for the `knowledge_base` settings subsection.
+
+    `backend.services.llm_client.build_llm_client_from_settings()` (Task 2)
+    assumes these exact values as its own fallback defaults -- kept in sync
+    here so the two agree regardless of task ordering.
+    """
+
+    @pytest.mark.asyncio
+    async def test_load_config_exposes_knowledge_base_defaults(self, tmp_path):
+        settings_store_mod._lock = asyncio.Lock()
+        path = tmp_path / "settings.json"
+        with patch(
+            "backend.services.settings_store.get_settings_path",
+            return_value=path,
+        ):
+            result = await load_config()
+
+        kb = result["knowledge_base"]
+        assert kb["enabled"] is False
+        assert kb["embedding_model"] == "granite-embedding-278m-multilingual"
+        assert kb["last_built"] is None
+        assert kb["llm"]["backend"] == "cloud"
+        assert (
+            kb["llm"]["base_url"]
+            == "https://generativelanguage.googleapis.com/v1beta/openai"
+        )
+        assert kb["llm"]["model"] == "gemini-2.5-flash"
+
+    @pytest.mark.asyncio
+    async def test_update_config_flips_knowledge_base_enabled_and_persists(
+        self, tmp_path
+    ):
+        settings_store_mod._lock = asyncio.Lock()
+        path = tmp_path / "settings.json"
+
+        def enable_kb(cfg: dict) -> None:
+            cfg.setdefault("knowledge_base", {})["enabled"] = True
+
+        with patch(
+            "backend.services.settings_store.get_settings_path",
+            return_value=path,
+        ):
+            result = await update_config(enable_kb)
+            assert result["knowledge_base"]["enabled"] is True
+
+            reloaded = await load_config()
+
+        assert reloaded["knowledge_base"]["enabled"] is True
+
+    @pytest.mark.asyncio
+    async def test_partial_knowledge_base_does_not_backfill_missing_subkeys(
+        self, tmp_path
+    ):
+        """`_read_file` does a shallow, top-level merge (`{**defaults, **file}`), not
+        a recursive/deep merge -- so a stored file with a *partial* `knowledge_base`
+        dict replaces the default dict wholesale rather than being filled in from
+        `_SETTINGS_DEFAULTS`. This test documents that current (non-deep-merge)
+        behavior: `llm_client.build_llm_client_from_settings()` and
+        `knowledge_service._build_embedder()` already compensate for it themselves
+        via defensive `.get(..., {})` / `or <fallback>` chains, so they don't rely on
+        settings_store to deep-merge.
+        """
+        settings_store_mod._lock = asyncio.Lock()
+        path = tmp_path / "settings.json"
+        path.write_text(
+            json.dumps({"knowledge_base": {"enabled": True}}), encoding="utf-8"
+        )
+
+        with patch(
+            "backend.services.settings_store.get_settings_path",
+            return_value=path,
+        ):
+            result = await load_config()
+
+        assert result["knowledge_base"] == {"enabled": True}
+        assert "llm" not in result["knowledge_base"]

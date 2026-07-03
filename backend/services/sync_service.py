@@ -13,6 +13,7 @@ from typing import Any, Optional
 from pysaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
+from backend.services.background_tasks import track_background_task
 from backend.services.platform import (
     get_session_dir,
     is_test_mode,
@@ -554,6 +555,45 @@ class SyncService:
                     except Exception as e:
                         logger.warning(
                             "Search index update failed (non-fatal)", error=str(e)
+                        )
+
+                    # Update knowledge base (KB chatbot) index in background too
+                    # (non-fatal, must not block sync) — mirrors the search-index
+                    # hook above exactly, same members_with_changes payload, so the
+                    # KB chatbot's corpus stays fresh without slowing down sync.
+                    try:
+                        from backend.services.knowledge_service import (
+                            get_knowledge_service,
+                            kb_enabled,
+                        )
+
+                        async def _bg_index_knowledge():
+                            try:
+                                if not await kb_enabled():
+                                    logger.debug(
+                                        "Knowledge index hook skipped (KB disabled)"
+                                    )
+                                    return
+                                knowledge_svc = await get_knowledge_service()
+                                indexed = await knowledge_svc.index_members(
+                                    members_with_changes, self._service
+                                )
+                                logger.info("Knowledge index updated", indexed=indexed)
+                            except Exception as e:
+                                logger.warning(
+                                    "Knowledge index update failed (non-fatal)",
+                                    error=str(e),
+                                )
+
+                        # Retained (not bare `asyncio.create_task`) -- an
+                        # un-retained task can be garbage-collected mid-run;
+                        # see `background_tasks.track_background_task`.
+                        track_background_task(
+                            _bg_index_knowledge(), name="sync_knowledge_index"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Knowledge index update failed (non-fatal)", error=str(e)
                         )
 
                 # Phase 3: Media Download (Queued)

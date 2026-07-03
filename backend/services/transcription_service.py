@@ -19,6 +19,7 @@ from typing import Literal, Optional, cast
 import httpx
 
 from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
+from backend.services.background_tasks import track_background_task
 
 logger = structlog.get_logger(__name__)
 
@@ -329,6 +330,50 @@ def _clean_cjk_spaces(text: str) -> str:
     return text
 
 
+def _leading_id(folder_name: str) -> Optional[int]:
+    """Parse the leading integer id from a "<id> <name>" folder name, or None.
+
+    Mirrors `KnowledgeService._leading_id` / `_discover_message_members`'s walk.
+    """
+    head = folder_name.split(" ", 1)[0]
+    try:
+        return int(head)
+    except ValueError:
+        return None
+
+
+def _member_scope_from_dir(member_dir: Path) -> Optional[tuple[str, dict, dict]]:
+    """Derive `(service, group_dict, member_dict)` from a member directory path.
+
+    Relies on the on-disk convention
+    `<output_dir>/<display_name>/messages/<gid name>/<mid name>` that
+    `path_resolver.resolve_member_path` builds and
+    `KnowledgeService._discover_message_members` walks — the same shape
+    `KnowledgeService.index_members` expects. Returns None if the path doesn't
+    match (e.g. a shallow tmp_path layout in a test) — the caller treats that as
+    "can't enqueue a re-index" and skips it, non-fatally.
+    """
+    mid = _leading_id(member_dir.name)
+    if mid is None:
+        return None
+    m_name = member_dir.name.split(" ", 1)[1] if " " in member_dir.name else ""
+
+    group_dir = member_dir.parent
+    gid = _leading_id(group_dir.name)
+    if gid is None:
+        return None
+    g_name = group_dir.name.split(" ", 1)[1] if " " in group_dir.name else ""
+
+    display_dir = group_dir.parent.parent  # .../<display_name>/messages/<group>
+    from backend.services.service_utils import get_service_identifier
+
+    service = get_service_identifier(display_dir.name)
+    if service is None:
+        return None
+
+    return service, {"id": gid, "name": g_name}, {"id": mid, "name": m_name}
+
+
 class TranscriptionStorage:
     """Read/write transcriptions.json sidecar files."""
 
@@ -357,6 +402,76 @@ class TranscriptionStorage:
             encoding="utf-8",
         )
         tmp_path.replace(file_path)
+
+        # Voice/video transcripts aren't covered by the sync-completion KB hook
+        # (sync fires before transcription runs, and transcriptions.json is a
+        # separate sidecar from messages.json) — so enqueue a re-index of this
+        # member here too. Background + non-fatal, mirrors sync_service's /
+        # blog_service's `_bg_index_knowledge` hooks.
+        self._enqueue_knowledge_reindex(member_dir)
+
+    def _enqueue_knowledge_reindex(self, member_dir: Path) -> None:
+        """Best-effort background KB re-index of `member_dir`'s member.
+
+        Resolves (service, group, member) from the on-disk path and schedules
+        `KnowledgeService.index_members` via `track_background_task` (a
+        retained `asyncio.create_task`, see `background_tasks.py`). Silently
+        no-ops if the path doesn't resolve to a known service/member (e.g. in a
+        unit test with a synthetic tmp_path layout) or if there's no running
+        event loop (e.g. called from a plain sync context) — never raises.
+        """
+        scope = _member_scope_from_dir(member_dir)
+        if scope is None:
+            logger.debug(
+                "transcription_service.knowledge_reindex_skipped_unresolved_scope",
+                member_dir=str(member_dir),
+            )
+            return
+        service, group, member = scope
+
+        async def _bg_index_knowledge() -> None:
+            try:
+                from backend.services.knowledge_service import (
+                    get_knowledge_service,
+                    kb_enabled,
+                )
+
+                if not await kb_enabled():
+                    logger.debug(
+                        "transcription_service.knowledge_reindex_skipped_disabled"
+                    )
+                    return
+                knowledge_svc = await get_knowledge_service()
+                indexed = await knowledge_svc.index_members([(group, member)], service)
+                logger.info(
+                    "Transcript knowledge index updated",
+                    service=service,
+                    member_id=member["id"],
+                    indexed=indexed,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Transcript knowledge index update failed (non-fatal)",
+                    error=str(e),
+                )
+
+        coro = _bg_index_knowledge()
+        try:
+            # Retained (not bare `asyncio.create_task`) -- an un-retained task
+            # can be garbage-collected mid-run; see
+            # `background_tasks.track_background_task`. Still raises
+            # `RuntimeError` with no running loop, same as bare
+            # `create_task`, so the except below is unchanged.
+            track_background_task(coro, name="transcription_knowledge_index")
+        except RuntimeError as e:
+            # No running event loop (e.g. a sync caller/test outside asyncio) —
+            # non-fatal, must never block/break the transcription flow. Close
+            # the never-scheduled coroutine to avoid a "was never awaited"
+            # warning.
+            coro.close()
+            logger.debug(
+                "transcription_service.knowledge_reindex_no_event_loop", error=str(e)
+            )
 
     def load(self, member_dir: Path, message_id: int) -> Optional[TranscriptionResult]:
         """Load a specific transcription by message_id."""

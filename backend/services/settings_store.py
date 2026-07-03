@@ -37,6 +37,40 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "translation_model": None,  # e.g., "gemini-3.1-flash-lite", "gpt-4o-mini"
     "translation_target_language": None,  # Defaults to UI language at runtime
     # Note: translation API key stored in OS credential manager, not here
+    "knowledge_base": {
+        "enabled": False,
+        "embedding_model": "granite-embedding-278m-multilingual",
+        # `None` = auto-select (pysaka's `OnnxEmbedder.select_providers()`: prefers
+        # CUDA > DirectML > CoreML, falls back to CPU). Set to an explicit
+        # onnxruntime provider name (e.g. "CPUExecutionProvider") to force it.
+        "embedding_provider": None,
+        "last_built": None,
+        "llm": {
+            "backend": "cloud",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "model": "gemini-2.5-flash",
+            # User-overridable daily request-count cap for the usage meter
+            # (`GET /api/ai/usage`) -- `None` = use the curated default from
+            # `backend.services.llm_usage._DAILY_LIMITS` (cloud) or unlimited
+            # (local). See Product-wave Task 5, item 3.
+            "daily_limit": None,
+        },
+        # One-time cloud-privacy consent gate (Product-wave Task 5, item 5):
+        # `POST /api/ai/ask` on a "cloud" backend is refused with the typed
+        # SSE error `cloud_consent_required` until this is `True` -- set by
+        # `POST /api/ai/consent`, never by `PUT /config`. The Local backend
+        # never checks this (nothing leaves the device).
+        "cloud_consent": False,
+        "cloud_consent_at": None,
+        # Overall wall-clock budget (seconds) `POST /api/ai/ask`'s SSE stream
+        # gives one ask before detaching with a typed `event: error
+        # {code: "timeout"}` (Product-wave Task 6, item 2). Generous default --
+        # this bounds what the USER waits for, not the worker (see
+        # `backend/api/ai.py`'s `_ask_event_stream`/`_ask_deadline_seconds`
+        # docstrings for why those are two different things).
+        "ask_deadline_s": 300,
+    },
+    # Note: KB chatbot's cloud API key reuses translation's keyring entry, not here
 }
 
 

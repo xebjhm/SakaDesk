@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pysaka>=0.4.0",
+    "pysaka[embeddings]>=0.4.0",
     "python-multipart",
     "aiofiles",
     "keyring",
@@ -33,6 +33,7 @@ dev = [
     "ruff>=0.14.13",
     "pre-commit>=4.5.1",
     "respx>=0.22.0",
+    "time-machine>=3.2.0",
 ]
 
 [tool.pytest.ini_options]

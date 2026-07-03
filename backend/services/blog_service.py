@@ -30,6 +30,7 @@ from pysaka.blog import (
     get_scraper,
 )
 
+from backend.services.background_tasks import track_background_task
 from backend.services.path_resolver import get_output_dir
 from backend.services.service_utils import (
     get_service_display_name,
@@ -1341,6 +1342,42 @@ class BlogBackupManager:
                 )
             except Exception as e:
                 logger.warning(f"Blog search index update failed (non-fatal): {e}")
+
+            # Index blogs for the KB chatbot too (background, non-fatal — must not
+            # block backup completion; mirrors the search-index hook above).
+            try:
+                from backend.services.knowledge_service import (
+                    get_knowledge_service,
+                    kb_enabled,
+                )
+
+                async def _bg_index_knowledge():
+                    try:
+                        if not await kb_enabled():
+                            logger.debug(
+                                "Blog knowledge index hook skipped (KB disabled)"
+                            )
+                            return
+                        knowledge_svc = await get_knowledge_service()
+                        indexed = await knowledge_svc.index_blogs_for_service(service)
+                        logger.info(
+                            "Blog knowledge index updated after backup",
+                            service=service,
+                            indexed=indexed,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Blog knowledge index update failed (non-fatal): {e}"
+                        )
+
+                # Retained (not bare `asyncio.create_task`) -- an un-retained
+                # task can be garbage-collected mid-run; see
+                # `background_tasks.track_background_task`.
+                track_background_task(
+                    _bg_index_knowledge(), name="blog_knowledge_index"
+                )
+            except Exception as e:
+                logger.warning(f"Blog knowledge index update failed (non-fatal): {e}")
         except asyncio.CancelledError:
             logger.info(f"Standalone blog backup cancelled for {service}")
         except Exception as e:

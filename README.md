@@ -12,6 +12,10 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 - **Multi-group chat display** with member lists and thumbnails
 - **Blog browsing and backup** with full content preservation
 - **Global search** across messages and blogs (with Japanese transliteration)
+- **Knowledge-base chatbot** — ask grounded, cited questions over synced blogs
+  and messages (e.g. "when did A last mention B"), with citation chips that
+  jump straight to the source; needs the local embedding model asset and an
+  LLM backend (cloud or local) configured in Settings → AI
 - **Message synchronization** from cloud with adaptive progress tracking
 - **Unread message management** with read state persistence
 - **Virtual scrolling** for efficient display of 10k+ messages
@@ -209,7 +213,8 @@ When running the backend, interactive API documentation is available at:
 ## Dependencies
 
 ### Backend (Python)
-- **pysaka** - Core sync SDK (local dependency)
+- **pysaka** - Core sync SDK (local dependency); the `[embeddings]` extra
+  supplies the local embedding model used by the knowledge-base chatbot
 - **FastAPI** + **uvicorn** - Web framework and ASGI server
 - **python-multipart** + **aiofiles** - File upload and async file I/O
 - **keyring** + **keyrings-alt** - Secure credential storage
