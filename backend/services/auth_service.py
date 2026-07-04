@@ -32,6 +32,20 @@ from backend.services.service_utils import (
 logger = structlog.get_logger(__name__)
 
 
+def _interpret_geo_status(status: Optional[int]) -> dict:
+    """Decide region availability from the check request's HTTP status.
+
+    200 = reachable (allowed region). A 4xx (e.g. 403 from the JP geo-block) = the
+    region is blocked. Anything else (5xx, no response/timeout) is treated as
+    unknown, so a transient error never produces a false "blocked" warning.
+    """
+    if status == 200:
+        return {"available": True, "blocked": False}
+    if status is not None and 400 <= status < 500:
+        return {"available": False, "blocked": True}
+    return {"available": True, "blocked": False}
+
+
 class AuthService:
     def __init__(self):
         self._session_dir = get_session_dir()
@@ -422,3 +436,33 @@ class AuthService:
         except Exception as e:
             logger.error("Failed to load config", service=service, error=str(e))
             return {}
+
+    async def check_geo_availability(self, service: str) -> dict:
+        """Whether this machine's connection can reach a region-restricted
+        service. Yodel's web service is Japan-only and rejects other regions;
+        the desktop backend runs locally, so this request uses the user's own IP.
+
+        Returns ``{"service", "restricted": bool, "available": bool,
+        "blocked": bool}``. Only Yodel is region-locked — every other service
+        returns available without a network call.
+        """
+        validate_service(service)
+        if service != Group.YODEL.value:
+            return {"service": service, "restricted": False, "available": True, "blocked": False}
+
+        from pysaka.client import GROUP_CONFIG
+
+        api_base = GROUP_CONFIG[Group.YODEL]["api_base"]
+        url = f"{api_base}/app_configs"  # public endpoint, no auth needed
+        status: Optional[int] = None
+        try:
+            timeout = aiohttp.ClientTimeout(total=8)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url) as resp:
+                    status = resp.status
+        except Exception as e:
+            # Network error/timeout — region unknown; don't warn, let login proceed.
+            logger.warning("yodel.geo_check_failed", error=str(e))
+        result = _interpret_geo_status(status)
+        logger.info("yodel.geo_check", status=status, **result)
+        return {"service": service, "restricted": True, **result}

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (files already saved are skipped). Catches gaps the media-only check cannot —
   including entirely-missing messages. Behind a confirm, as it is slower and makes
   many API requests.
+- A clear warning when logging into **Yodel** from outside Japan — Yodel's web
+  service is Japan-only, so a login from another region can't reach its servers.
+  The app now detects this before login and explains how to proceed (connect from
+  Japan and try again) instead of failing silently.
 
 ### Fixed
 - Interrupted syncs no longer permanently skip message media — the sync cursor is

@@ -136,6 +136,9 @@
     "connectAccount": "连接账户",
     "browserPrompt": "请登录您的 {{service}} Message 账户。将为您打开浏览器窗口以输入凭据。",
     "loginFailed": "登录失败或已取消",
+    "yodelJpOnlyTitle": "yodel 仅限日本境内使用",
+    "yodelJpOnlyMessage": "yodel 的服务仅在日本境内提供，因此无法从你当前的位置连接。要登录，请先切换到日本的网络连接，然后重试。",
+    "loginAnyway": "仍要登录",
     "connectPromptTitle": "连接您的账户？",
     "connectPromptDesc": "登录以同步您的 {{service}} 消息。您也可以不登录直接浏览 Blog。",
     "maybeLater": "以后再说"

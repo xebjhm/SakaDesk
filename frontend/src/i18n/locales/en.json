@@ -136,6 +136,9 @@
     "connectAccount": "Connect Account",
     "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
     "loginFailed": "Login failed or cancelled",
+    "yodelJpOnlyTitle": "Yodel is available in Japan only",
+    "yodelJpOnlyMessage": "Yodel's service is offered only within Japan, so it can't be reached from where you are now. To log in, please connect to the internet from Japan, then try again.",
+    "loginAnyway": "Log in anyway",
     "connectPromptTitle": "Connect Your Account?",
     "connectPromptDesc": "Log in to sync your {{service}} messages. You can also browse blogs without logging in.",
     "maybeLater": "Maybe Later"

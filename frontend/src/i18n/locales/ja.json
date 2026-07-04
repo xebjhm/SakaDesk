@@ -136,6 +136,9 @@
     "connectAccount": "アカウント連携",
     "browserPrompt": "{{service}}のMessageアカウントにログインしてください。ブラウザウィンドウが開き、認証情報を入力できます。",
     "loginFailed": "ログインに失敗したかキャンセルされました",
+    "yodelJpOnlyTitle": "yodel は日本国内のみ利用できます",
+    "yodelJpOnlyMessage": "yodel のサービスは日本国内でのみ提供されているため、現在の場所からは接続できません。ログインするには、日本国内のインターネット接続に切り替えてから、もう一度お試しください。",
+    "loginAnyway": "このままログイン",
     "connectPromptTitle": "アカウントを連携しますか？",
     "connectPromptDesc": "ログインすると{{service}}のメッセージを同期できます。ログインせずにブログを閲覧することも可能です。",
     "maybeLater": "あとで"

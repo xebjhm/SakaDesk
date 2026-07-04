@@ -136,6 +136,9 @@
         "connectAccount": "連接帳戶",
         "browserPrompt": "請登入你嘅 {{service}} Message 帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
         "loginFailed": "登入失敗或者取消咗",
+        "yodelJpOnlyTitle": "yodel 只限日本境內使用",
+        "yodelJpOnlyMessage": "yodel 嘅服務只喺日本境內提供，所以喺你而家嘅位置連唔到。想登入嘅話，請先切換到日本嘅網絡連線，然後再試多次。",
+        "loginAnyway": "照樣登入",
         "connectPromptTitle": "連接你嘅帳戶？",
         "connectPromptDesc": "登入嚟同步你嘅 {{service}} 訊息。你亦可以唔登入直接睇 Blog。",
         "maybeLater": "遲啲先"
