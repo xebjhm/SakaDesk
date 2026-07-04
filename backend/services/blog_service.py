@@ -164,6 +164,38 @@ class BlogService:
                 os.unlink(tmp_path)
             raise
 
+    async def _atomic_write(self, path: Path, data) -> None:
+        """Write text or bytes atomically (temp file + os.replace) so an
+        interrupted/crashed write can never leave a partial file — which would
+        otherwise look complete and be skipped forever on the next backup."""
+        import os
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        os.close(fd)
+        try:
+            if isinstance(data, (bytes, bytearray)):
+                async with aiofiles.open(tmp_path, "wb") as f:
+                    await f.write(data)
+            else:
+                async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
+                    await f.write(data)
+            os.replace(tmp_path, str(path))
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
+            raise
+
+    @staticmethod
+    def _is_blog_cached(cache_path: Path) -> bool:
+        """A blog counts as cached only if its blog.json exists and is non-empty.
+        A missing or zero-byte file (e.g. an interrupted download) is treated as
+        NOT cached, so the next backup re-downloads it (self-healing resume)."""
+        try:
+            return (cache_path / "blog.json").stat().st_size > 0
+        except OSError:
+            return False
+
     async def get_blog_members(self, service: str) -> Dict[str, str]:
         """Get members who have blogs for a service."""
         validate_service(service)
@@ -573,8 +605,8 @@ class BlogService:
                     service, member_name, blog_id, date
                 )
 
-                # Skip if already cached
-                if skip_cached and (cache_path / "blog.json").exists():
+                # Skip if already fully cached (validated non-empty, not partial)
+                if skip_cached and self._is_blog_cached(cache_path):
                     continue
 
                 queue.append(
@@ -787,8 +819,11 @@ class BlogService:
             images=images_result,
         )
 
-        async with aiofiles.open(cache_file, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(content, ensure_ascii=False, indent=2))
+        # Written atomically and LAST (after images), so blog.json is the
+        # all-or-nothing completion marker the resume check keys on.
+        await self._atomic_write(
+            cache_file, json.dumps(content, ensure_ascii=False, indent=2)
+        )
 
     async def _download_images(
         self,
@@ -819,10 +854,8 @@ class BlogService:
             async def _fetch_image():
                 async with session.get(img_url) as resp:
                     if resp.status == 200:
-                        images_dir.mkdir(parents=True, exist_ok=True)
                         content = await resp.read()
-                        async with aiofiles.open(local_path, "wb") as f:
-                            await f.write(content)
+                        await self._atomic_write(local_path, content)
                         results[idx] = {
                             "original_url": img_url,
                             "local_path": f"./images/{local_name}",

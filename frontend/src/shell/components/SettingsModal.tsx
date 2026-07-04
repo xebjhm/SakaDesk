@@ -46,6 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [showDeepConfirm, setShowDeepConfirm] = useState(false);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
+    const [blogSizeLoading, setBlogSizeLoading] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
@@ -67,6 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     const loadBlogCacheSize = async () => {
+        setBlogSizeLoading(true);
         try {
             let totalBytes = 0;
             for (const service of selectedServices) {
@@ -79,6 +81,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
         } catch {
             setBlogCacheSize(null);
+        } finally {
+            setBlogSizeLoading(false);
         }
     };
 
@@ -326,9 +330,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <span className="text-xs text-blue-500 flex items-center gap-1">
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                         {blogBackupStats
-                                            ? `${blogBackupStats.cached}/${blogBackupStats.total}`
-                                            : ''
-                                        }
+                                            ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
+                                            : t('settings.blogBackupWorking')}
                                     </span>
                                 )}
                             </label>
@@ -354,8 +357,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </p>
                         {blogBackupEnabled && (
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                                <div className="text-xs text-gray-500">
-                                    {blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                    {blogSizeLoading
+                                        ? <><Loader2 className="w-3 h-3 animate-spin" />{t('settings.blogBackupCalculating')}</>
+                                        : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
                                 <button
                                     onClick={handleCleanBlogCache}
@@ -572,7 +577,11 @@ function AiTab() {
     const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
     const [hasApiKey, setHasApiKey] = useState(() => aiConfigCache?.hasApiKey ?? false);  // key stored in keyring
     const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(() => aiConfigCache?.apiKeyMasked ?? null);  // "AIza...xQ"
-    const [targetLang, setTargetLang] = useState<string | null>(() => aiConfigCache?.targetLang ?? null);
+    // Seed from the session cache, else the persisted store value (both on disk),
+    // so the target language shows immediately instead of waiting on /config.
+    const [targetLang, setTargetLang] = useState<string | null>(
+        () => aiConfigCache?.targetLang ?? useAppStore.getState().translationTargetLanguage ?? null
+    );
     // Only "loading" when there is nothing cached to show yet (first open / after
     // a restart). Reopens seed from aiConfigCache and render instantly.
     const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
@@ -754,9 +763,6 @@ function AiTab() {
                 <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                         {t('translation.settings.title')}
-                        <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
-                            {t('translation.settings.experimental')}
-                        </span>
                     </label>
                     <button
                         onClick={() => setTranslationEnabled(!translationEnabled)}

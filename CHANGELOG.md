@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while media is unaccounted for.
 - Uninstall now removes the correct saved credentials and auth data (it targeted
   stale `pyzaka`/`zakadesk` names before, missing the current `pysaka` entries).
+- **Blog backup now resumes safely after an interruption.** Blog content and
+  images are written atomically, and a blog left partial by a crash/interruption
+  is detected and re-downloaded instead of being skipped as "done".
 - The sync progress window no longer looks stuck after finishing: the
   "downloading media… do not close" warning now clears on completion, and a Done
   button lets you dismiss it (it also auto-closes).
@@ -58,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no longer counted as missing media. Their status is recorded in the synced data
   on disk but not shown. Existing messages pick this up after a re-sync (which
   backfills the message `state`); Deep re-verify does a full backfill.
+- **Translation** is no longer marked "Experimental".
+- The translation **target language** in Settings → AI now appears immediately
+  (from the saved value) instead of waiting for the config to load.
+- **Blog backup** wording and progress are clearer: it's called "backup" (not
+  "cache"), the size shows a "Calculating backup size…" indicator, and an active
+  backup shows "Backing up blogs… X of Y".
 
 ## [0.3.0] - 2026-07-01
 
