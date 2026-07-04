@@ -40,6 +40,26 @@ configure_logging(
     file_level=logging.DEBUG,
 )
 
+# On-demand ONNX runtime provisioning (Task 6): make onnxruntime importable
+# BEFORE anything else in this process imports it -- a packaged Windows build
+# ships without onnxruntime bundled (Task 7 excludes it from the PyInstaller
+# build), so the very first `import onnxruntime` anywhere downstream (e.g.
+# inside `pysaka.knowledge.backends.onnx_embedder`, first pulled in by
+# `backend.services.knowledge_service._build_embedder`) could otherwise fail
+# with a raw `ModuleNotFoundError` instead of the app's own "not ready yet"
+# handling. In dev/tests onnxruntime lives in the venv, so this call finds it
+# via `importlib.util.find_spec` and returns `"bundled"` -- a pure no-op, same
+# as every other call site of this function (see
+# `onnx_runtime_loader.ensure_onnxruntime_importable`'s docstring). In a
+# packaged build where the runtime was already downloaded in a prior session,
+# this prepends its install dir to `sys.path`/the DLL search path so the KB
+# can use it immediately without needing to re-trigger a download this run.
+from backend.services.onnx_runtime_loader import (  # noqa: E402
+    ensure_onnxruntime_importable,
+)
+
+ensure_onnxruntime_importable()
+
 # === NOW SAFE TO IMPORT OTHER MODULES ===
 import asyncio  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402

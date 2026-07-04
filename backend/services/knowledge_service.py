@@ -165,6 +165,38 @@ class EmbeddingModelMissing(KnowledgeMisconfigured):
         super().__init__(f"embedding model not installed: {expected_path}")
 
 
+class RuntimeMissing(KnowledgeMisconfigured):
+    """Raised by `_ensure_embedder()` when the ONNX runtime itself (not the
+    embedding model -- see `EmbeddingModelMissing`) hasn't been downloaded yet.
+
+    Windows packaged builds ship WITHOUT onnxruntime (Task 7 excludes it from
+    the PyInstaller bundle); it's fetched on demand the first time the KB
+    needs an embedder (`ensure_onnxruntime_importable`, Task 3). Raising this
+    from `_ensure_embedder()` ALSO fires the download as a tracked background
+    task (see that method) -- by the time a caller sees this exception,
+    provisioning is already under way, so a retry a few seconds/minutes later
+    (once `GET /api/ai/runtime/status` reports `state: "done"`) just works,
+    same "state, not a crash" shape as `EmbeddingModelMissing`.
+
+    A subclass of `KnowledgeMisconfigured` for the same reason
+    `EmbeddingModelMissing` is (any caller that only handles the generic case
+    still degrades safely), but `backend/api/ai.py`'s `/ask` SSE stream
+    catches this FIRST (same position as `EmbeddingModelMissing`, since both
+    are siblings under `KnowledgeMisconfigured`) to emit the distinct,
+    actionable SSE code `runtime_missing` instead of the generic
+    `misconfigured` -- the UI can show "setting up the AI engine..." instead
+    of a vague "check AI settings".
+
+    In dev/tests onnxruntime always lives in the venv, so
+    `ensure_onnxruntime_importable()` returns `"bundled"` and this is never
+    raised there -- see `_ensure_embedder`'s runtime-gate check.
+    """
+
+    def __init__(self, host_class: str) -> None:
+        self.host_class = host_class
+        super().__init__(f"onnx runtime provisioning started for host={host_class}")
+
+
 class KnowledgeDisabled(RuntimeError):
     """Raised (by `backend/api/ai.py`'s `/ask`) when `settings.knowledge_base.enabled`
     is false. Deliberately NOT a subclass of `KnowledgeMisconfigured`: that one means
@@ -401,7 +433,32 @@ class KnowledgeService:
         WITHIN this module, right before something that actually needs the
         embedder -- `ensure_ready()` is the public seam for outside callers
         (e.g. `backend/api/ai.py`) that just need the lazy-pickup side effect.
+
+        Runtime gate (on-demand ONNX runtime provisioning): BEFORE touching
+        the embedder at all, confirm onnxruntime itself is importable
+        (`ensure_onnxruntime_importable`, Task 3) -- a packaged Windows build
+        ships without it (Task 7), so the very first embedder build attempt
+        may find no runtime on disk yet. `"bundled"`/`"loaded"` (dev, or a
+        packaged build that already downloaded it) fall straight through to
+        the pre-existing embedder-build logic below, unchanged. `"missing"`
+        kicks off the download as a tracked background task and raises
+        `RuntimeMissing` -- caught explicitly by `ask()`'s only caller of this
+        method that must not swallow it (mirrors `EmbeddingModelMissing`,
+        translated to the SSE code `runtime_missing` in `backend/api/ai.py`);
+        the other three callers (`_index_preflight_ok`, `rebuild`,
+        `ensure_ready`) catch it themselves and fall back to their existing
+        "skip quietly" `False` return -- exactly the embedder-missing state's
+        shape, since a raised `RuntimeMissing` here carries no MORE actionable
+        information than that `False` already did for those non-interactive
+        callers (provisioning was already triggered either way).
         """
+        loader_result = ensure_onnxruntime_importable()
+        if loader_result == "missing":
+            host = select_runtime_host_class()
+            track_background_task(
+                get_runtime_provisioner().ensure(host), name="runtime_provision"
+            )
+            raise RuntimeMissing(host)
         if self._embedder is None:
             embedder = await _build_embedder()
             if embedder is None:
@@ -431,9 +488,20 @@ class KnowledgeService:
         that gap: `status()`/`is_indexing()` afterward reflect reality.
 
         Returns the same `True`/`False` as `_ensure_embedder`: `True` once
-        `self._embedder` is usable.
+        `self._embedder` is usable. `RuntimeMissing` (the runtime, not the
+        model, isn't downloaded yet -- see `_ensure_embedder`) is caught here
+        and folded into the same `False`: this seam is a bare `await` at its
+        one call site (`POST /index/rebuild`), with nothing there to catch a
+        raised exception, so letting it escape would turn an expected
+        first-run "still provisioning" state into a raw 500 -- the one thing
+        Task 6's global constraints forbid. Provisioning was already
+        triggered inside `_ensure_embedder()` regardless of whether this
+        catches it, so nothing is lost by degrading to `False` here.
         """
-        return await self._ensure_embedder()
+        try:
+            return await self._ensure_embedder()
+        except RuntimeMissing:
+            return False
 
     async def _check_fingerprint(self) -> None:
         """Compare the ACTIVE embedder config's fingerprint against
@@ -587,10 +655,17 @@ class KnowledgeService:
         `pwave-4-brief.md` item 1) when:
         - there's no embedder to embed with yet (`_ensure_embedder` also
           lazily retries building it -- see that method), or
+        - the ONNX runtime itself hasn't been downloaded yet
+          (`RuntimeMissing` -- see `_ensure_embedder`'s runtime gate; already
+          triggered as a background download by the time this is caught), or
         - an embedder-fingerprint mismatch has blocked incremental embedding
           writes until the user triggers Rebuild (`_check_fingerprint`).
         """
-        if not await self._ensure_embedder():
+        try:
+            embedder_ok = await self._ensure_embedder()
+        except RuntimeMissing:
+            embedder_ok = False
+        if not embedder_ok:
             logger.info(
                 "knowledge_service.index_skipped_embedding_model_missing",
                 service=service,
@@ -1303,9 +1378,20 @@ class KnowledgeService:
         `_rebuild_impl`). It still needs an embedder to embed with, though: if
         none is installed (and the lazy retry in `_ensure_embedder` can't
         build one either), this skips quietly with one info log, same
-        "state, not a crash" treatment as everywhere else.
+        "state, not a crash" treatment as everywhere else -- including when
+        the ONNX runtime itself isn't downloaded yet (`RuntimeMissing`, see
+        `_ensure_embedder`'s runtime gate): `POST /index/rebuild` calls
+        `ensure_ready()` (which already folds `RuntimeMissing` into `False`)
+        before ever reaching this method, but `rebuild()` is also called
+        directly by the startup catch-up sweep
+        (`schedule_initial_build_all`) with no such pre-check, so this catches
+        it too rather than relying on every caller doing so upstream.
         """
-        if not await self._ensure_embedder():
+        try:
+            embedder_ok = await self._ensure_embedder()
+        except RuntimeMissing:
+            embedder_ok = False
+        if not embedder_ok:
             logger.info(
                 "knowledge_service.rebuild_skipped_embedding_model_missing",
                 service=service,

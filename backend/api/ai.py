@@ -128,6 +128,7 @@ from backend.services.knowledge_service import (
     KnowledgeDisabled,
     KnowledgeMisconfigured,
     KnowledgeService,
+    RuntimeMissing,
     compute_readiness,
     embedding_model_dir,
     get_knowledge_service,
@@ -195,6 +196,15 @@ _GENERIC_ERROR_MESSAGE = "The request failed unexpectedly."
 _EMBEDDING_MODEL_MISSING_MESSAGE = (
     "The embedding model isn't installed yet. Download it in AI settings to "
     "enable the knowledge chatbot."
+)
+# On-demand ONNX runtime provisioning: the runtime itself (distinct from the
+# embedding MODEL above) is downloaded on first use on a packaged Windows
+# build (Task 7 excludes it from the installer). `RuntimeMissing` already
+# triggered that download as a tracked background task by the time this
+# message is shown -- see `KnowledgeService._ensure_embedder`'s runtime gate.
+_RUNTIME_MISSING_MESSAGE = (
+    "Setting up the AI engine for the first time -- this can take a minute. "
+    "Try again shortly."
 )
 _NOT_CONFIGURED_MESSAGE = (
     "The knowledge chatbot needs the embedding model installed before it can "
@@ -745,6 +755,28 @@ async def _ask_event_stream(
             _serialize_error_event(
                 "embedding_model_missing",
                 _EMBEDDING_MODEL_MISSING_MESSAGE,
+                retry_after_s=None,
+                backend=backend,
+                model=model,
+            ),
+        )
+        return
+    except RuntimeMissing:
+        # Same sibling-of-`KnowledgeMisconfigured` treatment as
+        # `EmbeddingModelMissing` just above (both must be caught BEFORE the
+        # generic `KnowledgeMisconfigured` case below, or they'd be swallowed
+        # by it): a distinct SSE code for "the ONNX runtime itself hasn't
+        # been downloaded yet" (Task 6, on-demand runtime provisioning) --
+        # provisioning was already triggered as a background task by
+        # `_ensure_embedder()` by the time this is raised, so the UI can show
+        # "setting up..." and the user just retries shortly.
+        logger.info("ai.ask.runtime_missing", service=scope.service)
+        backend, model = await _current_llm_backend_model()
+        yield _format_sse(
+            "error",
+            _serialize_error_event(
+                "runtime_missing",
+                _RUNTIME_MISSING_MESSAGE,
                 retry_after_s=None,
                 backend=backend,
                 model=model,
