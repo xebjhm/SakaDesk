@@ -32,18 +32,11 @@ from backend.services.service_utils import (
 logger = structlog.get_logger(__name__)
 
 
-def _interpret_geo_status(status: Optional[int]) -> dict:
-    """Decide region availability from the check request's HTTP status.
-
-    200 = reachable (allowed region). A 4xx (e.g. 403 from the JP geo-block) = the
-    region is blocked. Anything else (5xx, no response/timeout) is treated as
-    unknown, so a transient error never produces a false "blocked" warning.
-    """
-    if status == 200:
-        return {"available": True, "blocked": False}
-    if status is not None and 400 <= status < 500:
-        return {"available": False, "blocked": True}
-    return {"available": True, "blocked": False}
+def _region_is_blocked(country_code: Optional[str]) -> bool:
+    """Yodel's web service is Japan-only. A known non-JP country is blocked; an
+    unknown country (the geo-IP lookup failed) is NOT blocked — we fail open so a
+    lookup failure never produces a false warning."""
+    return bool(country_code) and country_code.upper() != "JP"
 
 
 class AuthService:
@@ -438,34 +431,52 @@ class AuthService:
             return {}
 
     async def check_geo_availability(self, service: str) -> dict:
-        """Whether this machine's connection can reach a region-restricted
-        service. Yodel's web service is Japan-only and rejects other regions;
-        the desktop backend runs locally, so this request uses the user's own IP.
+        """Whether a region-restricted service is usable from here. Yodel's web
+        service is Japan-only; Yodel's endpoints don't hard-block by IP in a way
+        we can probe, so we detect the user's country via geo-IP (the desktop
+        backend runs locally, so the lookup reflects the user's own IP) and warn
+        when it is not Japan.
 
-        Returns ``{"service", "restricted": bool, "available": bool,
-        "blocked": bool}``. Only Yodel is region-locked — every other service
-        returns available without a network call.
+        Returns ``{"service", "restricted", "available", "blocked", "country"}``.
+        Only Yodel is region-locked — every other service returns available with
+        no network call.
         """
         validate_service(service)
         if service != Group.YODEL.value:
-            return {"service": service, "restricted": False, "available": True, "blocked": False}
+            return {
+                "service": service, "restricted": False,
+                "available": True, "blocked": False, "country": None,
+            }
 
-        # Build the request exactly like the app — in particular the required
-        # `x-talk-app-id` header. A bare request returns HTTP 400 for EVERYONE
-        # (missing header), which would look like a block in every region. With
-        # the app headers, an allowed region returns 200 and a geo-blocked region
-        # returns the real block status.
-        client = Client(group=Group.YODEL)
-        url = f"{client.config['api_base']}/app_configs"
-        status: Optional[int] = None
-        try:
-            timeout = aiohttp.ClientTimeout(total=8)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, headers=client.headers) as resp:
-                    status = resp.status
-        except Exception as e:
-            # Network error/timeout — region unknown; don't warn, let login proceed.
-            logger.warning("yodel.geo_check_failed", error=str(e))
-        result = _interpret_geo_status(status)
-        logger.info("yodel.geo_check", status=status, **result)
-        return {"service": service, "restricted": True, **result}
+        country = await self._lookup_country()
+        blocked = _region_is_blocked(country)
+        logger.info("yodel.geo_check", country=country, blocked=blocked)
+        return {
+            "service": service, "restricted": True,
+            "available": not blocked, "blocked": blocked, "country": country,
+        }
+
+    async def _lookup_country(self) -> Optional[str]:
+        """Best-effort ISO country code for this machine's public IP, via a free
+        no-key geo-IP service (with a fallback). None if all lookups fail, so the
+        caller fails open."""
+        providers = [
+            ("http://ip-api.com/json/?fields=status,countryCode",
+             lambda d: d.get("countryCode") if d.get("status") == "success" else None),
+            ("https://ipwho.is/",
+             lambda d: d.get("country_code") if d.get("success", True) else None),
+        ]
+        timeout = aiohttp.ClientTimeout(total=6)
+        for url, extract in providers:
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.json(content_type=None)
+                        code = extract(data)
+                        if code:
+                            return str(code).upper()
+            except Exception as e:
+                logger.debug("geoip_lookup_failed", url=url, error=str(e))
+        return None
