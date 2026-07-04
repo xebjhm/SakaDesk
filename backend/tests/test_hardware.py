@@ -13,8 +13,20 @@ from __future__ import annotations
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from backend.services import hardware
 from backend.services.hardware import detect_hardware, suggest_llm_backend
+
+
+@pytest.fixture(autouse=True)
+def _reset_hw_cache():
+    import backend.services.hardware as h
+
+    h._hw_cache = None
+    yield
+    h._hw_cache = None
+
 
 # --- suggest_llm_backend ----------------------------------------------------------------
 

@@ -94,9 +94,13 @@ class TestLookupModelBackendIsolation:
 
 
 class TestCuratedForBackend:
-    def test_cloud_curated_list_has_the_two_exact_id_entries(self):
+    def test_cloud_curated_list_has_the_three_exact_id_entries(self):
         ids = {entry.id for entry in curated_for_backend("cloud")}
-        assert ids == {"gemini-2.5-flash", "gemini-2.5-flash-lite"}
+        assert ids == {
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash-lite",
+        }
 
     def test_local_curated_list_has_all_five_exact_id_entries(self):
         ids = {entry.id for entry in curated_for_backend("local")}
@@ -116,8 +120,12 @@ class TestCuratedForBackend:
     def test_curated_list_excludes_pattern_only_rules(self):
         """`^gemini-3`/`gemini-2.0-*` are pattern rules, not concrete
         selectable model ids -- they must never appear in the picker's
-        curated list."""
+        curated list. `gemini-3.5-flash` is an exact-id entry (curated
+        override of the broader `^gemini-3` block) so it's excluded from
+        this check rather than asserted absent."""
         ids = {entry.id for entry in curated_for_backend("cloud")}
         assert not any(
-            i.startswith("gemini-3") or i.startswith("gemini-2.0") for i in ids
+            (i.startswith("gemini-3") and i != "gemini-3.5-flash")
+            or i.startswith("gemini-2.0")
+            for i in ids
         )

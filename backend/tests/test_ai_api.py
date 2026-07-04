@@ -1830,9 +1830,14 @@ class TestListModels:
         body = r.json()
         assert body["backend"] == "cloud"
         ids = {m["id"] for m in body["models"]}
-        assert ids == {"gemini-2.5-flash", "gemini-2.5-flash-lite"}
+        assert ids == {
+            "gemini-2.5-flash",
+            "gemini-3.5-flash",
+            "gemini-2.5-flash-lite",
+        }
         by_id = {m["id"]: m for m in body["models"]}
         assert by_id["gemini-2.5-flash"]["tier"] == "recommended"
+        assert by_id["gemini-3.5-flash"]["tier"] == "recommended"
         assert by_id["gemini-2.5-flash-lite"]["tier"] == "degraded"
         assert "ollamaReachable" not in body
 

@@ -96,6 +96,8 @@ def test_download_status_as_dict_shape() -> None:
 
 
 class _FakeResponse:
+    status_code = 200
+
     def __init__(self, chunks: list[bytes], on_before_chunk=None) -> None:
         self._chunks = chunks
         self._on_before_chunk = on_before_chunk
