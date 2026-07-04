@@ -3,6 +3,7 @@ import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucid
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
+import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 
@@ -43,6 +44,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [showDeepConfirm, setShowDeepConfirm] = useState(false);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
@@ -398,11 +400,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {t('settings.deepResync')}
                             </label>
                             <button
-                                onClick={() => {
-                                    if (!window.confirm(t('settings.deepResyncConfirm'))) return;
-                                    onDeepResync(activeService);
-                                    onClose();
-                                }}
+                                onClick={() => setShowDeepConfirm(true)}
                                 className="text-xs font-medium text-amber-600 hover:text-amber-800"
                             >
                                 {t('settings.deepResyncButton')}
@@ -412,6 +410,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {t('settings.deepResyncDesc')}
                         </p>
                     </div>
+
+                    <ConfirmDialog
+                        open={showDeepConfirm}
+                        title={t('settings.deepResync')}
+                        message={t('settings.deepResyncConfirm')}
+                        confirmLabel={t('settings.deepResyncButton')}
+                        variant="warning"
+                        onConfirm={() => {
+                            setShowDeepConfirm(false);
+                            onDeepResync(activeService);
+                            onClose();
+                        }}
+                        onCancel={() => setShowDeepConfirm(false)}
+                    />
 
                     {/* Sync read status to phone (opt-in) */}
                     <div>

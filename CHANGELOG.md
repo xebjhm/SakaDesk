@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Starting **Verify & Fix media** now closes the settings panel so the validation
   progress and result are in focus.
+- The **Deep re-verify** confirmation now uses an in-app styled dialog matching the
+  rest of the UI, instead of the browser-native `window.confirm` popup.
 
 ## [0.3.0] - 2026-07-01
 
