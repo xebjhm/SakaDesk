@@ -252,7 +252,10 @@ export function useSync({
                     resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
-                    if (blocking && service === currentActiveService) {
+                    // Auto-close only normal syncs. A verify/validation carries a
+                    // `result` payload whose findings the user should be able to
+                    // read — keep it open until they dismiss it (Done button).
+                    if (blocking && service === currentActiveService && !data.result) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
                 } else if (data.state === 'running') {

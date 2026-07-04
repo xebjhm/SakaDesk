@@ -1,6 +1,7 @@
 import React from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Loader2, Image as ImageIcon, Video, Mic } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
 import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
@@ -71,18 +72,39 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                 {/* Content */}
                 <div className="p-6 space-y-5">
                     {syncProgress.state === 'complete' && syncProgress.result && (
-                        <div className="text-xs text-gray-600 space-y-1">
-                            {syncProgress.result.missing === 0 && (syncProgress.result.unresolved ?? 0) === 0
-                                ? <p>{t('settings.verifyNoGaps')}</p>
-                                : <p>{t('settings.verifySummary', {
-                                      checked: syncProgress.result.checked,
-                                      repaired: syncProgress.result.repaired,
-                                      stillMissing: syncProgress.result.still_missing,
-                                  })}</p>}
+                        <div className="text-xs text-gray-600 space-y-2">
+                            <p>
+                                {syncProgress.result.missing === 0 && (syncProgress.result.unresolved ?? 0) === 0
+                                    ? t('settings.verifyNoGaps')
+                                    : t('settings.verifySummary', {
+                                          checked: syncProgress.result.checked,
+                                          repaired: syncProgress.result.repaired,
+                                          stillMissing: syncProgress.result.still_missing,
+                                      })}
+                            </p>
                             {(syncProgress.result.unresolved ?? 0) > 0 && (
-                                <p className="text-amber-600">
-                                    {t('settings.verifyUnresolved', { count: syncProgress.result.unresolved })}
-                                </p>
+                                <div className="rounded-xl border border-amber-100 overflow-hidden">
+                                    <div className="px-3 py-2 bg-amber-50 font-medium text-amber-700">
+                                        {t('settings.verifyUnresolved', { count: syncProgress.result.unresolved })}
+                                    </div>
+                                    {(syncProgress.result.unresolved_items?.length ?? 0) > 0 && (
+                                        <div className="max-h-44 overflow-y-auto divide-y divide-gray-100">
+                                            {syncProgress.result.unresolved_items!.map((it, i) => {
+                                                const Icon = it.media_type === 'video' ? Video
+                                                    : it.media_type === 'voice' ? Mic : ImageIcon;
+                                                return (
+                                                    <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+                                                        <Icon className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                                                        <span className="flex-1 truncate text-gray-700">{it.member}</span>
+                                                        <span className="flex-shrink-0 tabular-nums text-gray-400">
+                                                            {it.timestamp ? formatDateTime(it.timestamp) : ''}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}

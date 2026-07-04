@@ -53,6 +53,7 @@ export interface SyncProgress {
         members: number; checked: number; missing: number;
         repaired: number; failed: number; still_missing: number;
         unresolved?: number;
+        unresolved_items?: { member: string; timestamp: string | null; media_type: string }[];
     } | null;
 }
 

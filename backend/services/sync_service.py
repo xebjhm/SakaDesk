@@ -804,9 +804,12 @@ class SyncService:
             "failed": 0,
             "still_missing": 0,
             # Media-type messages with no recorded/downloadable media source
-            # (e.g. expired-media stubs). Reported so completeness is never
-            # overclaimed as "all present" while these exist.
+            # (e.g. media removed on the server). Reported so completeness is
+            # never overclaimed as "all present" while these exist.
             "unresolved": 0,
+            # Details of the unresolved items (member + timestamp + type) for the
+            # results view, capped to keep the payload small.
+            "unresolved_items": [],
         }
         if self.running:
             return totals
@@ -861,7 +864,19 @@ class SyncService:
                             manager.scan_member_media, member_dir
                         )
                         totals["checked"] += scan["checked"]
-                        totals["unresolved"] += scan.get("unresolved", 0)
+                        scan_unresolved = scan.get("unresolved") or []
+                        totals["unresolved"] += len(scan_unresolved)
+                        # member_dir.name is "<id> <name>"; show just the name.
+                        member_name = member_dir.name.split(" ", 1)[-1]
+                        for u in scan_unresolved:
+                            if len(totals["unresolved_items"]) < 200:
+                                totals["unresolved_items"].append(
+                                    {
+                                        "member": member_name,
+                                        "timestamp": u.get("timestamp"),
+                                        "media_type": u.get("media_type"),
+                                    }
+                                )
                         if scan["missing"]:
                             totals["missing"] += len(scan["missing"])
                             gaps_by_group[gid].append((member_dir, scan["missing"]))

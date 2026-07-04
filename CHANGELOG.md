@@ -47,6 +47,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   progress and result are in focus.
 - The **Deep re-verify** confirmation now uses an in-app styled dialog matching the
   rest of the UI, instead of the browser-native `window.confirm` popup.
+- After **Verify & Fix media**, the progress window stays open and shows the
+  results — any media with no available source is listed by **member and date**
+  (with a Done button to dismiss) instead of the panel auto-closing.
 
 ## [0.3.0] - 2026-07-01
 

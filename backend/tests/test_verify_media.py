@@ -116,6 +116,7 @@ async def test_verify_and_fix_no_messages_root_returns_zero_totals(
         "failed": 0,
         "still_missing": 0,
         "unresolved": 0,
+        "unresolved_items": [],
     }
     assert svc.running is False
 
@@ -137,5 +138,6 @@ async def test_verify_and_fix_returns_zero_totals_when_already_running(tmp_path)
         "failed": 0,
         "still_missing": 0,
         "unresolved": 0,
+        "unresolved_items": [],
     }
     assert svc.running is True  # unchanged — guard returned before touching state
