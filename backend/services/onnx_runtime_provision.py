@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import shutil
+import time
 import zipfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from typing import Literal
 import httpx
 import structlog
 
+from backend.services.hardware import detect_hardware
 from backend.services.onnx_runtime_manifest import (
     RuntimeAsset,
     _RUNTIME_MANIFEST,
@@ -131,6 +133,7 @@ class RuntimeProvisioner:
         await self._provision(asset)
 
     async def _provision(self, asset: RuntimeAsset) -> None:
+        _start = time.monotonic()
         target = self.install_dir(asset.host_class)
         tmp = self._runtime_dir() / f".{asset.host_class}.extract"
         wheel_tmp = self._runtime_dir() / f".{asset.host_class}.whl"
@@ -138,6 +141,11 @@ class RuntimeProvisioner:
             "onnx_runtime.provision_started",
             host_class=asset.host_class, package=asset.package,
             version=asset.version, url=asset.wheel_url, size_bytes=asset.size_bytes,
+        )
+        _hw = detect_hardware()
+        logger.info(
+            "onnx_runtime.host_detected",
+            host_class=asset.host_class, gpu=_hw.get("gpu"), vram_gb=_hw.get("vram_gb"),
         )
         try:
             self._runtime_dir().mkdir(parents=True, exist_ok=True)
@@ -204,6 +212,7 @@ class RuntimeProvisioner:
             logger.info(
                 "onnx_runtime.provision_complete",
                 host_class=asset.host_class, version=asset.version, dest=str(target),
+                duration_s=round(time.monotonic() - _start, 1),
             )
         except _Cancelled:
             self._status.state = "cancelled"
