@@ -160,8 +160,12 @@ async def _get_provider_from_config() -> TranslationProvider:
     config = await load_config()
     provider_name = config.get("translation_provider")
     model = config.get("translation_model")
-    # Reset stale model to default
-    if model and model not in _valid_model_ids():
+    # Default a missing model and repair a stale/invalid one to the current
+    # default. A partial /configure full-replaces settings and can leave
+    # translation_model=None (or a preview-suffix rename can make it stale);
+    # without this, translate would hard-fail with `no_model` even though the
+    # provider and API key are configured.
+    if not model or model not in _valid_model_ids():
         model = DEFAULT_GEMINI_MODEL
     api_key = _load_api_key()
 
@@ -173,8 +177,6 @@ async def _get_provider_from_config() -> TranslationProvider:
         raise CodedHTTPException(
             400, "no_api_key", "No translation API key configured."
         )
-    if not model:
-        raise CodedHTTPException(400, "no_model", "No translation model configured.")
 
     return _instantiate_provider(provider_name, model, api_key)
 
@@ -227,11 +229,13 @@ async def get_config():
     """
     config = await load_config()
 
-    # Auto-fix stale model names (e.g., preview suffix changes)
+    # Backfill a missing model and auto-fix stale names (e.g. preview suffix
+    # changes). A partial /configure can leave translation_model=None; healing it
+    # here means the settings UI shows a real model and stops re-persisting null.
     stored_model = config.get("translation_model")
-    if stored_model and stored_model not in _valid_model_ids():
+    if not stored_model or stored_model not in _valid_model_ids():
         logger.info(
-            "Resetting unknown model to default",
+            "translation.config_model_defaulted",
             old=stored_model,
             new=DEFAULT_GEMINI_MODEL,
         )
