@@ -17,8 +17,6 @@ from backend.services.platform import (
 )
 from backend.services.service_utils import (
     validate_service,
-    get_service_enum,
-    resolve_auth_mode,
 )
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
@@ -124,9 +122,6 @@ class ServiceSettings(BaseModel):
     adaptive_sync_enabled: bool = True
     last_sync: Optional[str] = None
     blogs_full_backup: bool = False
-    # Per-service auth mode. Read back as the *effective* mode: "mobile" only when a
-    # refresh_token is stored, otherwise "web" (it snaps back until a token is added).
-    auth_mode: str = "web"
 
 
 @router.get("", response_model=SettingsResponse)
@@ -263,25 +258,13 @@ async def select_folder():
     return {"path": None}
 
 
-def _effective_service_auth_mode(service: str, stored_mode: str) -> str:
-    """Resolve a service's effective auth mode (mobile needs a stored refresh_token)."""
-    try:
-        from pysaka.credentials import get_token_manager
-
-        token_data = get_token_manager().load_session(get_service_enum(service).value)
-    except Exception:
-        token_data = None
-    return resolve_auth_mode(stored_mode, token_data)
-
-
-def _service_settings_response(service: str, stored: dict) -> "ServiceSettings":
-    """Build a ServiceSettings, surfacing the *effective* auth_mode."""
+def _service_settings_response(stored: dict) -> "ServiceSettings":
+    """Build a ServiceSettings from stored per-service config."""
     return ServiceSettings(
         sync_enabled=stored.get("sync_enabled", True),
         adaptive_sync_enabled=stored.get("adaptive_sync_enabled", True),
         last_sync=stored.get("last_sync"),
         blogs_full_backup=stored.get("blogs_full_backup", False),
-        auth_mode=_effective_service_auth_mode(service, stored.get("auth_mode", "web")),
     )
 
 
@@ -295,7 +278,7 @@ async def get_service_settings(service: str):
 
     config = await _store_load()
     service_config = config.get("services", {}).get(service, {})
-    return _service_settings_response(service, service_config)
+    return _service_settings_response(service_config)
 
 
 @router.post("/service/{service}", response_model=ServiceSettings)
@@ -306,8 +289,6 @@ async def update_service_settings(service: str, update: ServiceSettings):
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    mode = update.auth_mode if update.auth_mode in ("web", "mobile") else "web"
-
     def _apply(config: dict) -> None:
         config.setdefault("services", {}).setdefault(service, {})
         config["services"][service].update(
@@ -316,12 +297,11 @@ async def update_service_settings(service: str, update: ServiceSettings):
                 "adaptive_sync_enabled": update.adaptive_sync_enabled,
                 "last_sync": update.last_sync,
                 "blogs_full_backup": update.blogs_full_backup,
-                "auth_mode": mode,
             }
         )
 
     config = await _store_update(_apply)
-    return _service_settings_response(service, config["services"][service])
+    return _service_settings_response(config["services"][service])
 
 
 @router.post("/service/{service}/init", response_model=ServiceSettings)
@@ -349,7 +329,6 @@ async def init_service_settings(service: str):
                 "adaptive_sync_enabled": True,
                 "last_sync": None,
                 "blogs_full_backup": False,
-                "auth_mode": "web",
             }
             initialized = True
 
@@ -358,4 +337,4 @@ async def init_service_settings(service: str):
     if initialized:
         logger.info(f"Initialized settings for newly connected service: {service}")
 
-    return _service_settings_response(service, config["services"][service])
+    return _service_settings_response(config["services"][service])

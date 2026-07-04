@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-04
+
+### Added
+- **Verify & Fix media** (Settings → Sync): scans downloaded messages and
+  re-downloads any missing images/videos, per service.
+- **Deep re-verify** (Settings → Sync): an on-demand full re-sync that re-checks
+  every member's entire timeline from scratch and re-downloads anything missing
+  (files already saved are skipped). Catches gaps the media-only check cannot —
+  including entirely-missing messages. Behind a confirm, as it is slower and makes
+  many API requests.
+- A clear warning when logging into **Yodel** from outside Japan — Yodel's web
+  service is Japan-only, so a login from another region can't reach its servers.
+  The app now detects this before login and explains how to proceed (connect from
+  Japan and try again) instead of failing silently.
+
+### Fixed
+- Interrupted syncs no longer permanently skip message media — the sync cursor is
+  held behind any message whose media has not been confirmed on disk.
+- API key and login are no longer dropped on app update or reinstall. Credentials
+  are now isolated per entry in the OS keyring (via pysaka 0.4.2), so a routine
+  session refresh can no longer overwrite a stored translation/AI API key.
+- Translation no longer fails with `no_model` when the saved config omits a model;
+  it falls back to the default and self-heals the stored value.
+- The log directory now honors `SAKADESK_DATA_DIR`.
+- **Verify & Fix media no longer overstates completeness.** Media messages whose
+  media has no downloadable source (e.g. expired-media stubs) are now reported as
+  unresolved instead of being silently counted as present, and the "all present"
+  message is scoped to downloaded messages — so the check never claims complete
+  while media is unaccounted for.
+- Uninstall now removes the correct saved credentials and auth data (it targeted
+  stale `pyzaka`/`zakadesk` names before, missing the current `pysaka` entries).
+- **Blog backup now resumes safely after an interruption.** Blog content and
+  images are written atomically, and a blog left partial by a crash/interruption
+  is detected and re-downloaded instead of being skipped as "done".
+- The sync progress window no longer looks stuck after finishing: the
+  "downloading media… do not close" warning now clears on completion, and a Done
+  button lets you dismiss it (it also auto-closes).
+- Settings → AI now opens without waiting on the OS keyring. The key-status read
+  behind `/api/translation/config` is cached in memory (warmed at startup,
+  invalidated on save/clear) instead of being re-read on every open; a brief
+  loading indicator covers the first open after launch.
+
+### Changed
+- Starting **Verify & Fix media** now closes the settings panel so the validation
+  progress and result are in focus.
+- The **Deep re-verify** confirmation now uses an in-app styled dialog matching the
+  rest of the UI, instead of the browser-native `window.confirm` popup.
+- After **Verify & Fix media**, the progress window stays open and shows the
+  results — any media with no available source is listed by **member and date**
+  (with a Done button to dismiss) instead of the panel auto-closing.
+- **Withdrawn (member-canceled) posts** are now hidden from the message list and
+  no longer counted as missing media. Their status is recorded in the synced data
+  on disk but not shown. Existing messages pick this up after a re-sync (which
+  backfills the message `state`); Deep re-verify does a full backfill.
+- **Translation** is no longer marked "Experimental".
+- The translation **target language** in Settings → AI now appears immediately
+  (from the saved value) instead of waiting for the config to load.
+- **Blog backup** wording and progress are clearer: it's called "backup" (not
+  "cache"), the size shows a "Calculating backup size…" indicator, and an active
+  backup shows "Backing up blogs… X of Y".
+
 ## [0.3.0] - 2026-07-01
 
 ### Added

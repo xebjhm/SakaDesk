@@ -24,14 +24,21 @@ from pysaka.credentials import get_token_manager
 
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
-    client_auth_params,
     get_all_services,
     get_service_enum,
-    resolve_auth_mode,
     validate_service,
 )
 
 logger = structlog.get_logger(__name__)
+
+
+def _region_is_blocked(country_code: Optional[str]) -> bool:
+    """Yodel's web service is Japan-only. A known non-JP country is blocked; an
+    unknown country (the geo-IP lookup failed) is NOT blocked — we fail open so a
+    lookup failure never produces a false warning."""
+    if not country_code:
+        return False
+    return country_code.upper() != "JP"
 
 
 class AuthService:
@@ -238,56 +245,6 @@ class AuthService:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
-    async def set_manual_token(self, service: str, refresh_token: str) -> bool:
-        """Bootstrap a mobile-mode session from a user-supplied refresh_token.
-
-        Validates the refresh_token by exchanging it for a fresh access_token; on
-        success the session is persisted in mobile mode, otherwise returns False.
-        The token itself is never logged.
-        """
-        validate_service(service)
-        group = self._get_group(service)
-
-        client = Client(
-            group=group,
-            refresh_token=refresh_token,
-            platform="android",
-        )
-        try:
-            async with aiohttp.ClientSession() as session:
-                ok = await client.refresh_access_token(session)
-        except Exception as e:
-            logger.error(
-                "Manual token validation failed", service=service, error=str(e)
-            )
-            return False
-
-        if not ok or not client.access_token:
-            logger.warning("Manual token rejected by server", service=service)
-            return False
-
-        # Persist the freshly minted access_token + (possibly rotated) refresh_token.
-        # No web cookies in mobile mode.
-        self._save_credentials(
-            service,
-            {
-                "access_token": client.access_token,
-                "refresh_token": client.refresh_token,
-                "cookies": {},
-            },
-        )
-        # A valid token is what makes mobile mode "stick" — activate it for this service.
-        from backend.services.settings_store import update_config
-
-        def _set_mobile(config: dict) -> None:
-            config.setdefault("services", {}).setdefault(service, {})["auth_mode"] = (
-                "mobile"
-            )
-
-        await update_config(_set_mobile)
-        logger.info("Manual mobile token stored", service=service)
-        return True
-
     def _save_credentials(self, service: str, creds: dict):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
@@ -398,27 +355,14 @@ class AuthService:
                 remaining_seconds=round(remaining_seconds),
             )
 
-            # Use proper API-based refresh via Client.refresh_access_token().
-            # Auth mode decides the strategy: web = cookie/browser fallback,
-            # mobile = refresh_token grant (no browser).
-            from backend.services.settings_store import load_config as load_app_config
-
-            app_settings = await load_app_config()
-            stored_mode = (
-                app_settings.get("services", {})
-                .get(service, {})
-                .get("auth_mode", "web")
-            )
-            auth_params = client_auth_params(
-                resolve_auth_mode(stored_mode, token_data),
-                self._session_dir,
-                token_data,
-            )
+            # Proper API-based refresh via Client.refresh_access_token()
+            # using the web request profile (cookie/session refresh with
+            # headless-browser fallback).
             client = Client(
                 group=group,
                 access_token=token,
                 cookies=token_data.get("cookies"),
-                **auth_params,
+                auth_dir=self._session_dir,
             )
 
             async with aiohttp.ClientSession() as session:
@@ -433,7 +377,7 @@ class AuthService:
                     tm.save_session(
                         group.value,
                         new_token,
-                        client.refresh_token,  # persist rotated refresh_token (mobile flow); parity with sync_service
+                        client.refresh_token,  # persist any refresh_token returned; parity with sync_service
                         new_cookies,
                     )
 
@@ -487,3 +431,66 @@ class AuthService:
         except Exception as e:
             logger.error("Failed to load config", service=service, error=str(e))
             return {}
+
+    async def check_geo_availability(self, service: str) -> dict:
+        """Whether a region-restricted service is usable from here. Yodel's web
+        service is Japan-only; Yodel's endpoints don't hard-block by IP in a way
+        we can probe, so we detect the user's country via geo-IP (the desktop
+        backend runs locally, so the lookup reflects the user's own IP) and warn
+        when it is not Japan.
+
+        Returns ``{"service", "restricted", "available", "blocked", "country"}``.
+        Only Yodel is region-locked — every other service returns available with
+        no network call.
+        """
+        validate_service(service)
+        if service != Group.YODEL.value:
+            return {
+                "service": service,
+                "restricted": False,
+                "available": True,
+                "blocked": False,
+                "country": None,
+            }
+
+        country = await self._lookup_country()
+        blocked = _region_is_blocked(country)
+        logger.info("yodel.geo_check", country=country, blocked=blocked)
+        return {
+            "service": service,
+            "restricted": True,
+            "available": not blocked,
+            "blocked": blocked,
+            "country": country,
+        }
+
+    async def _lookup_country(self) -> Optional[str]:
+        """Best-effort ISO country code for this machine's public IP, via a free
+        no-key geo-IP service (with a fallback). None if all lookups fail, so the
+        caller fails open."""
+        providers = [
+            (
+                "http://ip-api.com/json/?fields=status,countryCode",
+                lambda d: d.get("countryCode")
+                if d.get("status") == "success"
+                else None,
+            ),
+            (
+                "https://ipwho.is/",
+                lambda d: d.get("country_code") if d.get("success", True) else None,
+            ),
+        ]
+        timeout = aiohttp.ClientTimeout(total=6)
+        for url, extract in providers:
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.json(content_type=None)
+                        code = extract(data)
+                        if code:
+                            return str(code).upper()
+            except Exception as e:
+                logger.debug("geoip_lookup_failed", url=url, error=str(e))
+        return None

@@ -1,6 +1,8 @@
-from unittest.mock import patch
+import json
+from unittest.mock import AsyncMock, patch
 
 import httpx
+import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -8,6 +10,203 @@ from backend.api.translation import _provider_http_error
 from backend.main import app
 
 client = TestClient(app)
+
+
+class _FakeProvider:
+    """Provider stub whose translate() returns a preset raw string."""
+
+    def __init__(self, raw: str):
+        self._raw = raw
+
+    async def translate(self, prompt, system_instruction=None):
+        return self._raw
+
+
+class TestCodedErrors:
+    """AI errors carry a stable `code` (in addition to `detail`) for the UI."""
+
+    def test_provider_error_mapper_codes(self):
+        from backend.api.errors import ai_provider_error
+        from backend.services.ai_errors import SafetyBlockedError
+
+        def status(code):
+            req = httpx.Request("POST", "https://p.example")
+            return httpx.HTTPStatusError(
+                "x", request=req, response=httpx.Response(code, request=req)
+            )
+
+        assert ai_provider_error(status(429)).code == "rate_limit"
+        assert ai_provider_error(status(401)).code == "invalid_key"
+        assert ai_provider_error(status(403)).code == "invalid_key"
+        assert ai_provider_error(status(404)).code == "model_not_found"
+        assert ai_provider_error(status(503)).code == "unavailable"
+        assert ai_provider_error(httpx.ConnectError("x")).code == "network"
+        assert ai_provider_error(httpx.TimeoutException("x")).code == "timeout"
+        assert ai_provider_error(SafetyBlockedError("x")).code == "safety_blocked"
+        assert ai_provider_error(ValueError("x")).code == "unknown"
+
+    def test_translate_no_provider_returns_code(self):
+        with patch(
+            "backend.services.settings_store.load_config",
+            new=AsyncMock(return_value={}),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "message",
+                    "message_id": 1,
+                    "service": "hinatazaka46",
+                    "member_path": "x/y",
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "no_provider"
+
+    def test_safety_block_surfaces_code(self):
+        from backend.services.ai_errors import SafetyBlockedError
+
+        class _SafetyProvider:
+            async def translate(self, prompt, system_instruction=None):
+                raise SafetyBlockedError("blocked")
+
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=_SafetyProvider()),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "safety_blocked"
+
+
+class TestBlogAlignment:
+    """blog_full re-aligns a JSON map to source order; omissions stay empty."""
+
+    def test_missing_paragraph_stays_empty_not_shifted(self):
+        # 3 source paragraphs; model omits index 1.
+        provider = _FakeProvider(json.dumps({"0": "A-en", "2": "C-en"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A", "B", "C"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Alignment preserved: C-en stays at index 2, not shifted up to index 1.
+        assert body["translations"] == ["A-en", "", "C-en"]
+        assert body["partial"] is True
+
+    def test_all_present_is_not_partial(self):
+        provider = _FakeProvider(json.dumps({"0": "A-en", "1": "B-en"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate",
+                json={
+                    "type": "blog_full",
+                    "service": "hinatazaka46",
+                    "paragraphs": ["A", "B"],
+                    "target_language": "en",
+                },
+            )
+        assert resp.json()["translations"] == ["A-en", "B-en"]
+        assert resp.json()["partial"] is False
+
+
+class TestBatchMissing:
+    """translate-batch reports message IDs the model silently dropped."""
+
+    def test_missing_ids_surfaced(self, tmp_path, monkeypatch):
+        member_rel = "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+        member_dir = tmp_path / member_rel
+        member_dir.mkdir(parents=True)
+        (member_dir / "messages.json").write_text(
+            json.dumps(
+                {
+                    "messages": [
+                        {"id": 1, "content": "おはよう"},
+                        {"id": 2, "content": "こんにちは"},
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
+        # Model returns only id 1; id 2 is silently dropped.
+        provider = _FakeProvider(json.dumps({"1": "morning"}))
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=provider),
+        ):
+            resp = client.post(
+                "/api/translation/translate-batch",
+                json={
+                    "type": "messages",
+                    "message_ids": [1, 2],
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "target_language": "en",
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["translations"] == {"1": "morning"}
+        assert body["missing"] == ["2"]
+
+
+class TestTestConnectionCodes:
+    """test-connection distinguishes a rejected key from an unreachable host."""
+
+    @pytest.mark.parametrize(
+        "status,code",
+        [("auth", "auth"), ("unreachable", "unreachable")],
+    )
+    def test_status_maps_to_code(self, status, code):
+        fake = AsyncMock()
+        fake.check_connection = AsyncMock(return_value=status)
+        with (
+            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._instantiate_provider", return_value=fake),
+        ):
+            resp = client.post(
+                "/api/translation/test-connection",
+                json={"provider": "gemini", "model": "gemini-3.1-flash-lite"},
+            )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert body["code"] == code
+
+    def test_ok_status(self):
+        fake = AsyncMock()
+        fake.check_connection = AsyncMock(return_value="ok")
+        with (
+            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._instantiate_provider", return_value=fake),
+        ):
+            resp = client.post(
+                "/api/translation/test-connection",
+                json={"provider": "gemini", "model": "gemini-3.1-flash-lite"},
+            )
+        assert resp.json() == {"ok": True}
 
 
 def _status_error(code: int) -> httpx.HTTPStatusError:

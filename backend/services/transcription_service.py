@@ -14,9 +14,11 @@ import structlog
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 
 import httpx
+
+from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
 
 logger = structlog.get_logger(__name__)
 
@@ -74,7 +76,7 @@ class TranscriptionSegment:
 @dataclass
 class TranscriptionResult:
     message_id: int
-    media_type: str  # "voice" or "video"
+    media_type: Literal["voice", "video"]
     language: str
     model: str
     duration_seconds: float
@@ -228,29 +230,42 @@ class GeminiTranscriptionProvider:
                 },
             }
 
+            logger.debug(
+                "transcription.gemini_request",
+                model=self._model,
+                audio_bytes=len(audio_bytes),
+                mime_type=mime_type,
+            )
             resp = await client.post(
                 url,
                 headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
+            if resp.status_code != 200:
+                logger.error(
+                    "transcription.gemini_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
 
         # Check for safety filter blocks
         candidates = data.get("candidates", [])
         if not candidates:
-            raise RuntimeError("Gemini returned no candidates")
+            raise EmptyOutputError("Gemini returned no candidates")
 
         candidate = candidates[0]
         finish_reason = candidate.get("finishReason", "")
         if finish_reason == "SAFETY":
             safety_ratings = candidate.get("safetyRatings", [])
             blocked_cats = [r["category"] for r in safety_ratings if r.get("blocked")]
-            raise RuntimeError(
+            raise SafetyBlockedError(
                 f"Content blocked by safety filter: {', '.join(blocked_cats) or 'unknown'}"
             )
         if "content" not in candidate or not candidate["content"].get("parts"):
-            raise RuntimeError(
+            raise EmptyOutputError(
                 f"Gemini returned no content (finishReason: {finish_reason})"
             )
 

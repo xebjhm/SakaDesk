@@ -1,6 +1,7 @@
 import React from 'react';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, Loader2, Image as ImageIcon, Video, Mic } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
 import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
@@ -9,9 +10,10 @@ import type { SequentialSyncInfo } from '../hooks/useSync';
 interface SyncModalProps {
     syncProgress: SyncProgress;
     sequentialSyncInfo?: SequentialSyncInfo | null;
+    onClose?: () => void;
 }
 
-export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo }) => {
+export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose }) => {
     const { t } = useTranslation();
 
     const getPhaseName = () => getSyncPhaseName(syncProgress, t);
@@ -69,6 +71,43 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
 
                 {/* Content */}
                 <div className="p-6 space-y-5">
+                    {syncProgress.state === 'complete' && syncProgress.result && (
+                        <div className="text-xs text-gray-600 space-y-2">
+                            <p>
+                                {syncProgress.result.missing === 0 && (syncProgress.result.unresolved ?? 0) === 0
+                                    ? t('settings.verifyNoGaps')
+                                    : t('settings.verifySummary', {
+                                          checked: syncProgress.result.checked,
+                                          repaired: syncProgress.result.repaired,
+                                          stillMissing: syncProgress.result.still_missing,
+                                      })}
+                            </p>
+                            {(syncProgress.result.unresolved ?? 0) > 0 && (
+                                <div className="rounded-xl border border-amber-100 overflow-hidden">
+                                    <div className="px-3 py-2 bg-amber-50 font-medium text-amber-700">
+                                        {t('settings.verifyUnresolved', { count: syncProgress.result.unresolved })}
+                                    </div>
+                                    {(syncProgress.result.unresolved_items?.length ?? 0) > 0 && (
+                                        <div className="max-h-44 overflow-y-auto divide-y divide-gray-100">
+                                            {syncProgress.result.unresolved_items!.map((it, i) => {
+                                                const Icon = it.media_type === 'video' ? Video
+                                                    : it.media_type === 'voice' ? Mic : ImageIcon;
+                                                return (
+                                                    <div key={i} className="flex items-center gap-2.5 px-3 py-2">
+                                                        <Icon className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                                                        <span className="flex-1 truncate text-gray-700">{it.member}</span>
+                                                        <span className="flex-shrink-0 tabular-nums text-gray-400">
+                                                            {it.timestamp ? formatDateTime(it.timestamp) : ''}
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     {/* Progress Bar */}
                     <div>
                         <div className="flex justify-between text-sm mb-2">
@@ -118,26 +157,31 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         </div>
                     </div>
 
-                    {/* Current Item Detail or Warning */}
-                    <div className={`rounded-xl px-4 py-3 flex items-center ${syncProgress.phase_number === 3 ? 'bg-amber-50 border border-amber-100 justify-center' : 'bg-blue-50'
-                        }`}>
-                        {syncProgress.phase_number === 3 ? (
-                            <div className="flex items-center gap-2 text-amber-700">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="text-sm font-medium">
-                                    {t('sync.downloadingMedia')}
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                                <span className="text-sm text-gray-700 font-medium truncate">
-                                    {syncProgress.detail || t('sync.processing')}
-                                    {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
-                                </span>
-                            </div>
-                        )}
-                    </div>
+                    {/* Current Item Detail or Warning — only while actively running.
+                        On completion the backend leaves phase_number at 3; without this
+                        guard the "downloading media... do not close" warning (and the
+                        spinner) would persist and make a finished sync look stuck. */}
+                    {syncProgress.state === 'running' && (
+                        <div className={`rounded-xl px-4 py-3 flex items-center ${syncProgress.phase_number === 3 ? 'bg-amber-50 border border-amber-100 justify-center' : 'bg-blue-50'
+                            }`}>
+                            {syncProgress.phase_number === 3 ? (
+                                <div className="flex items-center gap-2 text-amber-700">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span className="text-sm font-medium">
+                                        {t('sync.downloadingMedia')}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                    <span className="text-sm text-gray-700 font-medium truncate">
+                                        {syncProgress.detail || t('sync.processing')}
+                                        {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Phase Dots */}
                     <div className="flex justify-center gap-3 pt-2">
@@ -167,6 +211,17 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                             );
                         })}
                     </div>
+
+                    {(syncProgress.state === 'complete' || syncProgress.state === 'error') && onClose && (
+                        <div className="flex justify-center pt-1">
+                            <button
+                                onClick={onClose}
+                                className="px-5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                            >
+                                {t('common.done')}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -69,8 +69,10 @@ function App() {
         syncProgress,
         syncProgressByService,
         showSyncModal,
+        setShowSyncModal,
         syncVersion,
         startSync,
+        verifyAndFix,
         startSequentialSync,
         sequentialSyncInfo,
         hasStartedSyncRef,
@@ -235,7 +237,7 @@ function App() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} />}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} />}
 
                 {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
                 {loginCarouselService && (
@@ -312,6 +314,9 @@ function App() {
                         setOutputDirInput={setOutputDirInput}
                         onSaveSettings={saveSettings}
                         onClose={() => setShowSettingsModal(false)}
+                        activeService={activeService ?? ''}
+                        onVerifyAndFix={verifyAndFix}
+                        onDeepResync={(service) => startSync(true, service, true)}
                     />
                 )}
 

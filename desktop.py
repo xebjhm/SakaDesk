@@ -34,6 +34,32 @@ SERVER_STARTUP_TIMEOUT = 10  # seconds
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
+# Kept alive for the whole process so the mutex persists until the process exits.
+_instance_mutex_handle: int | None = None
+INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
+
+
+def _acquire_instance_mutex() -> None:
+    """Create a named mutex the Windows installer keys off (Inno ``AppMutex``).
+
+    Windows keeps the mutex alive until every handle is closed — i.e. until this
+    process fully terminates (``os._exit`` closes all handles). The installer
+    waits for the mutex to disappear before replacing files in ``_internal``, so
+    it never tries to overwrite a still-loaded DLL (e.g. ``libffi-8.dll``) while
+    the app is mid-shutdown. Child workers are killed before ``os._exit`` (see
+    ``main``), so the mutex releasing means the whole process tree is gone.
+    """
+    global _instance_mutex_handle
+    if platform.system() != "Windows":
+        return
+    try:
+        # Session-local name — app and installer run as the same user/session.
+        _instance_mutex_handle = ctypes.windll.kernel32.CreateMutexW(  # type: ignore[attr-defined]
+            None, False, INSTANCE_MUTEX_NAME
+        )
+    except Exception:
+        logger.warning("Failed to create instance mutex", exc_info=True)
+
 
 def _kill_children(children: list) -> None:
     """Terminate then kill a list of multiprocessing.Process objects."""
@@ -320,6 +346,10 @@ def _save_window_geometry(geometry: dict) -> None:
 
 def main() -> None:
     try:
+        # Hold a named mutex so the upgrade installer can wait for this process
+        # to fully exit before replacing files it still has loaded.
+        _acquire_instance_mutex()
+
         # Create server socket with SO_REUSEADDR for stable port across restarts
         port, sock = create_server_socket()
 

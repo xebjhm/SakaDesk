@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, RefreshCw, AlertTriangle, SlidersHorizontal, Sparkles, KeyRound, Download } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
+import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { SERVICES } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -13,15 +13,17 @@ interface SettingsModalProps {
     setOutputDirInput: (dir: string) => void;
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     onClose: () => void;
+    activeService: string;
+    onVerifyAndFix: (service: string) => void;
+    onDeepResync: (service: string) => void;
 }
 
-type SettingsTab = 'general' | 'sync' | 'ai' | 'account' | 'updates';
+type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
 const SETTINGS_TABS: { id: SettingsTab; labelKey: string; Icon: typeof SlidersHorizontal }[] = [
     { id: 'general', labelKey: 'settings.tabGeneral', Icon: SlidersHorizontal },
     { id: 'sync', labelKey: 'settings.tabSync', Icon: RefreshCw },
     { id: 'ai', labelKey: 'settings.tabAi', Icon: Sparkles },
-    { id: 'account', labelKey: 'settings.tabAccount', Icon: KeyRound },
     { id: 'updates', labelKey: 'settings.tabUpdates', Icon: Download },
 ];
 
@@ -31,6 +33,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setOutputDirInput,
     onSaveSettings,
     onClose,
+    activeService,
+    onVerifyAndFix,
+    onDeepResync,
 }) => {
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
@@ -39,7 +44,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [showDeepConfirm, setShowDeepConfirm] = useState(false);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
+    const [blogSizeLoading, setBlogSizeLoading] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
@@ -61,6 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     const loadBlogCacheSize = async () => {
+        setBlogSizeLoading(true);
         try {
             let totalBytes = 0;
             for (const service of selectedServices) {
@@ -73,6 +81,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
         } catch {
             setBlogCacheSize(null);
+        } finally {
+            setBlogSizeLoading(false);
         }
     };
 
@@ -320,9 +330,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <span className="text-xs text-blue-500 flex items-center gap-1">
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                         {blogBackupStats
-                                            ? `${blogBackupStats.cached}/${blogBackupStats.total}`
-                                            : ''
-                                        }
+                                            ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
+                                            : t('settings.blogBackupWorking')}
                                     </span>
                                 )}
                             </label>
@@ -348,8 +357,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </p>
                         {blogBackupEnabled && (
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                                <div className="text-xs text-gray-500">
-                                    {blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                    {blogSizeLoading
+                                        ? <><Loader2 className="w-3 h-3 animate-spin" />{t('settings.blogBackupCalculating')}</>
+                                        : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
                                 <button
                                     onClick={handleCleanBlogCache}
@@ -361,6 +372,63 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </div>
                         )}
                     </div>
+
+                    {/* Data completeness: verify & fix media */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.verifyFixMedia')}
+                            </label>
+                            <button
+                                onClick={() => {
+                                    // Close settings so the verify progress/result
+                                    // (shown in the sync modal) is in focus.
+                                    onVerifyAndFix(activeService);
+                                    onClose();
+                                }}
+                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                            >
+                                {t('settings.verifyFixButton')}
+                            </button>
+                        </div>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.verifyFixMediaDesc')}
+                        </p>
+                    </div>
+
+                    {/* Deep re-verify: full re-sync (re-paginates every member from
+                        scratch, skipping already-downloaded assets). Catches gaps the
+                        media-only check can't (e.g. entirely-missing messages). */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.deepResync')}
+                            </label>
+                            <button
+                                onClick={() => setShowDeepConfirm(true)}
+                                className="text-xs font-medium text-amber-600 hover:text-amber-800"
+                            >
+                                {t('settings.deepResyncButton')}
+                            </button>
+                        </div>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.deepResyncDesc')}
+                        </p>
+                    </div>
+
+                    <ConfirmDialog
+                        open={showDeepConfirm}
+                        title={t('settings.deepResync')}
+                        message={t('settings.deepResyncConfirm')}
+                        confirmLabel={t('settings.deepResyncButton')}
+                        variant="warning"
+                        onConfirm={() => {
+                            setShowDeepConfirm(false);
+                            onDeepResync(activeService);
+                            onClose();
+                        }}
+                        onCancel={() => setShowDeepConfirm(false)}
+                    />
 
                     {/* Sync read status to phone (opt-in) */}
                     <div>
@@ -386,8 +454,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </>)}
 
                     {activeTab === 'ai' && <AiTab />}
-
-                    {activeTab === 'account' && <AuthModeSection />}
 
                     {activeTab === 'updates' && (
                         <UpdatesSection
@@ -482,194 +548,17 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
     );
 }
 
-
-function AuthModeSection() {
-    const { t } = useTranslation();
-    const [modes, setModes] = useState<Record<string, 'web' | 'mobile'>>({});
-    const [visible, setVisible] = useState<typeof SERVICES>([]);
-    const [loaded, setLoaded] = useState(false);
-
-    const load = useCallback(async () => {
-        // Only services you're signed into AND that support mobile (excludes Yodel,
-        // which has no mobile host).
-        let connected: Record<string, boolean> = {};
-        try {
-            const res = await fetch('/api/auth/status');
-            const data = await res.json();
-            connected = Object.fromEntries(
-                Object.entries(data.services ?? {}).map(
-                    ([k, v]) => [k, !!(v as { authenticated?: boolean })?.authenticated] as const
-                )
-            );
-        } catch { /* ignore */ }
-        const vis = SERVICES.filter((s) => s.supportsMobile && connected[s.id]);
-        setVisible(vis);
-        const entries = await Promise.all(
-            vis.map(async (s) => {
-                try {
-                    const res = await fetch(`/api/settings/service/${encodeURIComponent(s.id)}`);
-                    const d = await res.json();
-                    return [s.id, d.auth_mode === 'mobile' ? 'mobile' : 'web'] as const;
-                } catch {
-                    return [s.id, 'web'] as const;
-                }
-            })
-        );
-        setModes(Object.fromEntries(entries));
-        setLoaded(true);
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
-
-    // Switch a service to web: fetch its current settings and re-post with auth_mode=web
-    // (merge so we don't clobber sync/blog fields).
-    const setWeb = async (service: string) => {
-        try {
-            const res = await fetch(`/api/settings/service/${encodeURIComponent(service)}`);
-            const current = await res.json();
-            const saved = await fetch(`/api/settings/service/${encodeURIComponent(service)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...current, auth_mode: 'web' }),
-            });
-            const data = await saved.json();
-            setModes((m) => ({ ...m, [service]: data.auth_mode === 'mobile' ? 'mobile' : 'web' }));
-        } catch { /* ignore */ }
-    };
-
-    return (
-        <div className="space-y-3">
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('settings.authMode')}
-                </label>
-                <p className="max-w-md text-xs leading-relaxed text-gray-500">
-                    {t('settings.authModeIntro')}
-                </p>
-            </div>
-            {!loaded ? null : visible.length === 0 ? (
-                <p className="max-w-md text-xs text-gray-400">{t('settings.authModeNoAccounts')}</p>
-            ) : (
-                <div className="max-w-md divide-y divide-gray-100 rounded-lg border border-gray-200">
-                    {visible.map((s) => (
-                        <ServiceAuthRow
-                            key={s.id}
-                            service={s}
-                            mode={modes[s.id] ?? 'web'}
-                            onSetWeb={() => setWeb(s.id)}
-                            onMobileActivated={load}
-                        />
-                    ))}
-                </div>
-            )}
-        </div>
-    );
+// Session cache of the AI config so reopening the panel shows the saved values
+// instantly instead of flashing blank while /api/translation/config (which reads
+// the OS keyring) round-trips. Revalidated in the background on every mount.
+interface AiConfigCache {
+    provider: string | null;
+    model: string | null;
+    hasApiKey: boolean;
+    apiKeyMasked: string | null;
+    targetLang: string | null;
 }
-
-
-function ServiceAuthRow({ service, mode, onSetWeb, onMobileActivated }: {
-    service: { id: string; displayName: string };
-    mode: 'web' | 'mobile';
-    onSetWeb: () => void;
-    onMobileActivated: () => void;
-}) {
-    const { t } = useTranslation();
-    const [expanded, setExpanded] = useState(false);
-    const isMobile = mode === 'mobile';
-    const showToken = isMobile || expanded;
-
-    return (
-        <div className="p-3">
-            <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-800">{service.displayName}</span>
-                <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
-                    {(['web', 'mobile'] as const).map((m) => (
-                        <button
-                            key={m}
-                            onClick={() => { if (m === 'web') { setExpanded(false); onSetWeb(); } else { setExpanded(true); } }}
-                            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-                                (m === 'mobile') === isMobile
-                                    ? 'bg-white shadow text-gray-800 font-medium'
-                                    : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            {t(m === 'web' ? 'settings.authModeWeb' : 'settings.authModeMobile')}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            {showToken && (
-                <div className="mt-2.5 space-y-2">
-                    <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5">
-                        <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-                        <p className="text-xs leading-relaxed text-amber-700">{t('settings.authModeMobileWarning')}</p>
-                    </div>
-                    <p className="text-xs leading-relaxed text-gray-500">{t('settings.manualTokenStorageNote')}</p>
-                    <ServiceTokenInput
-                        service={service.id}
-                        onSaved={() => { setExpanded(false); onMobileActivated(); }}
-                    />
-                </div>
-            )}
-        </div>
-    );
-}
-
-
-function ServiceTokenInput({ service, onSaved }: { service: string; onSaved: () => void }) {
-    const { t } = useTranslation();
-    const [token, setToken] = useState('');
-    const [saving, setSaving] = useState(false);
-    const [error, setError] = useState(false);
-
-    const handleSave = async () => {
-        if (!token.trim()) return;
-        setSaving(true);
-        setError(false);
-        try {
-            const res = await fetch('/api/auth/manual-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service, refresh_token: token.trim() }),
-            });
-            if (res.ok) {
-                setToken('');
-                onSaved();
-            } else {
-                setError(true);
-            }
-        } catch {
-            setError(true);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-    return (
-        <div className="mt-2.5 space-y-1.5">
-            <div className="flex items-center gap-2">
-                <input
-                    type="password"
-                    value={token}
-                    onChange={(e) => { setToken(e.target.value); setError(false); }}
-                    placeholder={t('settings.manualTokenPlaceholder')}
-                    className="flex-1 rounded-md border border-gray-200 px-2 py-1.5 text-sm"
-                    autoComplete="off"
-                />
-                <button
-                    onClick={handleSave}
-                    disabled={saving || !token.trim()}
-                    className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-sm text-white disabled:opacity-50 shrink-0"
-                >
-                    {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    {saving ? t('settings.manualTokenSaving') : t('settings.manualTokenSave')}
-                </button>
-            </div>
-            {error && <p className="text-xs text-red-600">{t('settings.manualTokenError')}</p>}
-        </div>
-    );
-}
-
+let aiConfigCache: AiConfigCache | null = null;
 
 function AiTab() {
     const { t } = useTranslation();
@@ -681,13 +570,21 @@ function AiTab() {
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<string | null>(null);
 
-    // Own state loaded from /api/translation/config (not from appSettings)
-    const [provider, setProvider] = useState<string | null>(null);
-    const [model, setModel] = useState<string | null>(null);
+    // Own state loaded from /api/translation/config (not from appSettings).
+    // Seed from the session cache so a reopen renders instantly, then revalidate.
+    const [provider, setProvider] = useState<string | null>(() => aiConfigCache?.provider ?? null);
+    const [model, setModel] = useState<string | null>(() => aiConfigCache?.model ?? null);
     const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
-    const [hasApiKey, setHasApiKey] = useState(false);    // Whether a key is stored in keyring
-    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(null);  // e.g. "AIza...xQ"
-    const [targetLang, setTargetLang] = useState<string | null>(null);
+    const [hasApiKey, setHasApiKey] = useState(() => aiConfigCache?.hasApiKey ?? false);  // key stored in keyring
+    const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(() => aiConfigCache?.apiKeyMasked ?? null);  // "AIza...xQ"
+    // Seed from the session cache, else the persisted store value (both on disk),
+    // so the target language shows immediately instead of waiting on /config.
+    const [targetLang, setTargetLang] = useState<string | null>(
+        () => aiConfigCache?.targetLang ?? useAppStore.getState().translationTargetLanguage ?? null
+    );
+    // Only "loading" when there is nothing cached to show yet (first open / after
+    // a restart). Reopens seed from aiConfigCache and render instantly.
+    const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -698,11 +595,19 @@ function AiTab() {
                 setHasApiKey(data.has_api_key ?? false);
                 setApiKeyMasked(data.api_key_masked ?? null);
                 setTargetLang(data.target_language ?? null);
+                aiConfigCache = {
+                    provider: data.provider ?? null,
+                    model: data.model ?? null,
+                    hasApiKey: data.has_api_key ?? false,
+                    apiKeyMasked: data.api_key_masked ?? null,
+                    targetLang: data.target_language ?? null,
+                };
                 if (data.target_language) {
                     setTranslationTargetLanguage(data.target_language);
                 }
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => setConfigLoading(false));
     }, [setTranslationTargetLanguage]);
 
     // Providers available in the UI. Backend supports OpenAI too (OpenAIProvider)
@@ -748,12 +653,21 @@ function AiTab() {
                 body: JSON.stringify({ provider, model, api_key: apiKeyInput || undefined }),
             });
             const data = await res.json();
-            setTestResult(data.ok
-                ? t('translation.settings.testSuccess')
-                : t('translation.settings.testFailed') + (data.detail ? `: ${data.detail}` : '')
-            );
+            if (data.ok) {
+                setTestResult(t('translation.settings.testSuccess'));
+            } else {
+                // Map the backend's reason code to a localized message instead of
+                // showing its English `detail`.
+                const byCode: Record<string, string> = {
+                    auth: 'translation.settings.testErrorAuth',
+                    unreachable: 'translation.settings.testErrorUnreachable',
+                    no_key: 'translation.settings.testErrorNoKey',
+                };
+                const key = (data.code && byCode[data.code]) || 'translation.settings.testFailed';
+                setTestResult(t(key));
+            }
         } catch {
-            setTestResult(t('translation.settings.testFailed'));
+            setTestResult(t('translation.settings.testErrorUnreachable'));
         } finally {
             setTesting(false);
         }
@@ -771,6 +685,7 @@ function AiTab() {
         setHasApiKey(false);
         setApiKeyMasked(null);
         setTestResult(null);
+        if (aiConfigCache) { aiConfigCache.hasApiKey = false; aiConfigCache.apiKeyMasked = null; }
     };
 
     const saveConfig = (updates: { provider?: string | null; model?: string | null; api_key?: string | null; target_language?: string | null }) => {
@@ -789,6 +704,15 @@ function AiTab() {
             setTargetLang(updates.target_language);
             setTranslationTargetLanguage(updates.target_language);
         }
+
+        // Keep the session cache in step so a reopen reflects the change instantly.
+        aiConfigCache = {
+            provider: newProvider,
+            model: newModel,
+            hasApiKey: updates.api_key ? true : hasApiKey,
+            apiKeyMasked: aiConfigCache?.apiKeyMasked ?? null,  // refreshed by the next fetch
+            targetLang: newTargetLang,
+        };
 
         // Persist to backend (API key stored in keyring, not settings.json)
         // Only send api_key if user typed a new one
@@ -839,9 +763,6 @@ function AiTab() {
                 <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                         {t('translation.settings.title')}
-                        <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
-                            {t('translation.settings.experimental')}
-                        </span>
                     </label>
                     <button
                         onClick={() => setTranslationEnabled(!translationEnabled)}
@@ -885,6 +806,12 @@ function AiTab() {
             {showProvider && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                     <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    {configLoading && (
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {t('common.loading')}
+                        </div>
+                    )}
                     {/* Provider */}
                     <div>
                         <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>

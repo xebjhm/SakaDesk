@@ -7,14 +7,14 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 
-import httpx
 import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.settings_store import load_config, update_config
 from backend.services.service_utils import validate_service, get_service_display_name
 from pysaka.credentials import get_token_manager
@@ -57,10 +57,13 @@ DEFAULT_GEMINI_MODEL = GEMINI_MODELS[0]["id"]
 
 
 class ConfigureRequest(BaseModel):
-    provider: Optional[str]
-    model: Optional[str]
-    api_key: Optional[str]
-    target_language: Optional[str]
+    # All optional/omittable; the endpoint does a full replace, writing None for
+    # anything not sent (defaults make that contract explicit rather than
+    # "required-but-nullable", which is what bare Optional means in Pydantic v2).
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    api_key: Optional[str] = None
+    target_language: Optional[str] = None
 
 
 class TestConnectionRequest(BaseModel):
@@ -70,7 +73,7 @@ class TestConnectionRequest(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    type: str  # "message" or "blog_full"
+    type: Literal["message", "blog_full"]
     message_id: Optional[int] = None
     service: str
     member_path: Optional[str] = None
@@ -81,7 +84,7 @@ class TranslateRequest(BaseModel):
 
 
 class TranslateBatchRequest(BaseModel):
-    type: str  # "messages"
+    type: Literal["messages"]
     message_ids: list[int]
     service: str
     member_path: str
@@ -98,6 +101,7 @@ def _save_api_key(api_key: str) -> None:
     """Store translation API key in the OS credential manager (WCM/keyring)."""
     tm = get_token_manager()
     tm.store.save(_API_KEY_CREDENTIAL_GROUP, {"api_key": api_key})
+    _invalidate_key_status_cache()
 
 
 def _load_api_key() -> Optional[str]:
@@ -113,6 +117,44 @@ def _delete_api_key() -> None:
     """Delete translation API key from the OS credential manager."""
     tm = get_token_manager()
     tm.store.delete(_API_KEY_CREDENTIAL_GROUP)
+    _invalidate_key_status_cache()
+
+
+# In-memory cache of the keyring-derived key status (has_key, masked) so GET
+# /config doesn't pay the slow OS keyring (WCM) read on every AI-tab open. It is
+# populated on first read (and warmed at startup) and invalidated whenever the key
+# is saved or cleared. ``None`` means "not cached yet".
+_key_status_cache: Optional[tuple[bool, Optional[str]]] = None
+
+
+def _mask_api_key(api_key: Optional[str]) -> Optional[str]:
+    if not api_key:
+        return None
+    return f"{api_key[:4]}...{api_key[-2:]}" if len(api_key) > 8 else "****"
+
+
+def _load_key_status() -> tuple[bool, Optional[str]]:
+    """``(has_api_key, masked)`` with a read-through in-memory cache over the slow
+    OS keyring read. Safe to run in a worker thread."""
+    global _key_status_cache
+    if _key_status_cache is None:
+        api_key = _load_api_key()
+        _key_status_cache = (api_key is not None, _mask_api_key(api_key))
+    return _key_status_cache
+
+
+def _invalidate_key_status_cache() -> None:
+    global _key_status_cache
+    _key_status_cache = None
+
+
+def warm_key_status_cache() -> None:
+    """Prime the key-status cache (called at startup) so the first Settings -> AI
+    open is instant instead of paying the keyring read then."""
+    try:
+        _load_key_status()
+    except Exception:
+        logger.debug("translation.key_status_warm_failed", exc_info=True)
 
 
 _PLACEHOLDER_RE = re.compile(r"%%%|％％％")
@@ -130,40 +172,12 @@ def _replace_token_with_nickname(text: str, nickname: str) -> str:
 
 
 def _provider_http_error(exc: Exception) -> HTTPException:
-    """Map a provider/transport exception to an HTTPException.
+    """Map a provider/transport exception to a coded HTTPException.
 
-    Provider-agnostic (works for any LLM backend, not just Gemini) and never
-    leaks the raw exception text to the client — details go to the logs instead.
+    Delegates to the shared AI error mapper so translation and transcription
+    surface the same stable ``code`` vocabulary to the UI.
     """
-    if isinstance(exc, httpx.HTTPStatusError):
-        status = exc.response.status_code
-        if status == 429:
-            return HTTPException(
-                status_code=429,
-                detail="Rate limit reached. Please wait a moment and try again.",
-            )
-        if status == 503:
-            return HTTPException(
-                status_code=503,
-                detail="Translation service is temporarily unavailable. Please try again later.",
-            )
-        return HTTPException(
-            status_code=502,
-            detail=f"Translation provider error ({status}). Please try again.",
-        )
-    if isinstance(exc, httpx.ConnectError):
-        return HTTPException(
-            status_code=503,
-            detail="Cannot reach the translation provider. Check your internet connection.",
-        )
-    if isinstance(exc, httpx.TimeoutException):
-        return HTTPException(
-            status_code=504,
-            detail="The translation provider timed out. Please try again.",
-        )
-    return HTTPException(
-        status_code=500, detail="Translation failed. Please try again."
-    )
+    return ai_provider_error(exc)
 
 
 def _instantiate_provider(
@@ -175,8 +189,8 @@ def _instantiate_provider(
     elif provider_name == "openai":
         return OpenAIProvider(api_key=api_key, model=model)
     else:
-        raise HTTPException(
-            status_code=400, detail=f"Unknown provider: {provider_name}"
+        raise CodedHTTPException(
+            400, "unknown_provider", f"Unknown provider: {provider_name}"
         )
 
 
@@ -185,25 +199,22 @@ async def _get_provider_from_config() -> TranslationProvider:
     config = await load_config()
     provider_name = config.get("translation_provider")
     model = config.get("translation_model")
-    # Reset stale model to default
-    if model and model not in _valid_model_ids():
+    # Default a missing model and repair a stale/invalid one to the current
+    # default. A partial /configure full-replaces settings and can leave
+    # translation_model=None (or a preview-suffix rename can make it stale);
+    # without this, translate would hard-fail with `no_model` even though the
+    # provider and API key are configured.
+    if not model or model not in _valid_model_ids():
         model = DEFAULT_GEMINI_MODEL
     api_key = _load_api_key()
 
     if not provider_name:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation provider configured. Please set a provider in settings.",
+        raise CodedHTTPException(
+            400, "no_provider", "No translation provider configured."
         )
     if not api_key:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation API key configured. Please set an API key in settings.",
-        )
-    if not model:
-        raise HTTPException(
-            status_code=400,
-            detail="No translation model configured. Please set a model in settings.",
+        raise CodedHTTPException(
+            400, "no_api_key", "No translation API key configured."
         )
 
     return _instantiate_provider(provider_name, model, api_key)
@@ -257,11 +268,13 @@ async def get_config():
     """
     config = await load_config()
 
-    # Auto-fix stale model names (e.g., preview suffix changes)
+    # Backfill a missing model and auto-fix stale names (e.g. preview suffix
+    # changes). A partial /configure can leave translation_model=None; healing it
+    # here means the settings UI shows a real model and stops re-persisting null.
     stored_model = config.get("translation_model")
-    if stored_model and stored_model not in _valid_model_ids():
+    if not stored_model or stored_model not in _valid_model_ids():
         logger.info(
-            "Resetting unknown model to default",
+            "translation.config_model_defaulted",
             old=stored_model,
             new=DEFAULT_GEMINI_MODEL,
         )
@@ -272,18 +285,15 @@ async def get_config():
 
         await update_config(_fix)
 
-    api_key = _load_api_key()
-    masked_key = None
-    if api_key:
-        if len(api_key) > 8:
-            masked_key = api_key[:4] + "..." + api_key[-2:]
-        else:
-            masked_key = "****"
+    # Key status comes from a read-through cache over the OS keyring read, which
+    # can take hundreds of ms on Windows (WCM). Offloaded to a thread so the cold
+    # (uncached) read never stalls the event loop; warm reads return instantly.
+    has_key, masked_key = await asyncio.to_thread(_load_key_status)
     return {
         "provider": config.get("translation_provider"),
         "model": stored_model,
         "api_key_masked": masked_key,
-        "has_api_key": api_key is not None,
+        "has_api_key": has_key,
         "target_language": config.get("translation_target_language"),
     }
 
@@ -341,12 +351,28 @@ async def test_connection(request: TestConnectionRequest):
     """Test if the API key is valid by pinging the provider."""
     api_key = request.api_key or _load_api_key()
     if not api_key:
-        return {"ok": False, "detail": "No API key provided or stored."}
+        return {
+            "ok": False,
+            "code": "no_key",
+            "detail": "No API key provided or stored.",
+        }
     provider = _instantiate_provider(request.provider, request.model, api_key)
-    available = await provider.is_available()
-    if not available:
-        return {"ok": False, "detail": "Provider is not reachable with the given key."}
-    return {"ok": True}
+    status = await provider.check_connection()
+    if status == "ok":
+        return {"ok": True}
+    if status == "auth":
+        # Distinguish a rejected key from a network failure so the user fixes the
+        # right thing instead of always being told the key is bad.
+        return {
+            "ok": False,
+            "code": "auth",
+            "detail": "The API key was rejected. Check that it is correct.",
+        }
+    return {
+        "ok": False,
+        "code": "unreachable",
+        "detail": "Could not reach the provider. Check your internet connection.",
+    }
 
 
 @router.post("/translate")
@@ -474,19 +500,36 @@ async def translate(request: TranslateRequest):
             logger.error("Blog full translation failed", error=str(e))
             raise _provider_http_error(e) from e
 
-        # Split by the ===PARAGRAPH=== delimiter, dropping empties
-        translated_paragraphs = [
-            p.strip() for p in raw.strip().split("===PARAGRAPH===") if p.strip()
+        # Parse the JSON map (paragraph index -> translation) and re-align to the
+        # source order. A paragraph the model merged/omitted stays empty instead of
+        # shifting every later translation under the wrong source paragraph.
+        cleaned = _strip_markdown_fences(raw)
+        try:
+            translated_map: dict[str, str] = json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            logger.error(
+                "Failed to parse blog translation JSON", error=str(e), raw=raw[:200]
+            )
+            raise CodedHTTPException(
+                502,
+                "bad_response",
+                "Provider returned invalid JSON for blog translation",
+            )
+
+        aligned = [
+            str(translated_map.get(str(i), "")).strip()
+            for i in range(len(request.paragraphs))
         ]
+        missing = sum(1 for t in aligned if not t)
         logger.info(
             "Blog translated",
             original_count=len(request.paragraphs),
-            translated_count=len(translated_paragraphs),
+            missing=missing,
         )
         return {
             "ok": True,
-            "translations": translated_paragraphs,
-            "partial": len(translated_paragraphs) != len(request.paragraphs),
+            "translations": aligned,
+            "partial": missing > 0,
         }
 
     else:
@@ -561,9 +604,18 @@ async def translate_batch(request: TranslateBatchRequest):
             error=str(e),
             raw=raw_response[:200],
         )
-        raise HTTPException(
-            status_code=502,
-            detail="Provider returned invalid JSON for batch translation",
+        raise CodedHTTPException(
+            502, "bad_response", "Provider returned invalid JSON for batch translation"
+        )
+
+    # Surface any requested messages the model silently dropped, rather than
+    # returning "success" while some messages stay quietly untranslated.
+    missing = sorted(set(texts_to_translate) - set(translations))
+    if missing:
+        logger.warning(
+            "Batch translation omitted requested messages",
+            missing_ids=missing,
+            missing_count=len(missing),
         )
 
     logger.info(
@@ -571,4 +623,4 @@ async def translate_batch(request: TranslateBatchRequest):
         count=len(translations),
         target_language=request.target_language,
     )
-    return {"ok": True, "translations": translations}
+    return {"ok": True, "translations": translations, "missing": missing}

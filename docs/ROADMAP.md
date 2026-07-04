@@ -27,7 +27,7 @@ Completed items have been archived — see git history for details.
 | **Audio/Video Transcription** (was P3.6) | Implemented via **Gemini API** (structured output → timestamps/segments), not the originally-researched local whisper. Backend `transcription_service.py` + `/api/transcription`; frontend `TranscribeButton`/`TranscriptPanel`/`SubtitleOverlay`; transcripts are searchable. Background job-queue intentionally deferred (see P4.8). |
 | **Translation** (new, was untracked) | DeepL-based. Backend `translation_service.py` + `/api/translate`; unified translate button + immersive blog translation. |
 | **Clipboard Copy** (new, was untracked) | Ctrl+C to copy media (photo/video/voice) from the media viewer. |
-| **Mobile Auth Mode** (part of P2.3) | pysaka mobile request profile + `refresh_token` refresh; SakaDesk `auth_mode` web/mobile toggle. Merged to pysaka `dev` 2026-06-28. ⚠️ End-to-end testing still pending. |
+| **Mobile Auth Mode** | pysaka mobile request profile + `refresh_token` refresh — verified working end-to-end 2026-07-01. **Removed from SakaDesk** (per-service toggle, manual-token entry, `/api/auth/manual-token` all deleted): mobile is single-session and collides with the user's daily phone app, and the token needs root-level extraction. SakaDesk is web-only. Capability kept in **pysaka** for the CLI's one-shot use. |
 
 ---
 
@@ -88,27 +88,27 @@ Completed items have been archived — see git history for details.
 
 ## P2: Medium Priority
 
-### 3. Refresh Token Login (Bypass Browser)
-**Status:** Mostly Done (refresh_token infra + mobile auth mode shipped; manual-paste UX missing)
+### 3. Refresh Token Login (Bypass Browser) — pysaka/CLI only
+**Status:** pysaka refresh_token infra done + verified 2026-07-01. **De-scoped from SakaDesk**: mobile auth mode removed (single-session collides with the daily phone app; token needs root extraction). Remains a pysaka/CLI capability for one-shot use.
 **Category:** Feature
 **Complexity:** Low
 
-**Goal:** Allow users to provide their own `refresh_token` to authenticate without browser login.
+**Goal:** Allow the pysaka CLI to authenticate with a `refresh_token` without a browser (one-time usage — okay to kick the mobile app once).
 
-**Use case:** Users who already have a `refresh_token` can bypass the interactive browser-based OAuth flow.
+**Use case:** CLI users who already have a `refresh_token` can bypass the interactive browser-based OAuth flow. Not offered in SakaDesk (web-only) because a headless mobile session would log the user's phone out.
 
 **Already implemented:**
 - [x] `Client.__init__` accepts `refresh_token` + `platform` params (pysaka)
 - [x] `refresh_access_token()` Plan A handles `refresh_token`-based refresh (pysaka)
 - [x] `refresh_token` captured from signin response (pysaka `auth.py`)
 - [x] `TokenManager` stores/loads `refresh_token` (backend)
-- [x] Mobile auth mode wiring + `auth_mode` web/mobile toggle in Settings (SakaDesk)
+- [x] ~~Mobile auth mode wiring + `auth_mode` toggle in Settings (SakaDesk)~~ — **removed 2026-07-01** (single-session conflict with the daily phone app)
 
-**Remaining Tasks:**
-- [ ] Add a refresh-token input field in the SakaDesk login UI (`LoginPage.tsx`) — paste-to-login
-- [ ] Validate the token (attempt a refresh) before saving
+**Remaining Tasks (pysaka/CLI only):**
 - [ ] Add `--refresh-token` CLI flag to saka-cli for direct token input
+- [ ] Validate the token (attempt a refresh) before saving
 - [ ] (Optional) Add a `TokenAuth` alternative class in pysaka
+- ~~SakaDesk login UI paste-to-login~~ — dropped; SakaDesk stays web-only
 
 ---
 
@@ -266,7 +266,7 @@ Phase 4: Post-processing (NEW)
 ## Implementation Order
 
 ### Quick Wins (build on momentum)
-1. **P2.3: Refresh Token Login** — finish the manual-paste UX (login field + CLI flag + validate). Small, complements the just-shipped mobile auth mode.
+1. **P2.3: Refresh Token Login (CLI)** — add the `--refresh-token` CLI flag + validate. pysaka-only; SakaDesk mobile mode was removed (phone single-session conflict).
 2. **P3.6 Fan Club** — now unblocked (core method exists); backend API + UI + enable.
 
 ### Big Bets

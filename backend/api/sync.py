@@ -43,6 +43,23 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
         progress.error(str(e))
 
 
+async def run_verify_task(service: str):
+    """Background wrapper for verify-and-fix."""
+    sync_service = get_sync_service(service)
+    progress = progress_manager.get(service)
+    try:
+        await sync_service.verify_and_fix_media()
+    except SessionExpiredError:
+        logger.warning(f"Verify failed for {service}: Session expired")
+        progress.error("SESSION_EXPIRED")
+    except RefreshFailedError:
+        logger.error(f"Verify failed for {service}: All refresh attempts failed")
+        progress.error("REFRESH_FAILED")
+    except Exception as e:
+        logger.error(f"Background verify error for {service}: {e}")
+        progress.error(str(e))
+
+
 @router.post("/start")
 async def start_sync(
     service: str = Query(..., description="Service to sync"),
@@ -68,6 +85,28 @@ async def start_sync(
 
     asyncio.create_task(run_sync_task(service, include_inactive, force_resync))
 
+    return {"status": "started", "service": service}
+
+
+@router.post("/verify")
+async def verify_media(service: str = Query(..., description="Service to verify")):
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    sync_service = get_sync_service(service)
+    if sync_service.running:
+        raise HTTPException(
+            status_code=400, detail=f"Sync/verify already running for {service}"
+        )
+
+    progress = progress_manager.get(service)
+    progress.reset()
+    progress.start_phase("starting", "Starting", 0, 0, "")
+    progress.set_detail("Scanning for missing media...")
+
+    asyncio.create_task(run_verify_task(service))
     return {"status": "started", "service": service}
 
 

@@ -14,8 +14,14 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 if sys.stderr and hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
 
-# Determine log directory (inline to avoid importing platform module yet)
-if os.name == "nt":  # Windows
+# Determine log directory (inline to avoid importing platform module yet).
+# Mirror the precedence in platform.get_app_data_dir(): SAKADESK_DATA_DIR wins so
+# that isolated/test runs (which point it at a temp dir) redirect logs too, instead
+# of leaking debug.log into the real %LOCALAPPDATA%\SakaDesk\logs.
+_data_dir_override = os.environ.get("SAKADESK_DATA_DIR")
+if _data_dir_override:
+    _app_dir = Path(_data_dir_override)
+elif os.name == "nt":  # Windows
     base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     _app_dir = Path(base) / "SakaDesk"
 else:  # Linux/Mac (dev)
@@ -75,6 +81,12 @@ async def lifespan(app: FastAPI):
     cleanup_upgrade_files()
 
     background_task = asyncio.create_task(_deferred_blog_backup())
+
+    # Warm the translation key-status cache in the background so the first
+    # Settings -> AI open is instant instead of paying the OS keyring read then.
+    from backend.api.translation import warm_key_status_cache
+
+    asyncio.create_task(asyncio.to_thread(warm_key_status_cache))
 
     yield
 
@@ -147,6 +159,14 @@ async def _deferred_blog_backup():
 
 
 app = FastAPI(title="SakaDesk", lifespan=lifespan)
+
+# Coded AI errors → {"detail", "code"} so the UI can localize the message.
+from backend.api.errors import (  # noqa: E402
+    CodedHTTPException,
+    coded_http_exception_handler,
+)
+
+app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)
 
 # CORS configuration
 # In production, frontend is served from same origin (no CORS needed).

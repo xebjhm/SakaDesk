@@ -51,8 +51,19 @@ logger = structlog.get_logger(__name__)
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
-# Group IDs that should be treated as group chat (multiple members posting),
-# keyed by service identifier to avoid cross-service collisions.
+# Communal (group) chat IDs, keyed by service identifier to avoid cross-service
+# collisions (group IDs are only unique within a single service's API).
+#
+# LOAD-BEARING — do not "simplify" this away in favour of member_count alone.
+# member_count here is the number of distinct on-disk *senders* (get_member_dirs),
+# NOT the API's /groups/{id}/members count. An official communal channel posts
+# from a single account, so it has one sender folder and member_count == 1;
+# `member_count > 1` therefore cannot detect it. The IDs below are the communal
+# channels verified against real synced data (2026-07-02) that need this override:
+#   hinatazaka46 43 (日向坂46), nogizaka46 45 (乃木坂46), sakurazaka46 33 (櫻坂46).
+# 79/93 (hinatazaka46) also have >1 sender so member_count catches them too; they
+# are listed for clarity. 78/70/73 are closed/future channels kept so they classify
+# correctly if they reopen (currently no synced messages → no group emitted).
 GROUP_CHAT_IDS: dict[str, set[str]] = {
     "hinatazaka46": {"43", "78", "79", "93"},
     "sakurazaka46": {"33", "73"},
@@ -321,6 +332,15 @@ async def get_groups():
     return {"groups": groups, "last_sync": last_sync_map}
 
 
+def _visible_messages(messages: list) -> list:
+    """Hide non-'published' messages from the UI (e.g. state='canceled' — the
+    member withdrew the post, which strips its media). The state is still recorded
+    in messages.json on disk; it is just not shown to normal users."""
+    return [
+        m for m in messages if not (m.get("state") and m.get("state") != "published")
+    ]
+
+
 @router.get("/messages_by_path")
 async def get_messages_by_path(
     path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0
@@ -352,7 +372,7 @@ async def get_messages_by_path(
     try:
         with open(msg_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            messages = data.get("messages", [])
+            messages = _visible_messages(data.get("messages", []))
 
             # Sort by timestamp
             messages.sort(key=lambda x: x.get("timestamp", ""))
@@ -435,7 +455,7 @@ async def get_group_messages(
                     "group_thumbnail": member_info.get("group_thumbnail"),
                 }
 
-                for msg in data.get("messages", []):
+                for msg in _visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)
@@ -807,7 +827,7 @@ async def get_talk_room_messages_param(
                     "thumbnail": member_info.get("thumbnail"),
                 }
 
-                for msg in data.get("messages", []):
+                for msg in _visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)

@@ -194,4 +194,48 @@ describe('useSync', () => {
         // Should update progress state
         expect(result.current.syncProgress.state).not.toBe('error')
     })
+
+    it('should provide verifyAndFix callback', () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ is_fresh: false }),
+        }))
+
+        const { result } = renderHook(() => useSync(defaultOptions))
+
+        expect(typeof result.current.verifyAndFix).toBe('function')
+    })
+
+    it('should POST to the verify endpoint and open the sync modal when verifyAndFix is called', async () => {
+        vi.stubGlobal('fetch', vi.fn()
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ is_fresh: false }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ status: 'started' }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: () => Promise.resolve({ state: 'complete', total: 100, completed: 100 }),
+            })
+        )
+
+        const { result } = renderHook(() => useSync(defaultOptions))
+
+        await waitFor(() => {
+            expect(result.current.syncProgress).toBeDefined()
+        })
+
+        await act(async () => {
+            await result.current.verifyAndFix('hinatazaka46')
+        })
+
+        expect(fetch).toHaveBeenCalledWith(
+            '/api/sync/verify?service=hinatazaka46',
+            { method: 'POST' },
+        )
+        expect(result.current.showSyncModal).toBe(true)
+    })
 })

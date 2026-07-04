@@ -55,8 +55,15 @@ def get_app_data_dir() -> Path:
 
     Windows: %LOCALAPPDATA%\\SakaDesk (e.g., C:\\Users\\Name\\AppData\\Local\\SakaDesk)
     Linux/Mac: ~/.SakaDesk (development fallback)
+
+    The ``SAKADESK_DATA_DIR`` env var overrides the location entirely — tests set
+    it to a temp dir so they never read or clobber the real user config (e.g.
+    settings.json's saved window geometry).
     """
-    if is_windows():
+    override = os.environ.get("SAKADESK_DATA_DIR")
+    if override:
+        app_dir = Path(override)
+    elif is_windows():
         base = os.environ.get("LOCALAPPDATA")
         if base:
             app_dir = Path(base) / "SakaDesk"

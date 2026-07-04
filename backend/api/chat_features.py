@@ -27,8 +27,6 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     get_service_enum,
     validate_service,
-    client_auth_params,
-    resolve_auth_mode,
 )
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -310,8 +308,8 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
         token_data = get_token_manager().load_session(group.value)
         if not token_data or not token_data.get("access_token"):
             # Breadcrumb: the most common silent failure (opted into phone sync
-            # but the mobile session is missing/expired). Without this there is
-            # no log at all and the user never learns their reads aren't syncing.
+            # but the session is missing/expired). The service rail's disconnect
+            # badge is the user-facing surface for this; the log aids diagnostics.
             logger.warning(
                 "mark_room_read_remote skipped: no valid session",
                 service=req.service,
@@ -319,19 +317,11 @@ async def mark_room_read_remote(req: MarkRoomReadRemoteRequest):
             )
             return {"ok": False}
 
-        stored_mode = (
-            config.get("services", {}).get(req.service, {}).get("auth_mode", "web")
-        )
-        auth_params = client_auth_params(
-            resolve_auth_mode(stored_mode, token_data),
-            str(get_session_dir()),
-            token_data,
-        )
         client = Client(
             group=group,
             access_token=token_data["access_token"],
             cookies=token_data.get("cookies"),
-            **auth_params,
+            auth_dir=str(get_session_dir()),
         )
         async with aiohttp.ClientSession() as session:
             ok = await client.mark_group_read(session, req.group_id)

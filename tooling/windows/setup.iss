@@ -36,6 +36,11 @@ ShowLanguageDialog=yes
 ; Close running SakaDesk before install/uninstall
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
+; The app holds this mutex (desktop.py) for its whole lifetime. Setup detects it
+; and, together with PrepareToInstall below, waits for the app to fully exit
+; before replacing files — the app's loaded DLLs in _internal (e.g. libffi-8.dll)
+; stay locked until the process truly terminates.
+AppMutex=SakaDeskInstanceMutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -84,6 +89,27 @@ begin
   Result := WizardSilent;
 end;
 
+// Runs after CloseApplications, before any files are replaced. The app's DLLs in
+// {app}\_internal stay memory-mapped (locked) until the process fully exits, and
+// CloseApplications can return before the app's multi-second graceful shutdown
+// finishes. Wait for the instance mutex to clear (the app kills its child workers
+// before releasing it, so a cleared mutex means the whole tree is gone), so we
+// never hit "DeleteFile failed; code 5" overwriting a still-loaded DLL.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  Waited: Integer;
+begin
+  Result := '';
+  Waited := 0;
+  while (Waited < 24) and CheckForMutexes('SakaDeskInstanceMutex') do
+  begin
+    Sleep(500);
+    Waited := Waited + 1;
+  end;
+  // Extra grace so the OS can unmap the freed executable images.
+  Sleep(500);
+end;
+
 // Write installer language choice to settings.json so the app uses it as default
 procedure CurStepChanged(CurStep: TSetupStep);
 var
@@ -123,6 +149,18 @@ begin
   Exec('cmdkey.exe', '/delete:' + Target, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+// Delete a pysaka credential group across every storage scheme the app has used.
+// Current (pysaka >= 0.4.2): each credential has its OWN service "pysaka:<group>",
+// which keyring's Windows backend stores at the bare target "pysaka:<group>" (and,
+// once re-saved, a migrated copy at "credential@pysaka:<group>").
+// Pre-0.4.2 (shared service "pysaka"): target "<group>@pysaka".
+procedure DeletePysakaCredential(Group: String);
+begin
+  DeleteCredential('pysaka:' + Group);
+  DeleteCredential('credential@pysaka:' + Group);
+  DeleteCredential(Group + '@pysaka');
+end;
+
 // Read output_dir from settings.json (simple substring extraction, no JSON parser)
 function ReadOutputDir(SettingsFile: String): String;
 var
@@ -160,6 +198,7 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
+  pysakaDir: String;
   pyzakaDir: String;
   OutputDir: String;
   SettingsFile: String;
@@ -171,23 +210,29 @@ begin
     begin
       // 1. Delete ALL credentials from Windows Credential Manager
       //
-      // pyzaka SDK credentials (pyzaka/credentials.py, SERVICE_NAME="pyzaka"):
-      //   keyring v25+ WinVaultKeyring: target="{username}@{service}"
+      // Current pysaka SDK credentials (pysaka/credentials.py, SERVICE_NAME="pysaka"):
+      //   login sessions (per group) + the stored LLM/translation API key.
+      DeletePysakaCredential('hinatazaka46');
+      DeletePysakaCredential('sakurazaka46');
+      DeletePysakaCredential('nogizaka46');
+      DeletePysakaCredential('yodel');
+      DeletePysakaCredential('llm_provider_api_key');
+      //   Pre-0.4.2 shared-service bare target (username stored internally).
+      DeleteCredential('pysaka');
+      //
+      // Legacy pyzaka SDK credentials (old SERVICE_NAME="pyzaka"):
       DeleteCredential('hinatazaka46@pyzaka');
       DeleteCredential('sakurazaka46@pyzaka');
       DeleteCredential('nogizaka46@pyzaka');
       DeleteCredential('yodel@pyzaka');
-      //   Old keyring: target="{service}" (username stored internally)
       DeleteCredential('pyzaka');
       //
-      // SakaDesk credentials (credential_store.py, KEYRING_SERVICE="zakadesk"):
-      //   These may exist from older app versions that used a separate credential store.
-      //   keyring v25+: target="{key}@zakadesk"
+      // Legacy SakaDesk credentials (credential_store.py, KEYRING_SERVICE="zakadesk"):
+      //   from older app versions that used a separate credential store.
       DeleteCredential('access_token@zakadesk');
       DeleteCredential('app_id@zakadesk');
       DeleteCredential('config_json@zakadesk');
       DeleteCredential('config_chunks@zakadesk');
-      //   Old keyring: target="{service}"
       DeleteCredential('zakadesk');
       Log('Removed all credentials from Windows Credential Manager.');
 
@@ -218,14 +263,22 @@ begin
           Log('SakaDesk app data deleted: ' + DataDir);
       end;
 
-      // 4. Delete pyzaka shared auth data directory
+      // 4. Delete pysaka shared auth data directory
       //    Contains: browser session data (OAuth cookies, Playwright profile)
-      //    Location: %APPDATA%\pyzaka
+      //    Location: %APPDATA%\pysaka  (legacy installs used %APPDATA%\pyzaka)
+      pysakaDir := ExpandConstant('{userappdata}\pysaka');
+      if DirExists(pysakaDir) then
+      begin
+        if DelTree(pysakaDir, True, True, True) then
+          Log('pysaka auth data deleted: ' + pysakaDir)
+        else
+          Log('Failed to delete pysaka auth data at: ' + pysakaDir);
+      end;
       pyzakaDir := ExpandConstant('{userappdata}\pyzaka');
       if DirExists(pyzakaDir) then
       begin
         if DelTree(pyzakaDir, True, True, True) then
-          Log('pyzaka auth data deleted: ' + pyzakaDir)
+          Log('pyzaka (legacy) auth data deleted: ' + pyzakaDir)
         else
           Log('Failed to delete pyzaka auth data at: ' + pyzakaDir);
       end;

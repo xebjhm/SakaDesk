@@ -10,9 +10,20 @@ Translations are cached client-side in localStorage — no server-side storage.
 import re
 import structlog
 from abc import ABC, abstractmethod
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 
 import httpx
+
+from backend.services.ai_errors import (
+    EmptyOutputError,
+    IncompleteOutputError,
+    SafetyBlockedError,
+)
+
+# Result of a provider connectivity probe: reachable+authorized, key rejected,
+# or could-not-reach (network/timeout/unexpected status). Lets the UI tell the
+# user whether to fix the key or their connection.
+ConnectionStatus = Literal["ok", "auth", "unreachable"]
 
 logger = structlog.get_logger(__name__)
 
@@ -144,8 +155,8 @@ class TranslationProvider(ABC):
         ...
 
     @abstractmethod
-    async def is_available(self) -> bool:
-        """Check if the provider is ready (API key valid, etc.)."""
+    async def check_connection(self) -> ConnectionStatus:
+        """Probe the provider: 'ok', 'auth' (key rejected), or 'unreachable'."""
         ...
 
 
@@ -166,47 +177,60 @@ class GeminiProvider(TranslationProvider):
         }
         if system_instruction:
             payload["system_instruction"] = {"parts": [{"text": system_instruction}]}
+        logger.debug("translation.gemini_request", model=self._model)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 url,
                 headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
+            # Log the failing status + a body snippet (never the api key/headers)
+            # so a bad model (404), rejected key (401/403), or quota (429) is
+            # diagnosable instead of silently raising.
+            if resp.status_code != 200:
+                logger.error(
+                    "translation.gemini_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
 
             candidates = data.get("candidates", [])
             if not candidates:
-                raise RuntimeError("Gemini returned no candidates")
+                raise EmptyOutputError("Gemini returned no candidates")
 
             candidate = candidates[0]
             finish_reason = candidate.get("finishReason", "")
             if finish_reason == "SAFETY":
-                raise RuntimeError("Translation blocked by Gemini safety filter")
+                raise SafetyBlockedError("Translation blocked by Gemini safety filter")
             if "content" not in candidate or not candidate["content"].get("parts"):
-                raise RuntimeError(
+                raise EmptyOutputError(
                     f"Gemini returned no content (finishReason: {finish_reason})"
                 )
             # A non-STOP finish (MAX_TOKENS, RECITATION, OTHER) means the text is
             # truncated. Returning it would cache a half-translation as a success
             # with a "✓ translated" badge and no indication content is missing.
             if finish_reason not in ("STOP", ""):
-                raise RuntimeError(
+                raise IncompleteOutputError(
                     f"Translation incomplete (finishReason: {finish_reason})"
                 )
 
             return cast(str, candidate["content"]["parts"][0]["text"])
 
-    async def is_available(self) -> bool:
+    async def check_connection(self) -> ConnectionStatus:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}"
         try:
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}"
-            )
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(url, headers={"x-goog-api-key": self._api_key})
-                return resp.status_code == 200
-        except Exception:
-            return False
+        except httpx.HTTPError:
+            return "unreachable"
+        if resp.status_code == 200:
+            return "ok"
+        if resp.status_code in (401, 403):
+            return "auth"
+        return "unreachable"
 
 
 class OpenAIProvider(TranslationProvider):
@@ -232,24 +256,36 @@ class OpenAIProvider(TranslationProvider):
             ],
             "temperature": 0.3,
         }
+        logger.debug("translation.openai_request", model=self._model)
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 url, headers={"Authorization": f"Bearer {self._api_key}"}, json=payload
             )
+            if resp.status_code != 200:
+                logger.error(
+                    "translation.openai_http_error",
+                    model=self._model,
+                    status=resp.status_code,
+                    body=resp.text[:300],
+                )
             resp.raise_for_status()
             data = resp.json()
             return cast(str, data["choices"][0]["message"]["content"])
 
-    async def is_available(self) -> bool:
+    async def check_connection(self) -> ConnectionStatus:
+        url = "https://api.openai.com/v1/models"
         try:
-            url = "https://api.openai.com/v1/models"
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     url, headers={"Authorization": f"Bearer {self._api_key}"}
                 )
-                return resp.status_code == 200
-        except Exception:
-            return False
+        except httpx.HTTPError:
+            return "unreachable"
+        if resp.status_code == 200:
+            return "ok"
+        if resp.status_code in (401, 403):
+            return "auth"
+        return "unreachable"
 
 
 # ---------------------------------------------------------------------------
@@ -332,20 +368,27 @@ def build_blog_translation_prompt(
 ) -> tuple[str, str]:
     """Build a prompt for translating an entire blog post paragraph-by-paragraph.
 
+    Paragraphs are numbered and the model returns a JSON map of number → text, so
+    a merged/omitted paragraph only drops its own entry instead of shifting every
+    later paragraph's alignment (as the old positional delimiter format did).
+
     Returns:
         (user_prompt, system_instruction) tuple.
     """
     lang_name = _get_language_name(target_language)
     parts: list[str] = []
 
-    parts.append(f"Translate to {lang_name}.")
+    parts.append(f"Translate each numbered paragraph to {lang_name}.")
     parts.append(
-        f"The blog has {len(paragraphs)} paragraphs, separated by ===PARAGRAPH=== markers. "
-        f"Return exactly {len(paragraphs)} translated paragraphs, separated by the same "
-        "===PARAGRAPH=== marker. Do not add, remove, or merge paragraphs."
+        "Return a JSON object mapping each paragraph's number (as a string) to its "
+        "translation. Include every number exactly once; do not merge, split, "
+        "reorder, or add paragraphs. Output only valid JSON, no markdown fences, "
+        "no explanation."
     )
 
-    parts.append("\n" + "===PARAGRAPH===".join(paragraphs))
+    parts.append("\nParagraphs:")
+    for i, paragraph in enumerate(paragraphs):
+        parts.append(f'  "{i}": "{paragraph}"')
 
     system = _build_system_instruction(member_name, group_name, "blog post")
     return "\n".join(parts), system

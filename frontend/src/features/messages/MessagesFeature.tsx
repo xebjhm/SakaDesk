@@ -49,6 +49,12 @@ export interface SyncProgress {
     speed_unit?: string;
     detail?: string;
     detail_extra?: string;
+    result?: {
+        members: number; checked: number; missing: number;
+        repaired: number; failed: number; still_missing: number;
+        unresolved?: number;
+        unresolved_items?: { member: string; timestamp: string | null; media_type: string }[];
+    } | null;
 }
 
 export interface AppSettings {
@@ -387,6 +393,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
         const parsedOpen = parseReadStatePath(selectedGroupDir);
         if (!parsedOpen) return;
+        // Fire-and-forget — never blocks opening the room. A failed clear (e.g.
+        // expired session) is a no-op; the service rail's disconnect badge already
+        // surfaces the actionable "session expired — re-login" case.
         fetch('/api/chat/mark-room-read-remote', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

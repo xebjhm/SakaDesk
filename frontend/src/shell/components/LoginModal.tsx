@@ -8,6 +8,7 @@ import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { useModalClose } from '../../core/common/useModalClose';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface LoginModalProps {
     serviceId: string;
@@ -30,8 +31,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const handleBackdropClick = useModalClose(true, onClose);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [mode, setMode] = useState<'web' | 'mobile'>('web');
-    const [token, setToken] = useState('');
+    const [showGeoWarning, setShowGeoWarning] = useState(false);
 
     const service = getServiceById(serviceId);
     const feature = FEATURE_DEFINITIONS[featureId];
@@ -44,7 +44,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }, [theme, isLightHeader]);
     const headerTextColor = isLightHeader ? theme.messages.headerTextColor : 'white';
 
-    const handleLogin = async () => {
+    const doLogin = async () => {
         setIsLoading(true);
         setError(null);
         try {
@@ -70,32 +70,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         }
     };
 
-    // Mobile connect: validate the pasted refresh_token (which also stores the session
-    // and activates mobile mode), after ensuring a full service settings entry exists.
-    const handleMobileConnect = async () => {
-        if (!token.trim()) return;
-        setIsLoading(true);
-        setError(null);
-        try {
-            await fetch(
-                `/api/settings/service/${encodeURIComponent(serviceId)}/init`,
-                { method: 'POST' }
-            );
-            const res = await fetch('/api/auth/manual-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ service: serviceId, refresh_token: token.trim() }),
-            });
-            if (!res.ok) throw new Error(t('settings.manualTokenError'));
-            onSuccess();
-        } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : t('settings.manualTokenError'));
-        } finally {
-            setIsLoading(false);
+    const handleLogin = async () => {
+        // Yodel's web service is Japan-only. Warn before a login attempt from
+        // another region, since the login/data servers reject non-JP connections.
+        if (serviceId === 'yodel') {
+            try {
+                const res = await fetch('/api/auth/geo-availability?service=yodel', { cache: 'no-store' });
+                if (res.ok && (await res.json()).blocked) {
+                    setShowGeoWarning(true);
+                    return;
+                }
+            } catch {
+                // Check failed (offline, etc.) — don't block the user; let login proceed.
+            }
         }
+        await doLogin();
     };
 
     return (
+        <>
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
             <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
                 {/* Header — matches chat room header style per service */}
@@ -157,39 +150,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         }
                     </p>
 
-                    {/* Sign-in method choice (mobile only offered where the service has a host) */}
-                    {service?.supportsMobile && (
-                        <div className="inline-flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
-                            {(['web', 'mobile'] as const).map((m) => (
-                                <button
-                                    key={m}
-                                    onClick={() => { setMode(m); setError(null); }}
-                                    disabled={isLoading}
-                                    className={cn(
-                                        'px-3 py-1.5 text-sm rounded-md transition-colors',
-                                        mode === m ? 'bg-white shadow text-gray-800 font-medium' : 'text-gray-500 hover:text-gray-700'
-                                    )}
-                                >
-                                    {t(m === 'web' ? 'settings.authModeWeb' : 'settings.authModeMobile')}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-
-                    {mode === 'mobile' && (
-                        <div className="space-y-2">
-                            <input
-                                type="password"
-                                value={token}
-                                onChange={(e) => { setToken(e.target.value); setError(null); }}
-                                placeholder={t('settings.manualTokenPlaceholder')}
-                                autoComplete="off"
-                                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"
-                            />
-                            <p className="text-xs text-gray-400">{t('settings.manualTokenStorageNote')}</p>
-                        </div>
-                    )}
-
                     {error && (
                         <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm">
                             {error}
@@ -205,31 +165,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             {isFreshPrompt ? t('login.maybeLater') : t('common.cancel')}
                         </button>
                         <button
-                            onClick={mode === 'mobile' ? handleMobileConnect : handleLogin}
-                            disabled={isLoading || (mode === 'mobile' && !token.trim())}
+                            onClick={handleLogin}
+                            disabled={isLoading}
                             className="flex-1 py-3 px-4 rounded-xl text-white font-medium transition-colors disabled:opacity-50"
                             style={{ backgroundColor: theme.primaryColor }}
                         >
                             {isLoading ? (
                                 <span className="flex items-center justify-center gap-2">
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    {mode === 'mobile' ? t('settings.manualTokenSaving') : t('login.connecting')}
+                                    {t('login.connecting')}
                                 </span>
-                            ) : mode === 'mobile' ? (
-                                t('settings.manualTokenSave')
                             ) : (
                                 isFreshPrompt ? t('login.connectAccount') : t('common.login')
                             )}
                         </button>
                     </div>
 
-                    {mode === 'web' && (
-                        <p className="text-xs text-gray-400 text-center">
-                            {t('login.credentialsSaved')}
-                        </p>
-                    )}
+                    <p className="text-xs text-gray-400 text-center">
+                        {t('login.credentialsSaved')}
+                    </p>
                 </div>
             </div>
         </div>
+        <ConfirmDialog
+            open={showGeoWarning}
+            title={t('login.yodelJpOnlyTitle')}
+            message={t('login.yodelJpOnlyMessage')}
+            confirmLabel={t('login.loginAnyway')}
+            cancelLabel={t('common.close')}
+            variant="warning"
+            onConfirm={() => { setShowGeoWarning(false); doLogin(); }}
+            onCancel={() => setShowGeoWarning(false)}
+        />
+        </>
     );
 };

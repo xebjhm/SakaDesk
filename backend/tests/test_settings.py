@@ -100,44 +100,6 @@ def test_update_service_settings(temp_settings_file):
         assert data["blogs_full_backup"]
 
 
-def test_service_auth_mode_effective_mobile_when_token_present(temp_settings_file):
-    """Stored mobile + a refresh_token => effective auth_mode is mobile."""
-    with patch_settings_file(temp_settings_file):
-        with patch("pysaka.credentials.get_token_manager") as tm:
-            tm.return_value.load_session.return_value = {"refresh_token": "RT"}
-            client.post(
-                "/api/settings/service/hinatazaka46",
-                json={
-                    "sync_enabled": True,
-                    "adaptive_sync_enabled": True,
-                    "last_sync": None,
-                    "blogs_full_backup": False,
-                    "auth_mode": "mobile",
-                },
-            )
-            res = client.get("/api/settings/service/hinatazaka46")
-            assert res.json()["auth_mode"] == "mobile"
-
-
-def test_service_auth_mode_effective_downgrades_without_token(temp_settings_file):
-    """Stored mobile but no refresh_token => snaps back to web."""
-    with patch_settings_file(temp_settings_file):
-        with patch("pysaka.credentials.get_token_manager") as tm:
-            tm.return_value.load_session.return_value = {"refresh_token": None}
-            client.post(
-                "/api/settings/service/hinatazaka46",
-                json={
-                    "sync_enabled": True,
-                    "adaptive_sync_enabled": True,
-                    "last_sync": None,
-                    "blogs_full_backup": False,
-                    "auth_mode": "mobile",
-                },
-            )
-            res = client.get("/api/settings/service/hinatazaka46")
-            assert res.json()["auth_mode"] == "web"
-
-
 def test_update_service_settings_invalid_service(temp_settings_file):
     """POST /api/settings/service/{service} with invalid service returns 400."""
     with patch_settings_file(temp_settings_file):

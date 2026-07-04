@@ -10,7 +10,6 @@ export interface ServiceDefinition {
     shortCode: string;
     blogBaseUrl: string;    // Base URL for blog content normalization
     logoUrl: string;        // Official logo URL (hotlinked from official site)
-    supportsMobile: boolean; // false when the service has no mobile API host (e.g. Yodel) — mobile mode N/A
 }
 
 export const SERVICES: ServiceDefinition[] = [
@@ -21,7 +20,6 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'NO',
         blogBaseUrl: 'https://www.nogizaka46.com',
         logoUrl: 'https://www.nogizaka46.com/files/46/assets/img/logo.png',
-        supportsMobile: true,
     },
     {
         id: 'sakurazaka46',
@@ -30,7 +28,6 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'SA',
         blogBaseUrl: 'https://sakurazaka46.com',
         logoUrl: 'https://sakurazaka46.com/files/14/s46/img/about/about-logo.svg',
-        supportsMobile: true,
     },
     {
         id: 'hinatazaka46',
@@ -39,7 +36,6 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'HI',
         blogBaseUrl: 'https://www.hinatazaka46.com',
         logoUrl: 'https://cdn.hinatazaka46.com/files/14/wkeyakifes2021/assets/images/logo_hinata.svg',
-        supportsMobile: true,
     },
     {
         id: 'yodel',
@@ -48,7 +44,6 @@ export const SERVICES: ServiceDefinition[] = [
         shortCode: 'YO',
         blogBaseUrl: 'https://service.yodel-app.com',
         logoUrl: 'https://service.yodel-app.com/icons/Icon-192.png',
-        supportsMobile: false,
     },
 ];
 

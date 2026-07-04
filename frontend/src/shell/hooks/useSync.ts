@@ -6,6 +6,7 @@
  * - Polling for sync progress updates
  * - Session expiry detection and re-authentication flow
  * - Sync state management (idle, syncing, complete, error)
+ * - Driving the verify/fix media flow (scanning for missing media and repairing gaps)
  *
  * @example
  * ```tsx
@@ -63,7 +64,9 @@ export interface UseSyncReturn {
     /** Increments when sync completes (triggers message refresh) */
     syncVersion: number;
     /** Start sync for a specific service (or active service if not specified) */
-    startSync: (blocking: boolean, service?: string) => Promise<void>;
+    startSync: (blocking: boolean, service?: string, forceResync?: boolean) => Promise<void>;
+    /** Verify downloaded media and re-download any missing files (or active service if not specified) */
+    verifyAndFix: (service?: string) => Promise<void>;
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
     /** Start sequential sync for a list of services (one at a time, with blocking modal) */
@@ -241,14 +244,18 @@ export function useSync({
                         speed: data.speed,
                         speed_unit: data.speed_unit,
                         detail: i18n.t('sync.syncComplete'),
-                        detail_extra: ''
+                        detail_extra: '',
+                        result: data.result ?? null
                     });
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
                     resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
-                    if (blocking && service === currentActiveService) {
+                    // Auto-close only normal syncs. A verify/validation carries a
+                    // `result` payload whose findings the user should be able to
+                    // read — keep it open until they dismiss it (Done button).
+                    if (blocking && service === currentActiveService && !data.result) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
                 } else if (data.state === 'running') {
@@ -336,7 +343,7 @@ export function useSync({
 
     // startSync: reads activeService and syncProgressByService from refs
     // to avoid recreating on every progress update.
-    const startSync = useCallback(async (blocking: boolean, service?: string) => {
+    const startSync = useCallback(async (blocking: boolean, service?: string, forceResync?: boolean) => {
         const targetService = service || activeServiceRef.current;
 
         if (!targetService) {
@@ -367,7 +374,8 @@ export function useSync({
         }
 
         try {
-            const response = await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
+            const startUrl = `/api/sync/start?service=${encodeURIComponent(targetService)}${forceResync ? '&force_resync=true' : ''}`;
+            const response = await fetch(startUrl, { method: 'POST' });
             if (response.ok) {
                 // Sync started successfully
                 pollSyncProgress(targetService, blocking);
@@ -395,6 +403,45 @@ export function useSync({
                     setSyncProgress(errorProgress);
                 }
             }
+        }
+    }, [pollSyncProgress]);
+
+    // verifyAndFix: scans downloaded messages for missing media and re-downloads
+    // any gaps. Reuses the same sync progress modal + poller as startSync.
+    const verifyAndFix = useCallback(async (service?: string) => {
+        const targetService = service || activeServiceRef.current;
+        if (!targetService) {
+            console.error('verifyAndFix: No service specified and no active service');
+            return;
+        }
+        if (targetService === activeServiceRef.current) setShowSyncModal(true);
+
+        const initialProgress: SyncProgress = {
+            state: 'running',
+            phase: 'starting',
+            phase_name: i18n.t('settings.verifyFixRunning'),
+            detail: i18n.t('sync.initializing'),
+        };
+        setSyncProgressByService(prev => ({ ...prev, [targetService]: initialProgress }));
+        if (targetService === activeServiceRef.current) setSyncProgress(initialProgress);
+
+        try {
+            const response = await fetch(
+                `/api/sync/verify?service=${encodeURIComponent(targetService)}`,
+                { method: 'POST' },
+            );
+            if (response.ok || response.status === 400) {
+                pollSyncProgress(targetService, true);
+            } else {
+                const data = await response.json().catch(() => ({ detail: i18n.t('sync.unknownError') }));
+                const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
+                setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+                if (targetService === activeServiceRef.current) setSyncProgress(errorProgress);
+            }
+        } catch {
+            const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
+            setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+            if (targetService === activeServiceRef.current) setSyncProgress(errorProgress);
         }
     }, [pollSyncProgress]);
 
@@ -560,6 +607,7 @@ export function useSync({
         setShowSyncModal,
         syncVersion,
         startSync,
+        verifyAndFix,
         startSyncAllServices,
         startSequentialSync,
         sequentialSyncInfo,

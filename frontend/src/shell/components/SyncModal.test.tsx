@@ -79,6 +79,46 @@ describe('SyncModal', () => {
         expect(screen.getByText('sync.syncComplete')).toBeInTheDocument();
     });
 
+    it('renders the unresolved items as a list with member + date (no message ids)', () => {
+        const withUnresolved: SyncProgress = {
+            ...baseProgress,
+            state: 'complete',
+            phase: 'complete',
+            completed: 45,
+            total: 45,
+            result: {
+                members: 45, checked: 100, missing: 0, repaired: 0, failed: 0, still_missing: 0,
+                unresolved: 2,
+                unresolved_items: [
+                    { member: '金村 美玖', timestamp: '2020-06-04T10:56:36Z', media_type: 'video' },
+                    { member: '山口 陽世', timestamp: '2022-07-30T08:18:01Z', media_type: 'video' },
+                ],
+            },
+        };
+        render(<SyncModal syncProgress={withUnresolved} />);
+        expect(screen.getByText('金村 美玖')).toBeInTheDocument();
+        expect(screen.getByText('山口 陽世')).toBeInTheDocument();
+        // A human date is shown (YYYY/MM/DD HH:mm), not the message id.
+        expect(screen.getAllByText(/\d{4}\/\d{2}\/\d{2}/).length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('hides the downloading-media warning once complete (phase_number may still be 3)', () => {
+        // Regression: on completion the backend leaves phase_number at 3 (the
+        // download phase). The "downloading media... do not close" warning must
+        // not persist, or the modal looks stuck after it is actually done.
+        const completeAfterDownload: SyncProgress = {
+            ...baseProgress,
+            state: 'complete',
+            phase: 'complete',
+            phase_number: 3,
+            completed: 3,
+            total: 3,
+        };
+        render(<SyncModal syncProgress={completeAfterDownload} />);
+        expect(screen.getByText('sync.complete')).toBeInTheDocument();
+        expect(screen.queryByText('sync.downloadingMedia')).not.toBeInTheDocument();
+    });
+
     it('shows sequential sync counter', () => {
         render(
             <SyncModal
