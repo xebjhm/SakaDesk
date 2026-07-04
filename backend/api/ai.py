@@ -142,6 +142,7 @@ from backend.services.llm_client import (
 )
 from backend.services.llm_models import curated_for_backend, lookup_model
 from backend.services.model_assets import get_manifest, get_model_download_manager
+from backend.services.onnx_runtime_provision import get_runtime_provisioner
 from backend.services.service_utils import validate_service
 from backend.services.settings_store import load_config, update_config
 from pysaka.knowledge import Answer, AskCancelled, Citation, Scope, SourceRef
@@ -1364,6 +1365,12 @@ async def start_model_download(request: ModelDownloadRequest) -> dict:
 @router.get("/models/download/status")
 async def model_download_status() -> dict:
     return get_model_download_manager().status()
+
+
+@router.get("/runtime/status")
+async def runtime_status() -> dict:
+    """Progress of the on-demand onnxruntime download (mirrors /models/download/status)."""
+    return get_runtime_provisioner().status()
 
 
 @router.delete("/models/download")
