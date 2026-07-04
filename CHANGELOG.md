@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-04
+
 ### Added
 - **Verify & Fix media** (Settings → Sync): scans downloaded messages and
   re-downloads any missing images/videos, per service.
@@ -14,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Interrupted syncs no longer permanently skip message media — the sync cursor is
   held behind any message whose media has not been confirmed on disk.
+- API key and login are no longer dropped on app update or reinstall. Credentials
+  are now isolated per entry in the OS keyring (via pysaka 0.4.2), so a routine
+  session refresh can no longer overwrite a stored translation/AI API key.
+- Translation no longer fails with `no_model` when the saved config omits a model;
+  it falls back to the default and self-heals the stored value.
+- The log directory now honors `SAKADESK_DATA_DIR`.
 
 ## [0.3.0] - 2026-07-01
 
