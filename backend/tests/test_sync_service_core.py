@@ -576,7 +576,7 @@ class TestForceResync:
     """Test force_resync clearing state files."""
 
     @pytest.mark.asyncio
-    async def test_force_resync_deletes_metadata_file(self, tmp_path):
+    async def test_force_resync_resets_cursor_keeps_metadata(self, tmp_path):
         svc = SyncService()
 
         service_dir = tmp_path / "日向坂46"
@@ -615,9 +615,11 @@ class TestForceResync:
             mock_pm.get.return_value = mock_progress
             await svc.start_sync(force_resync=True)
 
-        # Both files should be deleted by force_resync (before auth check)
-        assert not metadata_file.exists()
+        # force_resync resets the message cursor (sync_state.json) to re-fetch
+        # everything, but KEEPS sync_metadata.json — it holds the server_unread
+        # read/unread cap, so deleting it would make a resync reset read state.
         assert not state_file.exists()
+        assert metadata_file.exists()
 
 
 # ---------------------------------------------------------------------------

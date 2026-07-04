@@ -64,7 +64,7 @@ export interface UseSyncReturn {
     /** Increments when sync completes (triggers message refresh) */
     syncVersion: number;
     /** Start sync for a specific service (or active service if not specified) */
-    startSync: (blocking: boolean, service?: string) => Promise<void>;
+    startSync: (blocking: boolean, service?: string, forceResync?: boolean) => Promise<void>;
     /** Verify downloaded media and re-download any missing files (or active service if not specified) */
     verifyAndFix: (service?: string) => Promise<void>;
     /** Start sync for all connected services */
@@ -252,7 +252,10 @@ export function useSync({
                     resolveSyncCallback(service);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
-                    if (blocking && service === currentActiveService) {
+                    // Auto-close only normal syncs. A verify/validation carries a
+                    // `result` payload whose findings the user should be able to
+                    // read — keep it open until they dismiss it (Done button).
+                    if (blocking && service === currentActiveService && !data.result) {
                         setTimeout(() => setShowSyncModal(false), 2000);
                     }
                 } else if (data.state === 'running') {
@@ -340,7 +343,7 @@ export function useSync({
 
     // startSync: reads activeService and syncProgressByService from refs
     // to avoid recreating on every progress update.
-    const startSync = useCallback(async (blocking: boolean, service?: string) => {
+    const startSync = useCallback(async (blocking: boolean, service?: string, forceResync?: boolean) => {
         const targetService = service || activeServiceRef.current;
 
         if (!targetService) {
@@ -371,7 +374,8 @@ export function useSync({
         }
 
         try {
-            const response = await fetch(`/api/sync/start?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
+            const startUrl = `/api/sync/start?service=${encodeURIComponent(targetService)}${forceResync ? '&force_resync=true' : ''}`;
+            const response = await fetch(startUrl, { method: 'POST' });
             if (response.ok) {
                 // Sync started successfully
                 pollSyncProgress(targetService, blocking);

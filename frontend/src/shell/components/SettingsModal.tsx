@@ -3,6 +3,7 @@ import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucid
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { useModalClose } from '../../core/common/useModalClose';
+import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
@@ -15,6 +16,7 @@ interface SettingsModalProps {
     onClose: () => void;
     activeService: string;
     onVerifyAndFix: (service: string) => void;
+    onDeepResync: (service: string) => void;
 }
 
 type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
@@ -34,6 +36,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
     activeService,
     onVerifyAndFix,
+    onDeepResync,
 }) => {
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
@@ -42,7 +45,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [showDeepConfirm, setShowDeepConfirm] = useState(false);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
+    const [blogSizeLoading, setBlogSizeLoading] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
@@ -64,6 +69,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     const loadBlogCacheSize = async () => {
+        setBlogSizeLoading(true);
         try {
             let totalBytes = 0;
             for (const service of selectedServices) {
@@ -76,6 +82,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
         } catch {
             setBlogCacheSize(null);
+        } finally {
+            setBlogSizeLoading(false);
         }
     };
 
@@ -323,9 +331,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <span className="text-xs text-blue-500 flex items-center gap-1">
                                         <Loader2 className="w-3 h-3 animate-spin" />
                                         {blogBackupStats
-                                            ? `${blogBackupStats.cached}/${blogBackupStats.total}`
-                                            : ''
-                                        }
+                                            ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
+                                            : t('settings.blogBackupWorking')}
                                     </span>
                                 )}
                             </label>
@@ -351,8 +358,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </p>
                         {blogBackupEnabled && (
                             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                                <div className="text-xs text-gray-500">
-                                    {blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
+                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                                    {blogSizeLoading
+                                        ? <><Loader2 className="w-3 h-3 animate-spin" />{t('settings.blogBackupCalculating')}</>
+                                        : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
                                 <button
                                     onClick={handleCleanBlogCache}
@@ -372,7 +381,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {t('settings.verifyFixMedia')}
                             </label>
                             <button
-                                onClick={() => onVerifyAndFix(activeService)}
+                                onClick={() => {
+                                    // Close settings so the verify progress/result
+                                    // (shown in the sync modal) is in focus.
+                                    onVerifyAndFix(activeService);
+                                    onClose();
+                                }}
                                 className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
                                 {t('settings.verifyFixButton')}
@@ -382,6 +396,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {t('settings.verifyFixMediaDesc')}
                         </p>
                     </div>
+
+                    {/* Deep re-verify: full re-sync (re-paginates every member from
+                        scratch, skipping already-downloaded assets). Catches gaps the
+                        media-only check can't (e.g. entirely-missing messages). */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.deepResync')}
+                            </label>
+                            <button
+                                onClick={() => setShowDeepConfirm(true)}
+                                className="text-xs font-medium text-amber-600 hover:text-amber-800"
+                            >
+                                {t('settings.deepResyncButton')}
+                            </button>
+                        </div>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.deepResyncDesc')}
+                        </p>
+                    </div>
+
+                    <ConfirmDialog
+                        open={showDeepConfirm}
+                        title={t('settings.deepResync')}
+                        message={t('settings.deepResyncConfirm')}
+                        confirmLabel={t('settings.deepResyncButton')}
+                        variant="warning"
+                        onConfirm={() => {
+                            setShowDeepConfirm(false);
+                            onDeepResync(activeService);
+                            onClose();
+                        }}
+                        onCancel={() => setShowDeepConfirm(false)}
+                    />
 
                     {/* Sync read status to phone (opt-in) */}
                     <div>
@@ -442,7 +490,9 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
         setChecking(true);
         setResult(null);
         try {
-            const res = await fetch('/api/version');
+            // force=true bypasses the 1h cache so a manual check is always live
+            // (automatic startup/hourly checks stay cached to respect rate limits).
+            const res = await fetch('/api/version?force=true');
             if (res.ok) {
                 const data = await res.json();
                 if (data.update_available) {
@@ -530,7 +580,14 @@ function AiTab() {
     const [apiKeyInput, setApiKeyInput] = useState('');  // Raw input (empty = unchanged)
     const [hasApiKey, setHasApiKey] = useState(() => aiConfigCache?.hasApiKey ?? false);  // key stored in keyring
     const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(() => aiConfigCache?.apiKeyMasked ?? null);  // "AIza...xQ"
-    const [targetLang, setTargetLang] = useState<string | null>(() => aiConfigCache?.targetLang ?? null);
+    // Seed from the session cache, else the persisted store value (both on disk),
+    // so the target language shows immediately instead of waiting on /config.
+    const [targetLang, setTargetLang] = useState<string | null>(
+        () => aiConfigCache?.targetLang ?? useAppStore.getState().translationTargetLanguage ?? null
+    );
+    // Only "loading" when there is nothing cached to show yet (first open / after
+    // a restart). Reopens seed from aiConfigCache and render instantly.
+    const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -552,7 +609,8 @@ function AiTab() {
                     setTranslationTargetLanguage(data.target_language);
                 }
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => setConfigLoading(false));
     }, [setTranslationTargetLanguage]);
 
     // Providers available in the UI. Backend supports OpenAI too (OpenAIProvider)
@@ -708,9 +766,6 @@ function AiTab() {
                 <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
                         {t('translation.settings.title')}
-                        <span className="ml-1 text-xs px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
-                            {t('translation.settings.experimental')}
-                        </span>
                     </label>
                     <button
                         onClick={() => setTranslationEnabled(!translationEnabled)}
@@ -754,6 +809,12 @@ function AiTab() {
             {showProvider && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                     <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    {configLoading && (
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {t('common.loading')}
+                        </div>
+                    )}
                     {/* Provider */}
                     <div>
                         <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>

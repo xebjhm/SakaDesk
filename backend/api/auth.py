@@ -46,6 +46,18 @@ async def login(service: str = Query(..., description="Service to login to")):
     return {"status": "ok", "service": service}
 
 
+@router.get("/geo-availability")
+async def geo_availability(service: str = Query(..., description="Service to check")):
+    """Whether a region-restricted service (Yodel is Japan-only on the web) is
+    reachable from this connection. The frontend uses this to warn before a Yodel
+    login from outside Japan. Non-restricted services always return available."""
+    try:
+        validate_service(service)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+    return await auth_service.check_geo_availability(service)
+
+
 @router.post("/logout")
 async def logout(service: str = Query(..., description="Service to logout from")):
     """Logout from a specific service."""

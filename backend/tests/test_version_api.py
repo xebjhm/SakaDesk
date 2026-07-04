@@ -135,6 +135,45 @@ class TestErrorCacheTTL:
         cache_age = datetime.now(timezone.utc) - v._cache["last_check"]
         assert cache_age < CACHE_DURATION
 
+    def test_force_bypasses_fresh_cache(self):
+        """The manual 'Check for updates' (force=True) skips the cache and does a
+        live fetch even when a fresh cached result exists; the automatic
+        (force=False) path returns the cache without any network call. This is
+        the fix for 'open app before a release -> manual check never detects it'."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import backend.api.version as v
+
+        # Fresh cache (checked just now) holding an OLD latest version.
+        v._cache["last_check"] = datetime.now(timezone.utc)
+        v._cache["latest_version"] = "0.3.0"
+        v._cache["error"] = None
+
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "tag_name": "v0.3.1",
+            "html_url": "u",
+            "body": "notes",
+        }
+        session = AsyncMock()
+        session.get = AsyncMock(return_value=resp)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=session)
+        cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("backend.api.version.httpx.AsyncClient", return_value=cm):
+            # Automatic check: fresh cache returned, no network call.
+            cached = asyncio.run(v._fetch_latest_release(force=False))
+            assert cached["latest_version"] == "0.3.0"
+            session.get.assert_not_called()
+
+            # Manual check: bypasses the cache, hits GitHub, updates the version.
+            fresh = asyncio.run(v._fetch_latest_release(force=True))
+            assert fresh["latest_version"] == "0.3.1"
+            session.get.assert_called_once()
+
 
 class TestUpgradeStatus:
     """Tests for GET /api/version/upgrade/status."""

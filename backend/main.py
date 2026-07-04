@@ -114,6 +114,12 @@ async def lifespan(app: FastAPI):
     background_task = asyncio.create_task(_deferred_blog_backup())
     kb_initial_build_task = asyncio.create_task(_deferred_kb_initial_build())
 
+    # Warm the translation key-status cache in the background so the first
+    # Settings -> AI open is instant instead of paying the OS keyring read then.
+    from backend.api.translation import warm_key_status_cache
+
+    asyncio.create_task(asyncio.to_thread(warm_key_status_cache))
+
     yield
 
     # --- Shutdown ---

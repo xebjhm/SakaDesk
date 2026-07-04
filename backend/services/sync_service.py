@@ -160,6 +160,19 @@ class SyncService:
                 os.unlink(tmp_path)
             raise
 
+    def _reset_message_cursor(self) -> None:
+        """Delete only the per-member sync cursor (sync_state.json) so a force
+        resync re-fetches every member from scratch. Deliberately KEEPS
+        sync_metadata.json — it holds the phone->Windows server_unread_count (the
+        read/unread cap) and group state, which the re-sync refreshes in place.
+        Deleting it made a full resync appear to reset the read state."""
+        import os
+
+        state_file = self.service_data_dir / "sync_state.json"
+        if state_file.exists():
+            with contextlib.suppress(OSError):
+                os.unlink(str(state_file))
+
     async def _authenticated_client(self, session: aiohttp.ClientSession) -> Client:
         """Build an authenticated Client for this service, refreshing the token if
         needed. Verifies a failed refresh with a live get_groups call before giving
@@ -267,16 +280,15 @@ class SyncService:
             self._resolve_service_paths(app_settings)
             assert self.metadata_file is not None  # set by _resolve_service_paths
 
-            # Handle Force Resync: Clean slate to ensure fresh URLs and no state gaps
+            # Handle Force Resync: reset only the per-member message cursor so every
+            # member is re-fetched from scratch. Do NOT delete sync_metadata.json —
+            # it holds the phone->Windows server_unread_count (the read/unread cap)
+            # and group state, which the re-sync refreshes in place. Deleting it made
+            # a full resync un-mask messages the user had already read (the read
+            # state appeared to reset).
             if force_resync:
-                logger.info("Force Resync requested. Clearing state...")
-                if self.metadata_file.exists():
-                    self.metadata_file.unlink()
-
-                # SyncManager stores state in: service_data_dir / "sync_state.json"
-                state_file = self.service_data_dir / "sync_state.json"
-                if state_file.exists():
-                    state_file.unlink()
+                logger.info("Force Resync requested. Resetting message cursor...")
+                self._reset_message_cursor()
 
             # Detect if fresh sync for THIS service (empty service dir or just metadata)
             existing_files = (
@@ -833,16 +845,23 @@ class SyncService:
         """
         return 0
 
-    async def verify_and_fix_media(self) -> dict[str, int]:
+    async def verify_and_fix_media(self) -> dict[str, Any]:
         """Scan every member's messages.json for missing media (absent/0-byte) and
         backfill it using fresh timeline URLs. One-click, per-service, idempotent."""
-        totals = {
+        totals: dict[str, Any] = {
             "members": 0,
             "checked": 0,
             "missing": 0,
             "repaired": 0,
             "failed": 0,
             "still_missing": 0,
+            # Media-type messages with no recorded/downloadable media source
+            # (e.g. media removed on the server). Reported so completeness is
+            # never overclaimed as "all present" while these exist.
+            "unresolved": 0,
+            # Details of the unresolved items (member + timestamp + type) for the
+            # results view, capped to keep the payload small.
+            "unresolved_items": [],
         }
         if self.running:
             return totals
@@ -897,6 +916,19 @@ class SyncService:
                             manager.scan_member_media, member_dir
                         )
                         totals["checked"] += scan["checked"]
+                        scan_unresolved = scan.get("unresolved") or []
+                        totals["unresolved"] += len(scan_unresolved)
+                        # member_dir.name is "<id> <name>"; show just the name.
+                        member_name = member_dir.name.split(" ", 1)[-1]
+                        for u in scan_unresolved:
+                            if len(totals["unresolved_items"]) < 200:
+                                totals["unresolved_items"].append(
+                                    {
+                                        "member": member_name,
+                                        "timestamp": u.get("timestamp"),
+                                        "media_type": u.get("media_type"),
+                                    }
+                                )
                         if scan["missing"]:
                             totals["missing"] += len(scan["missing"])
                             gaps_by_group[gid].append((member_dir, scan["missing"]))

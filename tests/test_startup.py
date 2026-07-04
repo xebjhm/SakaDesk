@@ -50,6 +50,12 @@ def test_frontend_compilation():
     if not shutil.which("npm"):
         pytest.skip("npm not found, skipping frontend build test")
 
+    # Resolve npx to a full path — on Windows it is npx.cmd and bare "npx" is not
+    # spawnable via subprocess without a shell (raises FileNotFoundError).
+    npx = shutil.which("npx")
+    if not npx:
+        pytest.skip("npx not found, skipping frontend build test")
+
     # Check if node_modules exists (approximate check if installed)
     if not (frontend_dir / "node_modules").exists():
         pytest.skip("frontend/node_modules missing, please run 'npm install' first")
@@ -59,7 +65,7 @@ def test_frontend_compilation():
     try:
         # We assume 'tsc' is available via npx
         result = subprocess.run(
-            ["npx", "tsc", "--noEmit"],
+            [npx, "tsc", "--noEmit"],
             cwd=str(frontend_dir),
             capture_output=True,
             text=True,

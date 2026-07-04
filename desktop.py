@@ -20,6 +20,7 @@ from pathlib import Path  # noqa: E402
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
+from backend.services import window_geometry  # noqa: E402
 
 # Setup logging
 import structlog  # noqa: E402
@@ -226,22 +227,28 @@ def show_error_dialog(error_msg: str, tb: str):
 
 
 def _get_dpi_scale() -> float:
-    """Get the Windows DPI scale factor (e.g. 1.5 for 150%).
+    """Primary-monitor DPI scale factor (see backend.services.window_geometry)."""
+    return window_geometry.dpi_scale()
 
-    pywebview's WinForms backend treats create_window(x, y) as logical
-    coordinates and multiplies them by scale_factor internally, but the
-    moved/resized events report physical (already-scaled) pixel values.
-    We need this factor to convert between the two coordinate systems
-    so that saved geometry can be correctly restored.
 
-    Returns 1.0 on non-Windows platforms where no scaling mismatch exists.
+def _window_hwnd(window: object) -> int | None:
+    """Best-effort native window handle (HWND) so the DPI scale can be read for
+    the monitor the window is actually on. Returns None if unavailable, in which
+    case the caller falls back to the primary-monitor scale (safe, no regression).
     """
-    if platform.system() != "Windows":
-        return 1.0
+    handle = getattr(window, "hwnd", None)
+    if handle is None:
+        native = getattr(window, "native", None)
+        handle = getattr(native, "Handle", None)
+    if handle is None:
+        return None
     try:
-        return ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0  # type: ignore[attr-defined,no-any-return]
-    except Exception:
-        return 1.0
+        return int(handle)
+    except (TypeError, ValueError):
+        try:
+            return int(handle.ToInt64())  # WinForms IntPtr
+        except Exception:
+            return None
 
 
 def _load_window_geometry() -> dict:
@@ -253,7 +260,6 @@ def _load_window_geometry() -> dict:
 
     Migrates from the legacy ``window.json`` file on first run after upgrade.
     """
-    defaults = {"width": 1200, "height": 800}
     settings_path = get_app_data_dir() / "settings.json"
     legacy_path = get_app_data_dir() / "window.json"
 
@@ -267,46 +273,19 @@ def _load_window_geometry() -> dict:
             logger.warning("Failed to read window geometry from settings.json")
 
     # --- Migrate from legacy window.json if no window key in settings ---
+    # Copied verbatim (physical coords, no "format" key); parse_saved_geometry
+    # converts it to logical on load.
     if data is None and legacy_path.exists():
         try:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
             logger.info("Migrating window geometry from window.json to settings.json")
-            # Save into settings.json immediately
             _save_window_data_to_settings(data, settings_path)
-            # Remove legacy file
             legacy_path.unlink(missing_ok=True)
         except Exception:
             logger.warning("Failed to migrate window.json", exc_info=True)
             data = None
 
-    if data is None:
-        return defaults
-
-    try:
-        w = int(data.get("width", 0))
-        h = int(data.get("height", 0))
-        if w < 400 or h < 300 or w > 7680 or h > 4320:
-            return defaults
-
-        # Migrate old physical-coordinate files to logical
-        if data.get("format") != "logical":
-            scale = _get_dpi_scale()
-            w = round(w / scale)
-            h = round(h / scale)
-
-        result = {"width": w, "height": h}
-        if "x" in data and "y" in data:
-            x = int(data["x"])
-            y = int(data["y"])
-            if data.get("format") != "logical":
-                x = round(x / scale)
-                y = round(y / scale)
-            result["x"] = x
-            result["y"] = y
-        return result
-    except Exception:
-        logger.warning("Failed to parse window geometry", exc_info=True)
-        return defaults
+    return window_geometry.parse_saved_geometry(data, _get_dpi_scale())
 
 
 def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
@@ -322,23 +301,15 @@ def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> Non
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
-def _save_window_geometry(geometry: dict) -> None:
+def _save_window_geometry(logical_geom: dict) -> None:
     """Save window geometry to settings.json.
 
-    Values from window.width/height/x/y are in the same coordinate system
-    as create_window() expects — save them directly without transformation.
+    ``logical_geom`` must already be in LOGICAL coordinates — the caller converts
+    the physical window properties via window_geometry.physical_to_logical.
     """
     try:
-        data: dict = {
-            "width": int(geometry["width"]),
-            "height": int(geometry["height"]),
-            "format": "logical",
-        }
-        if "x" in geometry and "y" in geometry:
-            data["x"] = int(geometry["x"])
-            data["y"] = int(geometry["y"])
-        settings_path = get_app_data_dir() / "settings.json"
-        _save_window_data_to_settings(data, settings_path)
+        data = window_geometry.to_saved_dict(logical_geom)
+        _save_window_data_to_settings(data, get_app_data_dir() / "settings.json")
         logger.debug("Window geometry saved", geometry=data)
     except Exception:
         logger.warning("Failed to save window geometry", exc_info=True)
@@ -387,13 +358,21 @@ def main() -> None:
         # resize/move events — pywebview events only fire during initial
         # creation (DPI scaling), not for user-initiated resizes.
         def on_closing():
-            geom = {
+            # window.width/height/x/y are PHYSICAL (scaled) pixels on WinForms;
+            # convert to logical before saving so the next create_window (which
+            # re-applies the scale) reproduces the same size — instead of growing
+            # the window by `scale`x on every restart (the shipped bug). Use the
+            # DPI of the monitor this window is on (via its hwnd) so mixed-DPI
+            # multi-monitor setups convert correctly too.
+            scale = window_geometry.dpi_scale(_window_hwnd(window))
+            physical = {
                 "width": window.width,
                 "height": window.height,
                 "x": window.x,
                 "y": window.y,
             }
-            logger.info("Window closing", geometry=geom)
+            geom = window_geometry.physical_to_logical(physical, scale)
+            logger.info("Window closing", physical=physical, logical=geom, scale=scale)
             _save_window_geometry(geom)
 
         window.events.closing += on_closing

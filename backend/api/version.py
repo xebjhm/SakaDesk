@@ -94,14 +94,20 @@ def _is_newer(latest: str, current: str) -> bool:
     return _parse_version(latest) > _parse_version(current)
 
 
-async def _fetch_latest_release() -> dict:
-    """Fetch latest release from GitHub API."""
+async def _fetch_latest_release(force: bool = False) -> dict:
+    """Fetch latest release from GitHub API.
+
+    force=True skips the cache (used by the manual "Check for updates" action so
+    it always does a live fetch). Automatic startup/hourly checks leave it False
+    to respect GitHub's unauthenticated rate limit.
+    """
     global _cache
 
     now = datetime.now(timezone.utc)
 
-    # Check cache first — use shorter TTL for errors so transient failures retry sooner
-    if _cache["last_check"]:
+    # Check cache first — use shorter TTL for errors so transient failures retry
+    # sooner. A forced (manual) check bypasses the cache entirely.
+    if not force and _cache["last_check"]:
         cache_age = now - _cache["last_check"]
         ttl = ERROR_CACHE_DURATION if _cache["error"] else CACHE_DURATION
         if cache_age < ttl:
@@ -141,9 +147,14 @@ async def _fetch_latest_release() -> dict:
 
 
 @router.get("", response_model=VersionInfo)
-async def check_version():
-    """Check for updates from GitHub releases."""
-    cache = await _fetch_latest_release()
+async def check_version(force: bool = False):
+    """Check for updates from GitHub releases.
+
+    force=true bypasses the 1-hour cache — the manual "Check for updates" button
+    uses it so a user-initiated check is always live, while the automatic
+    startup/hourly checks stay cached.
+    """
+    cache = await _fetch_latest_release(force=force)
 
     update_available = False
     if cache["latest_version"] and not cache["error"]:

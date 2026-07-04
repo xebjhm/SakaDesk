@@ -332,6 +332,15 @@ async def get_groups():
     return {"groups": groups, "last_sync": last_sync_map}
 
 
+def _visible_messages(messages: list) -> list:
+    """Hide non-'published' messages from the UI (e.g. state='canceled' — the
+    member withdrew the post, which strips its media). The state is still recorded
+    in messages.json on disk; it is just not shown to normal users."""
+    return [
+        m for m in messages if not (m.get("state") and m.get("state") != "published")
+    ]
+
+
 @router.get("/messages_by_path")
 async def get_messages_by_path(
     path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0
@@ -363,7 +372,7 @@ async def get_messages_by_path(
     try:
         with open(msg_file, "r", encoding="utf-8") as f:
             data = json.load(f)
-            messages = data.get("messages", [])
+            messages = _visible_messages(data.get("messages", []))
 
             # Sort by timestamp
             messages.sort(key=lambda x: x.get("timestamp", ""))
@@ -446,7 +455,7 @@ async def get_group_messages(
                     "group_thumbnail": member_info.get("group_thumbnail"),
                 }
 
-                for msg in data.get("messages", []):
+                for msg in _visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)
@@ -818,7 +827,7 @@ async def get_talk_room_messages_param(
                     "thumbnail": member_info.get("thumbnail"),
                 }
 
-                for msg in data.get("messages", []):
+                for msg in _visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)
