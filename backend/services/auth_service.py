@@ -450,15 +450,18 @@ class AuthService:
         if service != Group.YODEL.value:
             return {"service": service, "restricted": False, "available": True, "blocked": False}
 
-        from pysaka.client import GROUP_CONFIG
-
-        api_base = GROUP_CONFIG[Group.YODEL]["api_base"]
-        url = f"{api_base}/app_configs"  # public endpoint, no auth needed
+        # Build the request exactly like the app — in particular the required
+        # `x-talk-app-id` header. A bare request returns HTTP 400 for EVERYONE
+        # (missing header), which would look like a block in every region. With
+        # the app headers, an allowed region returns 200 and a geo-blocked region
+        # returns the real block status.
+        client = Client(group=Group.YODEL)
+        url = f"{client.config['api_base']}/app_configs"
         status: Optional[int] = None
         try:
             timeout = aiohttp.ClientTimeout(total=8)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url) as resp:
+                async with session.get(url, headers=client.headers) as resp:
                     status = resp.status
         except Exception as e:
             # Network error/timeout — region unknown; don't warn, let login proceed.

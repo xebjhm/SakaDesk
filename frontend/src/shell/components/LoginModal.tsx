@@ -75,7 +75,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         // another region, since the login/data servers reject non-JP connections.
         if (serviceId === 'yodel') {
             try {
-                const res = await fetch('/api/auth/geo-availability?service=yodel');
+                const res = await fetch('/api/auth/geo-availability?service=yodel', { cache: 'no-store' });
                 if (res.ok && (await res.json()).blocked) {
                     setShowGeoWarning(true);
                     return;
