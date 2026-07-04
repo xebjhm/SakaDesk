@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Verify & Fix media** (Settings → Sync): scans downloaded messages and
   re-downloads any missing images/videos, per service.
+- **Deep re-verify** (Settings → Sync): an on-demand full re-sync that re-checks
+  every member's entire timeline from scratch and re-downloads anything missing
+  (files already saved are skipped). Catches gaps the media-only check cannot —
+  including entirely-missing messages. Behind a confirm, as it is slower and makes
+  many API requests.
 
 ### Fixed
 - Interrupted syncs no longer permanently skip message media — the sync cursor is

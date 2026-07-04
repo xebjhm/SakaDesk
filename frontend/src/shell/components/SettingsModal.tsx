@@ -14,6 +14,7 @@ interface SettingsModalProps {
     onClose: () => void;
     activeService: string;
     onVerifyAndFix: (service: string) => void;
+    onDeepResync: (service: string) => void;
 }
 
 type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
@@ -33,6 +34,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onClose,
     activeService,
     onVerifyAndFix,
+    onDeepResync,
 }) => {
     const { t, i18n } = useTranslation();
     const handleBackdropClick = useModalClose(true, onClose);
@@ -384,6 +386,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
                             {t('settings.verifyFixMediaDesc')}
+                        </p>
+                    </div>
+
+                    {/* Deep re-verify: full re-sync (re-paginates every member from
+                        scratch, skipping already-downloaded assets). Catches gaps the
+                        media-only check can't (e.g. entirely-missing messages). */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.deepResync')}
+                            </label>
+                            <button
+                                onClick={() => {
+                                    if (!window.confirm(t('settings.deepResyncConfirm'))) return;
+                                    onDeepResync(activeService);
+                                    onClose();
+                                }}
+                                className="text-xs font-medium text-amber-600 hover:text-amber-800"
+                            >
+                                {t('settings.deepResyncButton')}
+                            </button>
+                        </div>
+                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.deepResyncDesc')}
                         </p>
                     </div>
 

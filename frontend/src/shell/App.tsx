@@ -315,6 +315,7 @@ function App() {
                         onClose={() => setShowSettingsModal(false)}
                         activeService={activeService ?? ''}
                         onVerifyAndFix={verifyAndFix}
+                        onDeepResync={(service) => startSync(false, service, true)}
                     />
                 )}
 
