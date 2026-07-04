@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - After **Verify & Fix media**, the progress window stays open and shows the
   results — any media with no available source is listed by **member and date**
   (with a Done button to dismiss) instead of the panel auto-closing.
+- **Withdrawn (member-canceled) posts** are now hidden from the message list and
+  no longer counted as missing media. Their status is recorded in the synced data
+  on disk but not shown. Existing messages pick this up after a re-sync (which
+  backfills the message `state`); Deep re-verify does a full backfill.
 
 ## [0.3.0] - 2026-07-01
 
