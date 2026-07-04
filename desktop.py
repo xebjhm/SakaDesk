@@ -231,6 +231,26 @@ def _get_dpi_scale() -> float:
     return window_geometry.dpi_scale()
 
 
+def _window_hwnd(window: object) -> int | None:
+    """Best-effort native window handle (HWND) so the DPI scale can be read for
+    the monitor the window is actually on. Returns None if unavailable, in which
+    case the caller falls back to the primary-monitor scale (safe, no regression).
+    """
+    handle = getattr(window, "hwnd", None)
+    if handle is None:
+        native = getattr(window, "native", None)
+        handle = getattr(native, "Handle", None)
+    if handle is None:
+        return None
+    try:
+        return int(handle)
+    except (TypeError, ValueError):
+        try:
+            return int(handle.ToInt64())  # WinForms IntPtr
+        except Exception:
+            return None
+
+
 def _load_window_geometry() -> dict:
     """Load saved window size/position from settings.json, or return defaults.
 
@@ -341,8 +361,10 @@ def main() -> None:
             # window.width/height/x/y are PHYSICAL (scaled) pixels on WinForms;
             # convert to logical before saving so the next create_window (which
             # re-applies the scale) reproduces the same size — instead of growing
-            # the window by `scale`x on every restart (the shipped bug).
-            scale = _get_dpi_scale()
+            # the window by `scale`x on every restart (the shipped bug). Use the
+            # DPI of the monitor this window is on (via its hwnd) so mixed-DPI
+            # multi-monitor setups convert correctly too.
+            scale = window_geometry.dpi_scale(_window_hwnd(window))
             physical = {
                 "width": window.width,
                 "height": window.height,

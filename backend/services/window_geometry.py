@@ -26,17 +26,47 @@ DEFAULTS: dict[str, int] = {"width": 1200, "height": 800}
 # corrupt/absurd saved size falls back to defaults instead of an unusable window.
 _MIN_W, _MIN_H, _MAX_W, _MAX_H = 400, 300, 7680, 4320
 
+# Plausible Windows DPI scaling range (50%..400%). A reading outside this is
+# treated as bogus so it can never corrupt the stored geometry.
+_MIN_SCALE, _MAX_SCALE = 0.5, 4.0
 
-def dpi_scale() -> float:
-    """Return the primary monitor's DPI scale factor (e.g. 1.5 for 150%).
 
-    Returns 1.0 on non-Windows platforms (and on any failure), where no
-    logical/physical mismatch exists.
+def sanitize_scale(raw: float) -> float:
+    """Clamp a raw scale reading into the plausible range; 0/negative/NaN -> 1.0.
+
+    The conversion is ``logical = physical / scale`` then ``create_window``
+    re-applies the same factor, so it round-trips for ANY scale value — this
+    guard only rejects impossible readings, it does not special-case a scale.
+    """
+    if not raw or raw != raw or raw <= 0:  # falsy, NaN, or non-positive
+        return 1.0
+    return max(_MIN_SCALE, min(_MAX_SCALE, raw))
+
+
+def dpi_scale(hwnd: Optional[int] = None) -> float:
+    """DPI scale factor pywebview's WinForms backend applies to create_window's
+    logical size (1.0 = 100%, 1.5 = 150%, 2.0 = 200%, ...).
+
+    Prefers the DPI of the monitor the given window (``hwnd``) is actually on
+    (``GetDpiForWindow``), so a multi-monitor setup with different per-monitor
+    scaling is handled correctly. Falls back to the primary monitor
+    (``GetScaleFactorForDevice``), then to 1.0. Always clamped to a sane range.
+    Returns 1.0 on non-Windows, where no logical/physical mismatch exists.
     """
     if platform.system() != "Windows":
         return 1.0
+    # Per-monitor DPI for this specific window (correct across mixed-DPI monitors).
+    if hwnd:
+        try:
+            dpi = ctypes.windll.user32.GetDpiForWindow(int(hwnd))  # type: ignore[attr-defined]
+            if dpi:
+                return sanitize_scale(dpi / 96.0)
+        except Exception:
+            pass
+    # Fallback: primary monitor scale.
     try:
-        return ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0  # type: ignore[attr-defined,no-any-return]
+        raw = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0  # type: ignore[attr-defined]
+        return sanitize_scale(raw)
     except Exception:
         return 1.0
 
