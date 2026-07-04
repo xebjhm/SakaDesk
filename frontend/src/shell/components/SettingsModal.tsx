@@ -489,7 +489,9 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
         setChecking(true);
         setResult(null);
         try {
-            const res = await fetch('/api/version');
+            // force=true bypasses the 1h cache so a manual check is always live
+            // (automatic startup/hourly checks stay cached to respect rate limits).
+            const res = await fetch('/api/version?force=true');
             if (res.ok) {
                 const data = await res.json();
                 if (data.update_available) {
