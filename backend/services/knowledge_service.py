@@ -75,6 +75,9 @@ from backend.services.knowledge_store import (
 )
 from backend.services.llm_client import LLMBackendError, build_llm_client_from_settings
 from backend.services.llm_usage import on_llm_request
+from backend.services.onnx_runtime_loader import ensure_onnxruntime_importable
+from backend.services.onnx_runtime_manifest import select_runtime_host_class
+from backend.services.onnx_runtime_provision import get_runtime_provisioner
 from backend.services.path_resolver import resolve_messages_file, resolve_service_path
 from backend.services.platform import get_app_data_dir
 from backend.services.settings_store import load_config, update_config
@@ -1735,12 +1738,28 @@ async def compute_readiness() -> dict:
     llm = await _probe_llm()
     index = await asyncio.to_thread(_probe_index_document_count)
     degraded = await asyncio.to_thread(_probe_degraded)
+    runtime = _runtime_probe()
     return {
         "enabled": enabled,
         "embeddingModel": embedding_model,
         "llm": llm,
         "index": index,
         "degraded": degraded,
+        "runtime": runtime,
+    }
+
+
+def _runtime_probe() -> dict:
+    """Runtime readiness: bundled (dev) or downloaded => ok; otherwise report the
+    provisioner's live download state so the UI can show progress."""
+    result = ensure_onnxruntime_importable()
+    if result in ("bundled", "loaded"):
+        return {"ok": True, "state": result, "host": select_runtime_host_class()}
+    prov_status = get_runtime_provisioner().status()
+    return {
+        "ok": False,
+        "state": prov_status["state"] if prov_status["state"] != "idle" else "missing",
+        "host": select_runtime_host_class(),
     }
 
 
