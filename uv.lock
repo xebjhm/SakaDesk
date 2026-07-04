@@ -1300,7 +1300,7 @@ wheels = [
 
 [[package]]
 name = "pysaka"
-version = "0.4.1"
+version = "0.4.2"
 source = { editable = "../pysaka" }
 dependencies = [
     { name = "aiofiles" },
@@ -1516,7 +1516,7 @@ wheels = [
 
 [[package]]
 name = "sakadesk"
-version = "0.3.0"
+version = "0.3.1"
 source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
