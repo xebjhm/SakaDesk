@@ -371,7 +371,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 {t('settings.verifyFixMedia')}
                             </label>
                             <button
-                                onClick={() => onVerifyAndFix(activeService)}
+                                onClick={() => {
+                                    // Close settings so the verify progress/result
+                                    // (shown in the sync modal) is in focus.
+                                    onVerifyAndFix(activeService);
+                                    onClose();
+                                }}
                                 className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
                                 {t('settings.verifyFixButton')}

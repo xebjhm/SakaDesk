@@ -803,6 +803,10 @@ class SyncService:
             "repaired": 0,
             "failed": 0,
             "still_missing": 0,
+            # Media-type messages with no recorded/downloadable media source
+            # (e.g. expired-media stubs). Reported so completeness is never
+            # overclaimed as "all present" while these exist.
+            "unresolved": 0,
         }
         if self.running:
             return totals
@@ -857,6 +861,7 @@ class SyncService:
                             manager.scan_member_media, member_dir
                         )
                         totals["checked"] += scan["checked"]
+                        totals["unresolved"] += scan.get("unresolved", 0)
                         if scan["missing"]:
                             totals["missing"] += len(scan["missing"])
                             gaps_by_group[gid].append((member_dir, scan["missing"]))

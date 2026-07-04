@@ -22,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Translation no longer fails with `no_model` when the saved config omits a model;
   it falls back to the default and self-heals the stored value.
 - The log directory now honors `SAKADESK_DATA_DIR`.
+- **Verify & Fix media no longer overstates completeness.** Media messages whose
+  media has no downloadable source (e.g. expired-media stubs) are now reported as
+  unresolved instead of being silently counted as present, and the "all present"
+  message is scoped to downloaded messages — so the check never claims complete
+  while media is unaccounted for.
+- Uninstall now removes the correct saved credentials and auth data (it targeted
+  stale `pyzaka`/`zakadesk` names before, missing the current `pysaka` entries).
+
+### Changed
+- Starting **Verify & Fix media** now closes the settings panel so the validation
+  progress and result are in focus.
 
 ## [0.3.0] - 2026-07-01
 

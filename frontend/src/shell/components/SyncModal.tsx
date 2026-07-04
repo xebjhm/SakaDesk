@@ -70,15 +70,20 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                 {/* Content */}
                 <div className="p-6 space-y-5">
                     {syncProgress.state === 'complete' && syncProgress.result && (
-                        <p className="text-xs text-gray-600">
-                            {syncProgress.result.missing === 0
-                                ? t('settings.verifyNoGaps')
-                                : t('settings.verifySummary', {
+                        <div className="text-xs text-gray-600 space-y-1">
+                            {syncProgress.result.missing === 0 && (syncProgress.result.unresolved ?? 0) === 0
+                                ? <p>{t('settings.verifyNoGaps')}</p>
+                                : <p>{t('settings.verifySummary', {
                                       checked: syncProgress.result.checked,
                                       repaired: syncProgress.result.repaired,
                                       stillMissing: syncProgress.result.still_missing,
-                                  })}
-                        </p>
+                                  })}</p>}
+                            {(syncProgress.result.unresolved ?? 0) > 0 && (
+                                <p className="text-amber-600">
+                                    {t('settings.verifyUnresolved', { count: syncProgress.result.unresolved })}
+                                </p>
+                            )}
+                        </div>
                     )}
                     {/* Progress Bar */}
                     <div>
