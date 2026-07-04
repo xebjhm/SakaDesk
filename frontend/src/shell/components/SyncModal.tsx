@@ -9,9 +9,10 @@ import type { SequentialSyncInfo } from '../hooks/useSync';
 interface SyncModalProps {
     syncProgress: SyncProgress;
     sequentialSyncInfo?: SequentialSyncInfo | null;
+    onClose?: () => void;
 }
 
-export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo }) => {
+export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose }) => {
     const { t } = useTranslation();
 
     const getPhaseName = () => getSyncPhaseName(syncProgress, t);
@@ -134,26 +135,31 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         </div>
                     </div>
 
-                    {/* Current Item Detail or Warning */}
-                    <div className={`rounded-xl px-4 py-3 flex items-center ${syncProgress.phase_number === 3 ? 'bg-amber-50 border border-amber-100 justify-center' : 'bg-blue-50'
-                        }`}>
-                        {syncProgress.phase_number === 3 ? (
-                            <div className="flex items-center gap-2 text-amber-700">
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="text-sm font-medium">
-                                    {t('sync.downloadingMedia')}
-                                </span>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                                <span className="text-sm text-gray-700 font-medium truncate">
-                                    {syncProgress.detail || t('sync.processing')}
-                                    {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
-                                </span>
-                            </div>
-                        )}
-                    </div>
+                    {/* Current Item Detail or Warning — only while actively running.
+                        On completion the backend leaves phase_number at 3; without this
+                        guard the "downloading media... do not close" warning (and the
+                        spinner) would persist and make a finished sync look stuck. */}
+                    {syncProgress.state === 'running' && (
+                        <div className={`rounded-xl px-4 py-3 flex items-center ${syncProgress.phase_number === 3 ? 'bg-amber-50 border border-amber-100 justify-center' : 'bg-blue-50'
+                            }`}>
+                            {syncProgress.phase_number === 3 ? (
+                                <div className="flex items-center gap-2 text-amber-700">
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span className="text-sm font-medium">
+                                        {t('sync.downloadingMedia')}
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                    <span className="text-sm text-gray-700 font-medium truncate">
+                                        {syncProgress.detail || t('sync.processing')}
+                                        {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Phase Dots */}
                     <div className="flex justify-center gap-3 pt-2">
@@ -183,6 +189,17 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                             );
                         })}
                     </div>
+
+                    {(syncProgress.state === 'complete' || syncProgress.state === 'error') && onClose && (
+                        <div className="flex justify-center pt-1">
+                            <button
+                                onClick={onClose}
+                                className="px-5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                            >
+                                {t('common.done')}
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

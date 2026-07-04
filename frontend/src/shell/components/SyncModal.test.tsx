@@ -79,6 +79,23 @@ describe('SyncModal', () => {
         expect(screen.getByText('sync.syncComplete')).toBeInTheDocument();
     });
 
+    it('hides the downloading-media warning once complete (phase_number may still be 3)', () => {
+        // Regression: on completion the backend leaves phase_number at 3 (the
+        // download phase). The "downloading media... do not close" warning must
+        // not persist, or the modal looks stuck after it is actually done.
+        const completeAfterDownload: SyncProgress = {
+            ...baseProgress,
+            state: 'complete',
+            phase: 'complete',
+            phase_number: 3,
+            completed: 3,
+            total: 3,
+        };
+        render(<SyncModal syncProgress={completeAfterDownload} />);
+        expect(screen.getByText('sync.complete')).toBeInTheDocument();
+        expect(screen.queryByText('sync.downloadingMedia')).not.toBeInTheDocument();
+    });
+
     it('shows sequential sync counter', () => {
         render(
             <SyncModal
