@@ -336,7 +336,9 @@ def _visible_messages(messages: list) -> list:
     """Hide non-'published' messages from the UI (e.g. state='canceled' — the
     member withdrew the post, which strips its media). The state is still recorded
     in messages.json on disk; it is just not shown to normal users."""
-    return [m for m in messages if not (m.get("state") and m.get("state") != "published")]
+    return [
+        m for m in messages if not (m.get("state") and m.get("state") != "published")
+    ]
 
 
 @router.get("/messages_by_path")

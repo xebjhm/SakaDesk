@@ -41,14 +41,18 @@ async def test_check_geo_availability_uses_country(monkeypatch):
 
     monkeypatch.setattr(AuthService, "_lookup_country", fake_tw)
     res = await svc.check_geo_availability("yodel")
-    assert res["blocked"] is True and res["available"] is False and res["country"] == "TW"
+    assert (
+        res["blocked"] is True and res["available"] is False and res["country"] == "TW"
+    )
 
     async def fake_jp(self):
         return "JP"
 
     monkeypatch.setattr(AuthService, "_lookup_country", fake_jp)
     res = await svc.check_geo_availability("yodel")
-    assert res["blocked"] is False and res["available"] is True and res["country"] == "JP"
+    assert (
+        res["blocked"] is False and res["available"] is True and res["country"] == "JP"
+    )
 
     async def fake_unknown(self):
         return None

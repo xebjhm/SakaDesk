@@ -36,7 +36,9 @@ def _region_is_blocked(country_code: Optional[str]) -> bool:
     """Yodel's web service is Japan-only. A known non-JP country is blocked; an
     unknown country (the geo-IP lookup failed) is NOT blocked — we fail open so a
     lookup failure never produces a false warning."""
-    return bool(country_code) and country_code.upper() != "JP"
+    if not country_code:
+        return False
+    return country_code.upper() != "JP"
 
 
 class AuthService:
@@ -444,16 +446,22 @@ class AuthService:
         validate_service(service)
         if service != Group.YODEL.value:
             return {
-                "service": service, "restricted": False,
-                "available": True, "blocked": False, "country": None,
+                "service": service,
+                "restricted": False,
+                "available": True,
+                "blocked": False,
+                "country": None,
             }
 
         country = await self._lookup_country()
         blocked = _region_is_blocked(country)
         logger.info("yodel.geo_check", country=country, blocked=blocked)
         return {
-            "service": service, "restricted": True,
-            "available": not blocked, "blocked": blocked, "country": country,
+            "service": service,
+            "restricted": True,
+            "available": not blocked,
+            "blocked": blocked,
+            "country": country,
         }
 
     async def _lookup_country(self) -> Optional[str]:
@@ -461,10 +469,16 @@ class AuthService:
         no-key geo-IP service (with a fallback). None if all lookups fail, so the
         caller fails open."""
         providers = [
-            ("http://ip-api.com/json/?fields=status,countryCode",
-             lambda d: d.get("countryCode") if d.get("status") == "success" else None),
-            ("https://ipwho.is/",
-             lambda d: d.get("country_code") if d.get("success", True) else None),
+            (
+                "http://ip-api.com/json/?fields=status,countryCode",
+                lambda d: d.get("countryCode")
+                if d.get("status") == "success"
+                else None,
+            ),
+            (
+                "https://ipwho.is/",
+                lambda d: d.get("country_code") if d.get("success", True) else None,
+            ),
         ]
         timeout = aiohttp.ClientTimeout(total=6)
         for url, extract in providers:

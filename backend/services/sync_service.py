@@ -805,10 +805,10 @@ class SyncService:
         """
         return 0
 
-    async def verify_and_fix_media(self) -> dict[str, int]:
+    async def verify_and_fix_media(self) -> dict[str, Any]:
         """Scan every member's messages.json for missing media (absent/0-byte) and
         backfill it using fresh timeline URLs. One-click, per-service, idempotent."""
-        totals = {
+        totals: dict[str, Any] = {
             "members": 0,
             "checked": 0,
             "missing": 0,
