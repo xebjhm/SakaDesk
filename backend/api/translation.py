@@ -101,6 +101,7 @@ def _save_api_key(api_key: str) -> None:
     """Store translation API key in the OS credential manager (WCM/keyring)."""
     tm = get_token_manager()
     tm.store.save(_API_KEY_CREDENTIAL_GROUP, {"api_key": api_key})
+    _invalidate_key_status_cache()
 
 
 def _load_api_key() -> Optional[str]:
@@ -116,6 +117,44 @@ def _delete_api_key() -> None:
     """Delete translation API key from the OS credential manager."""
     tm = get_token_manager()
     tm.store.delete(_API_KEY_CREDENTIAL_GROUP)
+    _invalidate_key_status_cache()
+
+
+# In-memory cache of the keyring-derived key status (has_key, masked) so GET
+# /config doesn't pay the slow OS keyring (WCM) read on every AI-tab open. It is
+# populated on first read (and warmed at startup) and invalidated whenever the key
+# is saved or cleared. ``None`` means "not cached yet".
+_key_status_cache: Optional[tuple[bool, Optional[str]]] = None
+
+
+def _mask_api_key(api_key: Optional[str]) -> Optional[str]:
+    if not api_key:
+        return None
+    return f"{api_key[:4]}...{api_key[-2:]}" if len(api_key) > 8 else "****"
+
+
+def _load_key_status() -> tuple[bool, Optional[str]]:
+    """``(has_api_key, masked)`` with a read-through in-memory cache over the slow
+    OS keyring read. Safe to run in a worker thread."""
+    global _key_status_cache
+    if _key_status_cache is None:
+        api_key = _load_api_key()
+        _key_status_cache = (api_key is not None, _mask_api_key(api_key))
+    return _key_status_cache
+
+
+def _invalidate_key_status_cache() -> None:
+    global _key_status_cache
+    _key_status_cache = None
+
+
+def warm_key_status_cache() -> None:
+    """Prime the key-status cache (called at startup) so the first Settings -> AI
+    open is instant instead of paying the keyring read then."""
+    try:
+        _load_key_status()
+    except Exception:
+        logger.debug("translation.key_status_warm_failed", exc_info=True)
 
 
 _PLACEHOLDER_RE = re.compile(r"%%%|％％％")
@@ -246,20 +285,15 @@ async def get_config():
 
         await update_config(_fix)
 
-    # Offload the OS keyring read — it can take hundreds of ms on Windows (WCM),
-    # and running it on the event loop stalls every other request meanwhile.
-    api_key = await asyncio.to_thread(_load_api_key)
-    masked_key = None
-    if api_key:
-        if len(api_key) > 8:
-            masked_key = api_key[:4] + "..." + api_key[-2:]
-        else:
-            masked_key = "****"
+    # Key status comes from a read-through cache over the OS keyring read, which
+    # can take hundreds of ms on Windows (WCM). Offloaded to a thread so the cold
+    # (uncached) read never stalls the event loop; warm reads return instantly.
+    has_key, masked_key = await asyncio.to_thread(_load_key_status)
     return {
         "provider": config.get("translation_provider"),
         "model": stored_model,
         "api_key_masked": masked_key,
-        "has_api_key": api_key is not None,
+        "has_api_key": has_key,
         "target_language": config.get("translation_target_language"),
     }
 

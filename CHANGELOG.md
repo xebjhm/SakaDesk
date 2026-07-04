@@ -34,6 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   while media is unaccounted for.
 - Uninstall now removes the correct saved credentials and auth data (it targeted
   stale `pyzaka`/`zakadesk` names before, missing the current `pysaka` entries).
+- The sync progress window no longer looks stuck after finishing: the
+  "downloading media… do not close" warning now clears on completion, and a Done
+  button lets you dismiss it (it also auto-closes).
+- Settings → AI now opens without waiting on the OS keyring. The key-status read
+  behind `/api/translation/config` is cached in memory (warmed at startup,
+  invalidated on save/clear) instead of being re-read on every open; a brief
+  loading indicator covers the first open after launch.
 
 ### Changed
 - Starting **Verify & Fix media** now closes the settings panel so the validation

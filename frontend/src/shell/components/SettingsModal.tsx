@@ -561,6 +561,9 @@ function AiTab() {
     const [hasApiKey, setHasApiKey] = useState(() => aiConfigCache?.hasApiKey ?? false);  // key stored in keyring
     const [apiKeyMasked, setApiKeyMasked] = useState<string | null>(() => aiConfigCache?.apiKeyMasked ?? null);  // "AIza...xQ"
     const [targetLang, setTargetLang] = useState<string | null>(() => aiConfigCache?.targetLang ?? null);
+    // Only "loading" when there is nothing cached to show yet (first open / after
+    // a restart). Reopens seed from aiConfigCache and render instantly.
+    const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -582,7 +585,8 @@ function AiTab() {
                     setTranslationTargetLanguage(data.target_language);
                 }
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => setConfigLoading(false));
     }, [setTranslationTargetLanguage]);
 
     // Providers available in the UI. Backend supports OpenAI too (OpenAIProvider)
@@ -784,6 +788,12 @@ function AiTab() {
             {showProvider && (
                 <div className="pt-4 border-t border-gray-100 space-y-3">
                     <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    {configLoading && (
+                        <div className="flex items-center gap-2 text-xs text-gray-400">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {t('common.loading')}
+                        </div>
+                    )}
                     {/* Provider */}
                     <div>
                         <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>

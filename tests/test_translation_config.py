@@ -56,3 +56,38 @@ def test_config_endpoint_backfills_default_model_when_none(client, monkeypatch):
     assert resp.status_code == 200
     assert resp.json()["model"] == DEFAULT_GEMINI_MODEL
     assert persisted.get("translation_model") == DEFAULT_GEMINI_MODEL
+
+
+def test_config_caches_keyring_read(client, monkeypatch):
+    """/config must not pay the slow OS keyring read on every AI-tab open: the
+    key status is cached in memory and only re-read after the key is saved/cleared
+    (which invalidates the cache)."""
+    calls = {"n": 0}
+
+    def fake_load_api_key():
+        calls["n"] += 1
+        return "AIzaSECRET12"
+
+    async def fake_load_config():
+        return {
+            "translation_provider": "gemini",
+            "translation_model": DEFAULT_GEMINI_MODEL,
+            "translation_target_language": "zh-TW",
+        }
+
+    monkeypatch.setattr(translation, "_load_api_key", fake_load_api_key)
+    monkeypatch.setattr(translation, "load_config", fake_load_config)
+    translation._invalidate_key_status_cache()
+
+    r1 = client.get("/api/translation/config")
+    r2 = client.get("/api/translation/config")
+
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["has_api_key"] is True
+    assert r1.json()["api_key_masked"] == "AIza...12"
+    assert calls["n"] == 1  # keyring read once; second call served from cache
+
+    # Invalidation (as _save_api_key/_delete_api_key do) forces a fresh read.
+    translation._invalidate_key_status_cache()
+    client.get("/api/translation/config")
+    assert calls["n"] == 2
