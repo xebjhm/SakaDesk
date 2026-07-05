@@ -883,6 +883,13 @@ class BlogService:
                         logger.debug(
                             "Image download non-200", url=img_url, status=resp.status
                         )
+                        # Mirror the exception path: never leave a None slot in
+                        # the results array (None serialized into blog.json would
+                        # break _rewrite_local_images' img.get() calls).
+                        results[idx] = {
+                            "original_url": img_url,
+                            "local_path": None,
+                        }
 
             try:
                 if semaphore:
@@ -1362,13 +1369,24 @@ class BlogBackupManager:
         if event is not None:
             event.set()
 
+    def _deregister_own(self, service: str, cancel_event: threading.Event) -> None:
+        """Remove this run's bookkeeping only if it is still the current run.
+
+        A superseding ``start(force=True)`` replaces ``_cancel_events[service]``
+        with a fresh event; this run must not clobber the newer run's
+        registration.  Identity of the cancel-event is the per-run token: only
+        deregister when the currently-registered event is still our own.
+        """
+        with self._lock:
+            if self._cancel_events.get(service) is cancel_event:
+                self._cancel_events.pop(service, None)
+                self._running.discard(service)
+
     async def _run_backup(self, service: str, cancel_event: threading.Event):
         """Run full backup for one service with cancellation support."""
         if not _is_blog_supported(service):
             logger.info(f"Skipping blog backup for {service} (not supported)")
-            with self._lock:
-                self._running.discard(service)
-                self._cancel_events.pop(service, None)
+            self._deregister_own(service, cancel_event)
             return
 
         blog_service = BlogService()
@@ -1398,9 +1416,7 @@ class BlogBackupManager:
         except Exception as e:
             logger.error(f"Standalone blog backup error for {service}: {e}")
         finally:
-            with self._lock:
-                self._running.discard(service)
-                self._cancel_events.pop(service, None)
+            self._deregister_own(service, cancel_event)
 
 
 _blog_backup_manager: BlogBackupManager | None = None

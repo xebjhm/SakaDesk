@@ -529,8 +529,11 @@ class TestDownloadImages:
 
         results = await svc._download_images(mock_session, image_urls, images_dir)
         assert len(results) == 1
-        # Non-200 results in None for the slot (the results array keeps order)
-        assert results[0] is None
+        # SVC-I6: non-200 must NOT leave a None slot (None would serialize into
+        # blog.json and break _rewrite_local_images). Mirror the exception path.
+        assert results[0] is not None
+        assert results[0]["original_url"] == "https://example.com/missing.jpg"
+        assert results[0]["local_path"] is None
 
     @pytest.mark.asyncio
     async def test_network_error_returns_fallback(self, svc, tmp_path):
@@ -620,8 +623,12 @@ class TestDownloadImages:
         assert len(results) == 2
         # First succeeded
         assert results[0]["local_path"] is not None
-        # Second failed (500)
-        assert results[1] is None
+        # SVC-I6: second failed (500) -> fallback dict, never None
+        assert results[1] is not None
+        assert results[1]["original_url"] == "https://example.com/fail.png"
+        assert results[1]["local_path"] is None
+        # No None anywhere in the array (would poison blog.json)
+        assert all(r is not None for r in results)
 
     @pytest.mark.asyncio
     async def test_url_query_params_stripped_from_extension(self, svc, tmp_path):
@@ -640,6 +647,37 @@ class TestDownloadImages:
 
         results = await svc._download_images(mock_session, image_urls, images_dir)
         assert results[0]["local_path"] == "./images/img_0.png"
+
+    @pytest.mark.asyncio
+    async def test_non_200_result_survives_rewrite(self, svc, tmp_path):
+        """SVC-I6: a non-200 image download must produce a dict (not None) that
+        _rewrite_local_images consumes without AttributeError.
+
+        Previously the non-200 branch left results[idx] = None, which got
+        serialized into blog.json and made _rewrite_local_images crash on
+        img.get(...), 500-ing get_blog_content forever.
+        """
+        images_dir = tmp_path / "images"
+        image_urls = ["https://example.com/gone.jpg"]
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 403
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+
+        results = await svc._download_images(mock_session, image_urls, images_dir)
+        assert None not in results
+
+        # Feed the result straight into _rewrite_local_images: no AttributeError.
+        content = {
+            "content": {"html": "<p>hi</p>"},
+            "images": results,
+        }
+        rewritten = svc._rewrite_local_images(content, tmp_path, "hinatazaka46", "b1")
+        assert rewritten["images"][0]["local_path"] is None
 
 
 # ---------------------------------------------------------------------------
