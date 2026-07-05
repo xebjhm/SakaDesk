@@ -283,3 +283,33 @@ class TestDetailedDiskUsage:
         # Clean up
         _disk_cache["data"] = None
         _disk_cache["expires"] = 0
+
+
+class TestDiagnosticsScrubbing:
+    """SEC-5 — diagnostics must scrub secrets from returned log tails."""
+
+    @patch("backend.api.diagnostics.get_logs_dir")
+    @patch("backend.api.diagnostics.get_token_manager")
+    @patch("backend.api.diagnostics.get_settings_path")
+    def test_diagnostics_scrubs_secrets_from_logs(
+        self, mock_settings, mock_tm, mock_logs, tmp_path
+    ):
+        jwt = (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ."
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "debug.log").write_text(
+            f"[INFO] refreshed access token={jwt} done\n",
+            encoding="utf-8",
+        )
+        mock_settings.return_value = tmp_path / "nonexistent.json"
+        mock_tm.return_value = MagicMock(load_session=MagicMock(return_value=None))
+        mock_logs.return_value = log_dir
+
+        response = client.get("/api/diagnostics")
+        assert response.status_code == 200
+        body = response.text
+        assert jwt not in body
+        assert "[REDACTED_SECRET]" in body

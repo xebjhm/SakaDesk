@@ -74,3 +74,49 @@ class TestRedactNickname:
         text = "User alice said hello. Replying to alice now."
         result = _redact_nickname(text, "alice")
         assert result == "User [REDACTED] said hello. Replying to [REDACTED] now."
+
+
+class TestScrubSecrets:
+    """SEC-5 — token/JWT/bearer/long-secret scrubbing for emitted log lines."""
+
+    def test_scrub_jwt(self):
+        from backend.api.report import _scrub_secrets
+
+        jwt = (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        out = _scrub_secrets(f"auth token={jwt} ok")
+        assert jwt not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_bearer(self):
+        from backend.api.report import _scrub_secrets
+
+        out = _scrub_secrets("Authorization: Bearer abc123SECRETtokenvalue0000")
+        assert "abc123SECRETtokenvalue0000" not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_long_hex_secret(self):
+        from backend.api.report import _scrub_secrets
+
+        secret = "deadbeef" * 5  # 40 hex chars
+        out = _scrub_secrets(f"api_key={secret}")
+        assert secret not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_leaves_ordinary_text(self):
+        from backend.api.report import _scrub_secrets
+
+        text = "Sync completed for group 46 in 3.2s"
+        assert _scrub_secrets(text) == text
+
+    def test_scrub_log_line_combines_path_nickname_secret(self):
+        from backend.api.report import scrub_log_line
+
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.ZZZsignatureZZZ"
+        line = f"C:\\Users\\alice\\app.log user=Bob token={jwt}"
+        out = scrub_log_line(line, "alice", "Bob")
+        assert "alice" not in out  # path redacted
+        assert "Bob" not in out  # nickname redacted
+        assert jwt not in out  # secret redacted
