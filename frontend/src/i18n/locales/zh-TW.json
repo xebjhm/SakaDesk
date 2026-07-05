@@ -624,7 +624,8 @@
       "clearApiKey": "清除 API 金鑰",
       "clearApiKeyConfirm": "要從此裝置移除已儲存的 API 金鑰嗎？",
       "cacheClearedMsg": "翻譯快取已清除",
-      "savedSecurely": "已安全儲存在憑證管理員中"
+      "savedSecurely": "已安全儲存在憑證管理員中",
+      "keyMissing": "尚未儲存 API 金鑰，翻譯無法使用。請在上方輸入金鑰。"
     },
     "error": {
       "noProvider": "請在設定中配置翻譯服務提供者",

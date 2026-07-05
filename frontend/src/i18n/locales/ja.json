@@ -624,7 +624,8 @@
       "clearApiKey": "APIキーを削除",
       "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
       "cacheClearedMsg": "翻訳キャッシュをクリアしました",
-      "savedSecurely": "認証情報マネージャーに安全に保存されました"
+      "savedSecurely": "認証情報マネージャーに安全に保存されました",
+      "keyMissing": "APIキーが保存されていません。翻訳は使用できません。上でキーを入力してください。"
     },
     "error": {
       "noProvider": "設定で翻訳プロバイダーを設定してください",

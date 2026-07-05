@@ -40,6 +40,8 @@ CloseApplicationsFilter=*.exe
 ; and, together with PrepareToInstall below, waits for the app to fully exit
 ; before replacing files — the app's loaded DLLs in _internal (e.g. libffi-8.dll)
 ; stay locked until the process truly terminates.
+; NAME-SYNC: keep identical to INSTANCE_MUTEX_NAME in desktop.py. build.ps1 runs
+; tooling/windows/check_mutex_sync.py as a preflight and fails the build on drift.
 AppMutex=SakaDeskInstanceMutex
 
 [Languages]
@@ -90,16 +92,34 @@ begin
 end;
 
 // Runs after CloseApplications, before any files are replaced. The app's DLLs in
-// {app}\_internal stay memory-mapped (locked) until the process fully exits, and
-// CloseApplications can return before the app's multi-second graceful shutdown
-// finishes. Wait for the instance mutex to clear (the app kills its child workers
-// before releasing it, so a cleared mutex means the whole tree is gone), so we
-// never hit "DeleteFile failed; code 5" overwriting a still-loaded DLL.
+// {app}\_internal stay memory-mapped (locked) until every SakaDesk process exits
+// -- including the headless ProcessPoolExecutor index-build worker, which has no
+// window, so Restart Manager (CloseApplications) cannot close it and may leave
+// the main window running too. Belt-and-suspenders, and never a force-kill:
+//   1. Post WM_CLOSE to the app window so it runs its OWN graceful shutdown
+//      (which kills its worker processes, then os._exit releases the mutex).
+//      This is exactly what clicking the window's X does -- state is saved, no
+//      data loss.
+//   2. Wait for the instance mutex to clear (a cleared mutex means the whole
+//      process tree is gone).
+//   3. If it still won't exit, ABORT with an actionable message BEFORE touching
+//      any files. A clean stop the user can fix beats a silent mid-install
+//      rollback (which is what happens if we plow ahead into locked DLLs).
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
+  Wnd: HWND;
   Waited: Integer;
 begin
   Result := '';
+
+  // 1. Graceful nudge. Exact caption match: the app window is titled "SakaDesk";
+  //    this installer's window is not, so we never message ourselves.
+  Wnd := FindWindowByWindowName('SakaDesk');
+  if Wnd <> 0 then
+    PostMessage(Wnd, $0010, 0, 0);  // $0010 = WM_CLOSE
+
+  // 2. Wait up to ~12s for the graceful shutdown (uvicorn stop + worker kills)
+  //    to release the mutex.
   Waited := 0;
   while (Waited < 24) and CheckForMutexes('SakaDeskInstanceMutex') do
   begin
@@ -108,6 +128,12 @@ begin
   end;
   // Extra grace so the OS can unmap the freed executable images.
   Sleep(500);
+
+  // 3. Still alive? Stop cleanly instead of rolling back mid-install.
+  if CheckForMutexes('SakaDeskInstanceMutex') then
+    Result := 'SakaDesk is still running and could not be closed automatically.' + #13#10 +
+              'Please close it (check the notification area and Task Manager for' + #13#10 +
+              'SakaDesk.exe), then run Setup again.';
 end;
 
 // Write installer language choice to settings.json so the app uses it as default

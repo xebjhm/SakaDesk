@@ -69,6 +69,18 @@ if (-not $ExeOnly -and -not $Iscc) {
     Write-Warning "Inno Setup 6 (ISCC.exe) not found - building the exe only. Installer needs https://jrsoftware.org/isdl.php"
     $ExeOnly = $true
 }
+# Guard: the app's instance-mutex name (desktop.py INSTANCE_MUTEX_NAME) must
+# match the installer's AppMutex (setup.iss). If they drift, the in-place
+# upgrade silently regresses to the Restart-Manager-only path and can roll back
+# mid-install. Fail the build before an inconsistent installer can ship.
+# --no-project: the checker is stdlib-only, so skip syncing the pysaka env.
+if (-not $ExeOnly) {
+    Write-Host "[0/2] Verifying instance-mutex name is in sync (app <-> installer)..." -ForegroundColor Cyan
+    & uv run --no-project --python 3.12 python 'tooling/windows/check_mutex_sync.py'
+    if ($LASTEXITCODE -ne 0) {
+        throw "Instance-mutex name out of sync between desktop.py and setup.iss (see message above). Fix before building the installer."
+    }
+}
 
 # --- 1. Frontend -----------------------------------------------------------
 if ($SkipFrontend) {

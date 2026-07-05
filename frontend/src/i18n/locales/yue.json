@@ -624,7 +624,8 @@
             "clearApiKey": "清除 API key",
             "clearApiKeyConfirm": "要喺呢部機度移除已儲存嘅 API key？",
             "cacheClearedMsg": "翻譯緩存已清除",
-            "savedSecurely": "已安全咁存喺憑證管理員度"
+            "savedSecurely": "已安全咁存喺憑證管理員度",
+            "keyMissing": "重未存 API key，翻譯用唔到。請喺上面輸入。"
         },
         "error": {
             "noProvider": "請喺設定入面配置翻譯服務提供者",

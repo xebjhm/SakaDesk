@@ -7,6 +7,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
+import { apiKeyStatus } from './apiKeyStatus';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -874,7 +875,7 @@ function AiTab() {
                                     {t('translation.settings.testConnection')}
                                 </button>
                             </div>
-                            {hasApiKey && !apiKeyInput && (
+                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
                                 <div className="flex items-center justify-between mt-0.5">
                                     <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
                                     <button
@@ -884,6 +885,9 @@ function AiTab() {
                                         {t('translation.settings.clearApiKey')}
                                     </button>
                                 </div>
+                            )}
+                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
+                                <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
                             )}
                             {testResult && (
                                 <p className="text-xs mt-1 text-gray-500">{testResult}</p>

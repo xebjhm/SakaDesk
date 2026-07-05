@@ -37,6 +37,8 @@ _uvicorn_server: uvicorn.Server | None = None
 
 # Kept alive for the whole process so the mutex persists until the process exits.
 _instance_mutex_handle: int | None = None
+# NAME-SYNC: keep identical to AppMutex in tooling/windows/setup.iss. build.ps1
+# runs tooling/windows/check_mutex_sync.py as a preflight and fails on drift.
 INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
 
