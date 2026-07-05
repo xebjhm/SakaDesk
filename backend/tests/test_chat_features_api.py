@@ -151,6 +151,19 @@ class TestGetMessageDates:
         assert response.status_code == 404
 
     @patch("backend.api.chat_features._get_output_dir")
+    def test_message_dates_rejects_path_traversal(self, mock_output, tmp_path):
+        """A traversal member_path is rejected before touching disk (API-I2)."""
+        # A readable messages.json OUTSIDE the output dir; a naive join would
+        # serve it via ../ escape.
+        secret = tmp_path.parent / "sakadesk_secret_dir"
+        secret.mkdir(parents=True, exist_ok=True)
+        (secret / "messages.json").write_text('{"messages": []}', encoding="utf-8")
+
+        mock_output.return_value = tmp_path
+        response = client.get(f"/api/chat/message_dates/..%2f{secret.name}")
+        assert response.status_code == 403
+
+    @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_single_member(self, mock_output, tmp_path):
         """Returns date counts from a single member's messages.json."""
         member_dir = tmp_path / "hinatazaka46" / "member1"
