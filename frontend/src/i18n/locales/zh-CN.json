@@ -514,7 +514,8 @@
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
-      "savedSecurely": "已安全保存在凭据管理器中"
+      "savedSecurely": "已安全保存在凭据管理器中",
+      "keyMissing": "尚未保存 API 密钥，翻译无法使用。请在上方输入密钥。"
     },
     "error": {
       "noProvider": "请在设置中配置翻译服务提供商",

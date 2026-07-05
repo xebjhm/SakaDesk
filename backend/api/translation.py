@@ -213,6 +213,12 @@ async def _get_provider_from_config() -> TranslationProvider:
             400, "no_provider", "No translation provider configured."
         )
     if not api_key:
+        # The key is gone from the keyring, but the read-through status cache used
+        # by GET /config may still report it present (it is only invalidated on an
+        # in-process save/clear, not when the credential is removed out-of-band by
+        # an uninstall or another app instance). Invalidate it here so the settings
+        # UI stops falsely showing "saved securely" and prompts the user to re-enter.
+        _invalidate_key_status_cache()
         raise CodedHTTPException(
             400, "no_api_key", "No translation API key configured."
         )

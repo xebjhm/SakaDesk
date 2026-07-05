@@ -514,7 +514,8 @@
       "clearApiKey": "Clear API key",
       "clearApiKeyConfirm": "Remove the saved API key from this device?",
       "cacheClearedMsg": "Translation cache cleared",
-      "savedSecurely": "Saved securely in credential manager"
+      "savedSecurely": "Saved securely in credential manager",
+      "keyMissing": "No API key stored — translation won't work. Enter your key above."
     },
     "error": {
       "noProvider": "Please configure a translation provider in settings",
