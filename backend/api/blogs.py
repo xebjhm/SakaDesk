@@ -386,6 +386,10 @@ _PROXY_ALLOWED_HOSTS = {
     "img.nogizaka46.com",
 }
 
+# Cap the proxied image size to avoid unbounded memory use (10 MB is generous
+# for a blog image; official assets are well under this).
+_PROXY_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
 
 @router.get("/proxy-image")
 async def proxy_blog_image(
@@ -405,11 +409,37 @@ async def proxy_blog_image(
         raise HTTPException(status_code=403, detail="Domain not allowed for proxy")
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
-            resp = await client.get(url, timeout=30.0)
-            resp.raise_for_status()
+        # follow_redirects=False: an allowlisted host that open-redirects must not
+        # be able to steer this server-side fetch to an internal address (SSRF).
+        async with httpx.AsyncClient(follow_redirects=False) as client:
+            async with client.stream("GET", url, timeout=30.0) as resp:
+                resp.raise_for_status()
 
-        content_type = resp.headers.get("content-type", "application/octet-stream")
+                content_type = resp.headers.get(
+                    "content-type", "application/octet-stream"
+                )
+
+                # Reject oversized responses up front when the server declares a
+                # length; otherwise cap while streaming below.
+                declared_len = resp.headers.get("content-length")
+                if declared_len is not None:
+                    try:
+                        if int(declared_len) > _PROXY_MAX_IMAGE_BYTES:
+                            raise HTTPException(
+                                status_code=502, detail="Image too large"
+                            )
+                    except ValueError:
+                        pass
+
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in resp.aiter_bytes():
+                    total += len(chunk)
+                    if total > _PROXY_MAX_IMAGE_BYTES:
+                        raise HTTPException(status_code=502, detail="Image too large")
+                    chunks.append(chunk)
+                content = b"".join(chunks)
+
         from starlette.responses import Response
 
         headers = {}
@@ -418,7 +448,7 @@ async def proxy_blog_image(
 
             safe_name = quote(download, safe="")
             headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
-        return Response(content=resp.content, media_type=content_type, headers=headers)
+        return Response(content=content, media_type=content_type, headers=headers)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
 
