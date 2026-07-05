@@ -19,7 +19,7 @@ Does NOT modify the existing test_search_service_units.py.
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1018,6 +1018,117 @@ class TestClearDb:
             count = service._build_full_index_sync()
         assert count == 6
         assert db_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_rebuild_after_search_closes_read_conn_cross_thread(
+        self, service: SearchService, output_dir: Path
+    ):
+        """SVC-I4: a search creates _read_conn on the read-executor thread; a
+        subsequent rebuild must close it there, not on the write executor
+        (which would raise sqlite3.ProgrammingError and break rebuild)."""
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            # Build on the write executor so _conn is owned by the same thread
+            # that _clear_db_sync later runs on (matches production).
+            await loop.run_in_executor(
+                service._write_executor, service._build_full_index_sync
+            )
+            # Run a real search so _read_conn is opened on the read executor.
+            result = await service.search(
+                "ライブ", content_type="messages", limit=50
+            )
+        assert result["total_count"] >= 1
+        assert service._read_conn is not None
+
+        # Patch the heavy process build; we only exercise the connection
+        # teardown/threading, not the full reindex.
+        with patch.object(
+            service, "build_full_index", new=AsyncMock(return_value=0)
+        ):
+            # Before the fix this raised sqlite3.ProgrammingError from the
+            # write executor closing a read-executor-owned connection.
+            await service.rebuild()
+
+        assert service._read_conn is None
+        assert service._conn is None
+
+
+# =====================================================================
+# 8b. FTS ghost rows (SVC-I5)
+# =====================================================================
+
+
+class TestFtsGhostRows:
+    """SVC-I5: a rebuild-over-existing DB must not accumulate ghost FTS rows.
+
+    External-content FTS5 tables have AFTER DELETE triggers; with the SQLite
+    default recursive_triggers=OFF the implicit DELETE from INSERT OR REPLACE
+    does not fire them, leaving stale FTS rows. The fix enables
+    recursive_triggers=ON and explicitly clears content tables before a full
+    rebuild so FTS row counts stay consistent with the content tables.
+    """
+
+    @staticmethod
+    def _fts_match_count(conn: sqlite3.Connection, term: str) -> int:
+        return conn.execute(
+            "SELECT count(*) FROM search_fts WHERE search_fts MATCH ?", (term,)
+        ).fetchone()[0]
+
+    def test_rebuild_over_changed_content_leaves_no_ghost_fts_rows(
+        self, service: SearchService, output_dir: Path
+    ):
+        """Build, then rewrite a message's content in place (same id) and
+        rebuild. INSERT OR REPLACE on the UNIQUE(message_id, service) key gives
+        the row a NEW autoincrement rowid, so the old FTS entry becomes a ghost
+        unless the AFTER DELETE trigger fires (recursive_triggers=ON) or the
+        content table is cleared first. The OLD content must no longer match."""
+        msg_file = (
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json"
+        )
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            # First build: content contains the ASCII marker GHOSTMARK.
+            _write_messages_json(
+                msg_file,
+                [
+                    {
+                        "id": 1,
+                        "content": "GHOSTMARK first version",
+                        "timestamp": "2026-01-01T10:00:00+09:00",
+                    }
+                ],
+            )
+            service._build_full_index_sync()
+            conn = service._get_conn()
+            assert self._fts_match_count(conn, "GHOSTMARK") == 1
+
+            # Rewrite the SAME message_id with different content, then rebuild.
+            _write_messages_json(
+                msg_file,
+                [
+                    {
+                        "id": 1,
+                        "content": "FRESHMARK second version",
+                        "timestamp": "2026-01-01T10:00:00+09:00",
+                    }
+                ],
+            )
+            service._build_full_index_sync()
+            conn = service._get_conn()
+
+        # New content is findable; stale content leaves NO ghost FTS row.
+        assert self._fts_match_count(conn, "FRESHMARK") == 1
+        assert self._fts_match_count(conn, "GHOSTMARK") == 0
 
 
 # =====================================================================
