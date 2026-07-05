@@ -43,12 +43,15 @@ configure_logging(
 # === NOW SAFE TO IMPORT OTHER MODULES ===
 import asyncio  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
+from urllib.parse import urlparse  # noqa: E402
 
 import structlog  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
+from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 from backend.api import (  # noqa: E402
     auth,
     content,
@@ -188,6 +191,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def _is_loopback_origin(origin: str) -> bool:
+    """True if an Origin header value points at this app's own loopback host.
+
+    The app is served from http://127.0.0.1:<port> / http://localhost:<port>
+    (randomized port), so we compare only the host — any loopback port is ours.
+    Non-http(s) schemes and unparseable values are rejected.
+    """
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return parsed.hostname in ("127.0.0.1", "localhost")
+
+
+@app.middleware("http")
+async def block_cross_origin_api(request: Request, call_next):
+    """CSRF / DNS-rebinding defense for the local API (SEC-2).
+
+    For /api/* requests, reject (403) any request that carries an Origin header
+    whose scheme://host is not one of the app's own loopback origins. Browsers
+    always attach Origin on cross-site POST/DELETE and on fetch(), so this blocks
+    the CSRF vector without requiring the same-origin frontend to send anything
+    new. Requests with NO Origin (native/webview/CLI, most same-origin GETs) are
+    allowed. CORS preflight (OPTIONS) is never blocked here.
+    """
+    if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        if origin and not _is_loopback_origin(origin):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin request rejected"},
+            )
+    return await call_next(request)
+
+
+# Restrict the accepted Host header to loopback (defeats DNS rebinding) plus the
+# TestClient's "testserver" host. Bare hostnames are matched; ports are ignored
+# by TrustedHostMiddleware, so the randomized loopback port is covered.
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+)
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
@@ -231,11 +280,23 @@ if frontend_dist.exists():
         "Expires": "0",
     }
 
+    # Resolve once so containment checks compare against the real dist root.
+    _frontend_dist_resolved = frontend_dist.resolve()
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        path = frontend_dist / full_path
-        if path.exists() and path.is_file():
-            return FileResponse(path)
+        # SEC-1: Starlette does NOT collapse ".." in a :path segment, so
+        # frontend_dist / full_path can escape the dist dir (e.g.
+        # "../../pyproject.toml"). Resolve the joined path and require it to stay
+        # within the resolved dist root before serving. On any escape, bad
+        # characters, or non-file, fall through to index.html.
+        if "\x00" not in full_path:
+            candidate = (frontend_dist / full_path).resolve()
+            if (
+                candidate.is_relative_to(_frontend_dist_resolved)
+                and candidate.is_file()
+            ):
+                return FileResponse(candidate)
         return FileResponse(frontend_dist / "index.html", headers=_NO_CACHE_HEADERS)
 else:
     logger.warning(
