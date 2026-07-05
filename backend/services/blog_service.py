@@ -11,6 +11,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import os
 import tempfile
 import threading
 import time
@@ -53,6 +54,28 @@ def _is_blog_supported(service: str) -> bool:
         return group in BLOG_SUPPORTED_GROUPS
     except ValueError:
         return False
+
+
+def _replace_with_retry(
+    src: str, dst: str, *, attempts: int = 5, base_delay: float = 0.1
+) -> None:
+    """``os.replace`` that retries transient Windows lock errors.
+
+    On Windows ``os.replace`` (MoveFileEx) raises ``PermissionError`` (WinError 5
+    access-denied / 32 sharing-violation) when another handle briefly holds the
+    destination -- a concurrent reader, an antivirus scan, or the Search indexer.
+    These clear within milliseconds, so retry with a short linear backoff rather
+    than failing the write (which left blog ``index.json`` unwritten in the wild).
+    Re-raises the last error if the lock never clears -- we never silently drop
+    the write."""
+    for attempt in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(base_delay * (attempt + 1))
 
 
 @dataclass
@@ -150,8 +173,6 @@ class BlogService:
 
     async def save_blog_index(self, service: str, index: dict):
         """Save blog index to disk (atomic write via temp file + rename)."""
-        import os
-
         index_path = self.get_blog_index_path(service)
         index_path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=str(index_path.parent), suffix=".tmp")
@@ -159,7 +180,7 @@ class BlogService:
         try:
             async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
                 await f.write(json.dumps(index, ensure_ascii=False, indent=2))
-            os.replace(tmp_path, str(index_path))
+            _replace_with_retry(tmp_path, str(index_path))
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
@@ -169,8 +190,6 @@ class BlogService:
         """Write text or bytes atomically (temp file + os.replace) so an
         interrupted/crashed write can never leave a partial file — which would
         otherwise look complete and be skipped forever on the next backup."""
-        import os
-
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
         os.close(fd)
@@ -181,7 +200,7 @@ class BlogService:
             else:
                 async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
                     await f.write(data)
-            os.replace(tmp_path, str(path))
+            _replace_with_retry(tmp_path, str(path))
         except BaseException:
             with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
