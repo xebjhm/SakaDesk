@@ -368,6 +368,32 @@ class TestSyncBlogMetadata:
         assert response.status_code == 500
 
 
+def _make_proxy_stream_client(mock_httpx_cls, *, chunks, headers):
+    """Wire a patched httpx.AsyncClient so client.stream(...) yields a response
+    whose aiter_bytes() produces ``chunks``. Returns the client instance mock."""
+
+    async def _aiter_bytes():
+        for c in chunks:
+            yield c
+
+    mock_response = MagicMock()
+    mock_response.headers = headers
+    mock_response.raise_for_status = MagicMock()
+    mock_response.aiter_bytes = MagicMock(return_value=_aiter_bytes())
+
+    # client.stream(...) returns an async context manager yielding the response.
+    stream_cm = MagicMock()
+    stream_cm.__aenter__ = AsyncMock(return_value=mock_response)
+    stream_cm.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client_inst = MagicMock()
+    mock_client_inst.stream = MagicMock(return_value=stream_cm)
+    mock_client_inst.__aenter__ = AsyncMock(return_value=mock_client_inst)
+    mock_client_inst.__aexit__ = AsyncMock(return_value=None)
+    mock_httpx_cls.return_value = mock_client_inst
+    return mock_client_inst
+
+
 class TestProxyBlogImage:
     """Tests for GET /api/blogs/proxy-image."""
 
@@ -383,22 +409,44 @@ class TestProxyBlogImage:
 
     @patch("httpx.AsyncClient")
     def test_proxy_image_allowed_domain(self, mock_httpx_cls):
-        """Allowed domain proxies the image."""
-        mock_response = MagicMock()
-        mock_response.content = b"\xff\xd8\xff\xe0"
-        mock_response.headers = {"content-type": "image/jpeg"}
-        mock_response.raise_for_status = MagicMock()
-
-        mock_client_inst = AsyncMock()
-        mock_client_inst.get = AsyncMock(return_value=mock_response)
-        mock_client_inst.__aenter__ = AsyncMock(return_value=mock_client_inst)
-        mock_client_inst.__aexit__ = AsyncMock(return_value=None)
-        mock_httpx_cls.return_value = mock_client_inst
-
+        """Allowed domain proxies the image via the streaming client (API-I3)."""
+        _make_proxy_stream_client(
+            mock_httpx_cls,
+            chunks=[b"\xff\xd8\xff\xe0"],
+            headers={"content-type": "image/jpeg"},
+        )
         response = client.get(
             "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
         )
         assert response.status_code == 200
+        assert response.content == b"\xff\xd8\xff\xe0"
+
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_disables_redirects(self, mock_httpx_cls):
+        """SSRF (API-I3): the proxy client must NOT follow redirects, else an
+        allowlisted host that open-redirects could steer the fetch internally."""
+        _make_proxy_stream_client(
+            mock_httpx_cls,
+            chunks=[b"x"],
+            headers={"content-type": "image/jpeg"},
+        )
+        client.get("/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg")
+        assert mock_httpx_cls.call_args.kwargs.get("follow_redirects") is False
+
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_rejects_oversized_stream(self, mock_httpx_cls):
+        """A body exceeding the size cap returns 502 (API-I3 unbounded read)."""
+        one_mb = b"\x00" * (1024 * 1024)
+        _make_proxy_stream_client(
+            mock_httpx_cls,
+            chunks=[one_mb] * 11,  # 11 MB > 10 MB cap
+            headers={"content-type": "image/jpeg"},
+        )
+        response = client.get(
+            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
+        )
+        assert response.status_code == 502
+        assert "too large" in response.json()["detail"].lower()
 
 
 class TestServeBlogImage:
