@@ -1348,7 +1348,15 @@ class BlogBackupManager:
             return list(self._running)
 
     def shutdown(self) -> None:
-        """Stop all backups and shut down the background thread."""
+        """Stop all backups and shut down the background thread.
+
+        I1: ``join(timeout=5)`` is a bounded wait for safety (a hung backup
+        coroutine must not deadlock app shutdown forever), but a timeout is
+        not the same as confirmed-dead. If the thread is still alive after
+        the join, log loudly (ERROR) rather than silently returning as if
+        the writer were drained -- that's exactly the "no write after
+        release" guarantee this hook exists to uphold.
+        """
         with self._lock:
             targets = list(self._running)
             for service in targets:
@@ -1362,6 +1370,11 @@ class BlogBackupManager:
             loop.call_soon_threadsafe(loop.stop)
         if thread is not None:
             thread.join(timeout=5)
+            if thread.is_alive():
+                logger.error(
+                    "blog_backup_thread_join_timed_out; worker may still be "
+                    "writing; shutting down anyway to avoid deadlock"
+                )
 
     async def stop_async(self) -> None:
         """Shutdown-barrier hook: stop every backup and join the worker

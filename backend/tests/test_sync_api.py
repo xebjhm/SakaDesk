@@ -62,6 +62,27 @@ class TestStartSync:
         assert response.status_code == 400
         assert "already running" in response.json()["detail"]
 
+    def test_start_sync_rejects_during_shutdown(self):
+        """C1c: refuse to spawn a new sync writer once shutdown has begun --
+        otherwise it would still be running (and writing) after
+        data_lock.release()."""
+        from backend.services import shutdown_state
+
+        shutdown_state.begin_shutdown()
+        try:
+            with patch("backend.api.sync.get_sync_service") as mock_get:
+                mock_svc = MagicMock()
+                mock_svc.running = False
+                mock_get.return_value = mock_svc
+
+                with patch("backend.api.sync.asyncio.create_task") as mock_create_task:
+                    response = client.post("/api/sync/start?service=hinatazaka46")
+
+            assert response.status_code == 503
+            mock_create_task.assert_not_called()
+        finally:
+            shutdown_state.reset_for_tests()
+
     def test_start_sync_with_include_inactive(self):
         """include_inactive flag should be accepted."""
         with patch("backend.api.sync.get_sync_service") as mock_get:
@@ -435,15 +456,90 @@ class TestVerifyMedia:
             mock_svc.running = False
             mock_get.return_value = mock_svc
 
-            with patch("backend.api.sync.asyncio.create_task"):
+            # /verify routes through track_background_task (C1b), not a bare
+            # asyncio.create_task -- patch that call site instead so it
+            # doesn't schedule a real task against the mocked service.
+            with patch("backend.api.sync.track_background_task") as mock_track:
                 response = client.post("/api/sync/verify?service=hinatazaka46")
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "started"
         assert data["service"] == "hinatazaka46"
+        mock_track.assert_called_once()
+        args, kwargs = mock_track.call_args
+        assert kwargs.get("name") == "verify_media"
+        # The real run_verify_task(...) coroutine was constructed and handed
+        # to the (mocked) track_background_task but never awaited here --
+        # close it explicitly so Python doesn't warn about a dangling
+        # coroutine that was never scheduled.
+        args[0].close()
 
     def test_verify_endpoint_rejects_bad_service(self):
         """Verify endpoint should reject invalid services."""
         response = client.post("/api/sync/verify?service=not_a_service")
         assert response.status_code == 400
+
+    def test_verify_endpoint_rejects_during_shutdown(self):
+        """C1c: refuse to spawn a new verify writer once shutdown has begun --
+        otherwise it would still be running (and writing media) after
+        data_lock.release()."""
+        from backend.services import shutdown_state
+
+        shutdown_state.begin_shutdown()
+        try:
+            with patch("backend.api.sync.get_sync_service") as mock_get:
+                mock_svc = MagicMock()
+                mock_svc.running = False
+                mock_get.return_value = mock_svc
+
+                with patch("backend.api.sync.track_background_task") as mock_track:
+                    response = client.post("/api/sync/verify?service=hinatazaka46")
+
+            assert response.status_code == 503
+            mock_track.assert_not_called()
+        finally:
+            shutdown_state.reset_for_tests()
+
+    @pytest.mark.asyncio
+    async def test_verify_task_is_drained_by_drain_background_tasks(self):
+        """C1b end-to-end: verify_media must be routed through
+        track_background_task (not a bare create_task) so that
+        drain_background_tasks() -- the barrier's C1a hook -- can actually
+        reach and stop it. This drives the real endpoint handler and the
+        real drain function together, only mocking the sync service's
+        verify_and_fix_media so the test doesn't touch real files/network."""
+        import asyncio
+
+        from backend.services import background_tasks as bt
+        from backend.api.sync import verify_media
+
+        started = asyncio.Event()
+        cancelled = False
+
+        async def fake_verify_and_fix_media():
+            nonlocal cancelled
+            started.set()
+            try:
+                await asyncio.Event().wait()  # never completes on its own
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+
+        with patch("backend.api.sync.get_sync_service") as mock_get:
+            mock_svc = MagicMock()
+            mock_svc.running = False
+            mock_svc.verify_and_fix_media = fake_verify_and_fix_media
+            mock_get.return_value = mock_svc
+
+            with patch("backend.api.sync.progress_manager") as mock_pm:
+                mock_pm.get.return_value = MagicMock()
+                await verify_media(service="hinatazaka46")
+
+            await started.wait()
+            assert len(bt._background_tasks) == 1
+
+            await bt.drain_background_tasks()
+
+        assert cancelled is True
+        assert bt._background_tasks == set()

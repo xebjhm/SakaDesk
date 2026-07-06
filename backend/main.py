@@ -74,6 +74,7 @@ from backend.api import (  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
+from backend.services.shutdown_state import begin_shutdown  # noqa: E402
 
 logger = structlog.get_logger(__name__)
 
@@ -91,12 +92,33 @@ _writer_stops: list = []
 
 
 async def quiesce_writers() -> None:
-    """Stop and drain every data-dir writer. Returns only once none can write."""
+    """Stop and drain every data-dir writer. Returns only once none can write.
+
+    Per-hook error isolation (I2): one failing hook must not skip the others,
+    since a hung/failed sync stop must not also leave the blog or search
+    writer undrained. But a failure here must never be swallowed silently --
+    logged at ERROR with the hook's name, because releasing the lock right
+    after is the one place this really matters: if a writer wasn't actually
+    drained, an incoming instance can now race it. Blocking release forever
+    on a hung writer would be worse (the next instance could never write), so
+    this still proceeds to release -- just loudly, not silently.
+    """
     for make in list(_writer_stops):
+        hook_name = (
+            getattr(make, "__name__", None)
+            or getattr(
+                getattr(make, "__self__", None), "__class__", type(make)
+            ).__name__
+        )
         try:
             await make()
         except Exception:
-            logger.warning("writer stop failed", exc_info=True)
+            logger.error(
+                "writer stop failed; writer may not be fully drained; "
+                "releasing lock anyway to avoid deadlock",
+                hook=hook_name,
+                exc_info=True,
+            )
 
 
 async def _stop_all_sync_services() -> None:
@@ -147,11 +169,13 @@ async def lifespan(app: FastAPI):
     # startup must not accumulate / run twice.
     from backend.services.blog_service import get_blog_backup_manager
     from backend.services.search_service import stop_search_service
+    from backend.services.background_tasks import drain_background_tasks
 
     _writer_stops.clear()
     _writer_stops.append(_stop_all_sync_services)
     _writer_stops.append(get_blog_backup_manager().stop_async)
     _writer_stops.append(stop_search_service)
+    _writer_stops.append(drain_background_tasks)
 
     background_task = asyncio.create_task(_deferred_blog_backup())
 
@@ -164,6 +188,15 @@ async def lifespan(app: FastAPI):
     yield
 
     # --- Shutdown ---
+    # Flip the shutdown flag FIRST, before anything else -- this is the
+    # signal read paths check (search_service.build_full_index's untracked
+    # spawn sites; sync/verify start entry points) to refuse spawning a NEW
+    # writer once shutdown has begun (C1c). A writer spawned after this point
+    # but before quiesce_writers() would otherwise escape the barrier
+    # entirely, since quiesce_writers() only drains writers that already
+    # existed at the moment it runs.
+    begin_shutdown()
+
     # Cancel the deferred blog backup if it's still pending
     if not background_task.done():
         background_task.cancel()

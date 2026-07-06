@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pysaka import RefreshFailedError, SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
+from backend.services.background_tasks import track_background_task
+from backend.services.shutdown_state import is_shutting_down
 from backend.api.progress import progress_manager
 import asyncio
 
@@ -71,6 +73,12 @@ async def start_sync(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
+    # C1c: refuse to spawn a NEW writer once shutdown has begun -- a sync
+    # started after this point would still be running (and writing) after
+    # quiesce_writers()/data_lock.release(), escaping the barrier entirely.
+    if is_shutting_down():
+        raise HTTPException(status_code=503, detail="Application is shutting down")
+
     sync_service = get_sync_service(service)
     if sync_service.running:
         raise HTTPException(
@@ -100,6 +108,11 @@ async def verify_media(service: str = Query(..., description="Service to verify"
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
+    # C1c: see start_sync -- refuse to spawn a new verify writer once
+    # shutdown has begun.
+    if is_shutting_down():
+        raise HTTPException(status_code=503, detail="Application is shutting down")
+
     sync_service = get_sync_service(service)
     if sync_service.running:
         raise HTTPException(
@@ -111,7 +124,11 @@ async def verify_media(service: str = Query(..., description="Service to verify"
     progress.start_phase("starting", "Starting", 0, 0, "")
     progress.set_detail("Scanning for missing media...")
 
-    asyncio.create_task(run_verify_task(service))
+    # C1b: route through track_background_task (not a bare create_task) so
+    # drain_background_tasks() -- and thus the shutdown write barrier --
+    # covers this writer. verify_and_fix_media never sets sync_service._task,
+    # so cancel()/stop() cannot reach it any other way.
+    track_background_task(run_verify_task(service), name="verify_media")
     return {"status": "started", "service": service}
 
 
