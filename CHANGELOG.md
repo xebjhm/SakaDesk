@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-06
+
+### Fixed
+- **Translation "API key not set" even when it looked configured**: the AI
+  settings panel could show the key as "saved securely" while it was actually
+  missing from the OS credential store, so translation failed with a confusing
+  message. The panel now warns clearly when a provider is set but no key is
+  stored, and the status self-heals after a failed translation.
+- **Window grew on every restart** at non-100% display scaling; window geometry
+  is now correct at any DPI scale and across multiple monitors.
+- **Manual "Check for updates"** now forces a live check instead of possibly
+  reporting a stale "up to date".
+- **In-place updates** now close a running app cleanly (WM_CLOSE) instead of
+  risking a rolled-back install.
+- **Blog metadata sync** no longer fails with an "access denied" error when
+  another process briefly holds the blog index (antivirus/search indexer); the
+  write is retried.
+
+### Security
+- Hardened the local API against path traversal, DNS-rebinding, and
+  cross-origin/CSRF (SEC-1, SEC-2, API-I2).
+- Self-update downloads are restricted to HTTPS GitHub hosts (SEC-4).
+- Secrets are scrubbed from diagnostics and issue-report output (SEC-5).
+- Blog image proxy no longer follows redirects and is size-capped (API-I3).
+- Credential store no longer silently falls back to a plaintext keyring
+  (opt-in only; SEC-3).
+- Fixed a sync-cancellation data-corruption risk (SVC-C1) plus assorted
+  sync/blog/search correctness fixes.
+
 ## [0.3.1] - 2026-07-04
 
 ### Added
