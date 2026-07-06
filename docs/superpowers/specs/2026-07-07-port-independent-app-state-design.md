@@ -78,21 +78,26 @@ still clobber each other's logical updates.
 
 ### 1. Backend app-state store
 
-A new port-independent store under the fixed data dir
-(`<SAKADESK_DATA_DIR or %LOCALAPPDATA%\SakaDesk>/app_state/`), owned by a small
-`app_state` service. Two shapes, matched to access pattern:
+A new port-independent store in the fixed data dir as a **SQLite database**
+(`<SAKADESK_DATA_DIR or %LOCALAPPDATA%\SakaDesk>/app_state.db`), owned by a small
+`app_state` service. SQLite is chosen over JSON files for consistency with the
+existing `search_index.db` / `knowledge_index.db`, transactional writes, a
+trivial LRU for the translation cache, and — per review — so the **future KB
+chatbot can query this data** (read state, cached translations) without a
+file-format migration.
 
-- **`prefs.json`** — a single small blob for global scalars loaded once at
-  startup: `tos_accepted_at`, `language`, `volume`, `dismissed_update`.
-- **Per-conversation state** — read state, background, and scroll position keyed
-  by conversation path (`conversation_state.json` as a `{path: {...}}` map, or a
-  per-path file; map is simpler and small enough). Loaded lazily when a room
-  opens, which the room view already does asynchronously.
-- **Translation cache** — keyed by `message:<id>:<lang>`. Potentially large;
-  stored separately (its own file or a SQLite table) with a size cap / simple
-  LRU so it can't grow unbounded. Loaded per message batch, as today.
+Tables:
+- **`prefs`** — key/value for global scalars loaded once at startup:
+  `tos_accepted_at`, `language`, `volume`, `dismissed_update`.
+- **`conversation_state`** — keyed by conversation path: read state, background,
+  scroll position. Loaded lazily when a room opens, which the room view already
+  does asynchronously.
+- **`translation_cache`** — keyed by `(message_id, lang)`, with a `last_used`
+  column; a size cap is enforced with `DELETE … ORDER BY last_used` (LRU).
 
-All writes go through the existing atomic-write helper (temp + `os.replace`).
+Opened in WAL mode (concurrent readers + a serialized writer). App-state writes
+still run behind the data-dir write lock (§4) so the instance handoff is uniform;
+SQLite's own locking is an additional safety net.
 
 **Endpoints** (namespaced, e.g. `/api/app-state/…`):
 - `GET /prefs`, `PATCH /prefs` (partial update)
@@ -112,7 +117,11 @@ change minimally and the storage backend is centralized.
 - **Per-conversation state:** fetched when a room/blog opens (already async),
   cached in memory for the session, write-through on change.
 - **Write-through:** changes update the in-memory store immediately and PATCH the
-  backend (debounced for chatty writes like scroll position).
+  backend. Chatty writers **reuse their existing debounce** — scroll position
+  already debounces at 500 ms in `useChatScroll` with a `savePositionImmediate`
+  flush on room switch; the write-through simply swaps that hook's
+  `localStorage.setItem(sakadesk_scroll_…)` for a backend call, keeping the same
+  timing. No new debounce is introduced.
 - **Failure handling:** a failed backend write logs and retries; it must never
   block the UI. A failed read falls back to defaults (same as a missing key
   today).
@@ -142,9 +151,10 @@ handled by a single **data-dir write lock**:
   (`msvcrt.locking` on Windows; `fcntl.flock` elsewhere). OS-level so it is
   **auto-released if the holder process dies** (crash-safe — a crash cannot wedge
   it). The lock file also records the holder PID for diagnostics.
-- **Reads are lock-free.** Atomic writes guarantee a reader sees either the whole
-  old file or the whole new file, never a partial — so hydration and message reads
-  never need the lock.
+- **Reads are lock-free.** Atomic writes guarantee a JSON reader sees either the
+  whole old file or the whole new file, never a partial; SQLite (WAL) likewise
+  serves a consistent snapshot to a second connection. So hydration, message
+  reads, and app-state reads never need the lock.
 - **Incoming instance:** starts its HTTP server and shows the UI immediately
   (reads only). Before enabling its *writers* (sync loop, indexers, blog backup,
   app-state writes) it acquires the write lock, blocking in the background with a
@@ -168,8 +178,9 @@ handled by a single **data-dir write lock**:
 
 ## Components & boundaries
 
-- `backend/services/app_state.py` — the store (prefs / conversation / translation
-  cache), atomic writes, migration ingest. No web/framework deps.
+- `backend/services/app_state.py` — the SQLite-backed store (`prefs` /
+  `conversation_state` / `translation_cache` tables, WAL mode, LRU eviction),
+  migration ingest. No web/framework deps.
 - `backend/api/app_state.py` — the endpoints, thin over the service.
 - `backend/services/data_lock.py` — the OS-level write lock (acquire with timeout,
   release, crash-safe), no other deps; unit-testable via temp dirs.
@@ -210,8 +221,12 @@ handled by a single **data-dir write lock**:
 - Field-affected user: one-time `.port`→`5895` recovery so their existing
   `localStorage` migrates into the backend; afterwards port-independent.
 
-## Open questions
+## Resolved during review
 
-- Translation-cache store: JSON file with LRU vs a SQLite table (there is already
-  a search DB). Lean JSON+cap unless volume argues otherwise — decide in the plan.
-- Exact debounce for scroll-position write-through (chatty) — tune in the plan.
+- **Storage → SQLite.** The whole app-state store is one SQLite DB
+  (`app_state.db`, WAL) rather than JSON files, so the future KB chatbot can query
+  cached translations / read state without a format migration; translation-cache
+  LRU is a `DELETE … ORDER BY last_used`.
+- **Scroll debounce → reuse the existing one.** `useChatScroll` already debounces
+  at 500 ms with an immediate flush on room switch; write-through slots into it
+  rather than adding a new debounce.
