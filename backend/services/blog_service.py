@@ -1363,6 +1363,20 @@ class BlogBackupManager:
         if thread is not None:
             thread.join(timeout=5)
 
+    async def stop_async(self) -> None:
+        """Shutdown-barrier hook: stop every backup and join the worker
+        thread, returning only once it can no longer write.
+
+        Named distinctly from ``stop(services=...)`` above (selective,
+        synchronous, cancel-only) — this is the awaitable, stop-everything
+        hook the app-shutdown write barrier registers. ``shutdown()`` is
+        synchronous and blocks on ``Thread.join`` (bounded, 5s) — run it off
+        the event loop via ``asyncio.to_thread`` so the barrier can await it
+        without stalling the loop. Idempotent: safe to call with nothing
+        running or after a prior ``shutdown()``.
+        """
+        await asyncio.to_thread(self.shutdown)
+
     def _signal_cancel(self, service: str) -> None:
         """Signal cancellation for a service. Must hold self._lock."""
         event = self._cancel_events.pop(service, None)

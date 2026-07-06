@@ -71,8 +71,46 @@ from backend.api import (  # noqa: E402
     translation,
     app_state as app_state_api,
 )
+from backend.services import app_state  # noqa: E402
+from backend.services.data_lock import DataDirLock  # noqa: E402
+from backend.services.platform import get_app_data_dir  # noqa: E402
 
 logger = structlog.get_logger(__name__)
+
+# OS-level exclusive lock over the data directory's writer subsystem (see
+# backend/services/data_lock.py). Acquired on startup, off the event loop, so
+# a close->reopen race between an outgoing and incoming instance never lets
+# both write at once. Released only after every writer below has been
+# stopped and drained (see quiesce_writers / lifespan shutdown).
+data_lock = DataDirLock(get_app_data_dir() / ".write.lock")
+
+# Registry of writer-stop thunks (each call returns an awaitable). Services
+# register their real stop() during startup; kept as an indirection so the
+# barrier itself is unit-testable without booting real services.
+_writer_stops: list = []
+
+
+async def quiesce_writers() -> None:
+    """Stop and drain every data-dir writer. Returns only once none can write."""
+    for make in list(_writer_stops):
+        try:
+            await make()
+        except Exception:
+            logger.warning("writer stop failed", exc_info=True)
+
+
+async def _stop_all_sync_services() -> None:
+    """Stop every lazily-created SyncService (SVC-S1 writer barrier).
+
+    ``backend.api.sync`` creates one ``SyncService`` per messaging service on
+    first use, so the set of instances is only known at shutdown time —
+    imported locally (not at module load) to avoid a circular import with
+    ``backend.api.sync`` -> ``backend.main``.
+    """
+    from backend.api.sync import _sync_services
+
+    for svc in list(_sync_services.values()):
+        await svc.stop()
 
 
 @asynccontextmanager
@@ -83,6 +121,37 @@ async def lifespan(app: FastAPI):
     from backend.services.upgrade_service import cleanup_upgrade_files
 
     cleanup_upgrade_files()
+
+    # Port-independent app state (SQLite) must exist before any reader/writer
+    # touches it.
+    app_state.init_db()
+
+    # Acquire the data-dir write lock off the event loop so a close->reopen
+    # race (a prior instance still draining) never blocks server startup or
+    # the UI. If a stale holder does not release within the timeout, log and
+    # proceed anyway — atomic writes bound the worst case to a last-writer-
+    # wins on a single file, not corruption (see data_lock.py / design doc).
+    def _acquire_data_lock() -> bool:
+        return data_lock.acquire(timeout=10.0)
+
+    if not await asyncio.to_thread(_acquire_data_lock):
+        logger.warning(
+            "data_dir_lock_acquire_timed_out",
+            lock_path=str(get_app_data_dir() / ".write.lock"),
+        )
+
+    # Register every data-dir writer's stop hook so shutdown can quiesce them
+    # all before releasing the lock above. Reset first: the TestClient (and a
+    # theoretical app restart within one process) re-runs this lifespan
+    # against the same module-level list, and stale thunks from a prior
+    # startup must not accumulate / run twice.
+    from backend.services.blog_service import get_blog_backup_manager
+    from backend.services.search_service import stop_search_service
+
+    _writer_stops.clear()
+    _writer_stops.append(_stop_all_sync_services)
+    _writer_stops.append(get_blog_backup_manager().stop_async)
+    _writer_stops.append(stop_search_service)
 
     background_task = asyncio.create_task(_deferred_blog_backup())
 
@@ -103,17 +172,20 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    # Stop any running blog backup tasks so their asyncio Tasks end cleanly
-    from backend.services.blog_service import get_blog_backup_manager
+    # Ordered write barrier (must not be reordered): quiesce+drain every
+    # writer registered above, THEN allow final synchronous writes (window
+    # geometry, saved by desktop.py's on_closing before process exit), THEN
+    # release the lock. Releasing before every writer is stopped would let a
+    # still-running writer race an incoming instance; only after this
+    # sequence completes is it guaranteed no further data-dir write occurs
+    # from this process.
+    await quiesce_writers()
+    # (Final synchronous writes — e.g. window geometry — happen in
+    # desktop.py's on_closing, which already runs before this lifespan's
+    # shutdown is signalled via should_exit; no additional write is needed
+    # here.)
+    data_lock.release()
 
-    try:
-        get_blog_backup_manager().shutdown()
-    except Exception:
-        pass
-
-    from backend.services.search_service import shutdown_search_service
-
-    shutdown_search_service()
     # Flush and close all log file handlers so the uninstaller can delete the data directory
     for handler in logging.root.handlers[:]:
         try:

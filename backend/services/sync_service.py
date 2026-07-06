@@ -827,6 +827,17 @@ class SyncService:
         self._task = None
         return True
 
+    async def stop(self) -> None:
+        """Shutdown-barrier hook (SVC-S1): stop this service's writer and
+        return only once it can no longer write.
+
+        Thin alias over ``cancel()`` — idempotent (safe to call when nothing
+        is running) and already awaits the running task's full unwind, which
+        is exactly the "drained" guarantee the app-shutdown write barrier
+        needs before releasing the data-dir lock.
+        """
+        await self.cancel()
+
     async def check_new_messages(self):
         """
         Lightweight check for new messages.

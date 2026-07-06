@@ -3107,3 +3107,15 @@ def shutdown_search_service() -> None:
             pass
         _search_service = None
         logger.info("search_service_shutdown_complete")
+
+
+async def stop_search_service() -> None:
+    """Shutdown-barrier hook: close executors/connections, returning only
+    once the search service can no longer write.
+
+    ``shutdown_search_service()`` is synchronous and can block briefly
+    (joining terminated build-worker processes) — run it off the event loop
+    via ``asyncio.to_thread`` so the write barrier can await it without
+    stalling the loop. Idempotent: a no-op if already shut down.
+    """
+    await asyncio.to_thread(shutdown_search_service)
