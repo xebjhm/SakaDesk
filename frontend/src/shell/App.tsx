@@ -11,6 +11,7 @@ import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
+import { persisted } from '../core/persistence/persisted'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -167,6 +168,14 @@ function App() {
         return localStorage.getItem('tos_accepted_at') !== null;
     });
 
+    // Backend-backed prefs hydration — loads the app-state prefs cache before
+    // the gated UI renders. Swallows fetch errors internally (see persisted.ts),
+    // so this can never block/break startup even if the endpoint is unavailable.
+    const [prefsHydrated, setPrefsHydrated] = useState(false);
+    useEffect(() => {
+        persisted.hydratePrefs().finally(() => setPrefsHydrated(true));
+    }, []);
+
     // === RENDER ===
 
     // Show ToS dialog on first launch (blocks all other content until accepted)
@@ -174,8 +183,8 @@ function App() {
         return <TosDialog onAccept={() => setTosAccepted(true)} />;
     }
 
-    // Show loading while auth check is in progress
-    if (!authCheckComplete) {
+    // Show loading while auth check is in progress or prefs are hydrating
+    if (!authCheckComplete || !prefsHydrated) {
         return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
 
