@@ -56,16 +56,18 @@ def test_size_without_position_ok():
     }
 
 
-def test_invalid_or_out_of_bounds_returns_defaults():
-    assert wg.parse_saved_geometry(None) == wg.DEFAULTS
-    assert wg.parse_saved_geometry({}) == wg.DEFAULTS
-    # Too small / too large fall back to defaults (guards a corrupt file).
-    assert wg.parse_saved_geometry({"width": 50, "height": 50}) == wg.DEFAULTS
-    assert wg.parse_saved_geometry({"width": 99999, "height": 99999}) == wg.DEFAULTS
+def test_invalid_or_out_of_bounds_falls_back_to_default():
+    d = {"width": 1200, "height": 800}
+    assert wg.parse_saved_geometry(None, d) == d
+    assert wg.parse_saved_geometry({}, d) == d
+    # Too small / too large fall back to the default (guards a corrupt file).
+    assert wg.parse_saved_geometry({"width": 50, "height": 50}, d) == d
+    assert wg.parse_saved_geometry({"width": 99999, "height": 99999}, d) == d
 
 
-def test_non_integer_size_returns_defaults():
-    assert wg.parse_saved_geometry({"width": "abc", "height": 800}) == wg.DEFAULTS
+def test_non_integer_size_falls_back_to_default():
+    d = {"width": 1200, "height": 800}
+    assert wg.parse_saved_geometry({"width": "abc", "height": 800}, d) == d
 
 
 def test_bad_position_drops_position_keeps_size():
@@ -89,5 +91,22 @@ def test_to_saved_dict_shapes_size_and_position():
     }
 
 
-def test_defaults_are_sane():
-    assert wg.DEFAULTS == {"width": 1200, "height": 800}
+def test_default_geometry_scales_base_by_dpi():
+    """First-open size = the logical base scaled to device pixels for the monitor
+    DPI, so the window opens at the same apparent size at any scale (unified)."""
+    assert wg.default_geometry(1.0) == {"width": 1200, "height": 800}
+    assert wg.default_geometry(1.5) == {"width": 1800, "height": 1200}
+    assert wg.default_geometry(1.75) == {"width": 2100, "height": 1400}
+    assert wg.default_geometry(2.0) == {"width": 2400, "height": 1600}
+
+
+def test_parse_uses_dpi_scaled_default_when_no_data():
+    # No explicit default -> a DPI-scaled first-open size (never a raw un-scaled
+    # 1200x800 on a hi-DPI display).
+    assert wg.parse_saved_geometry(None) == wg.default_geometry()
+
+
+def test_dpi_scale_is_sane():
+    s = wg.dpi_scale()
+    assert isinstance(s, float)
+    assert s == 1.0 or (wg._MIN_SCALE <= s <= wg._MAX_SCALE)
