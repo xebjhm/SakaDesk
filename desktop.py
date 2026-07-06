@@ -77,78 +77,14 @@ def _kill_children(children: list) -> None:
             pass
 
 
-def _get_port_file():
-    """Path to the persisted port file."""
-    return get_app_data_dir() / ".port"
-
-
 def create_server_socket() -> tuple:
-    """Create a bound server socket on a stable port with SO_REUSEADDR.
-
-    HTTP localStorage is keyed by origin (scheme + host + port).
-    To persist ToS acceptance, read states, language, etc. across restarts,
-    the port must stay the same. We save it to disk on first launch and
-    reuse it on every subsequent launch.
-
-    The socket is created with SO_REUSEADDR so it can bind to ports still
-    in TCP TIME_WAIT state (e.g. after a quick close-reopen cycle).
-    Without this, Python 3.8+ on Windows uses SO_EXCLUSIVEADDRUSE which
-    rejects TIME_WAIT ports, forcing a new port and wiping localStorage.
-
-    Returns (port, socket) — the socket is bound but NOT listening.
-    Uvicorn/asyncio will call listen() when ready.
-    """
-    port_file = _get_port_file()
-
-    def _port_is_active(port: int) -> bool:
-        """Check if something is actually listening on the port.
-
-        SO_REUSEADDR on Windows allows bind() to succeed even when another
-        process is actively listening — so bind() alone can't tell us if
-        the port is truly free.  A TCP connect check catches this.
-        """
-        try:
-            conn = socket.create_connection((HOST, port), timeout=0.5)
-            conn.close()
-            return True
-        except (ConnectionRefusedError, OSError, TimeoutError):
-            return False
-
-    def _try_bind(port: int):
-        """Try to bind a SO_REUSEADDR socket to the given port."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((HOST, port))
-            return sock
-        except OSError:
-            sock.close()
-            return None
-
-    # Try to reuse saved port
-    if port_file.exists():
-        try:
-            saved = int(port_file.read_text(encoding="utf-8").strip())
-            if 1024 < saved < 65536:
-                # On Windows, SO_REUSEADDR lets bind() succeed even if an old
-                # process is still listening. Check with a connect() first.
-                if not _port_is_active(saved):
-                    sock = _try_bind(saved)
-                    if sock is not None:
-                        return saved, sock
-        except (ValueError, OSError):
-            pass  # Corrupt file or port in use — allocate new one
-
-    # Allocate a new port and persist it
+    """Bind an ephemeral loopback port. State is backend-persisted, so the port
+    is no longer sticky (the old .port-reuse heuristic caused a close->reopen
+    race that shifted the origin and reset localStorage)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((HOST, 0))
-    port = sock.getsockname()[1]
-    try:
-        port_file.write_text(str(port), encoding="utf-8")
-    except OSError:
-        pass  # Non-fatal — app still works, just may not persist port
-    return port, sock
+    return sock.getsockname()[1], sock
 
 
 def wait_for_server(
@@ -292,7 +228,7 @@ def main() -> None:
         # to fully exit before replacing files it still has loaded.
         _acquire_instance_mutex()
 
-        # Create server socket with SO_REUSEADDR for stable port across restarts
+        # Create server socket on an ephemeral port (SO_REUSEADDR for TIME_WAIT friendliness)
         port, sock = create_server_socket()
 
         # Start API server with the pre-bound socket
