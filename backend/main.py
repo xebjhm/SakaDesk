@@ -69,6 +69,7 @@ from backend.api import (  # noqa: E402
     read_states,
     transcription,
     translation,
+    app_state as app_state_api,
 )
 
 logger = structlog.get_logger(__name__)
@@ -255,6 +256,7 @@ app.include_router(
     transcription.router, prefix="/api/transcription", tags=["transcription"]
 )
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
+app.include_router(app_state_api.router, prefix="/api/app-state", tags=["app-state"])
 
 
 @app.get("/health")
