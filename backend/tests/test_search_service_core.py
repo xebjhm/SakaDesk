@@ -1038,17 +1038,13 @@ class TestClearDb:
                 service._write_executor, service._build_full_index_sync
             )
             # Run a real search so _read_conn is opened on the read executor.
-            result = await service.search(
-                "ライブ", content_type="messages", limit=50
-            )
+            result = await service.search("ライブ", content_type="messages", limit=50)
         assert result["total_count"] >= 1
         assert service._read_conn is not None
 
         # Patch the heavy process build; we only exercise the connection
         # teardown/threading, not the full reindex.
-        with patch.object(
-            service, "build_full_index", new=AsyncMock(return_value=0)
-        ):
+        with patch.object(service, "build_full_index", new=AsyncMock(return_value=0)):
             # Before the fix this raised sqlite3.ProgrammingError from the
             # write executor closing a read-executor-owned connection.
             await service.rebuild()

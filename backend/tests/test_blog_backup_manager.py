@@ -203,13 +203,9 @@ class TestBlogBackupManagerThreading:
                 "backend.services.blog_service.BlogService.sync_full_backup",
                 new=fake_sync,
             ),
-            patch(
-                "backend.services.search_service.get_search_service"
-            ) as mock_search,
+            patch("backend.services.search_service.get_search_service") as mock_search,
         ):
-            mock_search.return_value.index_blogs_for_service = AsyncMock(
-                return_value=0
-            )
+            mock_search.return_value.index_blogs_for_service = AsyncMock(return_value=0)
 
             manager.start(["hinatazaka46"])
             assert first_entered.wait(timeout=5), "first run never entered"

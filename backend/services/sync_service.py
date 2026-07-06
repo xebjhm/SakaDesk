@@ -13,6 +13,7 @@ from typing import Any, Optional
 from pysaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
+from backend.services.background_tasks import track_background_task
 from backend.services.platform import (
     get_session_dir,
     is_test_mode,

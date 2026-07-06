@@ -1346,7 +1346,9 @@ class TestSyncOlderMessages:
 # ---------------------------------------------------------------------------
 
 
-async def _run_start_sync(svc, tmp_path, *, groups, members, mock_manager, **start_kwargs):
+async def _run_start_sync(
+    svc, tmp_path, *, groups, members, mock_manager, **start_kwargs
+):
     """Run start_sync with the standard set of patches. Returns nothing;
     inspect the passed mock_manager / mock_client for assertions."""
     mock_progress = MagicMock()

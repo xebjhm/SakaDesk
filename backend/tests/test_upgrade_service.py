@@ -543,9 +543,7 @@ class TestDownloadUrlAllowlist:
             _is_allowed_download_url("https://objects.githubusercontent.com/a") is True
         )
         assert (
-            _is_allowed_download_url(
-                "https://release-assets.githubusercontent.com/a"
-            )
+            _is_allowed_download_url("https://release-assets.githubusercontent.com/a")
             is True
         )
         assert _is_allowed_download_url("https://cdn.githubusercontent.com/a") is True
@@ -558,9 +556,7 @@ class TestDownloadUrlAllowlist:
     @pytest.mark.asyncio
     async def test_download_rejects_disallowed_url(self, tmp_path):
         """A non-GitHub info.url is refused before any network call (SEC-4)."""
-        route = respx.get("https://evil.example.com/x.exe").respond(
-            200, content=b"MZ"
-        )
+        route = respx.get("https://evil.example.com/x.exe").respond(200, content=b"MZ")
         info = InstallerInfo(
             url="https://evil.example.com/x.exe",
             size=2,
