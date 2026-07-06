@@ -228,37 +228,11 @@ def show_error_dialog(error_msg: str, tb: str):
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 
-def _get_dpi_scale() -> float:
-    """Primary-monitor DPI scale factor (see backend.services.window_geometry)."""
-    return window_geometry.dpi_scale()
-
-
-def _window_hwnd(window: object) -> int | None:
-    """Best-effort native window handle (HWND) so the DPI scale can be read for
-    the monitor the window is actually on. Returns None if unavailable, in which
-    case the caller falls back to the primary-monitor scale (safe, no regression).
-    """
-    handle = getattr(window, "hwnd", None)
-    if handle is None:
-        native = getattr(window, "native", None)
-        handle = getattr(native, "Handle", None)
-    if handle is None:
-        return None
-    try:
-        return int(handle)
-    except (TypeError, ValueError):
-        try:
-            return int(handle.ToInt64())  # WinForms IntPtr
-        except Exception:
-            return None
-
-
 def _load_window_geometry() -> dict:
     """Load saved window size/position from settings.json, or return defaults.
 
-    Window geometry is stored under the ``"window"`` key in settings.json.
-    Values are in logical (DPI-independent) coordinates, matching what
-    pywebview's create_window() expects.
+    Window geometry is stored under the ``"window"`` key in settings.json, in the
+    same device-pixel coordinates that ``create_window()`` round-trips verbatim.
 
     Migrates from the legacy ``window.json`` file on first run after upgrade.
     """
@@ -275,8 +249,7 @@ def _load_window_geometry() -> dict:
             logger.warning("Failed to read window geometry from settings.json")
 
     # --- Migrate from legacy window.json if no window key in settings ---
-    # Copied verbatim (physical coords, no "format" key); parse_saved_geometry
-    # converts it to logical on load.
+    # Copied verbatim; parse_saved_geometry clamps it and uses it as-is.
     if data is None and legacy_path.exists():
         try:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -287,7 +260,7 @@ def _load_window_geometry() -> dict:
             logger.warning("Failed to migrate window.json", exc_info=True)
             data = None
 
-    return window_geometry.parse_saved_geometry(data, _get_dpi_scale())
+    return window_geometry.parse_saved_geometry(data)
 
 
 def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
@@ -303,14 +276,10 @@ def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> Non
     settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
-def _save_window_geometry(logical_geom: dict) -> None:
-    """Save window geometry to settings.json.
-
-    ``logical_geom`` must already be in LOGICAL coordinates — the caller converts
-    the physical window properties via window_geometry.physical_to_logical.
-    """
+def _save_window_geometry(geom: dict) -> None:
+    """Save window geometry (``window.width/height/x/y``, verbatim) to settings.json."""
     try:
-        data = window_geometry.to_saved_dict(logical_geom)
+        data = window_geometry.to_saved_dict(geom)
         _save_window_data_to_settings(data, get_app_data_dir() / "settings.json")
         logger.debug("Window geometry saved", geometry=data)
     except Exception:
@@ -360,21 +329,18 @@ def main() -> None:
         # resize/move events — pywebview events only fire during initial
         # creation (DPI scaling), not for user-initiated resizes.
         def on_closing():
-            # window.width/height/x/y are PHYSICAL (scaled) pixels on WinForms;
-            # convert to logical before saving so the next create_window (which
-            # re-applies the scale) reproduces the same size — instead of growing
-            # the window by `scale`x on every restart (the shipped bug). Use the
-            # DPI of the monitor this window is on (via its hwnd) so mixed-DPI
-            # multi-monitor setups convert correctly too.
-            scale = window_geometry.dpi_scale(_window_hwnd(window))
-            physical = {
+            # pywebview round-trips geometry verbatim: create_window() reproduces
+            # exactly what window.width/height/x/y report (the same device-pixel
+            # space on this backend), so persist them AS-IS. A previous version
+            # divided these by the DPI scale here, which the load never re-applied,
+            # so the window shrank by `scale`x on every restart.
+            geom = {
                 "width": window.width,
                 "height": window.height,
                 "x": window.x,
                 "y": window.y,
             }
-            geom = window_geometry.physical_to_logical(physical, scale)
-            logger.info("Window closing", physical=physical, logical=geom, scale=scale)
+            logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
         window.events.closing += on_closing
