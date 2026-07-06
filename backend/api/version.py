@@ -22,6 +22,7 @@ from backend.services.upgrade_service import (
     cleanup_upgrade_files,
     is_upgrade_supported,
 )
+from backend.services.shutdown_state import is_shutting_down
 
 from backend.version import APP_VERSION
 
@@ -202,6 +203,15 @@ async def start_upgrade(background_tasks: BackgroundTasks):
     Poll /upgrade/status to check progress.
     """
     global _upgrade_state
+
+    # C1c: refuse to spawn a NEW writer once shutdown has begun -- the download
+    # runs as an untracked background task that streams the installer into
+    # get_app_data_dir()/"upgrade" (inside the lock-protected data dir). If
+    # started after this point it would still be running (and writing) after
+    # quiesce_writers()/data_lock.release(), escaping the barrier entirely.
+    # Mirrors the same guard on /api/sync/start and /api/sync/verify.
+    if is_shutting_down():
+        return {"success": False, "error": "Application is shutting down"}
 
     if not is_upgrade_supported():
         return {"success": False, "error": "Upgrade not supported on this platform"}

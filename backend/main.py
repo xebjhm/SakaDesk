@@ -171,6 +171,10 @@ async def lifespan(app: FastAPI):
     from backend.services.search_service import stop_search_service
     from backend.services.background_tasks import drain_background_tasks
 
+    # Order matters: stop_search_service must run before drain_background_tasks
+    # -- a tracked background task (e.g. verify-and-fix media) writes through
+    # the search executors, so draining tracked tasks before search is stopped
+    # would let that write race stop_search_service's own teardown.
     _writer_stops.clear()
     _writer_stops.append(_stop_all_sync_services)
     _writer_stops.append(get_blog_backup_manager().stop_async)

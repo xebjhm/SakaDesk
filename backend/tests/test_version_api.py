@@ -278,6 +278,55 @@ class TestStartUpgrade:
         assert data["success"] is True
         assert data["version"] == "2.0.0"
 
+    def test_start_upgrade_rejects_during_shutdown(self):
+        """C1c: refuse to spawn the upgrade-download writer once shutdown has
+        begun -- otherwise it would still be running (and writing the
+        installer into the data dir) after data_lock.release()."""
+        from backend.services import shutdown_state
+
+        shutdown_state.begin_shutdown()
+        try:
+            with patch(
+                "backend.api.version._download_and_prepare_upgrade"
+            ) as mock_download:
+                response = client.post("/api/version/upgrade/start")
+
+            data = response.json()
+            assert data["success"] is False
+            assert "shutting down" in data["error"].lower()
+            mock_download.assert_not_called()
+        finally:
+            shutdown_state.reset_for_tests()
+
+    @patch("backend.api.version.is_upgrade_supported", return_value=True)
+    @patch("backend.api.version._fetch_latest_release")
+    def test_start_upgrade_schedules_download_when_not_shutting_down(
+        self, mock_fetch, mock_supported
+    ):
+        """Control for test_start_upgrade_rejects_during_shutdown: outside of
+        shutdown, the endpoint still schedules the download background task
+        as before."""
+        from backend.services import shutdown_state
+
+        assert shutdown_state.is_shutting_down() is False
+
+        mock_fetch.return_value = {
+            "last_check": datetime.now(timezone.utc),
+            "latest_version": "2.0.0",
+            "release_url": "https://github.com/test",
+            "release_notes": "new version",
+            "error": None,
+        }
+        with patch(
+            "backend.api.version._download_and_prepare_upgrade"
+        ) as mock_download:
+            response = client.post("/api/version/upgrade/start")
+
+        data = response.json()
+        assert data["success"] is True
+        assert data["version"] == "2.0.0"
+        mock_download.assert_called_once()
+
 
 class TestInstallUpgrade:
     """Tests for POST /api/version/upgrade/install."""
