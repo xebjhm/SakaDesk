@@ -35,11 +35,14 @@ function findBrowserLanguageMatch(): string | undefined {
     );
 }
 
-// Initial language is always the default here — the persisted user choice (if
-// any) is applied later by App.tsx's startup effect, after prefs are hydrated
-// from the backend app-state store (see App.tsx). This module only resolves
-// the pre-hydration fallback: installer setting, then browser language.
-const initialLng = 'en';
+// Initial language is resolved synchronously from the browser locale (or the
+// hard default 'en') here. The persisted user choice, and — if the user has
+// none — the installer/settings.json language, are applied later by App.tsx's
+// single ordered post-hydrate decision (after prefs are hydrated from the
+// backend app-state store; see App.tsx). This module MUST NOT also apply
+// /api/settings asynchronously: doing so raced App.tsx's apply and could flip
+// the language back and forth on startup (whichever fetch resolved last won).
+const initialLng = findBrowserLanguageMatch() ?? 'en';
 
 // Initialize i18next — no LanguageDetector (it caches fallback 'en' to localStorage
 // before we can check the installer setting, blocking the settings fetch entirely).
@@ -54,31 +57,6 @@ i18n
         interpolation: {
             escapeValue: false,
         },
-    });
-
-// On first launch (before the persisted language pref is applied), check
-// installer preference then browser language, so the pre-hydration loading
-// spinner isn't always English for non-English users.
-// Priority (final, applied later by App.tsx): 1) persisted pref (explicit user
-// choice) → 2) installer setting → 3) browser language
-fetch('/api/settings')
-    .then(res => res.json())
-    .then(data => {
-        const installerLang = data?.language;
-        if (installerLang && installerLang in SUPPORTED_LANGUAGES) {
-            i18n.changeLanguage(installerLang);
-        } else {
-            const match = findBrowserLanguageMatch();
-            if (match) {
-                i18n.changeLanguage(match);
-            }
-        }
-    })
-    .catch(() => {
-        const match = findBrowserLanguageMatch();
-        if (match) {
-            i18n.changeLanguage(match);
-        }
     });
 
 export default i18n;

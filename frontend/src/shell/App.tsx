@@ -178,13 +178,21 @@ function App() {
             .then(() => persisted.hydrateConversations().catch(() => {/* defensive: never block startup */}))
             .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
             .then(async () => {
-                // Apply the persisted language pref now that hydration + migration
-                // have run, so the first gated render is in the right language.
-                // Before this point (module import + pre-hydrate loading spinner),
-                // i18n falls back to the installer setting / browser language.
+                // Apply language now that hydration + migration have run, so the
+                // first gated render is in the right language. This is the SINGLE
+                // ordered decision for language (i18n/index.ts no longer applies
+                // /api/settings itself, avoiding a startup race between the two):
+                // 1) explicit persisted user choice, 2) installer/settings.json
+                // language, 3) browser-detected default (already applied by
+                // i18n/index.ts's synchronous init, so no action needed for #3).
                 const lang = persisted.getPref<string | null>('language', null);
                 if (lang) {
                     await i18n.changeLanguage(lang);
+                } else {
+                    try {
+                        const s = await (await fetch('/api/settings')).json();
+                        if (s?.language) await i18n.changeLanguage(s.language);
+                    } catch { /* keep browser-detected default */ }
                 }
             })
             .then(() =>
