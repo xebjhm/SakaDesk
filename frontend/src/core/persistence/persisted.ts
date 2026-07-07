@@ -82,7 +82,6 @@ export async function migrateOnce(): Promise<void> {
   const conversations: Record<string, { value: string }> = {};
   const translations: Record<string, string> = {};
   const CONV_PREFIXES = ['read_state_', 'sakadesk_scroll_', 'bg_settings_'];
-  const TRANS_PREFIX = 'translation:message:';
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k === null) continue;
@@ -90,8 +89,8 @@ export async function migrateOnce(): Promise<void> {
     if (v === null) continue;
     if (CONV_PREFIXES.some((p) => k.startsWith(p))) {
       conversations[k] = { value: v }; // key = full original localStorage key; raw string preserved
-    } else if (k.startsWith(TRANS_PREFIX)) {
-      translations[k.slice(TRANS_PREFIX.length)] = v; // cache key = "<message_id>:<lang>"
+    } else if (k.startsWith('translation:')) {
+      translations[k] = v; // full key preserved (all translation types, not just 'message')
     }
   }
 

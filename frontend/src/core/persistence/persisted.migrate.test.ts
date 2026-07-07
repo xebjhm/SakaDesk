@@ -31,6 +31,7 @@ describe('persisted.migrateOnce', () => {
     localStorage.setItem('read_state_hinatazaka46/messages/58 X', JSON.stringify({ up_to: 9 }));
     localStorage.setItem('sakadesk_scroll_58', '4242');
     localStorage.setItem('translation:message:12:ja', 'こんにちは');
+    localStorage.setItem('translation:group-name:34:en', 'Hello Group');
     vi.spyOn(api, 'getMigrated').mockResolvedValue({ migrated: false });
     const post = vi.spyOn(api, 'postMigrate').mockResolvedValue(undefined as never);
     vi.spyOn(api, 'getPrefs').mockResolvedValue({});
@@ -41,7 +42,10 @@ describe('persisted.migrateOnce', () => {
     expect(dump.prefs).toEqual({ tos_accepted_at: '2026-01-01T00:00:00Z', language: 'ja' });
     expect(dump.conversations['read_state_hinatazaka46/messages/58 X']).toEqual({ value: JSON.stringify({ up_to: 9 }) });
     expect(dump.conversations['sakadesk_scroll_58']).toEqual({ value: '4242' });
-    expect(dump.translations).toEqual({ '12:ja': 'こんにちは' });
+    expect(dump.translations).toEqual({
+      'translation:message:12:ja': 'こんにちは',
+      'translation:group-name:34:en': 'Hello Group',
+    });
   });
 
   it('is a no-op when already migrated', async () => {
