@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
+import { persisted } from '../persistence/persisted';
 
 // SVG progress ring constants (hoisted to avoid recomputation on every render)
 const RING_RADIUS = 18;
@@ -76,7 +77,7 @@ export function UpgradeIcon() {
                     const data: VersionInfo = await res.json();
                     setVersionInfo(data);
 
-                    const dismissedVersion = localStorage.getItem('sakadesk_dismissed_update');
+                    const dismissedVersion = persisted.getPref<string | null>('dismissed_update', null);
                     if (dismissedVersion === data.latest_version) {
                         setDismissed(true);
                     } else if (data.update_available) {
@@ -161,7 +162,7 @@ export function UpgradeIcon() {
     const handleDismiss = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         if (stage === 'available' && versionInfo?.latest_version) {
-            localStorage.setItem('sakadesk_dismissed_update', versionInfo.latest_version);
+            persisted.setPref('dismissed_update', versionInfo.latest_version);
             setDismissed(true);
         }
         if (stage === 'error') {

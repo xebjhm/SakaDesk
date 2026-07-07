@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { persisted } from '../persistence/persisted';
 
 const DEFAULT_VOLUME = 0.5; // 50% slider = gain 1.0 = original recording volume
 
@@ -13,16 +14,14 @@ const DEFAULT_VOLUME = 0.5; // 50% slider = gain 1.0 = original recording volume
  * The HTML media element's volume is always set to 1.0. All volume
  * control is done through the GainNode.
  *
- * @param storageKey - localStorage key for persisting the volume preference
+ * @param storageKey - persisted app-state pref key for the volume preference
  */
 export function useAmplifiedVolume(storageKey: string) {
     const [volume, setVolumeState] = useState(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem(storageKey);
-            if (saved !== null) {
-                const vol = parseFloat(saved);
-                if (!isNaN(vol) && vol >= 0 && vol <= 1) return vol;
-            }
+        const saved = persisted.getPref<string | null>(storageKey, null);
+        if (saved !== null) {
+            const vol = parseFloat(saved);
+            if (!isNaN(vol) && vol >= 0 && vol <= 1) return vol;
         }
         return DEFAULT_VOLUME;
     });
@@ -45,7 +44,7 @@ export function useAmplifiedVolume(storageKey: string) {
     const setVolume = useCallback((newVolume: number) => {
         const clamped = Math.max(0, Math.min(1, newVolume));
         setVolumeState(clamped);
-        localStorage.setItem(storageKey, clamped.toString());
+        persisted.setPref(storageKey, clamped.toString());
         if (clamped > 0) {
             savedVolumeRef.current = clamped;
             setIsMuted(false);
@@ -63,7 +62,7 @@ export function useAmplifiedVolume(storageKey: string) {
                 // Unmuting: restore saved volume
                 const restored = savedVolumeRef.current || DEFAULT_VOLUME;
                 setVolumeState(restored);
-                localStorage.setItem(storageKey, restored.toString());
+                persisted.setPref(storageKey, restored.toString());
                 return false;
             }
         });
