@@ -1628,27 +1628,42 @@ class SearchService:
                 "FROM read_states GROUP BY service, group_id"
                 ") rs ON m.service = rs.service AND m.group_id = rs.group_id"
             )
-            # Collect all revealed_ids so they bypass the last_read_id boundary
-            all_revealed: set[int] = set()
+            # Collect revealed_ids so they bypass the last_read_id boundary.
+            # SD-BE-SVC-12: revealed message ids are only unique per
+            # (service, group_id) — a bare `m.message_id IN (...)` would leak a
+            # reveal across services/groups and un-hide a colliding id elsewhere.
+            # Scope each reveal set by its (service, group_id).
+            revealed_by_scope: Dict[Tuple[str, int], set[int]] = {}
             try:
                 rs_rows = conn.execute(
-                    "SELECT revealed_ids FROM read_states WHERE revealed_ids != '[]'"
+                    "SELECT service, group_id, revealed_ids FROM read_states "
+                    "WHERE revealed_ids != '[]'"
                 ).fetchall()
-                for (rids_json,) in rs_rows:
+                for svc_id, gid, rids_json in rs_rows:
                     try:
-                        all_revealed.update(json.loads(rids_json))
+                        ids = json.loads(rids_json)
                     except Exception:
-                        pass
+                        continue
+                    if ids:
+                        revealed_by_scope.setdefault((svc_id, gid), set()).update(ids)
             except Exception:
                 pass
-            if all_revealed:
-                placeholders = ",".join("?" for _ in all_revealed)
+            if revealed_by_scope:
+                reveal_parts: list[str] = []
+                for (svc_id, gid), ids in revealed_by_scope.items():
+                    placeholders = ",".join("?" for _ in ids)
+                    reveal_parts.append(
+                        f"(m.service = ? AND m.group_id = ? "
+                        f"AND m.message_id IN ({placeholders}))"
+                    )
+                    filter_params.append(svc_id)
+                    filter_params.append(gid)
+                    filter_params.extend(list(ids))
                 filter_clauses.append(
-                    f"(rs.last_read_id IS NULL "
-                    f"OR m.message_id <= rs.last_read_id "
-                    f"OR m.message_id IN ({placeholders}))"
+                    "(rs.last_read_id IS NULL "
+                    "OR m.message_id <= rs.last_read_id "
+                    f"OR {' OR '.join(reveal_parts)})"
                 )
-                filter_params.extend(list(all_revealed))
             else:
                 filter_clauses.append(
                     "(rs.last_read_id IS NULL OR m.message_id <= rs.last_read_id)"
@@ -1822,11 +1837,16 @@ class SearchService:
                 }
 
             union_sql = " UNION ALL ".join(sub_queries)
+            # SD-BE-SVC-03: message_id is only unique per (message_id, service)
+            # (schema: UNIQUE(message_id, service)).  Dedupe by message_id alone
+            # would collapse two different messages that share an id across
+            # services into one row, silently dropping one service's match and
+            # miscounting.  Group by (message_id, service) to keep both.
             data_sql = (
                 f"SELECT message_id, content, content_normalized, service, group_id, group_name, "
                 f"member_id, member_name, timestamp, type, MIN(match_type) as match_type "
                 f"FROM ({union_sql}) "
-                f"GROUP BY message_id "
+                f"GROUP BY message_id, service "
                 f"ORDER BY match_type, timestamp DESC"
             )
 
