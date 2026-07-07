@@ -126,9 +126,15 @@ async def verify_media(service: str = Query(..., description="Service to verify"
 
     # C1b: route through track_background_task (not a bare create_task) so
     # drain_background_tasks() -- and thus the shutdown write barrier --
-    # covers this writer. verify_and_fix_media never sets sync_service._task,
-    # so cancel()/stop() cannot reach it any other way.
-    track_background_task(run_verify_task(service), name="verify_media")
+    # covers this writer.
+    # SD-BE-SVC-02: register the tracked task on the service so /cancel can
+    # target the running verify with a real task.cancel() (verify now claims
+    # the same _task/_generation ownership as start_sync). Assigning here also
+    # closes the schedule-delay gap so a cancel arriving before the coroutine
+    # first runs still finds the task. This serializes verify against a
+    # subsequent start_sync -- exactly one writer per member dir at a time.
+    task = track_background_task(run_verify_task(service), name="verify_media")
+    sync_service._task = task
     return {"status": "started", "service": service}
 
 

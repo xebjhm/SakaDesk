@@ -5,6 +5,7 @@ progression, group-level batching, error handling, and fresh-vs-incremental
 sync code paths.
 """
 
+import contextlib
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -229,6 +230,66 @@ class TestCheckNewMessages:
         assert len(result) == 1
         assert result[0]["member_name"] == "田村 保乃"
         assert result[0]["count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_boundary_message_at_cursor_not_reported(self):
+        """SD-BE-SVC-12: the newest already-synced message sits EXACTLY at the
+        cursor (the stored cursor IS its published_at). An inclusive `>=` filter
+        counted it as new on every check (perpetual false positive); the strict
+        `>` cursor must exclude it."""
+        svc = SyncService()
+
+        metadata = _make_metadata(
+            groups={
+                "100_1": _member_info(
+                    100,
+                    1,
+                    member_name="Boundary",
+                    last_sync_ts="2025-03-20T12:00:00Z",
+                ),
+            },
+            server_groups={"100": {"state": "open", "is_active": True}},
+        )
+
+        # get_messages(since_ts=cursor) is inclusive server-side, so it returns
+        # the boundary message itself — it must NOT be reported as new.
+        boundary_msg = _make_message(500, 1, "2025-03-20T12:00:00Z")
+        mock_client = MagicMock()
+        mock_client.get_messages = AsyncMock(return_value=[boundary_msg])
+
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={
+                    "access_token": "tok",
+                    "refresh_token": "ref",
+                    "cookies": {},
+                },
+            ),
+            patch.object(
+                svc, "load_metadata", new_callable=AsyncMock, return_value=metadata
+            ),
+            patch(
+                "backend.services.sync_service.get_session_dir",
+                return_value=Path("/tmp/session"),
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.Client", return_value=mock_client),
+        ):
+            mock_session = AsyncMock()
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            result = await svc.check_new_messages()
+
+        assert result == []
 
     @pytest.mark.asyncio
     async def test_no_new_messages_returns_empty(self):
@@ -670,6 +731,36 @@ class TestSaveMetadataCore:
         loaded = json.loads(svc.metadata_file.read_text(encoding="utf-8"))
         assert loaded == original
 
+    @pytest.mark.asyncio
+    async def test_replace_retries_transient_permission_error(self, tmp_path):
+        """SD-BE-SVC-17: the final rename must retry a transient Windows
+        PermissionError (AV / Search indexer holding sync_metadata.json) instead
+        of failing the whole sync at its last step and discarding the update."""
+        svc = SyncService()
+        svc.service_data_dir = tmp_path
+        svc.metadata_file = tmp_path / "sync_metadata.json"
+
+        calls = {"n": 0}
+        real_replace = __import__("os").replace
+
+        def flaky_replace(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise PermissionError("WinError 32: locked by indexer")
+            return real_replace(src, dst)
+
+        data = {"groups": {}, "last_sync": "2025-03-20T00:00:00Z"}
+        with (
+            patch("backend.services.service_utils.os.replace", side_effect=flaky_replace),
+            patch("backend.services.service_utils.time.sleep"),
+        ):
+            await svc.save_metadata(data)
+
+        # Retried past the first transient failure and eventually wrote the file.
+        assert calls["n"] >= 2
+        loaded = json.loads(svc.metadata_file.read_text(encoding="utf-8"))
+        assert loaded == data
+
 
 # ---------------------------------------------------------------------------
 # Fresh sync vs incremental sync detection
@@ -897,7 +988,10 @@ class TestSyncPhaseProgression:
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
-            patch("backend.services.sync_service.notify_sync_complete"),
+            patch(
+                "backend.services.sync_service.notify_sync_complete_async",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -995,7 +1089,10 @@ class TestSyncPhaseProgression:
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
-            patch("backend.services.sync_service.notify_sync_complete"),
+            patch(
+                "backend.services.sync_service.notify_sync_complete_async",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -1103,7 +1200,10 @@ class TestSyncPhaseProgression:
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
-            patch("backend.services.sync_service.notify_sync_complete") as mock_notify,
+            patch(
+                "backend.services.sync_service.notify_sync_complete_async",
+                new_callable=AsyncMock,
+            ) as mock_notify,
         ):
             mock_pm.get.return_value = mock_progress
             mock_session = AsyncMock()
@@ -1120,8 +1220,8 @@ class TestSyncPhaseProgression:
             saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
         )
         assert saved_metadata.get("last_sync") is not None
-        # Notification was sent
-        mock_notify.assert_called_once_with(5, 1)
+        # Notification was sent (SD-BE-SVC-18: awaited async wrapper, off-loop).
+        mock_notify.assert_awaited_once_with(5, 1)
 
     @pytest.mark.asyncio
     async def test_server_unread_count_captured_in_metadata(self, tmp_path):
@@ -1218,7 +1318,10 @@ class TestSyncPhaseProgression:
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
-            patch("backend.services.sync_service.notify_sync_complete"),
+            patch(
+                "backend.services.sync_service.notify_sync_complete_async",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_pm.get.return_value = mock_progress
             mock_sess_ctx = AsyncMock()
@@ -1387,7 +1490,10 @@ async def _run_start_sync(
         patch("backend.services.sync_service.Client", return_value=mock_client),
         patch("backend.services.sync_service.SyncManager", return_value=mock_manager),
         patch("backend.services.sync_service.progress_manager") as mock_pm,
-        patch("backend.services.sync_service.notify_sync_complete"),
+        patch(
+            "backend.services.sync_service.notify_sync_complete_async",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_pm.get.return_value = mock_progress
         mock_sess_ctx = AsyncMock()
@@ -1676,6 +1782,259 @@ class TestCancelOwnership:
         assert svc.running is True  # untouched by the stale run
 
 
+class TestVerifyCancelSerialization:
+    """SD-BE-SVC-02 — verify_and_fix_media must claim the SAME task/generation
+    ownership as start_sync so /cancel actually cancels a running verify and a
+    second writer (a new sync) cannot start concurrently over the same files."""
+
+    @pytest.mark.asyncio
+    async def test_verify_registers_task_and_generation_while_running(
+        self, tmp_path
+    ):
+        """While verify runs it must register self._task (== the running task)
+        and bump self._generation, exactly like start_sync — otherwise cancel()
+        takes its "no task" branch and cannot stop it."""
+        import asyncio
+
+        svc = SyncService()
+
+        service_dir = tmp_path / "日向坂46"
+        messages_root = service_dir / "messages"
+        messages_root.mkdir(parents=True)
+
+        seen = {}
+        gate = asyncio.Event()
+        entered = asyncio.Event()
+
+        async def fake_auth_client(session):
+            # We are now inside verify_and_fix_media, past self.running=True.
+            seen["task"] = svc._task
+            seen["generation"] = svc._generation
+            seen["running"] = svc.running
+            entered.set()
+            await gate.wait()  # hold the run open so we can inspect state
+            raise RuntimeError("stop here")  # unwind out of the run
+
+        with (
+            patch.object(
+                svc,
+                "load_app_settings",
+                new_callable=AsyncMock,
+                return_value={"is_configured": True, "output_dir": str(tmp_path)},
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch.object(
+                svc,
+                "_authenticated_client",
+                new_callable=AsyncMock,
+                side_effect=fake_auth_client,
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+        ):
+            mock_pm.get.return_value = MagicMock()
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            run = asyncio.create_task(svc.verify_and_fix_media())
+            await entered.wait()
+
+            # Ownership was claimed with the SAME machinery as start_sync.
+            assert seen["running"] is True
+            assert seen["generation"] >= 1
+            assert seen["task"] is run  # cancel() can now target it
+
+            gate.set()
+            with contextlib.suppress(RuntimeError):
+                await run
+
+        # finally cleared ownership once the run (still owner) unwound.
+        assert svc.running is False
+        assert svc._task is None
+
+    @pytest.mark.asyncio
+    async def test_cancel_during_verify_blocks_concurrent_second_writer(
+        self, tmp_path
+    ):
+        """The load-bearing regression: a /cancel while verify runs must truly
+        cancel the verify task (real task.cancel + awaited unwind) so a
+        subsequent start_sync cannot launch a second concurrent writer over the
+        same member dirs / messages.json."""
+        import asyncio
+
+        svc = SyncService()
+
+        service_dir = tmp_path / "日向坂46"
+        messages_root = service_dir / "messages"
+        messages_root.mkdir(parents=True)
+
+        entered = asyncio.Event()
+        verify_cancelled = {"value": False}
+
+        async def fake_auth_client(session):
+            entered.set()
+            try:
+                await asyncio.Event().wait()  # simulate a long verify write loop
+            except asyncio.CancelledError:
+                verify_cancelled["value"] = True
+                raise
+
+        with (
+            patch.object(
+                svc,
+                "load_app_settings",
+                new_callable=AsyncMock,
+                return_value={"is_configured": True, "output_dir": str(tmp_path)},
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch.object(
+                svc,
+                "_authenticated_client",
+                new_callable=AsyncMock,
+                side_effect=fake_auth_client,
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+        ):
+            mock_pm.get.return_value = MagicMock()
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            # Mimic the /verify endpoint registering the task on the service.
+            run = asyncio.create_task(svc.verify_and_fix_media())
+            svc._task = run
+            await entered.wait()
+            assert svc.running is True
+
+            cancelled = await svc.cancel()
+
+        assert cancelled is True  # cancel() reached and stopped the verify task
+        assert verify_cancelled["value"] is True  # verify actually unwound
+        assert run.cancelled()
+        # running is clear again, so a subsequent start_sync's `if self.running`
+        # guard would NOT let a second writer run alongside the (now-stopped)
+        # verify.
+        assert svc.running is False
+        assert svc._task is None
+
+    @pytest.mark.asyncio
+    async def test_verify_finally_does_not_clear_newer_generation(self, tmp_path):
+        """A cancelled/superseded verify's finally must not clobber a newer
+        run's running flag (same generation guard as start_sync)."""
+        import asyncio
+
+        svc = SyncService()
+
+        service_dir = tmp_path / "日向坂46"
+        messages_root = service_dir / "messages"
+        messages_root.mkdir(parents=True)
+
+        entered = asyncio.Event()
+
+        async def fake_auth_client(session):
+            entered.set()
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(
+                svc,
+                "load_app_settings",
+                new_callable=AsyncMock,
+                return_value={"is_configured": True, "output_dir": str(tmp_path)},
+            ),
+            patch(
+                "backend.services.sync_service.get_service_display_name",
+                return_value="日向坂46",
+            ),
+            patch.object(
+                svc,
+                "_authenticated_client",
+                new_callable=AsyncMock,
+                side_effect=fake_auth_client,
+            ),
+            patch("backend.services.sync_service.aiohttp.TCPConnector"),
+            patch(
+                "backend.services.sync_service.aiohttp.ClientSession"
+            ) as mock_sess_cls,
+            patch("backend.services.sync_service.progress_manager") as mock_pm,
+        ):
+            mock_pm.get.return_value = MagicMock()
+            mock_sess_ctx = AsyncMock()
+            mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
+            mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_sess_cls.return_value = mock_sess_ctx
+
+            verify_run = asyncio.create_task(svc.verify_and_fix_media())
+            await entered.wait()
+            verify_gen = svc._generation
+
+            # A newer run supersedes ownership (bumps generation, owns running).
+            svc._generation = verify_gen + 1
+            svc.running = True
+
+            # Now cancel the stale verify — its finally runs but must see it no
+            # longer owns the generation and leave the newer run's flag alone.
+            verify_run.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await verify_run
+
+        assert svc.running is True  # newer run's flag untouched by stale verify
+
+
+class TestCancelForceClearGenerationGuard:
+    """SD-BE-SVC-04 — cancel()'s post-await force-clear must be generation
+    guarded so a run that started during the await (`await task` yields) isn't
+    clobbered."""
+
+    @pytest.mark.asyncio
+    async def test_cancel_does_not_clobber_run_started_during_await(self):
+        import asyncio
+
+        svc = SyncService()
+        svc._generation = 1
+        svc.running = True
+
+        started = asyncio.Event()
+
+        async def stale_run():
+            started.set()
+            try:
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                # Simulate a newer /start winning the race the instant this
+                # stale run is cancelled and yields during cancel()'s await.
+                svc._generation = 2
+                svc.running = True
+                svc._task = asyncio.current_task()  # placeholder for newer task
+                raise
+
+        task = asyncio.create_task(stale_run())
+        svc._task = task
+        await started.wait()
+
+        await svc.cancel()
+
+        # The newer generation (2) that appeared mid-await must survive.
+        assert svc._generation == 2
+        assert svc.running is True
+
+
 class TestGroupFailureAggregation:
     """SVC-I3 — a single group's failure must not abort siblings or be surfaced
     through the outer handler; successful groups persist (partial success)."""
@@ -1761,7 +2120,10 @@ class TestGroupFailureAggregation:
                 "backend.services.sync_service.SyncManager", return_value=mock_manager
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
-            patch("backend.services.sync_service.notify_sync_complete"),
+            patch(
+                "backend.services.sync_service.notify_sync_complete_async",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_pm.get.return_value = mock_progress
             mock_sess_ctx = AsyncMock()
