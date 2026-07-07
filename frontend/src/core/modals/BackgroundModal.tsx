@@ -9,6 +9,7 @@ import { UI_CONSTANTS } from '../../config/uiConstants';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
+import { persisted } from '../persistence/persisted';
 
 interface BackgroundModalProps extends BaseModalProps {
     conversationPath: string;
@@ -95,7 +96,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     const handleReset = () => {
         setSettings(DEFAULT_BACKGROUND);
         setPreview(null);
-        localStorage.removeItem(`bg_settings_${conversationPath}`);
+        persisted.setConv(`bg_settings_${conversationPath}`, { value: null });
         onSettingsChange(DEFAULT_BACKGROUND);
     };
 

@@ -2,6 +2,7 @@
 // Shared background settings utilities for chat customization
 
 import type { BackgroundSettings } from '../types';
+import { persisted } from '../core/persistence/persisted';
 
 export const DEFAULT_BACKGROUND: BackgroundSettings = {
   type: 'default',
@@ -10,11 +11,11 @@ export const DEFAULT_BACKGROUND: BackgroundSettings = {
 };
 
 /**
- * Load background settings from localStorage
+ * Load background settings from persisted app-state
  */
 export function loadBackgroundSettings(conversationPath: string): BackgroundSettings {
   try {
-    const saved = localStorage.getItem(`bg_settings_${conversationPath}`);
+    const saved = persisted.getConv<{ value?: string }>(`bg_settings_${conversationPath}`, {}).value ?? null;
     if (saved) {
       return JSON.parse(saved) as BackgroundSettings;
     }
@@ -25,11 +26,11 @@ export function loadBackgroundSettings(conversationPath: string): BackgroundSett
 }
 
 /**
- * Save background settings to localStorage
+ * Save background settings to persisted app-state
  */
 export function saveBackgroundSettings(conversationPath: string, settings: BackgroundSettings): void {
   try {
-    localStorage.setItem(`bg_settings_${conversationPath}`, JSON.stringify(settings));
+    persisted.setConv(`bg_settings_${conversationPath}`, { value: JSON.stringify(settings) });
   } catch {
     // Storage quota exceeded or unavailable - silently fail
   }
