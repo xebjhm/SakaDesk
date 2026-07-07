@@ -125,6 +125,52 @@ class TestTranscribePost:
         mock_probe.assert_called_once()
         mock_key.assert_not_called()
 
+    def test_empty_gemini_result_sets_no_speech(self, tmp_path, monkeypatch):
+        """SD-BE-API-03: a present-but-silent audio track makes Gemini return an
+        empty transcript. The success path must set no_speech=True (not leave it
+        False) so the cached result renders the localized "no audible speech"
+        note instead of a blank, broken-looking panel forever."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+
+        async def _empty(*a, **k):
+            return "", []  # silent audio → empty text + no segments
+
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(transcription_api, "_get_gemini_api_key", return_value="k"),
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={
+                        "translation_provider": "gemini",
+                        "translation_model": "gemini-3.1-flash-lite",
+                    }
+                ),
+            ),
+            patch.object(
+                transcription_api.GeminiTranscriptionProvider, "transcribe", new=_empty
+            ),
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()["transcription"]
+        assert body["no_speech"] is True
+        assert body["segments"] == []
+        assert body["full_text"] == ""
+
+        # And it is persisted with no_speech=True so subsequent loads show the note.
+        cached = transcription_api.storage.load(tmp_path / member_rel, 500)
+        assert cached is not None and cached.no_speech is True
+
     def test_cache_hit_returns_without_calling_ai(self, tmp_path, monkeypatch):
         (tmp_path / _MEMBER_REL).mkdir(parents=True)
         monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)

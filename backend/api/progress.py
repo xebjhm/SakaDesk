@@ -10,6 +10,20 @@ from threading import Lock
 from typing import Optional
 
 
+# SD-CONTRACT-07: sync failures were historically smuggled as magic sentinel
+# strings through the human-readable ``detail`` field (the frontend string-compared
+# ``detail === 'SESSION_EXPIRED'`` to drive the re-login flow). That overloads one
+# field as both display text and machine code — any reword silently breaks the
+# flow. We now expose a separate, structured ``error_code`` in the status payload.
+# Known sentinels map to a stable code here so existing callers that still pass the
+# sentinel as the message keep working; new callers can pass ``code`` explicitly.
+_SENTINEL_ERROR_CODES: dict[str, str] = {
+    "SESSION_EXPIRED": "session_expired",
+    "REFRESH_FAILED": "refresh_failed",
+    "CANCELLED": "cancelled",
+}
+
+
 class SyncProgress:
     """Thread-safe progress tracker (like tqdm for HTTP polling)"""
 
@@ -31,6 +45,7 @@ class SyncProgress:
             self._speed_unit = ""
             self._phase_start: Optional[float] = None
             self._error: Optional[str] = None
+            self._error_code: Optional[str] = None
             self._result: Optional[dict] = None
 
     def start_phase(
@@ -97,14 +112,22 @@ class SyncProgress:
             self._detail = "Sync complete!"
             self._detail_extra = ""
 
-    def error(self, message: str):
-        """Mark sync as errored"""
+    def error(self, message: str, code: Optional[str] = None):
+        """Mark sync as errored.
+
+        ``message`` stays the human-readable ``detail``; ``code`` is a stable
+        machine code exposed separately as ``error_code`` (SD-CONTRACT-07). When
+        ``code`` is omitted, a known sentinel ``message`` (e.g. "SESSION_EXPIRED")
+        is mapped to its code so the frontend can key off ``error_code`` without
+        the caller having to change.
+        """
         with self._lock:
             self._state = "error"
             self._phase = "error"
             self._phase_name = "Error"
             self._error = message
             self._detail = message
+            self._error_code = code or _SENTINEL_ERROR_CODES.get(message)
 
     def get_status(self) -> dict:
         """Get current status (thread-safe read for polling)"""
@@ -127,6 +150,7 @@ class SyncProgress:
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,
                 "detail_extra": self._detail_extra,
+                "error_code": self._error_code,
                 "result": self._result,
             }
 

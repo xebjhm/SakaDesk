@@ -188,6 +188,13 @@ async def transcribe(request: TranscribeRequest):
 
         duration = segments[-1].end if segments else 0.0
 
+        # SD-BE-API-03: a present-but-silent audio track makes Gemini honour the
+        # "return an empty segments array" rule (transcription_service.py:44-46).
+        # Flag that empty result as no_speech so the UI shows the localized "no
+        # audible speech" note instead of caching a blank, broken-looking panel
+        # forever (TranscriptPanel only shows the note when no_speech is true).
+        no_speech = not segments and not gemini_text.strip()
+
         result = TranscriptionResult(
             message_id=request.message_id,
             media_type=media_type,
@@ -196,10 +203,11 @@ async def transcribe(request: TranscribeRequest):
             duration_seconds=round(duration, 2),
             full_text=gemini_text,
             segments=segments,
+            no_speech=no_speech,
         )
 
-        # Save to JSON sidecar
-        storage.save(member_dir, result)
+        # Save to JSON sidecar (blocking file I/O — offload like line 135 does)
+        await asyncio.to_thread(storage.save, member_dir, result)
 
         logger.info(
             "Transcription complete",

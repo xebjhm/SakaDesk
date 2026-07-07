@@ -10,6 +10,7 @@ Storage: JSON sidecar files (transcriptions.json) alongside messages.json.
 """
 
 import json
+import threading
 import structlog
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
@@ -19,6 +20,7 @@ from typing import Literal, Optional, cast
 import httpx
 
 from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
+from backend.services.service_utils import atomic_write_json
 
 logger = structlog.get_logger(__name__)
 
@@ -144,6 +146,25 @@ class GeminiTranscriptionProvider:
         logger.info("Audio uploaded via Files API", uri=file_uri, size=len(audio_bytes))
         return file_uri
 
+    async def _delete_file(self, file_uri: str, client: httpx.AsyncClient) -> None:
+        """Best-effort delete of a Files-API upload (SD-BE-API-17).
+
+        ``file_uri`` is the resource URL Gemini returned (e.g.
+        ``https://.../v1beta/files/abc-123``); DELETE it directly. Never raises —
+        this is privacy/quota cleanup, not part of the transcription result.
+        """
+        try:
+            del_resp = await client.delete(
+                file_uri, headers={"x-goog-api-key": self._api_key}
+            )
+            if del_resp.status_code not in (200, 204):
+                logger.debug(
+                    "transcription.files_api_delete_non_ok",
+                    status=del_resp.status_code,
+                )
+        except Exception as e:  # noqa: BLE001 - cleanup must never fail the call
+            logger.debug("transcription.files_api_delete_failed", error=str(e))
+
     async def transcribe(
         self,
         audio_path: Path,
@@ -208,6 +229,7 @@ class GeminiTranscriptionProvider:
 
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
 
+        uploaded_file_uri: Optional[str] = None
         async with httpx.AsyncClient(timeout=180.0) as client:
             # Choose inline_data or File API based on audio size
             if len(audio_bytes) <= self._INLINE_SIZE_LIMIT:
@@ -216,9 +238,11 @@ class GeminiTranscriptionProvider:
                     "inline_data": {"mime_type": mime_type, "data": audio_b64}
                 }
             else:
-                file_uri = await self._upload_file(audio_bytes, mime_type, client)
+                uploaded_file_uri = await self._upload_file(
+                    audio_bytes, mime_type, client
+                )
                 audio_part = {
-                    "file_data": {"mime_type": mime_type, "file_uri": file_uri}
+                    "file_data": {"mime_type": mime_type, "file_uri": uploaded_file_uri}
                 }
 
             payload = {
@@ -245,20 +269,28 @@ class GeminiTranscriptionProvider:
                 audio_bytes=len(audio_bytes),
                 mime_type=mime_type,
             )
-            resp = await client.post(
-                url,
-                headers={"x-goog-api-key": self._api_key},
-                json=payload,
-            )
-            if resp.status_code != 200:
-                logger.error(
-                    "transcription.gemini_http_error",
-                    model=self._model,
-                    status=resp.status_code,
-                    body=resp.text[:300],
+            try:
+                resp = await client.post(
+                    url,
+                    headers={"x-goog-api-key": self._api_key},
+                    json=payload,
                 )
-            resp.raise_for_status()
-            data = resp.json()
+                if resp.status_code != 200:
+                    logger.error(
+                        "transcription.gemini_http_error",
+                        model=self._model,
+                        status=resp.status_code,
+                        body=resp.text[:300],
+                    )
+                resp.raise_for_status()
+                data = resp.json()
+            finally:
+                # SD-BE-API-17: media over the inline limit is uploaded to Google's
+                # Files API and otherwise lingers until the 48h auto-expiry (and
+                # accumulates against the project quota on re-runs). Best-effort
+                # delete it now; ignore failures (cleanup, not correctness).
+                if uploaded_file_uri:
+                    await self._delete_file(uploaded_file_uri, client)
 
         # Check for safety filter blocks
         candidates = data.get("candidates", [])
@@ -356,29 +388,49 @@ class TranscriptionStorage:
 
     FILENAME = "transcriptions.json"
 
+    # SD-BE-API-07: two /transcribe requests for different messages in the same
+    # member dir run concurrently (each awaits a long Gemini call; saves run via
+    # asyncio.to_thread). Without serialization both load the same base file and
+    # the last replace wins — silently dropping the other request's entry. Guard
+    # every read-modify-write with a per-dir lock so saves never clobber.
+    _dir_locks: dict[str, threading.Lock] = {}
+    _dir_locks_guard = threading.Lock()
+
+    @classmethod
+    def _lock_for(cls, member_dir: Path) -> threading.Lock:
+        key = str(member_dir.resolve())
+        with cls._dir_locks_guard:
+            lock = cls._dir_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                cls._dir_locks[key] = lock
+            return lock
+
     def save(self, member_dir: Path, result: TranscriptionResult) -> None:
         """Save a transcription result to the member's transcriptions.json."""
         file_path = member_dir / self.FILENAME
 
-        # Load existing
-        data = self._load_raw(file_path)
+        # Serialize the load→mutate→write against other saves in this member dir
+        # so concurrent transcriptions can't drop each other's entries, and use a
+        # unique temp file + atomic replace (via the shared helper) rather than a
+        # shared "transcriptions.tmp" two writers would collide on.
+        with self._lock_for(member_dir):
+            # Load existing
+            data = self._load_raw(file_path)
 
-        # Remove existing entry for same message_id (re-transcription)
-        data["transcriptions"] = [
-            t for t in data["transcriptions"] if t["message_id"] != result.message_id
-        ]
+            # Remove existing entry for same message_id (re-transcription)
+            data["transcriptions"] = [
+                t
+                for t in data["transcriptions"]
+                if t["message_id"] != result.message_id
+            ]
 
-        # Append new
-        entry = asdict(result)
-        data["transcriptions"].append(entry)
+            # Append new
+            entry = asdict(result)
+            data["transcriptions"].append(entry)
 
-        # Write atomically
-        tmp_path = file_path.with_suffix(".tmp")
-        tmp_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp_path.replace(file_path)
+            # Write atomically (unique tmp in the same dir + os.replace w/ retry)
+            atomic_write_json(file_path, data)
 
     def load(self, member_dir: Path, message_id: int) -> Optional[TranscriptionResult]:
         """Load a specific transcription by message_id."""
@@ -428,7 +480,19 @@ class TranscriptionStorage:
     def _load_raw(self, file_path: Path) -> dict:
         if file_path.exists():
             try:
-                return cast(dict, json.loads(file_path.read_text(encoding="utf-8")))
+                data = json.loads(file_path.read_text(encoding="utf-8"))
+                # SD-BE-API-16: validate the shape, not just that it parsed. A
+                # well-formed JSON that isn't the expected object (e.g. `{}` from
+                # a partial write or a manual edit) would otherwise KeyError on
+                # every save/load for this member and never self-heal.
+                if isinstance(data, dict) and isinstance(
+                    data.get("transcriptions"), list
+                ):
+                    return cast(dict, data)
+                logger.warning(
+                    "Malformed transcriptions.json, starting fresh",
+                    path=str(file_path),
+                )
             except (json.JSONDecodeError, KeyError):
                 logger.warning(
                     "Corrupt transcriptions.json, starting fresh", path=str(file_path)

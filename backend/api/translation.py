@@ -89,6 +89,7 @@ class TranslateBatchRequest(BaseModel):
     service: str
     member_path: str
     target_language: str
+    user_nickname: Optional[str] = None  # Replace %%% placeholders before translation
 
 
 # --- Provider helpers ---
@@ -181,13 +182,20 @@ def _provider_http_error(exc: Exception) -> HTTPException:
 
 
 def _instantiate_provider(
-    provider_name: str, model: str, api_key: str
+    provider_name: str, model: Optional[str], api_key: str
 ) -> TranslationProvider:
-    """Instantiate the correct provider from name/model/api_key."""
+    """Instantiate the correct provider from name/model/api_key.
+
+    A falsy ``model`` falls back to each provider class's own default rather than
+    being forced to a foreign provider's id (SD-BE-API-08).
+    """
     if provider_name == "gemini":
-        return GeminiProvider(api_key=api_key, model=model)
+        return GeminiProvider(api_key=api_key, model=model or DEFAULT_GEMINI_MODEL)
     elif provider_name == "openai":
-        return OpenAIProvider(api_key=api_key, model=model)
+        # OpenAIProvider() supplies its own default model when omitted.
+        if model:
+            return OpenAIProvider(api_key=api_key, model=model)
+        return OpenAIProvider(api_key=api_key)
     else:
         raise CodedHTTPException(
             400, "unknown_provider", f"Unknown provider: {provider_name}"
@@ -204,7 +212,13 @@ async def _get_provider_from_config() -> TranslationProvider:
     # translation_model=None (or a preview-suffix rename can make it stale);
     # without this, translate would hard-fail with `no_model` even though the
     # provider and API key are configured.
-    if not model or model not in _valid_model_ids():
+    #
+    # SD-BE-API-08: `_valid_model_ids()` only lists Gemini ids, so this repair
+    # must be scoped to the Gemini provider — forcing DEFAULT_GEMINI_MODEL onto
+    # OpenAIProvider would guarantee a 404 at api.openai.com. Non-Gemini
+    # providers keep their configured model (their own class default covers a
+    # missing one).
+    if provider_name == "gemini" and (not model or model not in _valid_model_ids()):
         model = DEFAULT_GEMINI_MODEL
     api_key = _load_api_key()
 
@@ -277,8 +291,16 @@ async def get_config():
     # Backfill a missing model and auto-fix stale names (e.g. preview suffix
     # changes). A partial /configure can leave translation_model=None; healing it
     # here means the settings UI shows a real model and stops re-persisting null.
+    #
+    # SD-BE-API-08: `_valid_model_ids()` only lists Gemini ids, so this repair —
+    # which is *persisted* — must be scoped to the Gemini provider. Applying it
+    # to an OpenAI config would permanently overwrite the user's stored OpenAI
+    # model with a Gemini id.
     stored_model = config.get("translation_model")
-    if not stored_model or stored_model not in _valid_model_ids():
+    provider_name = config.get("translation_provider")
+    if provider_name == "gemini" and (
+        not stored_model or stored_model not in _valid_model_ids()
+    ):
         logger.info(
             "translation.config_model_defaulted",
             old=stored_model,
@@ -318,12 +340,23 @@ async def configure(request: ConfigureRequest):
 
     Provider, model, and target language go to settings.json.
     API key goes to the OS credential manager (WCM/keyring).
+
+    SD-BE-API-10: uses PATCH semantics — only fields the caller actually sent are
+    written. Previously every field defaulted to None and was written
+    unconditionally, so a caller POSTing only ``{"target_language": "en"}`` nulled
+    provider+model *and* deleted the stored API key. Now an omitted field is left
+    untouched; the API key is only cleared when the caller explicitly sets
+    ``provider`` to null.
     """
+    provided = request.model_fields_set
 
     def _update(config: dict) -> None:
-        config["translation_provider"] = request.provider
-        config["translation_model"] = request.model
-        config["translation_target_language"] = request.target_language
+        if "provider" in provided:
+            config["translation_provider"] = request.provider
+        if "model" in provided:
+            config["translation_model"] = request.model
+        if "target_language" in provided:
+            config["translation_target_language"] = request.target_language
         # Remove api_key from settings.json if it was stored there previously
         config.pop("translation_api_key", None)
 
@@ -332,8 +365,9 @@ async def configure(request: ConfigureRequest):
     # Store API key securely in keyring
     if request.api_key:
         _save_api_key(request.api_key)
-    elif request.provider is None:
-        # Clearing provider — also clear API key
+    elif "provider" in provided and request.provider is None:
+        # Explicitly clearing the provider — also clear the API key. (An omitted
+        # provider no longer triggers deletion.)
         _delete_api_key()
 
     logger.info("Translation provider configured", provider=request.provider)
@@ -569,14 +603,19 @@ async def translate_batch(request: TranslateBatchRequest):
     messages = data.get("messages", [])
     message_map: dict[int, dict] = {m["id"]: m for m in messages if "id" in m}
 
-    # Collect non-empty texts for requested IDs
+    # Collect non-empty texts for requested IDs.
+    # SD-BE-API-09: apply the same %%% -> {{NICKNAME}} tokenization the single
+    # translate path does. Sending the raw %%% leaves the model with no
+    # instruction about it (it will translate around / mangle / drop it), and
+    # nothing restores the user's nickname — so a placeholder message gets a
+    # visibly different (broken) translation depending on batch vs single.
     texts_to_translate: dict[str, str] = {}
     for msg_id in request.message_ids:
         msg = message_map.get(msg_id)
         if msg:
             text = msg.get("content", "") or ""
             if text.strip():
-                texts_to_translate[str(msg_id)] = text
+                texts_to_translate[str(msg_id)] = _replace_placeholders_with_token(text)
 
     if not texts_to_translate:
         return {"ok": True, "translations": {}}
@@ -613,6 +652,15 @@ async def translate_batch(request: TranslateBatchRequest):
         raise CodedHTTPException(
             502, "bad_response", "Provider returned invalid JSON for batch translation"
         )
+
+    # Restore the {{NICKNAME}} token back to the user's actual nickname in each
+    # translation (mirrors the single-message path). The model is instructed to
+    # keep the token verbatim, so this swap re-personalizes the output.
+    if request.user_nickname:
+        translations = {
+            k: _replace_token_with_nickname(v, request.user_nickname)
+            for k, v in translations.items()
+        }
 
     # Surface any requested messages the model silently dropped, rather than
     # returning "success" while some messages stay quietly untranslated.

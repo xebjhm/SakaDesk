@@ -8,7 +8,7 @@ import json
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any, Optional
 
 from backend.services.platform import (
@@ -102,7 +102,11 @@ class SettingsResponse(BaseModel):
 class SettingsUpdate(BaseModel):
     output_dir: Optional[str] = None
     auto_sync_enabled: Optional[bool] = None
-    sync_interval_minutes: Optional[int] = None
+    # SD-BE-API-22: reject a zero/negative interval. A non-positive value was
+    # accepted, persisted, and echoed by /api/sync/next_interval, driving the
+    # auto-sync scheduler into an immediate-retry loop against the official API
+    # (rate-limit / account-flag risk).
+    sync_interval_minutes: Optional[int] = Field(default=None, ge=1)
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None

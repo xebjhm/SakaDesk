@@ -12,6 +12,7 @@ import contextlib
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import threading
 import time
@@ -75,6 +76,86 @@ def _replace_with_retry(
             if attempt == attempts - 1:
                 raise
             time.sleep(base_delay * (attempt + 1))
+
+
+# SD-BE-SVC-05: index.json for one service can be written by two coroutines on
+# different event loops (the main uvicorn loop via POST /api/blogs/sync, and the
+# BlogBackupManager's dedicated backup thread) — and by an old force-superseded
+# run racing its replacement. Each does a full load→mutate→save, so the last
+# writer wins and silently drops the other's newly discovered blogs / removed
+# flags / stamps. A per-service lock serializes the merge+write; a threading.Lock
+# (not asyncio.Lock) is required because the writers live on different loops.
+_INDEX_WRITE_LOCKS: dict[str, threading.Lock] = {}
+_INDEX_WRITE_LOCKS_GUARD = threading.Lock()
+
+
+def _index_write_lock(service: str) -> threading.Lock:
+    with _INDEX_WRITE_LOCKS_GUARD:
+        lock = _INDEX_WRITE_LOCKS.get(service)
+        if lock is None:
+            lock = threading.Lock()
+            _INDEX_WRITE_LOCKS[service] = lock
+        return lock
+
+
+def _newer_stamp(a: Optional[str], b: Optional[str]) -> Optional[str]:
+    """Return the later of two ISO timestamp strings (either may be None)."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return a if a >= b else b
+
+
+def _merge_blog_index(current: dict, incoming: dict) -> dict:
+    """Merge ``incoming`` (a writer's mutated snapshot) onto the latest on-disk
+    ``current`` so a concurrent writer's changes are not lost.
+
+    Union of members and of each member's blogs (keyed by id, incoming wins for
+    a shared id); ``removed`` / ``blogs_removed`` flags are OR-ed (a removal seen
+    by either writer sticks); ``last_sync`` / ``last_download`` take the later
+    stamp. Add-only for members/blogs — a merge never deletes an entry the other
+    writer still has.
+    """
+    merged: dict = {"members": {}}
+    cur_members = current.get("members", {}) or {}
+    inc_members = incoming.get("members", {}) or {}
+
+    for member_id in set(cur_members) | set(inc_members):
+        cur_m = cur_members.get(member_id, {})
+        inc_m = inc_members.get(member_id, {})
+        # Prefer incoming's scalar fields (name etc.), fall back to current.
+        out_m: dict = {**cur_m, **inc_m}
+
+        # Union blogs by id, incoming version winning for shared ids.
+        by_id: dict[str, dict] = {}
+        for blog in cur_m.get("blogs", []) or []:
+            by_id[blog["id"]] = blog
+        for blog in inc_m.get("blogs", []) or []:
+            existing = by_id.get(blog["id"])
+            if existing is not None:
+                merged_blog = {**existing, **blog}
+                # A removal seen by either writer sticks.
+                if existing.get("removed") or blog.get("removed"):
+                    merged_blog["removed"] = True
+                by_id[blog["id"]] = merged_blog
+            else:
+                by_id[blog["id"]] = blog
+        out_m["blogs"] = list(by_id.values())
+
+        # blogs_removed sticks if either writer set it.
+        if cur_m.get("blogs_removed") or inc_m.get("blogs_removed"):
+            out_m["blogs_removed"] = True
+
+        merged["members"][member_id] = out_m
+
+    merged["last_sync"] = _newer_stamp(
+        current.get("last_sync"), incoming.get("last_sync")
+    )
+    merged["last_download"] = _newer_stamp(
+        current.get("last_download"), incoming.get("last_download")
+    )
+    return merged
 
 
 @dataclass
@@ -170,20 +251,49 @@ class BlogService:
                 logger.error(f"Failed to load blog index: {e}")
         return {"members": {}, "last_sync": None, "last_download": None}
 
-    async def save_blog_index(self, service: str, index: dict):
-        """Save blog index to disk (atomic write via temp file + rename)."""
+    async def save_blog_index(self, service: str, index: dict, *, merge: bool = True):
+        """Save blog index to disk (atomic write via temp file + rename).
+
+        SD-BE-SVC-05: by default this merges ``index`` onto the latest on-disk
+        state under a per-service lock, so a concurrent writer (backup thread vs
+        main-loop API sync, or a superseded run vs its replacement) can't silently
+        clobber the other's changes. The read-merge-write critical section runs in
+        a worker thread; the lock is held only for that short synchronous span (no
+        network I/O), so it can't stall an event loop. Pass ``merge=False`` for a
+        full replace (e.g. clear-cache style overwrites).
+        """
         index_path = self.get_blog_index_path(service)
-        index_path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(dir=str(index_path.parent), suffix=".tmp")
-        os.close(fd)
-        try:
-            async with aiofiles.open(tmp_path, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(index, ensure_ascii=False, indent=2))
-            _replace_with_retry(tmp_path, str(index_path))
-        except BaseException:
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_path)
-            raise
+
+        def _locked_write() -> None:
+            with _index_write_lock(service):
+                to_write = index
+                if merge and index_path.exists():
+                    try:
+                        current = json.loads(index_path.read_text(encoding="utf-8"))
+                        if isinstance(current, dict):
+                            to_write = _merge_blog_index(current, index)
+                    except (json.JSONDecodeError, OSError) as e:
+                        # Corrupt/unreadable on-disk index: fall back to writing
+                        # our own snapshot rather than failing the whole run.
+                        logger.warning(
+                            "blog_index_merge_skipped_unreadable",
+                            service=service,
+                            error=str(e),
+                        )
+                index_path.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp_path = tempfile.mkstemp(
+                    dir=str(index_path.parent), suffix=".tmp"
+                )
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as f:
+                        json.dump(to_write, f, ensure_ascii=False, indent=2)
+                    _replace_with_retry(tmp_path, str(index_path))
+                except BaseException:
+                    with contextlib.suppress(OSError):
+                        os.unlink(tmp_path)
+                    raise
+
+        await asyncio.to_thread(_locked_write)
 
     async def _atomic_write(self, path: Path, data) -> None:
         """Write text or bytes atomically (temp file + os.replace) so an
@@ -580,6 +690,14 @@ class BlogService:
                 ]
             )
 
+        # SD-BE-SVC-05: a cancelled run must not write its stale snapshot back —
+        # doing so after a newer run's save can roll the index backwards.
+        if cancel_event and cancel_event.is_set():
+            logger.info(
+                "Blog metadata sync cancelled; skipping index save", service=service
+            )
+            return index
+
         from datetime import datetime, timezone
 
         index["last_sync"] = datetime.now(timezone.utc).isoformat()
@@ -749,6 +867,14 @@ class BlogService:
         # Auto-promote: if ALL blogs of a member are now removed, set member-level flag
         # This avoids iterating hundreds of removed entries on future syncs
         self._promote_fully_removed_members(index)
+
+        # SD-BE-SVC-05: skip the final save on cancel so a cancelled run can't
+        # write its stale snapshot after a newer run's save (rolling it back).
+        if cancel_event and cancel_event.is_set():
+            logger.info(
+                "Blog content download cancelled; skipping index save", service=service
+            )
+            return stats
 
         from datetime import datetime, timezone
 
@@ -1216,27 +1342,53 @@ class BlogService:
         }
 
     async def clear_cache(self, service: str):
-        """Clear all cached blog content for a service."""
-        import shutil
+        """Clear all cached blog content for a service, keeping index.json.
+
+        SD-BE-SVC-08: index.json holds ``removed``/``blogs_removed`` flags and
+        metadata for blogs that no longer exist on the official site (graduated
+        members) — unrecoverable by re-scraping. The previous implementation read
+        the index into memory, then ``rmtree``'d the tree; if ``rmtree`` raised
+        partway (a file briefly locked by AV/the Search indexer — the exact
+        Windows failure the retry helpers exist for) the function unwound with the
+        index already deleted and its only copy trapped in the raised exception.
+
+        Instead: move index.json *out* of the tree first (atomic rename to a
+        sibling), delete the tree, then move it back — so the index is never in a
+        deleted-and-not-yet-restored window. Also refuse to clear while a backup
+        is actively writing under the tree.
+        """
+        # Don't yank the tree out from under an in-flight backup writer.
+        if get_blog_backup_manager().is_running(service):
+            raise RuntimeError(
+                f"Cannot clear blog cache for {service} while a backup is running"
+            )
 
         base_path = self.get_blogs_base_path(service)
-
-        # Keep index.json, delete everything else
         index_path = self.get_blog_index_path(service)
-        index_backup = None
 
+        if not base_path.exists():
+            return
+
+        # Stash index.json outside the tree via an atomic rename so it survives
+        # rmtree regardless of where rmtree might fail.
+        stash_path = base_path.parent / f".{base_path.name}_index_keep.json"
+        stashed = False
         if index_path.exists():
-            async with aiofiles.open(index_path, "r", encoding="utf-8") as f:
-                index_backup = await f.read()
+            await asyncio.to_thread(
+                _replace_with_retry, str(index_path), str(stash_path)
+            )
+            stashed = True
 
-        if base_path.exists():
-            shutil.rmtree(base_path)
-
-        # Restore index
-        if index_backup:
-            base_path.mkdir(parents=True, exist_ok=True)
-            async with aiofiles.open(index_path, "w", encoding="utf-8") as f:
-                await f.write(index_backup)
+        try:
+            await asyncio.to_thread(shutil.rmtree, base_path)
+        finally:
+            # Always put the index back, even if rmtree partially failed, so the
+            # graduated-member metadata is never lost.
+            if stashed:
+                base_path.mkdir(parents=True, exist_ok=True)
+                await asyncio.to_thread(
+                    _replace_with_retry, str(stash_path), str(index_path)
+                )
 
 
 # =============================================================================
