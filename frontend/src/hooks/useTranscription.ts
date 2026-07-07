@@ -30,6 +30,8 @@ export interface Transcription {
     duration_seconds: number;
     full_text: string;
     segments: TranscriptionSegment[];
+    /** True when the media has no audible speech (empty transcript, not a failure). */
+    no_speech?: boolean;
 }
 
 type TranscriptionState = 'idle' | 'loading' | 'done' | 'error';

@@ -483,6 +483,7 @@
     "transcribing": "Recognizing...",
     "transcript": "Voice Content",
     "noTranscript": "No text",
+    "noSpeech": "No audible speech",
     "clickToJump": "click to jump",
     "failed": "Error",
     "cc": "Subtitles",

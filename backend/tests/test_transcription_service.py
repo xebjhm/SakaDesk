@@ -1,14 +1,29 @@
 import json
 from pathlib import Path
 
+import httpx
+import pytest
+import respx
 
 from backend.services.transcription_service import (
     TranscriptionStorage,
     TranscriptionResult,
     TranscriptionSegment,
     GeminiTranscriptionProvider,
+    _build_transcription_system_instruction,
     _clean_cjk_spaces,
 )
+
+_GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent"
+)
+
+
+def _empty_segments_response() -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={"candidates": [{"content": {"parts": [{"text": '{"segments": []}'}]}}]},
+    )
 
 
 class TestTranscriptionStorage:
@@ -45,6 +60,59 @@ class TestTranscriptionStorage:
     def test_load_returns_none_when_missing(self, tmp_path: Path):
         storage = TranscriptionStorage()
         assert storage.load(tmp_path, 999) is None
+
+    def test_save_and_load_preserves_no_speech(self, tmp_path: Path):
+        """An audio-less message is stored as an empty no_speech transcript."""
+        storage = TranscriptionStorage()
+        member_dir = tmp_path / "member"
+        member_dir.mkdir()
+
+        result = TranscriptionResult(
+            message_id=7,
+            media_type="video",
+            language="ja",
+            model="gemini-3.1-flash-lite",
+            duration_seconds=2.4,
+            full_text="",
+            segments=[],
+            no_speech=True,
+        )
+        storage.save(member_dir, result)
+
+        loaded = storage.load(member_dir, 7)
+        assert loaded is not None
+        assert loaded.no_speech is True
+        assert loaded.segments == []
+        assert loaded.full_text == ""
+
+    def test_load_defaults_no_speech_false_for_legacy_entries(self, tmp_path: Path):
+        """Transcripts written before the no_speech field load as no_speech=False."""
+        storage = TranscriptionStorage()
+        member_dir = tmp_path / "member"
+        member_dir.mkdir()
+        (member_dir / TranscriptionStorage.FILENAME).write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "transcriptions": [
+                        {
+                            "message_id": 9,
+                            "media_type": "voice",
+                            "language": "ja",
+                            "model": "m",
+                            "duration_seconds": 1.0,
+                            "full_text": "やあ",
+                            "segments": [],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = storage.load(member_dir, 9)
+        assert loaded is not None
+        assert loaded.no_speech is False
 
     def test_save_appends_to_existing(self, tmp_path: Path):
         storage = TranscriptionStorage()
@@ -157,6 +225,57 @@ class TestGeminiTranscriptionProvider:
             api_key="test-key", model="gemini-3-flash-preview"
         )
         assert provider._model == "gemini-3-flash-preview"
+
+
+class TestGeminiPayloadHardening:
+    """Guards against Gemini fabricating transcripts for silent/near-silent media."""
+
+    @pytest.mark.asyncio
+    async def test_transcribe_uses_deterministic_temperature(self, tmp_path):
+        audio = tmp_path / "clip.mp4"
+        audio.write_bytes(b"\x00\x00\x00\x08ftyp")
+        provider = GeminiTranscriptionProvider(api_key="k", model="m")
+
+        with respx.mock:
+            route = respx.post(_GEMINI_URL).mock(
+                return_value=_empty_segments_response()
+            )
+            await provider.transcribe(audio)
+
+        payload = json.loads(route.calls.last.request.content)
+        # temperature 1.0 makes transcription "creative" — a root cause of the
+        # hallucinated transcript on silent audio.
+        assert payload["generationConfig"]["temperature"] == 0
+
+    @pytest.mark.asyncio
+    async def test_mp4_sent_as_video_mime(self, tmp_path):
+        audio = tmp_path / "clip.mp4"
+        audio.write_bytes(b"\x00\x00\x00\x08ftyp")
+        provider = GeminiTranscriptionProvider(api_key="k", model="m")
+
+        with respx.mock:
+            route = respx.post(_GEMINI_URL).mock(
+                return_value=_empty_segments_response()
+            )
+            await provider.transcribe(audio)
+
+        payload = json.loads(route.calls.last.request.content)
+        part = payload["contents"][0]["parts"][0]
+        assert part["inline_data"]["mime_type"] == "video/mp4"
+
+
+class TestSystemInstruction:
+    """The transcription prompt must not encourage guessing."""
+
+    def test_instruction_forbids_inventing_words(self):
+        instr = _build_transcription_system_instruction(
+            member_name="高井俐香", group_name="日向坂46"
+        )
+        lowered = instr.lower()
+        # The old prompt said "transcribe your best guess" — that invited
+        # fabrication on silent audio.
+        assert "best guess" not in lowered
+        assert "never invent" in lowered
 
 
 class TestCleanCjkSpaces:

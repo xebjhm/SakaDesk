@@ -660,6 +660,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 <TranscriptPanel
                     key={messageId}
                     segments={transcription.segments}
+                    noSpeech={transcription.no_speech}
                     currentTime={currentTime}
                     onSeek={handleTranscriptSeek}
                     onRerun={retriggerTranscription}

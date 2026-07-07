@@ -19,6 +19,12 @@ interface TranscriptPanelProps {
     /** Start expanded or collapsed */
     defaultExpanded?: boolean;
     /**
+     * The media has no audible speech (e.g. a silent video with no audio
+     * track). Renders a short "no speech" note instead of an empty, expandable
+     * segment list — no transcript was fabricated.
+     */
+    noSpeech?: boolean;
+    /**
      * Message ID for auto-collapse when scrolled out of the visible range.
      * Omit for non-virtualized usages (modals).
      */
@@ -46,6 +52,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     defaultExpanded = false,
     messageId,
     withBackdrop = false,
+    noSpeech = false,
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
@@ -100,6 +107,29 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     };
 
     const Chevron = expanded ? ChevronDown : ChevronRight;
+
+    // No audible speech: show a short static note (not an empty, expandable
+    // list). The rerun button stays so the user can retry if they disagree.
+    if (noSpeech) {
+        const mutedColor = isLight ? 'rgba(255,255,255,0.5)' : '#9ca3af';
+        return (
+            <div className="flex items-center gap-1.5 text-xs py-1" style={{ color: mutedColor }}>
+                <span>{t('transcription.transcript')}</span>
+                <span style={{ opacity: 0.85 }}>· {t('transcription.noSpeech')}</span>
+                {onRerun && (
+                    <button
+                        onClick={onRerun}
+                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
+                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        type="button"
+                        title={t('transcription.rerun')}
+                    >
+                        <RefreshCw className="w-3 h-3" />
+                    </button>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div>

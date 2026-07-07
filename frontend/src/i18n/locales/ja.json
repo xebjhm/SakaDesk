@@ -483,6 +483,7 @@
     "transcribing": "聞き取り中...",
     "transcript": "語音內容",
     "noTranscript": "記録なし",
+    "noSpeech": "音声がありません",
     "clickToJump": "クリックでジャンプ",
     "failed": "失敗しました",
     "cc": "字幕",

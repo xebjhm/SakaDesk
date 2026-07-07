@@ -41,7 +41,9 @@ _TRANSCRIPTION_SYSTEM_INSTRUCTION = """You are transcribing audio from 坂道シ
 - Keep industry terms in their standard form: 選抜, フォーメーション, センター,
   アンダー, ひらがな日向, セトリ, ミーグリ, 握手会, 歌割り, etc.
 - If the speaker laughs, note with (笑). Ignore background music/effects.
-- If audio is unclear, transcribe your best guess without noting uncertainty.
+- If there is no audible speech (silence, music only, or ambient noise),
+  return an empty segments array. Never invent or guess words that were not
+  clearly spoken — an empty result is correct when nobody is talking.
 
 ## Output
 
@@ -82,6 +84,10 @@ class TranscriptionResult:
     duration_seconds: float
     full_text: str
     segments: list[TranscriptionSegment]
+    # True when the media has no audible speech (e.g. a silent video with no
+    # audio track). Stored as an empty transcript so the UI can show a
+    # "no speech" note instead of triggering a fabricated re-transcription.
+    no_speech: bool = False
     created_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -152,7 +158,7 @@ class GeminiTranscriptionProvider:
         suffix = audio_path.suffix.lower()
         mime_types = {
             ".m4a": "audio/aac",
-            ".mp4": "audio/aac",
+            ".mp4": "video/mp4",  # video container — Gemini reads its audio track
             ".mp3": "audio/mp3",
             ".wav": "audio/wav",
             ".ogg": "audio/ogg",
@@ -224,7 +230,10 @@ class GeminiTranscriptionProvider:
                     }
                 ],
                 "generationConfig": {
-                    "temperature": 1.0,
+                    # Deterministic decoding: transcription should read what was
+                    # said, not creatively fill silence. temperature 1.0 was a
+                    # root cause of fabricated transcripts on audio-less media.
+                    "temperature": 0,
                     "responseMimeType": "application/json",
                     "responseJsonSchema": response_schema,
                 },
@@ -385,6 +394,7 @@ class TranscriptionStorage:
                     model=entry["model"],
                     duration_seconds=entry["duration_seconds"],
                     full_text=entry["full_text"],
+                    no_speech=entry.get("no_speech", False),
                     created_at=entry.get("created_at", ""),
                     segments=[
                         TranscriptionSegment(**s) for s in entry.get("segments", [])
@@ -406,6 +416,7 @@ class TranscriptionStorage:
                     model=entry["model"],
                     duration_seconds=entry["duration_seconds"],
                     full_text=entry["full_text"],
+                    no_speech=entry.get("no_speech", False),
                     created_at=entry.get("created_at", ""),
                     segments=[
                         TranscriptionSegment(**s) for s in entry.get("segments", [])

@@ -3,6 +3,19 @@ Favorites API for SakaDesk.
 
 Handles adding/removing messages from server-side favorites.
 Also updates local messages.json for instant feedback.
+
+FAVORITE-READ LIMITATION (revisit later):
+    The message service exposes only WRITE endpoints for favorites —
+    ``POST/DELETE /v2/messages/{id}/favorite`` — and NO list/read endpoint
+    (confirmed against the protocol reference). So favorite *state* can only be
+    read back through the timeline's per-message ``is_favorite`` field, which
+    means reads are coupled to the sync window: a favorite toggled on another
+    device for a message that falls outside the re-fetch window won't reflect
+    here until a full re-sync. The local messages.json ``is_favorite`` written
+    below is an instant-feedback cache, not an independent source of truth.
+    TODO: capture the rooted Android app to learn how the official client reads
+    favorite state (dedicated endpoint? push? full re-list?) and sync it that
+    way instead of piggybacking on the timeline.
 """
 
 import json

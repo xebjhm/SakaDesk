@@ -21,6 +21,7 @@ from backend.services.transcription_service import (
     TranscriptionResult,
     GeminiTranscriptionProvider,
 )
+from pysaka.media import get_audio_metadata
 from backend.api.content import get_output_dir, validate_path_within_dir
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.service_utils import validate_service, get_service_display_name
@@ -107,6 +108,33 @@ async def transcribe(request: TranscribeRequest):
     media_path = validate_path_within_dir(output_dir, media_path_from_output)
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
+
+    # Skip videos with no audio track: sending a silent video to Gemini yields
+    # a fabricated "best guess" transcript, so store an empty no_speech result
+    # the UI can label clearly. Reuse the is_muted flag pysaka computes at sync
+    # time (same detection that drives the player's audio/volume control);
+    # older messages predate that flag, so compute it on demand when absent.
+    is_muted = message.get("is_muted")
+    media_duration = message.get("media_duration")
+    if is_muted is None and media_type == "video":
+        meta = await asyncio.to_thread(get_audio_metadata, media_path, media_type)
+        is_muted = meta.get("is_muted")
+        if media_duration is None:
+            media_duration = meta.get("duration")
+    if is_muted:
+        result = TranscriptionResult(
+            message_id=request.message_id,
+            media_type=media_type,
+            language="ja",
+            model="",
+            duration_seconds=round(media_duration or 0.0, 2),
+            full_text="",
+            segments=[],
+            no_speech=True,
+        )
+        await asyncio.to_thread(storage.save, member_dir, result)
+        logger.info("Transcription skipped: no audio", message_id=request.message_id)
+        return {"ok": True, "transcription": _result_to_dict(result)}
 
     try:
         api_key = _get_gemini_api_key()
@@ -281,6 +309,7 @@ def _result_to_dict(result: TranscriptionResult) -> dict:
         "created_at": result.created_at,
         "duration_seconds": result.duration_seconds,
         "full_text": result.full_text,
+        "no_speech": result.no_speech,
         "segments": [
             {
                 "start": s.start,
