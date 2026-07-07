@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { persisted } from '../../core/persistence/persisted';
 
 interface TosDialogProps {
     onAccept: () => void;
@@ -16,8 +17,8 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
 
     const handleAccept = () => {
         if (acknowledged) {
-            // Store acceptance timestamp in localStorage
-            localStorage.setItem('tos_accepted_at', new Date().toISOString());
+            // Store acceptance timestamp in the persisted app-state store
+            persisted.setPref('tos_accepted_at', new Date().toISOString());
             onAccept();
         }
     };

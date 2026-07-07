@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { AuthProvider } from './context/AuthContext'
 import { useAppStore } from '../store/appStore'
+import { persisted } from '../core/persistence/persisted'
 
 // Helper to render App with required providers
 const renderApp = () => {
@@ -17,11 +18,15 @@ const renderApp = () => {
 describe('App Integration Tests', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    // Mock localStorage: ToS accepted, language set
+    // Mock localStorage: language set (ToS acceptance now comes from persisted prefs)
     vi.mocked(localStorage.getItem).mockImplementation((key: string) => {
-      if (key === 'tos_accepted_at') return '2024-01-01T00:00:00Z'
       if (key === 'sakadesk-language') return 'en'
       return null
+    })
+    // Mock persisted prefs: ToS accepted
+    vi.spyOn(persisted, 'getPref').mockImplementation(<T,>(key: string, fallback: T): T => {
+      if (key === 'tos_accepted_at') return '2024-01-01T00:00:00Z' as unknown as T
+      return fallback
     })
     // Set up Zustand store with a selected service so we skip the landing page
     useAppStore.setState({

@@ -163,9 +163,9 @@ function App() {
     const openSearch = useCallback(() => searchModalRef.current?.open(), []);
     useGlobalSearchShortcut(openSearch);
 
-    // ToS acceptance state - check localStorage on mount
+    // ToS acceptance state - check persisted app-state on mount
     const [tosAccepted, setTosAccepted] = useState(() => {
-        return localStorage.getItem('tos_accepted_at') !== null;
+        return persisted.getPref('tos_accepted_at', null) !== null;
     });
 
     // Backend-backed prefs hydration — loads the app-state prefs cache before
