@@ -4,6 +4,7 @@ frontend used to keep in origin-scoped localStorage."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import time
@@ -70,9 +71,17 @@ def get_conversation(path: str) -> dict[str, Any]:
 
 
 def set_conversation(path: str, patch: dict[str, Any]) -> None:
-    merged = get_conversation(path)
-    merged.update(patch)
+    # SD-BE-SVC-10: do the read-modify-write inside ONE connection/transaction.
+    # Previously the read (get_conversation) and the write used two separate
+    # connections, so concurrent PATCHes to the same path could drop keys the
+    # moment these ran off the single event-loop thread. `dict.update` semantics
+    # are preserved (a null/None value SETS the key, it is not a delete).
     with _connect() as c:
+        row = c.execute(
+            "SELECT data FROM conversation_state WHERE path=?", (path,)
+        ).fetchone()
+        merged = json.loads(row[0]) if row else {}
+        merged.update(patch)
         c.execute(
             "INSERT INTO conversation_state(path,data) VALUES(?,?) "
             "ON CONFLICT(path) DO UPDATE SET data=excluded.data",
@@ -141,3 +150,55 @@ def migrate_dump(dump: dict) -> None:
     if dump.get("translations"):
         put_translations(dump["translations"])
     set_prefs({"_migrated": True})
+
+
+# ---------------------------------------------------------------------------
+# SD-BE-SVC-10: async off-loop wrappers.
+#
+# Every function above opens a fresh connection and does blocking SQLite I/O
+# (worst case a `busy_timeout=5000` stall). The FastAPI handlers run on the
+# event loop, so they must call these `a*` wrappers — each runs the sync body
+# in a worker thread via `asyncio.to_thread`, keeping the UI backend responsive.
+# The sync functions remain the source of truth (and stay usable from non-async
+# callers such as startup migration); these are thin thread hops.
+# ---------------------------------------------------------------------------
+
+
+async def aget_prefs() -> dict[str, Any]:
+    return await asyncio.to_thread(get_prefs)
+
+
+async def aset_prefs(patch: dict[str, Any]) -> None:
+    await asyncio.to_thread(set_prefs, patch)
+
+
+async def aget_conversation(path: str) -> dict[str, Any]:
+    return await asyncio.to_thread(get_conversation, path)
+
+
+async def aset_conversation(path: str, patch: dict[str, Any]) -> None:
+    await asyncio.to_thread(set_conversation, path, patch)
+
+
+async def aget_all_conversations() -> dict[str, dict]:
+    return await asyncio.to_thread(get_all_conversations)
+
+
+async def aget_translations(keys: list[str]) -> dict[str, str]:
+    return await asyncio.to_thread(get_translations, keys)
+
+
+async def aput_translations(items: dict[str, str]) -> None:
+    await asyncio.to_thread(put_translations, items)
+
+
+async def aclear_translations() -> None:
+    await asyncio.to_thread(clear_translations)
+
+
+async def ais_migrated() -> bool:
+    return await asyncio.to_thread(is_migrated)
+
+
+async def amigrate_dump(dump: dict) -> None:
+    await asyncio.to_thread(migrate_dump, dump)

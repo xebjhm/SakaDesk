@@ -218,9 +218,18 @@ class TestFormatDuration:
 class TestDiskUsage:
     """Tests for _get_disk_usage helper."""
 
+    def _reset_cache(self):
+        # SD-BE-API-01: _get_disk_usage now caches on a 60s TTL; reset between
+        # cases so each exercises a fresh walk rather than a stale cached result.
+        from backend.api.diagnostics import _disk_usage_cache
+
+        _disk_usage_cache["data"] = None
+        _disk_usage_cache["expires"] = 0
+
     def test_nonexistent_dir(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         size_mb, count = _get_disk_usage(str(tmp_path / "missing"))
         assert size_mb == 0.0
         assert count == 0
@@ -228,6 +237,7 @@ class TestDiskUsage:
     def test_empty_dir(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         size_mb, count = _get_disk_usage(str(tmp_path))
         assert size_mb == 0.0
         assert count == 0
@@ -235,6 +245,7 @@ class TestDiskUsage:
     def test_dir_with_files(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         f1 = tmp_path / "a.bin"
         # Write >10 KB so rounding to 2 decimals still > 0.00
         f1.write_bytes(b"x" * 10240)
