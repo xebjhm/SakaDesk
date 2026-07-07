@@ -173,7 +173,9 @@ function App() {
     // so this can never block/break startup even if the endpoint is unavailable.
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
-        persisted.hydratePrefs().finally(() => setPrefsHydrated(true));
+        persisted.hydratePrefs()
+            .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
+            .finally(() => setPrefsHydrated(true));
     }, []);
 
     // === RENDER ===
