@@ -51,6 +51,12 @@ async def patch_translations(items: dict[str, Any] = Body(...)) -> dict[str, boo
     return {"ok": True}
 
 
+@router.post("/translations/clear")
+async def clear_translations() -> dict[str, bool]:
+    app_state.clear_translations()
+    return {"ok": True}
+
+
 class MigrateDump(BaseModel):
     prefs: dict[str, Any] = {}
     conversations: dict[str, Any] = {}

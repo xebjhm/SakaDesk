@@ -24,6 +24,16 @@ def test_conversation_and_translations_endpoints(client, tmp_path):
     assert client.get("/api/app-state/translations?keys=1:ja").json() == {"1:ja": "hi"}
 
 
+def test_translations_clear_endpoint(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    client.patch("/api/app-state/translations", json={"1:ja": "hi"})
+    assert client.get("/api/app-state/translations?keys=1:ja").json() == {"1:ja": "hi"}
+    resp = client.post("/api/app-state/translations/clear")
+    assert resp.json() == {"ok": True}
+    assert client.get("/api/app-state/translations?keys=1:ja").json() == {}
+
+
 def test_conversation_all_endpoint(client, tmp_path):
     app_state.set_db_path(tmp_path / "app_state.db")
     app_state.init_db()

@@ -123,6 +123,11 @@ def put_translations(items: dict[str, str]) -> None:
             )
 
 
+def clear_translations() -> None:
+    with _connect() as c:
+        c.execute("DELETE FROM translation_cache")
+
+
 def is_migrated() -> bool:
     return bool(get_prefs().get("_migrated"))
 

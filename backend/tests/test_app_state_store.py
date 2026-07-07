@@ -41,6 +41,14 @@ def test_translation_cache_and_lru(tmp_path, monkeypatch):
     assert "2:ja" not in got and got["1:ja"] == "A" and got["3:ja"] == "C"
 
 
+def test_clear_translations_wipes_the_cache(tmp_path):
+    s = _fresh(tmp_path)
+    s.put_translations({"1:ja": "A", "2:ja": "B"})
+    assert s.get_translations(["1:ja", "2:ja"]) == {"1:ja": "A", "2:ja": "B"}
+    s.clear_translations()
+    assert s.get_translations(["1:ja", "2:ja"]) == {}
+
+
 def test_get_all_conversations_returns_all_rows_keyed_by_path(tmp_path):
     s = _fresh(tmp_path)
     assert s.get_all_conversations() == {}
