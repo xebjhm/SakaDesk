@@ -677,8 +677,8 @@ function AiTab() {
         }
     };
 
-    const handleClearCache = () => {
-        clearTranslationCache();
+    const handleClearCache = async () => {
+        await clearTranslationCache();
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 

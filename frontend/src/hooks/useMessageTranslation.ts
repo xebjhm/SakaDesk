@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
+import { persisted } from '../core/persistence/persisted';
+import * as api from '../core/persistence/appStateApi';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -14,7 +16,7 @@ interface UseMessageTranslationReturn {
     clear: () => void;
 }
 
-// localStorage cache key format: translation:{type}:{id}:{lang}
+// backend app-state cache key format: translation:{type}:{id}:{lang}
 function getCacheKey(
     type: 'message',
     contentId: string | number,
@@ -23,25 +25,9 @@ function getCacheKey(
     return `translation:${type}:${contentId}:${targetLanguage}`;
 }
 
-function getCachedTranslation(key: string): string | null {
-    try {
-        return localStorage.getItem(key);
-    } catch {
-        return null;
-    }
-}
-
-function setCachedTranslation(key: string, translation: string): void {
-    try {
-        localStorage.setItem(key, translation);
-    } catch {
-        // localStorage full — silently ignore
-    }
-}
-
 /**
  * Hook for translating a single message.
- * Manages localStorage cache and API calls.
+ * Manages the backend translation cache (app-state `translation_cache`) and API calls.
  */
 export function useMessageTranslation(params: {
     service: string | undefined;
@@ -58,21 +44,29 @@ export function useMessageTranslation(params: {
         ? getCacheKey('message', messageId, targetLanguage)
         : '';
 
-    // Lazy init from cache so we don't do a blocking localStorage read on every render.
-    const [translation, setTranslation] = useState<string | null>(
-        () => (cacheKey ? getCachedTranslation(cacheKey) : null)
-    );
-    const [state, setState] = useState<TranslationState>(
-        () => ((cacheKey ? getCachedTranslation(cacheKey) : null) ? 'done' : 'idle')
-    );
+    // The backend cache read is async, so we can't populate these synchronously
+    // at mount like the old localStorage version did. Start empty/idle and let
+    // the effect below fetch the cached value (a brief original->translated
+    // flash for already-cached messages is acceptable).
+    const [translation, setTranslation] = useState<string | null>(null);
+    const [state, setState] = useState<TranslationState>('idle');
     const [error, setError] = useState<string | null>(null);
 
     // Re-sync state when cacheKey changes (e.g., target language or provider changed)
     useEffect(() => {
-        const cachedValue = cacheKey ? getCachedTranslation(cacheKey) : null;
-        setTranslation(cachedValue);
-        setState(cachedValue ? 'done' : 'idle');
+        let cancelled = false;
+        setTranslation(null);
+        setState('idle');
         setError(null);
+        if (cacheKey) {
+            persisted.getTranslations([cacheKey]).then((m) => {
+                if (!cancelled && m[cacheKey]) {
+                    setTranslation(m[cacheKey]);
+                    setState('done');
+                }
+            }).catch(() => {/* stay idle; trigger() will fall back to the API */});
+        }
+        return () => { cancelled = true; };
     }, [cacheKey]);
 
     // Shared fetch+persist path for both trigger (cache-miss) and retrigger (forced).
@@ -107,7 +101,7 @@ export function useMessageTranslation(params: {
             if (data.ok) {
                 setTranslation(data.translation);
                 setState('done');
-                setCachedTranslation(cacheKey, data.translation);
+                persisted.putTranslations({ [cacheKey]: data.translation }).catch(() => {});
             } else {
                 throw new Error('Translation returned not ok');
             }
@@ -120,9 +114,9 @@ export function useMessageTranslation(params: {
 
     const trigger = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;
-        const cachedValue = getCachedTranslation(cacheKey);
-        if (cachedValue) {
-            setTranslation(cachedValue);
+        const cachedMap = await persisted.getTranslations([cacheKey]);
+        if (cachedMap[cacheKey]) {
+            setTranslation(cachedMap[cacheKey]);
             setState('done');
             return;
         }
@@ -130,13 +124,12 @@ export function useMessageTranslation(params: {
     }, [service, messageId, memberPath, cacheKey, doTranslate]);
 
     const retrigger = useCallback(async () => {
-        // Clear cache first so the forced re-run doesn't short-circuit.
-        if (cacheKey) {
-            try { localStorage.removeItem(cacheKey); } catch {}
-        }
+        // No single-key delete endpoint; doTranslate() below overwrites the
+        // cache entry once the fresh translation comes back, so there's
+        // nothing to explicitly clear first — just reset local state.
         setTranslation(null);
         await doTranslate();
-    }, [cacheKey, doTranslate]);
+    }, [doTranslate]);
 
     const clear = useCallback(() => {
         setTranslation(null);
@@ -161,11 +154,15 @@ export async function translateBatch(params: {
     const uncachedIds: number[] = [];
     const results: Record<string, string> = {};
 
+    const keysById = new Map<number, string>(
+        messageIds.map((id) => [id, getCacheKey('message', id, targetLanguage)])
+    );
+    const cachedMap = await persisted.getTranslations(Array.from(keysById.values()));
+
     for (const id of messageIds) {
-        const key = getCacheKey('message', id, targetLanguage);
-        const cached = getCachedTranslation(key);
-        if (cached) {
-            results[String(id)] = cached;
+        const key = keysById.get(id)!;
+        if (cachedMap[key]) {
+            results[String(id)] = cachedMap[key];
         } else {
             uncachedIds.push(id);
         }
@@ -192,28 +189,21 @@ export async function translateBatch(params: {
 
     const data = await res.json();
     if (data.ok && data.translations) {
+        const newItems: Record<string, string> = {};
         for (const [id, text] of Object.entries(data.translations)) {
             results[id] = text as string;
             const key = getCacheKey('message', id, targetLanguage);
-            setCachedTranslation(key, text as string);
+            newItems[key] = text as string;
         }
+        persisted.putTranslations(newItems).catch(() => {});
     }
 
     return results;
 }
 
 /**
- * Clear all translation cache entries from localStorage.
+ * Clear all translation cache entries from the backend translation cache.
  */
-export function clearTranslationCache(): void {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key?.startsWith('translation:')) {
-            keysToRemove.push(key);
-        }
-    }
-    for (const key of keysToRemove) {
-        localStorage.removeItem(key);
-    }
+export async function clearTranslationCache(): Promise<void> {
+    await api.clearTranslations();
 }
