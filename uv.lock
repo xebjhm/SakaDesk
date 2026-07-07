@@ -1340,6 +1340,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "pytest-benchmark", specifier = ">=5.2.3" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
+    { name = "pytest-timeout", specifier = ">=2.3.0" },
     { name = "ruff", specifier = ">=0.3.0" },
     { name = "syrupy", specifier = ">=4.9.1" },
     { name = "time-machine", specifier = ">=2.19.0" },
