@@ -7,6 +7,7 @@ import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
 import { capUnreadToServer } from '../utils/unreadCap';
+import { persisted } from '../../../core/persistence/persisted';
 
 interface GroupInfo {
     id: string;
@@ -82,7 +83,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             try {
                 const info = getGroupDisplayInfo(g);
                 const key = `read_state_${info.path}`;
-                const saved = localStorage.getItem(key);
+                const saved = persisted.getConv<{ value?: string }>(key, {}).value ?? null;
                 if (saved) {
                     const parsed = JSON.parse(saved);
                     readStates[info.path] = {

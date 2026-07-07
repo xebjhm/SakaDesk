@@ -15,6 +15,7 @@ import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
+import { persisted } from '../../core/persistence/persisted';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -444,7 +445,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // === READ STATE ===
     const loadReadState = (path: string): ReadState => {
         try {
-            const saved = localStorage.getItem(`read_state_${path}`);
+            const saved = persisted.getConv<{ value?: string }>(`read_state_${path}`, {}).value ?? null;
             return saved ? JSON.parse(saved) : { lastReadId: 0, readCount: 0, revealedIds: [] };
         } catch {
             return { lastReadId: 0, readCount: 0, revealedIds: [] };
@@ -453,7 +454,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     const saveReadState = (path: string, state: ReadState) => {
         try {
-            localStorage.setItem(`read_state_${path}`, JSON.stringify(state));
+            persisted.setConv(`read_state_${path}`, { value: JSON.stringify(state) });
             // Increment version to trigger sidebar refresh
             setReadStateVersion(v => v + 1);
         } catch {
