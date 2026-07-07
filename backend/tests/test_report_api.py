@@ -45,7 +45,11 @@ class TestGenerateReport:
         assert "github_url" in data
         assert data["diagnostics"]["category"] == "sync_data"
         assert "context" in data["diagnostics"]
-        assert data["diagnostics"]["context"]["member_path"] == "hinatazaka46/member1"
+        # Theme J / SD-FE-GAP-A-01: member_path is reduced to its group segment;
+        # the specific member must never reach the public issue URL / clipboard.
+        assert data["diagnostics"]["context"]["member_path"] == "hinatazaka46/[REDACTED]"
+        assert "member1" not in data["github_url"]
+        assert "member1" not in json.dumps(data["diagnostics"])
 
     @patch(
         "backend.api.report._get_smart_logs", return_value={"errors": [], "recent": []}

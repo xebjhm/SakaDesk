@@ -120,3 +120,61 @@ class TestScrubSecrets:
         assert "alice" not in out  # path redacted
         assert "Bob" not in out  # nickname redacted
         assert jwt not in out  # secret redacted
+
+
+class TestRedactDiagnostics:
+    """Theme J / SD-FE-GAP-A-01: the whole diagnostics payload (not just logs)
+    must be scrubbed before it reaches the public GitHub-issue URL / clipboard."""
+
+    def test_member_path_reduced_to_group_segment(self):
+        """member_path keeps only the leading group/service; member/message id dropped."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"context": {"member_path": "hinatazaka46/messages/34"}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["context"]["member_path"] == "hinatazaka46/[REDACTED]"
+
+    def test_member_path_backslashes_normalized(self):
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"context": {"member_path": "sakurazaka46\\messages\\7"}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["context"]["member_path"] == "sakurazaka46/[REDACTED]"
+
+    def test_nested_string_paths_and_secrets_scrubbed(self):
+        """Nested values (e.g. sync_state.last_error) get full path/secret scrubbing."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {
+            "sync_state": {
+                "last_error": r"write failed at C:\Users\john\AppData\Local\x.json"
+            }
+        }
+        out = _redact_diagnostics(diag, "john", None)
+        assert "john" not in out["sync_state"]["last_error"]
+
+    def test_custom_output_dir_redacted(self):
+        """A user-chosen output dir outside C:\\Users is redacted when known."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"sync_state": {"last_error": r"boom at D:\SakaData\hinatazaka46\m.json"}}
+        out = _redact_diagnostics(diag, "john", None, output_dir=r"D:\SakaData")
+        assert "SakaData" not in out["sync_state"]["last_error"]
+        assert "[REDACTED_DIR]" in out["sync_state"]["last_error"]
+
+    def test_redacted_diag_yields_clean_github_url(self):
+        """Regression: the member name must not survive into the issue URL body."""
+        from backend.api.report import _redact_diagnostics, _build_github_url
+
+        diag = {"context": {"member_path": "hinatazaka46/messages/34"}}
+        safe = _redact_diagnostics(diag, "john", None)
+        url = _build_github_url("playback", "watching", "froze", safe)
+        assert "messages/34" not in url
+        assert "messages%2F34" not in url  # url-encoded form
+
+    def test_non_string_values_preserved(self):
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"system": {"message_id": 34, "ok": True, "ratio": 1.5}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["system"] == {"message_id": 34, "ok": True, "ratio": 1.5}
