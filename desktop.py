@@ -21,6 +21,7 @@ from pathlib import Path  # noqa: E402
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
+from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
 import structlog  # noqa: E402
@@ -294,6 +295,12 @@ def _save_window_geometry(geom: dict) -> None:
 
 def main() -> None:
     try:
+        # Packaged-app hardening (frozen Windows only): keep child processes from
+        # flashing a console window, and pin the silent token-refresh to the
+        # user's installed browser so it never downloads Chromium at runtime.
+        # No-op in dev. See backend.services.desktop_runtime.
+        harden_frozen_windows()
+
         # Hold a named mutex so the upgrade installer can wait for this process
         # to fully exit before replacing files it still has loaded.
         _acquire_instance_mutex()

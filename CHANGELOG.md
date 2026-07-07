@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Terminal/console windows popping up on their own, sometimes several times**:
+  the app's silent login-refresh tried to drive a bundled headless browser that
+  the installer does not ship, which kicked off a runtime Chromium download in a
+  visible console window (and retried on network hiccups). The refresh now reuses
+  your already-installed Chrome/Edge — the same browser used to log in — so
+  nothing is downloaded, and the packaged app now keeps any child process
+  windowless as a safety net.
+
 ## [0.3.2] - 2026-07-06
 
 ### Fixed
