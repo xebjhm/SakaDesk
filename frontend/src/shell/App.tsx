@@ -177,6 +177,15 @@ function App() {
         persisted.hydratePrefs()
             .then(() => persisted.hydrateConversations().catch(() => {/* defensive: never block startup */}))
             .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
+            .then(() => {
+                // Re-evaluate ToS acceptance now that the prefs cache is
+                // hydrated + migrated. The initial useState read (below) ran
+                // against an EMPTY cache at mount — an upgrading user who
+                // already accepted has their acceptance in the backend, not in
+                // the synchronous mount-time cache, so without this they would
+                // be bounced back to the ToS gate on every launch.
+                setTosAccepted(persisted.getPref('tos_accepted_at', null) !== null);
+            })
             .then(async () => {
                 // Apply language now that hydration + migration have run, so the
                 // first gated render is in the right language. This is the SINGLE
@@ -208,14 +217,18 @@ function App() {
 
     // === RENDER ===
 
+    // Show loading while auth check is in progress or prefs are hydrating.
+    // This MUST precede the ToS gate: `tosAccepted` is only meaningful once the
+    // prefs cache is hydrated (a returning/upgrading user's acceptance lives in
+    // the backend, not the empty mount-time cache). Gating on ToS before
+    // hydration would bounce those users back into the dialog.
+    if (!authCheckComplete || !prefsHydrated) {
+        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
+    }
+
     // Show ToS dialog on first launch (blocks all other content until accepted)
     if (!tosAccepted) {
         return <TosDialog onAccept={() => setTosAccepted(true)} />;
-    }
-
-    // Show loading while auth check is in progress or prefs are hydrating
-    if (!authCheckComplete || !prefsHydrated) {
-        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
 
     // Show LandingPage if no services selected (new user or all services removed)
