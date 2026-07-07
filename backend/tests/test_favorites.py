@@ -81,7 +81,7 @@ class TestLocalFavoriteUpdate:
             msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
 
             with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
-                result = _update_local_favorite(12345, True)
+                result = _update_local_favorite(12345, True, "hinatazaka46")
 
             assert result is True
 
@@ -89,6 +89,8 @@ class TestLocalFavoriteUpdate:
             updated = json.loads(msg_file.read_text(encoding="utf-8"))
             assert updated["messages"][0]["is_favorite"] is True
             assert updated["messages"][1]["is_favorite"] is False
+            # Atomic write must not leave a temp file behind.
+            assert not list(member_dir.glob("*.tmp"))
 
     def test_update_local_favorite_message_not_found(self):
         """Test updating favorite when message doesn't exist."""
@@ -108,7 +110,7 @@ class TestLocalFavoriteUpdate:
             msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
 
             with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
-                result = _update_local_favorite(12345, True)
+                result = _update_local_favorite(12345, True, "hinatazaka46")
 
             assert result is False
 
@@ -116,48 +118,44 @@ class TestLocalFavoriteUpdate:
         """Test updating favorite when output dir is empty."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
-                result = _update_local_favorite(12345, True)
+                result = _update_local_favorite(12345, True, "hinatazaka46")
             assert result is False
 
-    def test_update_local_favorite_multiple_services(self):
-        """Test finding message across multiple services."""
+    def test_update_local_favorite_scoped_to_service(self):
+        """SD-BE-API-05: message_id is only unique per (service, id). The update
+        must touch ONLY the named service's file, even when another service holds
+        a message with the same id — otherwise a cross-service id collision flips
+        the wrong message's favorite on disk."""
         with tempfile.TemporaryDirectory() as tmp_dir:
-            # Create test directories for multiple services
+            # SAME message id 12345 exists in BOTH services.
             for service in ["日向坂46", "櫻坂46"]:
                 member_dir = (
                     Path(tmp_dir) / service / "messages" / "1 Group" / "40 Member"
                 )
                 member_dir.mkdir(parents=True)
-                msg_file = member_dir / "messages.json"
+                (member_dir / "messages.json").write_text(
+                    json.dumps(
+                        {"messages": [{"id": 12345, "text": service, "is_favorite": False}]}
+                    ),
+                    encoding="utf-8",
+                )
 
-                if service == "櫻坂46":
-                    # Put target message in second service
-                    messages_data = {
-                        "messages": [
-                            {"id": 12345, "text": "Found", "is_favorite": False}
-                        ]
-                    }
-                else:
-                    messages_data = {
-                        "messages": [
-                            {"id": 99999, "text": "Other", "is_favorite": False}
-                        ]
-                    }
-                msg_file.write_text(json.dumps(messages_data), encoding="utf-8")
-
+            # Favorite it for sakurazaka46 only.
             with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
-                result = _update_local_favorite(12345, True)
+                result = _update_local_favorite(12345, True, "sakurazaka46")
 
             assert result is True
 
-            # Verify only the correct file was updated
-            sakura_file = (
-                Path(tmp_dir)
-                / "櫻坂46"
-                / "messages"
-                / "1 Group"
-                / "40 Member"
-                / "messages.json"
-            )
-            updated = json.loads(sakura_file.read_text(encoding="utf-8"))
-            assert updated["messages"][0]["is_favorite"] is True
+            def read(service):
+                p = Path(tmp_dir) / service / "messages" / "1 Group" / "40 Member" / "messages.json"
+                return json.loads(p.read_text(encoding="utf-8"))["messages"][0]["is_favorite"]
+
+            assert read("櫻坂46") is True   # sakurazaka46 updated
+            assert read("日向坂46") is False  # hinatazaka46 NOT touched
+
+    def test_update_local_favorite_unknown_service(self):
+        """An unknown service id returns False without scanning anything."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
+                result = _update_local_favorite(12345, True, "not_a_service")
+            assert result is False
