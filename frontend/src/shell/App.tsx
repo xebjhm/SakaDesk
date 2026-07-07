@@ -187,6 +187,14 @@ function App() {
                     await i18n.changeLanguage(lang);
                 }
             })
+            .then(() =>
+                // Load the app-state bundle (selected services, favorites, etc.)
+                // from the backend now that the prefs cache is hydrated. Storage
+                // was skipped at import time (skipHydration: true) because the
+                // cache is empty until this point. Defensive: a rehydrate failure
+                // must not block startup (store just keeps its default state).
+                useAppStore.persist.rehydrate()?.catch(() => {/* defensive: never block startup */})
+            )
             .finally(() => setPrefsHydrated(true));
     }, []);
 

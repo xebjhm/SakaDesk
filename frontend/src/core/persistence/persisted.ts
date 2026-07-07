@@ -73,6 +73,7 @@ export async function migrateOnce(): Promise<void> {
     tos_accepted_at: 'tos_accepted_at',
     'sakadesk-language': 'language',
     sakadesk_dismissed_update: 'dismissed_update',
+    'sakadesk-app-state': 'sakadesk-app-state',
   };
   for (const [lsKey, prefKey] of Object.entries(scalarMap)) {
     const v = localStorage.getItem(lsKey);

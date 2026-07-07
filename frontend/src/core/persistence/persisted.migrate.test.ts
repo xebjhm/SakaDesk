@@ -28,6 +28,7 @@ describe('persisted.migrateOnce', () => {
   it('migrates scalar prefs + a conversation key + a translation, keyed correctly', async () => {
     localStorage.setItem('tos_accepted_at', '2026-01-01T00:00:00Z');
     localStorage.setItem('sakadesk-language', 'ja');
+    localStorage.setItem('sakadesk-app-state', JSON.stringify({ state: { selectedServices: ['hinatazaka46'] }, version: 4 }));
     localStorage.setItem('read_state_hinatazaka46/messages/58 X', JSON.stringify({ up_to: 9 }));
     localStorage.setItem('sakadesk_scroll_58', '4242');
     localStorage.setItem('translation:message:12:ja', 'こんにちは');
@@ -39,7 +40,11 @@ describe('persisted.migrateOnce', () => {
     await persisted.migrateOnce();
 
     const dump = post.mock.calls[0][0] as any;
-    expect(dump.prefs).toEqual({ tos_accepted_at: '2026-01-01T00:00:00Z', language: 'ja' });
+    expect(dump.prefs).toEqual({
+        tos_accepted_at: '2026-01-01T00:00:00Z',
+        language: 'ja',
+        'sakadesk-app-state': JSON.stringify({ state: { selectedServices: ['hinatazaka46'] }, version: 4 }),
+    });
     expect(dump.conversations['read_state_hinatazaka46/messages/58 X']).toEqual({ value: JSON.stringify({ up_to: 9 }) });
     expect(dump.conversations['sakadesk_scroll_58']).toEqual({ value: '4242' });
     expect(dump.translations).toEqual({
