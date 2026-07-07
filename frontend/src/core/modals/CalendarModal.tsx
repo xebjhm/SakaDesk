@@ -7,6 +7,7 @@ import type { Message } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
+import { toLocalDateStr } from '../../utils/dateFormatters';
 
 export interface DateCount {
     date: string;
@@ -57,10 +58,10 @@ type CalendarModalProps = CalendarModalPropsAPI | CalendarModalPropsMessages | C
 
 const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 
-// Format date to YYYY-MM-DD using LOCAL timezone (not UTC)
-const formatLocalDate = (d: Date): string => {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+// Format a Date to YYYY-MM-DD using LOCAL timezone (not UTC).
+// SD-FE-CORE-02: shared with scrollToDate / backend `_local_date` so the
+// calendar dots, the jump target, and the message bubbles all agree on the day.
+const formatLocalDate = (d: Date): string => toLocalDateStr(d);
 
 export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const {

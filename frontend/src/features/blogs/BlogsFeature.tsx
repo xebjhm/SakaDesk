@@ -332,12 +332,22 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         if (viewState.view !== 'reader' || !activeService || viewState.content) return;
 
         const blogId = viewState.blog.id;
+        // SD-FE-CORE-01: capture the service too, and abort applying results if
+        // the user navigates to another blog / switches service before this
+        // fetch resolves. A slow uncached blog A must never inject its content
+        // into blog B's view, nor cause B's real content to be discarded.
+        const serviceAtStart = activeService;
+        let cancelled = false;
 
         // Check content cache first (via ref)
         const cachedContent = contentCacheRef.current.get(blogId);
         if (cachedContent) {
             setViewState(prev =>
-                prev.view === 'reader' && !prev.content ? { ...prev, content: cachedContent } : prev
+                // Guard by blog id, not just !prev.content, so a cache hit can't
+                // land in a different blog's reader view.
+                prev.view === 'reader' && prev.blog.id === blogId && !prev.content
+                    ? { ...prev, content: cachedContent }
+                    : prev
             );
             return;
         }
@@ -348,8 +358,9 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
 
         setLoading(true);
         setError(null);
-        getBlogContent(activeService, blogId)
+        getBlogContent(serviceAtStart, blogId)
             .then(content => {
+                if (cancelled) return;
                 // Add to cache (keep last 5)
                 setContentCache(prev => {
                     const newCache = new Map(prev);
@@ -361,14 +372,20 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     return newCache;
                 });
                 setViewState(prev =>
-                    prev.view === 'reader' && !prev.content ? { ...prev, content } : prev
+                    // Only apply when we're still looking at THIS blog — a stale
+                    // slow response can otherwise overwrite the current blog.
+                    prev.view === 'reader' && prev.blog.id === blogId && !prev.content
+                        ? { ...prev, content }
+                        : prev
                 );
             })
-            .catch(e => setError(e.message))
+            .catch(e => { if (!cancelled) setError(e.message); })
             .finally(() => {
-                setLoading(false);
+                if (!cancelled) setLoading(false);
                 fetchingContentRef.current.delete(blogId);
             });
+
+        return () => { cancelled = true; };
     }, [viewState, activeService]);
 
     // Handle navigation within reader (prev/next/jump)

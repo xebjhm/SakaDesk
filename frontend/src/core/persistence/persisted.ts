@@ -4,11 +4,44 @@ let prefs: Record<string, unknown> = {};
 const pending: Record<string, unknown> = {};
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
-function flush() {
+// SD-FE-STATE-04: exponential backoff between failed flushes so a transient
+// backend hiccup (SQLite lock) doesn't drop write-once keys (tos_accepted_at,
+// language, dismissed_update). Reset to base on any success.
+const FLUSH_BASE_DELAY = 300;
+const FLUSH_MAX_DELAY = 30_000;
+let flushBackoff = FLUSH_BASE_DELAY;
+
+function armFlush(delay: number): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(flush, delay);
+}
+
+function flush(): void {
   flushTimer = null;
-  const patch = { ...pending };
-  for (const k of Object.keys(pending)) delete pending[k];
-  api.patchPrefs(patch).catch(() => {/* logged; retried on next set */});
+  const keys = Object.keys(pending);
+  if (keys.length === 0) return;
+  const patch: Record<string, unknown> = {};
+  for (const k of keys) {
+    patch[k] = pending[k];
+    delete pending[k];
+  }
+  api.patchPrefs(patch)
+    .then(() => {
+      // Success — reset backoff. Any writes queued meanwhile flush on their
+      // own debounce (setPref re-arms at the base delay).
+      flushBackoff = FLUSH_BASE_DELAY;
+    })
+    .catch((err) => {
+      // SD-FE-STATE-04: re-queue the failed keys instead of dropping them, but
+      // never clobber a NEWER value that arrived while this PATCH was in flight
+      // (such a key is already back in `pending`). Then retry with backoff.
+      for (const k of keys) {
+        if (!(k in pending)) pending[k] = patch[k];
+      }
+      console.warn('[persisted] prefs PATCH failed; re-queued for retry', err);
+      flushBackoff = Math.min(flushBackoff * 2, FLUSH_MAX_DELAY);
+      armFlush(flushBackoff);
+    });
 }
 
 // Eager-loaded cache of ALL per-conversation app-state rows (read_state/
@@ -31,7 +64,22 @@ export const persisted = {
   },
   setPref(key: string, value: unknown): void {
     prefs[key] = value; pending[key] = value;
-    if (!flushTimer) flushTimer = setTimeout(flush, 300);
+    armFlush(FLUSH_BASE_DELAY);
+  },
+  // SD-FE-STATE-03: synchronously hand off any pending prefs writes so the
+  // "change something → close the window" pattern doesn't lose the final
+  // debounced write. Called from a pagehide/visibilitychange handler; uses a
+  // keepalive request that survives the JS context teardown on close.
+  flushNow(): void {
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    const keys = Object.keys(pending);
+    if (keys.length === 0) return;
+    const patch: Record<string, unknown> = {};
+    for (const k of keys) {
+      patch[k] = pending[k];
+      delete pending[k];
+    }
+    api.patchPrefsBeacon(patch);
   },
   getConversation: api.getConversation,
   setConversation: api.patchConversation,

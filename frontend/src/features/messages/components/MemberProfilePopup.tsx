@@ -5,6 +5,7 @@ import { Z_CLASS } from '../../../constants/zIndex';
 import type { BaseModalProps } from '../../../types/modal';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
+import { parseErrorDetail } from '../../../utils/httpError';
 
 interface StreakData {
     days: number;
@@ -35,6 +36,9 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     const [streak, setStreak] = useState<StreakData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Bumping this re-runs the fetch effect (used by the Retry button).
+    const [retryCounter, setRetryCounter] = useState(0);
+    const retry = useCallback(() => setRetryCounter((c) => c + 1), []);
 
     // Get theme for the active service
     const theme = useMemo(() => getServiceTheme(activeService ?? null), [activeService]);
@@ -48,36 +52,47 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         return `linear-gradient(to right, ${from}, ${via}, ${to})`;
     }, [theme]);
 
-    const fetchStreak = useCallback(async () => {
-        if (!groupId) return;
+    // SD-FE-GAP-B-01 + SD-CONTRACT-04: fetch the streak inside the effect with an
+    // AbortController so a response that resolves after the popup is closed /
+    // the member or service changes cannot write a stale member's streak into
+    // state (or warn on an unmounted component). The abort in cleanup cancels
+    // the in-flight request, and the `signal.aborted` guard belt-and-suspenders
+    // the state setters.
+    useEffect(() => {
+        if (!isOpen || !groupId) return;
 
+        // `service` is a required backend query param; without it the request
+        // 422s. Surface a clear message instead of firing a doomed request.
+        if (!activeService) {
+            setError(t('memberProfile.noService'));
+            return;
+        }
+
+        const controller = new AbortController();
         setLoading(true);
         setError(null);
 
-        try {
-            const url = activeService
-                ? `/api/chat/streak/${groupId}?service=${encodeURIComponent(activeService)}`
-                : `/api/chat/streak/${groupId}`;
-            const res = await fetch(url);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.detail || 'Failed to fetch streak');
+        (async () => {
+            try {
+                const url = `/api/chat/streak/${groupId}?service=${encodeURIComponent(activeService)}`;
+                const res = await fetch(url, { signal: controller.signal });
+                if (!res.ok) {
+                    const errData = await res.json().catch(() => ({}));
+                    throw new Error(parseErrorDetail(errData, t('memberProfile.fetchFailed')));
+                }
+                const data = await res.json();
+                if (!controller.signal.aborted) setStreak(data);
+            } catch (err: unknown) {
+                if (controller.signal.aborted) return; // navigated away — ignore
+                const message = err instanceof Error ? err.message : t('memberProfile.fetchFailed');
+                setError(message);
+            } finally {
+                if (!controller.signal.aborted) setLoading(false);
             }
-            const data = await res.json();
-            setStreak(data);
-        } catch (err: unknown) {
-            const message = err instanceof Error ? err.message : 'Failed to load streak';
-            setError(message);
-        } finally {
-            setLoading(false);
-        }
-    }, [groupId, activeService]);
+        })();
 
-    useEffect(() => {
-        if (isOpen && groupId) {
-            fetchStreak();
-        }
-    }, [isOpen, groupId, fetchStreak]);
+        return () => controller.abort();
+    }, [isOpen, groupId, activeService, retryCounter, t]);
 
     // Reset when closed
     useEffect(() => {
@@ -186,7 +201,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                             <div className="text-center text-red-600 py-2">
                                 <p className="text-sm">{error}</p>
                                 <button
-                                    onClick={fetchStreak}
+                                    onClick={retry}
                                     className="text-xs text-red-500 hover:underline mt-1"
                                 >
                                     {t('memberProfile.retry')}

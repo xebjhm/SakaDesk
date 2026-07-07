@@ -203,7 +203,8 @@
     "error": "同期エラー",
     "unknownError": "不明なエラー",
     "sessionExpired": "認証セッションが期限切れです。サービスを引き続きご利用いただくには、再度ログインしてください。",
-    "refreshFailed": "認証に予期せず失敗しました。再度ログインしてください。問題が続く場合は、不具合報告をお願いします。"
+    "refreshFailed": "認証に予期せず失敗しました。再度ログインしてください。問題が続く場合は、不具合報告をお願いします。",
+    "cancelled": "同期をキャンセルしました"
   },
   "about": {
     "title": "アプリについて",
@@ -416,7 +417,10 @@
     "noLetters": "まだレターを送信していません",
     "noTextContent": "テキストなし",
     "noContent": "内容なし",
-    "tapToClose": "タップして閉じる"
+    "tapToClose": "タップして閉じる",
+    "noGroupId": "グループIDがありません",
+    "noService": "アクティブなサービスがありません",
+    "fetchFailed": "レターの読み込みに失敗しました"
   },
   "blogs": {
     "latestBlogs": "新着ブログ",
@@ -467,7 +471,9 @@
     "subscribedFor": "購読して",
     "days": "日間！",
     "startSubscription": "メンバーシップを始めよう！",
-    "retry": "再試行"
+    "retry": "再試行",
+    "noService": "アクティブなサービスがありません",
+    "fetchFailed": "継続日数の読み込みに失敗しました"
   },
   "blogGallery": {
     "title": "アルバム",

@@ -3,6 +3,24 @@ async function j<T>(r: Response): Promise<T> { return r.json() as Promise<T>; }
 export const getPrefs = () => fetch(`${BASE}/prefs`).then(j<Record<string, unknown>>);
 export const patchPrefs = (p: Record<string, unknown>) =>
   fetch(`${BASE}/prefs`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(() => undefined);
+// SD-FE-STATE-03: a fire-and-forget PATCH that survives page teardown (pywebview
+// tears down the JS context on close, so the normal debounced flush would never
+// reach the backend). Uses fetch({keepalive:true}) against the SAME PATCH
+// endpoint so no new backend route is required; the browser keeps the request
+// alive past unload. Returns true if the write was handed off, false otherwise.
+export const patchPrefsBeacon = (p: Record<string, unknown>): boolean => {
+  try {
+    fetch(`${BASE}/prefs`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+      keepalive: true,
+    }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
+};
 export const getConversation = (path: string) =>
   fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`).then(j<Record<string, unknown>>);
 export const getAllConversations = () =>

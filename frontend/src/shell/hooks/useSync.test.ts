@@ -195,6 +195,60 @@ describe('useSync', () => {
         expect(result.current.syncProgress.state).not.toBe('error')
     })
 
+    // SD-CONTRACT-11: an invalid-service 400 must surface as an error, not be
+    // mistaken for "already running" and sent into a progress poll.
+    // URL-aware mock so the mount auto-sync effect doesn't consume ordered mocks.
+    it('marks an invalid-service 400 as an error instead of polling', async () => {
+        vi.stubGlobal('fetch', vi.fn((url: string) => {
+            if (url.includes('/api/sync/start') && url.includes('service=bogus')) {
+                return Promise.resolve({
+                    ok: false, status: 400,
+                    json: () => Promise.resolve({ detail: 'Invalid service: bogus' }),
+                })
+            }
+            if (url.includes('/api/sync/progress')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ state: 'complete', total: 1, completed: 1 }) })
+            }
+            // fresh check + any other start/verify
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ is_fresh: false, status: 'started' }) })
+        }))
+
+        const { result } = renderHook(() => useSync(defaultOptions))
+        await waitFor(() => expect(result.current.syncProgress).toBeDefined())
+
+        await act(async () => {
+            await result.current.startSync(false, 'bogus')
+        })
+
+        expect(result.current.syncProgressByService['bogus']?.state).toBe('error')
+        expect(result.current.syncProgressByService['bogus']?.detail).toContain('Invalid service')
+    })
+
+    it('treats a genuine "already running" 400 as a poll, not an error', async () => {
+        vi.stubGlobal('fetch', vi.fn((url: string) => {
+            if (url.includes('/api/sync/start') && url.includes('service=sakurazaka46')) {
+                return Promise.resolve({
+                    ok: false, status: 400,
+                    json: () => Promise.resolve({ detail: 'Sync already running for sakurazaka46' }),
+                })
+            }
+            if (url.includes('/api/sync/progress')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ state: 'running', phase: 'messages', completed: 1, total: 10 }) })
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve({ is_fresh: false, status: 'started' }) })
+        }))
+
+        const { result } = renderHook(() => useSync(defaultOptions))
+        await waitFor(() => expect(result.current.syncProgress).toBeDefined())
+
+        await act(async () => {
+            await result.current.startSync(false, 'sakurazaka46')
+        })
+
+        // Not an error — it polled the existing run rather than reporting failure.
+        expect(result.current.syncProgressByService['sakurazaka46']?.state).not.toBe('error')
+    })
+
     it('should provide verifyAndFix callback', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
