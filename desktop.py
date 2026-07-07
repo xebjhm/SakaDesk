@@ -77,14 +77,84 @@ def _kill_children(children: list) -> None:
             pass
 
 
+def _get_port_file():
+    """Path to the persisted port file."""
+    return get_app_data_dir() / ".port"
+
+
 def create_server_socket() -> tuple:
-    """Bind an ephemeral loopback port. State is backend-persisted, so the port
-    is no longer sticky (the old .port-reuse heuristic caused a close->reopen
-    race that shifted the origin and reset localStorage)."""
+    """Create a bound server socket, reusing the saved port when it's free.
+
+    Persistent app state now lives in the backend SQLite app-state store, so a
+    port change no longer loses anything (the store is read at startup regardless
+    of origin). The saved-port reuse is kept for ONE transitional reason: on the
+    first launch after upgrading from a build that stored state in origin-scoped
+    localStorage, reusing the old port makes the webview load on the origin that
+    still holds that localStorage, so the one-time localStorage->backend migration
+    can read it. Without the reuse the app would take a fresh port (a fresh, empty
+    origin) and the migration would find nothing to carry over.
+
+    SO_REUSEADDR lets it rebind a port still in TCP TIME_WAIT after a quick
+    close-reopen. A fast reopen while the prior instance still holds the port
+    (`_port_is_active`) still shifts to a new port, but that is now harmless.
+
+    TODO(next release): once upgraders have migrated, drop this reuse entirely and
+    bind an ephemeral port (this was briefly done, then reverted for the migration
+    window above).
+
+    Returns (port, socket) — bound but NOT listening; uvicorn calls listen().
+    """
+    port_file = _get_port_file()
+
+    def _port_is_active(port: int) -> bool:
+        """Check if something is actually listening on the port.
+
+        SO_REUSEADDR on Windows allows bind() to succeed even when another
+        process is actively listening — so bind() alone can't tell us if
+        the port is truly free.  A TCP connect check catches this.
+        """
+        try:
+            conn = socket.create_connection((HOST, port), timeout=0.5)
+            conn.close()
+            return True
+        except (ConnectionRefusedError, OSError, TimeoutError):
+            return False
+
+    def _try_bind(port: int):
+        """Try to bind a SO_REUSEADDR socket to the given port."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((HOST, port))
+            return sock
+        except OSError:
+            sock.close()
+            return None
+
+    # Try to reuse saved port
+    if port_file.exists():
+        try:
+            saved = int(port_file.read_text(encoding="utf-8").strip())
+            if 1024 < saved < 65536:
+                # On Windows, SO_REUSEADDR lets bind() succeed even if an old
+                # process is still listening. Check with a connect() first.
+                if not _port_is_active(saved):
+                    sock = _try_bind(saved)
+                    if sock is not None:
+                        return saved, sock
+        except (ValueError, OSError):
+            pass  # Corrupt file or port in use — allocate new one
+
+    # Allocate a new port and persist it
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((HOST, 0))
-    return sock.getsockname()[1], sock
+    port = sock.getsockname()[1]
+    try:
+        port_file.write_text(str(port), encoding="utf-8")
+    except OSError:
+        pass  # Non-fatal — app still works, just may not persist port
+    return port, sock
 
 
 def wait_for_server(
@@ -228,7 +298,7 @@ def main() -> None:
         # to fully exit before replacing files it still has loaded.
         _acquire_instance_mutex()
 
-        # Create server socket on an ephemeral port (SO_REUSEADDR for TIME_WAIT friendliness)
+        # Create server socket with SO_REUSEADDR for stable port across restarts
         port, sock = create_server_socket()
 
         # Start API server with the pre-bound socket
