@@ -12,6 +12,7 @@ import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
+import i18n from '../i18n'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -176,6 +177,16 @@ function App() {
         persisted.hydratePrefs()
             .then(() => persisted.hydrateConversations().catch(() => {/* defensive: never block startup */}))
             .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
+            .then(async () => {
+                // Apply the persisted language pref now that hydration + migration
+                // have run, so the first gated render is in the right language.
+                // Before this point (module import + pre-hydrate loading spinner),
+                // i18n falls back to the installer setting / browser language.
+                const lang = persisted.getPref<string | null>('language', null);
+                if (lang) {
+                    await i18n.changeLanguage(lang);
+                }
+            })
             .finally(() => setPrefsHydrated(true));
     }, []);
 
