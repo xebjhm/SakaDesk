@@ -11,6 +11,17 @@ function flush() {
   api.patchPrefs(patch).catch(() => {/* logged; retried on next set */});
 }
 
+// Eager-loaded cache of ALL per-conversation app-state rows (read_state/
+// scroll/background). This set is small (a few hundred tiny rows total), so
+// unlike the translation cache (which stays lazy/async — it's large), it is
+// hydrated in full at startup to give synchronous getConv/setConv reads,
+// matching the prefs cache pattern above.
+let convCache: Record<string, Record<string, unknown>> = {};
+
+async function hydrateConversations(): Promise<void> {
+  try { convCache = await api.getAllConversations(); } catch { convCache = {}; }
+}
+
 export const persisted = {
   async hydratePrefs(): Promise<void> {
     try { prefs = await api.getPrefs(); } catch { prefs = {}; }
@@ -24,6 +35,14 @@ export const persisted = {
   },
   getConversation: api.getConversation,
   setConversation: api.patchConversation,
+  hydrateConversations,
+  getConv<T = Record<string, unknown>>(key: string, fallback: T): T {
+    return (key in convCache ? (convCache[key] as unknown as T) : fallback);
+  },
+  setConv(key: string, patch: Record<string, unknown>): void {
+    convCache[key] = { ...(convCache[key] || {}), ...patch };
+    api.patchConversation(key, patch).catch(() => {/* logged; cache already updated */});
+  },
   getTranslations: api.getTranslations,
   putTranslations: api.patchTranslations,
   migrateOnce,
@@ -79,6 +98,7 @@ export async function migrateOnce(): Promise<void> {
   try {
     await api.postMigrate({ prefs: migratedPrefs, conversations, translations });
     await persisted.hydratePrefs();
+    await persisted.hydrateConversations(); // migration wrote conversation rows; refresh the cache
   } catch {
     /* leave unmigrated; a later launch retries */
   }

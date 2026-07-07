@@ -5,6 +5,8 @@ export const patchPrefs = (p: Record<string, unknown>) =>
   fetch(`${BASE}/prefs`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(() => undefined);
 export const getConversation = (path: string) =>
   fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`).then(j<Record<string, unknown>>);
+export const getAllConversations = () =>
+  fetch(`${BASE}/conversation-all`).then(j<Record<string, Record<string, unknown>>>);
 export const patchConversation = (path: string, p: Record<string, unknown>) =>
   fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(() => undefined);
 export const getTranslations = (keys: string[]) =>

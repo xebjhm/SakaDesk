@@ -80,6 +80,13 @@ def set_conversation(path: str, patch: dict[str, Any]) -> None:
         )
 
 
+def get_all_conversations() -> dict[str, dict]:
+    """Every conversation_state row as {path: data-dict}. Small; loaded once at startup."""
+    with _connect() as c:
+        rows = c.execute("SELECT path, data FROM conversation_state").fetchall()
+    return {path: json.loads(data) for path, data in rows}
+
+
 def get_translations(keys: list[str]) -> dict[str, str]:
     if not keys:
         return {}

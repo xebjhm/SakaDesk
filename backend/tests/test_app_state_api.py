@@ -22,3 +22,13 @@ def test_conversation_and_translations_endpoints(client, tmp_path):
     assert client.get("/api/app-state/conversation?path=a/1").json()["read_up_to"] == 9
     client.patch("/api/app-state/translations", json={"1:ja": "hi"})
     assert client.get("/api/app-state/translations?keys=1:ja").json() == {"1:ja": "hi"}
+
+
+def test_conversation_all_endpoint(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    client.patch("/api/app-state/conversation?path=a/1", json={"read_up_to": 9})
+    client.patch("/api/app-state/conversation?path=b/2", json={"scroll_msg_id": 3})
+    got = client.get("/api/app-state/conversation-all").json()
+    assert got["a/1"] == {"read_up_to": 9}
+    assert got["b/2"] == {"scroll_msg_id": 3}

@@ -174,6 +174,7 @@ function App() {
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
         persisted.hydratePrefs()
+            .then(() => persisted.hydrateConversations().catch(() => {/* defensive: never block startup */}))
             .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
             .finally(() => setPrefsHydrated(true));
     }, []);

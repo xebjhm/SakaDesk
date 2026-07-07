@@ -41,6 +41,17 @@ def test_translation_cache_and_lru(tmp_path, monkeypatch):
     assert "2:ja" not in got and got["1:ja"] == "A" and got["3:ja"] == "C"
 
 
+def test_get_all_conversations_returns_all_rows_keyed_by_path(tmp_path):
+    s = _fresh(tmp_path)
+    assert s.get_all_conversations() == {}
+    s.set_conversation("hinatazaka46/1", {"scroll_msg_id": 42})
+    s.set_conversation("sakurazaka46/2", {"read_up_to": 7})
+    assert s.get_all_conversations() == {
+        "hinatazaka46/1": {"scroll_msg_id": 42},
+        "sakurazaka46/2": {"read_up_to": 7},
+    }
+
+
 def test_migrate_dump_is_idempotent(tmp_path):
     s = _fresh(tmp_path)
     assert s.is_migrated() is False

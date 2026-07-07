@@ -34,6 +34,11 @@ async def patch_conversation(
     return {"ok": True}
 
 
+@router.get("/conversation-all")
+async def get_all_conversations() -> dict[str, Any]:
+    return app_state.get_all_conversations()
+
+
 @router.get("/translations")
 async def get_translations(keys: str = "") -> dict[str, str]:
     wanted = [k for k in keys.split(",") if k]
