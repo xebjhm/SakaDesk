@@ -737,19 +737,26 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
                 {/* Virtualized Timeline */}
                 <div
-                    className="flex-1 overflow-hidden relative"
+                    className="flex-1 overflow-hidden relative isolate"
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
-                    style={{
-                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
-                        backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
-                            ? `url(${backgroundSettings.imageData})`
-                            : 'none',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: backgroundSettings.opacity / 100,
-                    }}
                 >
+                    {/* Background layer — kept separate so the opacity slider fades only the
+                        background image/color, not the message bubbles. CSS opacity applies to
+                        an element AND its whole subtree, so putting it on the shared container
+                        would fade the messages too. `isolate` scopes the -z-10 layer to this box. */}
+                    <div
+                        className="absolute inset-0 -z-10 pointer-events-none"
+                        style={{
+                            backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
+                            backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
+                                ? `url(${backgroundSettings.imageData})`
+                                : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            opacity: backgroundSettings.opacity / 100,
+                        }}
+                    />
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                             <div className="text-center">
