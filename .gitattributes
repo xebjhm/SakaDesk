@@ -1,0 +1,37 @@
+# Normalize line endings so Windows checkouts (core.autocrlf=true) stop
+# re-dirtying files that tooling rewrites. LF is canonical in the repo.
+# Added by the 2026-07-07 code review (WP-1) to kill the snapshot-drift phantom.
+* text=auto eol=lf
+
+# Text formats that Vitest/tools rewrite — force LF explicitly.
+*.snap   text eol=lf
+*.ts     text eol=lf
+*.tsx    text eol=lf
+*.js     text eol=lf
+*.jsx    text eol=lf
+*.json   text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.md     text eol=lf
+*.py     text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.toml   text eol=lf
+
+# Windows scripts stay CRLF.
+*.ps1    text eol=crlf
+*.bat    text eol=crlf
+*.iss    text eol=crlf
+
+# Binary assets — never normalize.
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.webp   binary
+*.woff   binary
+*.woff2  binary
+*.mp3    binary
+*.mp4    binary
+*.exe    binary

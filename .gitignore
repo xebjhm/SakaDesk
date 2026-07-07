@@ -112,3 +112,6 @@ frontend/playwright/.cache/
 # MCP / agent tool output
 .playwright-mcp/
 .superpowers/
+
+# Playwright output (was tracked with a stale failed run — code review 2026-07-07)
+test-results/
