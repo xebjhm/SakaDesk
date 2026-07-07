@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useChatScroll } from './useChatScroll'
 import type { Message } from '../../../types'
+import { persisted } from '../../../core/persistence/persisted'
 
 // Create a minimal message for testing
 const createMessage = (id: number): Message => ({
@@ -18,8 +19,8 @@ const createMessage = (id: number): Message => ({
 describe('useChatScroll hook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(localStorage.getItem).mockReturnValue(null)
-    vi.mocked(localStorage.setItem).mockClear()
+    vi.spyOn(persisted, 'getConv').mockReturnValue({})
+    vi.spyOn(persisted, 'setConv').mockImplementation(() => {})
   })
 
   it('should return expected shape', () => {
@@ -45,11 +46,11 @@ describe('useChatScroll hook', () => {
     expect(result.current.initialTopMostItemIndex).toBe(2)
   })
 
-  it('should restore position from localStorage on mount', () => {
+  it('should restore position from persisted app-state on mount', () => {
     const messages = [createMessage(101), createMessage(102), createMessage(103)]
 
     // Mock saved position for message ID 102
-    vi.mocked(localStorage.getItem).mockReturnValue('102')
+    vi.spyOn(persisted, 'getConv').mockReturnValue({ value: '102' })
 
     const { result } = renderHook(() =>
       useChatScroll('room-1', messages)
@@ -63,7 +64,7 @@ describe('useChatScroll hook', () => {
     const messages = [createMessage(1), createMessage(2), createMessage(3)]
 
     // Mock saved position with ID that doesn't exist in messages
-    vi.mocked(localStorage.getItem).mockReturnValue('999')
+    vi.spyOn(persisted, 'getConv').mockReturnValue({ value: '999' })
 
     const { result } = renderHook(() =>
       useChatScroll('room-1', messages)
@@ -73,12 +74,12 @@ describe('useChatScroll hook', () => {
     expect(result.current.initialTopMostItemIndex).toBe(2)
   })
 
-  it('should use different localStorage keys for different rooms', () => {
+  it('should use different persisted keys for different rooms', () => {
     const messages = [createMessage(1)]
 
     renderHook(() => useChatScroll('room-A', messages))
 
-    expect(localStorage.getItem).toHaveBeenCalledWith('sakadesk_scroll_room-A')
+    expect(persisted.getConv).toHaveBeenCalledWith('sakadesk_scroll_room-A', {})
   })
 
   it('should save position immediately when savePositionImmediate is called', () => {
@@ -98,7 +99,7 @@ describe('useChatScroll hook', () => {
       result.current.savePositionImmediate()
     })
 
-    expect(localStorage.setItem).toHaveBeenCalledWith('sakadesk_scroll_room-1', '102')
+    expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
   })
 
   it('should handle empty messages array', () => {
