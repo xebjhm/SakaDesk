@@ -21,6 +21,7 @@ describe('useChatScroll hook', () => {
     vi.clearAllMocks()
     vi.spyOn(persisted, 'getConv').mockReturnValue({})
     vi.spyOn(persisted, 'setConv').mockImplementation(() => {})
+    vi.spyOn(persisted, 'setConvBeacon').mockImplementation(() => {})
   })
 
   it('should return expected shape', () => {
@@ -108,5 +109,34 @@ describe('useChatScroll hook', () => {
     )
 
     expect(result.current.initialTopMostItemIndex).toBe(0)
+  })
+
+  // SD-FE-STATE-03: a scroll-then-close within the 500ms debounce must still
+  // persist the last position — flushed on pagehide instead of being dropped.
+  it('flushes the pending scroll position on pagehide', () => {
+    const messages = [createMessage(101), createMessage(102), createMessage(103)]
+
+    const { result } = renderHook(() => useChatScroll('room-1', messages))
+
+    // Scroll to index 1 (the debounce timer is now pending, nothing saved yet).
+    act(() => {
+      result.current.handleRangeChanged({ startIndex: 1, endIndex: 2 })
+    })
+    expect(persisted.setConv).not.toHaveBeenCalled()
+
+    // Window is being hidden/closed before the 500ms debounce elapses.
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    // Flushed via the keepalive beacon path so it survives context teardown.
+    expect(persisted.setConvBeacon).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
+  })
+
+  it('removes the pagehide listener on unmount', () => {
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    const { unmount } = renderHook(() => useChatScroll('room-1', [createMessage(1)]))
+    unmount()
+    expect(removeSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
   })
 })

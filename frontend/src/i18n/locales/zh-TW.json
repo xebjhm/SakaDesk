@@ -203,7 +203,8 @@
     "error": "同步錯誤",
     "unknownError": "未知錯誤",
     "sessionExpired": "認證工作階段已過期。請重新登入以繼續使用服務。",
-    "refreshFailed": "認證意外失敗。請重新登入以繼續使用服務。若問題持續，請回報此問題。"
+    "refreshFailed": "認證意外失敗。請重新登入以繼續使用服務。若問題持續，請回報此問題。",
+    "cancelled": "已取消同步"
   },
   "about": {
     "title": "關於",
@@ -416,7 +417,10 @@
     "noLetters": "尚未傳送過信件",
     "noTextContent": "無文字內容",
     "noContent": "無內容",
-    "tapToClose": "點擊任意位置關閉"
+    "tapToClose": "點擊任意位置關閉",
+    "noGroupId": "沒有可用的群組 ID",
+    "noService": "沒有作用中的服務",
+    "fetchFailed": "載入信件失敗"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -467,7 +471,9 @@
     "subscribedFor": "已訂閱",
     "days": "天！",
     "startSubscription": "開始訂閱吧！",
-    "retry": "重試"
+    "retry": "重試",
+    "noService": "沒有作用中的服務",
+    "fetchFailed": "載入連續天數失敗"
   },
   "blogGallery": {
     "title": "相簿",

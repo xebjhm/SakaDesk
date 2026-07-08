@@ -169,7 +169,10 @@ async def lifespan(app: FastAPI):
     # startup must not accumulate / run twice.
     from backend.services.blog_service import get_blog_backup_manager
     from backend.services.search_service import stop_search_service
-    from backend.services.background_tasks import drain_background_tasks
+    from backend.services.background_tasks import (
+        drain_background_tasks,
+        track_background_task,
+    )
 
     # Order matters: stop_search_service must run before drain_background_tasks
     # -- a tracked background task (e.g. verify-and-fix media) writes through
@@ -187,7 +190,11 @@ async def lifespan(app: FastAPI):
     # Settings -> AI open is instant instead of paying the OS keyring read then.
     from backend.api.translation import warm_key_status_cache
 
-    asyncio.create_task(asyncio.to_thread(warm_key_status_cache))
+    # Retain via the tracked-task registry so it isn't garbage-collected mid-flight
+    # and is drained on shutdown (SD-BE-API-11).
+    track_background_task(
+        asyncio.to_thread(warm_key_status_cache), name="warm_key_status_cache"
+    )
 
     yield
 

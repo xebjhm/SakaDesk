@@ -224,9 +224,24 @@ const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclu
 // are synchronous reads/writes against a cache hydrated at startup — see
 // core/persistence/persisted.ts. The whole serialized bundle is stored
 // under one pref key (this store's persist `name`).
+// Flipped true once the store has EXPLICITLY hydrated from the backend prefs
+// cache (App.tsx calls useAppStore.persist.rehydrate() after the cache loads;
+// set via onRehydrateStorage below). Until then, persist writes are suppressed.
+let hasHydratedFromBackend = false;
+
 const backendStateStorage = {
     getItem: (name: string): string | null => persisted.getPref<string | null>(name, null),
-    setItem: (name: string, value: string): void => { persisted.setPref(name, value); },
+    setItem: (name: string, value: string): void => {
+        // Gate: do not persist before hydration. zustand's persist writes on EVERY
+        // set(), including pre-hydration writes such as an auth-driven
+        // setActiveService() that fires before the rehydrate chain finishes.
+        // Persisting then would overwrite the stored bundle with partialized
+        // defaults, and the debounced flush would PATCH those defaults into
+        // app_state.db — silently resetting the user's services/favorites/etc.
+        // (SD-FE-STATE-01, code review 2026-07-07).
+        if (!hasHydratedFromBackend) return;
+        persisted.setPref(name, value);
+    },
     removeItem: (name: string): void => { persisted.setPref(name, null); },
 };
 
@@ -387,6 +402,11 @@ export const useAppStore = create<AppState>()(
             // calls useAppStore.persist.rehydrate() explicitly once hydration
             // + migration have completed.
             skipHydration: true,
+            // Open the persistence gate only after an explicit rehydrate() has
+            // populated the store from the backend — see backendStateStorage.setItem.
+            onRehydrateStorage: () => () => {
+                hasHydratedFromBackend = true;
+            },
             partialize: (state) => ({
                 selectedServices: state.selectedServices,
                 activeService: state.activeService,

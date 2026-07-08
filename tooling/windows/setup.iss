@@ -22,6 +22,12 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
+; XREPO-03: do NOT let the user pick an arbitrary existing directory. The
+; uninstaller force-removes app-owned subtrees under {app} (see
+; [UninstallDelete] / [Code]); if {app} were e.g. C:\Tools or a Documents
+; subfolder, that cleanup could touch unrelated pre-existing files. Pinning the
+; install dir to {autopf}\SakaDesk keeps {app} app-dedicated.
+DisableDirPage=yes
 ; Run without admin rights (install for current user only)
 PrivilegesRequired=lowest
 OutputDir=..\..\dist
@@ -84,11 +90,16 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 ; {app}\_internal\playwright\driver\package\.local-browsers (~640 MB), which is
 ; NOT recorded in [Files]. Inno's uninstaller only removes tracked files, so
 ; without this it orphans that bundle and can't remove the (now non-empty)
-; {app}. Force-remove the whole install tree on uninstall. Safe: no user data
-; lives under {app} — settings/index/logs are in {localappdata}\SakaDesk and
+; {app}. XREPO-03: force-remove only the app-owned {app}\_internal subtree (the
+; PyInstaller bundle dir, which is where the runtime download lands) rather than
+; the whole {app}. Once _internal is gone, Inno removes the remaining tracked
+; files and the now-empty {app} normally. Constraining the DelTree to _internal
+; (plus DisableDirPage=yes above) means the uninstaller can never recursively
+; wipe an unrelated directory the user might have chosen. No user data lives
+; under {app} — settings/index/logs are in {localappdata}\SakaDesk and
 ; session/auth data in {userappdata}\pysaka, both cleaned in [Code] below.
 ; Runs only during uninstall, never during an in-place upgrade.
-Type: filesandordirs; Name: "{app}"
+Type: filesandordirs; Name: "{app}\_internal"
 
 [Run]
 ; Interactive install: checkbox to launch after install (skipped in silent mode)

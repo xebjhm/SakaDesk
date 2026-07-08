@@ -475,6 +475,30 @@ class TestVerifyMedia:
         # coroutine that was never scheduled.
         args[0].close()
 
+    def test_verify_registers_task_on_service(self):
+        """SD-BE-SVC-02: /verify must register the returned task on the service
+        (sync_service._task) so a subsequent /cancel can reach and cancel the
+        running verify -- otherwise cancel() takes its "no task" branch, force-
+        clears running, and a second writer (sync) can start concurrently."""
+        with patch("backend.api.sync.get_sync_service") as mock_get:
+            mock_svc = MagicMock()
+            mock_svc.running = False
+            mock_get.return_value = mock_svc
+
+            sentinel_task = MagicMock()
+            with patch(
+                "backend.api.sync.track_background_task", return_value=sentinel_task
+            ) as mock_track:
+                response = client.post("/api/sync/verify?service=hinatazaka46")
+                args, kwargs = mock_track.call_args
+                # Close the un-awaited coroutine handed to the mocked tracker.
+                args[0].close()
+
+        assert response.status_code == 200
+        # The task the tracker returned was registered on the service so
+        # /cancel -> cancel() -> task.cancel() can target the verify run.
+        assert mock_svc._task is sentinel_task
+
     def test_verify_endpoint_rejects_bad_service(self):
         """Verify endpoint should reject invalid services."""
         response = client.post("/api/sync/verify?service=not_a_service")

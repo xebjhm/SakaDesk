@@ -75,6 +75,7 @@ function App() {
         syncVersion,
         startSync,
         verifyAndFix,
+        cancelSync,
         startSequentialSync,
         sequentialSyncInfo,
         hasStartedSyncRef,
@@ -215,6 +216,23 @@ function App() {
             .finally(() => setPrefsHydrated(true));
     }, []);
 
+    // SD-FE-STATE-03: flush any pending debounced prefs writes when the window
+    // is being hidden/closed. pywebview tears down the JS context on close, so a
+    // change made within the 300ms debounce (a settings toggle, ToS acceptance,
+    // conversation selection) would otherwise never reach app_state.db.
+    // `pagehide` fires on close; `visibilitychange`→hidden covers minimize/hide
+    // paths where pagehide may not fire. flushNow() uses a keepalive request.
+    useEffect(() => {
+        const flush = () => persisted.flushNow();
+        const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, []);
+
     // === RENDER ===
 
     // Show loading while auth check is in progress or prefs are hydrating.
@@ -289,7 +307,7 @@ function App() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} />}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
                 {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
                 {loginCarouselService && (

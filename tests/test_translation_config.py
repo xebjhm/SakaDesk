@@ -103,10 +103,15 @@ async def test_translate_no_key_invalidates_stale_status_cache(monkeypatch):
     from backend.api.errors import CodedHTTPException
 
     async def fake_load_config():
-        return {"translation_provider": "gemini", "translation_model": DEFAULT_GEMINI_MODEL}
+        return {
+            "translation_provider": "gemini",
+            "translation_model": DEFAULT_GEMINI_MODEL,
+        }
 
     monkeypatch.setattr(translation, "load_config", fake_load_config)
-    monkeypatch.setattr(translation, "_load_api_key", lambda: None)  # key gone from keyring
+    monkeypatch.setattr(
+        translation, "_load_api_key", lambda: None
+    )  # key gone from keyring
     # Stale "present" status (warmed while the key still existed).
     translation._key_status_cache = (True, "AIza...12")
 

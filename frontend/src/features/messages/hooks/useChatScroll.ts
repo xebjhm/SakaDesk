@@ -137,6 +137,34 @@ export function useChatScroll(
     };
   }, []);
 
+  // SD-FE-STATE-03: flush a pending scroll-position save when the window is
+  // hidden/closed. The 500ms debounce means a scroll-then-close loses the last
+  // position; on pagehide/hidden we persist the current top index immediately
+  // via setConvBeacon, whose keepalive request survives the JS context teardown
+  // on close (plain setConv's PATCH is abandoned).
+  useEffect(() => {
+    const flushScroll = () => {
+      const msgs = currentMessagesRef.current;
+      if (!msgs || msgs.length === 0) return;
+      const message = msgs[currentTopIndexRef.current];
+      if (!message) return;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (lastSavedIdRef.current === message.id) return;
+      persisted.setConvBeacon(currentStorageKeyRef.current, { value: String(message.id) });
+      lastSavedIdRef.current = message.id;
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flushScroll(); };
+    window.addEventListener('pagehide', flushScroll);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flushScroll);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   return {
     initialTopMostItemIndex,
     handleRangeChanged,

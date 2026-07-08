@@ -63,7 +63,7 @@ class DataDirLock:
             if _IS_WINDOWS:
                 import msvcrt
 
-                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)  # type: ignore[attr-defined]  # Windows-only
             else:
                 import fcntl
 
@@ -79,7 +79,7 @@ class DataDirLock:
                 import msvcrt
 
                 fh.seek(0)
-                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]  # Windows-only
             else:
                 import fcntl
 

@@ -20,6 +20,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
+import asyncio
 import json
 import structlog
 import os
@@ -198,6 +199,18 @@ async def get_groups():
         logger.warning(f"Output directory does not exist: {output_dir}")
         return []
 
+    # SD-BE-API-01: the scan parses every member's messages.json (potentially
+    # many MB across a large library). Run it off the event loop in one thread
+    # hop so it never freezes concurrent endpoints (media streaming, sync polls).
+    return await asyncio.to_thread(_collect_groups, output_dir)
+
+
+def _collect_groups(output_dir: Path) -> dict:
+    """Scan the output tree and build the /groups payload.
+
+    Blocking filesystem work (directory walk + per-file json.load) — call via
+    ``asyncio.to_thread``, never on the loop (SD-BE-API-01).
+    """
     # Load sync metadata for group status (source of truth)
     sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
 
@@ -530,6 +543,19 @@ async def get_unread_counts(read_states: Dict[str, Any]):
     if not output_dir.exists():
         return {}
 
+    # SD-BE-API-01: this re-reads messages.json for every conversation in the
+    # request. Offload the whole scan to a thread so a large batch does not
+    # block the event loop.
+    return await asyncio.to_thread(_compute_unread_counts, output_dir, read_states)
+
+
+def _compute_unread_counts(
+    output_dir: Path, read_states: Dict[str, Any]
+) -> Dict[str, int]:
+    """Compute per-path unread counts by reading each conversation's messages.json.
+
+    Blocking filesystem work — call via ``asyncio.to_thread`` (SD-BE-API-01).
+    """
     result: Dict[str, int] = {}
 
     for path, state in read_states.items():

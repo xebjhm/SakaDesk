@@ -1,7 +1,7 @@
 // frontend/src/features/blogs/components/BlogCard.tsx
 // Portrait Gallery Card - Clean Modern Minimalist Design
 // Horizontal labels, glass morphism, consistent member name color
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { RecentPost } from '../../../types';
 import { getMemberNameKanji } from '../../../data/memberData';
 import { useBlogTheme } from '../hooks';
@@ -17,6 +17,16 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
     const [isHovered, setIsHovered] = useState(false);
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
+
+    // SD-FE-GAP-B-10: when a parent list recycles this card instance for a
+    // different post (pagination / filter change / feed refresh), the <img> src
+    // swaps but imageLoaded/imageError persist — showing the new image un-faded
+    // (or, if the previous post had errored, permanently hiding a valid new
+    // thumbnail behind the placeholder). Reset the load state on thumbnail change.
+    useEffect(() => {
+        setImageLoaded(false);
+        setImageError(false);
+    }, [post.thumbnail]);
 
     // Use theme colors for card effects
     const oshiPrimary = theme.primaryColor;

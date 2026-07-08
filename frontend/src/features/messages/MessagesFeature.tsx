@@ -8,7 +8,7 @@ import { MemberProfilePopup } from './components/MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
-import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
+import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings, toLocalDateStr } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
@@ -576,9 +576,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages, readState]);
 
-    // Scroll to first message of a given date (for calendar navigation)
+    // Scroll to first message of a given date (for calendar navigation).
+    // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend
+    // `_local_date`), and bubbles render local time — so match by the message's
+    // LOCAL date, not its raw UTC `timestamp` prefix, or a jump near midnight
+    // lands on the wrong day (or fails to find any message) for non-UTC users.
     const scrollToDate = useCallback((dateStr: string) => {
-        const index = messages.findIndex(m => m.timestamp.startsWith(dateStr));
+        const index = messages.findIndex(m => toLocalDateStr(m.timestamp) === dateStr);
         if (index !== -1) {
             virtuosoRef.current?.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
         }
@@ -626,8 +630,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             const method = currentState ? 'DELETE' : 'POST';
             const url = `/api/favorites/${messageId}?service=${encodeURIComponent(activeService)}`;
             const res = await fetch(url, { method });
+            // SD-CONTRACT-01: the backend returns HTTP 200 with a
+            // {success: false, error} body when the upstream official-API call
+            // fails (expired session, 5xx). Checking only res.ok would leave the
+            // optimistic star lit for a favorite that was never saved (it then
+            // silently vanishes on the next reload/sync). Parse the body and
+            // treat success === false as a failure too.
             if (!res.ok) {
-                throw new Error('Failed to update favorite');
+                throw new Error(`Failed to update favorite (HTTP ${res.status})`);
+            }
+            const body = await res.json().catch(() => null) as { success?: boolean; error?: string } | null;
+            if (body && body.success === false) {
+                throw new Error(body.error || 'Server reported favorite update failed');
             }
         } catch (err) {
             // Revert on failure

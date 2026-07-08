@@ -65,7 +65,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * - Session expiry detection
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const { activeService, setActiveService } = useAppStore();
+    const { setActiveService } = useAppStore();
 
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authCheckComplete, setAuthCheckComplete] = useState(false);
@@ -138,7 +138,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 .filter(([_, s]) => s.authenticated === true)
                 .map(([id]) => id);
 
-            if (authenticatedServices.length > 0 && !activeService) {
+            // Read the live activeService at response time, not the closed-over
+            // value. This callback is created once at mount with activeService=null
+            // (pre-rehydration); using the stale closure would stomp the user's
+            // restored last-active service with authenticatedServices[0] on every
+            // launch (SD-FE-STATE-02). Combined with the persistence hydration gate
+            // (SD-FE-STATE-01), the fallback only takes effect post-rehydration.
+            if (authenticatedServices.length > 0 && !useAppStore.getState().activeService) {
                 setActiveService(authenticatedServices[0]);
             }
 
@@ -151,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } finally {
             setAuthCheckComplete(true);
         }
-    }, [activeService, setActiveService]);
+    }, [setActiveService]);
 
     const scheduleRefreshForService = useCallback((serviceId: string, expiresAt: number) => {
         if (refreshTimersRef.current[serviceId]) {

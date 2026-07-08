@@ -61,6 +61,34 @@ class TestTranscriptionStorage:
         storage = TranscriptionStorage()
         assert storage.load(tmp_path, 999) is None
 
+    def test_wrong_shape_json_self_heals(self, tmp_path: Path):
+        """SD-BE-API-16: valid JSON that isn't the expected shape (e.g. `{}` after
+        a partial write) must not KeyError forever — load returns None and a
+        subsequent save recovers instead of 500ing."""
+        storage = TranscriptionStorage()
+        member_dir = tmp_path / "member"
+        member_dir.mkdir()
+        # Well-formed JSON, wrong shape (no "transcriptions" list).
+        (member_dir / TranscriptionStorage.FILENAME).write_text("{}", encoding="utf-8")
+
+        # load() does not raise; treats it as empty.
+        assert storage.load(member_dir, 1) is None
+
+        # save() recovers by starting fresh rather than KeyError-ing.
+        storage.save(
+            member_dir,
+            TranscriptionResult(
+                message_id=1,
+                media_type="voice",
+                language="ja",
+                model="m",
+                duration_seconds=1.0,
+                full_text="hi",
+                segments=[],
+            ),
+        )
+        assert storage.load(member_dir, 1) is not None
+
     def test_save_and_load_preserves_no_speech(self, tmp_path: Path):
         """An audio-less message is stored as an empty no_speech transcript."""
         storage = TranscriptionStorage()
@@ -184,6 +212,47 @@ class TestTranscriptionStorage:
         assert loaded.model == "new"
         assert loaded.full_text == "new text"
 
+    def test_concurrent_saves_do_not_drop_entries(self, tmp_path: Path):
+        """SD-BE-API-07: two transcriptions for different messages in the same
+        member dir may save concurrently (each save runs in a worker thread).
+        The per-dir lock must serialize the read-modify-write so neither entry is
+        lost to a last-writer-wins race on the shared base file."""
+        import threading
+
+        storage = TranscriptionStorage()
+        member_dir = tmp_path / "member"
+        member_dir.mkdir()
+
+        def _make(mid: int) -> TranscriptionResult:
+            return TranscriptionResult(
+                message_id=mid,
+                media_type="voice",
+                language="ja",
+                model="m",
+                duration_seconds=1.0,
+                full_text=f"text-{mid}",
+                segments=[],
+            )
+
+        # Many interleaved concurrent saves of distinct message_ids.
+        ids = list(range(50))
+        start = threading.Barrier(len(ids))
+
+        def _worker(mid: int) -> None:
+            start.wait()  # maximize overlap of the load→mutate→write window
+            storage.save(member_dir, _make(mid))
+
+        threads = [threading.Thread(target=_worker, args=(mid,)) for mid in ids]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Every entry must survive — no silent drops.
+        for mid in ids:
+            loaded = storage.load(member_dir, mid)
+            assert loaded is not None, f"message {mid} was dropped by a save race"
+
     def test_transcriptions_json_format(self, tmp_path: Path):
         """Verify the on-disk format matches the spec."""
         storage = TranscriptionStorage()
@@ -262,6 +331,56 @@ class TestGeminiPayloadHardening:
         payload = json.loads(route.calls.last.request.content)
         part = payload["contents"][0]["parts"][0]
         assert part["inline_data"]["mime_type"] == "video/mp4"
+
+
+class TestFilesApiCleanup:
+    """SD-BE-API-17: large uploads to the Gemini Files API are deleted afterward."""
+
+    @pytest.mark.asyncio
+    async def test_large_upload_is_deleted(self, tmp_path, monkeypatch):
+        provider = GeminiTranscriptionProvider(api_key="k", model="m")
+        # Force the File API path without allocating a real 15MB+ file.
+        monkeypatch.setattr(provider, "_INLINE_SIZE_LIMIT", 4)
+        audio = tmp_path / "clip.mp4"
+        audio.write_bytes(b"\x00\x00\x00\x18ftypmp42-bigger-than-limit")
+
+        file_uri = "https://generativelanguage.googleapis.com/v1beta/files/abc-123"
+
+        async def fake_upload(self, audio_bytes, mime_type, client):
+            return file_uri
+
+        monkeypatch.setattr(GeminiTranscriptionProvider, "_upload_file", fake_upload)
+
+        with respx.mock:
+            respx.post(_GEMINI_URL).mock(return_value=_empty_segments_response())
+            delete_route = respx.delete(file_uri).mock(return_value=httpx.Response(200))
+            await provider.transcribe(audio)
+
+        # The uploaded file must be cleaned up after generateContent.
+        assert delete_route.called
+
+    @pytest.mark.asyncio
+    async def test_delete_failure_does_not_break_transcription(
+        self, tmp_path, monkeypatch
+    ):
+        provider = GeminiTranscriptionProvider(api_key="k", model="m")
+        monkeypatch.setattr(provider, "_INLINE_SIZE_LIMIT", 4)
+        audio = tmp_path / "clip.mp4"
+        audio.write_bytes(b"\x00\x00\x00\x18ftypmp42-bigger-than-limit")
+
+        file_uri = "https://generativelanguage.googleapis.com/v1beta/files/xyz"
+
+        async def fake_upload(self, audio_bytes, mime_type, client):
+            return file_uri
+
+        monkeypatch.setattr(GeminiTranscriptionProvider, "_upload_file", fake_upload)
+
+        with respx.mock:
+            respx.post(_GEMINI_URL).mock(return_value=_empty_segments_response())
+            respx.delete(file_uri).mock(return_value=httpx.Response(500))
+            # A failed cleanup must not raise — transcription still returns.
+            full_text, segments = await provider.transcribe(audio)
+        assert segments == []
 
 
 class TestSystemInstruction:
