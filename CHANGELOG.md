@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-08
+
 ### Fixed
 - **Terminal/console windows popping up on their own, sometimes several times**:
   the app's silent login-refresh tried to drive a bundled headless browser that
@@ -45,15 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the updater now shuts the app's background worker down before exiting, and the
   uninstaller only removes the app's own files instead of the whole chosen folder.
 
-### Security
-- **The built-in bug report could put which group/member you message into the
-  public issue it opens.** Bug reports and copied diagnostics are now scrubbed —
-  the specific member and any custom data-folder path are removed before anything
-  leaves the app.
-
-## [0.3.2] - 2026-07-06
-
-### Fixed
 - **Translation "API key not set" even when it looked configured**: the AI
   settings panel could show the key as "saved securely" while it was actually
   missing from the OS credential store, so translation failed with a confusing
@@ -70,6 +63,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write is retried.
 
 ### Security
+- **The built-in bug report could put which group/member you message into the
+  public issue it opens.** Bug reports and copied diagnostics are now scrubbed —
+  the specific member and any custom data-folder path are removed before anything
+  leaves the app.
 - Hardened the local API against path traversal, DNS-rebinding, and
   cross-origin/CSRF (SEC-1, SEC-2, API-I2).
 - Self-update downloads are restricted to HTTPS GitHub hosts (SEC-4).
@@ -347,7 +344,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/xebjhm/SakaDesk/compare/v0.3.1...v0.3.2
 [0.2.4]: https://github.com/xebjhm/SakaDesk/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/xebjhm/SakaDesk/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/xebjhm/SakaDesk/compare/v0.2.1...v0.2.2
