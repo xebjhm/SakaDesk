@@ -279,7 +279,8 @@ class SyncService:
         Main sync function.
         - include_inactive: True to sync offline members too
         - force_resync: True to delete previous sync state and fetching fresh logic
-        - initial_limit: Only fetch latest N messages per member on initial sync
+        - initial_limit: On a member's initial (cursor-less) sync, keep only the
+          newest N messages; 0 (the default) means unlimited — keep full history.
         """
         if self.running:
             return False

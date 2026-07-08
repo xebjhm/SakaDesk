@@ -88,6 +88,23 @@ class TestCollectGroupsServiceFilter:
         services = {g["service"] for g in result["groups"]}
         assert services == {"hinatazaka46", "sakurazaka46"}
 
+    def test_endpoint_service_query_param_filters(self, tmp_path):
+        # The ?service= query param must reach the filter (frontend sends it).
+        self._two_service_tree(tmp_path)
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups?service=hinatazaka46")
+        groups = resp.json()["groups"]
+        assert {g["service"] for g in groups} == {"hinatazaka46"}
+        assert [str(g["id"]) for g in groups if str(g["id"]) == "79"] == ["79"]
+
+    def test_endpoint_unknown_service_returns_empty_without_error(self, tmp_path):
+        # A stale/mismatched service id must not error — just an empty list.
+        self._two_service_tree(tmp_path)
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups?service=nonexistent99")
+        assert resp.status_code == 200
+        assert resp.json()["groups"] == []
+
 
 # ---------------------------------------------------------------------------
 # parse_id_name
