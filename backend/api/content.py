@@ -182,9 +182,14 @@ def get_member_dirs(group_dir: Path) -> List[Path]:
 
 
 @router.get("/groups")
-async def get_groups():
+async def get_groups(service: str | None = None):
     """
-    List all groups found in the output directory.
+    List groups found in the output directory.
+
+    When ``service`` (a service identifier like ``hinatazaka46``) is provided,
+    only that service's groups are returned. Talk-room ids are only unique within
+    a service, so a service-scoped view must not receive other services' groups —
+    otherwise a shared id collides in the frontend's id-keyed unread map.
 
     pysaka structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
@@ -202,11 +207,16 @@ async def get_groups():
     # SD-BE-API-01: the scan parses every member's messages.json (potentially
     # many MB across a large library). Run it off the event loop in one thread
     # hop so it never freezes concurrent endpoints (media streaming, sync polls).
-    return await asyncio.to_thread(_collect_groups, output_dir)
+    return await asyncio.to_thread(_collect_groups, output_dir, service)
 
 
-def _collect_groups(output_dir: Path) -> dict:
+def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict:
     """Scan the output tree and build the /groups payload.
+
+    When ``service_filter`` is given (a service identifier like
+    ``"hinatazaka46"``), only that service's groups are returned. Group/talk ids
+    are only unique WITHIN a service, so returning every service in one list lets
+    the same id (e.g. 79) appear twice and collide in an id-keyed frontend map.
 
     Blocking filesystem work (directory walk + per-file json.load) — call via
     ``asyncio.to_thread``, never on the loop (SD-BE-API-01).
@@ -230,6 +240,10 @@ def _collect_groups(output_dir: Path) -> dict:
         service_id = get_service_identifier(service_display_name)
         if not service_id:
             # Skip unknown service directories
+            continue
+
+        # Scope to one service when requested — ids are only unique per service.
+        if service_filter and service_id != service_filter:
             continue
 
         # Iterate over group directories (e.g., "34 金村 美玖")

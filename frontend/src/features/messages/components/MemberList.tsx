@@ -6,7 +6,7 @@ import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
-import { capUnreadToServer } from '../utils/unreadCap';
+import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 
 interface GroupInfo {
@@ -112,17 +112,18 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
 
             const backendCounts: Record<string, number> = await res.json();
 
-            // Map path-based counts back to group IDs for the UI
-            const counts: Record<string, number> = {};
-            groupList.forEach(g => {
-                const info = getGroupDisplayInfo(g);
-                // Cap the local count by the server's snapshot so reads done on the
-                // official mobile app clear the badge here too (phone -> Windows).
-                const unread = capUnreadToServer(backendCounts[info.path] || 0, g.server_unread_count);
-                if (unread > 0) {
-                    counts[g.id] = unread;
-                }
-            });
+            // Key unread by unique conversation PATH, not by group id: talk-room
+            // ids are only unique within a service, so a shared id (e.g. 79 in two
+            // services) would collide and bleed one conversation's badge onto the
+            // other. capUnreadToServer inside the helper still clears reads done on
+            // the official mobile app (phone -> Windows).
+            const counts = computeUnreadByPath(
+                groupList.map(g => ({
+                    path: getGroupDisplayInfo(g).path,
+                    serverUnread: g.server_unread_count,
+                })),
+                backendCounts,
+            );
 
             setUnreadCounts(counts);
         } catch (err) {
@@ -207,7 +208,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             {groupList.map(group => {
                 const info = getGroupDisplayInfo(group);
                 const isSelected = selectedGroupDir === info.path;
-                const unreadCount = unreadCounts[group.id] || 0;
+                const unreadCount = unreadCounts[info.path] || 0;
                 const showUnread = unreadCount > 0; // Always show if unread, even if selected
 
                 return (
