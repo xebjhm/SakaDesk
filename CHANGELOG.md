@@ -15,6 +15,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   your already-installed Chrome/Edge — the same browser used to log in — so
   nothing is downloaded, and the packaged app now keeps any child process
   windowless as a safety net.
+- **Your selected groups, favorites, layout and open chats could reset to
+  defaults on launch**: a start-up timing issue occasionally saved a blank
+  default state over your real one. Your saved settings are now loaded before
+  anything can overwrite them, and the app reliably reopens on your last group.
+- **A settings change made right before closing the app could be lost**: pending
+  changes (a toggle you just flipped, the conversation you last read, scroll
+  position) are now flushed when the window closes instead of being dropped.
+- **Favoriting a message could silently undo itself**: when the server rejected a
+  favorite the star stayed lit until the next reload; a failed favorite now
+  reverts immediately and tells you it didn't save. Favorites also update the
+  correct message when two groups share a message number.
+- **Date search and the calendar could jump to or highlight the wrong day** for
+  messages around midnight, because dates were bucketed in UTC while messages
+  display in your local time. Both now use local dates consistently.
+- **Sync could not be stopped once it was verifying files, and the sync window
+  could get stuck spinning** on an error. Cancelling now stops the verify pass
+  too, the window is always dismissable, and sync errors show a readable message.
+- **Search could silently drop results or show wrong totals** when two groups
+  happened to share a message number; results are now counted per group.
+- **The app could freeze while browsing a large library**: heavy disk, database
+  and credential reads now run off the main request path, so the UI and media
+  playback stay responsive.
+- **Launching a second copy (or reopening quickly after closing) showed a
+  "Server failed to start" error**: a real single-instance check now focuses the
+  running window instead, and the start-up wait was lengthened to cover a normal
+  close-then-reopen. A minimized-then-closed window no longer restores off-screen.
+- **An interrupted in-place update could roll back after locking program files**:
+  the updater now shuts the app's background worker down before exiting, and the
+  uninstaller only removes the app's own files instead of the whole chosen folder.
+
+### Security
+- **The built-in bug report could put which group/member you message into the
+  public issue it opens.** Bug reports and copied diagnostics are now scrubbed —
+  the specific member and any custom data-folder path are removed before anything
+  leaves the app.
 
 ## [0.3.2] - 2026-07-06
 
