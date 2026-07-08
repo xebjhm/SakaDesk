@@ -603,13 +603,17 @@ class BlogService:
 
                 existing_ids = {b["id"] for b in index["members"][member_id]["blogs"]}
 
+                # Bind datetime unconditionally: it is also used below (the
+                # isinstance check when appending blogs). A local import inside the
+                # `if` branch made `datetime` a function-local for the whole scope,
+                # so a first sync (branch skipped) hit an unbound local.
+                from datetime import datetime
+
                 # For incremental sync, use since_date to stop early when hitting old blogs
                 # This avoids paginating through entire history just to find no new posts
                 since_date = None
                 if not is_first_sync and index["members"][member_id]["blogs"]:
                     # Find the newest blog date for this member
-                    from datetime import datetime
-
                     newest_date_str = max(
                         b["published_at"] for b in index["members"][member_id]["blogs"]
                     )

@@ -1731,6 +1731,65 @@ class TestInitialLimitAndIncludeInactive:
         assert len(prefetched) == 2
         assert {m["id"] for m in prefetched} == {13, 14}
 
+    @pytest.mark.asyncio
+    async def test_default_fetches_full_history_for_cursorless_member(self, tmp_path):
+        """The DEFAULT fresh sync must NOT truncate a cursor-less member's history.
+
+        Regression for the "fresh sync only keeps the latest 1000" report: the
+        default initial_limit is unlimited, so every already-downloaded message
+        is handed to sync_member.
+        """
+        svc = SyncService()
+
+        groups = [
+            {
+                "id": 100,
+                "name": "Group1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        members = [{"id": 1, "name": "New", "thumbnail": None, "portrait": None}]
+
+        # More than the old hardcoded 1000-message cap, so a regressed default
+        # would truncate and the ID-set assertion below would fail. Timestamps are
+        # zero-padded so string ordering (what the slice sorts on) is monotonic.
+        all_msgs = [
+            _make_message(10 + i, 1, f"2025-03-20T00:00:{i:07d}Z") for i in range(1500)
+        ]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=members)
+        mock_client.get_messages = AsyncMock(return_value=all_msgs)
+
+        captured = {}
+
+        async def capture_sync_member(session, group, member, media_queue, **kwargs):
+            captured["prefetched"] = kwargs.get("prefetched_messages")
+            return len(kwargs.get("prefetched_messages") or [])
+
+        mock_manager = MagicMock()
+        mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
+        mock_manager.get_last_id = MagicMock(return_value=None)
+        mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
+        mock_manager.client = mock_client
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        # No initial_limit kwarg -> uses DEFAULT_INITIAL_MESSAGE_LIMIT.
+        await _run_start_sync(
+            svc,
+            tmp_path,
+            groups=groups,
+            members=members,
+            mock_manager=mock_manager,
+        )
+
+        prefetched = captured["prefetched"]
+        assert {m["id"] for m in prefetched} == {m["id"] for m in all_msgs}
+
 
 class TestCancelOwnership:
     """SVC-C1 — cancel() performs a real task.cancel() with generation ownership."""

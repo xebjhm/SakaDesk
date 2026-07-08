@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-09
+
+### Fixed
+- **A first sync only kept each member's most recent 1000 messages**, silently
+  leaving out older history even though it had already been downloaded. A fresh
+  sync now saves a member's complete message history. Members you synced before
+  this fix stay capped until you run a full re-sync (Force Resync), which now
+  back-fills their older messages and media.
+- **Blogs would not load at all**: the first blog sync crashed for every group,
+  so no blog posts appeared. Blog syncing now completes and posts load normally.
+- **A chat could show a wrong unread badge borrowed from another group**: when
+  two groups in different services happened to share an internal id, one group's
+  unread count could appear on the other. Unread badges are now tracked per
+  conversation, so each shows its own count and clears to match your phone.
+
 ## [0.3.2] - 2026-07-08
 
 ### Fixed

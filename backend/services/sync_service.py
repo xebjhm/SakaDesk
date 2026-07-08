@@ -31,8 +31,12 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 
-# Default to only sync latest messages on initial sync
-DEFAULT_INITIAL_MESSAGE_LIMIT = 1000
+# Initial (cursor-less) sync fetches a member's FULL history by default.
+# 0 means unlimited: the whole group timeline is already downloaded to filter
+# per member, so no client-side cap is applied and nothing is discarded. A
+# positive value still caps the first sync to the newest N messages per member
+# (see the guard in start_sync); callers may pass one explicitly.
+DEFAULT_INITIAL_MESSAGE_LIMIT = 0
 
 
 def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
@@ -275,7 +279,8 @@ class SyncService:
         Main sync function.
         - include_inactive: True to sync offline members too
         - force_resync: True to delete previous sync state and fetching fresh logic
-        - initial_limit: Only fetch latest N messages per member on initial sync
+        - initial_limit: On a member's initial (cursor-less) sync, keep only the
+          newest N messages; 0 (the default) means unlimited — keep full history.
         """
         if self.running:
             return False

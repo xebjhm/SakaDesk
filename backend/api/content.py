@@ -182,9 +182,14 @@ def get_member_dirs(group_dir: Path) -> List[Path]:
 
 
 @router.get("/groups")
-async def get_groups():
+async def get_groups(service: str | None = None):
     """
-    List all groups found in the output directory.
+    List groups found in the output directory.
+
+    When ``service`` (a service identifier like ``hinatazaka46``) is provided,
+    only that service's groups are returned. Talk-room ids are only unique within
+    a service, so a service-scoped view (e.g. the sidebar for the active service)
+    must not receive other services' groups.
 
     pysaka structure:
       output_dir/{service}/messages/{group_id} {group_name}/{member_id} {member_name}/messages.json
@@ -202,11 +207,19 @@ async def get_groups():
     # SD-BE-API-01: the scan parses every member's messages.json (potentially
     # many MB across a large library). Run it off the event loop in one thread
     # hop so it never freezes concurrent endpoints (media streaming, sync polls).
-    return await asyncio.to_thread(_collect_groups, output_dir)
+    return await asyncio.to_thread(_collect_groups, output_dir, service)
 
 
-def _collect_groups(output_dir: Path) -> dict:
+def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict:
     """Scan the output tree and build the /groups payload.
+
+    When ``service_filter`` is given (a service identifier like
+    ``"hinatazaka46"``), only that service's groups are returned — a
+    service-scoped view (e.g. the sidebar for the active service) must not
+    receive other services' groups. Group/talk ids are only unique WITHIN a
+    service (the same id can name a different conversation in another service),
+    which is also why the frontend keys unread state by the service-scoped
+    path rather than by id.
 
     Blocking filesystem work (directory walk + per-file json.load) — call via
     ``asyncio.to_thread``, never on the loop (SD-BE-API-01).
@@ -215,6 +228,7 @@ def _collect_groups(output_dir: Path) -> dict:
     sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
 
     groups = []
+    matched_service = False
 
     # Iterate over service directories (e.g., 日向坂46)
     for service_dir in output_dir.iterdir():
@@ -231,6 +245,11 @@ def _collect_groups(output_dir: Path) -> dict:
         if not service_id:
             # Skip unknown service directories
             continue
+
+        # Scope to one service when requested — ids are only unique per service.
+        if service_filter and service_id != service_filter:
+            continue
+        matched_service = True
 
         # Iterate over group directories (e.g., "34 金村 美玖")
         for group_dir in messages_dir.iterdir():
@@ -337,6 +356,15 @@ def _collect_groups(output_dir: Path) -> dict:
                     "members": members_info,
                 }
             )
+
+    # A requested service that matched no directory yields an empty list, which
+    # is indistinguishable from "not synced yet". Log it so a mismatched/stale
+    # service identifier (vs an empty sidebar) is debuggable (SD-BE-API-01).
+    if service_filter and not matched_service:
+        logger.warning(
+            "groups requested for unknown or unsynced service",
+            service=service_filter,
+        )
 
     # Sort: active first, then by group ID
     groups.sort(

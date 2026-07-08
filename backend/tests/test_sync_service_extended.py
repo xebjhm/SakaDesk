@@ -16,8 +16,9 @@ from backend.services.sync_service import (
 
 
 def test_default_initial_message_limit():
+    # 0 == unlimited: fresh sync fetches a member's full history by default.
     assert isinstance(DEFAULT_INITIAL_MESSAGE_LIMIT, int)
-    assert DEFAULT_INITIAL_MESSAGE_LIMIT > 0
+    assert DEFAULT_INITIAL_MESSAGE_LIMIT == 0
 
 
 # ── SyncService.__init__ ────────────────────────────────────────────
