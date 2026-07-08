@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A first sync only kept each member's most recent 1000 messages**, silently
+  leaving out older history even though it had already been downloaded. A fresh
+  sync now saves a member's complete message history. Members you synced before
+  this fix stay capped until you run a full re-sync (Force Resync), which now
+  back-fills their older messages and media.
+
 ## [0.3.2] - 2026-07-08
 
 ### Fixed
