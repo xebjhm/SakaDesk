@@ -16,6 +16,7 @@ from backend.services.blog_service import (
     BlogService,
     _build_blog_content,
     _is_blog_supported,
+    _merge_blog_index,
 )
 
 
@@ -283,6 +284,146 @@ class TestBlogIndexOperations:
         assert "上村 ひなの" in raw
 
 
+class TestBlogIndexMerge:
+    """SD-BE-SVC-05: concurrent writers' index changes are merged, not clobbered."""
+
+    def test_merge_unions_blogs_across_writers(self):
+        """Writer A adds b1, writer B adds b2 concurrently; both survive."""
+        current = {
+            "members": {"m1": {"name": "A", "blogs": [{"id": "b1", "title": "T1"}]}},
+            "last_sync": "2025-01-01T00:00:00Z",
+            "last_download": None,
+        }
+        incoming = {
+            # B loaded before A's b1 was saved, so it only knows b2.
+            "members": {"m1": {"name": "A", "blogs": [{"id": "b2", "title": "T2"}]}},
+            "last_sync": "2025-01-02T00:00:00Z",
+            "last_download": None,
+        }
+        merged = _merge_blog_index(current, incoming)
+        ids = {b["id"] for b in merged["members"]["m1"]["blogs"]}
+        assert ids == {"b1", "b2"}  # neither writer's discovery is dropped
+        # Later stamp wins.
+        assert merged["last_sync"] == "2025-01-02T00:00:00Z"
+
+    def test_merge_preserves_removed_flags_from_either_side(self):
+        current = {
+            "members": {"m1": {"name": "A", "blogs": [{"id": "b1", "removed": True}]}},
+        }
+        incoming = {
+            "members": {"m1": {"name": "A", "blogs": [{"id": "b1"}]}},
+        }
+        merged = _merge_blog_index(current, incoming)
+        # A removal seen by the current on-disk state must stick even though the
+        # incoming writer didn't have it.
+        assert merged["members"]["m1"]["blogs"][0]["removed"] is True
+
+    def test_merge_keeps_blogs_removed_member_flag(self):
+        current = {
+            "members": {"m1": {"name": "Grad", "blogs_removed": True, "blogs": []}}
+        }
+        incoming = {"members": {"m1": {"name": "Grad", "blogs": []}}}
+        merged = _merge_blog_index(current, incoming)
+        assert merged["members"]["m1"]["blogs_removed"] is True
+
+    def test_merge_unions_new_member(self):
+        current = {"members": {"m1": {"name": "A", "blogs": []}}}
+        incoming = {"members": {"m2": {"name": "B", "blogs": []}}}
+        merged = _merge_blog_index(current, incoming)
+        assert set(merged["members"]) == {"m1", "m2"}
+
+    @pytest.mark.asyncio
+    async def test_save_merges_concurrent_on_disk_change(self, svc, tmp_path):
+        """A second save with a stale snapshot must not drop a blog another writer
+        already persisted between the load and this save."""
+        index_path = tmp_path / "index.json"
+        with patch.object(svc, "get_blog_index_path", return_value=index_path):
+            # Writer A persists b1.
+            await svc.save_blog_index(
+                "hinatazaka46",
+                {"members": {"m1": {"name": "A", "blogs": [{"id": "b1"}]}}},
+            )
+            # Writer B started from an empty index (never saw b1) and now saves b2.
+            await svc.save_blog_index(
+                "hinatazaka46",
+                {"members": {"m1": {"name": "A", "blogs": [{"id": "b2"}]}}},
+            )
+            loaded = await svc.load_blog_index("hinatazaka46")
+        ids = {b["id"] for b in loaded["members"]["m1"]["blogs"]}
+        assert ids == {"b1", "b2"}  # b1 not clobbered by B's stale snapshot
+
+
+# ---------------------------------------------------------------------------
+# clear_cache (SD-BE-SVC-08)
+# ---------------------------------------------------------------------------
+
+
+class TestClearCache:
+    """index.json survives clear_cache even if the tree delete fails partway."""
+
+    @pytest.mark.asyncio
+    async def test_clear_cache_preserves_index(self, svc, tmp_path):
+        base = tmp_path / "blogs"
+        base.mkdir(parents=True)
+        index_path = base / "index.json"
+        index_path.write_text(
+            json.dumps({"members": {"m1": {"name": "Grad", "blogs_removed": True}}}),
+            encoding="utf-8",
+        )
+        (base / "somemember").mkdir()
+        (base / "somemember" / "blog.json").write_text("{}", encoding="utf-8")
+
+        with (
+            patch.object(svc, "get_blogs_base_path", return_value=base),
+            patch.object(svc, "get_blog_index_path", return_value=index_path),
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
+        ):
+            mock_mgr.return_value.is_running.return_value = False
+            await svc.clear_cache("hinatazaka46")
+
+        # Cached content is gone but index.json (graduated-member metadata) stays.
+        assert index_path.exists()
+        assert not (base / "somemember").exists()
+        restored = json.loads(index_path.read_text(encoding="utf-8"))
+        assert restored["members"]["m1"]["blogs_removed"] is True
+
+    @pytest.mark.asyncio
+    async def test_clear_cache_preserves_index_on_rmtree_failure(self, svc, tmp_path):
+        """If rmtree raises partway, the index must NOT be left deleted."""
+        base = tmp_path / "blogs"
+        base.mkdir(parents=True)
+        index_path = base / "index.json"
+        index_path.write_text(json.dumps({"members": {}}), encoding="utf-8")
+
+        with (
+            patch.object(svc, "get_blogs_base_path", return_value=base),
+            patch.object(svc, "get_blog_index_path", return_value=index_path),
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
+            patch(
+                "backend.services.blog_service.shutil.rmtree",
+                side_effect=PermissionError("locked"),
+            ),
+        ):
+            mock_mgr.return_value.is_running.return_value = False
+            with pytest.raises(PermissionError):
+                await svc.clear_cache("hinatazaka46")
+
+        # The index was stashed aside before rmtree and restored in the finally.
+        assert index_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_clear_cache_refuses_while_backup_running(self, svc, tmp_path):
+        base = tmp_path / "blogs"
+        base.mkdir(parents=True)
+        with (
+            patch.object(svc, "get_blogs_base_path", return_value=base),
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
+        ):
+            mock_mgr.return_value.is_running.return_value = True
+            with pytest.raises(RuntimeError, match="backup is running"):
+                await svc.clear_cache("hinatazaka46")
+
+
 # ---------------------------------------------------------------------------
 # _mark_blog_removed / _promote_fully_removed_members
 # ---------------------------------------------------------------------------
@@ -529,8 +670,11 @@ class TestDownloadImages:
 
         results = await svc._download_images(mock_session, image_urls, images_dir)
         assert len(results) == 1
-        # Non-200 results in None for the slot (the results array keeps order)
-        assert results[0] is None
+        # SVC-I6: non-200 must NOT leave a None slot (None would serialize into
+        # blog.json and break _rewrite_local_images). Mirror the exception path.
+        assert results[0] is not None
+        assert results[0]["original_url"] == "https://example.com/missing.jpg"
+        assert results[0]["local_path"] is None
 
     @pytest.mark.asyncio
     async def test_network_error_returns_fallback(self, svc, tmp_path):
@@ -620,8 +764,12 @@ class TestDownloadImages:
         assert len(results) == 2
         # First succeeded
         assert results[0]["local_path"] is not None
-        # Second failed (500)
-        assert results[1] is None
+        # SVC-I6: second failed (500) -> fallback dict, never None
+        assert results[1] is not None
+        assert results[1]["original_url"] == "https://example.com/fail.png"
+        assert results[1]["local_path"] is None
+        # No None anywhere in the array (would poison blog.json)
+        assert all(r is not None for r in results)
 
     @pytest.mark.asyncio
     async def test_url_query_params_stripped_from_extension(self, svc, tmp_path):
@@ -640,6 +788,37 @@ class TestDownloadImages:
 
         results = await svc._download_images(mock_session, image_urls, images_dir)
         assert results[0]["local_path"] == "./images/img_0.png"
+
+    @pytest.mark.asyncio
+    async def test_non_200_result_survives_rewrite(self, svc, tmp_path):
+        """SVC-I6: a non-200 image download must produce a dict (not None) that
+        _rewrite_local_images consumes without AttributeError.
+
+        Previously the non-200 branch left results[idx] = None, which got
+        serialized into blog.json and made _rewrite_local_images crash on
+        img.get(...), 500-ing get_blog_content forever.
+        """
+        images_dir = tmp_path / "images"
+        image_urls = ["https://example.com/gone.jpg"]
+
+        mock_resp = AsyncMock()
+        mock_resp.status = 403
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+
+        results = await svc._download_images(mock_session, image_urls, images_dir)
+        assert None not in results
+
+        # Feed the result straight into _rewrite_local_images: no AttributeError.
+        content = {
+            "content": {"html": "<p>hi</p>"},
+            "images": results,
+        }
+        rewritten = svc._rewrite_local_images(content, tmp_path, "hinatazaka46", "b1")
+        assert rewritten["images"][0]["local_path"] is None
 
 
 # ---------------------------------------------------------------------------

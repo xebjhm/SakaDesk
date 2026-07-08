@@ -9,8 +9,9 @@ def test_copy_file_to_clipboard_not_windows():
     """On non-Windows, copy_file_to_clipboard raises RuntimeError."""
     from backend.services.platform import copy_file_to_clipboard
 
-    with pytest.raises(RuntimeError, match="Windows"):
-        copy_file_to_clipboard(Path("/some/file.mp4"))
+    with patch("backend.services.platform.is_windows", return_value=False):
+        with pytest.raises(RuntimeError, match="Windows"):
+            copy_file_to_clipboard(Path("/some/file.mp4"))
 
 
 def test_copy_file_to_clipboard_file_not_found():

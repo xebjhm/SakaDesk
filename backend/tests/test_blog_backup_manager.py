@@ -2,9 +2,11 @@
 
 import asyncio
 import threading
+import time
 
-from unittest.mock import patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock
 
+import backend.services.blog_service as blog_service_module
 from backend.services.blog_service import BlogBackupManager
 
 
@@ -151,6 +153,129 @@ class TestBlogBackupManagerThreading:
 
         manager.shutdown()
         assert manager._thread is None or not manager._thread.is_alive()
+
+    def test_shutdown_logs_loudly_when_thread_join_times_out(self, monkeypatch):
+        """I1: join(timeout=5) returning is NOT the same as the thread being
+        dead -- a hung backup coroutine that swallows the cancel signal must
+        be logged at ERROR (not silently treated as drained), since a still-
+        alive worker could still be writing after this returns."""
+        manager = BlogBackupManager()
+        fake_thread = MagicMock()
+        fake_thread.is_alive.return_value = True  # still alive after join()
+        manager._thread = fake_thread
+        manager._loop = MagicMock()
+
+        errors = []
+        monkeypatch.setattr(
+            blog_service_module.logger,
+            "error",
+            lambda *a, **k: errors.append((a, k)),
+        )
+
+        manager.shutdown()
+
+        fake_thread.join.assert_called_once_with(timeout=5)
+        assert len(errors) == 1
+        assert "join_timed_out" in errors[0][0][0]
+
+    def test_shutdown_does_not_log_when_thread_actually_stops(self, monkeypatch):
+        """Control case: a thread that stops within the timeout must not
+        trigger the loud-failure log."""
+        manager = BlogBackupManager()
+        fake_thread = MagicMock()
+        fake_thread.is_alive.return_value = False  # confirmed dead after join()
+        manager._thread = fake_thread
+        manager._loop = MagicMock()
+
+        errors = []
+        monkeypatch.setattr(
+            blog_service_module.logger,
+            "error",
+            lambda *a, **k: errors.append((a, k)),
+        )
+
+        manager.shutdown()
+
+        assert errors == []
+
+    def test_force_restart_keeps_new_run_registered(self):
+        """SVC-I8: start(force=True) supersedes the old run; when the old run's
+        finally fires it must NOT deregister the *new* run's bookkeeping.
+
+        Old bug: _run_backup's finally unconditionally did
+        self._running.discard(service) + self._cancel_events.pop(service), so
+        the superseding run's registration was wiped -> is_running() wrongly
+        False, stop() couldn't cancel, and a later start() launched a duplicate.
+
+        This drives the REAL _run_backup (only BlogService.sync_full_backup is
+        mocked), so the finally / _deregister_own path is actually exercised.
+        """
+        manager = BlogBackupManager()
+        first_entered = threading.Event()
+        first_finished = threading.Event()
+        second_entered = threading.Event()
+        release_second = threading.Event()
+        run_count = 0
+        count_lock = threading.Lock()
+
+        async def fake_sync(self_svc, service, *args, cancel_event=None, **kwargs):
+            nonlocal run_count
+            with count_lock:
+                run_count += 1
+                which = run_count
+            if which == 1:
+                first_entered.set()
+                # First run loops until superseded (its cancel_event is set).
+                while cancel_event is not None and not cancel_event.is_set():
+                    await asyncio.sleep(0.01)
+                # Return normally; _run_backup's finally then fires for run 1.
+                first_finished.set()
+                return {"cancelled": True}
+            else:
+                second_entered.set()
+                # Keep the second run alive so we can observe its registration.
+                while not release_second.is_set() and (
+                    cancel_event is None or not cancel_event.is_set()
+                ):
+                    await asyncio.sleep(0.01)
+                return {}
+
+        # Patch sync_full_backup so the real _run_backup (with its finally /
+        # _deregister_own) runs. Also stub the post-backup index hooks used on
+        # the success path so run 1 completing normally has no side effects.
+        with (
+            patch(
+                "backend.services.blog_service.BlogService.sync_full_backup",
+                new=fake_sync,
+            ),
+            patch("backend.services.search_service.get_search_service") as mock_search,
+        ):
+            mock_search.return_value.index_blogs_for_service = AsyncMock(return_value=0)
+
+            manager.start(["hinatazaka46"])
+            assert first_entered.wait(timeout=5), "first run never entered"
+
+            # Force-restart: cancels the old run, registers a fresh run.
+            manager.start(["hinatazaka46"], force=True)
+            assert second_entered.wait(timeout=5), "second run never entered"
+            # The old run observes cancellation and returns; its finally fires.
+            assert first_finished.wait(timeout=5), "first run never finished"
+
+            # Give the old finally a moment to (wrongly) deregister if buggy.
+            time.sleep(0.3)
+
+            # The NEW run must still be registered.
+            assert manager.is_running("hinatazaka46"), (
+                "new run's registration was wiped by the old run's finally"
+            )
+            assert "hinatazaka46" in manager._cancel_events
+
+            # And stop() must be able to cancel the new (still-active) run.
+            manager.stop(["hinatazaka46"])
+            assert not manager.is_running("hinatazaka46")
+
+        release_second.set()
+        manager.shutdown()
 
     def test_running_services(self):
         """running_services() should return snapshot of running service IDs."""

@@ -19,7 +19,7 @@ Does NOT modify the existing test_search_service_units.py.
 import json
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1019,6 +1019,113 @@ class TestClearDb:
         assert count == 6
         assert db_path.exists()
 
+    @pytest.mark.asyncio
+    async def test_rebuild_after_search_closes_read_conn_cross_thread(
+        self, service: SearchService, output_dir: Path
+    ):
+        """SVC-I4: a search creates _read_conn on the read-executor thread; a
+        subsequent rebuild must close it there, not on the write executor
+        (which would raise sqlite3.ProgrammingError and break rebuild)."""
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            # Build on the write executor so _conn is owned by the same thread
+            # that _clear_db_sync later runs on (matches production).
+            await loop.run_in_executor(
+                service._write_executor, service._build_full_index_sync
+            )
+            # Run a real search so _read_conn is opened on the read executor.
+            result = await service.search("ライブ", content_type="messages", limit=50)
+        assert result["total_count"] >= 1
+        assert service._read_conn is not None
+
+        # Patch the heavy process build; we only exercise the connection
+        # teardown/threading, not the full reindex.
+        with patch.object(service, "build_full_index", new=AsyncMock(return_value=0)):
+            # Before the fix this raised sqlite3.ProgrammingError from the
+            # write executor closing a read-executor-owned connection.
+            await service.rebuild()
+
+        assert service._read_conn is None
+        assert service._conn is None
+
+
+# =====================================================================
+# 8b. FTS ghost rows (SVC-I5)
+# =====================================================================
+
+
+class TestFtsGhostRows:
+    """SVC-I5: a rebuild-over-existing DB must not accumulate ghost FTS rows.
+
+    External-content FTS5 tables have AFTER DELETE triggers; with the SQLite
+    default recursive_triggers=OFF the implicit DELETE from INSERT OR REPLACE
+    does not fire them, leaving stale FTS rows. The fix enables
+    recursive_triggers=ON and explicitly clears content tables before a full
+    rebuild so FTS row counts stay consistent with the content tables.
+    """
+
+    @staticmethod
+    def _fts_match_count(conn: sqlite3.Connection, term: str) -> int:
+        return conn.execute(
+            "SELECT count(*) FROM search_fts WHERE search_fts MATCH ?", (term,)
+        ).fetchone()[0]
+
+    def test_rebuild_over_changed_content_leaves_no_ghost_fts_rows(
+        self, service: SearchService, output_dir: Path
+    ):
+        """Build, then rewrite a message's content in place (same id) and
+        rebuild. INSERT OR REPLACE on the UNIQUE(message_id, service) key gives
+        the row a NEW autoincrement rowid, so the old FTS entry becomes a ghost
+        unless the AFTER DELETE trigger fires (recursive_triggers=ON) or the
+        content table is cleared first. The OLD content must no longer match."""
+        msg_file = (
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json"
+        )
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=output_dir
+        ):
+            # First build: content contains the ASCII marker GHOSTMARK.
+            _write_messages_json(
+                msg_file,
+                [
+                    {
+                        "id": 1,
+                        "content": "GHOSTMARK first version",
+                        "timestamp": "2026-01-01T10:00:00+09:00",
+                    }
+                ],
+            )
+            service._build_full_index_sync()
+            conn = service._get_conn()
+            assert self._fts_match_count(conn, "GHOSTMARK") == 1
+
+            # Rewrite the SAME message_id with different content, then rebuild.
+            _write_messages_json(
+                msg_file,
+                [
+                    {
+                        "id": 1,
+                        "content": "FRESHMARK second version",
+                        "timestamp": "2026-01-01T10:00:00+09:00",
+                    }
+                ],
+            )
+            service._build_full_index_sync()
+            conn = service._get_conn()
+
+        # New content is findable; stale content leaves NO ghost FTS row.
+        assert self._fts_match_count(conn, "FRESHMARK") == 1
+        assert self._fts_match_count(conn, "GHOSTMARK") == 0
+
 
 # =====================================================================
 # 9. _needs_build
@@ -1431,6 +1538,125 @@ class TestExcludeUnreadFilter:
 # =====================================================================
 # 15. Schema direct creation test
 # =====================================================================
+
+
+class TestPerServiceIdKeying:
+    """SD-BE-SVC-03 / SD-BE-SVC-12 (Theme B): message_id is only unique per
+    (message_id, service).  The single-word search dedupe and the revealed-ids
+    unread clause must key by (service, message_id), never bare message_id, or
+    a cross-service id collision silently drops one service's match / un-hides
+    the wrong message.
+    """
+
+    @staticmethod
+    def _insert_message(
+        conn: sqlite3.Connection,
+        *,
+        message_id: int,
+        service: str,
+        group_id: int = 1,
+        member_id: int = 100,
+        content: str,
+    ) -> None:
+        # content_normalized mirrors what indexing stores: katakana folded to
+        # hiragana, matching _normalize_query's output at search time.
+        conn.execute(
+            "INSERT INTO search_messages "
+            "(message_id, service, group_id, group_name, member_id, member_name, "
+            "timestamp, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                message_id,
+                service,
+                group_id,
+                "グループ",
+                member_id,
+                "メンバー",
+                "2026-01-01T10:00:00+09:00",
+                content,
+                _kata_to_hira(content),
+            ),
+        )
+        conn.commit()
+
+    def test_single_word_search_keeps_colliding_ids_across_services(
+        self, service: SearchService
+    ):
+        """SD-BE-SVC-03: two DIFFERENT messages sharing message_id=1 under two
+        services must BOTH survive the single-word UNION dedupe, and the count
+        must reflect both.  GROUP BY message_id (bare) would collapse them into
+        one row, dropping one service's match and miscounting."""
+        conn = service._get_conn()
+        # Same message_id, different services, both contain the search term.
+        self._insert_message(
+            conn, message_id=1, service="hinatazaka46", content="コラボレーション企画"
+        )
+        self._insert_message(
+            conn, message_id=1, service="sakurazaka46", content="コラボレーション発表"
+        )
+
+        read_conn = service._get_read_conn()
+        result = service._search_sync(
+            "コラボレーション",
+            None,
+            None,
+            None,
+            50,
+            0,
+            content_type="messages",
+            conn=read_conn,
+        )
+
+        assert result["total_count"] == 2
+        services_seen = {(r["service"], r["message_id"]) for r in result["results"]}
+        assert services_seen == {("hinatazaka46", 1), ("sakurazaka46", 1)}
+
+    def test_revealed_id_does_not_leak_across_services(self, service: SearchService):
+        """SD-BE-SVC-12: revealing message_id=3 in one service's group must NOT
+        un-hide a colliding message_id=3 in another service.  A bare
+        `m.message_id IN (revealed)` clause would leak the reveal across
+        services."""
+        conn = service._get_conn()
+        # Two services, each with a read message (id 1) and an unread one (id 3)
+        # matching the search term.
+        for svc in ("hinatazaka46", "sakurazaka46"):
+            self._insert_message(
+                conn, message_id=1, service=svc, content="サプライズ発表その一"
+            )
+            self._insert_message(
+                conn, message_id=3, service=svc, content="サプライズ発表その三"
+            )
+
+        # In BOTH services: read boundary at id 1 (so id 3 is unread).
+        # Reveal id 3 ONLY in hinatazaka46's group.
+        service._upsert_read_state_sync(
+            "hinatazaka46", 1, 100, last_read_id=1, read_count=1, revealed_ids=[3]
+        )
+        service._upsert_read_state_sync(
+            "sakurazaka46", 1, 100, last_read_id=1, read_count=1, revealed_ids=[]
+        )
+
+        read_conn = service._get_read_conn()
+        result = service._search_sync(
+            "サプライズ",
+            None,
+            None,
+            None,
+            50,
+            0,
+            exclude_unread=True,
+            content_type="messages",
+            conn=read_conn,
+        )
+
+        seen = {(r["service"], r["message_id"]) for r in result["results"]}
+        # hinatazaka46 id 3 is revealed -> visible; sakurazaka46 id 3 is NOT
+        # revealed -> must stay hidden despite the shared id.
+        assert ("hinatazaka46", 3) in seen
+        assert ("sakurazaka46", 3) not in seen
+        # Both read messages (id 1) remain visible in both services.
+        assert ("hinatazaka46", 1) in seen
+        assert ("sakurazaka46", 1) in seen
 
 
 class TestSchemaDirectCreation:

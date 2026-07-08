@@ -6,6 +6,8 @@ import { useModalClose } from '../../core/common/useModalClose';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
+import { apiKeyStatus } from './apiKeyStatus';
+import { persisted } from '../../core/persistence/persisted';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -150,7 +152,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
-        localStorage.setItem('sakadesk-language', lang);
+        persisted.setPref('language', lang);
     };
 
     // Restore behavioural preferences to defaults. Non-destructive: keeps the
@@ -489,7 +491,9 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
         setChecking(true);
         setResult(null);
         try {
-            const res = await fetch('/api/version');
+            // force=true bypasses the 1h cache so a manual check is always live
+            // (automatic startup/hourly checks stay cached to respect rate limits).
+            const res = await fetch('/api/version?force=true');
             if (res.ok) {
                 const data = await res.json();
                 if (data.update_available) {
@@ -673,8 +677,8 @@ function AiTab() {
         }
     };
 
-    const handleClearCache = () => {
-        clearTranslationCache();
+    const handleClearCache = async () => {
+        await clearTranslationCache();
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 
@@ -871,7 +875,7 @@ function AiTab() {
                                     {t('translation.settings.testConnection')}
                                 </button>
                             </div>
-                            {hasApiKey && !apiKeyInput && (
+                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
                                 <div className="flex items-center justify-between mt-0.5">
                                     <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
                                     <button
@@ -881,6 +885,9 @@ function AiTab() {
                                         {t('translation.settings.clearApiKey')}
                                     </button>
                                 </div>
+                            )}
+                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
+                                <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
                             )}
                             {testResult && (
                                 <p className="text-xs mt-1 text-gray-500">{testResult}</p>

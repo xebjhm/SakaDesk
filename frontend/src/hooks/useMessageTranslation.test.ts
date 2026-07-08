@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useMessageTranslation, clearTranslationCache } from './useMessageTranslation';
+import { persisted } from '../core/persistence/persisted';
+import * as appStateApi from '../core/persistence/appStateApi';
 
 const KEY = 'translation:message:500:en';
 const baseParams = {
@@ -19,32 +21,35 @@ function mockFetchOk(translation: string) {
     return fetchMock;
 }
 
-// The shared test setup mocks localStorage with inert vi.fn()s; back them with a
-// real in-memory store so cache read/write/enumerate behaves like the browser.
+// Backend translation cache, faked in-memory and driven through spies on
+// `persisted.getTranslations`/`putTranslations` (the async cache API used by
+// the hook) instead of localStorage.
 const store = new Map<string, string>();
 
 describe('useMessageTranslation', () => {
     beforeEach(() => {
         store.clear();
-        const ls = window.localStorage as unknown as Record<string, ReturnType<typeof vi.fn>>;
-        ls.getItem.mockImplementation((k: string) => (store.has(k) ? store.get(k)! : null));
-        ls.setItem.mockImplementation((k: string, v: string) => { store.set(k, String(v)); });
-        ls.removeItem.mockImplementation((k: string) => { store.delete(k); });
-        ls.clear.mockImplementation(() => { store.clear(); });
-        ls.key.mockImplementation((i: number) => Array.from(store.keys())[i] ?? null);
-        Object.defineProperty(window.localStorage, 'length', {
-            get: () => store.size,
-            configurable: true,
+        vi.spyOn(persisted, 'getTranslations').mockImplementation(async (keys: string[]) => {
+            const out: Record<string, string> = {};
+            for (const k of keys) if (store.has(k)) out[k] = store.get(k)!;
+            return out;
+        });
+        vi.spyOn(persisted, 'putTranslations').mockImplementation(async (items: Record<string, string>) => {
+            for (const [k, v] of Object.entries(items)) store.set(k, v);
+            return undefined;
         });
     });
     afterEach(() => vi.unstubAllGlobals());
 
-    it('lazy-inits from cache and trigger() skips the API on a cache hit', async () => {
-        localStorage.setItem(KEY, 'cached-en');
+    it('loads the cached value asynchronously and trigger() skips the API on a cache hit', async () => {
+        store.set(KEY, 'cached-en');
         const fetchMock = mockFetchOk('should-not-be-used');
 
         const { result } = renderHook(() => useMessageTranslation(baseParams));
-        expect(result.current.translation).toBe('cached-en');
+        // Sync-init no longer has the value; it arrives after the async cache read.
+        expect(result.current.translation).toBeNull();
+
+        await waitFor(() => expect(result.current.translation).toBe('cached-en'));
         expect(result.current.state).toBe('done');
 
         await act(async () => { await result.current.trigger(); });
@@ -60,23 +65,24 @@ describe('useMessageTranslation', () => {
         expect(fetchMock).toHaveBeenCalledOnce();
         expect(result.current.translation).toBe('fresh-en');
         expect(result.current.state).toBe('done');
-        expect(localStorage.getItem(KEY)).toBe('fresh-en');
+        expect(store.get(KEY)).toBe('fresh-en');
     });
 
-    it('retrigger() clears the cache and refetches even when cached', async () => {
-        localStorage.setItem(KEY, 'stale-en');
+    it('retrigger() refetches and overwrites the cache even when cached', async () => {
+        store.set(KEY, 'stale-en');
         const fetchMock = mockFetchOk('regenerated-en');
         const { result } = renderHook(() => useMessageTranslation(baseParams));
+        await waitFor(() => expect(result.current.translation).toBe('stale-en'));
 
         await act(async () => { await result.current.retrigger(); });
 
         expect(fetchMock).toHaveBeenCalledOnce();
         expect(result.current.translation).toBe('regenerated-en');
-        expect(localStorage.getItem(KEY)).toBe('regenerated-en');
+        expect(store.get(KEY)).toBe('regenerated-en');
     });
 
-    it('re-syncs from the new key when the target language changes', () => {
-        localStorage.setItem('translation:message:500:ja', 'こんにちは-ja');
+    it('re-syncs from the new key when the target language changes', async () => {
+        store.set('translation:message:500:ja', 'こんにちは-ja');
         mockFetchOk('unused');
 
         const { result, rerender } = renderHook(
@@ -86,19 +92,15 @@ describe('useMessageTranslation', () => {
         expect(result.current.translation).toBeNull(); // no 'en' cache
 
         rerender({ ...baseParams, targetLanguage: 'ja' });
-        expect(result.current.translation).toBe('こんにちは-ja');
+        await waitFor(() => expect(result.current.translation).toBe('こんにちは-ja'));
         expect(result.current.state).toBe('done');
     });
 
-    it('clearTranslationCache removes only translation: entries', () => {
-        localStorage.setItem(KEY, 'x');
-        localStorage.setItem('translation:message:1:ja', 'y');
-        localStorage.setItem('unrelated', 'keep');
+    it('clearTranslationCache calls the backend clear-translations endpoint', async () => {
+        const clearSpy = vi.spyOn(appStateApi, 'clearTranslations').mockResolvedValue(undefined);
 
-        clearTranslationCache();
+        await clearTranslationCache();
 
-        expect(localStorage.getItem(KEY)).toBeNull();
-        expect(localStorage.getItem('translation:message:1:ja')).toBeNull();
-        expect(localStorage.getItem('unrelated')).toBe('keep');
+        expect(clearSpy).toHaveBeenCalledOnce();
     });
 });

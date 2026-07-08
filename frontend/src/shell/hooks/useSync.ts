@@ -41,6 +41,37 @@ const log = SYNC_DEBUG
     ? (...args: unknown[]) => console.log('[Sync]', ...args)
     : () => {};
 
+// SD-CONTRACT-11: distinguish "sync already running" from every other 4xx.
+// The old code treated ANY 400 as "already running" and started polling — so an
+// invalid-service 400 (or any future 400 variant) sent the UI into a progress
+// poll for a service the backend rejected. Only a genuine "already running"
+// response should poll. Accepts:
+//   - HTTP 409 (the intended status once the backend uses it), or
+//   - HTTP 400 whose body detail matches the current "already running" text
+//     (backend/api/sync.py: "Sync already running for {service}").
+// Any other 4xx is a real error.
+function isAlreadyRunning(status: number, body: { detail?: unknown } | null): boolean {
+    if (status === 409) return true;
+    if (status === 400 && typeof body?.detail === 'string') {
+        return /already running/i.test(body.detail);
+    }
+    return false;
+}
+
+// SD-FE-GAP-B-08: the backend's `detail` field doubles as human-readable
+// progress text AND (for sync errors) a machine sentinel like "SESSION_EXPIRED".
+// Known sentinels are mapped to localized strings at their handling sites, but
+// an UNKNOWN sentinel would otherwise render verbatim in the modal (e.g. in the
+// running-state detail line). Detect the sentinel shape (ALL_CAPS_UNDERSCORE,
+// no spaces) and fall back to a friendly generic so a raw code never reaches
+// the user. Ordinary progress text ("Fetching page 3") passes through unchanged.
+// Exported for unit testing.
+export function friendlySyncDetail(detail: unknown, fallback: string): string | undefined {
+    if (typeof detail !== 'string' || detail.length === 0) return undefined;
+    if (/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/.test(detail)) return fallback;
+    return detail;
+}
+
 /** Info about an ongoing sequential (multi-service) sync */
 export interface SequentialSyncInfo {
     /** Total number of services being synced */
@@ -67,6 +98,8 @@ export interface UseSyncReturn {
     startSync: (blocking: boolean, service?: string, forceResync?: boolean) => Promise<void>;
     /** Verify downloaded media and re-download any missing files (or active service if not specified) */
     verifyAndFix: (service?: string) => Promise<void>;
+    /** Cancel a running sync/verify and make the modal dismissible (SD-FE-GAP-B-08) */
+    cancelSync: (service?: string) => Promise<void>;
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
     /** Start sequential sync for a list of services (one at a time, with blocking modal) */
@@ -270,10 +303,15 @@ export function useSync({
                         eta_seconds: data.eta_seconds,
                         speed: data.speed,
                         speed_unit: data.speed_unit,
-                        detail: data.detail,
+                        // SD-FE-GAP-B-08: never let an unknown machine sentinel
+                        // reach the running-state detail line verbatim.
+                        detail: friendlySyncDetail(data.detail, i18n.t('sync.processing')),
                         detail_extra: data.detail_extra
                     });
-                    setTimeout(check, 1000);
+                    // SD-FE-GAP-B-08: stop re-scheduling once cancelled (the
+                    // cancel path clears this flag) so the poller can't revive a
+                    // modal the user dismissed.
+                    if (isPollingRef.current[service]) setTimeout(check, 1000);
                 } else if (data.state === 'error') {
                     // Check cooldown: if the service was recently reconnected,
                     // suppress re-triggering the login modal to avoid a race
@@ -282,7 +320,7 @@ export function useSync({
                     const reconnectedAt = recentlyReconnectedRef.current[service];
                     const inCooldown = reconnectedAt && (Date.now() - reconnectedAt) < RECONNECT_COOLDOWN_MS;
 
-                    if (data.detail === 'SESSION_EXPIRED') {
+                    if (data.error_code === 'session_expired' || data.detail === 'SESSION_EXPIRED') {
                         log(`${service}: session expired detected${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
                         if (!inCooldown) {
                             markServiceDisconnectedRef.current?.(service, 'Session expired');
@@ -293,7 +331,7 @@ export function useSync({
                         updateProgress({ state: 'error', detail: i18n.t('sync.sessionExpired') });
                         useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
-                    } else if (data.detail === 'REFRESH_FAILED') {
+                    } else if (data.error_code === 'refresh_failed' || data.detail === 'REFRESH_FAILED') {
                         log(`${service}: refresh failed detected - possible bug${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
                         if (!inCooldown) {
                             markServiceDisconnectedRef.current?.(service, 'Refresh failed');
@@ -304,8 +342,16 @@ export function useSync({
                         updateProgress({ state: 'error', detail: i18n.t('sync.refreshFailed') });
                         useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
+                    } else if (data.error_code === 'cancelled' || data.detail === 'CANCELLED') {
+                        updateProgress({ state: 'error', detail: i18n.t('sync.cancelled') });
                     } else {
-                        updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.error') });
+                        // Prefer the structured error_code (SD-CONTRACT-07): any
+                        // present code is a machine sentinel, so show a friendly
+                        // generic rather than the raw text. Otherwise pass ordinary
+                        // progress text through (friendlySyncDetail still masks any
+                        // legacy underscore-sentinel in the detail field).
+                        const generic = i18n.t('sync.error');
+                        updateProgress({ state: 'error', detail: data.error_code ? generic : (friendlySyncDetail(data.detail, generic) || generic) });
                     }
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
@@ -379,19 +425,23 @@ export function useSync({
             if (response.ok) {
                 // Sync started successfully
                 pollSyncProgress(targetService, blocking);
-            } else if (response.status === 400) {
-                // Likely "already running" - just poll for existing progress
-                log(`${targetService}: sync already running, polling existing progress`);
-                pollSyncProgress(targetService, blocking);
             } else {
-                // Other error
+                // SD-CONTRACT-11: only poll if the backend genuinely reports the
+                // sync is already running; any other 4xx (e.g. invalid service,
+                // shutting down) is surfaced as an error rather than polling a
+                // service the backend rejected.
                 const data = await response.json().catch(() => ({ detail: i18n.t('sync.unknownError') }));
-                log(`${targetService}: failed to start`, data.detail);
-                if (currentProgress?.state !== 'running') {
-                    const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
-                    setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
-                    if (targetService === activeServiceRef.current) {
-                        setSyncProgress(errorProgress);
+                if (isAlreadyRunning(response.status, data)) {
+                    log(`${targetService}: sync already running, polling existing progress`);
+                    pollSyncProgress(targetService, blocking);
+                } else {
+                    log(`${targetService}: failed to start`, data.detail);
+                    if (currentProgress?.state !== 'running') {
+                        const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
+                        setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+                        if (targetService === activeServiceRef.current) {
+                            setSyncProgress(errorProgress);
+                        }
                     }
                 }
             }
@@ -430,13 +480,20 @@ export function useSync({
                 `/api/sync/verify?service=${encodeURIComponent(targetService)}`,
                 { method: 'POST' },
             );
-            if (response.ok || response.status === 400) {
+            if (response.ok) {
                 pollSyncProgress(targetService, true);
             } else {
+                // SD-CONTRACT-11: poll only on a genuine "already running"
+                // response; other 4xx (invalid service, etc.) become an error
+                // instead of polling a service the backend rejected.
                 const data = await response.json().catch(() => ({ detail: i18n.t('sync.unknownError') }));
-                const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
-                setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
-                if (targetService === activeServiceRef.current) setSyncProgress(errorProgress);
+                if (isAlreadyRunning(response.status, data)) {
+                    pollSyncProgress(targetService, true);
+                } else {
+                    const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
+                    setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
+                    if (targetService === activeServiceRef.current) setSyncProgress(errorProgress);
+                }
             }
         } catch {
             const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
@@ -444,6 +501,33 @@ export function useSync({
             if (targetService === activeServiceRef.current) setSyncProgress(errorProgress);
         }
     }, [pollSyncProgress]);
+
+    // SD-FE-GAP-B-08: cancel a running sync/verify and make the modal
+    // dismissible. The backend `/cancel` now cancels the running sync OR verify
+    // task (SD-BE-SVC-02), but we still OPTIMISTICALLY transition to a terminal
+    // state so the user can always leave the modal even if the cancel request
+    // fails or races the poller, rather than being locked to a spinner.
+    const cancelSync = useCallback(async (service?: string) => {
+        const targetService = service || activeServiceRef.current;
+        if (!targetService) return;
+
+        // Stop the local poller so it can't overwrite the terminal state below.
+        isPollingRef.current[targetService] = false;
+        useAppStore.getState().removeInitialSyncService(targetService);
+
+        // Optimistically mark the sync cancelled so the modal shows its dismiss
+        // button even if the cancel request fails or races the poller.
+        const cancelledProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.cancelled') };
+        setSyncProgressByService(prev => ({ ...prev, [targetService]: cancelledProgress }));
+        if (targetService === activeServiceRef.current) setSyncProgress(cancelledProgress);
+
+        // Fire-and-forget the real cancel; failures don't block dismissal.
+        try {
+            await fetch(`/api/sync/cancel?service=${encodeURIComponent(targetService)}`, { method: 'POST' });
+        } catch {
+            /* the modal is already dismissible; a failed cancel is non-fatal */
+        }
+    }, []);
 
     const startSyncAllServices = useCallback(async (blocking: boolean) => {
         if (connectedServices.length === 0) return;
@@ -608,6 +692,7 @@ export function useSync({
         syncVersion,
         startSync,
         verifyAndFix,
+        cancelSync,
         startSyncAllServices,
         startSequentialSync,
         sequentialSyncInfo,

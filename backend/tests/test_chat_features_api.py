@@ -151,6 +151,19 @@ class TestGetMessageDates:
         assert response.status_code == 404
 
     @patch("backend.api.chat_features._get_output_dir")
+    def test_message_dates_rejects_path_traversal(self, mock_output, tmp_path):
+        """A traversal member_path is rejected before touching disk (API-I2)."""
+        # A readable messages.json OUTSIDE the output dir; a naive join would
+        # serve it via ../ escape.
+        secret = tmp_path.parent / "sakadesk_secret_dir"
+        secret.mkdir(parents=True, exist_ok=True)
+        (secret / "messages.json").write_text('{"messages": []}', encoding="utf-8")
+
+        mock_output.return_value = tmp_path
+        response = client.get(f"/api/chat/message_dates/..%2f{secret.name}")
+        assert response.status_code == 403
+
+    @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_single_member(self, mock_output, tmp_path):
         """Returns date counts from a single member's messages.json."""
         member_dir = tmp_path / "hinatazaka46" / "member1"
@@ -170,10 +183,15 @@ class TestGetMessageDates:
         assert response.status_code == 200
         data = response.json()
         assert data["total_dates"] == 2
-        # Find the date with count 2
+        # Dates are bucketed by LOCAL date (SD-FE-CORE-02); compute the expected
+        # buckets the same way so the test holds in any runner timezone.
+        from backend.api.chat_features import _local_date
+
+        d15 = _local_date("2025-01-15T10:00:00Z")
+        d16 = _local_date("2025-01-16T09:00:00Z")
         dates_map = {d["date"]: d["count"] for d in data["dates"]}
-        assert dates_map["2025-01-15"] == 2
-        assert dates_map["2025-01-16"] == 1
+        assert dates_map[d15] == 2
+        assert dates_map[d16] == 1
 
     @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_group_path(self, mock_output, tmp_path):
@@ -184,8 +202,10 @@ class TestGetMessageDates:
         m1.mkdir(parents=True)
         m2.mkdir(parents=True)
 
-        m1_messages = {"messages": [{"id": 1, "timestamp": "2025-02-01T00:00:00Z"}]}
-        m2_messages = {"messages": [{"id": 2, "timestamp": "2025-02-01T10:00:00Z"}]}
+        # Both at midday UTC so they share a local calendar day in any timezone
+        # (the endpoint buckets by LOCAL date; see SD-FE-CORE-02).
+        m1_messages = {"messages": [{"id": 1, "timestamp": "2025-02-01T12:00:00Z"}]}
+        m2_messages = {"messages": [{"id": 2, "timestamp": "2025-02-01T13:00:00Z"}]}
         (m1 / "messages.json").write_text(json.dumps(m1_messages), encoding="utf-8")
         (m2 / "messages.json").write_text(json.dumps(m2_messages), encoding="utf-8")
 
@@ -207,6 +227,69 @@ class TestGetMessageDates:
         data = response.json()
         assert data["total_dates"] == 0
         assert data["dates"] == []
+
+
+class TestLocalDateBucketing:
+    """SD-FE-CORE-02 (Theme C): message_dates buckets by LOCAL date, matching the
+    bubbles and calendar, not the raw UTC prefix."""
+
+    def test_local_date_matches_local_conversion(self):
+        from datetime import datetime
+
+        from backend.api.chat_features import _local_date
+
+        ts = "2025-01-15T23:30:00Z"
+        # The helper's result must equal the machine-local date of that instant —
+        # the same conversion the frontend does with new Date(ts).getDate().
+        expected = (
+            datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            .astimezone()
+            .strftime("%Y-%m-%d")
+        )
+        assert _local_date(ts) == expected
+
+    def test_local_date_handles_offset_suffix(self):
+        from datetime import datetime
+
+        from backend.api.chat_features import _local_date
+
+        ts = "2025-06-30T20:00:00+09:00"  # JST (blog-style offset)
+        expected = datetime.fromisoformat(ts).astimezone().strftime("%Y-%m-%d")
+        assert _local_date(ts) == expected
+
+    def test_local_date_empty_and_malformed(self):
+        from backend.api.chat_features import _local_date
+
+        assert _local_date("") is None
+        # Unparseable but has a date-like prefix → still buckets on the prefix.
+        assert _local_date("2025-03-04 garbage") == "2025-03-04"
+
+    @patch("backend.api.chat_features._get_output_dir")
+    def test_message_dates_buckets_by_local_date(self, mock_output, tmp_path):
+        """Two messages one hour apart on the same instant-day land in the same
+        local-date bucket (regardless of the runner's timezone)."""
+        from backend.api.chat_features import _local_date
+
+        member_dir = tmp_path / "hinatazaka46" / "member1"
+        member_dir.mkdir(parents=True)
+        messages = {
+            "messages": [
+                {"id": 1, "timestamp": "2025-01-15T23:00:00Z"},
+                {"id": 2, "timestamp": "2025-01-15T23:59:00Z"},
+            ]
+        }
+        (member_dir / "messages.json").write_text(
+            json.dumps(messages), encoding="utf-8"
+        )
+        mock_output.return_value = tmp_path
+        response = client.get("/api/chat/message_dates/hinatazaka46/member1")
+        assert response.status_code == 200
+        data = response.json()
+        # Both messages share the same local calendar day → one bucket, count 2.
+        expected_date = _local_date("2025-01-15T23:00:00Z")
+        assert data["total_dates"] == 1
+        assert data["dates"][0]["date"] == expected_date
+        assert data["dates"][0]["count"] == 2
 
 
 class TestGetOutputDir:

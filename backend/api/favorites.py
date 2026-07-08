@@ -3,8 +3,22 @@ Favorites API for SakaDesk.
 
 Handles adding/removing messages from server-side favorites.
 Also updates local messages.json for instant feedback.
+
+FAVORITE-READ LIMITATION (revisit later):
+    The message service exposes only WRITE endpoints for favorites —
+    ``POST/DELETE /v2/messages/{id}/favorite`` — and NO list/read endpoint
+    (confirmed against the protocol reference). So favorite *state* can only be
+    read back through the timeline's per-message ``is_favorite`` field, which
+    means reads are coupled to the sync window: a favorite toggled on another
+    device for a message that falls outside the re-fetch window won't reflect
+    here until a full re-sync. The local messages.json ``is_favorite`` written
+    below is an instant-feedback cache, not an independent source of truth.
+    TODO: capture the rooted Android app to learn how the official client reads
+    favorite state (dedicated endpoint? push? full re-list?) and sync it that
+    way instead of piggybacking on the timeline.
 """
 
+import asyncio
 import json
 import structlog
 import aiohttp
@@ -21,7 +35,12 @@ from backend.services.platform import (
     is_test_mode,
     get_default_output_dir,
 )
-from backend.services.service_utils import get_service_enum, validate_service
+from backend.services.service_utils import (
+    get_service_enum,
+    validate_service,
+    get_service_display_name,
+    atomic_write_json,
+)
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
 logger = structlog.get_logger(__name__)
@@ -49,62 +68,70 @@ def _get_output_dir() -> Path:
     return get_default_output_dir()
 
 
-def _update_local_favorite(message_id: int, is_favorite: bool) -> bool:
+def _update_local_favorite(message_id: int, is_favorite: bool, service: str) -> bool:
     """
-    Update is_favorite in local messages.json files.
+    Update is_favorite in this SERVICE's local messages.json files.
 
-    Searches through all member directories to find the message.
-    Returns True if found and updated.
+    message_id is only unique per (service, message_id): each service is an
+    independent deployment with its own id sequence. Scanning every service and
+    matching the first bare id could flip the wrong message on a cross-service
+    collision (SD-BE-API-05), so we scope the search to this service's directory.
+
+    Writes are atomic (temp file + os.replace) so a crash mid-write cannot corrupt
+    the synced archive (SD-BE-API-02). Returns True if found and updated.
+
+    Blocking I/O — call via ``asyncio.to_thread`` from async handlers.
     """
     output_dir = _get_output_dir()
 
-    # Search through all service/messages/group/member directories
-    for service_dir in output_dir.iterdir():
-        if not service_dir.is_dir():
+    # Scope to this service's directory only (named by display name, e.g. 日向坂46).
+    try:
+        messages_dir = output_dir / get_service_display_name(service) / "messages"
+    except ValueError:
+        logger.warning(f"Unknown service for local favorite update: {service}")
+        return False
+    if not messages_dir.exists():
+        logger.warning(f"Message {message_id} not found: no messages dir for {service}")
+        return False
+
+    for group_dir in messages_dir.iterdir():
+        if not group_dir.is_dir():
             continue
 
-        messages_dir = service_dir / "messages"
-        if not messages_dir.exists():
-            continue
-
-        for group_dir in messages_dir.iterdir():
-            if not group_dir.is_dir():
+        for member_dir in group_dir.iterdir():
+            if not member_dir.is_dir():
                 continue
 
-            for member_dir in group_dir.iterdir():
-                if not member_dir.is_dir():
-                    continue
+            msg_file = member_dir / "messages.json"
+            if not msg_file.exists():
+                continue
 
-                msg_file = member_dir / "messages.json"
-                if not msg_file.exists():
-                    continue
+            try:
+                with open(msg_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
-                try:
-                    with open(msg_file, "r", encoding="utf-8") as f:
-                        data = json.load(f)
+                messages = data.get("messages", [])
+                found = False
 
-                    messages = data.get("messages", [])
-                    found = False
+                for msg in messages:
+                    if msg.get("id") == message_id:
+                        msg["is_favorite"] = is_favorite
+                        found = True
+                        break
 
-                    for msg in messages:
-                        if msg.get("id") == message_id:
-                            msg["is_favorite"] = is_favorite
-                            found = True
-                            break
+                if found:
+                    atomic_write_json(msg_file, data)
+                    logger.info(
+                        f"Updated local favorite: service={service}, "
+                        f"msg={message_id}, is_favorite={is_favorite}"
+                    )
+                    return True
 
-                    if found:
-                        with open(msg_file, "w", encoding="utf-8") as f:
-                            json.dump(data, f, ensure_ascii=False, indent=2)
-                        logger.info(
-                            f"Updated local favorite: msg={message_id}, is_favorite={is_favorite}"
-                        )
-                        return True
+            except Exception as e:
+                logger.warning(f"Error updating {msg_file}: {e}")
+                continue
 
-                except Exception as e:
-                    logger.warning(f"Error updating {msg_file}: {e}")
-                    continue
-
-    logger.warning(f"Message {message_id} not found in local files")
+    logger.warning(f"Message {message_id} not found in {service} local files")
     return False
 
 
@@ -167,8 +194,8 @@ async def add_favorite(message_id: int, service: str):
         success = await client.add_favorite(session, message_id)
 
         if success:
-            # Update local cache
-            _update_local_favorite(message_id, True)
+            # Update local cache (blocking FS scan + write offloaded off the loop)
+            await asyncio.to_thread(_update_local_favorite, message_id, True, service)
             return FavoriteResponse(
                 success=True, message_id=message_id, is_favorite=True
             )
@@ -204,8 +231,8 @@ async def remove_favorite(message_id: int, service: str):
         success = await client.remove_favorite(session, message_id)
 
         if success:
-            # Update local cache
-            _update_local_favorite(message_id, False)
+            # Update local cache (blocking FS scan + write offloaded off the loop)
+            await asyncio.to_thread(_update_local_favorite, message_id, False, service)
             return FavoriteResponse(
                 success=True, message_id=message_id, is_favorite=False
             )

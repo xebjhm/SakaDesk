@@ -5,6 +5,7 @@ Provides cross-platform desktop notifications using plyer.
 Notifications are triggered when new messages arrive during sync.
 """
 
+import asyncio
 import structlog
 from typing import Optional
 
@@ -118,6 +119,42 @@ def notify_sync_complete(total_new: int, member_count: int) -> bool:
         message=message,
         timeout=5,
     )
+
+
+# ---------------------------------------------------------------------------
+# SD-BE-SVC-18: async off-loop wrappers.
+#
+# plyer's Windows backend makes blocking Win32 calls (and pays a first-use
+# import cost), so calling notify(...) directly inside the async sync loop
+# stalls the event loop right while the UI polls /progress. Async callers must
+# use these wrappers, which run the blocking send in a worker thread. The
+# zero-count short-circuits happen BEFORE the thread hop so a no-op notification
+# never spawns a thread.
+# ---------------------------------------------------------------------------
+
+
+async def send_notification_async(
+    title: str,
+    message: str,
+    app_name: str = "SakaDesk",
+    timeout: int = 10,
+) -> bool:
+    """Async wrapper for :func:`send_notification` (runs off the event loop)."""
+    return await asyncio.to_thread(send_notification, title, message, app_name, timeout)
+
+
+async def notify_new_messages_async(member_name: str, count: int) -> bool:
+    """Async wrapper for :func:`notify_new_messages` (runs off the event loop)."""
+    if count <= 0:
+        return False
+    return await asyncio.to_thread(notify_new_messages, member_name, count)
+
+
+async def notify_sync_complete_async(total_new: int, member_count: int) -> bool:
+    """Async wrapper for :func:`notify_sync_complete` (runs off the event loop)."""
+    if total_new <= 0:
+        return False
+    return await asyncio.to_thread(notify_sync_complete, total_new, member_count)
 
 
 def set_notifications_enabled(enabled: bool) -> None:

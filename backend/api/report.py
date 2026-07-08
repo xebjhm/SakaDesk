@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional, cast
 from urllib.parse import urlencode, quote
 
+import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -23,6 +24,7 @@ from pysaka import Group, get_jwt_remaining_seconds
 from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/api/report", tags=["report"])
+logger = structlog.get_logger(__name__)
 
 # Try to get pysaka version
 try:
@@ -85,6 +87,118 @@ def _redact_nickname(text: str, nickname: Optional[str]) -> str:
     return text.replace(nickname, "[REDACTED]")
 
 
+# Patterns for token-like / bearer / JWT / long secret strings. Ordered so the
+# more specific patterns run first. Kept module-level so they compile once.
+_SECRET_PATTERNS = [
+    # JWT (header.payload.signature) — matches even when only base64url chars
+    re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
+    # Authorization: Bearer <token>
+    re.compile(r"[Bb]earer\s+\S+"),
+    # Long hex secrets (>= 32 hex chars, e.g. API keys / hashes)
+    re.compile(r"\b[0-9a-fA-F]{32,}\b"),
+    # Long base64/base64url secrets (>= 40 chars)
+    re.compile(r"\b[A-Za-z0-9_/+-]{40,}={0,2}\b"),
+]
+
+
+def _scrub_secrets(text: str) -> str:
+    """Scrub token-like / bearer / JWT / long secret strings from log text.
+
+    Applied on top of path/nickname redaction so leaked credentials never reach
+    the diagnostics or bug-report output. Preserves surrounding context.
+    """
+    result = text
+    for pattern in _SECRET_PATTERNS:
+        result = pattern.sub("[REDACTED_SECRET]", result)
+    return result
+
+
+def scrub_log_line(line: str, username: str, nickname: Optional[str]) -> str:
+    """Full redaction for a single emitted log line: path + nickname + secrets.
+
+    Shared by the report and diagnostics endpoints (SEC-5).
+    """
+    return _scrub_secrets(_redact_path(_redact_nickname(line, nickname), username))
+
+
+def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
+    """Redact a user-chosen data/output directory from free text.
+
+    The output dir can live outside C:\\Users (e.g. D:\\SakaData), so _redact_path
+    won't catch it — but sync errors embed it. Redact all slash variants.
+    """
+    if not output_dir:
+        return text
+    result = text
+    variants = {
+        output_dir,
+        output_dir.replace("\\", "/"),
+        output_dir.replace("/", "\\"),
+    }
+    for variant in variants:
+        if variant:
+            result = re.sub(
+                re.escape(variant), "[REDACTED_DIR]", result, flags=re.IGNORECASE
+            )
+    return result
+
+
+def _redact_member_path(value: str) -> str:
+    """Keep only the leading group/service segment of a member_path.
+
+    `member_path` is e.g. "hinatazaka46/messages/34"; the member/message id is
+    behavioral PII that must never reach a public GitHub issue. We keep the
+    service segment (low sensitivity, high debug value) and drop the rest.
+    """
+    segments = [s for s in value.replace("\\", "/").split("/") if s]
+    if not segments:
+        return "[REDACTED]"
+    if len(segments) == 1:
+        return segments[0]
+    return f"{segments[0]}/[REDACTED]"
+
+
+def _redact_diagnostics(
+    obj, username: str, nickname: Optional[str], output_dir: Optional[str] = None
+):
+    """Recursively scrub an entire diagnostics structure before it leaves the app.
+
+    The diagnostics dict is embedded in the *public* GitHub-issue URL body and
+    auto-copied to the clipboard; previously only `logs` were scrubbed, leaking
+    `member_path`, `sync_state.last_error` paths, etc. (Theme J / SD-FE-GAP-A-01).
+    Every string gets path + nickname + secret + output-dir scrubbing; the special
+    `member_path` key is additionally reduced to its group/service segment.
+    """
+    if isinstance(obj, dict):
+        return {
+            k: _redact_member_path(v)
+            if k == "member_path" and isinstance(v, str)
+            else _redact_diagnostics(v, username, nickname, output_dir)
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact_diagnostics(v, username, nickname, output_dir) for v in obj]
+    if isinstance(obj, str):
+        return _redact_output_dir(scrub_log_line(obj, username, nickname), output_dir)
+    return obj
+
+
+def _get_output_dir() -> Optional[str]:
+    """Read the configured sync output dir (for redaction of custom data paths)."""
+    try:
+        settings_path = get_settings_path()
+        if settings_path.exists():
+            with open(settings_path, "r", encoding="utf-8") as f:
+                return cast(Optional[str], json.load(f).get("output_dir"))
+    except Exception as e:
+        # Do NOT fail silently: if the output dir can't be read, custom-data-dir
+        # redaction is skipped and a path outside C:\Users could reach the public
+        # bug report. Log so the gap is visible (member-path reduction + username
+        # scrub still run). (Review follow-up to WP-11.)
+        logger.warning("report_output_dir_read_failed_redaction_partial", error=str(e))
+    return None
+
+
 def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> dict:
     """
     Smart log filtering:
@@ -104,8 +218,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
             all_lines = f.readlines()
 
         for line in all_lines[-30:]:
-            redacted = _redact_path(_redact_nickname(line.strip(), nickname), username)
-            recent.append(redacted)
+            recent.append(scrub_log_line(line.strip(), username, nickname))
 
         # Errors/warnings: prefer error.log (pre-filtered, smaller)
         error_log = log_path.parent / "error.log"
@@ -122,10 +235,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
         for line in error_lines:
             if _is_error_or_warning(line):
-                redacted = _redact_path(
-                    _redact_nickname(line.strip(), nickname), username
-                )
-                errors.append(redacted)
+                errors.append(scrub_log_line(line.strip(), username, nickname))
 
         # Deduplicate (errors that appear in recent don't need to be in both)
         recent_set = set(recent)
@@ -329,7 +439,13 @@ async def generate_report(
     log_path = get_logs_dir() / "debug.log"
     diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
 
-    # Build GitHub URL
+    # Scrub the WHOLE payload (not just logs) before it becomes a public issue URL
+    # body and a clipboard copy — member_path, sync errors, custom data paths.
+    diagnostics = _redact_diagnostics(
+        diagnostics, username, nickname, _get_output_dir()
+    )
+
+    # Build GitHub URL from the already-redacted diagnostics
     github_url = _build_github_url(
         context.category, what_doing, what_wrong, diagnostics
     )
@@ -358,5 +474,10 @@ async def get_diagnostics_only():
 
     log_path = get_logs_dir() / "debug.log"
     diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
+
+    # Scrub the whole payload — the diagnostics modal renders/copies these values.
+    diagnostics = _redact_diagnostics(
+        diagnostics, username, nickname, _get_output_dir()
+    )
 
     return diagnostics

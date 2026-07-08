@@ -15,6 +15,7 @@ import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
+import { persisted } from '../../../core/persistence/persisted';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -134,7 +135,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
         // Check cache first
         const cacheKey = `translation:blog:${blog.id}:${translationTargetLanguage}`;
-        const cached = localStorage.getItem(cacheKey);
+        const cachedMap = await persisted.getTranslations([cacheKey]);
+        const cached = cachedMap[cacheKey] ?? null;
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
@@ -175,9 +177,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             if (data.ok && data.translations) {
                 setBlogTranslations(data.translations);
                 setTranslationPartial(data.partial ?? false);
-                try {
-                    localStorage.setItem(cacheKey, JSON.stringify(data.translations));
-                } catch { /* full */ }
+                persisted.putTranslations({ [cacheKey]: JSON.stringify(data.translations) }).catch(() => {});
             } else {
                 throw new Error('Translation returned not ok');
             }

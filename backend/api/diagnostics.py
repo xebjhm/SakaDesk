@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, cast
+import asyncio
 import platform
 import sys
 import json
@@ -12,6 +13,7 @@ from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
 from backend.version import APP_VERSION
+from backend.api.report import _get_username, _get_nickname, scrub_log_line
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
@@ -96,10 +98,22 @@ def _get_token_expiry_seconds(token: str) -> Optional[int]:
     return cast(Optional[int], get_jwt_remaining_seconds(token))
 
 
+# SD-BE-API-01: cache the disk-usage walk. Previously GET /api/diagnostics
+# walked the whole output tree TWICE per request (this uncached summary plus the
+# detailed breakdown below). Cache the summary on the same 60s TTL so a request
+# does at most one extra walk, and repeated polls do none.
+_disk_usage_cache: dict = {"data": None, "expires": 0}
+
+
 def _get_disk_usage(output_dir: str) -> tuple[float, int]:
-    """Get disk usage statistics for output directory.
+    """Get disk usage statistics for output directory (60-second cache).
     Returns: (size_mb, file_count)
     """
+    now = time.time()
+    if _disk_usage_cache["data"] and now < _disk_usage_cache["expires"]:
+        cached: tuple[float, int] = _disk_usage_cache["data"]  # type: ignore[assignment]
+        return cached
+
     total_size = 0
     file_count = 0
     size_mb = 0.0
@@ -119,7 +133,36 @@ def _get_disk_usage(output_dir: str) -> tuple[float, int]:
     except Exception:
         pass
 
-    return round(size_mb, 2), file_count
+    result = (round(size_mb, 2), file_count)
+    _disk_usage_cache["data"] = result
+    _disk_usage_cache["expires"] = now + 60
+    return result
+
+
+def _tail_lines(path: Path, max_lines: int, max_bytes: int = 1_000_000) -> list[str]:
+    """Return the last ``max_lines`` lines of ``path`` without reading it all.
+
+    SD-BE-API-01: debug.log is DEBUG-level and can grow to many MB; slurping it
+    with ``readlines()`` on every diagnostics request wastes memory and time.
+    This seeks to the end and reads at most ``max_bytes`` from the tail, which
+    bounds the work regardless of total file size. Lines include their trailing
+    newline (as ``readlines`` does), so callers can ``.strip()`` uniformly.
+    """
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2)  # end
+            size = f.tell()
+            read_size = min(size, max_bytes)
+            f.seek(size - read_size)
+            chunk = f.read(read_size)
+    except OSError:
+        return []
+    text = chunk.decode("utf-8", errors="ignore")
+    # If we truncated mid-file, drop the (likely partial) first line.
+    lines = text.splitlines(keepends=True)
+    if read_size < size and lines:
+        lines = lines[1:]
+    return lines[-max_lines:]
 
 
 _disk_cache: dict = {"data": None, "expires": 0}
@@ -170,8 +213,17 @@ def _get_detailed_disk_usage(output_dir: str) -> dict:
 
 @router.get("", response_model=DiagnosticsResponse)
 async def get_diagnostics():
-    """Collect comprehensive system diagnostics for debugging."""
+    """Collect comprehensive system diagnostics for debugging.
 
+    SD-BE-API-01: the gather does blocking keyring reads, a settings-file read,
+    the output-dir disk walk(s) and log tail-reads — all off-loaded to a single
+    thread so the polled endpoint never freezes the event loop.
+    """
+    return await asyncio.to_thread(_collect_diagnostics)
+
+
+def _collect_diagnostics() -> DiagnosticsResponse:
+    """Blocking diagnostics gather — call via ``asyncio.to_thread`` (SD-BE-API-01)."""
     # System Info
     sys_info = SystemInfo(
         os=platform.system(),
@@ -312,38 +364,50 @@ async def get_diagnostics():
 
     # Logs with categorization
     # debug.log has everything (recent context); error.log is pre-filtered
+    #
+    # SEC-5: scrub every emitted log line for PII (OS username, cached nickname)
+    # and token-like/bearer/JWT/long-secret strings before returning it, matching
+    # report.py's redaction. Diagnostics is reachable without auth, so raw log
+    # tails must never leak credentials or paths.
+    username = _get_username()
+    nickname = _get_nickname()
+
+    def _scrub(line: str) -> str:
+        return scrub_log_line(line.strip(), username, nickname)
+
     logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
-    all_lines: list[str] = []
+    # SD-BE-API-01: tail-read the logs instead of slurping the whole (possibly
+    # multi-MB DEBUG-level) file. `debug_tail` bounds the work regardless of
+    # total size; it covers both the recent-50 and the error.log-missing fallback.
+    debug_tail: list[str] = []
     try:
         log_dir = get_logs_dir()
         if log_dir.exists():
             # Recent logs from debug.log (last 50 lines)
             debug_log = log_dir / "debug.log"
             if debug_log.exists():
-                with open(debug_log, "r", encoding="utf-8", errors="ignore") as f:
-                    all_lines = f.readlines()
-                    logs_summary.recent = [line.strip() for line in all_lines[-50:]]
+                debug_tail = _tail_lines(debug_log, 2000)
+                logs_summary.recent = [_scrub(line) for line in debug_tail[-50:]]
 
             # Errors/warnings from dedicated error.log (smaller, faster)
             error_log = log_dir / "error.log"
             if error_log.exists():
-                with open(error_log, "r", encoding="utf-8", errors="ignore") as f:
-                    err_lines = f.readlines()
-                    errors = [
-                        line.strip() for line in err_lines if "[error" in line.lower()
-                    ]
-                    warnings = [
-                        line.strip() for line in err_lines if "[warning" in line.lower()
-                    ]
-                    logs_summary.errors = errors[-50:]
-                    logs_summary.warnings = warnings[-50:]
+                err_lines = _tail_lines(error_log, 2000)
+                errors = [
+                    _scrub(line) for line in err_lines if "[error" in line.lower()
+                ]
+                warnings = [
+                    _scrub(line) for line in err_lines if "[warning" in line.lower()
+                ]
+                logs_summary.errors = errors[-50:]
+                logs_summary.warnings = warnings[-50:]
             elif debug_log.exists():
                 # Fallback: extract from debug.log if error.log doesn't exist yet
                 errors = [
-                    line.strip() for line in all_lines if "[error" in line.lower()
+                    _scrub(line) for line in debug_tail if "[error" in line.lower()
                 ]
                 warnings = [
-                    line.strip() for line in all_lines if "[warning" in line.lower()
+                    _scrub(line) for line in debug_tail if "[warning" in line.lower()
                 ]
                 logs_summary.errors = errors[-50:]
                 logs_summary.warnings = warnings[-50:]

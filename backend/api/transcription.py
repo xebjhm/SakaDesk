@@ -21,6 +21,7 @@ from backend.services.transcription_service import (
     TranscriptionResult,
     GeminiTranscriptionProvider,
 )
+from pysaka.media import get_audio_metadata
 from backend.api.content import get_output_dir, validate_path_within_dir
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.service_utils import validate_service, get_service_display_name
@@ -108,6 +109,33 @@ async def transcribe(request: TranscribeRequest):
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
 
+    # Skip videos with no audio track: sending a silent video to Gemini yields
+    # a fabricated "best guess" transcript, so store an empty no_speech result
+    # the UI can label clearly. Reuse the is_muted flag pysaka computes at sync
+    # time (same detection that drives the player's audio/volume control);
+    # older messages predate that flag, so compute it on demand when absent.
+    is_muted = message.get("is_muted")
+    media_duration = message.get("media_duration")
+    if is_muted is None and media_type == "video":
+        meta = await asyncio.to_thread(get_audio_metadata, media_path, media_type)
+        is_muted = meta.get("is_muted")
+        if media_duration is None:
+            media_duration = meta.get("duration")
+    if is_muted:
+        result = TranscriptionResult(
+            message_id=request.message_id,
+            media_type=media_type,
+            language="ja",
+            model="",
+            duration_seconds=round(media_duration or 0.0, 2),
+            full_text="",
+            segments=[],
+            no_speech=True,
+        )
+        await asyncio.to_thread(storage.save, member_dir, result)
+        logger.info("Transcription skipped: no audio", message_id=request.message_id)
+        return {"ok": True, "transcription": _result_to_dict(result)}
+
     try:
         api_key = _get_gemini_api_key()
 
@@ -160,6 +188,13 @@ async def transcribe(request: TranscribeRequest):
 
         duration = segments[-1].end if segments else 0.0
 
+        # SD-BE-API-03: a present-but-silent audio track makes Gemini honour the
+        # "return an empty segments array" rule (transcription_service.py:44-46).
+        # Flag that empty result as no_speech so the UI shows the localized "no
+        # audible speech" note instead of caching a blank, broken-looking panel
+        # forever (TranscriptPanel only shows the note when no_speech is true).
+        no_speech = not segments and not gemini_text.strip()
+
         result = TranscriptionResult(
             message_id=request.message_id,
             media_type=media_type,
@@ -168,10 +203,11 @@ async def transcribe(request: TranscribeRequest):
             duration_seconds=round(duration, 2),
             full_text=gemini_text,
             segments=segments,
+            no_speech=no_speech,
         )
 
-        # Save to JSON sidecar
-        storage.save(member_dir, result)
+        # Save to JSON sidecar (blocking file I/O — offload like line 135 does)
+        await asyncio.to_thread(storage.save, member_dir, result)
 
         logger.info(
             "Transcription complete",
@@ -281,6 +317,7 @@ def _result_to_dict(result: TranscriptionResult) -> dict:
         "created_at": result.created_at,
         "duration_seconds": result.duration_seconds,
         "full_text": result.full_text,
+        "no_speech": result.no_speech,
         "segments": [
             {
                 "start": s.start,

@@ -218,9 +218,18 @@ class TestFormatDuration:
 class TestDiskUsage:
     """Tests for _get_disk_usage helper."""
 
+    def _reset_cache(self):
+        # SD-BE-API-01: _get_disk_usage now caches on a 60s TTL; reset between
+        # cases so each exercises a fresh walk rather than a stale cached result.
+        from backend.api.diagnostics import _disk_usage_cache
+
+        _disk_usage_cache["data"] = None
+        _disk_usage_cache["expires"] = 0
+
     def test_nonexistent_dir(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         size_mb, count = _get_disk_usage(str(tmp_path / "missing"))
         assert size_mb == 0.0
         assert count == 0
@@ -228,6 +237,7 @@ class TestDiskUsage:
     def test_empty_dir(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         size_mb, count = _get_disk_usage(str(tmp_path))
         assert size_mb == 0.0
         assert count == 0
@@ -235,6 +245,7 @@ class TestDiskUsage:
     def test_dir_with_files(self, tmp_path):
         from backend.api.diagnostics import _get_disk_usage
 
+        self._reset_cache()
         f1 = tmp_path / "a.bin"
         # Write >10 KB so rounding to 2 decimals still > 0.00
         f1.write_bytes(b"x" * 10240)
@@ -283,3 +294,33 @@ class TestDetailedDiskUsage:
         # Clean up
         _disk_cache["data"] = None
         _disk_cache["expires"] = 0
+
+
+class TestDiagnosticsScrubbing:
+    """SEC-5 — diagnostics must scrub secrets from returned log tails."""
+
+    @patch("backend.api.diagnostics.get_logs_dir")
+    @patch("backend.api.diagnostics.get_token_manager")
+    @patch("backend.api.diagnostics.get_settings_path")
+    def test_diagnostics_scrubs_secrets_from_logs(
+        self, mock_settings, mock_tm, mock_logs, tmp_path
+    ):
+        jwt = (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ."
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        (log_dir / "debug.log").write_text(
+            f"[INFO] refreshed access token={jwt} done\n",
+            encoding="utf-8",
+        )
+        mock_settings.return_value = tmp_path / "nonexistent.json"
+        mock_tm.return_value = MagicMock(load_session=MagicMock(return_value=None))
+        mock_logs.return_value = log_dir
+
+        response = client.get("/api/diagnostics")
+        assert response.status_code == 200
+        body = response.text
+        assert jwt not in body
+        assert "[REDACTED_SECRET]" in body

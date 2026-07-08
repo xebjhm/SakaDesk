@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useChatScroll } from './useChatScroll'
 import type { Message } from '../../../types'
+import { persisted } from '../../../core/persistence/persisted'
 
 // Create a minimal message for testing
 const createMessage = (id: number): Message => ({
@@ -18,8 +19,9 @@ const createMessage = (id: number): Message => ({
 describe('useChatScroll hook', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(localStorage.getItem).mockReturnValue(null)
-    vi.mocked(localStorage.setItem).mockClear()
+    vi.spyOn(persisted, 'getConv').mockReturnValue({})
+    vi.spyOn(persisted, 'setConv').mockImplementation(() => {})
+    vi.spyOn(persisted, 'setConvBeacon').mockImplementation(() => {})
   })
 
   it('should return expected shape', () => {
@@ -45,11 +47,11 @@ describe('useChatScroll hook', () => {
     expect(result.current.initialTopMostItemIndex).toBe(2)
   })
 
-  it('should restore position from localStorage on mount', () => {
+  it('should restore position from persisted app-state on mount', () => {
     const messages = [createMessage(101), createMessage(102), createMessage(103)]
 
     // Mock saved position for message ID 102
-    vi.mocked(localStorage.getItem).mockReturnValue('102')
+    vi.spyOn(persisted, 'getConv').mockReturnValue({ value: '102' })
 
     const { result } = renderHook(() =>
       useChatScroll('room-1', messages)
@@ -63,7 +65,7 @@ describe('useChatScroll hook', () => {
     const messages = [createMessage(1), createMessage(2), createMessage(3)]
 
     // Mock saved position with ID that doesn't exist in messages
-    vi.mocked(localStorage.getItem).mockReturnValue('999')
+    vi.spyOn(persisted, 'getConv').mockReturnValue({ value: '999' })
 
     const { result } = renderHook(() =>
       useChatScroll('room-1', messages)
@@ -73,12 +75,12 @@ describe('useChatScroll hook', () => {
     expect(result.current.initialTopMostItemIndex).toBe(2)
   })
 
-  it('should use different localStorage keys for different rooms', () => {
+  it('should use different persisted keys for different rooms', () => {
     const messages = [createMessage(1)]
 
     renderHook(() => useChatScroll('room-A', messages))
 
-    expect(localStorage.getItem).toHaveBeenCalledWith('sakadesk_scroll_room-A')
+    expect(persisted.getConv).toHaveBeenCalledWith('sakadesk_scroll_room-A', {})
   })
 
   it('should save position immediately when savePositionImmediate is called', () => {
@@ -98,7 +100,7 @@ describe('useChatScroll hook', () => {
       result.current.savePositionImmediate()
     })
 
-    expect(localStorage.setItem).toHaveBeenCalledWith('sakadesk_scroll_room-1', '102')
+    expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
   })
 
   it('should handle empty messages array', () => {
@@ -107,5 +109,34 @@ describe('useChatScroll hook', () => {
     )
 
     expect(result.current.initialTopMostItemIndex).toBe(0)
+  })
+
+  // SD-FE-STATE-03: a scroll-then-close within the 500ms debounce must still
+  // persist the last position — flushed on pagehide instead of being dropped.
+  it('flushes the pending scroll position on pagehide', () => {
+    const messages = [createMessage(101), createMessage(102), createMessage(103)]
+
+    const { result } = renderHook(() => useChatScroll('room-1', messages))
+
+    // Scroll to index 1 (the debounce timer is now pending, nothing saved yet).
+    act(() => {
+      result.current.handleRangeChanged({ startIndex: 1, endIndex: 2 })
+    })
+    expect(persisted.setConv).not.toHaveBeenCalled()
+
+    // Window is being hidden/closed before the 500ms debounce elapses.
+    act(() => {
+      window.dispatchEvent(new Event('pagehide'))
+    })
+
+    // Flushed via the keepalive beacon path so it survives context teardown.
+    expect(persisted.setConvBeacon).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
+  })
+
+  it('removes the pagehide listener on unmount', () => {
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    const { unmount } = renderHook(() => useChatScroll('room-1', [createMessage(1)]))
+    unmount()
+    expect(removeSpy).toHaveBeenCalledWith('pagehide', expect.any(Function))
   })
 })

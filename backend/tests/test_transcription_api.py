@@ -42,8 +42,134 @@ def _setup_voice_member(tmp_path: Path) -> str:
     return _MEMBER_REL
 
 
+def _setup_video_member(tmp_path: Path, *, is_muted=None) -> str:
+    """Create a member dir with a video message + its media file on disk.
+
+    ``is_muted`` mirrors the flag pysaka's sync computes via get_audio_metadata
+    (True = the video has no audio track). Pass None to omit it, simulating an
+    older message synced before the flag was persisted.
+    """
+    member_dir = tmp_path / _MEMBER_REL
+    (member_dir / "video").mkdir(parents=True)
+    (member_dir / "video" / "600.mp4").write_bytes(b"\x00\x00\x00\x18ftypmp42")
+    msg = {
+        "id": 600,
+        "type": "video",
+        "media_file": "messages/34 金村 美玖/58 金村 美玖/video/600.mp4",
+    }
+    if is_muted is not None:
+        msg["is_muted"] = is_muted
+    (member_dir / "messages.json").write_text(
+        json.dumps({"messages": [msg]}), encoding="utf-8"
+    )
+    return _MEMBER_REL
+
+
 class TestTranscribePost:
     """POST /transcribe branch coverage: cache fast path, no-key, error mapping."""
+
+    def test_muted_video_via_stored_flag_returns_no_speech_without_ai(
+        self, tmp_path, monkeypatch
+    ):
+        """A video already flagged is_muted at sync time short-circuits to an
+        empty no_speech transcript and never reaches the Gemini path."""
+        member_rel = _setup_video_member(tmp_path, is_muted=True)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+        with patch.object(transcription_api, "_get_gemini_api_key") as mock_key:
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 600,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()["transcription"]
+        assert body["no_speech"] is True
+        assert body["segments"] == []
+        assert body["full_text"] == ""
+        mock_key.assert_not_called()  # never entered the AI path
+
+        cached = transcription_api.storage.load(tmp_path / member_rel, 600)
+        assert cached is not None and cached.no_speech is True
+
+    def test_muted_video_without_stored_flag_probes_then_skips(
+        self, tmp_path, monkeypatch
+    ):
+        """When is_muted was never persisted (older messages), the endpoint
+        computes it on demand via the existing get_audio_metadata detection and
+        still skips Gemini for an audio-less video."""
+        member_rel = _setup_video_member(tmp_path, is_muted=None)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+        with (
+            patch.object(transcription_api, "_get_gemini_api_key") as mock_key,
+            patch.object(
+                transcription_api,
+                "get_audio_metadata",
+                return_value={"duration": 2.4, "is_muted": True},
+            ) as mock_probe,
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 600,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 200
+        assert resp.json()["transcription"]["no_speech"] is True
+        mock_probe.assert_called_once()
+        mock_key.assert_not_called()
+
+    def test_empty_gemini_result_sets_no_speech(self, tmp_path, monkeypatch):
+        """SD-BE-API-03: a present-but-silent audio track makes Gemini return an
+        empty transcript. The success path must set no_speech=True (not leave it
+        False) so the cached result renders the localized "no audible speech"
+        note instead of a blank, broken-looking panel forever."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+
+        async def _empty(*a, **k):
+            return "", []  # silent audio → empty text + no segments
+
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(transcription_api, "_get_gemini_api_key", return_value="k"),
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={
+                        "translation_provider": "gemini",
+                        "translation_model": "gemini-3.1-flash-lite",
+                    }
+                ),
+            ),
+            patch.object(
+                transcription_api.GeminiTranscriptionProvider, "transcribe", new=_empty
+            ),
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 200
+        body = resp.json()["transcription"]
+        assert body["no_speech"] is True
+        assert body["segments"] == []
+        assert body["full_text"] == ""
+
+        # And it is persisted with no_speech=True so subsequent loads show the note.
+        cached = transcription_api.storage.load(tmp_path / member_rel, 500)
+        assert cached is not None and cached.no_speech is True
 
     def test_cache_hit_returns_without_calling_ai(self, tmp_path, monkeypatch):
         (tmp_path / _MEMBER_REL).mkdir(parents=True)

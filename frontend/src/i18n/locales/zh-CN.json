@@ -203,7 +203,8 @@
     "error": "同步错误",
     "unknownError": "未知错误",
     "sessionExpired": "认证会话已过期。请重新登录以继续使用服务。",
-    "refreshFailed": "认证意外失败。请重新登录以继续使用服务。如果问题持续，请报告此问题。"
+    "refreshFailed": "认证意外失败。请重新登录以继续使用服务。如果问题持续，请报告此问题。",
+    "cancelled": "已取消同步"
   },
   "about": {
     "title": "关于",
@@ -416,7 +417,10 @@
     "noLetters": "尚未发送过信件",
     "noTextContent": "无文字内容",
     "noContent": "无内容",
-    "tapToClose": "点击任意位置关闭"
+    "tapToClose": "点击任意位置关闭",
+    "noGroupId": "没有可用的群组 ID",
+    "noService": "没有活动的服务",
+    "fetchFailed": "加载信件失败"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -467,7 +471,9 @@
     "subscribedFor": "已订阅",
     "days": "天！",
     "startSubscription": "开始订阅吧！",
-    "retry": "重试"
+    "retry": "重试",
+    "noService": "没有活动的服务",
+    "fetchFailed": "加载连续天数失败"
   },
   "blogGallery": {
     "title": "相册",
@@ -483,6 +489,7 @@
     "transcribing": "辨识中...",
     "transcript": "语音内容",
     "noTranscript": "暂无文字",
+    "noSpeech": "没有语音内容",
     "clickToJump": "点击跳转",
     "failed": "辨识失败",
     "cc": "字幕",
@@ -514,7 +521,8 @@
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
-      "savedSecurely": "已安全保存在凭据管理器中"
+      "savedSecurely": "已安全保存在凭据管理器中",
+      "keyMissing": "尚未保存 API 密钥，翻译无法使用。请在上方输入密钥。"
     },
     "error": {
       "noProvider": "请在设置中配置翻译服务提供商",

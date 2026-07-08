@@ -13,6 +13,7 @@ import structlog
 import subprocess
 from pathlib import Path
 from typing import Optional, cast
+from urllib.parse import urlparse
 from dataclasses import dataclass
 
 import httpx
@@ -26,6 +27,24 @@ GITHUB_REPO = "xebjhm/SakaDesk"
 
 # Maximum installer size (500 MB) — abort download if exceeded
 MAX_INSTALLER_SIZE = 500 * 1024 * 1024
+
+# The installer URL comes from the GitHub release JSON; only fetch over HTTPS
+# from GitHub-controlled hosts so a tampered/redirected URL can't point the
+# download at an arbitrary origin (SEC-4).
+_ALLOWED_DOWNLOAD_HOSTS = {
+    "github.com",
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+}
+
+
+def _is_allowed_download_url(url: str) -> bool:
+    """Return True if ``url`` is HTTPS on an allowlisted GitHub host."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        return False
+    host = parsed.hostname or ""
+    return host in _ALLOWED_DOWNLOAD_HOSTS or host.endswith(".githubusercontent.com")
 
 
 @dataclass
@@ -114,6 +133,11 @@ async def download_installer(
     Returns:
         Path to verified installer, or None on failure
     """
+    # SEC-4: reject non-HTTPS / non-GitHub URLs before touching the network.
+    if not _is_allowed_download_url(info.url):
+        logger.error("Refusing installer download from disallowed URL", url=info.url)
+        return None
+
     # Create upgrade directory in app data (survives reboot better than system temp)
     upgrade_dir = cast(Path, get_app_data_dir() / "upgrade")
     upgrade_dir.mkdir(parents=True, exist_ok=True)
@@ -133,6 +157,16 @@ async def download_installer(
             async with client.stream("GET", info.url) as response:
                 if response.status_code != 200:
                     logger.error(f"Download failed with status: {response.status_code}")
+                    return None
+
+                # SEC-4: redirects are followed, so re-validate the URL we
+                # actually landed on before reading any bytes — a redirect off
+                # GitHub must be rejected.
+                if not _is_allowed_download_url(str(response.url)):
+                    logger.error(
+                        "Installer download redirected to disallowed URL",
+                        final_url=str(response.url),
+                    )
                     return None
 
                 total = int(response.headers.get("content-length", 0))

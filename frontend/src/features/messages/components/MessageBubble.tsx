@@ -472,6 +472,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             transcription && (
                                 <TranscriptPanel
                                     segments={transcription.segments}
+                                    noSpeech={transcription.no_speech}
                                     currentTime={playerTime}
                                     onSeek={setSeekTarget}
                                     onRerun={retriggerTranscription}

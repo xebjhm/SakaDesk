@@ -91,3 +91,32 @@ def test_config_caches_keyring_read(client, monkeypatch):
     translation._invalidate_key_status_cache()
     client.get("/api/translation/config")
     assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_translate_no_key_invalidates_stale_status_cache(monkeypatch):
+    """Coherence: the key can be removed out-of-band (installer uninstall, another
+    instance) while the running app's status cache still reports it present, so
+    /config shows 'saved securely' while translate (a direct keyring read) fails
+    with no_api_key. The failing translate must invalidate the stale status cache
+    so the next /config open reflects reality instead of falsely reassuring."""
+    from backend.api.errors import CodedHTTPException
+
+    async def fake_load_config():
+        return {
+            "translation_provider": "gemini",
+            "translation_model": DEFAULT_GEMINI_MODEL,
+        }
+
+    monkeypatch.setattr(translation, "load_config", fake_load_config)
+    monkeypatch.setattr(
+        translation, "_load_api_key", lambda: None
+    )  # key gone from keyring
+    # Stale "present" status (warmed while the key still existed).
+    translation._key_status_cache = (True, "AIza...12")
+
+    with pytest.raises(CodedHTTPException) as exc_info:
+        await translation._get_provider_from_config()
+
+    assert exc_info.value.code == "no_api_key"
+    assert translation._key_status_cache is None  # cleared → /config self-heals

@@ -172,6 +172,147 @@ class TestBatchMissing:
         assert body["missing"] == ["2"]
 
 
+class TestProviderModelRepair:
+    """SD-BE-API-08: the stale-model repair must not force a Gemini model id onto
+    a non-Gemini provider."""
+
+    @pytest.mark.asyncio
+    async def test_openai_model_not_repaired_to_gemini(self):
+        from backend.api import translation as translation_api
+
+        with patch(
+            "backend.api.translation.load_config",
+            new=AsyncMock(
+                return_value={
+                    "translation_provider": "openai",
+                    "translation_model": "gpt-4o-mini",
+                }
+            ),
+        ):
+            with patch("backend.api.translation._load_api_key", return_value="k"):
+                provider = await translation_api._get_provider_from_config()
+
+        # The configured OpenAI model must be preserved, not overwritten with the
+        # default Gemini model id (which would 404 at api.openai.com).
+        assert isinstance(provider, translation_api.OpenAIProvider)
+        assert provider._model == "gpt-4o-mini"
+
+    @pytest.mark.asyncio
+    async def test_gemini_stale_model_still_repaired(self):
+        from backend.api import translation as translation_api
+
+        with patch(
+            "backend.api.translation.load_config",
+            new=AsyncMock(
+                return_value={
+                    "translation_provider": "gemini",
+                    "translation_model": "gemini-obsolete-preview",
+                }
+            ),
+        ):
+            with patch("backend.api.translation._load_api_key", return_value="k"):
+                provider = await translation_api._get_provider_from_config()
+
+        assert isinstance(provider, translation_api.GeminiProvider)
+        assert provider._model == translation_api.DEFAULT_GEMINI_MODEL
+
+
+class TestBatchPlaceholders:
+    """SD-BE-API-09: batch translate must apply the same %%% nickname-placeholder
+    handling the single-message path does."""
+
+    def test_batch_tokenizes_and_restores_nickname(self, tmp_path, monkeypatch):
+        from backend.api import translation as translation_api
+
+        member_rel = "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+        member_dir = tmp_path / member_rel
+        member_dir.mkdir(parents=True)
+        # Message content carries the raw %%% placeholder.
+        (member_dir / "messages.json").write_text(
+            json.dumps({"messages": [{"id": 1, "content": "%%%おはよう"}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
+
+        captured: dict = {}
+
+        class _CapturingProvider:
+            async def translate(self, prompt, system_instruction=None):
+                captured["prompt"] = prompt
+                # The model is instructed to preserve {{NICKNAME}}; echo it back.
+                return json.dumps({"1": "{{NICKNAME}} good morning"})
+
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=_CapturingProvider()),
+        ):
+            resp = client.post(
+                "/api/translation/translate-batch",
+                json={
+                    "type": "messages",
+                    "message_ids": [1],
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "target_language": "en",
+                    "user_nickname": "みく",
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # The raw %%% must be tokenized (never sent verbatim) to the LLM ...
+        assert "%%%" not in captured["prompt"]
+        assert translation_api._NICKNAME_TOKEN in captured["prompt"]
+        # ... and the nickname restored in the returned translation.
+        assert body["translations"]["1"] == "みく good morning"
+        assert translation_api._NICKNAME_TOKEN not in body["translations"]["1"]
+
+    def test_batch_no_nickname_leaves_placeholder_raw(self, tmp_path, monkeypatch):
+        """Regression: with NO nickname configured, %%% must NOT be tokenized —
+        otherwise the unrestored {{NICKNAME}} token leaks into the user-visible
+        translation instead of the original placeholder."""
+        from backend.api import translation as translation_api
+
+        member_rel = "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+        member_dir = tmp_path / member_rel
+        member_dir.mkdir(parents=True)
+        (member_dir / "messages.json").write_text(
+            json.dumps({"messages": [{"id": 1, "content": "%%%おはよう"}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
+
+        captured: dict = {}
+
+        class _CapturingProvider:
+            async def translate(self, prompt, system_instruction=None):
+                captured["prompt"] = prompt
+                return json.dumps({"1": "good morning"})
+
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=_CapturingProvider()),
+        ):
+            resp = client.post(
+                "/api/translation/translate-batch",
+                json={
+                    "type": "messages",
+                    "message_ids": [1],
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "target_language": "en",
+                    # no user_nickname configured
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # No nickname -> %%% left raw, the {{NICKNAME}} token never appears.
+        assert translation_api._NICKNAME_TOKEN not in captured["prompt"]
+        assert "%%%" in captured["prompt"]
+        assert translation_api._NICKNAME_TOKEN not in body["translations"]["1"]
+
+
 class TestTestConnectionCodes:
     """test-connection distinguishes a rejected key from an unreachable host."""
 
@@ -256,6 +397,50 @@ def test_translation_routes_registered():
         },
     )
     assert response.status_code == 200
+
+
+class TestConfigurePatchSemantics:
+    """SD-BE-API-10: /configure only writes fields the caller sent; a partial
+    update must not null provider/model or delete the stored API key."""
+
+    def test_partial_update_does_not_delete_key_or_clobber_fields(self):
+        writes: dict = {"translation_provider": "gemini", "translation_model": "m"}
+
+        async def fake_update(fn):
+            fn(writes)
+
+        with (
+            patch("backend.api.translation.update_config", new=fake_update),
+            patch("backend.api.translation._delete_api_key") as mock_delete,
+            patch("backend.api.translation._save_api_key") as mock_save,
+        ):
+            resp = client.post(
+                "/api/translation/configure",
+                json={"target_language": "en"},  # only target_language sent
+            )
+        assert resp.status_code == 200
+        # Provider/model left intact ...
+        assert writes["translation_provider"] == "gemini"
+        assert writes["translation_model"] == "m"
+        assert writes["translation_target_language"] == "en"
+        # ... and the API key is neither saved nor deleted on a partial update.
+        mock_delete.assert_not_called()
+        mock_save.assert_not_called()
+
+    def test_explicit_null_provider_clears_key(self):
+        async def fake_update(fn):
+            fn({})
+
+        with (
+            patch("backend.api.translation.update_config", new=fake_update),
+            patch("backend.api.translation._delete_api_key") as mock_delete,
+        ):
+            resp = client.post(
+                "/api/translation/configure",
+                json={"provider": None},  # explicit clear
+            )
+        assert resp.status_code == 200
+        mock_delete.assert_called_once()
 
 
 def test_clear_api_key_endpoint():

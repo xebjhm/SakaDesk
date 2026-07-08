@@ -21,8 +21,22 @@ from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
 )
+from backend.services.shutdown_state import is_shutting_down
 
 logger = structlog.get_logger(__name__)
+
+
+def _configure_connection(conn: sqlite3.Connection) -> None:
+    """Apply the PRAGMAs every SQLite connection in this module must set.
+
+    ``recursive_triggers=ON`` is required so the implicit DELETE performed by
+    ``INSERT OR REPLACE`` fires the ``AFTER DELETE`` triggers that keep the
+    external-content FTS5 tables (``search_fts`` / ``search_blogs_fts``) in
+    sync.  With the SQLite default (OFF) those triggers do not fire on a
+    replace, leaving ghost FTS rows that accumulate on every rebuild.
+    """
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA recursive_triggers=ON")
 
 
 def _strip_html(html: str) -> str:
@@ -210,10 +224,17 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
+
+    # Full rebuild-over-existing: clear stale rows so INSERT OR REPLACE cannot
+    # leave orphaned FTS entries (belt-and-suspenders alongside
+    # recursive_triggers=ON, which also fires the delete triggers on replace).
+    conn.execute("DELETE FROM search_messages")
+    conn.execute("DELETE FROM search_blogs")
+    conn.commit()
 
     count = 0
     batch: list[Tuple[Any, ...]] = []
@@ -491,8 +512,8 @@ def _index_blogs_for_service_process(
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
 
@@ -624,8 +645,8 @@ def _index_members_process(
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
+    _configure_connection(conn)
     conn.executescript(_SCHEMA_SQL)
     _migrate_add_type_column(conn)
 
@@ -759,7 +780,7 @@ class SearchService:
         if self._conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._conn = sqlite3.connect(str(self._db_path))
-            self._conn.execute("PRAGMA journal_mode=WAL")
+            _configure_connection(self._conn)
             self._conn.executescript(_SCHEMA_SQL)
             _migrate_add_type_column(self._conn)
         return self._conn
@@ -773,7 +794,7 @@ class SearchService:
         if self._read_conn is None:
             self._db_path.parent.mkdir(parents=True, exist_ok=True)
             self._read_conn = sqlite3.connect(str(self._db_path))
-            self._read_conn.execute("PRAGMA journal_mode=WAL")
+            _configure_connection(self._read_conn)
             self._read_conn.executescript(_SCHEMA_SQL)
             _migrate_add_type_column(self._read_conn)
         return self._read_conn
@@ -1607,27 +1628,42 @@ class SearchService:
                 "FROM read_states GROUP BY service, group_id"
                 ") rs ON m.service = rs.service AND m.group_id = rs.group_id"
             )
-            # Collect all revealed_ids so they bypass the last_read_id boundary
-            all_revealed: set[int] = set()
+            # Collect revealed_ids so they bypass the last_read_id boundary.
+            # SD-BE-SVC-12: revealed message ids are only unique per
+            # (service, group_id) — a bare `m.message_id IN (...)` would leak a
+            # reveal across services/groups and un-hide a colliding id elsewhere.
+            # Scope each reveal set by its (service, group_id).
+            revealed_by_scope: Dict[Tuple[str, int], set[int]] = {}
             try:
                 rs_rows = conn.execute(
-                    "SELECT revealed_ids FROM read_states WHERE revealed_ids != '[]'"
+                    "SELECT service, group_id, revealed_ids FROM read_states "
+                    "WHERE revealed_ids != '[]'"
                 ).fetchall()
-                for (rids_json,) in rs_rows:
+                for svc_id, gid, rids_json in rs_rows:
                     try:
-                        all_revealed.update(json.loads(rids_json))
+                        ids = json.loads(rids_json)
                     except Exception:
-                        pass
+                        continue
+                    if ids:
+                        revealed_by_scope.setdefault((svc_id, gid), set()).update(ids)
             except Exception:
                 pass
-            if all_revealed:
-                placeholders = ",".join("?" for _ in all_revealed)
+            if revealed_by_scope:
+                reveal_parts: list[str] = []
+                for (svc_id, gid), ids in revealed_by_scope.items():
+                    placeholders = ",".join("?" for _ in ids)
+                    reveal_parts.append(
+                        f"(m.service = ? AND m.group_id = ? "
+                        f"AND m.message_id IN ({placeholders}))"
+                    )
+                    filter_params.append(svc_id)
+                    filter_params.append(gid)
+                    filter_params.extend(list(ids))
                 filter_clauses.append(
-                    f"(rs.last_read_id IS NULL "
-                    f"OR m.message_id <= rs.last_read_id "
-                    f"OR m.message_id IN ({placeholders}))"
+                    "(rs.last_read_id IS NULL "
+                    "OR m.message_id <= rs.last_read_id "
+                    f"OR {' OR '.join(reveal_parts)})"
                 )
-                filter_params.extend(list(all_revealed))
             else:
                 filter_clauses.append(
                     "(rs.last_read_id IS NULL OR m.message_id <= rs.last_read_id)"
@@ -1801,11 +1837,16 @@ class SearchService:
                 }
 
             union_sql = " UNION ALL ".join(sub_queries)
+            # SD-BE-SVC-03: message_id is only unique per (message_id, service)
+            # (schema: UNIQUE(message_id, service)).  Dedupe by message_id alone
+            # would collapse two different messages that share an id across
+            # services into one row, silently dropping one service's match and
+            # miscounting.  Group by (message_id, service) to keep both.
             data_sql = (
                 f"SELECT message_id, content, content_normalized, service, group_id, group_name, "
                 f"member_id, member_name, timestamp, type, MIN(match_type) as match_type "
                 f"FROM ({union_sql}) "
-                f"GROUP BY message_id "
+                f"GROUP BY message_id, service "
                 f"ORDER BY match_type, timestamp DESC"
             )
 
@@ -2010,6 +2051,12 @@ class SearchService:
                 return 0
 
             conn = self._get_conn()
+            # Full rebuild-over-existing: clear stale rows so INSERT OR REPLACE
+            # cannot leave orphaned FTS entries (belt-and-suspenders alongside
+            # recursive_triggers=ON, which fires the delete triggers on replace).
+            conn.execute("DELETE FROM search_messages")
+            conn.execute("DELETE FROM search_blogs")
+            conn.commit()
             batch: list[Tuple[Any, ...]] = []
             normalize_count = 0
 
@@ -2580,14 +2627,40 @@ class SearchService:
             "db_size_bytes": db_size,
         }
 
+    def _close_read_conn_sync(self) -> None:
+        """Close the read connection from its OWNING thread (read executor).
+
+        The read connection is created with ``check_same_thread=True`` on the
+        read-executor thread, so it must be closed there — closing it from the
+        write executor (as ``_clear_db_sync`` runs) raises
+        ``sqlite3.ProgrammingError``.  ``rebuild`` submits this to the read
+        executor before clearing the DB.
+        """
+        if self._read_conn is not None:
+            self._read_conn.close()
+            self._read_conn = None
+
     def _clear_db_sync(self) -> None:
-        """Close connections and delete the DB file. Used before rebuild."""
+        """Close connections and delete the DB file. Used before rebuild.
+
+        The write connection (``_conn``) is closed here on the write executor,
+        which is where this method runs.  The read connection is normally
+        closed separately on the read executor via ``_close_read_conn_sync``
+        (SVC-I4) — closing it here would cross threads and raise
+        ``sqlite3.ProgrammingError``.  We still clear it defensively when it
+        happens to be owned by the current thread (e.g. single-threaded tests
+        that call this method directly), swallowing the cross-thread error.
+        """
         if self._conn is not None:
             self._conn.close()
             self._conn = None
         if self._read_conn is not None:
-            self._read_conn.close()
-            self._read_conn = None
+            try:
+                self._read_conn.close()
+                self._read_conn = None
+            except sqlite3.ProgrammingError:
+                # Owned by the read-executor thread; rebuild() closes it there.
+                pass
         if self._db_path.exists():
             self._db_path.unlink()
 
@@ -2682,6 +2755,7 @@ class SearchService:
         still serve (partial) data from committed rows without blocking.
         """
         conn = sqlite3.connect(str(self._db_path))
+        _configure_connection(conn)
         try:
             return self._get_members_from_conn(conn)
         finally:
@@ -2785,6 +2859,7 @@ class SearchService:
             return True
         try:
             conn = sqlite3.connect(str(self._db_path))
+            _configure_connection(conn)
             try:
                 row = conn.execute(
                     "SELECT value FROM search_meta WHERE key = 'last_full_build'"
@@ -2816,7 +2891,10 @@ class SearchService:
         # Failsafe: if the full build never completed, trigger one.
         # Unlike before, we still return partial results via the read
         # executor (which uses a separate connection, not blocked by writes).
-        if self._needs_build() and not self._building:
+        # C1c: never spawn a NEW writer once shutdown has begun -- an
+        # untracked task created here would still be running (and writing
+        # search_index.db) after quiesce_writers()/data_lock.release().
+        if self._needs_build() and not self._building and not is_shutting_down():
             logger.info(
                 "Full index missing at search time, triggering background build (failsafe)"
             )
@@ -2900,8 +2978,12 @@ class SearchService:
             "Incremental index update (process)", service=service, new_messages=count
         )
         # Primary trigger: if a full build has never completed (fresh install),
-        # run one now in the background.
-        if self._needs_build() and not self._build_lock.locked():
+        # run one now in the background. C1c: not during shutdown (see above).
+        if (
+            self._needs_build()
+            and not self._build_lock.locked()
+            and not is_shutting_down()
+        ):
             logger.info("No full index found, triggering background build")
             asyncio.create_task(self.build_full_index())
         return count
@@ -2925,8 +3007,12 @@ class SearchService:
         return await loop.run_in_executor(self._read_executor, self._get_status_sync)
 
     async def rebuild(self) -> None:
-        # Close connections and delete DB on the write executor
         loop = asyncio.get_running_loop()
+        # Close the read connection on its OWNING thread (the read executor);
+        # closing it from the write executor raises sqlite3.ProgrammingError
+        # and permanently breaks rebuild for the session (SVC-I4).
+        await loop.run_in_executor(self._read_executor, self._close_read_conn_sync)
+        # Close the write connection and delete DB on the write executor.
         await loop.run_in_executor(self._executor, self._clear_db_sync)
         # Rebuild in process pool
         await self.build_full_index()
@@ -2977,7 +3063,7 @@ class SearchService:
         missing = await loop.run_in_executor(
             self._read_executor, self._check_missing_services_sync
         )
-        if missing and not self._building:
+        if missing and not self._building and not is_shutting_down():
             logger.info(
                 "Found unindexed services, triggering rebuild",
                 missing=list(missing),
@@ -3005,23 +3091,36 @@ def get_search_service() -> SearchService:
 
 
 def shutdown_search_service() -> None:
-    """Close DB connections and executors. Called on app shutdown."""
+    """Close DB connections and executors. Called on app shutdown.
+
+    I1: the write barrier's guarantee is "no write after release", so every
+    writer here must be confirmed DEAD (not merely asked to stop) before
+    this function returns. This function is only ever invoked off the event
+    loop (via ``asyncio.to_thread`` in ``stop_search_service``), so blocking
+    here to actually join workers cannot stall the UI/event loop.
+    """
     global _search_service
     if _search_service is not None:
         logger.info("search_service_shutdown_start")
         try:
-            _search_service._write_executor.shutdown(wait=False)
+            # wait=True: a submitted write (e.g. an in-flight read-state
+            # upsert) must actually finish before we consider this writer
+            # drained -- wait=False only stops accepting NEW work, it does
+            # not wait for work already submitted to complete.
+            _search_service._write_executor.shutdown(wait=True)
         except Exception:
             pass
         try:
-            _search_service._read_executor.shutdown(wait=False)
+            _search_service._read_executor.shutdown(wait=True)
         except Exception:
             pass
         try:
             _search_service._build_executor.shutdown(wait=False, cancel_futures=True)
             # ProcessPoolExecutor spawns real child processes that survive
             # shutdown(wait=False). Force-terminate them so they don't hold
-            # file handles open (which blocks the uninstaller on Windows).
+            # file handles open (which blocks the uninstaller on Windows) --
+            # and, for the write barrier, so the build subprocess (which
+            # writes search_index.db) is confirmed dead, not just signalled.
             procs = list(
                 getattr(_search_service._build_executor, "_processes", {}).values()
             )
@@ -3033,6 +3132,16 @@ def shutdown_search_service() -> None:
                     if proc.is_alive():
                         logger.warning("force_killing_build_worker", pid=proc.pid)
                         proc.kill()
+                        proc.join(timeout=3)
+                        if proc.is_alive():
+                            # Should not happen (SIGKILL/TerminateProcess is
+                            # not interceptable) -- but if it does, this is
+                            # exactly the case the write barrier cares about:
+                            # log loudly rather than silently assuming dead.
+                            logger.error(
+                                "build_worker_still_alive_after_kill",
+                                pid=proc.pid,
+                            )
         except Exception:
             pass
         try:
@@ -3049,3 +3158,15 @@ def shutdown_search_service() -> None:
             pass
         _search_service = None
         logger.info("search_service_shutdown_complete")
+
+
+async def stop_search_service() -> None:
+    """Shutdown-barrier hook: close executors/connections, returning only
+    once the search service can no longer write.
+
+    ``shutdown_search_service()`` is synchronous and can block briefly
+    (joining terminated build-worker processes) — run it off the event loop
+    via ``asyncio.to_thread`` so the write barrier can await it without
+    stalling the loop. Idempotent: a no-op if already shut down.
+    """
+    await asyncio.to_thread(shutdown_search_service)

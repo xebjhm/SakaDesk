@@ -8,13 +8,14 @@ import { MemberProfilePopup } from './components/MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
-import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
+import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings, toLocalDateStr } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
+import { persisted } from '../../core/persistence/persisted';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -444,7 +445,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // === READ STATE ===
     const loadReadState = (path: string): ReadState => {
         try {
-            const saved = localStorage.getItem(`read_state_${path}`);
+            const saved = persisted.getConv<{ value?: string }>(`read_state_${path}`, {}).value ?? null;
             return saved ? JSON.parse(saved) : { lastReadId: 0, readCount: 0, revealedIds: [] };
         } catch {
             return { lastReadId: 0, readCount: 0, revealedIds: [] };
@@ -453,7 +454,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     const saveReadState = (path: string, state: ReadState) => {
         try {
-            localStorage.setItem(`read_state_${path}`, JSON.stringify(state));
+            persisted.setConv(`read_state_${path}`, { value: JSON.stringify(state) });
             // Increment version to trigger sidebar refresh
             setReadStateVersion(v => v + 1);
         } catch {
@@ -575,9 +576,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages, readState]);
 
-    // Scroll to first message of a given date (for calendar navigation)
+    // Scroll to first message of a given date (for calendar navigation).
+    // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend
+    // `_local_date`), and bubbles render local time — so match by the message's
+    // LOCAL date, not its raw UTC `timestamp` prefix, or a jump near midnight
+    // lands on the wrong day (or fails to find any message) for non-UTC users.
     const scrollToDate = useCallback((dateStr: string) => {
-        const index = messages.findIndex(m => m.timestamp.startsWith(dateStr));
+        const index = messages.findIndex(m => toLocalDateStr(m.timestamp) === dateStr);
         if (index !== -1) {
             virtuosoRef.current?.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
         }
@@ -625,8 +630,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             const method = currentState ? 'DELETE' : 'POST';
             const url = `/api/favorites/${messageId}?service=${encodeURIComponent(activeService)}`;
             const res = await fetch(url, { method });
+            // SD-CONTRACT-01: the backend returns HTTP 200 with a
+            // {success: false, error} body when the upstream official-API call
+            // fails (expired session, 5xx). Checking only res.ok would leave the
+            // optimistic star lit for a favorite that was never saved (it then
+            // silently vanishes on the next reload/sync). Parse the body and
+            // treat success === false as a failure too.
             if (!res.ok) {
-                throw new Error('Failed to update favorite');
+                throw new Error(`Failed to update favorite (HTTP ${res.status})`);
+            }
+            const body = await res.json().catch(() => null) as { success?: boolean; error?: string } | null;
+            if (body && body.success === false) {
+                throw new Error(body.error || 'Server reported favorite update failed');
             }
         } catch (err) {
             // Revert on failure
@@ -736,19 +751,26 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
                 {/* Virtualized Timeline */}
                 <div
-                    className="flex-1 overflow-hidden relative"
+                    className="flex-1 overflow-hidden relative isolate"
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
-                    style={{
-                        backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
-                        backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
-                            ? `url(${backgroundSettings.imageData})`
-                            : 'none',
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        opacity: backgroundSettings.opacity / 100,
-                    }}
                 >
+                    {/* Background layer — kept separate so the opacity slider fades only the
+                        background image/color, not the message bubbles. CSS opacity applies to
+                        an element AND its whole subtree, so putting it on the shared container
+                        would fade the messages too. `isolate` scopes the -z-10 layer to this box. */}
+                    <div
+                        className="absolute inset-0 -z-10 pointer-events-none"
+                        style={{
+                            backgroundColor: backgroundSettings.type === 'color' ? backgroundSettings.color : DEFAULT_BACKGROUND.color,
+                            backgroundImage: backgroundSettings.type === 'image' && backgroundSettings.imageData
+                                ? `url(${backgroundSettings.imageData})`
+                                : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            opacity: backgroundSettings.opacity / 100,
+                        }}
+                    />
                     {!selectedGroupDir && (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                             <div className="text-center">

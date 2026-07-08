@@ -643,6 +643,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <TranscriptPanel
                         key={messageId}
                         segments={transcription.segments}
+                        noSpeech={transcription.no_speech}
                         currentTime={currentTime}
                         onSeek={handleTranscriptSeek}
                         onRerun={retriggerTranscription}

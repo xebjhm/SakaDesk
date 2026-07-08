@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pysaka import RefreshFailedError, SessionExpiredError
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
+from backend.services.background_tasks import track_background_task
+from backend.services.shutdown_state import is_shutting_down
 from backend.api.progress import progress_manager
 import asyncio
 
@@ -71,6 +73,12 @@ async def start_sync(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
+    # C1c: refuse to spawn a NEW writer once shutdown has begun -- a sync
+    # started after this point would still be running (and writing) after
+    # quiesce_writers()/data_lock.release(), escaping the barrier entirely.
+    if is_shutting_down():
+        raise HTTPException(status_code=503, detail="Application is shutting down")
+
     sync_service = get_sync_service(service)
     if sync_service.running:
         raise HTTPException(
@@ -83,7 +91,12 @@ async def start_sync(
     progress.start_phase("starting", "Starting", 0, 0, "")
     progress.set_detail("Initializing..." + (" (Resyncing)" if force_resync else ""))
 
-    asyncio.create_task(run_sync_task(service, include_inactive, force_resync))
+    # Register the running task on the service so /cancel can target it with a
+    # real task.cancel() (SVC-C1). start_sync also captures this via
+    # asyncio.current_task(); assigning here closes the schedule-delay gap so a
+    # cancel arriving before the coroutine first runs still finds the task.
+    task = asyncio.create_task(run_sync_task(service, include_inactive, force_resync))
+    sync_service._task = task
 
     return {"status": "started", "service": service}
 
@@ -94,6 +107,11 @@ async def verify_media(service: str = Query(..., description="Service to verify"
         validate_service(service)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
+
+    # C1c: see start_sync -- refuse to spawn a new verify writer once
+    # shutdown has begun.
+    if is_shutting_down():
+        raise HTTPException(status_code=503, detail="Application is shutting down")
 
     sync_service = get_sync_service(service)
     if sync_service.running:
@@ -106,7 +124,17 @@ async def verify_media(service: str = Query(..., description="Service to verify"
     progress.start_phase("starting", "Starting", 0, 0, "")
     progress.set_detail("Scanning for missing media...")
 
-    asyncio.create_task(run_verify_task(service))
+    # C1b: route through track_background_task (not a bare create_task) so
+    # drain_background_tasks() -- and thus the shutdown write barrier --
+    # covers this writer.
+    # SD-BE-SVC-02: register the tracked task on the service so /cancel can
+    # target the running verify with a real task.cancel() (verify now claims
+    # the same _task/_generation ownership as start_sync). Assigning here also
+    # closes the schedule-delay gap so a cancel arriving before the coroutine
+    # first runs still finds the task. This serializes verify against a
+    # subsequent start_sync -- exactly one writer per member dir at a time.
+    task = track_background_task(run_verify_task(service), name="verify_media")
+    sync_service._task = task
     return {"status": "started", "service": service}
 
 
@@ -131,10 +159,11 @@ async def get_progress(
 async def cancel_sync(
     service: str = Query(..., description="Service to cancel sync for"),
 ):
-    """Cancel a running sync by resetting the running flag.
+    """Cancel a running sync by cancelling its background task and awaiting unwind.
 
-    Note: This is a force-cancel that resets state. The actual background task
-    may still be running but will be ignored. Use sparingly for stuck syncs.
+    This performs a real ``task.cancel()`` and waits for the task to finish
+    writing/closing files before returning (SVC-C1), so a subsequent ``/start``
+    cannot launch a second concurrent sync over the same output directory.
     """
     try:
         validate_service(service)
@@ -142,11 +171,11 @@ async def cancel_sync(
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
     sync_service = get_sync_service(service)
-    if not sync_service.running:
+    if not sync_service.running and sync_service._task is None:
         return {"status": "not_running", "service": service}
 
-    # Force reset the running flag and progress
-    sync_service.running = False
+    # Real cancel + await unwind so the task stops writing before we return.
+    await sync_service.cancel()
     progress_manager.get(service).reset()
     logger.warning(f"Sync cancelled for {service} by user request")
 

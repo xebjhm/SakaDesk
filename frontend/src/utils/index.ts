@@ -2,6 +2,7 @@
 // Barrel export for utility functions
 
 export { formatName, getShortName, getInitials } from './nameFormatters';
+export { toLocalDateStr } from './dateFormatters';
 export {
   DEFAULT_BACKGROUND,
   loadBackgroundSettings,

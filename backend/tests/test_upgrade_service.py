@@ -525,3 +525,75 @@ class TestDownloadInstaller:
         assert len(calls) > 0
         # Last call should have downloaded == total
         assert calls[-1][0] == len(content)
+
+
+# ── SEC-4: installer download URL allowlist ─────────────────────────
+
+
+class TestDownloadUrlAllowlist:
+    """SEC-4 — installer download is restricted to HTTPS GitHub hosts, before
+    and after redirects."""
+
+    def test_is_allowed_download_url(self):
+        from backend.services.upgrade_service import _is_allowed_download_url
+
+        # Allowed: HTTPS on GitHub-controlled hosts.
+        assert _is_allowed_download_url("https://github.com/x/y/z.exe") is True
+        assert (
+            _is_allowed_download_url("https://objects.githubusercontent.com/a") is True
+        )
+        assert (
+            _is_allowed_download_url("https://release-assets.githubusercontent.com/a")
+            is True
+        )
+        assert _is_allowed_download_url("https://cdn.githubusercontent.com/a") is True
+        # Rejected: non-HTTPS, foreign host, and look-alike host.
+        assert _is_allowed_download_url("http://github.com/x") is False
+        assert _is_allowed_download_url("https://evil.example.com/x.exe") is False
+        assert _is_allowed_download_url("https://github.com.evil.com/x.exe") is False
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_download_rejects_disallowed_url(self, tmp_path):
+        """A non-GitHub info.url is refused before any network call (SEC-4)."""
+        route = respx.get("https://evil.example.com/x.exe").respond(200, content=b"MZ")
+        info = InstallerInfo(
+            url="https://evil.example.com/x.exe",
+            size=2,
+            digest="sha256:" + hashlib.sha256(b"MZ").hexdigest(),
+        )
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            result = await download_installer(info)
+        assert result is None
+        assert not route.called  # short-circuited before the network
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_download_rejects_redirect_off_github(self, tmp_path):
+        """A redirect that leaves GitHub is rejected after being followed (SEC-4).
+
+        Without the fix, follow_redirects=True would fetch (and verify) the body
+        from the redirected host; the post-redirect re-validation returns None.
+        """
+        payload = b"MZfake-installer-bytes"
+        digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+        gh_url = (
+            f"https://github.com/{GITHUB_REPO}/releases/download/v1/"
+            "SakaDesk-1-Setup.exe"
+        )
+        respx.get(gh_url).respond(
+            302, headers={"Location": "https://evil.example.com/x.exe"}
+        )
+        respx.get("https://evil.example.com/x.exe").respond(
+            200,
+            content=payload,
+            headers={"content-length": str(len(payload))},
+        )
+        info = InstallerInfo(url=gh_url, size=len(payload), digest=digest)
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            result = await download_installer(info)
+        assert result is None

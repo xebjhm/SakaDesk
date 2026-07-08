@@ -74,3 +74,109 @@ class TestRedactNickname:
         text = "User alice said hello. Replying to alice now."
         result = _redact_nickname(text, "alice")
         assert result == "User [REDACTED] said hello. Replying to [REDACTED] now."
+
+
+class TestScrubSecrets:
+    """SEC-5 — token/JWT/bearer/long-secret scrubbing for emitted log lines."""
+
+    def test_scrub_jwt(self):
+        from backend.api.report import _scrub_secrets
+
+        jwt = (
+            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        out = _scrub_secrets(f"auth token={jwt} ok")
+        assert jwt not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_bearer(self):
+        from backend.api.report import _scrub_secrets
+
+        out = _scrub_secrets("Authorization: Bearer abc123SECRETtokenvalue0000")
+        assert "abc123SECRETtokenvalue0000" not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_long_hex_secret(self):
+        from backend.api.report import _scrub_secrets
+
+        secret = "deadbeef" * 5  # 40 hex chars
+        out = _scrub_secrets(f"api_key={secret}")
+        assert secret not in out
+        assert "[REDACTED_SECRET]" in out
+
+    def test_scrub_leaves_ordinary_text(self):
+        from backend.api.report import _scrub_secrets
+
+        text = "Sync completed for group 46 in 3.2s"
+        assert _scrub_secrets(text) == text
+
+    def test_scrub_log_line_combines_path_nickname_secret(self):
+        from backend.api.report import scrub_log_line
+
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.ZZZsignatureZZZ"
+        line = f"C:\\Users\\alice\\app.log user=Bob token={jwt}"
+        out = scrub_log_line(line, "alice", "Bob")
+        assert "alice" not in out  # path redacted
+        assert "Bob" not in out  # nickname redacted
+        assert jwt not in out  # secret redacted
+
+
+class TestRedactDiagnostics:
+    """Theme J / SD-FE-GAP-A-01: the whole diagnostics payload (not just logs)
+    must be scrubbed before it reaches the public GitHub-issue URL / clipboard."""
+
+    def test_member_path_reduced_to_group_segment(self):
+        """member_path keeps only the leading group/service; member/message id dropped."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"context": {"member_path": "hinatazaka46/messages/34"}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["context"]["member_path"] == "hinatazaka46/[REDACTED]"
+
+    def test_member_path_backslashes_normalized(self):
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"context": {"member_path": "sakurazaka46\\messages\\7"}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["context"]["member_path"] == "sakurazaka46/[REDACTED]"
+
+    def test_nested_string_paths_and_secrets_scrubbed(self):
+        """Nested values (e.g. sync_state.last_error) get full path/secret scrubbing."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {
+            "sync_state": {
+                "last_error": r"write failed at C:\Users\john\AppData\Local\x.json"
+            }
+        }
+        out = _redact_diagnostics(diag, "john", None)
+        assert "john" not in out["sync_state"]["last_error"]
+
+    def test_custom_output_dir_redacted(self):
+        """A user-chosen output dir outside C:\\Users is redacted when known."""
+        from backend.api.report import _redact_diagnostics
+
+        diag = {
+            "sync_state": {"last_error": r"boom at D:\SakaData\hinatazaka46\m.json"}
+        }
+        out = _redact_diagnostics(diag, "john", None, output_dir=r"D:\SakaData")
+        assert "SakaData" not in out["sync_state"]["last_error"]
+        assert "[REDACTED_DIR]" in out["sync_state"]["last_error"]
+
+    def test_redacted_diag_yields_clean_github_url(self):
+        """Regression: the member name must not survive into the issue URL body."""
+        from backend.api.report import _redact_diagnostics, _build_github_url
+
+        diag = {"context": {"member_path": "hinatazaka46/messages/34"}}
+        safe = _redact_diagnostics(diag, "john", None)
+        url = _build_github_url("playback", "watching", "froze", safe)
+        assert "messages/34" not in url
+        assert "messages%2F34" not in url  # url-encoded form
+
+    def test_non_string_values_preserved(self):
+        from backend.api.report import _redact_diagnostics
+
+        diag = {"system": {"message_id": 34, "ok": True, "ratio": 1.5}}
+        out = _redact_diagnostics(diag, "john", None)
+        assert out["system"] == {"message_id": 34, "ok": True, "ratio": 1.5}

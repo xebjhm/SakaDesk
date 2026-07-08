@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { SyncModal } from './SyncModal';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
@@ -199,5 +199,23 @@ describe('SyncModal', () => {
         expect(screen.getByText('sync.scan')).toBeInTheDocument();
         expect(screen.getByText('sync.syncing')).toBeInTheDocument();
         expect(screen.getByText('sync.download')).toBeInTheDocument();
+    });
+
+    // SD-FE-GAP-B-08: the user must be able to leave a running sync.
+    it('shows a Cancel button while running and calls onCancel', () => {
+        const onCancel = vi.fn();
+        render(<SyncModal syncProgress={baseProgress} onCancel={onCancel} />);
+        const btn = screen.getByText('common.cancel');
+        expect(btn).toBeInTheDocument();
+        fireEvent.click(btn);
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not show a Cancel button once complete', () => {
+        const complete: SyncProgress = { ...baseProgress, state: 'complete', phase: 'complete' };
+        render(<SyncModal syncProgress={complete} onCancel={vi.fn()} onClose={vi.fn()} />);
+        expect(screen.queryByText('common.cancel')).toBeNull();
+        // The terminal state offers Done instead.
+        expect(screen.getByText('common.done')).toBeInTheDocument();
     });
 });

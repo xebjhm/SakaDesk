@@ -43,12 +43,15 @@ configure_logging(
 # === NOW SAFE TO IMPORT OTHER MODULES ===
 import asyncio  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
+from urllib.parse import urlparse  # noqa: E402
 
 import structlog  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
+from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
+from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 from backend.api import (  # noqa: E402
     auth,
     content,
@@ -66,9 +69,70 @@ from backend.api import (  # noqa: E402
     read_states,
     transcription,
     translation,
+    app_state as app_state_api,
 )
+from backend.services import app_state  # noqa: E402
+from backend.services.data_lock import DataDirLock  # noqa: E402
+from backend.services.platform import get_app_data_dir  # noqa: E402
+from backend.services.shutdown_state import begin_shutdown  # noqa: E402
 
 logger = structlog.get_logger(__name__)
+
+# OS-level exclusive lock over the data directory's writer subsystem (see
+# backend/services/data_lock.py). Acquired on startup, off the event loop, so
+# a close->reopen race between an outgoing and incoming instance never lets
+# both write at once. Released only after every writer below has been
+# stopped and drained (see quiesce_writers / lifespan shutdown).
+data_lock = DataDirLock(get_app_data_dir() / ".write.lock")
+
+# Registry of writer-stop thunks (each call returns an awaitable). Services
+# register their real stop() during startup; kept as an indirection so the
+# barrier itself is unit-testable without booting real services.
+_writer_stops: list = []
+
+
+async def quiesce_writers() -> None:
+    """Stop and drain every data-dir writer. Returns only once none can write.
+
+    Per-hook error isolation (I2): one failing hook must not skip the others,
+    since a hung/failed sync stop must not also leave the blog or search
+    writer undrained. But a failure here must never be swallowed silently --
+    logged at ERROR with the hook's name, because releasing the lock right
+    after is the one place this really matters: if a writer wasn't actually
+    drained, an incoming instance can now race it. Blocking release forever
+    on a hung writer would be worse (the next instance could never write), so
+    this still proceeds to release -- just loudly, not silently.
+    """
+    for make in list(_writer_stops):
+        hook_name = (
+            getattr(make, "__name__", None)
+            or getattr(
+                getattr(make, "__self__", None), "__class__", type(make)
+            ).__name__
+        )
+        try:
+            await make()
+        except Exception:
+            logger.error(
+                "writer stop failed; writer may not be fully drained; "
+                "releasing lock anyway to avoid deadlock",
+                hook=hook_name,
+                exc_info=True,
+            )
+
+
+async def _stop_all_sync_services() -> None:
+    """Stop every lazily-created SyncService (SVC-S1 writer barrier).
+
+    ``backend.api.sync`` creates one ``SyncService`` per messaging service on
+    first use, so the set of instances is only known at shutdown time —
+    imported locally (not at module load) to avoid a circular import with
+    ``backend.api.sync`` -> ``backend.main``.
+    """
+    from backend.api.sync import _sync_services
+
+    for svc in list(_sync_services.values()):
+        await svc.stop()
 
 
 @asynccontextmanager
@@ -80,17 +144,70 @@ async def lifespan(app: FastAPI):
 
     cleanup_upgrade_files()
 
+    # Port-independent app state (SQLite) must exist before any reader/writer
+    # touches it.
+    app_state.init_db()
+
+    # Acquire the data-dir write lock off the event loop so a close->reopen
+    # race (a prior instance still draining) never blocks server startup or
+    # the UI. If a stale holder does not release within the timeout, log and
+    # proceed anyway — atomic writes bound the worst case to a last-writer-
+    # wins on a single file, not corruption (see data_lock.py / design doc).
+    def _acquire_data_lock() -> bool:
+        return data_lock.acquire(timeout=10.0)
+
+    if not await asyncio.to_thread(_acquire_data_lock):
+        logger.warning(
+            "data_dir_lock_acquire_timed_out",
+            lock_path=str(get_app_data_dir() / ".write.lock"),
+        )
+
+    # Register every data-dir writer's stop hook so shutdown can quiesce them
+    # all before releasing the lock above. Reset first: the TestClient (and a
+    # theoretical app restart within one process) re-runs this lifespan
+    # against the same module-level list, and stale thunks from a prior
+    # startup must not accumulate / run twice.
+    from backend.services.blog_service import get_blog_backup_manager
+    from backend.services.search_service import stop_search_service
+    from backend.services.background_tasks import (
+        drain_background_tasks,
+        track_background_task,
+    )
+
+    # Order matters: stop_search_service must run before drain_background_tasks
+    # -- a tracked background task (e.g. verify-and-fix media) writes through
+    # the search executors, so draining tracked tasks before search is stopped
+    # would let that write race stop_search_service's own teardown.
+    _writer_stops.clear()
+    _writer_stops.append(_stop_all_sync_services)
+    _writer_stops.append(get_blog_backup_manager().stop_async)
+    _writer_stops.append(stop_search_service)
+    _writer_stops.append(drain_background_tasks)
+
     background_task = asyncio.create_task(_deferred_blog_backup())
 
     # Warm the translation key-status cache in the background so the first
     # Settings -> AI open is instant instead of paying the OS keyring read then.
     from backend.api.translation import warm_key_status_cache
 
-    asyncio.create_task(asyncio.to_thread(warm_key_status_cache))
+    # Retain via the tracked-task registry so it isn't garbage-collected mid-flight
+    # and is drained on shutdown (SD-BE-API-11).
+    track_background_task(
+        asyncio.to_thread(warm_key_status_cache), name="warm_key_status_cache"
+    )
 
     yield
 
     # --- Shutdown ---
+    # Flip the shutdown flag FIRST, before anything else -- this is the
+    # signal read paths check (search_service.build_full_index's untracked
+    # spawn sites; sync/verify start entry points) to refuse spawning a NEW
+    # writer once shutdown has begun (C1c). A writer spawned after this point
+    # but before quiesce_writers() would otherwise escape the barrier
+    # entirely, since quiesce_writers() only drains writers that already
+    # existed at the moment it runs.
+    begin_shutdown()
+
     # Cancel the deferred blog backup if it's still pending
     if not background_task.done():
         background_task.cancel()
@@ -99,17 +216,20 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
-    # Stop any running blog backup tasks so their asyncio Tasks end cleanly
-    from backend.services.blog_service import get_blog_backup_manager
+    # Ordered write barrier (must not be reordered): quiesce+drain every
+    # writer registered above, THEN allow final synchronous writes (window
+    # geometry, saved by desktop.py's on_closing before process exit), THEN
+    # release the lock. Releasing before every writer is stopped would let a
+    # still-running writer race an incoming instance; only after this
+    # sequence completes is it guaranteed no further data-dir write occurs
+    # from this process.
+    await quiesce_writers()
+    # (Final synchronous writes — e.g. window geometry — happen in
+    # desktop.py's on_closing, which already runs before this lifespan's
+    # shutdown is signalled via should_exit; no additional write is needed
+    # here.)
+    data_lock.release()
 
-    try:
-        get_blog_backup_manager().shutdown()
-    except Exception:
-        pass
-
-    from backend.services.search_service import shutdown_search_service
-
-    shutdown_search_service()
     # Flush and close all log file handlers so the uninstaller can delete the data directory
     for handler in logging.root.handlers[:]:
         try:
@@ -188,6 +308,52 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def _is_loopback_origin(origin: str) -> bool:
+    """True if an Origin header value points at this app's own loopback host.
+
+    The app is served from http://127.0.0.1:<port> / http://localhost:<port>
+    (randomized port), so we compare only the host — any loopback port is ours.
+    Non-http(s) schemes and unparseable values are rejected.
+    """
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    return parsed.hostname in ("127.0.0.1", "localhost")
+
+
+@app.middleware("http")
+async def block_cross_origin_api(request: Request, call_next):
+    """CSRF / DNS-rebinding defense for the local API (SEC-2).
+
+    For /api/* requests, reject (403) any request that carries an Origin header
+    whose scheme://host is not one of the app's own loopback origins. Browsers
+    always attach Origin on cross-site POST/DELETE and on fetch(), so this blocks
+    the CSRF vector without requiring the same-origin frontend to send anything
+    new. Requests with NO Origin (native/webview/CLI, most same-origin GETs) are
+    allowed. CORS preflight (OPTIONS) is never blocked here.
+    """
+    if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+        origin = request.headers.get("origin")
+        if origin and not _is_loopback_origin(origin):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Cross-origin request rejected"},
+            )
+    return await call_next(request)
+
+
+# Restrict the accepted Host header to loopback (defeats DNS rebinding) plus the
+# TestClient's "testserver" host. Bare hostnames are matched; ports are ignored
+# by TrustedHostMiddleware, so the randomized loopback port is covered.
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
+)
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
@@ -206,6 +372,7 @@ app.include_router(
     transcription.router, prefix="/api/transcription", tags=["transcription"]
 )
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
+app.include_router(app_state_api.router, prefix="/api/app-state", tags=["app-state"])
 
 
 @app.get("/health")
@@ -231,11 +398,23 @@ if frontend_dist.exists():
         "Expires": "0",
     }
 
+    # Resolve once so containment checks compare against the real dist root.
+    _frontend_dist_resolved = frontend_dist.resolve()
+
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        path = frontend_dist / full_path
-        if path.exists() and path.is_file():
-            return FileResponse(path)
+        # SEC-1: Starlette does NOT collapse ".." in a :path segment, so
+        # frontend_dist / full_path can escape the dist dir (e.g.
+        # "../../pyproject.toml"). Resolve the joined path and require it to stay
+        # within the resolved dist root before serving. On any escape, bad
+        # characters, or non-file, fall through to index.html.
+        if "\x00" not in full_path:
+            candidate = (frontend_dist / full_path).resolve()
+            if (
+                candidate.is_relative_to(_frontend_dist_resolved)
+                and candidate.is_file()
+            ):
+                return FileResponse(candidate)
         return FileResponse(frontend_dist / "index.html", headers=_NO_CACHE_HEADERS)
 else:
     logger.warning(

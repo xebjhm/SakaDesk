@@ -8,7 +8,11 @@
  * - Blog selection mode preferences
  * - Conversation selection memory
  *
- * All state is persisted to localStorage under 'sakadesk-app-state'.
+ * All state is persisted to the backend app-state store (via the `persisted`
+ * layer) under the pref key 'sakadesk-app-state', so it survives a dev-server
+ * port shift. Hydration is explicit (skipHydration: true) — see App.tsx's
+ * startup effect, which calls useAppStore.persist.rehydrate() after the
+ * backend prefs cache has been hydrated + migrated.
  *
  * @example
  * ```tsx
@@ -35,8 +39,9 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { DEFAULT_SERVICE_ORDER } from '../data/services';
+import { persisted } from '../core/persistence/persisted';
 import type { RecentPost } from '../types';
 
 /** Available feature tabs within a service. */
@@ -213,11 +218,39 @@ interface AppState {
 /** Default feature tab order when no custom order is set. */
 const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclub', 'ai'];
 
+// Backs the persist middleware with the backend-synced `persisted` prefs
+// cache instead of localStorage, so the bundle survives a port shift (the
+// backend db is keyed by machine, not by origin/port). `getPref`/`setPref`
+// are synchronous reads/writes against a cache hydrated at startup — see
+// core/persistence/persisted.ts. The whole serialized bundle is stored
+// under one pref key (this store's persist `name`).
+// Flipped true once the store has EXPLICITLY hydrated from the backend prefs
+// cache (App.tsx calls useAppStore.persist.rehydrate() after the cache loads;
+// set via onRehydrateStorage below). Until then, persist writes are suppressed.
+let hasHydratedFromBackend = false;
+
+const backendStateStorage = {
+    getItem: (name: string): string | null => persisted.getPref<string | null>(name, null),
+    setItem: (name: string, value: string): void => {
+        // Gate: do not persist before hydration. zustand's persist writes on EVERY
+        // set(), including pre-hydration writes such as an auth-driven
+        // setActiveService() that fires before the rehydrate chain finishes.
+        // Persisting then would overwrite the stored bundle with partialized
+        // defaults, and the debounced flush would PATCH those defaults into
+        // app_state.db — silently resetting the user's services/favorites/etc.
+        // (SD-FE-STATE-01, code review 2026-07-07).
+        if (!hasHydratedFromBackend) return;
+        persisted.setPref(name, value);
+    },
+    removeItem: (name: string): void => { persisted.setPref(name, null); },
+};
+
 /**
  * Zustand store hook for global application state.
  *
- * State is automatically persisted to localStorage and restored on app load.
- * Use selectors for optimal re-render performance.
+ * State is persisted to the backend app-state store and restored explicitly
+ * via `useAppStore.persist.rehydrate()` during App.tsx's startup effect (see
+ * skipHydration above). Use selectors for optimal re-render performance.
  *
  * @example
  * ```tsx
@@ -362,6 +395,18 @@ export const useAppStore = create<AppState>()(
         {
             name: 'sakadesk-app-state',
             version: 4,
+            storage: createJSONStorage(() => backendStateStorage),
+            // The backend prefs cache isn't populated until App.tsx's startup
+            // effect hydrates it, so we must NOT auto-hydrate at import time
+            // (that would read an empty cache and lock in defaults). App.tsx
+            // calls useAppStore.persist.rehydrate() explicitly once hydration
+            // + migration have completed.
+            skipHydration: true,
+            // Open the persistence gate only after an explicit rehydrate() has
+            // populated the store from the backend — see backendStateStorage.setItem.
+            onRehydrateStorage: () => () => {
+                hasHydratedFromBackend = true;
+            },
             partialize: (state) => ({
                 selectedServices: state.selectedServices,
                 activeService: state.activeService,
