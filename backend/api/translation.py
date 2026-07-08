@@ -461,13 +461,16 @@ async def translate(request: TranslateRequest):
                 status_code=400, detail="Message has no text to translate"
             )
 
-        # Replace %%% with {{NICKNAME}} token for LLM (actual nickname swapped after)
+        # Replace %%% with {{NICKNAME}} token for LLM (actual nickname swapped
+        # after). Only tokenize when a nickname is configured to swap back in —
+        # otherwise the token is never restored and the user sees a literal
+        # "{{NICKNAME}}" instead of the original %%% (leave %%% raw as before).
         has_nickname = (
             bool(request.user_nickname) and _PLACEHOLDER_RE.search(raw_text) is not None
         )
-        text = _replace_placeholders_with_token(raw_text)
+        text = _replace_placeholders_with_token(raw_text) if request.user_nickname else raw_text
 
-        # Build context texts (also with token replaced)
+        # Build context texts (also with token replaced, same gating)
         context_texts: list[str] = []
         if request.context_message_ids:
             for ctx_id in request.context_message_ids:
@@ -475,7 +478,11 @@ async def translate(request: TranslateRequest):
                 if ctx_msg:
                     ctx_text = ctx_msg.get("content", "") or ""
                     if ctx_text.strip():
-                        context_texts.append(_replace_placeholders_with_token(ctx_text))
+                        context_texts.append(
+                            _replace_placeholders_with_token(ctx_text)
+                            if request.user_nickname
+                            else ctx_text
+                        )
 
         # Extract member/group context for better prompts
         member_name = (
@@ -605,17 +612,20 @@ async def translate_batch(request: TranslateBatchRequest):
 
     # Collect non-empty texts for requested IDs.
     # SD-BE-API-09: apply the same %%% -> {{NICKNAME}} tokenization the single
-    # translate path does. Sending the raw %%% leaves the model with no
-    # instruction about it (it will translate around / mangle / drop it), and
-    # nothing restores the user's nickname — so a placeholder message gets a
-    # visibly different (broken) translation depending on batch vs single.
+    # translate path does, but ONLY when a nickname is configured to swap back in.
+    # Tokenizing unconditionally would return a literal "{{NICKNAME}}" to the user
+    # when no nickname is set (the token is never restored) — a regression vs
+    # leaving %%% raw. Gated on user_nickname to match the single path.
+    tokenize = bool(request.user_nickname)
     texts_to_translate: dict[str, str] = {}
     for msg_id in request.message_ids:
         msg = message_map.get(msg_id)
         if msg:
             text = msg.get("content", "") or ""
             if text.strip():
-                texts_to_translate[str(msg_id)] = _replace_placeholders_with_token(text)
+                texts_to_translate[str(msg_id)] = (
+                    _replace_placeholders_with_token(text) if tokenize else text
+                )
 
     if not texts_to_translate:
         return {"ok": True, "translations": {}}

@@ -497,6 +497,7 @@ class TestQuiesceWorkersBeforeExit:
         from backend.services import shutdown_state
 
         child = MagicMock()
+        child.is_alive.return_value = False  # dies cleanly after terminate+join
         release = MagicMock()
 
         with patch("backend.main.quiesce_writers", new=AsyncMock()) as mock_quiesce:
@@ -512,8 +513,30 @@ class TestQuiesceWorkersBeforeExit:
         # Every child worker terminated + joined (the DLL-holding index worker).
         child.terminate.assert_called_once()
         child.join.assert_called_once()
+        # It died cleanly, so no kill escalation was needed.
+        child.kill.assert_not_called()
         # Data lock released for the incoming instance.
         release.assert_called_once()
+
+    def test_quiesce_escalates_to_kill_when_child_survives(self):
+        """A child that survives terminate+join may still hold _internal DLLs
+        (the exact cause of an upgrade rollback) — escalate to kill() instead of
+        letting it survive silently."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+
+        import backend.api.version as v
+
+        child = MagicMock()
+        child.is_alive.return_value = True  # outlives the terminate+join
+
+        with patch("backend.main.quiesce_writers", new=AsyncMock()):
+            with patch("backend.main.data_lock"):
+                with patch("multiprocessing.active_children", return_value=[child]):
+                    asyncio.run(v._quiesce_workers_before_exit())
+
+        child.terminate.assert_called_once()
+        child.kill.assert_called_once()  # escalated instead of silently surviving
 
     def test_delayed_exit_quiesces_before_os_exit(self, tmp_path):
         """End-to-end: install schedules an exit coroutine that awaits the

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional, cast
 from urllib.parse import urlencode, quote
 
+import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -23,6 +24,7 @@ from pysaka import Group, get_jwt_remaining_seconds
 from backend.version import APP_VERSION
 
 router = APIRouter(prefix="/api/report", tags=["report"])
+logger = structlog.get_logger(__name__)
 
 # Try to get pysaka version
 try:
@@ -182,8 +184,12 @@ def _get_output_dir() -> Optional[str]:
         if settings_path.exists():
             with open(settings_path, "r", encoding="utf-8") as f:
                 return cast(Optional[str], json.load(f).get("output_dir"))
-    except Exception:
-        pass
+    except Exception as e:
+        # Do NOT fail silently: if the output dir can't be read, custom-data-dir
+        # redaction is skipped and a path outside C:\Users could reach the public
+        # bug report. Log so the gap is visible (member-path reduction + username
+        # scrub still run). (Review follow-up to WP-11.)
+        logger.warning("report_output_dir_read_failed_redaction_partial", error=str(e))
     return None
 
 

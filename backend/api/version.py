@@ -379,8 +379,28 @@ async def _quiesce_workers_before_exit() -> None:
             try:
                 child.terminate()
                 child.join(timeout=3)
-            except Exception:
-                pass
+                if child.is_alive():
+                    # Survived terminate+join — it may still hold _internal DLLs,
+                    # which is exactly what makes the in-place upgrade roll back.
+                    # Don't let that happen silently: log it and escalate to kill().
+                    logger.error(
+                        "child_alive_after_terminate_installer_may_fail",
+                        pid=child.pid,
+                        name=child.name,
+                    )
+                    try:
+                        child.kill()
+                        child.join(timeout=2)
+                    except Exception as kill_err:
+                        logger.error(
+                            "child_kill_failed", pid=child.pid, error=str(kill_err)
+                        )
+            except Exception as e:
+                logger.warning(
+                    "child_terminate_failed",
+                    pid=getattr(child, "pid", None),
+                    error=str(e),
+                )
     except Exception as e:  # pragma: no cover - defensive
         logger.error(f"Failed to terminate child processes before exit: {e}")
 

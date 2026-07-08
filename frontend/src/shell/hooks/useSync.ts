@@ -320,7 +320,7 @@ export function useSync({
                     const reconnectedAt = recentlyReconnectedRef.current[service];
                     const inCooldown = reconnectedAt && (Date.now() - reconnectedAt) < RECONNECT_COOLDOWN_MS;
 
-                    if (data.detail === 'SESSION_EXPIRED') {
+                    if (data.error_code === 'session_expired' || data.detail === 'SESSION_EXPIRED') {
                         log(`${service}: session expired detected${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
                         if (!inCooldown) {
                             markServiceDisconnectedRef.current?.(service, 'Session expired');
@@ -331,7 +331,7 @@ export function useSync({
                         updateProgress({ state: 'error', detail: i18n.t('sync.sessionExpired') });
                         useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
-                    } else if (data.detail === 'REFRESH_FAILED') {
+                    } else if (data.error_code === 'refresh_failed' || data.detail === 'REFRESH_FAILED') {
                         log(`${service}: refresh failed detected - possible bug${inCooldown ? ' (suppressed - reconnect cooldown)' : ''}`);
                         if (!inCooldown) {
                             markServiceDisconnectedRef.current?.(service, 'Refresh failed');
@@ -342,10 +342,16 @@ export function useSync({
                         updateProgress({ state: 'error', detail: i18n.t('sync.refreshFailed') });
                         useAppStore.getState().removeInitialSyncService(service);
                         hasStartedSyncRef.current = false;
+                    } else if (data.error_code === 'cancelled' || data.detail === 'CANCELLED') {
+                        updateProgress({ state: 'error', detail: i18n.t('sync.cancelled') });
                     } else {
-                        // SD-FE-GAP-B-08: map any unrecognized sentinel to a
-                        // friendly message instead of showing the raw code.
-                        updateProgress({ state: 'error', detail: friendlySyncDetail(data.detail, i18n.t('sync.error')) || i18n.t('sync.error') });
+                        // Prefer the structured error_code (SD-CONTRACT-07): any
+                        // present code is a machine sentinel, so show a friendly
+                        // generic rather than the raw text. Otherwise pass ordinary
+                        // progress text through (friendlySyncDetail still masks any
+                        // legacy underscore-sentinel in the detail field).
+                        const generic = i18n.t('sync.error');
+                        updateProgress({ state: 'error', detail: data.error_code ? generic : (friendlySyncDetail(data.detail, generic) || generic) });
                     }
                     isPollingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
@@ -497,10 +503,10 @@ export function useSync({
     }, [pollSyncProgress]);
 
     // SD-FE-GAP-B-08: cancel a running sync/verify and make the modal
-    // dismissible. The backend `/cancel` cancels the sync task, but verify has
-    // no cancellable task (SVC-C1), so we OPTIMISTICALLY transition to a
-    // terminal state regardless — the user must always be able to leave the
-    // modal rather than being locked to a spinner that never terminates.
+    // dismissible. The backend `/cancel` now cancels the running sync OR verify
+    // task (SD-BE-SVC-02), but we still OPTIMISTICALLY transition to a terminal
+    // state so the user can always leave the modal even if the cancel request
+    // fails or races the poller, rather than being locked to a spinner.
     const cancelSync = useCallback(async (service?: string) => {
         const targetService = service || activeServiceRef.current;
         if (!targetService) return;
@@ -509,8 +515,8 @@ export function useSync({
         isPollingRef.current[targetService] = false;
         useAppStore.getState().removeInitialSyncService(targetService);
 
-        // Optimistically mark the sync errored/cancelled so the modal shows its
-        // dismiss button even if the backend cancel is a no-op (verify).
+        // Optimistically mark the sync cancelled so the modal shows its dismiss
+        // button even if the cancel request fails or races the poller.
         const cancelledProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.cancelled') };
         setSyncProgressByService(prev => ({ ...prev, [targetService]: cancelledProgress }));
         if (targetService === activeServiceRef.current) setSyncProgress(cancelledProgress);

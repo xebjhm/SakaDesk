@@ -273,6 +273,53 @@ class TestBatchPlaceholders:
         assert body["translations"]["1"] == "みく good morning"
         assert translation_api._NICKNAME_TOKEN not in body["translations"]["1"]
 
+    def test_batch_no_nickname_leaves_placeholder_raw(self, tmp_path, monkeypatch):
+        """Regression: with NO nickname configured, %%% must NOT be tokenized —
+        otherwise the unrestored {{NICKNAME}} token leaks into the user-visible
+        translation instead of the original placeholder."""
+        from backend.api import translation as translation_api
+
+        member_rel = "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+        member_dir = tmp_path / member_rel
+        member_dir.mkdir(parents=True)
+        (member_dir / "messages.json").write_text(
+            json.dumps({"messages": [{"id": 1, "content": "%%%おはよう"}]}),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "backend.api.translation.get_output_dir", lambda: tmp_path
+        )
+
+        captured: dict = {}
+
+        class _CapturingProvider:
+            async def translate(self, prompt, system_instruction=None):
+                captured["prompt"] = prompt
+                return json.dumps({"1": "good morning"})
+
+        with patch(
+            "backend.api.translation._get_provider_from_config",
+            new=AsyncMock(return_value=_CapturingProvider()),
+        ):
+            resp = client.post(
+                "/api/translation/translate-batch",
+                json={
+                    "type": "messages",
+                    "message_ids": [1],
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "target_language": "en",
+                    # no user_nickname configured
+                },
+            )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # No nickname -> %%% left raw, the {{NICKNAME}} token never appears.
+        assert translation_api._NICKNAME_TOKEN not in captured["prompt"]
+        assert "%%%" in captured["prompt"]
+        assert translation_api._NICKNAME_TOKEN not in body["translations"]["1"]
+
 
 class TestTestConnectionCodes:
     """test-connection distinguishes a rejected key from an unreachable host."""

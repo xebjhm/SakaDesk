@@ -1,6 +1,10 @@
 # backend/tests/test_service_utils.py
+import json
+from unittest.mock import patch
+
 import pytest
 from backend.services.service_utils import (
+    atomic_write_json,
     get_all_services,
     get_service_config,
     get_service_display_name,
@@ -8,6 +12,41 @@ from backend.services.service_utils import (
     validate_service,
 )
 from pysaka import Group
+
+
+class TestAtomicWriteJson:
+    """The shared crash-safe writer used by favorites/transcription/desktop."""
+
+    def test_writes_json_and_leaves_no_tmp(self, tmp_path):
+        target = tmp_path / "out.json"
+        atomic_write_json(target, {"a": 1, "ら": "ラ"})
+        assert json.loads(target.read_text(encoding="utf-8")) == {"a": 1, "ら": "ラ"}
+        # No temp file left behind.
+        assert not list(tmp_path.glob("*.tmp"))
+
+    def test_replaces_existing_file_atomically(self, tmp_path):
+        target = tmp_path / "out.json"
+        target.write_text(json.dumps({"old": True}), encoding="utf-8")
+        atomic_write_json(target, {"new": True})
+        assert json.loads(target.read_text(encoding="utf-8")) == {"new": True}
+
+    def test_failure_leaves_original_intact_and_cleans_tmp(self, tmp_path):
+        """If the replace fails, the original file must be untouched and the temp
+        file cleaned up — a crash mid-write can never corrupt the archive."""
+        target = tmp_path / "out.json"
+        target.write_text(json.dumps({"keep": "me"}), encoding="utf-8")
+
+        # Force the atomic replace to fail after the temp file is written.
+        with patch(
+            "backend.services.service_utils._replace_with_retry",
+            side_effect=OSError("boom"),
+        ):
+            with pytest.raises(OSError):
+                atomic_write_json(target, {"new": "data"})
+
+        # Original content preserved; no temp file orphaned.
+        assert json.loads(target.read_text(encoding="utf-8")) == {"keep": "me"}
+        assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_get_all_services():

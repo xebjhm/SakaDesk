@@ -140,7 +140,8 @@ export function useChatScroll(
   // SD-FE-STATE-03: flush a pending scroll-position save when the window is
   // hidden/closed. The 500ms debounce means a scroll-then-close loses the last
   // position; on pagehide/hidden we persist the current top index immediately
-  // (persisted.setConv uses a keepalive-capable write path).
+  // via setConvBeacon, whose keepalive request survives the JS context teardown
+  // on close (plain setConv's PATCH is abandoned).
   useEffect(() => {
     const flushScroll = () => {
       const msgs = currentMessagesRef.current;
@@ -152,7 +153,7 @@ export function useChatScroll(
         debounceTimerRef.current = null;
       }
       if (lastSavedIdRef.current === message.id) return;
-      persisted.setConv(currentStorageKeyRef.current, { value: String(message.id) });
+      persisted.setConvBeacon(currentStorageKeyRef.current, { value: String(message.id) });
       lastSavedIdRef.current = message.id;
     };
     const onVisibility = () => { if (document.visibilityState === 'hidden') flushScroll(); };

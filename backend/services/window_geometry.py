@@ -42,9 +42,11 @@ _MIN_SCALE, _MAX_SCALE = 0.5, 4.0
 _SM_XVIRTUALSCREEN, _SM_YVIRTUALSCREEN = 76, 77
 _SM_CXVIRTUALSCREEN, _SM_CYVIRTUALSCREEN = 78, 79
 
-# A minimized WinForms window reports Location = (-32000, -32000); persisting
-# that value as a saved position would restore the window off-screen next launch
-# (SD-AUX-04). Any saved coordinate at/below this sentinel is treated as iconic.
+# A minimized window reports Location = (-32000, -32000); persisting that value
+# as a saved position would restore the window off-screen next launch (SD-AUX-04).
+# We use a -30000 threshold (above the observed -32000) so any saved coordinate
+# at or below it — the real sentinel and any near-sentinel value — is treated as
+# iconic and dropped.
 _ICONIC_SENTINEL = -30000
 
 

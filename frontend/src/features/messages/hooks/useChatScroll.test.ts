@@ -21,6 +21,7 @@ describe('useChatScroll hook', () => {
     vi.clearAllMocks()
     vi.spyOn(persisted, 'getConv').mockReturnValue({})
     vi.spyOn(persisted, 'setConv').mockImplementation(() => {})
+    vi.spyOn(persisted, 'setConvBeacon').mockImplementation(() => {})
   })
 
   it('should return expected shape', () => {
@@ -128,7 +129,8 @@ describe('useChatScroll hook', () => {
       window.dispatchEvent(new Event('pagehide'))
     })
 
-    expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
+    // Flushed via the keepalive beacon path so it survives context teardown.
+    expect(persisted.setConvBeacon).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
   })
 
   it('removes the pagehide listener on unmount', () => {

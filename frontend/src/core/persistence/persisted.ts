@@ -79,7 +79,14 @@ export const persisted = {
       patch[k] = pending[k];
       delete pending[k];
     }
-    api.patchPrefsBeacon(patch);
+    // If the keepalive handoff fails synchronously, restore the keys so a
+    // write-once value (tos_accepted_at, language) isn't silently lost — unless a
+    // newer value already arrived. (Review follow-up to SD-FE-STATE-03/04.)
+    if (!api.patchPrefsBeacon(patch)) {
+      for (const k of keys) {
+        if (!(k in pending)) pending[k] = patch[k];
+      }
+    }
   },
   getConversation: api.getConversation,
   setConversation: api.patchConversation,
@@ -90,6 +97,13 @@ export const persisted = {
   setConv(key: string, patch: Record<string, unknown>): void {
     convCache[key] = { ...(convCache[key] || {}), ...patch };
     api.patchConversation(key, patch).catch(() => {/* logged; cache already updated */});
+  },
+  // SD-FE-STATE-03: keepalive conversation write for the close-flush path (scroll
+  // position, read state). The plain setConv above uses a non-keepalive PATCH
+  // that is abandoned when pywebview tears down the JS context on close.
+  setConvBeacon(key: string, patch: Record<string, unknown>): void {
+    convCache[key] = { ...(convCache[key] || {}), ...patch };
+    api.patchConversationBeacon(key, patch);
   },
   getTranslations: api.getTranslations,
   putTranslations: api.patchTranslations,
