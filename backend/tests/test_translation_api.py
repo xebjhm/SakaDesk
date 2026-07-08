@@ -189,9 +189,7 @@ class TestProviderModelRepair:
                 }
             ),
         ):
-            with patch(
-                "backend.api.translation._load_api_key", return_value="k"
-            ):
+            with patch("backend.api.translation._load_api_key", return_value="k"):
                 provider = await translation_api._get_provider_from_config()
 
         # The configured OpenAI model must be preserved, not overwritten with the
@@ -212,9 +210,7 @@ class TestProviderModelRepair:
                 }
             ),
         ):
-            with patch(
-                "backend.api.translation._load_api_key", return_value="k"
-            ):
+            with patch("backend.api.translation._load_api_key", return_value="k"):
                 provider = await translation_api._get_provider_from_config()
 
         assert isinstance(provider, translation_api.GeminiProvider)
@@ -236,9 +232,7 @@ class TestBatchPlaceholders:
             json.dumps({"messages": [{"id": 1, "content": "%%%おはよう"}]}),
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            "backend.api.translation.get_output_dir", lambda: tmp_path
-        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
 
         captured: dict = {}
 
@@ -286,9 +280,7 @@ class TestBatchPlaceholders:
             json.dumps({"messages": [{"id": 1, "content": "%%%おはよう"}]}),
             encoding="utf-8",
         )
-        monkeypatch.setattr(
-            "backend.api.translation.get_output_dir", lambda: tmp_path
-        )
+        monkeypatch.setattr("backend.api.translation.get_output_dir", lambda: tmp_path)
 
         captured: dict = {}
 

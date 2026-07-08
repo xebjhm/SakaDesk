@@ -157,7 +157,9 @@ class TestRedactDiagnostics:
         """A user-chosen output dir outside C:\\Users is redacted when known."""
         from backend.api.report import _redact_diagnostics
 
-        diag = {"sync_state": {"last_error": r"boom at D:\SakaData\hinatazaka46\m.json"}}
+        diag = {
+            "sync_state": {"last_error": r"boom at D:\SakaData\hinatazaka46\m.json"}
+        }
         out = _redact_diagnostics(diag, "john", None, output_dir=r"D:\SakaData")
         assert "SakaData" not in out["sync_state"]["last_error"]
         assert "[REDACTED_DIR]" in out["sync_state"]["last_error"]

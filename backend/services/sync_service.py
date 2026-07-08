@@ -71,7 +71,7 @@ class SyncService:
         self.running = False
         # self.metadata_file will be resolved dynamically now based on configured output_dir
         self.metadata_file: Optional[Path] = None
-        self.manager = None
+        self.manager: Optional[SyncManager] = None
         # Concurrency ownership (SVC-C1): a reference to the currently running
         # sync asyncio.Task plus a monotonically increasing generation token.
         # cancel() calls task.cancel() and awaits its unwind; the run's finally
@@ -243,13 +243,19 @@ class SyncService:
             )
             try:
                 tm = get_token_manager()
-                tm.save_session(
-                    self._service,
-                    client.access_token,
-                    client.refresh_token,
-                    client.cookies,
-                )
-                logger.info("Refreshed tokens saved successfully to TokenManager")
+                access_token = client.access_token
+                if access_token is None:
+                    logger.warning(
+                        "No access token to persist after refresh; skipping save"
+                    )
+                else:
+                    tm.save_session(
+                        self._service,
+                        access_token,
+                        client.refresh_token,
+                        client.cookies,
+                    )
+                    logger.info("Refreshed tokens saved successfully to TokenManager")
             except Exception as e:
                 logger.error(
                     "Failed to save refreshed tokens", error=str(e), exc_info=True
@@ -362,10 +368,10 @@ class SyncService:
                 if "server_groups" not in metadata:
                     metadata["server_groups"] = {}
                 for g in groups:
-                    gid = str(g["id"])
+                    gid_str = str(g["id"])
                     sub = g.get("subscription", {})
                     sub_state = sub.get("state") if sub else None
-                    metadata["server_groups"][gid] = {
+                    metadata["server_groups"][gid_str] = {
                         "state": g.get("state", "open"),
                         "is_active": sub_state in ("active", "cancelled")
                         if g.get("state") != "closed"
@@ -680,8 +686,10 @@ class SyncService:
                     # Track accumulation manually to ensure we report honest numbers
                     total_successed = 0
 
-                    # Collect all dimensions for batch update
-                    all_dimensions_by_dir: dict[Path, dict[str, Any]] = {}
+                    # Collect all dimensions for batch update. Keyed by member dir,
+                    # then by message id (int) -> metadata, matching
+                    # process_media_queue / update_message_metadata.
+                    all_dimensions_by_dir: dict[Path, dict[int, dict[str, Any]]] = {}
 
                     # CLI-style: Process in chunks of 50
                     chunk_size = 50

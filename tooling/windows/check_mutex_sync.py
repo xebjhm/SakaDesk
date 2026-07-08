@@ -49,9 +49,7 @@ def verify_sync(python_source: str, iss_source: str) -> str:
     iss_name = find_iss_mutex_name(iss_source)
 
     if py_name is None:
-        raise MutexNameMismatch(
-            "Could not find INSTANCE_MUTEX_NAME in desktop.py"
-        )
+        raise MutexNameMismatch("Could not find INSTANCE_MUTEX_NAME in desktop.py")
     if iss_name is None:
         raise MutexNameMismatch("Could not find AppMutex= in setup.iss")
     if py_name != iss_name:

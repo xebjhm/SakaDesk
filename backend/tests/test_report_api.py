@@ -47,7 +47,9 @@ class TestGenerateReport:
         assert "context" in data["diagnostics"]
         # Theme J / SD-FE-GAP-A-01: member_path is reduced to its group segment;
         # the specific member must never reach the public issue URL / clipboard.
-        assert data["diagnostics"]["context"]["member_path"] == "hinatazaka46/[REDACTED]"
+        assert (
+            data["diagnostics"]["context"]["member_path"] == "hinatazaka46/[REDACTED]"
+        )
         assert "member1" not in data["github_url"]
         assert "member1" not in json.dumps(data["diagnostics"])
 

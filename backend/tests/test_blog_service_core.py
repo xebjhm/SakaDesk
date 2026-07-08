@@ -308,9 +308,7 @@ class TestBlogIndexMerge:
 
     def test_merge_preserves_removed_flags_from_either_side(self):
         current = {
-            "members": {
-                "m1": {"name": "A", "blogs": [{"id": "b1", "removed": True}]}
-            },
+            "members": {"m1": {"name": "A", "blogs": [{"id": "b1", "removed": True}]}},
         }
         incoming = {
             "members": {"m1": {"name": "A", "blogs": [{"id": "b1"}]}},
@@ -321,7 +319,9 @@ class TestBlogIndexMerge:
         assert merged["members"]["m1"]["blogs"][0]["removed"] is True
 
     def test_merge_keeps_blogs_removed_member_flag(self):
-        current = {"members": {"m1": {"name": "Grad", "blogs_removed": True, "blogs": []}}}
+        current = {
+            "members": {"m1": {"name": "Grad", "blogs_removed": True, "blogs": []}}
+        }
         incoming = {"members": {"m1": {"name": "Grad", "blogs": []}}}
         merged = _merge_blog_index(current, incoming)
         assert merged["members"]["m1"]["blogs_removed"] is True
@@ -376,9 +376,7 @@ class TestClearCache:
         with (
             patch.object(svc, "get_blogs_base_path", return_value=base),
             patch.object(svc, "get_blog_index_path", return_value=index_path),
-            patch(
-                "backend.services.blog_service.get_blog_backup_manager"
-            ) as mock_mgr,
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
         ):
             mock_mgr.return_value.is_running.return_value = False
             await svc.clear_cache("hinatazaka46")
@@ -400,9 +398,7 @@ class TestClearCache:
         with (
             patch.object(svc, "get_blogs_base_path", return_value=base),
             patch.object(svc, "get_blog_index_path", return_value=index_path),
-            patch(
-                "backend.services.blog_service.get_blog_backup_manager"
-            ) as mock_mgr,
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
             patch(
                 "backend.services.blog_service.shutil.rmtree",
                 side_effect=PermissionError("locked"),
@@ -421,9 +417,7 @@ class TestClearCache:
         base.mkdir(parents=True)
         with (
             patch.object(svc, "get_blogs_base_path", return_value=base),
-            patch(
-                "backend.services.blog_service.get_blog_backup_manager"
-            ) as mock_mgr,
+            patch("backend.services.blog_service.get_blog_backup_manager") as mock_mgr,
         ):
             mock_mgr.return_value.is_running.return_value = True
             with pytest.raises(RuntimeError, match="backup is running"):

@@ -169,7 +169,10 @@ async def lifespan(app: FastAPI):
     # startup must not accumulate / run twice.
     from backend.services.blog_service import get_blog_backup_manager
     from backend.services.search_service import stop_search_service
-    from backend.services.background_tasks import drain_background_tasks, track_background_task
+    from backend.services.background_tasks import (
+        drain_background_tasks,
+        track_background_task,
+    )
 
     # Order matters: stop_search_service must run before drain_background_tasks
     # -- a tracked background task (e.g. verify-and-fix media) writes through

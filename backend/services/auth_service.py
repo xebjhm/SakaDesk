@@ -10,7 +10,7 @@ This ensures consistent behavior across CLI and GUI:
 import asyncio
 import contextlib
 import structlog
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Mapping, Optional, cast
 import aiohttp
 from pysaka import (
     BrowserAuth,
@@ -281,14 +281,16 @@ class AuthService:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
-    def _save_credentials(self, service: str, creds: dict):
+    def _save_credentials(self, service: str, creds: Mapping[str, Any]):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
         try:
             tm = get_token_manager()
+            # Pass missing keys through as None (save_session's access_token is
+            # typed str but accepts None at runtime for partial/cleared creds).
             tm.save_session(
                 group.value,
-                creds.get("access_token"),
+                cast(str, creds.get("access_token")),
                 creds.get("refresh_token"),
                 creds.get("cookies"),
             )
@@ -415,8 +417,10 @@ class AuthService:
 
                 if refresh_success:
                     # Client.refresh_access_token() updates client.access_token and client.cookies
-                    # Save the refreshed credentials
-                    new_token = client.access_token
+                    # Save the refreshed credentials. A successful refresh always
+                    # sets access_token (and 0.4.3 raises rather than returning
+                    # success without one), so narrow str | None -> str here.
+                    new_token = cast(str, client.access_token)
                     new_cookies = client.cookies
 
                     tm.save_session(

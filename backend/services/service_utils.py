@@ -62,7 +62,8 @@ def get_all_services() -> List[str]:
 def get_service_display_name(service: str) -> str:
     """Get display name for a service (e.g., '日向坂46')."""
     group = get_service_enum(service)
-    return cast(str, GROUP_CONFIG[group]["display_name"])
+    config = cast("dict[str, Any]", GROUP_CONFIG[group])
+    return cast(str, config["display_name"])
 
 
 def get_service_identifier(display_name: str) -> Optional[str]:
@@ -75,7 +76,7 @@ def get_service_identifier(display_name: str) -> Optional[str]:
     """
     # First try Japanese display name lookup
     for group in Group:
-        if GROUP_CONFIG[group]["display_name"] == display_name:
+        if cast("dict[str, Any]", GROUP_CONFIG[group])["display_name"] == display_name:
             return cast(str, group.value)
 
     # Then try romanized name lookup (case-insensitive)

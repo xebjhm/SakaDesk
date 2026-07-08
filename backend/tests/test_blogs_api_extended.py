@@ -236,8 +236,8 @@ class TestGetBlogContent:
         event handlers, and javascript: URLs are stripped, while normal markup
         and the local image-proxy URLs survive."""
         malicious = (
-            '<p>hi</p>'
-            '<script>alert(1)</script>'
+            "<p>hi</p>"
+            "<script>alert(1)</script>"
             '<img src="/api/blogs/image?service=x&blog_id=b1&filename=img_0.jpg" '
             'onerror="steal()">'
             '<a href="javascript:evil()">x</a>'

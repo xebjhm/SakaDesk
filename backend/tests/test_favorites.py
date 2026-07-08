@@ -135,7 +135,11 @@ class TestLocalFavoriteUpdate:
                 member_dir.mkdir(parents=True)
                 (member_dir / "messages.json").write_text(
                     json.dumps(
-                        {"messages": [{"id": 12345, "text": service, "is_favorite": False}]}
+                        {
+                            "messages": [
+                                {"id": 12345, "text": service, "is_favorite": False}
+                            ]
+                        }
                     ),
                     encoding="utf-8",
                 )
@@ -147,10 +151,19 @@ class TestLocalFavoriteUpdate:
             assert result is True
 
             def read(service):
-                p = Path(tmp_dir) / service / "messages" / "1 Group" / "40 Member" / "messages.json"
-                return json.loads(p.read_text(encoding="utf-8"))["messages"][0]["is_favorite"]
+                p = (
+                    Path(tmp_dir)
+                    / service
+                    / "messages"
+                    / "1 Group"
+                    / "40 Member"
+                    / "messages.json"
+                )
+                return json.loads(p.read_text(encoding="utf-8"))["messages"][0][
+                    "is_favorite"
+                ]
 
-            assert read("櫻坂46") is True   # sakurazaka46 updated
+            assert read("櫻坂46") is True  # sakurazaka46 updated
             assert read("日向坂46") is False  # hinatazaka46 NOT touched
 
     def test_update_local_favorite_unknown_service(self):

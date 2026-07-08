@@ -69,9 +69,7 @@ class TestTranscriptionStorage:
         member_dir = tmp_path / "member"
         member_dir.mkdir()
         # Well-formed JSON, wrong shape (no "transcriptions" list).
-        (member_dir / TranscriptionStorage.FILENAME).write_text(
-            "{}", encoding="utf-8"
-        )
+        (member_dir / TranscriptionStorage.FILENAME).write_text("{}", encoding="utf-8")
 
         # load() does not raise; treats it as empty.
         assert storage.load(member_dir, 1) is None
@@ -351,15 +349,11 @@ class TestFilesApiCleanup:
         async def fake_upload(self, audio_bytes, mime_type, client):
             return file_uri
 
-        monkeypatch.setattr(
-            GeminiTranscriptionProvider, "_upload_file", fake_upload
-        )
+        monkeypatch.setattr(GeminiTranscriptionProvider, "_upload_file", fake_upload)
 
         with respx.mock:
             respx.post(_GEMINI_URL).mock(return_value=_empty_segments_response())
-            delete_route = respx.delete(file_uri).mock(
-                return_value=httpx.Response(200)
-            )
+            delete_route = respx.delete(file_uri).mock(return_value=httpx.Response(200))
             await provider.transcribe(audio)
 
         # The uploaded file must be cleaned up after generateContent.
@@ -379,9 +373,7 @@ class TestFilesApiCleanup:
         async def fake_upload(self, audio_bytes, mime_type, client):
             return file_uri
 
-        monkeypatch.setattr(
-            GeminiTranscriptionProvider, "_upload_file", fake_upload
-        )
+        monkeypatch.setattr(GeminiTranscriptionProvider, "_upload_file", fake_upload)
 
         with respx.mock:
             respx.post(_GEMINI_URL).mock(return_value=_empty_segments_response())

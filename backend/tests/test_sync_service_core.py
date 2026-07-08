@@ -751,7 +751,9 @@ class TestSaveMetadataCore:
 
         data = {"groups": {}, "last_sync": "2025-03-20T00:00:00Z"}
         with (
-            patch("backend.services.service_utils.os.replace", side_effect=flaky_replace),
+            patch(
+                "backend.services.service_utils.os.replace", side_effect=flaky_replace
+            ),
             patch("backend.services.service_utils.time.sleep"),
         ):
             await svc.save_metadata(data)
@@ -1788,9 +1790,7 @@ class TestVerifyCancelSerialization:
     second writer (a new sync) cannot start concurrently over the same files."""
 
     @pytest.mark.asyncio
-    async def test_verify_registers_task_and_generation_while_running(
-        self, tmp_path
-    ):
+    async def test_verify_registers_task_and_generation_while_running(self, tmp_path):
         """While verify runs it must register self._task (== the running task)
         and bump self._generation, exactly like start_sync — otherwise cancel()
         takes its "no task" branch and cannot stop it."""
@@ -1861,9 +1861,7 @@ class TestVerifyCancelSerialization:
         assert svc._task is None
 
     @pytest.mark.asyncio
-    async def test_cancel_during_verify_blocks_concurrent_second_writer(
-        self, tmp_path
-    ):
+    async def test_cancel_during_verify_blocks_concurrent_second_writer(self, tmp_path):
         """The load-bearing regression: a /cancel while verify runs must truly
         cancel the verify task (real task.cancel + awaited unwind) so a
         subsequent start_sync cannot launch a second concurrent writer over the

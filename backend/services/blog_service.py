@@ -447,7 +447,10 @@ class BlogService:
         connector = aiohttp.TCPConnector(limit=6)
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
-            fresh_members = await scraper.get_members_with_thumbnails()
+            # get_members_with_thumbnails is implemented on every concrete scraper
+            # but not declared on the BaseBlogScraper return type of get_scraper;
+            # cast so mypy accepts the call (present at runtime for all groups).
+            fresh_members = await cast(Any, scraper).get_members_with_thumbnails()
 
             if not fresh_members:
                 logger.warning("no_members_fetched", service=service)
@@ -673,7 +676,7 @@ class BlogService:
                             "id": blog_data["id"],
                             "title": blog_data["title"],
                             "published_at": pub_at.isoformat()
-                            if hasattr(pub_at, "isoformat")
+                            if isinstance(pub_at, datetime)
                             else pub_at,
                             "url": blog_data["url"],
                             "thumbnail": blog_data["thumbnail"],

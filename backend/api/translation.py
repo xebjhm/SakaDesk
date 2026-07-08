@@ -468,7 +468,11 @@ async def translate(request: TranslateRequest):
         has_nickname = (
             bool(request.user_nickname) and _PLACEHOLDER_RE.search(raw_text) is not None
         )
-        text = _replace_placeholders_with_token(raw_text) if request.user_nickname else raw_text
+        text = (
+            _replace_placeholders_with_token(raw_text)
+            if request.user_nickname
+            else raw_text
+        )
 
         # Build context texts (also with token replaced, same gating)
         context_texts: list[str] = []

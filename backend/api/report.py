@@ -130,10 +130,16 @@ def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
     if not output_dir:
         return text
     result = text
-    variants = {output_dir, output_dir.replace("\\", "/"), output_dir.replace("/", "\\")}
+    variants = {
+        output_dir,
+        output_dir.replace("\\", "/"),
+        output_dir.replace("/", "\\"),
+    }
     for variant in variants:
         if variant:
-            result = re.sub(re.escape(variant), "[REDACTED_DIR]", result, flags=re.IGNORECASE)
+            result = re.sub(
+                re.escape(variant), "[REDACTED_DIR]", result, flags=re.IGNORECASE
+            )
     return result
 
 
