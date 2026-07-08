@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync now saves a member's complete message history. Members you synced before
   this fix stay capped until you run a full re-sync (Force Resync), which now
   back-fills their older messages and media.
+- **Blogs would not load at all**: the first blog sync crashed for every group,
+  so no blog posts appeared. Blog syncing now completes and posts load normally.
 
 ## [0.3.2] - 2026-07-08
 
