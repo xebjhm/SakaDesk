@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pysaka>=0.4.2",
+    "pysaka==0.4.3",
     "python-multipart",
     "aiofiles",
     "keyring",
