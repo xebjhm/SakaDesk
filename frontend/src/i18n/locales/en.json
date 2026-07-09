@@ -96,6 +96,7 @@
     "updateCheckFailed": "Check failed",
     "transcriptionDevice": "Transcription",
     "aiProvider": "AI Provider",
+    "aiKeyShared": "Used by transcription, translation, and the AI assistant in Cloud mode.",
     "resetDefaults": "Reset to defaults",
     "resetConfirm": "Reset settings to defaults? Your data folder, saved API key, and language are kept.",
     "transcriptionCpuDesc": "Works on all machines, slower",

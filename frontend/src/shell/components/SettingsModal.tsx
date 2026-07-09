@@ -740,8 +740,6 @@ function AiTab() {
         saveConfig({ provider: value, model: newModel });
     };
 
-    const showProvider = transcriptionEnabled || translationEnabled;
-
     return (
         <>
             {/* Transcription */}
@@ -807,96 +805,99 @@ function AiTab() {
                 )}
             </div>
 
-            {/* Shared AI provider — used by both Transcription and Translation */}
-            {showProvider && (
-                <div className="pt-4 border-t border-gray-100 space-y-3">
+            {/* Shared AI provider & key — always visible: the KB chatbot's Cloud
+                mode reuses this same keyring credential, so it must stay
+                reachable even with transcription and translation both off. */}
+            <div className="pt-4 border-t border-gray-100 space-y-3">
+                <div>
                     <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
-                    {configLoading && (
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            {t('common.loading')}
-                        </div>
-                    )}
-                    {/* Provider */}
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
-                        <select
-                            value={provider ?? ''}
-                            onChange={(e) => handleProviderChange(e.target.value || null)}
-                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="">—</option>
-                            {PROVIDERS.map(p => (
-                                <option key={p.value} value={p.value}>{p.label}</option>
-                            ))}
-                        </select>
-                        {provider === 'gemini' && (
-                            <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
-                                <p>{t('translation.dataPolicy.geminiFree')}</p>
-                                <p>{t('translation.dataPolicy.geminiPaid')}</p>
-                            </div>
-                        )}
+                    <p className="text-xs text-gray-500 mt-0.5">{t('settings.aiKeyShared')}</p>
+                </div>
+                {configLoading && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {t('common.loading')}
                     </div>
-
-                    {/* Model */}
-                    {provider && MODELS[provider] && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
-                            <select
-                                value={model ?? ''}
-                                onChange={(e) => saveConfig({ model: e.target.value || null })}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                {MODELS[provider].map(m => (
-                                    <option key={m.value} value={m.value}>{m.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* API Key */}
-                    {provider && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="password"
-                                    value={apiKeyInput}
-                                    onChange={(e) => setApiKeyInput(e.target.value)}
-                                    onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
-                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
-                                />
-                                <button
-                                    onClick={handleTestConnection}
-                                    disabled={testing || (!apiKeyInput && !hasApiKey)}
-                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                    {testing && <Loader2 className="w-3 h-3 animate-spin" />}
-                                    {t('translation.settings.testConnection')}
-                                </button>
-                            </div>
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
-                                <div className="flex items-center justify-between mt-0.5">
-                                    <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
-                                    <button
-                                        onClick={handleClearApiKey}
-                                        className="text-xs font-medium text-red-500 hover:text-red-700"
-                                    >
-                                        {t('translation.settings.clearApiKey')}
-                                    </button>
-                                </div>
-                            )}
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
-                                <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
-                            )}
-                            {testResult && (
-                                <p className="text-xs mt-1 text-gray-500">{testResult}</p>
-                            )}
+                )}
+                {/* Provider */}
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
+                    <select
+                        value={provider ?? ''}
+                        onChange={(e) => handleProviderChange(e.target.value || null)}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">—</option>
+                        {PROVIDERS.map(p => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                    </select>
+                    {provider === 'gemini' && (
+                        <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
+                            <p>{t('translation.dataPolicy.geminiFree')}</p>
+                            <p>{t('translation.dataPolicy.geminiPaid')}</p>
                         </div>
                     )}
                 </div>
-            )}
+
+                {/* Model */}
+                {provider && MODELS[provider] && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
+                        <select
+                            value={model ?? ''}
+                            onChange={(e) => saveConfig({ model: e.target.value || null })}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            {MODELS[provider].map(m => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {/* API Key */}
+                {provider && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="password"
+                                value={apiKeyInput}
+                                onChange={(e) => setApiKeyInput(e.target.value)}
+                                onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                            />
+                            <button
+                                onClick={handleTestConnection}
+                                disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {testing && <Loader2 className="w-3 h-3 animate-spin" />}
+                                {t('translation.settings.testConnection')}
+                            </button>
+                        </div>
+                        {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
+                            <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
+                                <button
+                                    onClick={handleClearApiKey}
+                                    className="text-xs font-medium text-red-500 hover:text-red-700"
+                                >
+                                    {t('translation.settings.clearApiKey')}
+                                </button>
+                            </div>
+                        )}
+                        {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
+                            <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
+                        )}
+                        {testResult && (
+                            <p className="text-xs mt-1 text-gray-500">{testResult}</p>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {/* Knowledge base (KB chatbot) — first-run setup checklist, index
                 status/rebuild, and cloud/local backend switch */}
