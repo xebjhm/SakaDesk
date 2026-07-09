@@ -511,15 +511,21 @@
     "sourceLabel": "Source",
     "setup": {
       "checking": "Checking setup…",
+      "enableKb": "Knowledge base chatbot",
       "embeddingModel": "Embedding model",
       "downloadModel": "Download (~1.1 GB)",
       "cancelDownload": "Cancel",
       "downloadFailed": "Download failed. Try again.",
-      "gpuRuntimeMissing": "GPU detected, but the GPU runtime isn't installed — running on CPU.",
+      "gpuRuntimeMissing": "GPU runtime not installed yet — indexing runs on CPU until it's ready.",
+      "gpuActive": "Running on GPU ({{name}})",
+      "runtimeSettingUp": "Setting up GPU runtime… {{pct}}%",
       "aiBackend": "AI backend",
-      "configureBackendHint": "Configure a backend below to enable the chatbot.",
+      "configureBackendHint": "Configure a backend in AI settings to enable the chatbot.",
       "index": "{{count}} document indexed",
       "index_other": "{{count}} documents indexed",
+      "indexedSoFar": "{{count}} document indexed so far",
+      "indexedSoFar_other": "{{count}} documents indexed so far",
+      "noContent": "Nothing to index yet — sync some messages or blogs first.",
       "buildIndex": "Build"
     },
     "error": {

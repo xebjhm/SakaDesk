@@ -54,6 +54,9 @@ describe('ChatWindow suggested-question chips', () => {
                                 embeddingModel: { ok: true, model: 'granite' },
                                 llm: { ok: true, backend: 'cloud', model: 'g' },
                                 index: { documentCount: 1 },
+                                // The ready gate (findings M5/M8) now also
+                                // requires the ONNX runtime to be in place.
+                                runtime: { ok: true, state: 'bundled', host: 'cpu-x64' },
                             }),
                     });
                 }
