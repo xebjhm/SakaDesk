@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -1136,6 +1138,36 @@ class TestKbInitialBuild:
 
         assert scheduled == ["hinatazaka46", "sakurazaka46"]
 
+    @pytest.mark.asyncio
+    async def test_schedule_initial_build_skips_when_build_already_in_flight(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-scheduling is idempotent: the download-completion trigger (or
+        any other caller) fanning out over a service whose in-flight slot is
+        already claimed makes the scheduled `rebuild()` skip instead of
+        running a duplicate concurrent build."""
+        from backend.services import background_tasks as bt
+        from backend.services import knowledge_service as ks
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        rebuild_impl = AsyncMock()
+        monkeypatch.setattr(svc, "_rebuild_impl", rebuild_impl)
+        monkeypatch.setattr(
+            ks, "get_knowledge_service", AsyncMock(return_value=svc)
+        )
+
+        assert await svc._try_acquire_inflight("hinatazaka46")
+        try:
+            await ks.schedule_initial_build("hinatazaka46")
+            pending = {t for t in bt._background_tasks if not t.done()}
+            await asyncio.gather(*pending)
+            await asyncio.sleep(0)
+        finally:
+            await svc._release_inflight("hinatazaka46")
+
+        rebuild_impl.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_rebuild_records_last_built_in_settings(
@@ -1267,6 +1299,51 @@ async def test_rebuild_skips_when_service_already_in_flight(tmp_path: Path) -> N
         assert result == 0
     finally:
         await svc._release_inflight(_SERVICE)
+
+
+@pytest.mark.asyncio
+async def test_rebuild_never_reports_idle_between_members_and_blogs_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A status poll landing BETWEEN the members pass and the blogs pass of a
+    rebuild must never observe phase='idle' -- the members pass's `_persist`
+    paths all end by marking the service idle, and the UI stops its progress
+    polling the moment it sees 'idle', abandoning the still-running blogs
+    pass mid-rebuild. `_rebuild_impl` must re-arm 'discovering' before the
+    blogs pass starts."""
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+
+    phases: dict[str, str] = {}
+
+    async def fake_members_impl(members, service, *, force=False):
+        # What every real members pass does on its way out (`_persist` /
+        # `_persist_batched`'s finally): mark the service idle.
+        svc._mark_idle(service)
+        phases["members_exit"] = svc.index_progress(service)["phase"]
+        return 0
+
+    async def fake_blogs_impl(service, *, force=False):
+        # The observable gap: what a `GET /index/status` poll would read
+        # after the members pass returned and before the blogs pass writes
+        # its own 'discovering' entry.
+        phases["blogs_entry"] = svc.index_progress(service)["phase"]
+        return 0
+
+    monkeypatch.setattr(svc, "_index_members_impl", fake_members_impl)
+    monkeypatch.setattr(svc, "_index_blogs_impl", fake_blogs_impl)
+    monkeypatch.setattr(svc, "_discover_message_members", lambda service: [])
+    monkeypatch.setattr(svc, "_ensure_retriever_cached", lambda service: None)
+    monkeypatch.setattr(svc, "_record_last_built", AsyncMock())
+
+    await svc.rebuild(_SERVICE)
+
+    assert phases["members_exit"] == "idle"  # the simulated real behavior
+    assert phases["blogs_entry"] == "discovering", (
+        "a poll between the members and blogs passes must never see 'idle'"
+    )
 
 
 @pytest.mark.asyncio
@@ -1956,6 +2033,12 @@ class TestComputeReadiness:
             "model": "qwen2.5:14b",
         }
         assert readiness["index"]["documentCount"] == 0
+        # The frontend renders "Running on GPU (DirectML)" / the CPU-fallback
+        # hint from these -- the active-or-predicted execution provider and
+        # the gpuRuntimeMissing flag are part of the readiness contract.
+        assert "provider" in readiness["embeddingModel"]
+        assert "providerConfirmed" in readiness["embeddingModel"]
+        assert isinstance(readiness["embeddingModel"]["gpuRuntimeMissing"], bool)
 
     @pytest.mark.asyncio
     async def test_missing_embedding_model(
@@ -2077,3 +2160,96 @@ class TestComputeReadiness:
         readiness = await ks.compute_readiness()
 
         assert readiness["index"]["documentCount"] == 0
+
+
+class TestGpuRuntimeMissingHint:
+    """`_gpu_runtime_missing_hint()` -- the readiness `gpuRuntimeMissing`
+    field behind the "GPU detected, running on CPU" setup hint.
+
+    The on-demand runtime provisioner only ever installs the `cpu` or
+    `directml` onnxruntime wheels (`onnx_runtime_manifest.py`) -- CUDA never
+    ships -- so `DmlExecutionProvider` must count as the GPU runtime being
+    PRESENT on an NVIDIA box. The hint is True only for the genuine
+    CPU-only-wheel-on-a-GPU-box combination.
+    """
+
+    def _hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        gpu: str | None,
+        providers: list[str],
+    ) -> bool:
+        from backend.services import hardware
+        from backend.services import knowledge_service as ks
+
+        fake_ort = types.SimpleNamespace(get_available_providers=lambda: providers)
+        monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+        monkeypatch.setattr(
+            hardware, "detect_hardware", lambda **kwargs: {"gpu": gpu}
+        )
+        return ks._gpu_runtime_missing_hint()
+
+    def test_false_when_dml_provider_present_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shipped GPU runtime IS DirectML: an NVIDIA machine running the
+        provisioned onnxruntime-directml wheel must never be told its GPU
+        runtime is missing (the old CUDA-only check made this permanently
+        True on every NVIDIA machine)."""
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["DmlExecutionProvider", "CPUExecutionProvider"],
+            )
+            is False
+        )
+
+    def test_false_when_cuda_provider_present_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+            is False
+        )
+
+    def test_true_when_cpu_only_wheel_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["AzureExecutionProvider", "CPUExecutionProvider"],
+            )
+            is True
+        )
+
+    def test_false_when_no_gpu_detected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(monkeypatch, gpu=None, providers=["CPUExecutionProvider"])
+            is False
+        )
+
+    def test_false_when_onnxruntime_import_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No onnxruntime installed is the runtime probe's state to report --
+        the hint stays quiet rather than raising or piling on."""
+        from backend.services import hardware
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setitem(sys.modules, "onnxruntime", None)
+        monkeypatch.setattr(
+            hardware,
+            "detect_hardware",
+            lambda **kwargs: {"gpu": "NVIDIA GeForce RTX 4070"},
+        )
+        assert ks._gpu_runtime_missing_hint() is False

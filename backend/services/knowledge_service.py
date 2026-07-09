@@ -732,13 +732,7 @@ class KnowledgeService:
         straight through to `_persist`: see its docstring for what it does.
         """
         reference = self._reference_for(service)
-        self._index_progress[service] = {
-            "service": service,
-            "phase": "discovering",
-            "done": 0,
-            "total": 0,
-            "started_at": _utcnow_iso(),
-        }
+        self._mark_discovering(service)
         docs = await asyncio.to_thread(
             self._ingest_members_sync, members, service, reference
         )
@@ -823,13 +817,7 @@ class KnowledgeService:
         has the same meaning as `_index_members_impl`'s -- see there.
         """
         reference = self._reference_for(service)
-        self._index_progress[service] = {
-            "service": service,
-            "phase": "discovering",
-            "done": 0,
-            "total": 0,
-            "started_at": _utcnow_iso(),
-        }
+        self._mark_discovering(service)
         docs = await asyncio.to_thread(self._ingest_blogs_sync, service, reference)
         return await self._persist(docs, reference, service, force=force)
 
@@ -998,6 +986,18 @@ class KnowledgeService:
 
     def _mark_idle(self, service: str) -> None:
         self._index_progress[service] = _idle_progress(service)
+
+    def _mark_discovering(self, service: str) -> None:
+        """Write `service`'s 'discovering' progress entry -- the shape every
+        indexing pass starts from (and `_rebuild_impl` re-arms between its
+        two passes so a poll never observes 'idle' mid-rebuild)."""
+        self._index_progress[service] = {
+            "service": service,
+            "phase": "discovering",
+            "done": 0,
+            "total": 0,
+            "started_at": _utcnow_iso(),
+        }
 
     def index_progress(self, service: str) -> dict:
         """A snapshot of `service`'s live indexing progress -- see
@@ -1438,16 +1438,17 @@ class KnowledgeService:
         then records `settings.knowledge_base.last_built` so
         `KnowledgeBaseStatus` can render "Last indexed: …".
         """
-        self._index_progress[service] = {
-            "service": service,
-            "phase": "discovering",
-            "done": 0,
-            "total": 0,
-            "started_at": _utcnow_iso(),
-        }
+        self._mark_discovering(service)
         force_reembed = await asyncio.to_thread(self._read_reindex_required)
         members = await asyncio.to_thread(self._discover_message_members, service)
         changed = await self._index_members_impl(members, service, force=force_reembed)
+        # The members pass above always ends by marking `service` idle
+        # (`_persist`'s early-outs / `_persist_batched`'s finally), and the
+        # blogs pass only writes its own 'discovering' entry once IT starts --
+        # re-arm 'discovering' in between so a `GET /index/status` poll
+        # landing in that gap can never observe phase='idle' and stop the
+        # UI's progress polling mid-rebuild.
+        self._mark_discovering(service)
         changed += await self._index_blogs_impl(service, force=force_reembed)
         await self._clear_reindex_required_and_rewrite_fingerprint()
         async with self._store_lock:
@@ -1903,12 +1904,21 @@ def _predict_or_confirm_provider() -> tuple[str | None, bool]:
 
 def _gpu_runtime_missing_hint() -> bool:
     """`True` when hardware detection finds a GPU but the installed
-    `onnxruntime` build doesn't report `CUDAExecutionProvider` available --
-    the "GPU detected, GPU runtime not installed" hint (merges 6 duplicate
+    `onnxruntime` build has NO GPU execution provider at all -- the
+    "GPU detected, GPU runtime not installed" hint (merges 6 duplicate
     CPU-only-embedder findings, `pwave-4-brief.md` item 5): the machine HAS a
-    capable GPU, but `pysaka[embeddings-gpu]` (`onnxruntime-gpu`) isn't
-    installed, so embedding silently runs on CPU. Best-effort and always
-    safe -- `detect_hardware()` already guards every probe it makes.
+    capable GPU, but only the CPU wheel is installed, so embedding silently
+    runs on CPU.
+
+    The on-demand provisioner only ever installs the `cpu` or `directml`
+    wheels (`onnx_runtime_manifest.py`) -- CUDA never ships -- so
+    `DmlExecutionProvider` IS the expected GPU runtime on NVIDIA boxes and
+    counts as present (the old CUDA-only check made this hint permanently
+    True on every NVIDIA machine, telling users "running on CPU" while the
+    embedder was verifiably on DirectML). Best-effort and always safe --
+    `detect_hardware()` already guards every probe it makes, and a missing
+    `onnxruntime` install is the runtime probe's state to report, not this
+    hint's (=> `False`).
     """
     try:
         import onnxruntime as ort
@@ -1918,7 +1928,8 @@ def _gpu_runtime_missing_hint() -> bool:
         hw = detect_hardware()
         if not hw.get("gpu"):
             return False
-        return "CUDAExecutionProvider" not in ort.get_available_providers()
+        providers = set(ort.get_available_providers())
+        return not providers & {"DmlExecutionProvider", "CUDAExecutionProvider"}
     except Exception:  # noqa: BLE001 - best-effort hint only
         return False
 
