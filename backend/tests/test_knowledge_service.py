@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
@@ -1956,6 +1958,12 @@ class TestComputeReadiness:
             "model": "qwen2.5:14b",
         }
         assert readiness["index"]["documentCount"] == 0
+        # The frontend renders "Running on GPU (DirectML)" / the CPU-fallback
+        # hint from these -- the active-or-predicted execution provider and
+        # the gpuRuntimeMissing flag are part of the readiness contract.
+        assert "provider" in readiness["embeddingModel"]
+        assert "providerConfirmed" in readiness["embeddingModel"]
+        assert isinstance(readiness["embeddingModel"]["gpuRuntimeMissing"], bool)
 
     @pytest.mark.asyncio
     async def test_missing_embedding_model(
@@ -2077,3 +2085,96 @@ class TestComputeReadiness:
         readiness = await ks.compute_readiness()
 
         assert readiness["index"]["documentCount"] == 0
+
+
+class TestGpuRuntimeMissingHint:
+    """`_gpu_runtime_missing_hint()` -- the readiness `gpuRuntimeMissing`
+    field behind the "GPU detected, running on CPU" setup hint.
+
+    The on-demand runtime provisioner only ever installs the `cpu` or
+    `directml` onnxruntime wheels (`onnx_runtime_manifest.py`) -- CUDA never
+    ships -- so `DmlExecutionProvider` must count as the GPU runtime being
+    PRESENT on an NVIDIA box. The hint is True only for the genuine
+    CPU-only-wheel-on-a-GPU-box combination.
+    """
+
+    def _hint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        gpu: str | None,
+        providers: list[str],
+    ) -> bool:
+        from backend.services import hardware
+        from backend.services import knowledge_service as ks
+
+        fake_ort = types.SimpleNamespace(get_available_providers=lambda: providers)
+        monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+        monkeypatch.setattr(
+            hardware, "detect_hardware", lambda **kwargs: {"gpu": gpu}
+        )
+        return ks._gpu_runtime_missing_hint()
+
+    def test_false_when_dml_provider_present_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shipped GPU runtime IS DirectML: an NVIDIA machine running the
+        provisioned onnxruntime-directml wheel must never be told its GPU
+        runtime is missing (the old CUDA-only check made this permanently
+        True on every NVIDIA machine)."""
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["DmlExecutionProvider", "CPUExecutionProvider"],
+            )
+            is False
+        )
+
+    def test_false_when_cuda_provider_present_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
+            is False
+        )
+
+    def test_true_when_cpu_only_wheel_on_gpu_box(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(
+                monkeypatch,
+                gpu="NVIDIA GeForce RTX 4070",
+                providers=["AzureExecutionProvider", "CPUExecutionProvider"],
+            )
+            is True
+        )
+
+    def test_false_when_no_gpu_detected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert (
+            self._hint(monkeypatch, gpu=None, providers=["CPUExecutionProvider"])
+            is False
+        )
+
+    def test_false_when_onnxruntime_import_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No onnxruntime installed is the runtime probe's state to report --
+        the hint stays quiet rather than raising or piling on."""
+        from backend.services import hardware
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setitem(sys.modules, "onnxruntime", None)
+        monkeypatch.setattr(
+            hardware,
+            "detect_hardware",
+            lambda **kwargs: {"gpu": "NVIDIA GeForce RTX 4070"},
+        )
+        assert ks._gpu_runtime_missing_hint() is False

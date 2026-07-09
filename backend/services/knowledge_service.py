@@ -1903,12 +1903,21 @@ def _predict_or_confirm_provider() -> tuple[str | None, bool]:
 
 def _gpu_runtime_missing_hint() -> bool:
     """`True` when hardware detection finds a GPU but the installed
-    `onnxruntime` build doesn't report `CUDAExecutionProvider` available --
-    the "GPU detected, GPU runtime not installed" hint (merges 6 duplicate
+    `onnxruntime` build has NO GPU execution provider at all -- the
+    "GPU detected, GPU runtime not installed" hint (merges 6 duplicate
     CPU-only-embedder findings, `pwave-4-brief.md` item 5): the machine HAS a
-    capable GPU, but `pysaka[embeddings-gpu]` (`onnxruntime-gpu`) isn't
-    installed, so embedding silently runs on CPU. Best-effort and always
-    safe -- `detect_hardware()` already guards every probe it makes.
+    capable GPU, but only the CPU wheel is installed, so embedding silently
+    runs on CPU.
+
+    The on-demand provisioner only ever installs the `cpu` or `directml`
+    wheels (`onnx_runtime_manifest.py`) -- CUDA never ships -- so
+    `DmlExecutionProvider` IS the expected GPU runtime on NVIDIA boxes and
+    counts as present (the old CUDA-only check made this hint permanently
+    True on every NVIDIA machine, telling users "running on CPU" while the
+    embedder was verifiably on DirectML). Best-effort and always safe --
+    `detect_hardware()` already guards every probe it makes, and a missing
+    `onnxruntime` install is the runtime probe's state to report, not this
+    hint's (=> `False`).
     """
     try:
         import onnxruntime as ort
@@ -1918,7 +1927,8 @@ def _gpu_runtime_missing_hint() -> bool:
         hw = detect_hardware()
         if not hw.get("gpu"):
             return False
-        return "CUDAExecutionProvider" not in ort.get_available_providers()
+        providers = set(ort.get_available_providers())
+        return not providers & {"DmlExecutionProvider", "CUDAExecutionProvider"}
     except Exception:  # noqa: BLE001 - best-effort hint only
         return False
 
