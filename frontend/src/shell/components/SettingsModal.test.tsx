@@ -94,6 +94,12 @@ function stubFetch(config: AiConfigResponse | 'hang') {
     return { calls };
 }
 
+function configurePosts(calls: FetchCall[]): unknown[] {
+    return calls
+        .filter((c) => c.url === '/api/translation/configure' && c.method === 'POST')
+        .map((c) => c.body);
+}
+
 const APP_SETTINGS: AppSettings = {
     output_dir: 'C:/data',
     auto_sync_enabled: true,
@@ -178,4 +184,77 @@ describe('SettingsModal AI tab', () => {
         });
     });
 
+    describe('configure POST sends only user-changed fields (M14)', () => {
+        it('saving only the target language sends {target_language} alone', async () => {
+            storeState.translationEnabled = true;
+            const { calls } = stubFetch({
+                provider: 'gemini',
+                model: 'gemini-2.5-flash',
+                has_api_key: true,
+                api_key_masked: 'AIza...xQ',
+                target_language: 'en',
+            });
+
+            await renderAiTab();
+            // Wait for the config fetch to land (target select shows English).
+            await waitFor(() => expect(screen.getByDisplayValue('English')).toBeInTheDocument());
+
+            await userEvent.selectOptions(screen.getByDisplayValue('English'), 'zh-TW');
+
+            await waitFor(() => expect(configurePosts(calls)).toHaveLength(1));
+            expect(configurePosts(calls)[0]).toEqual({ target_language: 'zh-TW' });
+        });
+
+        it('changing the provider sends {provider, model} and nothing else', async () => {
+            const { calls } = stubFetch({
+                provider: null,
+                model: null,
+                has_api_key: false,
+                api_key_masked: null,
+                target_language: null,
+            });
+
+            await renderAiTab();
+            await waitFor(() => expect(screen.getByDisplayValue('—')).toBeInTheDocument());
+
+            await userEvent.selectOptions(screen.getByDisplayValue('—'), 'gemini');
+
+            await waitFor(() => expect(configurePosts(calls)).toHaveLength(1));
+            expect(configurePosts(calls)[0]).toEqual({ provider: 'gemini', model: 'gemini-2.5-flash' });
+        });
+
+        it('entering a new API key sends {api_key} alone on blur', async () => {
+            const { calls } = stubFetch({
+                provider: 'gemini',
+                model: 'gemini-2.5-flash',
+                has_api_key: false,
+                api_key_masked: null,
+                target_language: null,
+            });
+
+            await renderAiTab();
+            const keyInput = await screen.findByPlaceholderText('sk-... / AIza...');
+
+            await userEvent.type(keyInput, 'AIza-new-key');
+            await userEvent.tab();
+
+            await waitFor(() => expect(configurePosts(calls)).toHaveLength(1));
+            expect(configurePosts(calls)[0]).toEqual({ api_key: 'AIza-new-key' });
+        });
+
+        it('never sends provider (so the backend never clears the key) when saving before the config fetch resolves', async () => {
+            storeState.translationEnabled = true;
+            const { calls } = stubFetch('hang');
+
+            await renderAiTab();
+
+            // Target-language select is the first combobox on the tab; change it
+            // while GET /api/translation/config is still pending.
+            const targetSelect = screen.getAllByRole('combobox')[0];
+            await userEvent.selectOptions(targetSelect, 'yue');
+
+            await waitFor(() => expect(configurePosts(calls)).toHaveLength(1));
+            expect(configurePosts(calls)[0]).toEqual({ target_language: 'yue' });
+        });
+    });
 });

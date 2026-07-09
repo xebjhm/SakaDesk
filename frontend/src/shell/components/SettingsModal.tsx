@@ -719,18 +719,24 @@ function AiTab() {
             targetLang: newTargetLang,
         };
 
-        // Persist to backend (API key stored in keyring, not settings.json)
-        // Only send api_key if user typed a new one
-        const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        // Persist to backend (API key stored in keyring, not settings.json).
+        // PATCH semantics: send ONLY the fields the user changed in THIS call.
+        // The backend keys off which fields are present (`model_fields_set`),
+        // and an explicit `provider: null` means "clear provider + delete the
+        // stored API key" — so echoing unchanged local state here (which can be
+        // stale or not yet fetched) could silently wipe the keyring credential
+        // (review finding M14). The api_key field is additionally gated on a
+        // non-empty value: an empty input means "unchanged", never "delete".
+        const payload: Record<string, string | null> = {};
+        if (updates.provider !== undefined) payload.provider = updates.provider;
+        if (updates.model !== undefined) payload.model = updates.model;
+        if (updates.api_key) payload.api_key = updates.api_key;
+        if (updates.target_language !== undefined) payload.target_language = updates.target_language;
+        if (Object.keys(payload).length === 0) return;
         fetch('/api/translation/configure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                provider: newProvider,
-                model: newModel,
-                api_key: apiKeyToSend ?? null,
-                target_language: newTargetLang,
-            }),
+            body: JSON.stringify(payload),
         });
     };
 
