@@ -316,7 +316,9 @@ export const KbBackendSelector: React.FC = () => {
     const selectedModelInfo = modelOptions.find((m) => m.id === model);
 
     return (
-        <div className="pt-4 border-t border-gray-100 space-y-3">
+        // No own top divider: Settings wraps this in a titled "AI assistant"
+        // section that already provides the separation.
+        <div className="space-y-3">
             {/* Enable switch — top of the KB settings section (Task 3 item 1) */}
             <div>
                 <div className="flex items-center justify-between">

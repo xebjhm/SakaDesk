@@ -257,4 +257,53 @@ describe('SettingsModal AI tab', () => {
             expect(configurePosts(calls)[0]).toEqual({ target_language: 'yue' });
         });
     });
+
+    describe('KB section layout (M6/M7)', () => {
+        it('does not mount the setup checklist in Settings (chat-only)', async () => {
+            stubFetch({
+                provider: null,
+                model: null,
+                has_api_key: false,
+                api_key_masked: null,
+                target_language: null,
+            });
+
+            await renderAiTab();
+
+            expect(screen.queryByTestId('setup-checklist')).toBeNull();
+        });
+
+        it('renders the backend selector (with the Enable switch) before the index status block', async () => {
+            stubFetch({
+                provider: null,
+                model: null,
+                has_api_key: false,
+                api_key_masked: null,
+                target_language: null,
+            });
+
+            await renderAiTab();
+
+            const selector = screen.getByTestId('kb-backend-selector');
+            const status = screen.getByTestId('kb-status');
+            expect(selector.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('titles the four AI groups: transcription, translation, provider, assistant', async () => {
+            stubFetch({
+                provider: null,
+                model: null,
+                has_api_key: false,
+                api_key_masked: null,
+                target_language: null,
+            });
+
+            await renderAiTab();
+
+            expect(screen.getByText('Transcription')).toBeInTheDocument();
+            expect(screen.getByText('Translation')).toBeInTheDocument();
+            expect(screen.getByText('AI provider & API key')).toBeInTheDocument();
+            expect(screen.getByText('AI assistant')).toBeInTheDocument();
+        });
+    });
 });

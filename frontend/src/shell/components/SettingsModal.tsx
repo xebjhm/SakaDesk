@@ -6,7 +6,7 @@ import { useModalClose } from '../../core/common/useModalClose';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
+import { KnowledgeBaseStatus, KbBackendSelector } from '../../features/ai/components';
 import { apiKeyStatus } from './apiKeyStatus';
 import { persisted } from '../../core/persistence/persisted';
 
@@ -749,11 +749,11 @@ function AiTab() {
     return (
         <>
             {/* Transcription */}
-            <div>
+            <section>
                 <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-gray-700">
-                        {t('settings.transcriptionDevice')}
-                    </label>
+                    <h4 className="text-sm font-semibold text-gray-800">
+                        {t('settings.sectionTranscription')}
+                    </h4>
                     <button
                         onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
                         className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -765,14 +765,14 @@ function AiTab() {
                         }`} />
                     </button>
                 </div>
-            </div>
+            </section>
 
             {/* Translation */}
-            <div>
+            <section className="pt-4 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                        {t('translation.settings.title')}
-                    </label>
+                    <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        {t('settings.sectionTranslation')}
+                    </h4>
                     <button
                         onClick={() => setTranslationEnabled(!translationEnabled)}
                         className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -809,14 +809,14 @@ function AiTab() {
                         </button>
                     </div>
                 )}
-            </div>
+            </section>
 
             {/* Shared AI provider & key — always visible: the KB chatbot's Cloud
                 mode reuses this same keyring credential, so it must stay
                 reachable even with transcription and translation both off. */}
-            <div className="pt-4 border-t border-gray-100 space-y-3">
+            <section className="pt-4 border-t border-gray-100 space-y-3">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
+                    <h4 className="text-sm font-semibold text-gray-800">{t('settings.sectionProvider')}</h4>
                     <p className="text-xs text-gray-500 mt-0.5">{t('settings.aiKeyShared')}</p>
                 </div>
                 {configLoading && (
@@ -903,13 +903,18 @@ function AiTab() {
                         )}
                     </div>
                 )}
-            </div>
+            </section>
 
-            {/* Knowledge base (KB chatbot) — first-run setup checklist, index
-                status/rebuild, and cloud/local backend switch */}
-            <SetupChecklist />
-            <KnowledgeBaseStatus />
-            <KbBackendSelector />
+            {/* AI assistant (KB chatbot) — the backend selector carries the
+                master Enable switch, so it comes first; index status/rebuild
+                below it. The first-run SetupChecklist is chat-only (it also
+                lives in ChatWindow) — mounting it here duplicated the doc
+                count and Build button with different disable rules (M6/M7). */}
+            <section className="pt-4 border-t border-gray-100 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-800">{t('settings.sectionAssistant')}</h4>
+                <KbBackendSelector />
+                <KnowledgeBaseStatus />
+            </section>
         </>
     );
 }
