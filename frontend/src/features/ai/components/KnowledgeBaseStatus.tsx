@@ -1,86 +1,9 @@
 // frontend/src/features/ai/components/KnowledgeBaseStatus.tsx
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
-
-/** `GET /api/ai/index/status`'s real shape (Task 3, `KnowledgeService.status()`
- * in `backend/services/knowledge_service.py`): a `document_count` total, a
- * per-doc-type breakdown, the LIVE `_index_progress` snapshot, and the
- * settings-owned `last_built` timestamp (enriched at the endpoint layer —
- * see `backend/api/ai.py`'s `index_status`). */
-interface RawProgress {
-    service: string | null;
-    phase: string;
-    done: number;
-    total: number;
-    started_at: string | null;
-}
-
-interface RawIndexStatus {
-    service: string | null;
-    document_count: number;
-    by_type: Record<string, number>;
-    progress: RawProgress;
-    last_built: string | null;
-    configured?: boolean;
-    provider?: string | null;
-    /** Embedder-fingerprint mismatch (Product-wave Task 4 fold-in) -- set
-     * when the active embedding model config no longer matches what the
-     * persisted vectors were embedded with. Incremental index writes are
-     * blocked server-side until a Rebuild clears it. */
-    reindex_required?: boolean;
-}
-
-interface Progress {
-    /** Which service this progress snapshot belongs to. `GET /index/status?service=X`
-     * now returns X's OWN progress (`KnowledgeService`'s per-service in-flight
-     * registry -- see that module's `_index_inflight`/`_index_progress`), so this
-     * normally equals the queried `activeService`; kept as a field rather than
-     * assumed so the UI stays correct even if a snapshot ever names a different
-     * service (see `KnowledgeService.status`'s docstring). */
-    service: string | null;
-    phase: string;
-    done: number;
-    total: number;
-}
-
-interface IndexStatus {
-    documentCount: number;
-    byType: Record<string, number>;
-    progress: Progress;
-    lastBuilt: string | null;
-    reindexRequired: boolean;
-}
-
-const IDLE_PROGRESS: Progress = { service: null, phase: 'idle', done: 0, total: 0 };
-
-function parseStatus(raw: unknown): IndexStatus {
-    const data = raw as Partial<RawIndexStatus> | null | undefined;
-    const rawProgress = data?.progress;
-    const progress: Progress =
-        rawProgress && typeof rawProgress === 'object'
-            ? {
-                  service: typeof rawProgress.service === 'string' ? rawProgress.service : null,
-                  phase: typeof rawProgress.phase === 'string' ? rawProgress.phase : 'idle',
-                  done: typeof rawProgress.done === 'number' ? rawProgress.done : 0,
-                  total: typeof rawProgress.total === 'number' ? rawProgress.total : 0,
-              }
-            : IDLE_PROGRESS;
-    return {
-        documentCount: typeof data?.document_count === 'number' ? data.document_count : 0,
-        byType: data?.by_type && typeof data.by_type === 'object' ? data.by_type : {},
-        progress,
-        lastBuilt: typeof data?.last_built === 'string' ? data.last_built : null,
-        reindexRequired: data?.reindex_required === true,
-    };
-}
-
-// Real, server-confirmed progress (Task 3 item 3) replaces the old blind
-// "poll for REBUILD_POLL_WINDOW_MS and hope it's done" window: `status().progress`
-// now reports the actual `phase`/`done`/`total` of whichever index/rebuild is
-// running, so polling continues for exactly as long as `phase !== 'idle'`.
-const REBUILD_POLL_INTERVAL_MS = 2000;
+import { useIndexStatusPoll } from '../useIndexStatusPoll';
 
 /** Localized phase label -- `discovering` (file scan) / `embedding` (batched
  * vector persist, with `done`/`total`) are the only phases the backend ever
@@ -91,6 +14,13 @@ function phaseLabelKey(phase: string): string {
     return phase === 'discovering' ? 'settings.kbPhaseDiscovering' : 'settings.kbPhaseEmbedding';
 }
 
+/** `"3m 20s"` / `"45s"` for the `settings.kbEta` interpolation. */
+function formatEta(totalSeconds: number): string {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
 /**
  * `KnowledgeBaseStatus` — Settings > AI > Knowledge base index status + rebuild.
  *
@@ -98,79 +28,64 @@ function phaseLabelKey(phase: string): string {
  * (`useAppStore`'s `activeService`), when it was last (re)indexed, and a
  * Rebuild button. While an index/rebuild is in flight for the active service
  * (`KnowledgeService`'s per-service in-flight registry -- see its module
- * docstring), the button is disabled and a real progress bar replaces the
- * static count; the generic "already indexing" note is a defensive fallback
- * for a progress snapshot naming a different service than the one queried.
+ * docstring), the button is disabled and a real progress bar renders --
+ * indeterminate (animated) while `discovering` hasn't produced a chunk total
+ * yet, determinate with an ETA (chunks/sec measured across poll deltas, NOT
+ * from `started_at`) once `embedding` reports `done`/`total`. The document
+ * count stays visible DURING a rebuild too: `document_count` rises live as
+ * batches persist. Polling is the shared `useIndexStatusPoll` loop, which
+ * settles only after two consecutive idle reads (debounces the transient
+ * mid-rebuild idle between per-source passes). The generic "already indexing"
+ * note is a defensive fallback for a progress snapshot naming a different
+ * service than the one queried.
  */
 export const KnowledgeBaseStatus: React.FC = () => {
     const { t } = useTranslation();
     const activeService = useAppStore((s) => s.activeService);
-    const [status, setStatus] = useState<IndexStatus | null>(null);
     const [rebuildBlocked, setRebuildBlocked] = useState(false);
-    const pollTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const { status, start: startPolling, stop: stopPolling } = useIndexStatusPoll();
 
-    const fetchStatus = useCallback((service: string): Promise<IndexStatus | null> => {
-        return fetch(`/api/ai/index/status?service=${encodeURIComponent(service)}`)
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data) => {
-                if (!data) return null;
-                const parsed = parseStatus(data);
-                setStatus(parsed);
-                return parsed;
-            })
-            .catch((err: unknown) => {
-                console.error('[KnowledgeBaseStatus] Failed to fetch index status:', err);
-                return null;
-            });
-    }, []);
-
-    // Poll while an index/rebuild is (server-confirmed) actually running —
-    // stops the instant `phase` reports back "idle", not after a fixed window.
-    const pollStatus = useCallback(
-        (service: string) => {
-            void fetchStatus(service).then((parsed) => {
-                if (parsed && parsed.progress.phase !== 'idle') {
-                    pollTimerRef.current = setTimeout(() => pollStatus(service), REBUILD_POLL_INTERVAL_MS);
-                }
-            });
-        },
-        [fetchStatus]
-    );
-
-    const startPolling = useCallback(
-        (service: string) => {
-            if (pollTimerRef.current) {
-                clearTimeout(pollTimerRef.current);
-                pollTimerRef.current = undefined;
-            }
-            pollStatus(service);
-        },
-        [pollStatus]
-    );
-
-    // Load once per active service (and start polling if an index happens to
+    // Load once per active service (and keep polling if an index happens to
     // already be running, e.g. the startup catch-up sweep or another client's
     // rebuild).
     useEffect(() => {
-        if (pollTimerRef.current) {
-            clearTimeout(pollTimerRef.current);
-            pollTimerRef.current = undefined;
-        }
+        setRebuildBlocked(false);
         if (!activeService) {
-            setStatus(null);
-            setRebuildBlocked(false);
+            stopPolling();
             return;
         }
-        setRebuildBlocked(false);
         startPolling(activeService);
-        return () => {
-            if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- `startPolling` is stable per `activeService`'s fetchStatus closure
-    }, [activeService]);
+        return () => stopPolling();
+    }, [activeService, startPolling, stopPolling]);
 
     const isRebuilding = !!status && status.progress.phase !== 'idle';
     const isThisServiceRebuilding = isRebuilding && status?.progress.service === activeService;
+
+    // ETA (nice-to-have): chunks/sec from the delta between the last two poll
+    // samples -- deliberately NOT from `started_at`, which averages over the
+    // slow `discovering` phase and lies about the embedding rate. Hidden until
+    // two samples show forward progress, and hidden again if a sample stalls.
+    const etaSampleRef = useRef<{ done: number; at: number } | null>(null);
+    const [etaSeconds, setEtaSeconds] = useState<number | null>(null);
+    useEffect(() => {
+        const progress = status?.progress;
+        if (!progress || progress.phase !== 'embedding' || progress.total <= 0) {
+            etaSampleRef.current = null;
+            setEtaSeconds(null);
+            return;
+        }
+        const now = performance.now();
+        const prev = etaSampleRef.current;
+        etaSampleRef.current = { done: progress.done, at: now };
+        if (!prev || now <= prev.at) return;
+        const deltaChunks = progress.done - prev.done;
+        if (deltaChunks <= 0) {
+            setEtaSeconds(null); // stalled/unstable -- hide rather than mislead
+            return;
+        }
+        const chunksPerSecond = deltaChunks / ((now - prev.at) / 1000);
+        setEtaSeconds(Math.max(1, Math.round((progress.total - progress.done) / chunksPerSecond)));
+    }, [status]);
 
     const handleRebuild = async () => {
         if (!activeService || isRebuilding) return;
@@ -225,20 +140,34 @@ export const KnowledgeBaseStatus: React.FC = () => {
                             total: status.progress.total,
                         })}</span>
                         {status.progress.total > 0 && (
-                            <span>{Math.round((status.progress.done / status.progress.total) * 100)}%</span>
+                            <span className="flex gap-2">
+                                {etaSeconds != null && (
+                                    <span>{t('settings.kbEta', { eta: formatEta(etaSeconds) })}</span>
+                                )}
+                                <span>{Math.round((status.progress.done / status.progress.total) * 100)}%</span>
+                            </span>
                         )}
                     </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                    {status.progress.total > 0 ? (
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-blue-400 transition-all duration-300 ease-out rounded-full"
+                                style={{
+                                    width: `${(status.progress.done / status.progress.total) * 100}%`,
+                                }}
+                            />
+                        </div>
+                    ) : (
+                        // No chunk total yet (`discovering`'s multi-minute file
+                        // scan) -- an animated indeterminate track instead of a
+                        // dead bar frozen at 0%.
                         <div
-                            className="h-full bg-blue-400 transition-all duration-300 ease-out rounded-full"
-                            style={{
-                                width:
-                                    status.progress.total > 0
-                                        ? `${(status.progress.done / status.progress.total) * 100}%`
-                                        : '0%',
-                            }}
-                        />
-                    </div>
+                            className="h-1.5 bg-gray-100 rounded-full overflow-hidden"
+                            data-testid="kb-indeterminate"
+                        >
+                            <div className="h-full w-1/3 bg-blue-400 rounded-full animate-pulse" />
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -246,10 +175,14 @@ export const KnowledgeBaseStatus: React.FC = () => {
                 <p className="text-xs text-gray-500 mt-1">{t('settings.kbAlreadyIndexing')}</p>
             )}
 
-            {activeService && !isRebuilding && (
+            {/* Rendered during rebuilds too -- `document_count` is live and
+                rises while batches persist, giving a sense of movement even
+                before the chunk total is known. `lastBuilt` is only appended
+                once idle (it's stale mid-rebuild). */}
+            {activeService && (
                 <p className="text-xs text-gray-500 mt-1">
                     {t('settings.kbIndexed', { count: status?.documentCount ?? 0 })}
-                    {status?.lastBuilt && (
+                    {!isRebuilding && status?.lastBuilt && (
                         <span className="text-gray-400">
                             {' · '}
                             {t('settings.kbLastIndexed', { when: new Date(status.lastBuilt).toLocaleString() })}

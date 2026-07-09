@@ -144,9 +144,78 @@ describe('KnowledgeBaseStatus', () => {
         expect(await screen.findByText('Indexing 5/20…')).toBeInTheDocument();
         expect(screen.getByText('25%')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Rebuild index' })).toBeDisabled();
-        // The static document count line is replaced by the progress view while active.
-        expect(screen.queryByText('5 documents indexed')).toBeNull();
+        // The LIVE document count keeps rendering while the rebuild runs --
+        // `document_count` rises during a build, so hiding it left the user
+        // with no sense of movement (Setup/status wave, Task 3b).
+        expect(screen.getByText('5 documents indexed')).toBeInTheDocument();
     });
+
+    it('renders an animated indeterminate bar while discovering (total still 0)', async () => {
+        const { impl } = buildFetch({
+            statusOverride: {
+                service: 'hinatazaka46',
+                document_count: 5,
+                by_type: { blog: 5 },
+                progress: {
+                    service: 'hinatazaka46',
+                    phase: 'discovering',
+                    done: 0,
+                    total: 0,
+                    started_at: '2026-06-30T12:00:00+00:00',
+                },
+                last_built: null,
+            },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KnowledgeBaseStatus />);
+
+        // The multi-minute file scan used to sit on a dead 0%-width bar --
+        // now an animated indeterminate track shows the app is alive.
+        expect(await screen.findByText('Scanning files…')).toBeInTheDocument();
+        expect(screen.getByTestId('kb-indeterminate')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Rebuild index' })).toBeDisabled();
+    });
+
+    it(
+        'renders an ETA once two embedding samples show a steady chunk rate',
+        async () => {
+            let done = 5;
+            const impl = (input: string | URL | Request, init?: RequestInit) => {
+                const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+                const method = (init?.method ?? 'GET').toUpperCase();
+                if (url.startsWith('/api/ai/index/status') && method === 'GET') {
+                    const body = {
+                        service: 'hinatazaka46',
+                        document_count: 5,
+                        by_type: { blog: 5 },
+                        progress: {
+                            service: 'hinatazaka46',
+                            phase: 'embedding',
+                            done,
+                            total: 200,
+                            started_at: '2026-06-30T12:00:00+00:00',
+                        },
+                        last_built: null,
+                    };
+                    done += 5; // steady progress between polls
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            };
+            vi.stubGlobal('fetch', vi.fn(impl));
+
+            render(<KnowledgeBaseStatus />);
+
+            // First sample alone can't estimate a rate -- no ETA yet.
+            expect(await screen.findByText('Indexing 5/200…')).toBeInTheDocument();
+            expect(screen.queryByText(/remaining/)).toBeNull();
+
+            // The second poll (one interval later) establishes chunks/sec.
+            expect(await screen.findByText(/~\d+m? ?\d*s remaining/, undefined, { timeout: 4000 })).toBeInTheDocument();
+        },
+        10000
+    );
 
     it('POST /index/rebuild 409 {alreadyRunning} renders "already indexing" once status confirms another service is running', async () => {
         let statusCallCount = 0;
