@@ -11,9 +11,12 @@ interface SyncModalProps {
     syncProgress: SyncProgress;
     sequentialSyncInfo?: SequentialSyncInfo | null;
     onClose?: () => void;
+    /** SD-FE-GAP-B-08: cancel a running sync so the user is never locked to a
+        non-terminating spinner (e.g. a hung verify). */
+    onCancel?: () => void;
 }
 
-export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose }) => {
+export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose, onCancel }) => {
     const { t } = useTranslation();
 
     const getPhaseName = () => getSyncPhaseName(syncProgress, t);
@@ -219,6 +222,20 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                                 className="px-5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
                             >
                                 {t('common.done')}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* SD-FE-GAP-B-08: while running, offer a Cancel so the user
+                        is never trapped by a spinner that never terminates (e.g.
+                        a hung verify with no cancellable backend task). */}
+                    {syncProgress.state === 'running' && onCancel && (
+                        <div className="flex justify-center pt-1">
+                            <button
+                                onClick={onCancel}
+                                className="px-5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                            >
+                                {t('common.cancel')}
                             </button>
                         </div>
                     )}

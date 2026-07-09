@@ -53,3 +53,35 @@ def _on_task_done(task: asyncio.Task, name: str) -> None:
     exc = task.exception()
     if exc is not None:
         logger.error("background_task.failed", name=name, exc_info=exc)
+
+
+async def drain_background_tasks(timeout: float = 5.0) -> None:
+    """Shutdown-barrier hook (C1a): cancel every tracked task and wait for it
+    to actually finish unwinding before returning.
+
+    This is the app-shutdown write barrier's coverage for the
+    `track_background_task` family (e.g. `sync_search_index`, which writes
+    `search_index.db`) -- without it, a fire-and-forget writer task could
+    still be mid-write when `data_lock.release()` runs. Cancelling and then
+    `gather`-ing (rather than just calling `.cancel()`) guarantees this
+    returns only once every task is done/cancelled, not merely "asked to
+    stop". Bounded by `timeout` so a writer that swallows `CancelledError`
+    and hangs cannot deadlock shutdown forever; any task still outstanding
+    after the timeout is logged loudly (I2 posture: never fail silently).
+    """
+    tasks = list(_background_tasks)
+    if not tasks:
+        return
+    for task in tasks:
+        task.cancel()
+    try:
+        await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), timeout=timeout
+        )
+    except asyncio.TimeoutError:
+        still_running = [t for t in tasks if not t.done()]
+        logger.error(
+            "drain_background_tasks.timed_out",
+            timeout=timeout,
+            outstanding=len(still_running),
+        )

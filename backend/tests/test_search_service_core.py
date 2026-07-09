@@ -1038,17 +1038,13 @@ class TestClearDb:
                 service._write_executor, service._build_full_index_sync
             )
             # Run a real search so _read_conn is opened on the read executor.
-            result = await service.search(
-                "ライブ", content_type="messages", limit=50
-            )
+            result = await service.search("ライブ", content_type="messages", limit=50)
         assert result["total_count"] >= 1
         assert service._read_conn is not None
 
         # Patch the heavy process build; we only exercise the connection
         # teardown/threading, not the full reindex.
-        with patch.object(
-            service, "build_full_index", new=AsyncMock(return_value=0)
-        ):
+        with patch.object(service, "build_full_index", new=AsyncMock(return_value=0)):
             # Before the fix this raised sqlite3.ProgrammingError from the
             # write executor closing a read-executor-owned connection.
             await service.rebuild()
@@ -1542,6 +1538,125 @@ class TestExcludeUnreadFilter:
 # =====================================================================
 # 15. Schema direct creation test
 # =====================================================================
+
+
+class TestPerServiceIdKeying:
+    """SD-BE-SVC-03 / SD-BE-SVC-12 (Theme B): message_id is only unique per
+    (message_id, service).  The single-word search dedupe and the revealed-ids
+    unread clause must key by (service, message_id), never bare message_id, or
+    a cross-service id collision silently drops one service's match / un-hides
+    the wrong message.
+    """
+
+    @staticmethod
+    def _insert_message(
+        conn: sqlite3.Connection,
+        *,
+        message_id: int,
+        service: str,
+        group_id: int = 1,
+        member_id: int = 100,
+        content: str,
+    ) -> None:
+        # content_normalized mirrors what indexing stores: katakana folded to
+        # hiragana, matching _normalize_query's output at search time.
+        conn.execute(
+            "INSERT INTO search_messages "
+            "(message_id, service, group_id, group_name, member_id, member_name, "
+            "timestamp, content, content_normalized) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                message_id,
+                service,
+                group_id,
+                "グループ",
+                member_id,
+                "メンバー",
+                "2026-01-01T10:00:00+09:00",
+                content,
+                _kata_to_hira(content),
+            ),
+        )
+        conn.commit()
+
+    def test_single_word_search_keeps_colliding_ids_across_services(
+        self, service: SearchService
+    ):
+        """SD-BE-SVC-03: two DIFFERENT messages sharing message_id=1 under two
+        services must BOTH survive the single-word UNION dedupe, and the count
+        must reflect both.  GROUP BY message_id (bare) would collapse them into
+        one row, dropping one service's match and miscounting."""
+        conn = service._get_conn()
+        # Same message_id, different services, both contain the search term.
+        self._insert_message(
+            conn, message_id=1, service="hinatazaka46", content="コラボレーション企画"
+        )
+        self._insert_message(
+            conn, message_id=1, service="sakurazaka46", content="コラボレーション発表"
+        )
+
+        read_conn = service._get_read_conn()
+        result = service._search_sync(
+            "コラボレーション",
+            None,
+            None,
+            None,
+            50,
+            0,
+            content_type="messages",
+            conn=read_conn,
+        )
+
+        assert result["total_count"] == 2
+        services_seen = {(r["service"], r["message_id"]) for r in result["results"]}
+        assert services_seen == {("hinatazaka46", 1), ("sakurazaka46", 1)}
+
+    def test_revealed_id_does_not_leak_across_services(self, service: SearchService):
+        """SD-BE-SVC-12: revealing message_id=3 in one service's group must NOT
+        un-hide a colliding message_id=3 in another service.  A bare
+        `m.message_id IN (revealed)` clause would leak the reveal across
+        services."""
+        conn = service._get_conn()
+        # Two services, each with a read message (id 1) and an unread one (id 3)
+        # matching the search term.
+        for svc in ("hinatazaka46", "sakurazaka46"):
+            self._insert_message(
+                conn, message_id=1, service=svc, content="サプライズ発表その一"
+            )
+            self._insert_message(
+                conn, message_id=3, service=svc, content="サプライズ発表その三"
+            )
+
+        # In BOTH services: read boundary at id 1 (so id 3 is unread).
+        # Reveal id 3 ONLY in hinatazaka46's group.
+        service._upsert_read_state_sync(
+            "hinatazaka46", 1, 100, last_read_id=1, read_count=1, revealed_ids=[3]
+        )
+        service._upsert_read_state_sync(
+            "sakurazaka46", 1, 100, last_read_id=1, read_count=1, revealed_ids=[]
+        )
+
+        read_conn = service._get_read_conn()
+        result = service._search_sync(
+            "サプライズ",
+            None,
+            None,
+            None,
+            50,
+            0,
+            exclude_unread=True,
+            content_type="messages",
+            conn=read_conn,
+        )
+
+        seen = {(r["service"], r["message_id"]) for r in result["results"]}
+        # hinatazaka46 id 3 is revealed -> visible; sakurazaka46 id 3 is NOT
+        # revealed -> must stay hidden despite the shared id.
+        assert ("hinatazaka46", 3) in seen
+        assert ("sakurazaka46", 3) not in seen
+        # Both read messages (id 1) remain visible in both services.
+        assert ("hinatazaka46", 1) in seen
+        assert ("sakurazaka46", 1) in seen
 
 
 class TestSchemaDirectCreation:

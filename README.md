@@ -239,4 +239,4 @@ When running the backend, interactive API documentation is available at:
 
 ## License
 
-MIT License - see LICENSE file for details.
+GPL-3.0-only - see LICENSE file for details.

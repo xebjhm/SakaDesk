@@ -21,6 +21,8 @@ from pathlib import Path  # noqa: E402
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
+from backend.services.service_utils import atomic_write_json  # noqa: E402
+from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
 import structlog  # noqa: E402
@@ -30,7 +32,13 @@ logger = structlog.get_logger()
 
 # Constants
 HOST = "127.0.0.1"
-SERVER_STARTUP_TIMEOUT = 10  # seconds
+# SD-AUX-01: must stay comfortably LARGER than the data-dir lock timeout awaited
+# inside lifespan startup (data_lock.acquire(timeout=10.0) in backend/main.py) --
+# uvicorn does not accept /health until lifespan startup completes, so during a
+# close->reopen drain the incoming instance can legitimately take ~10s to become
+# ready. A 10s health window collided with that exactly and produced a spurious
+# "Server failed to start" crash dialog on every second launch / quick reopen.
+SERVER_STARTUP_TIMEOUT = 30  # seconds; > backend data-lock acquire timeout (10s)
 
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
@@ -42,7 +50,12 @@ _instance_mutex_handle: int | None = None
 INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
 
-def _acquire_instance_mutex() -> None:
+# Win32 error / message constants used by the single-instance guard.
+_ERROR_ALREADY_EXISTS = 183
+_SW_RESTORE = 9
+
+
+def _acquire_instance_mutex() -> bool:
     """Create a named mutex the Windows installer keys off (Inno ``AppMutex``).
 
     Windows keeps the mutex alive until every handle is closed — i.e. until this
@@ -51,17 +64,52 @@ def _acquire_instance_mutex() -> None:
     it never tries to overwrite a still-loaded DLL (e.g. ``libffi-8.dll``) while
     the app is mid-shutdown. Child workers are killed before ``os._exit`` (see
     ``main``), so the mutex releasing means the whole process tree is gone.
+
+    SD-AUX-01: the same mutex now also serves as the single-instance guard.
+    ``CreateMutexW`` succeeds even when the named mutex already exists (returning
+    a handle to it) but sets ``GetLastError()==ERROR_ALREADY_EXISTS``; checking
+    that lets a second launch bail out cleanly instead of racing the running
+    instance for the port/data-lock and then dying with a crash dialog.
+
+    Returns ``True`` if this process is the first/only instance (or on
+    non-Windows / on failure — fail-open so the app still starts), ``False`` if
+    another instance already holds the mutex.
     """
     global _instance_mutex_handle
     if platform.system() != "Windows":
-        return
+        return True
     try:
         # Session-local name — app and installer run as the same user/session.
-        _instance_mutex_handle = ctypes.windll.kernel32.CreateMutexW(  # type: ignore[attr-defined]
-            None, False, INSTANCE_MUTEX_NAME
-        )
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        _instance_mutex_handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX_NAME)
+        if not _instance_mutex_handle:
+            # NULL handle: CreateMutexW failed (does not raise). The installer's
+            # AppMutex protection is then absent — surface it, but fail open.
+            logger.warning("CreateMutexW returned NULL; instance mutex not held")
+            return True
+        return kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
     except Exception:
         logger.warning("Failed to create instance mutex", exc_info=True)
+        return True
+
+
+def _focus_existing_window() -> None:
+    """Bring the already-running SakaDesk window to the foreground (best-effort).
+
+    Called when the single-instance guard (SD-AUX-01) detects a second launch,
+    so a re-click of the taskbar/desktop icon focuses the live window instead of
+    silently doing nothing. Matches pywebview's window title ("SakaDesk").
+    """
+    if platform.system() != "Windows":
+        return
+    try:
+        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        hwnd = user32.FindWindowW(None, "SakaDesk")
+        if hwnd:
+            user32.ShowWindow(hwnd, _SW_RESTORE)  # un-minimize if needed
+            user32.SetForegroundWindow(hwnd)
+    except Exception:
+        logger.debug("Failed to focus existing window", exc_info=True)
 
 
 def _kill_children(children: list) -> None:
@@ -83,20 +131,26 @@ def _get_port_file():
 
 
 def create_server_socket() -> tuple:
-    """Create a bound server socket on a stable port with SO_REUSEADDR.
+    """Create a bound server socket, reusing the saved port when it's free.
 
-    HTTP localStorage is keyed by origin (scheme + host + port).
-    To persist ToS acceptance, read states, language, etc. across restarts,
-    the port must stay the same. We save it to disk on first launch and
-    reuse it on every subsequent launch.
+    Persistent app state now lives in the backend SQLite app-state store, so a
+    port change no longer loses anything (the store is read at startup regardless
+    of origin). The saved-port reuse is kept for ONE transitional reason: on the
+    first launch after upgrading from a build that stored state in origin-scoped
+    localStorage, reusing the old port makes the webview load on the origin that
+    still holds that localStorage, so the one-time localStorage->backend migration
+    can read it. Without the reuse the app would take a fresh port (a fresh, empty
+    origin) and the migration would find nothing to carry over.
 
-    The socket is created with SO_REUSEADDR so it can bind to ports still
-    in TCP TIME_WAIT state (e.g. after a quick close-reopen cycle).
-    Without this, Python 3.8+ on Windows uses SO_EXCLUSIVEADDRUSE which
-    rejects TIME_WAIT ports, forcing a new port and wiping localStorage.
+    SO_REUSEADDR lets it rebind a port still in TCP TIME_WAIT after a quick
+    close-reopen. A fast reopen while the prior instance still holds the port
+    (`_port_is_active`) still shifts to a new port, but that is now harmless.
 
-    Returns (port, socket) — the socket is bound but NOT listening.
-    Uvicorn/asyncio will call listen() when ready.
+    TODO(next release): once upgraders have migrated, drop this reuse entirely and
+    bind an ephemeral port (this was briefly done, then reverted for the migration
+    window above).
+
+    Returns (port, socket) — bound but NOT listening; uvicorn calls listen().
     """
     port_file = _get_port_file()
 
@@ -201,6 +255,13 @@ def show_error_dialog(error_msg: str, tb: str):
         dialog.title("SakaDesk Error")
         dialog.geometry("600x400")
 
+        # SD-AUX-02: the window-manager [X] on the Toplevel otherwise runs the
+        # default handler that destroys only the Toplevel, leaving the withdrawn
+        # root Tk alive so mainloop() never returns — the process hangs as an
+        # invisible zombie (holding the instance mutex / port). Route [X] to
+        # root.destroy so closing the dialog any way fully exits the loop.
+        dialog.protocol("WM_DELETE_WINDOW", root.destroy)
+
         tk.Label(dialog, text="An error occurred:", font=("Arial", 12, "bold")).pack(
             pady=10
         )
@@ -228,37 +289,11 @@ def show_error_dialog(error_msg: str, tb: str):
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 
-def _get_dpi_scale() -> float:
-    """Primary-monitor DPI scale factor (see backend.services.window_geometry)."""
-    return window_geometry.dpi_scale()
-
-
-def _window_hwnd(window: object) -> int | None:
-    """Best-effort native window handle (HWND) so the DPI scale can be read for
-    the monitor the window is actually on. Returns None if unavailable, in which
-    case the caller falls back to the primary-monitor scale (safe, no regression).
-    """
-    handle = getattr(window, "hwnd", None)
-    if handle is None:
-        native = getattr(window, "native", None)
-        handle = getattr(native, "Handle", None)
-    if handle is None:
-        return None
-    try:
-        return int(handle)
-    except (TypeError, ValueError):
-        try:
-            return int(handle.ToInt64())  # WinForms IntPtr
-        except Exception:
-            return None
-
-
 def _load_window_geometry() -> dict:
     """Load saved window size/position from settings.json, or return defaults.
 
-    Window geometry is stored under the ``"window"`` key in settings.json.
-    Values are in logical (DPI-independent) coordinates, matching what
-    pywebview's create_window() expects.
+    Window geometry is stored under the ``"window"`` key in settings.json, in the
+    same device-pixel coordinates that ``create_window()`` round-trips verbatim.
 
     Migrates from the legacy ``window.json`` file on first run after upgrade.
     """
@@ -275,8 +310,8 @@ def _load_window_geometry() -> dict:
             logger.warning("Failed to read window geometry from settings.json")
 
     # --- Migrate from legacy window.json if no window key in settings ---
-    # Copied verbatim (physical coords, no "format" key); parse_saved_geometry
-    # converts it to logical on load.
+    # Copied verbatim; parse_saved_geometry bounds the SIZE and (SD-AUX-04) drops
+    # an off-screen/minimized POSITION, but is otherwise used as-is.
     if data is None and legacy_path.exists():
         try:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
@@ -287,11 +322,19 @@ def _load_window_geometry() -> dict:
             logger.warning("Failed to migrate window.json", exc_info=True)
             data = None
 
-    return window_geometry.parse_saved_geometry(data, _get_dpi_scale())
+    return window_geometry.parse_saved_geometry(data)
 
 
 def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
-    """Write the window data dict into settings.json under the 'window' key."""
+    """Write the window data dict into settings.json under the 'window' key.
+
+    SD-AUX-03: use the shared atomic tmp-file+``os.replace`` writer
+    (``atomic_write_json``) rather than a truncating ``write_text`` — a crash or
+    force-close mid-write must not leave a corrupt settings.json that
+    ``settings_store`` then fails to parse. (A cross-process lock can't be taken
+    from here, but atomic replace removes the corruption risk and shrinks the
+    lost-update window to a single last-writer-wins.)
+    """
     settings: dict = {}
     if settings_path.exists():
         try:
@@ -300,17 +343,13 @@ def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> Non
             pass
     settings["window"] = window_data
     settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+    atomic_write_json(settings_path, settings)
 
 
-def _save_window_geometry(logical_geom: dict) -> None:
-    """Save window geometry to settings.json.
-
-    ``logical_geom`` must already be in LOGICAL coordinates — the caller converts
-    the physical window properties via window_geometry.physical_to_logical.
-    """
+def _save_window_geometry(geom: dict) -> None:
+    """Save window geometry (``window.width/height/x/y``, verbatim) to settings.json."""
     try:
-        data = window_geometry.to_saved_dict(logical_geom)
+        data = window_geometry.to_saved_dict(geom)
         _save_window_data_to_settings(data, get_app_data_dir() / "settings.json")
         logger.debug("Window geometry saved", geometry=data)
     except Exception:
@@ -319,9 +358,22 @@ def _save_window_geometry(logical_geom: dict) -> None:
 
 def main() -> None:
     try:
+        # Packaged-app hardening (frozen Windows only): keep child processes from
+        # flashing a console window, and pin the silent token-refresh to the
+        # user's installed browser so it never downloads Chromium at runtime.
+        # No-op in dev. See backend.services.desktop_runtime.
+        harden_frozen_windows()
+
         # Hold a named mutex so the upgrade installer can wait for this process
-        # to fully exit before replacing files it still has loaded.
-        _acquire_instance_mutex()
+        # to fully exit before replacing files it still has loaded. It also acts
+        # as the single-instance guard (SD-AUX-01): if another instance already
+        # holds it, focus that window and exit BEFORE touching the .port file or
+        # racing the running instance for the port / data-lock (which otherwise
+        # ended in a spurious "Server failed to start" crash dialog).
+        if not _acquire_instance_mutex():
+            logger.info("Another SakaDesk instance is already running; exiting")
+            _focus_existing_window()
+            os._exit(0)
 
         # Create server socket with SO_REUSEADDR for stable port across restarts
         port, sock = create_server_socket()
@@ -360,21 +412,18 @@ def main() -> None:
         # resize/move events — pywebview events only fire during initial
         # creation (DPI scaling), not for user-initiated resizes.
         def on_closing():
-            # window.width/height/x/y are PHYSICAL (scaled) pixels on WinForms;
-            # convert to logical before saving so the next create_window (which
-            # re-applies the scale) reproduces the same size — instead of growing
-            # the window by `scale`x on every restart (the shipped bug). Use the
-            # DPI of the monitor this window is on (via its hwnd) so mixed-DPI
-            # multi-monitor setups convert correctly too.
-            scale = window_geometry.dpi_scale(_window_hwnd(window))
-            physical = {
+            # pywebview round-trips geometry verbatim: create_window() reproduces
+            # exactly what window.width/height/x/y report (the same device-pixel
+            # space on this backend), so persist them AS-IS. A previous version
+            # divided these by the DPI scale here, which the load never re-applied,
+            # so the window shrank by `scale`x on every restart.
+            geom = {
                 "width": window.width,
                 "height": window.height,
                 "x": window.x,
                 "y": window.y,
             }
-            geom = window_geometry.physical_to_logical(physical, scale)
-            logger.info("Window closing", physical=physical, logical=geom, scale=scale)
+            logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
         window.events.closing += on_closing

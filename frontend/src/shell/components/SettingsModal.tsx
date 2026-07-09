@@ -8,6 +8,7 @@ import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
 import { apiKeyStatus } from './apiKeyStatus';
+import { persisted } from '../../core/persistence/persisted';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -152,7 +153,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     const handleLanguageChange = (lang: SupportedLanguage) => {
         i18n.changeLanguage(lang);
-        localStorage.setItem('sakadesk-language', lang);
+        persisted.setPref('language', lang);
     };
 
     // Restore behavioural preferences to defaults. Non-destructive: keeps the
@@ -677,8 +678,8 @@ function AiTab() {
         }
     };
 
-    const handleClearCache = () => {
-        clearTranslationCache();
+    const handleClearCache = async () => {
+        await clearTranslationCache();
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 

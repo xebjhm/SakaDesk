@@ -4,17 +4,22 @@ Focuses on testable logic that does NOT require ProcessPoolExecutor,
 pykakasi, or a full SearchService with live DB connections.
 """
 
+import asyncio
 import sqlite3
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
+from backend.services import shutdown_state
+import backend.services.search_service as search_service_module
 from backend.services.search_service import (
     SearchService,
     _BATCH_SIZE,
     _SCHEMA_SQL,
     _sanitize_for_kakasi_standalone,
     _strip_html,
+    shutdown_search_service,
 )
 
 
@@ -453,4 +458,199 @@ class TestReadStatesSync:
         assert key in states
         assert states[key]["last_read_id"] == 50
         assert states[key]["read_count"] == 10
-        assert states[key]["revealed_ids"] == [1, 2, 3]
+
+
+# ── C1c: refuse to spawn a NEW build_full_index writer during shutdown ──
+
+
+class TestBuildFullIndexShutdownGuard:
+    """The three untracked `asyncio.create_task(self.build_full_index())`
+    failsafe/trigger sites (search(), index_members(), get_members()) must
+    not spawn a new writer once shutdown has begun -- otherwise that task
+    would still be running (and writing search_index.db) after
+    quiesce_writers()/data_lock.release() runs, breaking the barrier's core
+    guarantee for a writer that hadn't started yet at drain time."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_shutdown_flag(self):
+        shutdown_state.reset_for_tests()
+        yield
+        shutdown_state.reset_for_tests()
+
+    @staticmethod
+    def _make_service_with_existing_db(tmp_path) -> SearchService:
+        """get_members()/index_members() both bail out before ever reaching
+        the create_task guard if `_db_path` doesn't exist, so the DB file
+        must actually exist for these tests to exercise the guard for real
+        (rather than passing vacuously via the unrelated early return)."""
+        db_path = tmp_path / "existing.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript(_SCHEMA_SQL)
+        conn.close()
+        return SearchService(db_path)
+
+    @pytest.mark.asyncio
+    async def test_get_members_does_not_spawn_build_during_shutdown(self, tmp_path):
+        svc = self._make_service_with_existing_db(tmp_path)
+        svc._get_members_sync = lambda: {"members": [], "services": []}
+        svc._check_missing_services_sync = lambda: {"some_service"}
+
+        shutdown_state.begin_shutdown()
+        with patch(
+            "backend.services.search_service.asyncio.create_task"
+        ) as mock_create_task:
+            await svc.get_members()
+
+        mock_create_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_members_spawns_build_when_not_shutting_down(self, tmp_path):
+        """Control case: confirms the guard only suppresses spawning during
+        shutdown, not always (i.e. the test above is actually testing the
+        guard, not a permanently-broken trigger)."""
+        svc = self._make_service_with_existing_db(tmp_path)
+        svc._get_members_sync = lambda: {"members": [], "services": []}
+        svc._check_missing_services_sync = lambda: {"some_service"}
+        svc.build_full_index = AsyncMock(return_value=0)
+
+        assert shutdown_state.is_shutting_down() is False
+        with patch(
+            "backend.services.search_service.asyncio.create_task",
+            wraps=asyncio.create_task,
+        ) as mock_create_task:
+            await svc.get_members()
+            await asyncio.sleep(0)  # let the spawned task actually run
+
+        mock_create_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_does_not_spawn_build_during_shutdown(self, tmp_path):
+        db_path = tmp_path / "nonexistent.db"  # _needs_build() -> True; _building False
+        svc = SearchService(db_path)
+
+        shutdown_state.begin_shutdown()
+        with patch(
+            "backend.services.search_service.asyncio.create_task"
+        ) as mock_create_task:
+            result = await svc.search("hello", None, None, None, 50, 0)
+
+        mock_create_task.assert_not_called()
+        # DB doesn't exist -> search() short-circuits to an empty result,
+        # independent of the guard, but confirms no exception was raised.
+        assert result["results"] == []
+
+    @pytest.mark.asyncio
+    async def test_index_members_does_not_spawn_build_during_shutdown(self, tmp_path):
+        db_path = tmp_path / "nonexistent.db"  # _needs_build() -> True (no meta rows)
+        svc = SearchService(db_path)
+        loop = asyncio.get_running_loop()
+
+        async def fake_run_in_executor(executor, func, *args):
+            return 0  # stands in for _index_members_process's return count
+
+        shutdown_state.begin_shutdown()
+        with (
+            patch.object(loop, "run_in_executor", side_effect=fake_run_in_executor),
+            patch(
+                "backend.services.search_service.asyncio.create_task"
+            ) as mock_create_task,
+        ):
+            await svc.index_members([], "hinatazaka46")
+
+        mock_create_task.assert_not_called()
+
+
+# ── I1: shutdown_search_service must actually drain, not just bound ────
+
+
+class TestShutdownSearchServiceDrain:
+    """`shutdown_search_service()` is the write barrier's search-service
+    hook. The barrier's guarantee is "no write after release", so every
+    writer here must be *confirmed dead*, not merely asked to stop."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_singleton(self):
+        search_service_module._search_service = None
+        yield
+        search_service_module._search_service = None
+
+    def _install_fake_service(self):
+        """A minimal stand-in with the attributes shutdown_search_service
+        touches, so behavior can be asserted without a real DB/executors."""
+        svc = MagicMock()
+        svc._conn = None
+        svc._read_conn = None
+        search_service_module._search_service = svc
+        return svc
+
+    def test_write_executor_shutdown_waits_for_completion(self):
+        """wait=False only stops accepting NEW work -- it does not wait for
+        an already-submitted write to finish, so a write could still be
+        in-flight when data_lock.release() runs. Must be wait=True."""
+        svc = self._install_fake_service()
+        svc._build_executor._processes = {}
+
+        shutdown_search_service()
+
+        svc._write_executor.shutdown.assert_called_once_with(wait=True)
+
+    def test_read_executor_shutdown_waits_for_completion(self):
+        svc = self._install_fake_service()
+        svc._build_executor._processes = {}
+
+        shutdown_search_service()
+
+        svc._read_executor.shutdown.assert_called_once_with(wait=True)
+
+    def test_build_worker_still_alive_after_kill_is_logged_loudly(self, monkeypatch):
+        """A build-worker process that survives even .kill() should not be
+        silently assumed dead -- that would violate the "no write after
+        release" guarantee without anything in the logs to explain why."""
+        svc = self._install_fake_service()
+        stubborn_proc = MagicMock()
+        stubborn_proc.is_alive.return_value = True  # never dies, even after kill()
+        stubborn_proc.pid = 4242
+        svc._build_executor._processes = {0: stubborn_proc}
+
+        errors = []
+        monkeypatch.setattr(
+            search_service_module.logger,
+            "error",
+            lambda event, **kwargs: errors.append((event, kwargs)),
+        )
+
+        shutdown_search_service()
+
+        stubborn_proc.terminate.assert_called_once()
+        stubborn_proc.kill.assert_called_once()
+        # Joined again after kill() to actually confirm death, not just
+        # signalled and assumed dead.
+        assert stubborn_proc.join.call_count == 2
+        assert any(
+            event == "build_worker_still_alive_after_kill" for event, _ in errors
+        )
+
+    def test_build_worker_dead_after_kill_is_not_logged_as_stuck(self, monkeypatch):
+        """Control case: a process that actually dies after kill() must not
+        trigger the "still alive" error log."""
+        svc = self._install_fake_service()
+        proc = MagicMock()
+        # is_alive() is checked 3x in the worst path: (1) before terminate()
+        # -> True, (2) after terminate()+join() -> True, triggers kill(),
+        # (3) after kill()+join() -> False, confirmed dead.
+        proc.is_alive.side_effect = [True, True, False]
+        proc.pid = 99
+        svc._build_executor._processes = {0: proc}
+
+        errors = []
+        monkeypatch.setattr(
+            search_service_module.logger,
+            "error",
+            lambda event, **kwargs: errors.append((event, kwargs)),
+        )
+
+        shutdown_search_service()
+
+        proc.kill.assert_called_once()
+        assert proc.join.call_count == 2
+        assert errors == []

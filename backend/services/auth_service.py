@@ -10,7 +10,7 @@ This ensures consistent behavior across CLI and GUI:
 import asyncio
 import contextlib
 import structlog
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, Mapping, Optional, cast
 import aiohttp
 from pysaka import (
     BrowserAuth,
@@ -47,10 +47,43 @@ class AuthService:
         self._browser_lock = asyncio.Lock()
         # The in-progress browser-login task, so a newer login can supersede it.
         self._active_login_task: Optional["asyncio.Task[Any]"] = None
+        # SD-BE-API-04: in-process cache of the loaded session per service.
+        # The OS keyring read (Windows Credential Manager) costs hundreds of ms
+        # and GET /api/auth/status is polled by the frontend for EVERY service on
+        # every call. Cache the loaded session so a poll is one WCM read per
+        # service at most, and invalidate on save/delete/refresh so the cache
+        # never serves stale credentials. Keyed by Group.value. A None value is
+        # a real cache entry meaning "no session"; a missing key means "unknown".
+        self._session_cache: Dict[str, Optional[Dict[str, Any]]] = {}
 
     def _get_group(self, service: str) -> Group:
         """Convert service string to Group enum."""
         return get_service_enum(service)
+
+    def _load_session_cached(self, group_value: str) -> Optional[Dict[str, Any]]:
+        """Load a service's session, using the in-process cache when warm.
+
+        On a cache miss this performs the (potentially slow) keyring read and
+        stores the result. Callers on the event loop must run this via
+        ``asyncio.to_thread`` (see SD-BE-API-04) so the read never blocks the
+        loop; the cache makes the common (warm) case a pure dict lookup.
+        """
+        if group_value in self._session_cache:
+            return self._session_cache[group_value]
+        tm = get_token_manager()
+        session = cast(Optional[Dict[str, Any]], tm.load_session(group_value))
+        self._session_cache[group_value] = session
+        return session
+
+    def _invalidate_session_cache(self, group_value: Optional[str] = None) -> None:
+        """Drop cached session(s) so the next read reflects a save/delete/refresh.
+
+        Pass a Group.value to invalidate one service, or None to clear all.
+        """
+        if group_value is None:
+            self._session_cache.clear()
+        else:
+            self._session_cache.pop(group_value, None)
 
     def _is_token_expired(self, token: str) -> bool:
         """Check if JWT token is expired. Uses shared pysaka utility."""
@@ -78,8 +111,7 @@ class AuthService:
         """Get authentication status for a single service."""
         try:
             group = self._get_group(service)
-            tm = get_token_manager()
-            token_data = tm.load_session(group.value)
+            token_data = self._load_session_cached(group.value)
 
             if token_data:
                 token = token_data.get("access_token")
@@ -170,14 +202,18 @@ class AuthService:
 
         if service:
             validate_service(service)
-            return self._get_service_auth_status(service)
+            # SD-BE-API-04: the keyring read happens inside _get_service_auth_status
+            # (via _load_session_cached). Offload it so a cold read never blocks
+            # the event loop; a warm cache hit returns almost immediately.
+            return await asyncio.to_thread(self._get_service_auth_status, service)
 
-        # Return status for all services
-        return {
-            "services": {
-                s: self._get_service_auth_status(s) for s in get_all_services()
-            }
-        }
+        # Return status for all services. One thread hop reads them all (each may
+        # be a WCM round-trip on a cold cache), keeping the polled endpoint off
+        # the event loop.
+        def _all_status() -> Dict[str, Any]:
+            return {s: self._get_service_auth_status(s) for s in get_all_services()}
+
+        return {"services": await asyncio.to_thread(_all_status)}
 
     async def login_with_browser(self, service: str):
         """
@@ -245,17 +281,22 @@ class AuthService:
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await task
 
-    def _save_credentials(self, service: str, creds: dict):
+    def _save_credentials(self, service: str, creds: Mapping[str, Any]):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""
         group = self._get_group(service)
         try:
             tm = get_token_manager()
+            # Pass missing keys through as None (save_session's access_token is
+            # typed str but accepts None at runtime for partial/cleared creds).
             tm.save_session(
                 group.value,
-                creds.get("access_token"),
+                cast(str, creds.get("access_token")),
                 creds.get("refresh_token"),
                 creds.get("cookies"),
             )
+            # SD-BE-API-04: freshly-saved credentials must invalidate the cache
+            # so the next status read reflects them instead of the stale entry.
+            self._invalidate_session_cache(group.value)
             logger.info("Credentials saved to TokenManager", service=service)
         except Exception as e:
             logger.error("Failed to save credentials", service=service, error=str(e))
@@ -274,6 +315,9 @@ class AuthService:
         try:
             tm = get_token_manager()
             tm.delete_session(group.value)
+            # SD-BE-API-04: drop the cached session so a subsequent status read
+            # does not report the logged-out service as still authenticated.
+            self._invalidate_session_cache(group.value)
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
             logger.error("Failed to clear credentials", service=service, error=str(e))
@@ -318,7 +362,10 @@ class AuthService:
 
         try:
             tm = get_token_manager()
-            token_data = tm.load_session(group.value)
+            # SD-BE-API-04: served from the in-process cache when warm (this is a
+            # polled path); saves below invalidate it so we never refresh a stale
+            # token twice.
+            token_data = self._load_session_cached(group.value)
 
             if not token_data or not token_data.get("access_token"):
                 logger.warning("No token found for refresh check", service=service)
@@ -370,8 +417,10 @@ class AuthService:
 
                 if refresh_success:
                     # Client.refresh_access_token() updates client.access_token and client.cookies
-                    # Save the refreshed credentials
-                    new_token = client.access_token
+                    # Save the refreshed credentials. A successful refresh always
+                    # sets access_token (and 0.4.3 raises rather than returning
+                    # success without one), so narrow str | None -> str here.
+                    new_token = cast(str, client.access_token)
                     new_cookies = client.cookies
 
                     tm.save_session(
@@ -380,6 +429,9 @@ class AuthService:
                         client.refresh_token,  # persist any refresh_token returned; parity with sync_service
                         new_cookies,
                     )
+                    # SD-BE-API-04: refresh rotated the stored token — invalidate
+                    # the cache so status reads pick up the new (longer-lived) one.
+                    self._invalidate_session_cache(group.value)
 
                     new_remaining = self._get_token_remaining_seconds(new_token)
                     logger.info(

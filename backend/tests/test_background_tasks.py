@@ -132,3 +132,70 @@ def test_track_background_task_raises_runtime_error_with_no_running_loop():
             bt.track_background_task(coro, name="no_loop_task")
     finally:
         coro.close()
+
+
+# ---------------------------------------------------------------------------
+# drain_background_tasks -- shutdown-barrier hook (C1a)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_drain_background_tasks_cancels_and_awaits():
+    """The shutdown barrier's whole guarantee is "no write after release" --
+    for a tracked writer task that means `drain_background_tasks()` must not
+    return until the task is actually cancelled/done, and must not leave it
+    in `_background_tasks` (which would mean a future GC weak-ref, not the
+    barrier, decides when it stops)."""
+    started = asyncio.Event()
+    cancelled = False
+
+    async def long_running_writer() -> None:
+        nonlocal cancelled
+        started.set()
+        try:
+            await asyncio.Event().wait()  # blocks forever until cancelled
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+
+    task = bt.track_background_task(long_running_writer(), name="writer_task")
+    await started.wait()
+    assert task in bt._background_tasks
+    assert not task.done()
+
+    await bt.drain_background_tasks()
+
+    assert task.done()
+    assert task.cancelled()
+    assert cancelled is True
+    assert bt._background_tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_drain_background_tasks_is_noop_with_nothing_tracked():
+    """Must not raise / hang when called with an empty task set (e.g. app
+    shutdown before anything was ever tracked)."""
+    assert bt._background_tasks == set()
+    await bt.drain_background_tasks()
+    assert bt._background_tasks == set()
+
+
+@pytest.mark.asyncio
+async def test_drain_background_tasks_waits_for_already_finishing_task():
+    """A task that has already completed by the time drain runs must still
+    be handled cleanly (gathered, not double-cancelled/errored)."""
+
+    async def quick() -> str:
+        return "done"
+
+    task = bt.track_background_task(quick(), name="quick_task")
+    await asyncio.sleep(0)  # let it actually run to completion first
+    await asyncio.sleep(0)  # done-callbacks run via call_soon, one tick later
+    assert task.done()
+    assert not task.cancelled()
+
+    await bt.drain_background_tasks()  # must be a no-op-ish pass, not raise
+
+    assert task.done()
+    assert not task.cancelled()
+    assert bt._background_tasks == set()

@@ -19,8 +19,6 @@ export const SUPPORTED_LANGUAGES = {
 
 export type SupportedLanguage = keyof typeof SUPPORTED_LANGUAGES;
 
-const STORAGE_KEY = 'sakadesk-language';
-
 // Resources object with all translations
 const resources = {
     en: { translation: en },
@@ -37,9 +35,14 @@ function findBrowserLanguageMatch(): string | undefined {
     );
 }
 
-// Resolve initial language synchronously from localStorage
-const savedLang = localStorage.getItem(STORAGE_KEY);
-const initialLng = (savedLang && savedLang in SUPPORTED_LANGUAGES) ? savedLang : 'en';
+// Initial language is resolved synchronously from the browser locale (or the
+// hard default 'en') here. The persisted user choice, and — if the user has
+// none — the installer/settings.json language, are applied later by App.tsx's
+// single ordered post-hydrate decision (after prefs are hydrated from the
+// backend app-state store; see App.tsx). This module MUST NOT also apply
+// /api/settings asynchronously: doing so raced App.tsx's apply and could flip
+// the language back and forth on startup (whichever fetch resolved last won).
+const initialLng = findBrowserLanguageMatch() ?? 'en';
 
 // Initialize i18next — no LanguageDetector (it caches fallback 'en' to localStorage
 // before we can check the installer setting, blocking the settings fetch entirely).
@@ -55,33 +58,6 @@ i18n
             escapeValue: false,
         },
     });
-
-// On first launch (no localStorage language), check installer preference then browser language.
-// Priority: 1) localStorage (explicit user choice) → 2) installer setting → 3) browser language
-if (!savedLang) {
-    fetch('/api/settings')
-        .then(res => res.json())
-        .then(data => {
-            const installerLang = data?.language;
-            if (installerLang && installerLang in SUPPORTED_LANGUAGES) {
-                i18n.changeLanguage(installerLang);
-                localStorage.setItem(STORAGE_KEY, installerLang);
-            } else {
-                const match = findBrowserLanguageMatch();
-                if (match) {
-                    i18n.changeLanguage(match);
-                    localStorage.setItem(STORAGE_KEY, match);
-                }
-            }
-        })
-        .catch(() => {
-            const match = findBrowserLanguageMatch();
-            if (match) {
-                i18n.changeLanguage(match);
-                localStorage.setItem(STORAGE_KEY, match);
-            }
-        });
-}
 
 export default i18n;
 

@@ -21,6 +21,13 @@ describe('nameFormatters', () => {
             expect(formatName('')).toBe('')
         })
 
+        // SD-FE-GAP-A-04: avatar data from the backend can be nullish at
+        // runtime despite the string type; formatName must not throw.
+        it('should not throw on nullish input', () => {
+            expect(formatName(undefined as unknown as string)).toBe('')
+            expect(formatName(null as unknown as string)).toBe('')
+        })
+
         it('should handle Japanese names with underscores', () => {
             expect(formatName('齊藤_京子')).toBe('齊藤 京子')
         })
@@ -40,10 +47,6 @@ describe('nameFormatters', () => {
             expect(getShortName('J')).toBe('J')
         })
 
-        it('should handle empty string', () => {
-            expect(getShortName('')).toBe('')
-        })
-
         it('should format name before getting short name', () => {
             expect(getShortName('Saito_Kyoko')).toBe('Sa')
         })
@@ -54,6 +57,22 @@ describe('nameFormatters', () => {
 
         it('should handle Japanese characters', () => {
             expect(getShortName('齊藤_京子')).toBe('齊藤')
+        })
+
+        // SD-FE-GAP-A-04: getShortName must not return a blank avatar for
+        // whitespace/nullish names (getInitials already guards; parity here).
+        it('should return a fallback for whitespace-only names', () => {
+            expect(getShortName('   ')).toBe('?')
+        })
+
+        it('should return a fallback for empty string', () => {
+            // Prior behavior returned '' (blank avatar); now a visible fallback.
+            expect(getShortName('')).toBe('?')
+        })
+
+        it('should not throw on a nullish name reaching the formatter', () => {
+            expect(getShortName(undefined as unknown as string)).toBe('?')
+            expect(getShortName(null as unknown as string)).toBe('?')
         })
     })
 
@@ -91,6 +110,23 @@ describe('nameFormatters', () => {
         it('should filter out empty parts', () => {
             // Double underscore creates empty part
             expect(getInitials('John__Doe')).toBe('JD')
+        })
+
+        // SD-FE-GAP-A-05: astral/emoji names must not yield a lone surrogate.
+        it('should not split an astral (emoji) character in half', () => {
+            // '𠮷' (U+20BB7) and '😀' are surrogate pairs; the result must be two
+            // COMPLETE glyphs (2 code points), never a broken half code unit.
+            const initials = getInitials('𠮷田_😀')
+            expect(initials).toBe('𠮷😀')
+            expect(Array.from(initials).length).toBe(2)
+        })
+    })
+
+    describe('getShortName code-point safety (SD-FE-GAP-A-05)', () => {
+        it('should keep a surrogate-pair first character whole', () => {
+            const short = getShortName('😀A')
+            // Two code points: the emoji + 'A' — not a broken surrogate.
+            expect(short).toBe('😀A')
         })
     })
 })

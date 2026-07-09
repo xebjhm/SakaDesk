@@ -193,6 +193,16 @@ class TestUpdateSettings:
         assert response.status_code == 200
         assert response.json()["sync_interval_minutes"] == 30
 
+    def test_reject_non_positive_sync_interval(self):
+        """SD-BE-API-22: a zero/negative interval is rejected (422) rather than
+        persisted and echoed into an immediate-retry auto-sync loop."""
+        for bad in (0, -5):
+            response = client.post(
+                "/api/settings",
+                json={"sync_interval_minutes": bad},
+            )
+            assert response.status_code == 422, bad
+
     def test_update_adaptive_sync(self):
         """Toggle adaptive_sync_enabled."""
         cfg = _default_config(adaptive_sync_enabled=True)

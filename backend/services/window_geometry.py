@@ -1,141 +1,206 @@
-"""DPI-aware persistence of the desktop window's size/position.
+"""Persistence of the desktop window's size/position across restarts.
 
-pywebview's WinForms backend takes ``create_window(width, height, x, y)`` as
-LOGICAL (DPI-independent) coordinates and multiplies them by the monitor scale
-factor internally, whereas the live ``window.width/height/x/y`` properties
-report PHYSICAL (already-scaled) pixels. Geometry must therefore be STORED in
-logical units: convert physical -> logical when saving, and hand logical values
-straight to ``create_window`` when loading.
+pywebview's WinForms backend round-trips geometry VERBATIM: the size handed to
+``create_window(width, height, x, y)`` comes back unchanged from the live
+``window.width/height/x/y`` properties (both are the same device-pixel space on
+this backend). Verified in the field at 175% DPI: ``create_window(894)`` yields
+``window.width == 893``. Saved geometry is therefore stored and restored as-is,
+with no DPI/scale conversion.
 
-Storing physical values (as an earlier version did — reading the physical window
-properties and writing them tagged ``format="logical"`` without converting) made
-``create_window`` re-apply the scale, so the window GREW by ``scale`` x on every
-restart (e.g. 1200 -> 1800 -> 2700 -> ... at 150% DPI). This module is kept free
-of any ``webview`` import so the logic is unit-testable without the GUI backend.
+An earlier version divided the SAVED size by the monitor DPI scale on the
+assumption that ``create_window`` took logical units and re-applied the scale.
+The backend does NOT re-scale, so that division was uncompensated on load and the
+window shrank by ``scale``x on every restart (e.g. 894 -> 510 -> ... at 175%).
+
+The DPI scale IS still used, but only for the FIRST-OPEN default (no saved value
+yet): a fixed logical base is scaled to device pixels so the initial window
+presents the same apparent size at any monitor scale, instead of looking tiny on
+high-DPI displays. This is a one-shot sizing, never part of the round-trip, so it
+cannot compound. This module has no ``webview`` import so the logic stays
+unit-testable without the GUI backend.
 """
 
 from __future__ import annotations
 
 import ctypes
 import platform
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
-DEFAULTS: dict[str, int] = {"width": 1200, "height": 800}
+# First-open window size in LOGICAL (DPI-independent) units. Scaled to device
+# pixels for the actual monitor DPI (see default_geometry) so the window opens at
+# the same apparent size for every user regardless of their display scaling.
+BASE_LOGICAL: dict[str, int] = {"width": 1200, "height": 800}
 
-# Sanity bounds (applied to the stored value before any scale conversion), so a
-# corrupt/absurd saved size falls back to defaults instead of an unusable window.
+# Sanity bounds (device pixels) so a corrupt/absurd saved size falls back to the
+# default instead of an unusable window.
 _MIN_W, _MIN_H, _MAX_W, _MAX_H = 400, 300, 7680, 4320
 
-# Plausible Windows DPI scaling range (50%..400%). A reading outside this is
-# treated as bogus so it can never corrupt the stored geometry.
+# Plausible Windows DPI scaling range (50%..400%); a reading outside it is bogus.
 _MIN_SCALE, _MAX_SCALE = 0.5, 4.0
 
+# GetSystemMetrics indices for the virtual-screen bounding rectangle (winuser.h).
+_SM_XVIRTUALSCREEN, _SM_YVIRTUALSCREEN = 76, 77
+_SM_CXVIRTUALSCREEN, _SM_CYVIRTUALSCREEN = 78, 79
 
-def sanitize_scale(raw: float) -> float:
-    """Clamp a raw scale reading into the plausible range; 0/negative/NaN -> 1.0.
+# A minimized window reports Location = (-32000, -32000); persisting that value
+# as a saved position would restore the window off-screen next launch (SD-AUX-04).
+# We use a -30000 threshold (above the observed -32000) so any saved coordinate
+# at or below it — the real sentinel and any near-sentinel value — is treated as
+# iconic and dropped.
+_ICONIC_SENTINEL = -30000
 
-    The conversion is ``logical = physical / scale`` then ``create_window``
-    re-applies the same factor, so it round-trips for ANY scale value — this
-    guard only rejects impossible readings, it does not special-case a scale.
+
+class VirtualScreen(NamedTuple):
+    """Virtual-screen bounding rectangle in device pixels (spans all monitors).
+
+    ``x``/``y`` are the top-left origin (negative when a monitor sits left of or
+    above the primary); ``width``/``height`` are the total extent.
     """
-    if not raw or raw != raw or raw <= 0:  # falsy, NaN, or non-positive
-        return 1.0
-    return max(_MIN_SCALE, min(_MAX_SCALE, raw))
+
+    x: int
+    y: int
+    width: int
+    height: int
 
 
-def dpi_scale(hwnd: Optional[int] = None) -> float:
-    """DPI scale factor pywebview's WinForms backend applies to create_window's
-    logical size (1.0 = 100%, 1.5 = 150%, 2.0 = 200%, ...).
+def dpi_scale() -> float:
+    """Primary-monitor DPI scale factor (1.0=100%, 1.5=150%, 1.75=175%, ...),
+    clamped to a sane range; 1.0 on non-Windows.
 
-    Prefers the DPI of the monitor the given window (``hwnd``) is actually on
-    (``GetDpiForWindow``), so a multi-monitor setup with different per-monitor
-    scaling is handled correctly. Falls back to the primary monitor
-    (``GetScaleFactorForDevice``), then to 1.0. Always clamped to a sane range.
-    Returns 1.0 on non-Windows, where no logical/physical mismatch exists.
+    Used ONLY to size the first-open default window (logical -> device pixels),
+    never for the save/load round-trip — that is verbatim, because create_window
+    round-trips device pixels unchanged.
     """
     if platform.system() != "Windows":
         return 1.0
-    # Per-monitor DPI for this specific window (correct across mixed-DPI monitors).
-    if hwnd:
-        try:
-            dpi = ctypes.windll.user32.GetDpiForWindow(int(hwnd))  # type: ignore[attr-defined]
-            if dpi:
-                return sanitize_scale(dpi / 96.0)
-        except Exception:
-            pass
-    # Fallback: primary monitor scale.
     try:
-        raw = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0  # type: ignore[attr-defined]
-        return sanitize_scale(raw)
+        raw = float(ctypes.windll.shcore.GetScaleFactorForDevice(0)) / 100.0  # type: ignore[attr-defined]
+        if raw > 0:
+            return max(_MIN_SCALE, min(_MAX_SCALE, raw))
     except Exception:
-        return 1.0
+        pass
+    return 1.0
 
 
-def physical_to_logical(geom: dict, scale: float) -> dict:
-    """Convert physical (scaled) window properties into logical units for storage.
+def virtual_screen_bounds() -> Optional[VirtualScreen]:
+    """The virtual-screen rectangle (all monitors) in device pixels, or ``None``
+    on non-Windows / on failure.
 
-    ``geom`` is the live window's ``{width, height[, x, y]}`` in physical pixels.
-    Dividing by ``scale`` yields the logical size ``create_window`` expects, so a
-    subsequent load round-trips to the same physical size instead of compounding.
+    Mirrors ``dpi_scale()``'s defensive ctypes pattern. Used by
+    ``parse_saved_geometry`` to reject a saved position that no longer lands on
+    any monitor (e.g. a display that was unplugged). ``None`` means "can't
+    tell" — callers then keep the saved position rather than fight it.
     """
-    if scale <= 0:
-        scale = 1.0
-    out: dict[str, int] = {
-        "width": round(geom["width"] / scale),
-        "height": round(geom["height"] / scale),
-    }
-    if geom.get("x") is not None and geom.get("y") is not None:
-        out["x"] = round(geom["x"] / scale)
-        out["y"] = round(geom["y"] / scale)
-    return out
+    if platform.system() != "Windows":
+        return None
+    try:
+        gsm = ctypes.windll.user32.GetSystemMetrics  # type: ignore[attr-defined]
+        x = int(gsm(_SM_XVIRTUALSCREEN))
+        y = int(gsm(_SM_YVIRTUALSCREEN))
+        w = int(gsm(_SM_CXVIRTUALSCREEN))
+        h = int(gsm(_SM_CYVIRTUALSCREEN))
+        if w > 0 and h > 0:
+            return VirtualScreen(x=x, y=y, width=w, height=h)
+    except Exception:
+        pass
+    return None
 
 
-def to_saved_dict(logical_geom: dict) -> dict:
-    """Shape a logical-coordinate geometry dict for on-disk storage."""
-    data: dict[str, Any] = {
-        "width": int(logical_geom["width"]),
-        "height": int(logical_geom["height"]),
-        "format": "logical",
-    }
-    if "x" in logical_geom and "y" in logical_geom:
-        data["x"] = int(logical_geom["x"])
-        data["y"] = int(logical_geom["y"])
-    return data
+def _position_is_usable(
+    x: int, y: int, w: int, h: int, screen: Optional[VirtualScreen]
+) -> bool:
+    """Whether a saved window rectangle (SD-AUX-04) should be restored as-is.
 
-
-def parse_saved_geometry(data: Optional[dict], scale: float) -> dict:
-    """Normalize a stored ``window`` dict into logical coords for create_window().
-
-    - ``None``/invalid/out-of-bounds -> a copy of DEFAULTS.
-    - ``format != "logical"`` (legacy physical files) -> divide by ``scale``.
-    - ``format == "logical"`` -> already logical, used as-is.
+    Rejects the minimized ``-32000`` iconic sentinel outright, and — when the
+    virtual-screen bounds are known — any rectangle that does not intersect the
+    screen at all (dropped in favor of the OS default-placing the window).
+    A partially off-screen window (title bar still reachable) is kept.
     """
+    if x <= _ICONIC_SENTINEL or y <= _ICONIC_SENTINEL:
+        return False
+    if screen is None:
+        return True  # bounds unknown -> trust the saved position
+    # Axis-aligned rectangle intersection with the virtual screen.
+    return (
+        x < screen.x + screen.width
+        and x + w > screen.x
+        and y < screen.y + screen.height
+        and y + h > screen.y
+    )
+
+
+def default_geometry(scale: Optional[float] = None) -> dict:
+    """First-open window size in DEVICE pixels: ``BASE_LOGICAL`` x the monitor DPI
+    scale, so the window looks the same relative to the (DPI-scaled) UI at any
+    scale (100% -> 1200x800, 175% -> 2100x1400, ...). ``scale`` defaults to the
+    live primary-monitor scale."""
+    if scale is None:
+        scale = dpi_scale()
+    return {
+        "width": round(BASE_LOGICAL["width"] * scale),
+        "height": round(BASE_LOGICAL["height"] * scale),
+    }
+
+
+# Sentinel distinguishing "caller passed no screen" from an explicit ``None``
+# (which means "bounds are known to be unavailable, keep the saved position").
+_SCREEN_UNSET: Any = object()
+
+
+def parse_saved_geometry(
+    data: Optional[dict],
+    default: Optional[dict] = None,
+    *,
+    screen: Any = _SCREEN_UNSET,
+) -> dict:
+    """Normalize a stored ``window`` dict into ``create_window()`` device-pixel
+    coordinates, used verbatim (no scale conversion).
+
+    ``None``/invalid/out-of-bounds -> ``default`` (a DPI-scaled first-open size
+    when not supplied). A legacy ``format`` key from older builds is ignored, and
+    a malformed position is dropped while a valid size is kept.
+
+    SD-AUX-04: a saved position is also dropped (size kept) when it is the
+    minimized ``-32000`` iconic sentinel or does not intersect the current
+    virtual screen (e.g. a monitor that was unplugged) — otherwise the window
+    would restore fully off-screen and appear not to launch. ``screen`` defaults
+    to the live ``virtual_screen_bounds()``; tests may inject a ``VirtualScreen``
+    or ``None`` (``None`` = bounds unknown, keep the position).
+    """
+    fallback = default if default is not None else default_geometry()
     if not data:
-        return dict(DEFAULTS)
+        return dict(fallback)
     try:
         w = int(data.get("width", 0))
         h = int(data.get("height", 0))
     except (ValueError, TypeError):
-        return dict(DEFAULTS)
+        return dict(fallback)
 
     if not (_MIN_W <= w <= _MAX_W and _MIN_H <= h <= _MAX_H):
-        return dict(DEFAULTS)
-
-    legacy = data.get("format") != "logical"
-    if legacy and scale > 0:
-        w = round(w / scale)
-        h = round(h / scale)
+        return dict(fallback)
 
     result: dict[str, int] = {"width": w, "height": h}
+    if screen is _SCREEN_UNSET:
+        screen = virtual_screen_bounds()
     try:
-        if "x" in data and "y" in data:
+        if data.get("x") is not None and data.get("y") is not None:
             x = int(data["x"])
             y = int(data["y"])
-            if legacy and scale > 0:
-                x = round(x / scale)
-                y = round(y / scale)
-            result["x"] = x
-            result["y"] = y
+            if _position_is_usable(x, y, w, h, screen):
+                result["x"] = x
+                result["y"] = y
     except (ValueError, TypeError):
         pass  # keep the valid size, drop the bad position
     return result
+
+
+def to_saved_dict(geom: dict) -> dict:
+    """Shape a window geometry dict (``{width, height[, x, y]}``) for storage."""
+    data: dict[str, Any] = {
+        "width": int(geom["width"]),
+        "height": int(geom["height"]),
+    }
+    if geom.get("x") is not None and geom.get("y") is not None:
+        data["x"] = int(geom["x"])
+        data["y"] = int(geom["y"])
+    return data

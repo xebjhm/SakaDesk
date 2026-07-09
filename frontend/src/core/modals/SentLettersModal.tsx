@@ -6,6 +6,7 @@ import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
+import { parseErrorDetail } from '../../utils/httpError';
 
 interface Letter {
     id: number;
@@ -44,7 +45,14 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
 
     const fetchLetters = useCallback(async () => {
         if (!groupId) {
-            setError('No group ID available');
+            setError(t('sentLetters.noGroupId'));
+            return;
+        }
+        // SD-CONTRACT-04: `service` is a REQUIRED backend query param; the old
+        // no-service URL variant is a frontend-invented shape that always 422s.
+        // Guard instead of firing a request that can never succeed.
+        if (!activeService) {
+            setError(t('sentLetters.noService'));
             return;
         }
 
@@ -52,13 +60,13 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({
         setError(null);
 
         try {
-            const url = activeService
-                ? `/api/chat/letters/${groupId}?service=${encodeURIComponent(activeService)}`
-                : `/api/chat/letters/${groupId}`;
+            const url = `/api/chat/letters/${groupId}?service=${encodeURIComponent(activeService)}`;
             const res = await fetch(url);
             if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.detail || 'Failed to fetch letters');
+                // SD-CONTRACT-04: a 422 `detail` is an array of objects — parse
+                // it to a readable string instead of rendering "[object Object]".
+                throw new Error(parseErrorDetail(errData, t('sentLetters.fetchFailed')));
             }
             const data = await res.json();
             // Sort letters by created_at in reverse order (newest first)

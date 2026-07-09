@@ -249,7 +249,8 @@
     "error": "Sync error",
     "unknownError": "Unknown error",
     "sessionExpired": "Authentication session has expired. Please log in again to continue using the service.",
-    "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue."
+    "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.",
+    "cancelled": "Sync cancelled"
   },
   "about": {
     "title": "About",
@@ -462,7 +463,10 @@
     "noLetters": "No letters sent yet",
     "noTextContent": "No text content",
     "noContent": "No content",
-    "tapToClose": "Tap anywhere to close"
+    "tapToClose": "Tap anywhere to close",
+    "noGroupId": "No group ID available",
+    "noService": "No active service",
+    "fetchFailed": "Failed to load letters"
   },
   "blogs": {
     "latestBlogs": "Latest Blogs",
@@ -578,7 +582,9 @@
     "subscribedFor": "Subscribed for",
     "days": "days!",
     "startSubscription": "Start your subscription!",
-    "retry": "Retry"
+    "retry": "Retry",
+    "noService": "No active service",
+    "fetchFailed": "Failed to load streak"
   },
   "blogGallery": {
     "title": "Photo Album",
@@ -594,6 +600,7 @@
     "transcribing": "Recognizing...",
     "transcript": "Voice Content",
     "noTranscript": "No text",
+    "noSpeech": "No audible speech",
     "clickToJump": "click to jump",
     "failed": "Error",
     "cc": "Subtitles",

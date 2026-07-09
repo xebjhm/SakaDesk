@@ -135,9 +135,7 @@ async def download_installer(
     """
     # SEC-4: reject non-HTTPS / non-GitHub URLs before touching the network.
     if not _is_allowed_download_url(info.url):
-        logger.error(
-            "Refusing installer download from disallowed URL", url=info.url
-        )
+        logger.error("Refusing installer download from disallowed URL", url=info.url)
         return None
 
     # Create upgrade directory in app data (survives reboot better than system temp)

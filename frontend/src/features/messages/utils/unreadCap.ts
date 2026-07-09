@@ -15,3 +15,31 @@ export function capUnreadToServer(
     if (serverUnread == null) return local;
     return Math.min(local, serverUnread);
 }
+
+export interface UnreadEntry {
+    /** Unique, service-scoped conversation path (e.g. "日向坂46/messages/79 …"). */
+    path: string;
+    /** Server's last-synced unread for this conversation (phone -> Windows). */
+    serverUnread: number | null | undefined;
+}
+
+/**
+ * Build the unread-badge map keyed by each conversation's unique PATH.
+ *
+ * Talk-room ids are only unique within a service, so the same numeric id can
+ * belong to two different conversations across services (e.g. a Sakurazaka
+ * member DM and a Hinatazaka group chat both id 79). Keying by id lets one
+ * conversation's count bleed onto the other's badge — so we key by path, which
+ * is service-scoped and unique. Each entry is capped to its own server snapshot.
+ */
+export function computeUnreadByPath(
+    entries: UnreadEntry[],
+    backendCounts: Record<string, number>,
+): Record<string, number> {
+    const counts: Record<string, number> = {};
+    for (const e of entries) {
+        const unread = capUnreadToServer(backendCounts[e.path] || 0, e.serverUnread);
+        if (unread > 0) counts[e.path] = unread;
+    }
+    return counts;
+}

@@ -31,6 +31,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synced text/blog content); chat history does not persist across app
   restarts.
 
+## [0.3.3] - 2026-07-09
+
+### Fixed
+- **A first sync only kept each member's most recent 1000 messages**, silently
+  leaving out older history even though it had already been downloaded. A fresh
+  sync now saves a member's complete message history. Members you synced before
+  this fix stay capped until you run a full re-sync (Force Resync), which now
+  back-fills their older messages and media.
+- **Blogs would not load at all**: the first blog sync crashed for every group,
+  so no blog posts appeared. Blog syncing now completes and posts load normally.
+- **A chat could show a wrong unread badge borrowed from another group**: when
+  two groups in different services happened to share an internal id, one group's
+  unread count could appear on the other. Unread badges are now tracked per
+  conversation, so each shows its own count and clears to match your phone.
+
+## [0.3.2] - 2026-07-08
+
+### Fixed
+- **Terminal/console windows popping up on their own, sometimes several times**:
+  the app's silent login-refresh tried to drive a bundled headless browser that
+  the installer does not ship, which kicked off a runtime Chromium download in a
+  visible console window (and retried on network hiccups). The refresh now reuses
+  your already-installed Chrome/Edge — the same browser used to log in — so
+  nothing is downloaded, and the packaged app now keeps any child process
+  windowless as a safety net.
+- **Your selected groups, favorites, layout and open chats could reset to
+  defaults on launch**: a start-up timing issue occasionally saved a blank
+  default state over your real one. Your saved settings are now loaded before
+  anything can overwrite them, and the app reliably reopens on your last group.
+- **A settings change made right before closing the app could be lost**: pending
+  changes (a toggle you just flipped, the conversation you last read, scroll
+  position) are now flushed when the window closes instead of being dropped.
+- **Favoriting a message could silently undo itself**: when the server rejected a
+  favorite the star stayed lit until the next reload; a failed favorite now
+  reverts immediately and tells you it didn't save. Favorites also update the
+  correct message when two groups share a message number.
+- **Date search and the calendar could jump to or highlight the wrong day** for
+  messages around midnight, because dates were bucketed in UTC while messages
+  display in your local time. Both now use local dates consistently.
+- **Sync could not be stopped once it was verifying files, and the sync window
+  could get stuck spinning** on an error. Cancelling now stops the verify pass
+  too, the window is always dismissable, and sync errors show a readable message.
+- **Search could silently drop results or show wrong totals** when two groups
+  happened to share a message number; results are now counted per group.
+- **The app could freeze while browsing a large library**: heavy disk, database
+  and credential reads now run off the main request path, so the UI and media
+  playback stay responsive.
+- **Launching a second copy (or reopening quickly after closing) showed a
+  "Server failed to start" error**: a real single-instance check now focuses the
+  running window instead, and the start-up wait was lengthened to cover a normal
+  close-then-reopen. A minimized-then-closed window no longer restores off-screen.
+- **An interrupted in-place update could roll back after locking program files**:
+  the updater now shuts the app's background worker down before exiting, and the
+  uninstaller only removes the app's own files instead of the whole chosen folder.
+
+- **Translation "API key not set" even when it looked configured**: the AI
+  settings panel could show the key as "saved securely" while it was actually
+  missing from the OS credential store, so translation failed with a confusing
+  message. The panel now warns clearly when a provider is set but no key is
+  stored, and the status self-heals after a failed translation.
+- **Window grew on every restart** at non-100% display scaling; window geometry
+  is now correct at any DPI scale and across multiple monitors.
+- **Manual "Check for updates"** now forces a live check instead of possibly
+  reporting a stale "up to date".
+- **In-place updates** now close a running app cleanly (WM_CLOSE) instead of
+  risking a rolled-back install.
+- **Blog metadata sync** no longer fails with an "access denied" error when
+  another process briefly holds the blog index (antivirus/search indexer); the
+  write is retried.
+
+### Security
+- **The built-in bug report could put which group/member you message into the
+  public issue it opens.** Bug reports and copied diagnostics are now scrubbed —
+  the specific member and any custom data-folder path are removed before anything
+  leaves the app.
+- Hardened the local API against path traversal, DNS-rebinding, and
+  cross-origin/CSRF (SEC-1, SEC-2, API-I2).
+- Self-update downloads are restricted to HTTPS GitHub hosts (SEC-4).
+- Secrets are scrubbed from diagnostics and issue-report output (SEC-5).
+- Blog image proxy no longer follows redirects and is size-capped (API-I3).
+- Credential store no longer silently falls back to a plaintext keyring
+  (opt-in only; SEC-3).
+- Fixed a sync-cancellation data-corruption risk (SVC-C1) plus assorted
+  sync/blog/search correctness fixes.
+
 ## [0.3.1] - 2026-07-04
 
 ### Added
@@ -298,7 +383,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/xebjhm/SakaDesk/compare/v0.3.1...v0.3.2
 [0.2.4]: https://github.com/xebjhm/SakaDesk/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/xebjhm/SakaDesk/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/xebjhm/SakaDesk/compare/v0.2.1...v0.2.2

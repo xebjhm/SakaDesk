@@ -14,6 +14,7 @@ from backend.api.content import (
     get_member_dirs,
     get_output_dir,
     load_sync_metadata,
+    _collect_groups,
     _resolve_media_path,
 )
 from backend.main import app
@@ -49,6 +50,60 @@ def _build_tree(tmp_path: Path, service_display: str, groups: dict):
         for member_folder, msgs in members.items():
             _make_messages_json(messages_dir / group_folder / member_folder, msgs)
     return tmp_path
+
+
+class TestCollectGroupsServiceFilter:
+    """A group id (talk-room id) is only unique WITHIN a service, so the same id
+    (e.g. 79) can exist in two services. A service-scoped request must return only
+    that service's groups, or the frontend collides the two on their shared id."""
+
+    def _two_service_tree(self, tmp_path: Path) -> Path:
+        # Both services have a group id 79 — the real-world collision.
+        _build_tree(
+            tmp_path,
+            "日向坂46",
+            {"79 17th Single LIVE": {"120 Member": [{"id": 1}]}},
+        )
+        _build_tree(
+            tmp_path,
+            "櫻坂46",
+            {"79 Nakagawa": {"134 Nakagawa": [{"id": 2}]}},
+        )
+        return tmp_path
+
+    def test_service_filter_returns_only_that_service(self, tmp_path):
+        self._two_service_tree(tmp_path)
+        result = _collect_groups(tmp_path, "hinatazaka46")
+        groups = result["groups"]
+        services = {g["service"] for g in groups}
+        assert services == {"hinatazaka46"}
+        # Exactly one group id 79, and it is the hinatazaka one.
+        id79 = [g for g in groups if str(g["id"]) == "79"]
+        assert len(id79) == 1
+        assert id79[0]["service"] == "hinatazaka46"
+
+    def test_no_filter_returns_all_services(self, tmp_path):
+        self._two_service_tree(tmp_path)
+        result = _collect_groups(tmp_path)
+        services = {g["service"] for g in result["groups"]}
+        assert services == {"hinatazaka46", "sakurazaka46"}
+
+    def test_endpoint_service_query_param_filters(self, tmp_path):
+        # The ?service= query param must reach the filter (frontend sends it).
+        self._two_service_tree(tmp_path)
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups?service=hinatazaka46")
+        groups = resp.json()["groups"]
+        assert {g["service"] for g in groups} == {"hinatazaka46"}
+        assert [str(g["id"]) for g in groups if str(g["id"]) == "79"] == ["79"]
+
+    def test_endpoint_unknown_service_returns_empty_without_error(self, tmp_path):
+        # A stale/mismatched service id must not error — just an empty list.
+        self._two_service_tree(tmp_path)
+        with patch("backend.api.content.get_output_dir", return_value=tmp_path):
+            resp = client.get("/api/content/groups?service=nonexistent99")
+        assert resp.status_code == 200
+        assert resp.json()["groups"] == []
 
 
 # ---------------------------------------------------------------------------

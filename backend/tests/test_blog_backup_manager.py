@@ -4,8 +4,9 @@ import asyncio
 import threading
 import time
 
-from unittest.mock import patch, AsyncMock
+from unittest.mock import MagicMock, patch, AsyncMock
 
+import backend.services.blog_service as blog_service_module
 from backend.services.blog_service import BlogBackupManager
 
 
@@ -153,6 +154,50 @@ class TestBlogBackupManagerThreading:
         manager.shutdown()
         assert manager._thread is None or not manager._thread.is_alive()
 
+    def test_shutdown_logs_loudly_when_thread_join_times_out(self, monkeypatch):
+        """I1: join(timeout=5) returning is NOT the same as the thread being
+        dead -- a hung backup coroutine that swallows the cancel signal must
+        be logged at ERROR (not silently treated as drained), since a still-
+        alive worker could still be writing after this returns."""
+        manager = BlogBackupManager()
+        fake_thread = MagicMock()
+        fake_thread.is_alive.return_value = True  # still alive after join()
+        manager._thread = fake_thread
+        manager._loop = MagicMock()
+
+        errors = []
+        monkeypatch.setattr(
+            blog_service_module.logger,
+            "error",
+            lambda *a, **k: errors.append((a, k)),
+        )
+
+        manager.shutdown()
+
+        fake_thread.join.assert_called_once_with(timeout=5)
+        assert len(errors) == 1
+        assert "join_timed_out" in errors[0][0][0]
+
+    def test_shutdown_does_not_log_when_thread_actually_stops(self, monkeypatch):
+        """Control case: a thread that stops within the timeout must not
+        trigger the loud-failure log."""
+        manager = BlogBackupManager()
+        fake_thread = MagicMock()
+        fake_thread.is_alive.return_value = False  # confirmed dead after join()
+        manager._thread = fake_thread
+        manager._loop = MagicMock()
+
+        errors = []
+        monkeypatch.setattr(
+            blog_service_module.logger,
+            "error",
+            lambda *a, **k: errors.append((a, k)),
+        )
+
+        manager.shutdown()
+
+        assert errors == []
+
     def test_force_restart_keeps_new_run_registered(self):
         """SVC-I8: start(force=True) supersedes the old run; when the old run's
         finally fires it must NOT deregister the *new* run's bookkeeping.
@@ -203,13 +248,9 @@ class TestBlogBackupManagerThreading:
                 "backend.services.blog_service.BlogService.sync_full_backup",
                 new=fake_sync,
             ),
-            patch(
-                "backend.services.search_service.get_search_service"
-            ) as mock_search,
+            patch("backend.services.search_service.get_search_service") as mock_search,
         ):
-            mock_search.return_value.index_blogs_for_service = AsyncMock(
-                return_value=0
-            )
+            mock_search.return_value.index_blogs_for_service = AsyncMock(return_value=0)
 
             manager.start(["hinatazaka46"])
             assert first_entered.wait(timeout=5), "first run never entered"

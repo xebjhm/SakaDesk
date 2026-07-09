@@ -11,6 +11,8 @@ import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
+import { persisted } from '../core/persistence/persisted'
+import i18n from '../i18n'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -73,6 +75,7 @@ function App() {
         syncVersion,
         startSync,
         verifyAndFix,
+        cancelSync,
         startSequentialSync,
         sequentialSyncInfo,
         hasStartedSyncRef,
@@ -162,21 +165,88 @@ function App() {
     const openSearch = useCallback(() => searchModalRef.current?.open(), []);
     useGlobalSearchShortcut(openSearch);
 
-    // ToS acceptance state - check localStorage on mount
+    // ToS acceptance state - check persisted app-state on mount
     const [tosAccepted, setTosAccepted] = useState(() => {
-        return localStorage.getItem('tos_accepted_at') !== null;
+        return persisted.getPref('tos_accepted_at', null) !== null;
     });
 
+    // Backend-backed prefs hydration — loads the app-state prefs cache before
+    // the gated UI renders. Swallows fetch errors internally (see persisted.ts),
+    // so this can never block/break startup even if the endpoint is unavailable.
+    const [prefsHydrated, setPrefsHydrated] = useState(false);
+    useEffect(() => {
+        persisted.hydratePrefs()
+            .then(() => persisted.hydrateConversations().catch(() => {/* defensive: never block startup */}))
+            .then(() => persisted.migrateOnce().catch(() => {/* defensive: never block startup */}))
+            .then(() => {
+                // Re-evaluate ToS acceptance now that the prefs cache is
+                // hydrated + migrated. The initial useState read (below) ran
+                // against an EMPTY cache at mount — an upgrading user who
+                // already accepted has their acceptance in the backend, not in
+                // the synchronous mount-time cache, so without this they would
+                // be bounced back to the ToS gate on every launch.
+                setTosAccepted(persisted.getPref('tos_accepted_at', null) !== null);
+            })
+            .then(async () => {
+                // Apply language now that hydration + migration have run, so the
+                // first gated render is in the right language. This is the SINGLE
+                // ordered decision for language (i18n/index.ts no longer applies
+                // /api/settings itself, avoiding a startup race between the two):
+                // 1) explicit persisted user choice, 2) installer/settings.json
+                // language, 3) browser-detected default (already applied by
+                // i18n/index.ts's synchronous init, so no action needed for #3).
+                const lang = persisted.getPref<string | null>('language', null);
+                if (lang) {
+                    await i18n.changeLanguage(lang);
+                } else {
+                    try {
+                        const s = await (await fetch('/api/settings')).json();
+                        if (s?.language) await i18n.changeLanguage(s.language);
+                    } catch { /* keep browser-detected default */ }
+                }
+            })
+            .then(() =>
+                // Load the app-state bundle (selected services, favorites, etc.)
+                // from the backend now that the prefs cache is hydrated. Storage
+                // was skipped at import time (skipHydration: true) because the
+                // cache is empty until this point. Defensive: a rehydrate failure
+                // must not block startup (store just keeps its default state).
+                useAppStore.persist.rehydrate()?.catch(() => {/* defensive: never block startup */})
+            )
+            .finally(() => setPrefsHydrated(true));
+    }, []);
+
+    // SD-FE-STATE-03: flush any pending debounced prefs writes when the window
+    // is being hidden/closed. pywebview tears down the JS context on close, so a
+    // change made within the 300ms debounce (a settings toggle, ToS acceptance,
+    // conversation selection) would otherwise never reach app_state.db.
+    // `pagehide` fires on close; `visibilitychange`→hidden covers minimize/hide
+    // paths where pagehide may not fire. flushNow() uses a keepalive request.
+    useEffect(() => {
+        const flush = () => persisted.flushNow();
+        const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+        window.addEventListener('pagehide', flush);
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            window.removeEventListener('pagehide', flush);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
+    }, []);
+
     // === RENDER ===
+
+    // Show loading while auth check is in progress or prefs are hydrating.
+    // This MUST precede the ToS gate: `tosAccepted` is only meaningful once the
+    // prefs cache is hydrated (a returning/upgrading user's acceptance lives in
+    // the backend, not the empty mount-time cache). Gating on ToS before
+    // hydration would bounce those users back into the dialog.
+    if (!authCheckComplete || !prefsHydrated) {
+        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
+    }
 
     // Show ToS dialog on first launch (blocks all other content until accepted)
     if (!tosAccepted) {
         return <TosDialog onAccept={() => setTosAccepted(true)} />;
-    }
-
-    // Show loading while auth check is in progress
-    if (!authCheckComplete) {
-        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
     }
 
     // Show LandingPage if no services selected (new user or all services removed)
@@ -237,7 +307,7 @@ function App() {
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} />}
+                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
                 {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
                 {loginCarouselService && (

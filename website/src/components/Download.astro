@@ -1,9 +1,11 @@
 ---
 import { getLangFromUrl, t } from '../i18n/utils';
-import { APP_VERSION } from '../config';
+import { APP_VERSION, DOWNLOAD_URL } from '../config';
 
 const lang = getLangFromUrl(Astro.url);
-const downloadUrl = `https://github.com/xebjhm/SakaDesk/releases/download/v${APP_VERSION}/SakaDesk-${APP_VERSION}-Setup.exe`;
+// XREPO-06 / SD-AUX-07: link to the latest PUBLISHED release (never a
+// pyproject-derived asset URL that can 404 before the release exists).
+const downloadUrl = DOWNLOAD_URL;
 const releaseNotes = 'https://github.com/xebjhm/SakaDesk/blob/main/CHANGELOG.md';
 ---
 

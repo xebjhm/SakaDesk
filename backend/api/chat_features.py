@@ -11,6 +11,7 @@ import json
 import structlog
 import aiohttp
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -61,6 +62,34 @@ class DateCount(BaseModel):
 class MessageDatesResponse(BaseModel):
     dates: List[DateCount]
     total_dates: int
+
+
+def _local_date(timestamp: str) -> Optional[str]:
+    """Bucket an ISO message timestamp by LOCAL calendar date (YYYY-MM-DD).
+
+    SD-FE-CORE-02 (Theme C): message bubbles render local time
+    (``new Date(ts).getFullYear()/getMonth()/getDate()``), and the calendar
+    aligns its dots/jumps to that same local date. The stored timestamps are UTC
+    (``...Z``), so bucketing by the raw ``timestamp[:10]`` prefix put dots on the
+    wrong day near midnight for any user not on UTC. Convert to the machine's
+    local timezone (same zone as the webview) before slicing the date.
+
+    Falls back to the raw ``YYYY-MM-DD`` prefix if the timestamp can't be parsed,
+    so a malformed value still buckets somewhere rather than being dropped.
+    """
+    if not timestamp:
+        return None
+    try:
+        # ``fromisoformat`` accepts "+00:00" in all supported versions; normalize
+        # a trailing "Z" for the same behavior on 3.10.
+        normalized = timestamp.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is not None:
+            # astimezone() with no argument converts to the local timezone.
+            dt = dt.astimezone()
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return timestamp[:10] or None
 
 
 def _get_output_dir() -> Path:
@@ -246,10 +275,10 @@ async def get_message_dates(member_path: str):
             with open(msg_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 for msg in data.get("messages", []):
-                    timestamp = msg.get("timestamp", "")
-                    if timestamp:
-                        # Extract date (YYYY-MM-DD) from ISO timestamp
-                        date_str = timestamp[:10]
+                    # Bucket by LOCAL date to match the message bubbles / calendar
+                    # (SD-FE-CORE-02), not the raw UTC prefix.
+                    date_str = _local_date(msg.get("timestamp", ""))
+                    if date_str:
                         date_counts[date_str] += 1
         except Exception as e:
             logger.error(f"Error reading messages: {e}")
@@ -265,9 +294,8 @@ async def get_message_dates(member_path: str):
                 with open(member_msg_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     for msg in data.get("messages", []):
-                        timestamp = msg.get("timestamp", "")
-                        if timestamp:
-                            date_str = timestamp[:10]
+                        date_str = _local_date(msg.get("timestamp", ""))
+                        if date_str:
                             date_counts[date_str] += 1
             except Exception as e:
                 logger.warning(f"Error reading {member_msg_file}: {e}")

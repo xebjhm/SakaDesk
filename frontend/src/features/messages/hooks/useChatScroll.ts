@@ -1,6 +1,7 @@
 import { useRef, useCallback, useMemo, useEffect } from 'react';
 import type { ListRange } from 'react-virtuoso';
 import type { Message } from '../../../types';
+import { persisted } from '../../../core/persistence/persisted';
 
 const STORAGE_KEY_PREFIX = 'sakadesk_scroll_';
 const DEBOUNCE_MS = 500;
@@ -17,7 +18,7 @@ interface UseChatScrollResult {
 /**
  * Hook for ID-based scroll position save/restore with react-virtuoso.
  *
- * - Saves the top-most visible message ID to localStorage (debounced)
+ * - Saves the top-most visible message ID to persisted app-state (debounced)
  * - Restores position by finding the saved ID's index in the messages array
  * - Falls back to bottom of list for new rooms or if saved ID not found
  */
@@ -46,7 +47,7 @@ export function useChatScroll(
     if (!msgs || msgs.length === 0) return;
     const message = msgs[topIndex];
     if (!message) return;
-    localStorage.setItem(key, String(message.id));
+    persisted.setConv(key, { value: String(message.id) });
   }, []);
 
   // Save PREVIOUS room's position when memberId changes
@@ -76,7 +77,7 @@ export function useChatScroll(
   const initialTopMostItemIndex = useMemo(() => {
     if (!messages || messages.length === 0) return 0;
 
-    const savedId = localStorage.getItem(storageKey);
+    const savedId = persisted.getConv<{ value?: string }>(storageKey, {}).value ?? null;
     if (!savedId) return messages.length - 1; // New room -> bottom
 
     const parsedId = Number(savedId);
@@ -99,7 +100,7 @@ export function useChatScroll(
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      localStorage.setItem(storageKey, String(message.id));
+      persisted.setConv(storageKey, { value: String(message.id) });
       lastSavedIdRef.current = message.id;
     }, DEBOUNCE_MS);
   }, [messages, storageKey]);
@@ -116,7 +117,7 @@ export function useChatScroll(
       debounceTimerRef.current = null;
     }
 
-    localStorage.setItem(storageKey, String(message.id));
+    persisted.setConv(storageKey, { value: String(message.id) });
     lastSavedIdRef.current = message.id;
   }, [messages, storageKey]);
 
@@ -133,6 +134,34 @@ export function useChatScroll(
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
       }
+    };
+  }, []);
+
+  // SD-FE-STATE-03: flush a pending scroll-position save when the window is
+  // hidden/closed. The 500ms debounce means a scroll-then-close loses the last
+  // position; on pagehide/hidden we persist the current top index immediately
+  // via setConvBeacon, whose keepalive request survives the JS context teardown
+  // on close (plain setConv's PATCH is abandoned).
+  useEffect(() => {
+    const flushScroll = () => {
+      const msgs = currentMessagesRef.current;
+      if (!msgs || msgs.length === 0) return;
+      const message = msgs[currentTopIndexRef.current];
+      if (!message) return;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      if (lastSavedIdRef.current === message.id) return;
+      persisted.setConvBeacon(currentStorageKeyRef.current, { value: String(message.id) });
+      lastSavedIdRef.current = message.id;
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flushScroll(); };
+    window.addEventListener('pagehide', flushScroll);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', flushScroll);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 

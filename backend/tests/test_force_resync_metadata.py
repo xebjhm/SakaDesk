@@ -36,7 +36,9 @@ def test_reset_message_cursor_preserves_messages_media_and_metadata(tmp_path):
 
     # A realistic member tree: the two state files + a member's messages.json and a
     # downloaded media file (both live in member subdirs of service_data_dir).
-    (tmp_path / "sync_state.json").write_text('{"1_2": {"last_id": 99}}', encoding="utf-8")
+    (tmp_path / "sync_state.json").write_text(
+        '{"1_2": {"last_id": 99}}', encoding="utf-8"
+    )
     svc.metadata_file.write_text(
         '{"server_groups": {"1": {"unread_count": 3}}}', encoding="utf-8"
     )

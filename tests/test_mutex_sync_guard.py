@@ -75,7 +75,9 @@ def test_verify_sync_raises_when_python_name_missing():
 
 def test_verify_sync_raises_when_iss_name_missing():
     with pytest.raises(checker.MutexNameMismatch):
-        checker.verify_sync('INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"\n', "; nothing\n")
+        checker.verify_sync(
+            'INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"\n', "; nothing\n"
+        )
 
 
 def test_real_repo_files_are_in_sync():
