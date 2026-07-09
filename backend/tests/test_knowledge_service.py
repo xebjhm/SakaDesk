@@ -1138,6 +1138,36 @@ class TestKbInitialBuild:
 
         assert scheduled == ["hinatazaka46", "sakurazaka46"]
 
+    @pytest.mark.asyncio
+    async def test_schedule_initial_build_skips_when_build_already_in_flight(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Re-scheduling is idempotent: the download-completion trigger (or
+        any other caller) fanning out over a service whose in-flight slot is
+        already claimed makes the scheduled `rebuild()` skip instead of
+        running a duplicate concurrent build."""
+        from backend.services import background_tasks as bt
+        from backend.services import knowledge_service as ks
+
+        store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+        svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+        rebuild_impl = AsyncMock()
+        monkeypatch.setattr(svc, "_rebuild_impl", rebuild_impl)
+        monkeypatch.setattr(
+            ks, "get_knowledge_service", AsyncMock(return_value=svc)
+        )
+
+        assert await svc._try_acquire_inflight("hinatazaka46")
+        try:
+            await ks.schedule_initial_build("hinatazaka46")
+            pending = {t for t in bt._background_tasks if not t.done()}
+            await asyncio.gather(*pending)
+            await asyncio.sleep(0)
+        finally:
+            await svc._release_inflight("hinatazaka46")
+
+        rebuild_impl.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_rebuild_records_last_built_in_settings(

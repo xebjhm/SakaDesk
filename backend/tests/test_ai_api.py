@@ -1727,6 +1727,98 @@ class TestModelDownloadEndpoints:
         manager.start.assert_awaited_once()
 
 
+class TestModelDownloadCompletionSchedulesBuild:
+    """UX quick win 6 (empty-index trap): if the user flipped Enable while the
+    embedding-model download was still running, the enable-toggle's initial
+    build ran before the model existed and skipped quietly
+    (`rebuild_skipped_embedding_model_missing`) -- nothing ever re-triggered
+    it, leaving documentCount=0 forever. Download COMPLETION must therefore
+    (re)schedule the initial build when the KB is enabled. Duplicate-build
+    safety lives in `rebuild()`'s per-service in-flight registry (see
+    `test_schedule_initial_build_skips_when_build_already_in_flight` in
+    `test_knowledge_service.py`).
+    """
+
+    @staticmethod
+    def _manager(final_state: str) -> MagicMock:
+        """A download manager whose `status()` reads 'idle' for the endpoint's
+        up-front 409 check, then `final_state` once `start()` has run."""
+        manager = MagicMock()
+        pre_start = iter(["idle"])
+        manager.status.side_effect = lambda: {"state": next(pre_start, final_state)}
+        manager.start = AsyncMock(return_value=None)
+        return manager
+
+    async def _start_and_drain(self, manager: MagicMock) -> None:
+        from backend.services import background_tasks as bt
+
+        with (
+            patch("backend.api.ai.get_manifest", return_value=MagicMock()),
+            patch("backend.api.ai.get_model_download_manager", return_value=manager),
+        ):
+            result = await ai_module.start_model_download(
+                ai_module.ModelDownloadRequest(
+                    model="granite-embedding-278m-multilingual"
+                )
+            )
+            assert result["ok"] is True
+            pending = {t for t in bt._background_tasks if not t.done()}
+            await asyncio.gather(*pending, return_exceptions=True)
+            await asyncio.sleep(0)
+
+    @pytest.mark.asyncio
+    async def test_completion_schedules_initial_build_when_kb_enabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=True))
+        scheduled = AsyncMock()
+        monkeypatch.setattr(ai_module, "schedule_initial_build_all", scheduled)
+
+        await self._start_and_drain(self._manager("done"))
+
+        scheduled.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_completion_schedules_nothing_when_kb_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=False))
+        scheduled = AsyncMock()
+        monkeypatch.setattr(ai_module, "schedule_initial_build_all", scheduled)
+
+        await self._start_and_drain(self._manager("done"))
+
+        scheduled.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_failed_download_schedules_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A download that ends in 'error' (or any non-'done' state) installed
+        nothing -- there is no model to build with."""
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=True))
+        scheduled = AsyncMock()
+        monkeypatch.setattr(ai_module, "schedule_initial_build_all", scheduled)
+
+        await self._start_and_drain(self._manager("error"))
+
+        scheduled.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_start_raising_schedules_nothing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ai_module, "kb_enabled", AsyncMock(return_value=True))
+        scheduled = AsyncMock()
+        monkeypatch.setattr(ai_module, "schedule_initial_build_all", scheduled)
+        manager = self._manager("done")
+        manager.start = AsyncMock(side_effect=RuntimeError("race"))
+
+        await self._start_and_drain(manager)
+
+        scheduled.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
 # Product-wave Task 5: curated model registry + blocked-pattern rejection
 # ---------------------------------------------------------------------------

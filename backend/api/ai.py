@@ -1374,6 +1374,22 @@ async def start_model_download(request: ModelDownloadRequest) -> dict:
             logger.warning(
                 "ai.models_download.start_failed", model=model_name, error=str(exc)
             )
+            return
+        # Empty-index trap (UX quick win 6): if the user flipped Enable while
+        # this download was still running, the enable-toggle's initial build
+        # ran before the model existed and skipped quietly
+        # (`rebuild_skipped_embedding_model_missing`) -- nothing would ever
+        # re-trigger it, leaving documentCount=0 until a manual Rebuild. Now
+        # that the model is verified and installed (state == "done"),
+        # (re)schedule the initial build if the KB is enabled. Safe to call
+        # unconditionally then: `rebuild()`'s per-service in-flight registry
+        # skips services already building, and the content-hash no-op fast
+        # path makes an already-indexed corpus a cheap pass.
+        if manager.status()["state"] == "done" and await kb_enabled():
+            logger.info(
+                "ai.models_download.initial_build_scheduled", model=model_name
+            )
+            await schedule_initial_build_all()
 
     try:
         # Fail fast (before scheduling a background task) for the common
