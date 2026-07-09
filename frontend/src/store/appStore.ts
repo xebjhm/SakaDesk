@@ -48,6 +48,9 @@ import type { ChatTurn } from '../features/ai/types';
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
 
+/** Tabs of the Settings modal (`shell/components/SettingsModal.tsx`). */
+export type SettingsTabId = 'general' | 'sync' | 'ai' | 'updates';
+
 /** Blog filtering mode: show all members or only favorites. */
 export type BlogSelectionMode = 'all' | 'favorite';
 
@@ -250,6 +253,21 @@ interface AppState {
      * serializable, and not meaningful across a restart anyway). */
     aiAbortControllers: Record<string, AbortController>;
     setAiAbortController: (service: string, controller: AbortController | null) => void;
+
+    // ─── Settings Modal Requests ───────────────────────────────────────────
+    // Lets any feature deep in the tree (e.g. `ChatWindow`'s "Open AI
+    // settings" error action) request the Settings modal without prop-
+    // drilling through `shell/App.tsx`'s `useSettings` local state. The
+    // shell (App.tsx + SettingsModal) subscribes: it opens the modal on the
+    // requested tab, then calls `clearSettingsRequest()`. Non-persisted.
+
+    /** Pending "open Settings on this tab" request, or null. */
+    settingsRequest: { tab: SettingsTabId } | null;
+    /** Request the Settings modal be opened on `tab`. Side-effect-free
+     * beyond setting `settingsRequest` -- the shell reacts to it. */
+    openSettings: (tab: SettingsTabId) => void;
+    /** Consume the pending request (called by the shell once handled). */
+    clearSettingsRequest: () => void;
 }
 
 /** Default feature tab order when no custom order is set. */
@@ -468,6 +486,10 @@ export const useAppStore = create<AppState>()(
                     }
                     return { aiAbortControllers: next };
                 }),
+
+            settingsRequest: null,
+            openSettings: (tab) => set({ settingsRequest: { tab } }),
+            clearSettingsRequest: () => set({ settingsRequest: null }),
         }),
         {
             name: 'sakadesk-app-state',

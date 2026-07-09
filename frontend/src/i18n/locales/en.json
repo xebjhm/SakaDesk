@@ -501,16 +501,18 @@
   "ai": {
     "title": "AI Assistant",
     "welcome": "Ask me anything about your synced blogs and messages — I'll answer with cited sources.",
+    "setupHeading": "Set up the AI assistant to start asking",
     "placeholder": "Ask a question...",
     "setupRequiredPlaceholder": "Finish setup below to start chatting…",
     "send": "Send",
     "stop": "Stop",
     "stopped": "You stopped this answer.",
     "clearThread": "Clear conversation",
+    "clearThreadConfirm": "Sure?",
+    "askingHint": "Still answering — press Stop to interrupt, or wait for it to finish.",
     "copyAnswer": "Copy answer",
     "copied": "Copied",
     "thinking": "Thinking…",
-    "verifying": "Verifying sources…",
     "indexing": "Indexing your data…",
     "noEvidence": "I couldn't find anything in your synced content to answer that.",
     "sourceLabel": "Source",
@@ -538,6 +540,7 @@
       "misconfigured": "The knowledge chatbot isn't set up yet. Open AI settings to configure it.",
       "kb_disabled": "The knowledge chatbot is turned off. Enable it in AI settings.",
       "embedding_model_missing": "The embedding model isn't installed yet. Download it in AI settings to enable the knowledge chatbot.",
+      "runtime_missing": "Setting up the AI engine for the first time — this can take a minute. Try again shortly.",
       "network": "Couldn't reach SakaDesk's backend. Check your connection and try again.",
       "not_configured": "The knowledge chatbot needs the embedding model installed before it can build an index. Download it in AI settings.",
       "already_running": "An index rebuild is already running for this service. It'll finish shortly — no need to try again.",
@@ -545,7 +548,8 @@
       "cloud_consent_required": "This question would be sent to a cloud AI provider. Review and accept the privacy notice in AI settings, or switch to a local model.",
       "unknown": "Something went wrong answering that. Please try again.",
       "retryAfter": "You can try again in {{seconds}}s.",
-      "openSettingsHint": "Open AI settings to fix this."
+      "openSettingsAction": "Open AI settings",
+      "modelFallback": "the current model"
     },
     "quota": {
       "left": "~{{count}} question left today",
@@ -559,8 +563,10 @@
       "decline": "Cancel"
     },
     "badge": {
-      "cloud": "Cloud — data leaves this device",
-      "local": "Local — on-device"
+      "cloud": "Cloud",
+      "local": "Local",
+      "cloudTitle": "Cloud backend — your questions and content excerpts leave this device.",
+      "localTitle": "Local backend — everything stays on this device."
     },
     "suggested": {
       "title": "Try asking:",

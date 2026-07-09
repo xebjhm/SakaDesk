@@ -21,15 +21,16 @@ function nextTurnId(): string {
  * label -- `_ask_event_stream`'s heartbeat emits `{stage: "indexing", done,
  * total}` instead of a false "thinking" while a queued ask is waiting
  * BETWEEN embed batches for a concurrent index (see
- * `backend/api/ai.py`'s `_heartbeat_payload`); `verifying` is reserved for a
- * future, more granular per-tool-call progress hook (documented as a v1.1
- * item). An unrecognized or empty stage (e.g. `askKnowledge`'s `''` fallback
- * for a malformed payload) falls back to the generic "thinking" label so the
- * user never sees raw/untranslated text.
+ * `backend/api/ai.py`'s `_heartbeat_payload`). An unrecognized or empty
+ * stage (e.g. `askKnowledge`'s `''` fallback for a malformed payload) falls
+ * back to the generic "thinking" label so the user never sees
+ * raw/untranslated text. (A `verifying` stage was once reserved here for a
+ * future per-tool-call progress hook -- removed with its `ai.verifying`
+ * key as dead code, expert review WIN 7c; re-add both when the backend
+ * actually emits it.)
  */
 const PROGRESS_LABEL_KEYS: Record<string, string> = {
     thinking: 'ai.thinking',
-    verifying: 'ai.verifying',
     indexing: 'ai.indexing',
 };
 
@@ -125,17 +126,17 @@ export const AiFeature: React.FC = () => {
     const [cloudProvider, setCloudProvider] = useState('the AI provider');
     const [consentGranted, setConsentGranted] = useState<boolean | null>(null);
     const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
-    // Bumped after every ask settles so `UsageMeter` (rendered by
-    // `ChatWindow`) refetches `GET /api/ai/usage` and reflects the just-
-    // recorded request instead of staying stale until the next mount.
+    // Bumped after every ask settles so the usage snapshot below refetches
+    // and reflects the just-recorded request instead of staying stale until
+    // the next mount.
     const [usageRefreshKey, setUsageRefreshKey] = useState(0);
 
-    // Quota pre-empt (P-5 review, item 2): cached independently of
-    // `UsageMeter`'s own fetch -- that one only RENDERS the meter; this one
-    // GATES whether `sendQuestion` may even fire (see `handleSend`).
-    // Refetched on the same triggers as the meter (`usageRefreshKey`: mount
-    // + after every completed ask) -- never per keystroke, and never a
-    // second fetch beyond what already happens on those triggers.
+    // The ONE `/api/ai/usage` fetch for the whole chat surface (expert
+    // review WIN 7i -- `UsageMeter` used to issue an identical duplicate
+    // request per settle). This snapshot both GATES `sendQuestion` (quota
+    // pre-empt, P-5 review item 2) and, passed down through `ChatWindow`,
+    // RENDERS the composer's `UsageMeter`. Refetched on mount + after every
+    // completed ask (`usageRefreshKey`) -- never per keystroke.
     const [usage, setUsage] = useState<AiUsageResponse | null>(null);
 
     useEffect(() => {
@@ -205,14 +206,25 @@ export const AiFeature: React.FC = () => {
 
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
+        // Expert review WIN 1a: the backend heartbeats `progress` every ~1s
+        // with an (almost always) UNCHANGED stage. Re-running `replaceAiTurn`
+        // for those created a fresh turn object each time, re-rendering the
+        // whole thread (and, before WIN 1b, re-triggering auto-scroll) once a
+        // second for the entire 20-60s ask -- so skip the store write
+        // entirely when the resolved label hasn't changed.
+        let lastProgressLabel = t('ai.thinking');
+
         askKnowledge(
             service,
             question,
             tz,
             (label) => {
+                const nextLabel = t(progressLabelKey(label));
+                if (nextLabel === lastProgressLabel) return;
+                lastProgressLabel = nextLabel;
                 replaceAiTurn(service, assistantId, (turn) =>
                     turn.role === 'assistant' && turn.state === 'streaming'
-                        ? { ...turn, progressLabel: t(progressLabelKey(label)) }
+                        ? { ...turn, progressLabel: nextLabel }
                         : turn
                 );
             },
@@ -343,7 +355,7 @@ export const AiFeature: React.FC = () => {
                 onClearThread={handleClearThread}
                 isAsking={isAsking}
                 backendKind={backendKind}
-                usageRefreshKey={usageRefreshKey}
+                usage={usage}
             />
             <CloudConsentModal
                 isOpen={pendingQuestion !== null}

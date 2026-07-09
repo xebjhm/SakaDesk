@@ -2,12 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 
-/** `GET /api/ai/usage`'s shape (`backend/services/llm_usage.py`'s `usage_snapshot`). */
-interface UsageResponse {
-    model: string;
-    requestsToday: number;
-    dailyLimit: number | null;
-    estQuestionsLeft: number | null;
+/** `GET /api/ai/usage`'s shape (`backend/services/llm_usage.py`'s
+ * `usage_snapshot`). Fields are optional so a caller-provided snapshot
+ * (e.g. `AiFeature`'s own fetch) can be passed straight through. */
+export interface UsageSnapshot {
+    model?: string;
+    requestsToday?: number;
+    dailyLimit?: number | null;
+    estQuestionsLeft?: number | null;
 }
 
 /** Below this many estimated questions left, the meter switches to its amber
@@ -18,9 +20,16 @@ interface UsageResponse {
 const LOW_THRESHOLD = 3;
 
 export interface UsageMeterProps {
+    /** Caller-owned usage snapshot. When this prop is PROVIDED (even as
+     * `null`, meaning "still loading"), the meter never fetches on its own --
+     * `AiFeature` already fetches `/api/ai/usage` for its quota pre-empt
+     * gate, and duplicating that request per settle was pure waste (expert
+     * review WIN 9i). When the prop is absent (`undefined` -- e.g.
+     * `KbBackendSelector` in Settings), the meter self-fetches as before. */
+    usage?: UsageSnapshot | null;
     /** Bumped by the caller after an ask resolves (success OR a quota
-     * error) to force a refetch -- the meter otherwise only reflects
-     * whatever `GET /api/ai/usage` returned on mount. */
+     * error) to force a refetch -- only meaningful in self-fetch mode
+     * (no `usage` prop). */
     refreshKey?: number;
     className?: string;
 }
@@ -32,22 +41,32 @@ export interface UsageMeterProps {
  * model has no daily limit (`dailyLimit: null` — the local backend, or an
  * unrecognized cloud model) -- an unlimited meter has nothing useful to show.
  */
-export const UsageMeter: React.FC<UsageMeterProps> = ({ refreshKey, className }) => {
+export const UsageMeter: React.FC<UsageMeterProps> = ({ usage: usageProp, refreshKey, className }) => {
     const { t } = useTranslation();
-    const [usage, setUsage] = useState<UsageResponse | null>(null);
+    const [fetched, setFetched] = useState<UsageSnapshot | null>(null);
+    const selfManaged = usageProp === undefined;
 
     useEffect(() => {
+        if (!selfManaged) return;
         // `refreshKey` isn't read in the body -- it's a deliberate refetch
         // trigger the caller bumps after an ask settles (see `AiFeature`).
         fetch('/api/ai/usage')
             .then((res) => (res.ok ? res.json() : null))
-            .then((data: UsageResponse | null) => setUsage(data))
+            .then((data: UsageSnapshot | null) => setFetched(data))
             .catch((err: unknown) => {
                 console.error('[UsageMeter] Failed to fetch usage:', err);
             });
-    }, [refreshKey]);
+    }, [refreshKey, selfManaged]);
 
-    if (!usage || usage.dailyLimit === null || usage.estQuestionsLeft === null) {
+    const usage = selfManaged ? fetched : usageProp;
+
+    if (
+        !usage ||
+        usage.dailyLimit === null ||
+        usage.dailyLimit === undefined ||
+        usage.estQuestionsLeft === null ||
+        usage.estQuestionsLeft === undefined
+    ) {
         return null;
     }
 

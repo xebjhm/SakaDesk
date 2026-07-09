@@ -316,4 +316,39 @@ describe('appStore', () => {
             expect(useAppStore.getState().aiAbortControllers['hinatazaka46']).toBeUndefined()
         })
     })
+
+    describe('settingsRequest / openSettings (expert review WIN 2)', () => {
+        beforeEach(() => {
+            useAppStore.setState({ settingsRequest: null })
+        })
+
+        it('should default to no pending request', () => {
+            expect(useAppStore.getState().settingsRequest).toBeNull()
+        })
+
+        it('openSettings(tab) records the request and does nothing else', () => {
+            const before = useAppStore.getState()
+            useAppStore.getState().openSettings('ai')
+
+            const after = useAppStore.getState()
+            expect(after.settingsRequest).toEqual({ tab: 'ai' })
+            // Side-effect-free beyond `settingsRequest` (the exported
+            // contract): nothing else in the store changed.
+            expect(after.activeService).toBe(before.activeService)
+            expect(after.activeFeatures).toBe(before.activeFeatures)
+            expect(after.selectedServices).toBe(before.selectedServices)
+        })
+
+        it('a later openSettings call replaces the pending tab', () => {
+            useAppStore.getState().openSettings('general')
+            useAppStore.getState().openSettings('updates')
+            expect(useAppStore.getState().settingsRequest).toEqual({ tab: 'updates' })
+        })
+
+        it('clearSettingsRequest consumes the request', () => {
+            useAppStore.getState().openSettings('sync')
+            useAppStore.getState().clearSettingsRequest()
+            expect(useAppStore.getState().settingsRequest).toBeNull()
+        })
+    })
 })

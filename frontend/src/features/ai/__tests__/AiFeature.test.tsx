@@ -1,6 +1,6 @@
 // frontend/src/features/ai/__tests__/AiFeature.test.tsx
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AiFeature } from '../AiFeature';
 import { AskError } from '../api';
@@ -220,20 +220,40 @@ describe('AiFeature', () => {
             screen.queryByText('Something went wrong answering that. Please try again.')
         ).toBeNull();
         expect(screen.queryByText('raw provider quota message')).toBeNull();
-        // Quota is one of the codes that gets the "open AI settings" hint.
-        expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+        // Quota is one of the codes that gets the "open AI settings" ACTION
+        // (a real button since expert review WIN 2, not inert hint text).
+        expect(screen.getByRole('button', { name: 'Open AI settings' })).toBeInTheDocument();
     });
 
-    it('shows a retry-after hint when the error carries retryAfterS', async () => {
+    it('a quota error renders exactly one guidance line + one action (WIN 4): no retry-after or quota-left stack', async () => {
         const quotaError = Object.assign(new Error('quota'), {
             code: 'quota_exhausted',
             model: 'gemini-2.5-flash',
             retryAfterS: 42,
+            estQuestionsLeft: 0,
         });
         mockAskKnowledge.mockRejectedValue(quotaError);
 
         render(<AiFeature />);
         await askQuestion('will this hit quota?');
+
+        await screen.findByText(/usage limit/i);
+        expect(screen.queryByText('You can try again in 42s.')).toBeNull();
+        expect(
+            screen.queryByText('No questions left today — try again tomorrow, or switch to a local model.')
+        ).toBeNull();
+        expect(screen.getByRole('button', { name: 'Open AI settings' })).toBeInTheDocument();
+    });
+
+    it('shows a retry-after hint when a non-quota error carries retryAfterS', async () => {
+        const timeoutError = Object.assign(new Error('busy'), {
+            code: 'timeout',
+            retryAfterS: 42,
+        });
+        mockAskKnowledge.mockRejectedValue(timeoutError);
+
+        render(<AiFeature />);
+        await askQuestion('will this time out?');
 
         expect(await screen.findByText('You can try again in 42s.')).toBeInTheDocument();
     });
@@ -256,11 +276,11 @@ describe('AiFeature', () => {
         expect(
             screen.queryByText('Something went wrong answering that. Please try again.')
         ).toBeNull();
-        // kb_disabled's fix lives in AI settings too, so it gets the same hint.
-        expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+        // kb_disabled's fix lives in AI settings too, so it gets the same action.
+        expect(screen.getByRole('button', { name: 'Open AI settings' })).toBeInTheDocument();
     });
 
-    it('renders the unreachable copy without an "open settings" hint (not one of the settings-fixable codes)', async () => {
+    it('renders the unreachable copy without an "open settings" action (not one of the settings-fixable codes)', async () => {
         const unreachableError = Object.assign(new Error('connect failed'), {
             code: 'unreachable',
         });
@@ -270,7 +290,7 @@ describe('AiFeature', () => {
         await askQuestion('will this be unreachable?');
 
         expect(await screen.findByText(/ollama/i)).toBeInTheDocument();
-        expect(screen.queryByText('Open AI settings to fix this.')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Open AI settings' })).toBeNull();
     });
 
     describe('cloud-privacy consent gate (Product-wave Task 5, item 5)', () => {
@@ -409,7 +429,7 @@ describe('AiFeature', () => {
             expect(screen.queryByTestId('usage-meter')).not.toBeInTheDocument();
         });
 
-        it('renders the Cloud badge when the configured backend is cloud', async () => {
+        it('renders the slim Cloud badge (privacy phrase in the tooltip) when the configured backend is cloud', async () => {
             stubReadyFetch({
                 config: {
                     backend: 'cloud',
@@ -421,10 +441,14 @@ describe('AiFeature', () => {
             render(<AiFeature />);
             await screen.findByPlaceholderText('Ask a question...');
 
-            expect(await screen.findByText('Cloud — data leaves this device')).toBeInTheDocument();
+            const badge = await screen.findByTestId('ai-backend-badge');
+            expect(badge).toHaveTextContent('Cloud');
+            // WIN 7f: the privacy phrase moved out of the badge text into a
+            // title tooltip.
+            expect(badge).toHaveAttribute('title', expect.stringMatching(/leave this device/i));
         });
 
-        it('renders the Local badge when the configured backend is local', async () => {
+        it('renders the slim Local badge when the configured backend is local', async () => {
             stubReadyFetch({
                 config: { backend: 'local', base_url: 'http://localhost:11434/v1', model: 'qwen3:30b' },
             });
@@ -432,7 +456,9 @@ describe('AiFeature', () => {
             render(<AiFeature />);
             await screen.findByPlaceholderText('Ask a question...');
 
-            expect(await screen.findByText('Local — on-device')).toBeInTheDocument();
+            const badge = await screen.findByTestId('ai-backend-badge');
+            expect(badge).toHaveTextContent('Local');
+            expect(badge).toHaveAttribute('title', expect.stringMatching(/stays on this device/i));
         });
     });
 
@@ -462,15 +488,16 @@ describe('AiFeature', () => {
             // Reuses the existing quota_exhausted copy (with the model interpolated)...
             const message = await screen.findByText(/usage limit/i);
             expect(message.textContent).toContain('gemini-2.5-flash');
-            // ...the existing "switch to a local model" wording (ai.quota.none) --
-            // rendered TWICE: once in the ErrorTurn, once in the composer's
-            // own `UsageMeter` (which independently reads the same zero)...
+            // ...as the ONE guidance line (WIN 4): the old duplicate
+            // `ai.quota.none` line is gone from BOTH the bubble and the
+            // composer's `UsageMeter` (hidden while the newest turn is a
+            // quota error)...
             expect(
-                screen.getAllByText('No questions left today — try again tomorrow, or switch to a local model.')
-                    .length
-            ).toBeGreaterThanOrEqual(2);
-            // ...and the existing "open AI settings" action/hint.
-            expect(screen.getByText('Open AI settings to fix this.')).toBeInTheDocument();
+                screen.queryByText('No questions left today — try again tomorrow, or switch to a local model.')
+            ).toBeNull();
+            expect(screen.queryByTestId('usage-meter')).not.toBeInTheDocument();
+            // ...plus the one "open AI settings" action button.
+            expect(screen.getByRole('button', { name: 'Open AI settings' })).toBeInTheDocument();
             // The composer stays enabled -- the user can still switch backends and retry.
             expect(screen.getByPlaceholderText('Ask a question...')).not.toBeDisabled();
         });
@@ -596,7 +623,11 @@ describe('AiFeature', () => {
             await askQuestion('何を食べた?');
             expect(await screen.findByText('焼肉を食べました。')).toBeInTheDocument();
 
+            // Inline two-step confirm (expert review WIN 5): the first click
+            // only ARMS the button; the thread is untouched until the second.
             await userEvent.click(screen.getByRole('button', { name: 'Clear conversation' }));
+            expect(screen.getByText('焼肉を食べました。')).toBeInTheDocument();
+            await userEvent.click(screen.getByRole('button', { name: 'Sure?' }));
 
             expect(screen.queryByText('焼肉を食べました。')).not.toBeInTheDocument();
             expect(useAppStore.getState().getAiThread('hinatazaka46')).toEqual([]);
@@ -647,6 +678,44 @@ describe('AiFeature', () => {
                     "I couldn't find anything in your synced content to answer that."
                 )
             ).toBeInTheDocument();
+        });
+    });
+
+    describe('heartbeat de-dup (expert review WIN 1a)', () => {
+        it('progress events with an unchanged label never touch the store (no new turn objects)', async () => {
+            let sendProgress: (label: string) => void = () => {};
+            mockAskKnowledge.mockImplementation(
+                (_service, _question, _tz, onProgress: (label: string) => void) => {
+                    sendProgress = onProgress;
+                    return new Promise<AskAnswer>(() => {
+                        // Never resolves -- this test only exercises the
+                        // in-flight heartbeat path.
+                    });
+                }
+            );
+
+            render(<AiFeature />);
+            await askQuestion('slow question');
+            await screen.findByText('Thinking…');
+
+            // The backend heartbeats `{stage: "thinking"}` every ~1s for the
+            // whole 20-60s ask. Same resolved label -> the store bundle must
+            // be IDENTICAL (===) afterwards, or every heartbeat re-renders
+            // the thread (and used to re-trigger auto-scroll, WIN 1).
+            const before = useAppStore.getState().aiThreadsByService;
+            act(() => {
+                sendProgress('thinking');
+                sendProgress('thinking');
+                sendProgress('thinking');
+            });
+            expect(useAppStore.getState().aiThreadsByService).toBe(before);
+
+            // A REAL stage change still lands in the turn.
+            act(() => {
+                sendProgress('indexing');
+            });
+            expect(await screen.findByText('Indexing your data…')).toBeInTheDocument();
+            expect(useAppStore.getState().aiThreadsByService).not.toBe(before);
         });
     });
 
