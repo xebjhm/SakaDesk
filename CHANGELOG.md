@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A scripted (silent) uninstall could delete your saved credentials and
+  settings without ever asking**: the uninstaller's cleanup question defaulted
+  to Yes, which automated uninstalls auto-accept. Cleanup now runs only when
+  you explicitly answer Yes during an interactive uninstall.
+
 ## [0.3.3] - 2026-07-09
 
 ### Fixed
