@@ -46,7 +46,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    // Store-driven `openSettings(tab)` requests (see appStore): seed the
+    // initial tab from a pending request, follow requests that land while
+    // already open, and consume the request once applied.
+    const settingsRequest = useAppStore(s => s.settingsRequest);
+    const clearSettingsRequest = useAppStore(s => s.clearSettingsRequest);
+    const [activeTab, setActiveTab] = useState<SettingsTab>(() => settingsRequest?.tab ?? 'general');
+    useEffect(() => {
+        if (!settingsRequest) return;
+        setActiveTab(settingsRequest.tab);
+        clearSettingsRequest();
+    }, [settingsRequest, clearSettingsRequest]);
     const [showDeepConfirm, setShowDeepConfirm] = useState(false);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [blogSizeLoading, setBlogSizeLoading] = useState(false);

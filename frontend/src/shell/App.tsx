@@ -66,6 +66,16 @@ function App() {
         openSettingsModal,
     } = useSettings(isAuthenticated);
 
+    // Store-driven "open Settings on tab X" requests (`openSettings(tab)` in
+    // appStore) -- lets features deep in the tree (e.g. the AI chat's "Open
+    // AI settings" error action) open this modal without prop-drilling
+    // through `useSettings`' local state. `SettingsModal` itself consumes
+    // the request's `tab` (and clears it) once mounted.
+    const settingsRequest = useAppStore(s => s.settingsRequest);
+    useEffect(() => {
+        if (settingsRequest) setShowSettingsModal(true);
+    }, [settingsRequest, setShowSettingsModal]);
+
     // Sync hook - now syncs ALL connected services independently
     const {
         syncProgress,
