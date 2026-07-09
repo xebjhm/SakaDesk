@@ -1272,6 +1272,51 @@ async def test_rebuild_skips_when_service_already_in_flight(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_rebuild_never_reports_idle_between_members_and_blogs_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A status poll landing BETWEEN the members pass and the blogs pass of a
+    rebuild must never observe phase='idle' -- the members pass's `_persist`
+    paths all end by marking the service idle, and the UI stops its progress
+    polling the moment it sees 'idle', abandoning the still-running blogs
+    pass mid-rebuild. `_rebuild_impl` must re-arm 'discovering' before the
+    blogs pass starts."""
+    from backend.services import knowledge_service as ks
+
+    store = SqliteKnowledgeStore(tmp_path / "knowledge_index.db")
+    svc = ks.KnowledgeService(store=store, embedder=_embedder(), llm=None)
+
+    phases: dict[str, str] = {}
+
+    async def fake_members_impl(members, service, *, force=False):
+        # What every real members pass does on its way out (`_persist` /
+        # `_persist_batched`'s finally): mark the service idle.
+        svc._mark_idle(service)
+        phases["members_exit"] = svc.index_progress(service)["phase"]
+        return 0
+
+    async def fake_blogs_impl(service, *, force=False):
+        # The observable gap: what a `GET /index/status` poll would read
+        # after the members pass returned and before the blogs pass writes
+        # its own 'discovering' entry.
+        phases["blogs_entry"] = svc.index_progress(service)["phase"]
+        return 0
+
+    monkeypatch.setattr(svc, "_index_members_impl", fake_members_impl)
+    monkeypatch.setattr(svc, "_index_blogs_impl", fake_blogs_impl)
+    monkeypatch.setattr(svc, "_discover_message_members", lambda service: [])
+    monkeypatch.setattr(svc, "_ensure_retriever_cached", lambda service: None)
+    monkeypatch.setattr(svc, "_record_last_built", AsyncMock())
+
+    await svc.rebuild(_SERVICE)
+
+    assert phases["members_exit"] == "idle"  # the simulated real behavior
+    assert phases["blogs_entry"] == "discovering", (
+        "a poll between the members and blogs passes must never see 'idle'"
+    )
+
+
+@pytest.mark.asyncio
 async def test_concurrent_index_runs_different_services_progress_isolated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
