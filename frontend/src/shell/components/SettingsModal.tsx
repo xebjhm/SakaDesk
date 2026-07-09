@@ -6,7 +6,7 @@ import { useModalClose } from '../../core/common/useModalClose';
 import { ConfirmDialog } from './ConfirmDialog';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
-import { KnowledgeBaseStatus, KbBackendSelector, SetupChecklist } from '../../features/ai/components';
+import { KnowledgeBaseStatus, KbBackendSelector } from '../../features/ai/components';
 import { apiKeyStatus } from './apiKeyStatus';
 import { persisted } from '../../core/persistence/persisted';
 
@@ -719,18 +719,24 @@ function AiTab() {
             targetLang: newTargetLang,
         };
 
-        // Persist to backend (API key stored in keyring, not settings.json)
-        // Only send api_key if user typed a new one
-        const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        // Persist to backend (API key stored in keyring, not settings.json).
+        // PATCH semantics: send ONLY the fields the user changed in THIS call.
+        // The backend keys off which fields are present (`model_fields_set`),
+        // and an explicit `provider: null` means "clear provider + delete the
+        // stored API key" — so echoing unchanged local state here (which can be
+        // stale or not yet fetched) could silently wipe the keyring credential
+        // (review finding M14). The api_key field is additionally gated on a
+        // non-empty value: an empty input means "unchanged", never "delete".
+        const payload: Record<string, string | null> = {};
+        if (updates.provider !== undefined) payload.provider = updates.provider;
+        if (updates.model !== undefined) payload.model = updates.model;
+        if (updates.api_key) payload.api_key = updates.api_key;
+        if (updates.target_language !== undefined) payload.target_language = updates.target_language;
+        if (Object.keys(payload).length === 0) return;
         fetch('/api/translation/configure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                provider: newProvider,
-                model: newModel,
-                api_key: apiKeyToSend ?? null,
-                target_language: newTargetLang,
-            }),
+            body: JSON.stringify(payload),
         });
     };
 
@@ -740,16 +746,14 @@ function AiTab() {
         saveConfig({ provider: value, model: newModel });
     };
 
-    const showProvider = transcriptionEnabled || translationEnabled;
-
     return (
         <>
             {/* Transcription */}
-            <div>
+            <section>
                 <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-gray-700">
-                        {t('settings.transcriptionDevice')}
-                    </label>
+                    <h4 className="text-sm font-semibold text-gray-800">
+                        {t('settings.sectionTranscription')}
+                    </h4>
                     <button
                         onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
                         className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -761,14 +765,14 @@ function AiTab() {
                         }`} />
                     </button>
                 </div>
-            </div>
+            </section>
 
             {/* Translation */}
-            <div>
+            <section className="pt-4 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                        {t('translation.settings.title')}
-                    </label>
+                    <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        {t('settings.sectionTranslation')}
+                    </h4>
                     <button
                         onClick={() => setTranslationEnabled(!translationEnabled)}
                         className={`relative w-12 h-6 rounded-full transition-colors ${
@@ -805,104 +809,112 @@ function AiTab() {
                         </button>
                     </div>
                 )}
-            </div>
+            </section>
 
-            {/* Shared AI provider — used by both Transcription and Translation */}
-            {showProvider && (
-                <div className="pt-4 border-t border-gray-100 space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
-                    {configLoading && (
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            {t('common.loading')}
-                        </div>
-                    )}
-                    {/* Provider */}
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
-                        <select
-                            value={provider ?? ''}
-                            onChange={(e) => handleProviderChange(e.target.value || null)}
-                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="">—</option>
-                            {PROVIDERS.map(p => (
-                                <option key={p.value} value={p.value}>{p.label}</option>
-                            ))}
-                        </select>
-                        {provider === 'gemini' && (
-                            <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
-                                <p>{t('translation.dataPolicy.geminiFree')}</p>
-                                <p>{t('translation.dataPolicy.geminiPaid')}</p>
-                            </div>
-                        )}
+            {/* Shared AI provider & key — always visible: the KB chatbot's Cloud
+                mode reuses this same keyring credential, so it must stay
+                reachable even with transcription and translation both off. */}
+            <section className="pt-4 border-t border-gray-100 space-y-3">
+                <div>
+                    <h4 className="text-sm font-semibold text-gray-800">{t('settings.sectionProvider')}</h4>
+                    <p className="text-xs text-gray-500 mt-0.5">{t('settings.aiKeyShared')}</p>
+                </div>
+                {configLoading && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        {t('common.loading')}
                     </div>
-
-                    {/* Model */}
-                    {provider && MODELS[provider] && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
-                            <select
-                                value={model ?? ''}
-                                onChange={(e) => saveConfig({ model: e.target.value || null })}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                {MODELS[provider].map(m => (
-                                    <option key={m.value} value={m.value}>{m.label}</option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* API Key */}
-                    {provider && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="password"
-                                    value={apiKeyInput}
-                                    onChange={(e) => setApiKeyInput(e.target.value)}
-                                    onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
-                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
-                                />
-                                <button
-                                    onClick={handleTestConnection}
-                                    disabled={testing || (!apiKeyInput && !hasApiKey)}
-                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                    {testing && <Loader2 className="w-3 h-3 animate-spin" />}
-                                    {t('translation.settings.testConnection')}
-                                </button>
-                            </div>
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
-                                <div className="flex items-center justify-between mt-0.5">
-                                    <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
-                                    <button
-                                        onClick={handleClearApiKey}
-                                        className="text-xs font-medium text-red-500 hover:text-red-700"
-                                    >
-                                        {t('translation.settings.clearApiKey')}
-                                    </button>
-                                </div>
-                            )}
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
-                                <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
-                            )}
-                            {testResult && (
-                                <p className="text-xs mt-1 text-gray-500">{testResult}</p>
-                            )}
+                )}
+                {/* Provider */}
+                <div>
+                    <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
+                    <select
+                        value={provider ?? ''}
+                        onChange={(e) => handleProviderChange(e.target.value || null)}
+                        className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">—</option>
+                        {PROVIDERS.map(p => (
+                            <option key={p.value} value={p.value}>{p.label}</option>
+                        ))}
+                    </select>
+                    {provider === 'gemini' && (
+                        <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
+                            <p>{t('translation.dataPolicy.geminiFree')}</p>
+                            <p>{t('translation.dataPolicy.geminiPaid')}</p>
                         </div>
                     )}
                 </div>
-            )}
 
-            {/* Knowledge base (KB chatbot) — first-run setup checklist, index
-                status/rebuild, and cloud/local backend switch */}
-            <SetupChecklist />
-            <KnowledgeBaseStatus />
-            <KbBackendSelector />
+                {/* Model */}
+                {provider && MODELS[provider] && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
+                        <select
+                            value={model ?? ''}
+                            onChange={(e) => saveConfig({ model: e.target.value || null })}
+                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            {MODELS[provider].map(m => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {/* API Key */}
+                {provider && (
+                    <div>
+                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
+                        <div className="flex gap-2">
+                            <input
+                                type="password"
+                                value={apiKeyInput}
+                                onChange={(e) => setApiKeyInput(e.target.value)}
+                                onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                            />
+                            <button
+                                onClick={handleTestConnection}
+                                disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                {testing && <Loader2 className="w-3 h-3 animate-spin" />}
+                                {t('translation.settings.testConnection')}
+                            </button>
+                        </div>
+                        {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
+                            <div className="flex items-center justify-between mt-0.5">
+                                <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
+                                <button
+                                    onClick={handleClearApiKey}
+                                    className="text-xs font-medium text-red-500 hover:text-red-700"
+                                >
+                                    {t('translation.settings.clearApiKey')}
+                                </button>
+                            </div>
+                        )}
+                        {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
+                            <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
+                        )}
+                        {testResult && (
+                            <p className="text-xs mt-1 text-gray-500">{testResult}</p>
+                        )}
+                    </div>
+                )}
+            </section>
+
+            {/* AI assistant (KB chatbot) — the backend selector carries the
+                master Enable switch, so it comes first; index status/rebuild
+                below it. The first-run SetupChecklist is chat-only (it also
+                lives in ChatWindow) — mounting it here duplicated the doc
+                count and Build button with different disable rules (M6/M7). */}
+            <section className="pt-4 border-t border-gray-100 space-y-3">
+                <h4 className="text-sm font-semibold text-gray-800">{t('settings.sectionAssistant')}</h4>
+                <KbBackendSelector />
+                <KnowledgeBaseStatus />
+            </section>
         </>
     );
 }
