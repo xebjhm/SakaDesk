@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   _Known limitations:_ voice-message transcripts are not indexed yet (only
   synced text/blog content); chat history does not persist across app
   restarts.
+- **Suggested questions in the AI chat**: the empty chat now shows tappable
+  example questions (one per question type — "when did she last…", counts,
+  events, nicknames, preferences) that pre-fill the message box, so you can
+  see what the knowledge base can answer before you type.
 
 ## [0.3.3] - 2026-07-09
 

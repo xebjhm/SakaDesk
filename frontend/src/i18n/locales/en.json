@@ -556,6 +556,14 @@
     "badge": {
       "cloud": "Cloud — data leaves this device",
       "local": "Local — on-device"
+    },
+    "suggested": {
+      "title": "Try asking:",
+      "latest": "When did ○○ last talk about △△?",
+      "agg": "How many messages did ○○ send last month?",
+      "event": "What did ○○ say about the latest live?",
+      "meta": "Who is called '○○'?",
+      "pref": "What food is ○○ into these days?"
     }
   },
   "voicePlayer": {

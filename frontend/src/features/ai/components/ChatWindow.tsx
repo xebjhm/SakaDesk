@@ -18,6 +18,7 @@ import {
 import { useTranslation } from '../../../i18n';
 import { CitationChip } from './CitationChip';
 import { SetupChecklist } from './SetupChecklist';
+import { SuggestedQuestions } from './SuggestedQuestions';
 import { UsageMeter } from './UsageMeter';
 import { errorMessageKey } from '../aiErrorCode';
 import type { AskCitation } from '../api';
@@ -212,6 +213,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({
                         <Sparkles className="w-8 h-8" />
                         <p className="text-sm max-w-xs">{t('ai.welcome')}</p>
                         {!setupReady && <SetupChecklist onReady={() => setSetupReady(true)} />}
+                        {setupReady && (
+                            <SuggestedQuestions
+                                onPick={(question) => {
+                                    // Fill, don't send: the template's ○○
+                                    // placeholder needs a real member name,
+                                    // and a stray click must not spend cloud
+                                    // quota (3-6 requests per ask).
+                                    setValue(question);
+                                    textareaRef.current?.focus();
+                                }}
+                            />
+                        )}
                     </div>
                 )}
 
