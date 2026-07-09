@@ -89,6 +89,12 @@ describe('ChatWindow suggested-question chips', () => {
         ) as HTMLTextAreaElement;
         expect(composer.value).toBe(question);
         expect(composer).toHaveFocus();
+
+        // WIN 7h: the ○○ member-name placeholder is SELECTED, so the user's
+        // next keystroke replaces it instead of appending after it.
+        const placeholderStart = question.indexOf('○○');
+        expect(composer.selectionStart).toBe(placeholderStart);
+        expect(composer.selectionEnd).toBe(placeholderStart + '○○'.length);
     });
 
     it('hides chips while setup is still blocking', () => {

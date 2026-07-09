@@ -30,6 +30,10 @@ export const KNOWN_AI_ERROR_CODES = new Set([
     'misconfigured',
     'kb_disabled',
     'embedding_model_missing',
+    // On-demand ONNX runtime provisioning (`backend/api/ai.py`'s
+    // `RuntimeMissing` branch): the AI engine runtime is still being
+    // downloaded/installed in the background -- retry shortly.
+    'runtime_missing',
     'network',
     // `POST /api/ai/index/rebuild` 409 codes (P-4 review, Finding 1).
     'not_configured',
