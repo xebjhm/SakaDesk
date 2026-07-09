@@ -253,8 +253,15 @@ var
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    if MsgBox(CustomMessage('UninstallCleanupPrompt'),
-              mbConfirmation, MB_YESNO) = IDYES then
+    // Destructive cleanup requires a real, interactive Yes. A silent
+    // uninstall (/SILENT, /VERYSILENT, /SUPPRESSMSGBOXES) auto-answers
+    // MsgBox with its DEFAULT button — without this guard that default was
+    // Yes, so any scripted uninstall would silently wipe credentials + data.
+    // MB_DEFBUTTON2 additionally makes "No" the default for any answer that
+    // falls through to the default button.
+    if (not UninstallSilent) and
+       (MsgBox(CustomMessage('UninstallCleanupPrompt'),
+               mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
     begin
       // 1. Delete ALL credentials from Windows Credential Manager
       //
