@@ -147,7 +147,13 @@
     "kbModelNotInstalled": "重未裝——請行呢句：",
     "kbCopyPullCommand": "複製",
     "kbCopiedPullCommand": "複製咗喇！",
-    "kbUsageToday": "今日用咗 {{count}} / {{limit}} 次"
+    "kbUsageToday": "今日用咗 {{count}} / {{limit}} 次",
+    "kbEta": "仲有大約 {{eta}}",
+    "aiKeyShared": "供轉寫、翻譯同雲端模式嘅 AI 助理使用。",
+    "sectionProvider": "AI 服務商同 API 金鑰",
+    "sectionTranscription": "轉寫",
+    "sectionTranslation": "翻譯",
+    "sectionAssistant": "AI 助理"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -592,7 +598,6 @@
     "copyAnswer": "複製答案",
     "copied": "已複製",
     "thinking": "諗緊…",
-    "verifying": "核實緊來源…",
     "indexing": "整緊你嘅資料索引…",
     "noEvidence": "喺已同步嘅內容度搵唔到答案。",
     "sourceLabel": "來源",
@@ -602,12 +607,17 @@
       "downloadModel": "下載（大約 1.1 GB）",
       "cancelDownload": "取消",
       "downloadFailed": "下載失敗，請再試多次。",
-      "gpuRuntimeMissing": "偵測到 GPU，但係重未裝 GPU 運行環境——而家用緊 CPU 行緊。",
+      "gpuRuntimeMissing": "GPU 執行環境仲未裝好——搞掂之前索引會用 CPU 行。",
       "aiBackend": "AI 後端",
-      "configureBackendHint": "請喺下面設定後端嚟啟用聊天機械人。",
+      "configureBackendHint": "喺 AI 設定入面設定後端就可以用聊天機械人。",
       "index": "已經索引咗 {{count}} 份文件",
       "index_other": "已經索引咗 {{count}} 份文件",
-      "buildIndex": "建立"
+      "buildIndex": "建立",
+      "enableKb": "知識庫聊天機械人",
+      "gpuActive": "喺 GPU 上面行緊（{{name}}）",
+      "runtimeSettingUp": "設定緊 GPU 執行環境… {{pct}}%",
+      "indexedSoFar": "而家索引咗 {{count}} 份文件",
+      "noContent": "仲未有嘢可以索引——請先同步訊息或者 Blog。"
     },
     "error": {
       "quota_exhausted": "{{model}} 用量去到上限。請遲啲再試，或者去「設定 → AI」轉第個模型。",
@@ -627,7 +637,9 @@
       "cloud_consent_required": "呢條問題會傳去俾雲端 AI 供應商。請去「設定 → AI」睇同意隱私聲明，或者轉用本機模型。",
       "unknown": "答問題嗰陣出咗問題。請再試多次。",
       "retryAfter": "你可以喺 {{seconds}} 秒之後再試。",
-      "openSettingsHint": "開返「設定 → AI」嚟解決呢個問題。"
+      "runtime_missing": "首次設定緊 AI 引擎——可能要等一陣，請遲啲再試。",
+      "openSettingsAction": "開啟 AI 設定",
+      "modelFallback": "而家用緊嘅模型"
     },
     "quota": {
       "left": "今日重可以問大約 {{count}} 條問題",
@@ -641,8 +653,10 @@
       "decline": "取消"
     },
     "badge": {
-      "cloud": "雲端 — 資料會離開部機",
-      "local": "本機 — 喺部機度處理"
+      "cloud": "雲端",
+      "local": "本機",
+      "cloudTitle": "雲端後端——你嘅問題同內容節錄會離開呢部裝置。",
+      "localTitle": "本機後端——全部都留喺呢部裝置。"
     },
     "suggested": {
       "title": "試吓噉問：",
@@ -651,6 +665,9 @@
       "event": "最近嘅Live，○○講咗啲乜？",
       "meta": "「○○」係邊個？",
       "pref": "○○最近迷上咗咩食物？"
-    }
+    },
+    "setupHeading": "設定好 AI 助理就可以開始問嘢",
+    "clearThreadConfirm": "確定？",
+    "askingHint": "仲答緊——撳停止可以中斷，或者等佢答完。"
   }
 }

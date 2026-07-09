@@ -147,7 +147,13 @@
     "kbModelNotInstalled": "まだインストールされていません。次のコマンドを実行してください:",
     "kbCopyPullCommand": "コピー",
     "kbCopiedPullCommand": "コピーしました！",
-    "kbUsageToday": "本日の利用: {{count}} / {{limit}} 回"
+    "kbUsageToday": "本日の利用: {{count}} / {{limit}} 回",
+    "kbEta": "残り約 {{eta}}",
+    "aiKeyShared": "文字起こし、翻訳、クラウドモードのAIアシスタントで使用されます。",
+    "sectionProvider": "AIプロバイダーとAPIキー",
+    "sectionTranscription": "文字起こし",
+    "sectionTranslation": "翻訳",
+    "sectionAssistant": "AIアシスタント"
   },
   "time": {
     "minute": "{{count}}分",
@@ -504,7 +510,6 @@
     "copyAnswer": "回答をコピー",
     "copied": "コピーしました",
     "thinking": "考え中…",
-    "verifying": "情報源を確認中…",
     "indexing": "データをインデックス中…",
     "noEvidence": "同期済みのコンテンツから回答が見つかりませんでした。",
     "sourceLabel": "情報源",
@@ -514,12 +519,17 @@
       "downloadModel": "ダウンロード（約1.1GB）",
       "cancelDownload": "キャンセル",
       "downloadFailed": "ダウンロードに失敗しました。もう一度お試しください。",
-      "gpuRuntimeMissing": "GPUを検出しましたが、GPUランタイムが未インストールのためCPUで実行しています。",
+      "gpuRuntimeMissing": "GPUランタイムは未インストールです — 準備できるまでインデックス作成はCPUで実行されます。",
       "aiBackend": "AIバックエンド",
-      "configureBackendHint": "下でバックエンドを設定するとチャットボットが有効になります。",
+      "configureBackendHint": "AI設定でバックエンドを設定するとチャットボットが使えます。",
       "index": "{{count}} 件のドキュメントをインデックス済み",
       "index_other": "{{count}} 件のドキュメントをインデックス済み",
-      "buildIndex": "作成"
+      "buildIndex": "作成",
+      "enableKb": "ナレッジベース・チャットボット",
+      "gpuActive": "GPUで実行中（{{name}}）",
+      "runtimeSettingUp": "GPUランタイムをセットアップ中… {{pct}}%",
+      "indexedSoFar": "これまでに {{count}} 件をインデックス済み",
+      "noContent": "まだインデックスする内容がありません — まずメッセージやブログを同期してください。"
     },
     "error": {
       "quota_exhausted": "{{model}} の利用上限に達しました。しばらく待つか、設定 → AI で別のモデルに切り替えてください。",
@@ -539,7 +549,9 @@
       "cloud_consent_required": "この質問はクラウドAIプロバイダーに送信されます。設定 → AI でプライバシー通知を確認・同意するか、ローカルモデルに切り替えてください。",
       "unknown": "回答の生成中に問題が発生しました。もう一度お試しください。",
       "retryAfter": "{{seconds}}秒後にもう一度お試しいただけます。",
-      "openSettingsHint": "設定 → AI を開いて解決してください。"
+      "runtime_missing": "AIエンジンを初回セットアップ中です — 少し時間がかかります。しばらくしてからもう一度お試しください。",
+      "openSettingsAction": "AI設定を開く",
+      "modelFallback": "現在のモデル"
     },
     "quota": {
       "left": "本日はあと約{{count}}件質問できます",
@@ -553,8 +565,10 @@
       "decline": "キャンセル"
     },
     "badge": {
-      "cloud": "クラウド — データが端末外に送信されます",
-      "local": "ローカル — 端末内で処理"
+      "cloud": "クラウド",
+      "local": "ローカル",
+      "cloudTitle": "クラウドバックエンド — 質問とコンテンツの抜粋がこの端末の外に送信されます。",
+      "localTitle": "ローカルバックエンド — すべてこの端末内で処理されます。"
     },
     "suggested": {
       "title": "例えばこんな質問：",
@@ -563,7 +577,10 @@
       "event": "最近のライブについて○○は何て言ってた？",
       "meta": "「○○」って誰のこと？",
       "pref": "○○が最近ハマってる食べ物は？"
-    }
+    },
+    "setupHeading": "AIアシスタントを設定して質問を始めましょう",
+    "clearThreadConfirm": "本当に？",
+    "askingHint": "まだ回答中です — 停止で中断するか、完了までお待ちください。"
   },
   "voicePlayer": {
     "speed": "再生速度",

@@ -147,7 +147,13 @@
     "kbModelNotInstalled": "尚未安裝——請執行：",
     "kbCopyPullCommand": "複製",
     "kbCopiedPullCommand": "已複製！",
-    "kbUsageToday": "今天已使用 {{count}} / {{limit}} 次"
+    "kbUsageToday": "今天已使用 {{count}} / {{limit}} 次",
+    "kbEta": "約剩 {{eta}}",
+    "aiKeyShared": "供轉寫、翻譯以及雲端模式的 AI 助理使用。",
+    "sectionProvider": "AI 服務商與 API 金鑰",
+    "sectionTranscription": "轉寫",
+    "sectionTranslation": "翻譯",
+    "sectionAssistant": "AI 助理"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -504,7 +510,6 @@
     "copyAnswer": "複製答案",
     "copied": "已複製",
     "thinking": "思考中…",
-    "verifying": "正在核實來源…",
     "indexing": "正在為你的資料建立索引…",
     "noEvidence": "在已同步的內容中找不到相關答案。",
     "sourceLabel": "來源",
@@ -514,12 +519,17 @@
       "downloadModel": "下載（約 1.1 GB）",
       "cancelDownload": "取消",
       "downloadFailed": "下載失敗，請再試一次。",
-      "gpuRuntimeMissing": "偵測到 GPU，但尚未安裝 GPU 執行環境——目前使用 CPU 執行。",
+      "gpuRuntimeMissing": "GPU 執行環境尚未安裝——就緒前索引會在 CPU 上執行。",
       "aiBackend": "AI 後端",
-      "configureBackendHint": "請在下方設定後端以啟用聊天機器人。",
+      "configureBackendHint": "在 AI 設定中設定後端以啟用聊天機器人。",
       "index": "已索引 {{count}} 份文件",
       "index_other": "已索引 {{count}} 份文件",
-      "buildIndex": "建立"
+      "buildIndex": "建立",
+      "enableKb": "知識庫聊天機器人",
+      "gpuActive": "正在 GPU 上執行（{{name}}）",
+      "runtimeSettingUp": "正在設定 GPU 執行環境… {{pct}}%",
+      "indexedSoFar": "目前已索引 {{count}} 篇文件",
+      "noContent": "還沒有可索引的內容——請先同步訊息或部落格。"
     },
     "error": {
       "quota_exhausted": "已達到 {{model}} 的用量上限。請稍後再試，或到「設定 → AI」切換模型。",
@@ -539,7 +549,9 @@
       "cloud_consent_required": "這個問題會被傳送給雲端 AI 供應商。請到「設定 → AI」檢視並同意隱私權聲明，或改用本機模型。",
       "unknown": "回答問題時發生問題。請再試一次。",
       "retryAfter": "你可以在 {{seconds}} 秒後重試。",
-      "openSettingsHint": "開啟「設定 → AI」來解決此問題。"
+      "runtime_missing": "正在首次設定 AI 引擎——可能需要一點時間，請稍後再試。",
+      "openSettingsAction": "開啟 AI 設定",
+      "modelFallback": "目前的模型"
     },
     "quota": {
       "left": "今天還可以問大約 {{count}} 個問題",
@@ -553,8 +565,10 @@
       "decline": "取消"
     },
     "badge": {
-      "cloud": "雲端 — 資料會離開這台裝置",
-      "local": "本機 — 在裝置上處理"
+      "cloud": "雲端",
+      "local": "本機",
+      "cloudTitle": "雲端後端——你的問題和內容摘錄會離開這台裝置。",
+      "localTitle": "本機後端——一切都留在這台裝置上。"
     },
     "suggested": {
       "title": "試試這樣問：",
@@ -563,7 +577,10 @@
       "event": "關於最近的Live，○○說了什麼？",
       "meta": "「○○」是指誰？",
       "pref": "○○最近迷上了什麼食物？"
-    }
+    },
+    "setupHeading": "設定 AI 助理後即可開始提問",
+    "clearThreadConfirm": "確定？",
+    "askingHint": "仍在回答中——按停止可中斷，或等待完成。"
   },
   "voicePlayer": {
     "speed": "播放速度",

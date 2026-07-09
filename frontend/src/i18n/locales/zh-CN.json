@@ -147,7 +147,13 @@
     "kbModelNotInstalled": "尚未安装——请运行：",
     "kbCopyPullCommand": "复制",
     "kbCopiedPullCommand": "已复制！",
-    "kbUsageToday": "今日已用 {{count}} / {{limit}} 次"
+    "kbUsageToday": "今日已用 {{count}} / {{limit}} 次",
+    "kbEta": "约剩 {{eta}}",
+    "aiKeyShared": "供转写、翻译以及云端模式的 AI 助手使用。",
+    "sectionProvider": "AI 服务商与 API 密钥",
+    "sectionTranscription": "转写",
+    "sectionTranslation": "翻译",
+    "sectionAssistant": "AI 助手"
   },
   "time": {
     "minute": "{{count}} 分钟",
@@ -504,7 +510,6 @@
     "copyAnswer": "复制答案",
     "copied": "已复制",
     "thinking": "思考中…",
-    "verifying": "正在核实来源…",
     "indexing": "正在为你的数据建立索引…",
     "noEvidence": "在已同步的内容中未找到相关答案。",
     "sourceLabel": "来源",
@@ -514,12 +519,17 @@
       "downloadModel": "下载（约 1.1 GB）",
       "cancelDownload": "取消",
       "downloadFailed": "下载失败，请重试。",
-      "gpuRuntimeMissing": "检测到 GPU，但尚未安装 GPU 运行时——目前使用 CPU 运行。",
+      "gpuRuntimeMissing": "GPU 运行时尚未安装——就绪前索引将在 CPU 上运行。",
       "aiBackend": "AI 后端",
-      "configureBackendHint": "请在下方配置后端以启用聊天机器人。",
+      "configureBackendHint": "在 AI 设置中配置后端以启用聊天机器人。",
       "index": "已索引 {{count}} 份文档",
       "index_other": "已索引 {{count}} 份文档",
-      "buildIndex": "构建"
+      "buildIndex": "构建",
+      "enableKb": "知识库聊天机器人",
+      "gpuActive": "正在 GPU 上运行（{{name}}）",
+      "runtimeSettingUp": "正在设置 GPU 运行时… {{pct}}%",
+      "indexedSoFar": "目前已索引 {{count}} 篇文档",
+      "noContent": "还没有可索引的内容——请先同步消息或博客。"
     },
     "error": {
       "quota_exhausted": "已达到 {{model}} 的用量上限。请稍后再试，或到“设置 → AI”切换模型。",
@@ -539,7 +549,9 @@
       "cloud_consent_required": "该问题将被发送给云端 AI 提供商。请到“设置 → AI”查看并同意隐私声明，或改用本地模型。",
       "unknown": "回答问题时出了点问题。请再试一次。",
       "retryAfter": "你可以在 {{seconds}} 秒后重试。",
-      "openSettingsHint": "打开“设置 → AI”来解决此问题。"
+      "runtime_missing": "正在首次设置 AI 引擎——可能需要一点时间，请稍后再试。",
+      "openSettingsAction": "打开 AI 设置",
+      "modelFallback": "当前模型"
     },
     "quota": {
       "left": "今天还可以问约 {{count}} 个问题",
@@ -553,8 +565,10 @@
       "decline": "取消"
     },
     "badge": {
-      "cloud": "云端 — 数据会离开此设备",
-      "local": "本地 — 在设备上处理"
+      "cloud": "云端",
+      "local": "本地",
+      "cloudTitle": "云端后端——你的问题和内容摘录会离开这台设备。",
+      "localTitle": "本地后端——一切都留在这台设备上。"
     },
     "suggested": {
       "title": "试试这样问：",
@@ -563,7 +577,10 @@
       "event": "关于最近的Live，○○说了什么？",
       "meta": "“○○”是指谁？",
       "pref": "○○最近迷上了什么食物？"
-    }
+    },
+    "setupHeading": "设置 AI 助手后即可开始提问",
+    "clearThreadConfirm": "确定？",
+    "askingHint": "仍在回答中——按停止可中断，或等待完成。"
   },
   "voicePlayer": {
     "speed": "播放速度",
