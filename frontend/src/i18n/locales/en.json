@@ -110,6 +110,7 @@
     "kbLastIndexed": "Last indexed: {{when}}",
     "kbPhaseDiscovering": "Scanning files…",
     "kbPhaseEmbedding": "Indexing {{done}}/{{total}}…",
+    "kbEta": "~{{eta}} remaining",
     "kbAlreadyIndexing": "An index is already running — try again shortly.",
     "kbDisabledHint": "Enable the knowledge base chatbot above, then try again.",
     "kbEnabled": "Enable knowledge base chatbot",
