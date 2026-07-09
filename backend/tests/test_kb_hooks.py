@@ -145,7 +145,10 @@ async def _run_start_sync(
         patch("backend.services.sync_service.Client", return_value=mock_client),
         patch("backend.services.sync_service.SyncManager", return_value=mock_manager),
         patch("backend.services.sync_service.progress_manager") as mock_pm,
-        patch("backend.services.sync_service.notify_sync_complete"),
+        patch(
+            "backend.services.sync_service.notify_sync_complete_async",
+            new_callable=AsyncMock,
+        ),
         patch(
             "backend.services.search_service.get_search_service",
             return_value=mock_search_svc,

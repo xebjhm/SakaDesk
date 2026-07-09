@@ -1258,6 +1258,10 @@ class KnowledgeService:
                 "knowledge_service.retriever_vector_arm_disabled_reindex_required",
                 service=service,
             )
+        # Invariant: both callers (`_build_agent` via `ask`, and `rebuild`)
+        # have already run `_ensure_embedder()` successfully, so `None` here
+        # is a programming error, not a user-configuration state.
+        assert self._embedder is not None
         retriever = HybridRetriever(
             doc_store, PureLexicalIndex(), vectors, self._embedder
         )

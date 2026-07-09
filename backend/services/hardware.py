@@ -105,13 +105,16 @@ def _detect_ram_gb() -> float | None:
     try:
         import os
 
+        # `getattr` keeps mypy happy on Windows, where typeshed hides
+        # `os.sysconf_names` entirely.
+        sysconf_names = getattr(os, "sysconf_names", {})
         if (
             hasattr(os, "sysconf")
-            and "SC_PAGE_SIZE" in os.sysconf_names
-            and "SC_PHYS_PAGES" in os.sysconf_names
+            and "SC_PAGE_SIZE" in sysconf_names
+            and "SC_PHYS_PAGES" in sysconf_names
         ):
-            page_size = os.sysconf("SC_PAGE_SIZE")
-            phys_pages = os.sysconf("SC_PHYS_PAGES")
+            page_size = int(os.sysconf("SC_PAGE_SIZE"))
+            phys_pages = int(os.sysconf("SC_PHYS_PAGES"))
             if page_size > 0 and phys_pages > 0:
                 return round((page_size * phys_pages) / (1024**3), 2)
     except (ValueError, OSError, AttributeError) as exc:

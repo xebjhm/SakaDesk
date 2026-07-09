@@ -243,6 +243,9 @@ def test_detect_ram_gb_windows_success_path():
     mock_windll.kernel32.GlobalMemoryStatusEx.assert_called_once()
 
 
+@pytest.mark.skipif(
+    os.name == "nt", reason="ctypes.windll genuinely exists on Windows hosts"
+)
 def test_detect_ram_gb_windows_returns_none_when_api_unavailable():
     """On a non-Windows host, `ctypes.windll` genuinely doesn't exist -- the AttributeError
     is caught and this returns `None` rather than raising."""
