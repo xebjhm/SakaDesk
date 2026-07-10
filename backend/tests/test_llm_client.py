@@ -1103,7 +1103,9 @@ async def test_build_from_settings_local_defaults_when_partial_config():
         await client.chat([{"role": "user", "content": "hi"}])
 
     body = json.loads(route.calls[0].request.content)
-    assert body["model"] == "qwen2.5:14b"
+    # `qwen3:30b` -- the registry's recommended local model; the previous
+    # default (`qwen2.5:14b`) is registry-rated `degraded`.
+    assert body["model"] == "qwen3:30b"
 
 
 # --- `on_request` usage-tracking hook (Product-wave Task 5, item 3) ------------------------
@@ -1656,3 +1658,45 @@ async def test_build_from_draft_never_wires_on_request():
     ledger -- proven by asserting the built client's `_on_request` is unset."""
     client = await build_llm_client_from_draft("local", "http://localhost:9999/v1", "m")
     assert client._on_request is None
+
+
+# --- local base_url normalization (battle-field round 3) -----------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_from_draft_local_appends_v1_to_bare_host():
+    """A user-typed Ollama root URL (`http://localhost:11434`, no path) must
+    reach `/v1/chat/completions`, not `/chat/completions` -- the latter 404s
+    on Ollama and surfaced as a bogus `model_not_found` in the settings Test.
+    """
+    client = await build_llm_client_from_draft("local", "http://localhost:11434", "m")
+    assert client._base_url == "http://localhost:11434/v1"
+
+
+@pytest.mark.asyncio
+async def test_build_from_draft_local_keeps_existing_path():
+    for url, expected in [
+        ("http://localhost:11434/v1", "http://localhost:11434/v1"),
+        ("http://localhost:11434/v1/", "http://localhost:11434/v1"),
+        ("http://host:8080/custom", "http://host:8080/custom"),
+        ("http://localhost:11434/", "http://localhost:11434/v1"),
+    ]:
+        client = await build_llm_client_from_draft("local", url, "m")
+        assert client._base_url == expected, url
+
+
+@pytest.mark.asyncio
+async def test_build_from_settings_local_appends_v1_to_bare_host(tmp_path):
+    from unittest.mock import AsyncMock, patch
+
+    config = {
+        "knowledge_base": {
+            "llm": {"backend": "local", "base_url": "http://localhost:11434", "model": "m"}
+        }
+    }
+    with patch(
+        "backend.services.llm_client.load_config", new=AsyncMock(return_value=config)
+    ):
+        client = await build_llm_client_from_settings()
+    assert client is not None
+    assert client._base_url == "http://localhost:11434/v1"

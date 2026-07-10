@@ -530,6 +530,10 @@ export const KbBackendSelector: React.FC = () => {
                         type="text"
                         value={baseUrl}
                         onChange={(e) => setBaseUrl(e.target.value)}
+                        // Re-probe on blur (not per keystroke) so the model
+                        // list + reachability banner track a hand-edited URL
+                        // instead of going stale until the next backend switch.
+                        onBlur={() => fetchModels(backend, baseUrl)}
                         placeholder="http://localhost:11434/v1"
                         aria-label={t('settings.kbBaseUrl')}
                         className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -566,7 +570,7 @@ export const KbBackendSelector: React.FC = () => {
 
             {testResult && (
                 <p className={`text-xs ${testResult.ok ? 'text-green-600' : 'text-amber-600'}`}>
-                    {t(testVerdictKey(testResult.verdict))}
+                    {t(testVerdictKey(testResult.verdict), { model })}
                     {testResult.latencyMs > 0 && ` (${t('settings.kbTestLatency', { ms: testResult.latencyMs })})`}
                 </p>
             )}

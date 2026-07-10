@@ -215,6 +215,48 @@ describe('KbBackendSelector', () => {
         });
     });
 
+    it('interpolates the model name into the Test verdict instead of raw {{model}}', async () => {
+        // Battle-field bug: the verdict rendered the literal "{{model}}"
+        // because no interpolation params were passed to t().
+        const { impl } = buildFetch({
+            configTest: { ok: false, verdict: 'model_not_found', latencyMs: 280 },
+        });
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        const select = await screen.findByRole('combobox', { name: 'Model' });
+        await waitFor(() => expect(select).toHaveValue('gemini-2.5-flash'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+
+        const verdict = await screen.findByText(/isn't available on the configured backend/);
+        expect(verdict.textContent).toContain('gemini-2.5-flash');
+        expect(verdict.textContent).not.toContain('{{model}}');
+    });
+
+    it('refetches the model list when the Base URL field is blurred', async () => {
+        const { calls, impl } = buildFetch();
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        await screen.findByRole('combobox', { name: 'Model' });
+        await userEvent.click(screen.getByRole('button', { name: 'Local' }));
+
+        const urlInput = screen.getByRole('textbox', { name: 'Base URL' });
+        await userEvent.clear(urlInput);
+        await userEvent.type(urlInput, 'http://localhost:9999');
+        const before = calls.filter((c) => c.url.startsWith('/api/ai/models?backend=local')).length;
+        await userEvent.tab(); // blur
+
+        await waitFor(() => {
+            const probes = calls.filter((c) => c.url.startsWith('/api/ai/models?backend=local'));
+            expect(probes.length).toBeGreaterThan(before);
+            expect(probes[probes.length - 1].url).toContain(
+                encodeURIComponent('http://localhost:9999')
+            );
+        });
+    });
+
     it('marks a not-installed model in the dropdown without promising a command', async () => {
         // The <option> can't render the copyable `ollama pull …` hint, so its
         // label must not end with a dangling "run:" -- the full hint lives

@@ -83,7 +83,22 @@ _API_KEY_CREDENTIAL_GROUP = "llm_provider_api_key"
 _CLOUD_DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 _CLOUD_DEFAULT_MODEL = "gemini-2.5-flash"
 _LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1"
-_LOCAL_DEFAULT_MODEL = "qwen2.5:14b"
+_LOCAL_DEFAULT_MODEL = "qwen3:30b"
+
+
+def _normalize_local_base_url(base_url: str) -> str:
+    """Append `/v1` to a bare local-server root (e.g. a user-typed
+    `http://localhost:11434`). Ollama, llama.cpp and LM Studio all serve the
+    OpenAI-compatible API under `/v1`; without it `chat()` hits
+    `/chat/completions`, which 404s on Ollama and surfaced in the settings
+    Test as a bogus `model_not_found`. URLs that already carry a path are
+    left alone (only trailing slashes trimmed)."""
+    trimmed = base_url.strip().rstrip("/")
+    if not trimmed:
+        return _LOCAL_DEFAULT_BASE_URL
+    if urlparse(trimmed).path in ("", "/"):
+        return f"{trimmed}/v1"
+    return trimmed
 
 # P-5 review, Finding 1 (IMPORTANT): the host a DRAFT `POST /api/ai/config/test`
 # base_url is allowed to receive the real keyring API key for. Derived from
@@ -610,7 +625,9 @@ async def build_llm_client_from_settings(
     backend = llm_config.get("backend") or "cloud"
 
     if backend == "local":
-        base_url = llm_config.get("base_url") or _LOCAL_DEFAULT_BASE_URL
+        base_url = _normalize_local_base_url(
+            llm_config.get("base_url") or _LOCAL_DEFAULT_BASE_URL
+        )
         model = llm_config.get("model") or _LOCAL_DEFAULT_MODEL
         return OpenAICompatLLMClient(
             base_url=base_url, model=model, api_key=None, on_request=on_request
@@ -668,7 +685,10 @@ async def build_llm_client_from_draft(
     """
     if backend == "local":
         return OpenAICompatLLMClient(
-            base_url=base_url, model=model, api_key=None, max_tokens=max_tokens
+            base_url=_normalize_local_base_url(base_url),
+            model=model,
+            api_key=None,
+            max_tokens=max_tokens,
         )
 
     api_key: str | None = None
