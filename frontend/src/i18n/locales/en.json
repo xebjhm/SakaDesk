@@ -540,7 +540,7 @@
       "quota_exhausted": "You've hit the AI provider's usage limit for {{model}}. Try again later, or switch models in AI settings.",
       "auth": "The AI provider rejected the API key. Check the API key in AI settings.",
       "model_not_found": "The model {{model}} isn't available on the configured backend. Pick another in AI settings.",
-      "model_incompatible": "{{model}} doesn't reliably support the knowledge tools. Try gemini-2.5-flash (cloud) or qwen2.5:14b (local) instead.",
+      "model_incompatible": "{{model}} doesn't reliably support the knowledge tools. Try gemini-2.5-flash (cloud) or qwen3:30b (local) instead.",
       "unreachable": "Couldn't reach the AI backend. If you're using a local model, make sure Ollama (or your local server) is running.",
       "timeout": "The AI backend took too long to respond. Please try again.",
       "malformed_response": "The AI backend sent back something we couldn't understand. Please try again.",

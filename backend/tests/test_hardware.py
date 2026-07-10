@@ -31,7 +31,11 @@ def _reset_hw_cache():
 # --- suggest_llm_backend ----------------------------------------------------------------
 
 
-def test_suggest_24gb_vram_recommends_local_t2_qwen3_32b():
+def test_suggest_24gb_vram_recommends_local_t2_qwen3_30b():
+    """>=24GB VRAM recommends `qwen3:30b` (MoE) -- the registry's `recommended`
+    local pick, measured best on the RTX 3090 (`llm_models.py`'s MODEL BENCH
+    FINAL evidence) -- NOT the dense `qwen3:32b`, which that same bench rated
+    `degraded` (62s/question, deep-mode/opt-in only)."""
     hw = {
         "ram_gb": 64.0,
         "gpu": "NVIDIA RTX 4090",
@@ -41,12 +45,15 @@ def test_suggest_24gb_vram_recommends_local_t2_qwen3_32b():
     suggestion = suggest_llm_backend(hw)
 
     assert suggestion["recommended"] == "local"
-    assert suggestion["local_model"] == "qwen3:32b"
+    assert suggestion["local_model"] == "qwen3:30b"
     assert suggestion["tier"] == "T2"
     assert suggestion["reason"]
 
 
-def test_suggest_12gb_vram_recommends_local_t1_qwen25_14b():
+def test_suggest_12gb_vram_recommends_local_t1_qwen3_14b():
+    """10-24GB VRAM recommends `qwen3:14b` -- `recommended` in the registry --
+    not `qwen2.5:14b`, which the registry itself rates `degraded` (skipped a
+    tool call on a Japanese question, observed live)."""
     hw = {
         "ram_gb": 32.0,
         "gpu": "NVIDIA RTX 3060",
@@ -56,7 +63,7 @@ def test_suggest_12gb_vram_recommends_local_t1_qwen25_14b():
     suggestion = suggest_llm_backend(hw)
 
     assert suggestion["recommended"] == "local"
-    assert suggestion["local_model"] == "qwen2.5:14b"
+    assert suggestion["local_model"] == "qwen3:14b"
     assert suggestion["tier"] == "T1"
     assert suggestion["reason"]
 
@@ -102,7 +109,7 @@ def test_suggest_apple_silicon_with_enough_ram_recommends_local():
     suggestion = suggest_llm_backend(hw)
 
     assert suggestion["recommended"] == "local"
-    assert suggestion["local_model"] == "qwen2.5:14b"
+    assert suggestion["local_model"] == "qwen3:14b"
 
 
 def test_suggest_apple_silicon_with_low_ram_recommends_cloud():

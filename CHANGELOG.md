@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   events, nicknames, preferences) that pre-fill the message box, so you can
   see what the knowledge base can answer before you type.
 
+### Changed
+- **Better local AI model suggestions**: the hardware check and error
+  messages now point at the newer Qwen3 models that measured fastest and most
+  reliable (qwen3:30b for large GPUs, qwen3:14b for mid-range GPUs and Apple
+  Silicon), instead of older models the model picker itself warns about.
+
 ### Fixed
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted

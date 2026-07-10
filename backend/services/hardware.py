@@ -208,25 +208,33 @@ def suggest_llm_backend(hw: dict[str, Any] | None = None) -> dict[str, Any]:
     ram_gb = hw.get("ram_gb")
     gpu = hw.get("gpu")
 
+    # Model picks mirror `backend/services/llm_models.py`'s empirical registry
+    # (MODEL BENCH FINAL, RTX 3090): `qwen3:30b` (MoE, ~17-20s/question) is the
+    # measured-best local model and `qwen3:14b` the smaller/faster `recommended`
+    # pick. The previously suggested `qwen3:32b` (dense, 62s/question) and
+    # `qwen2.5:14b` (skipped a tool call on a JP question, observed live) are
+    # both rated `degraded` by that same registry, so recommending them here
+    # contradicted the picker's own warnings.
     suggestion: dict[str, Any]
     if vram_gb is not None and vram_gb >= 24:
         suggestion = {
             "recommended": "local",
-            "local_model": "qwen3:32b",
+            "local_model": "qwen3:30b",
             "tier": "T2",
             "reason": (
-                "GPU reports >=24GB VRAM, enough headroom for a 32B-class model with strong "
-                "local tool-calling accuracy -- local is recommended, cloud is optional."
+                "GPU reports >=24GB VRAM, enough headroom for Qwen3-30B (MoE), the "
+                "measured-best local model for tool-calling at this tier -- local is "
+                "recommended, cloud is optional."
             ),
         }
     elif vram_gb is not None and vram_gb >= 10:
         suggestion = {
             "recommended": "local",
-            "local_model": "qwen2.5:14b",
+            "local_model": "qwen3:14b",
             "tier": "T1",
             "reason": (
-                "GPU reports 10-24GB VRAM, enough for Qwen2.5-14B, which benchmarks close to "
-                "GPT-4 on local tool-selection tasks -- local is recommended."
+                "GPU reports 10-24GB VRAM, enough for Qwen3-14B, which drives the local "
+                "knowledge tools reliably at this size -- local is recommended."
             ),
         }
     elif vram_gb is not None and vram_gb >= 6:
@@ -243,10 +251,10 @@ def suggest_llm_backend(hw: dict[str, Any] | None = None) -> dict[str, Any]:
     elif gpu == "Apple Silicon" and ram_gb is not None and ram_gb >= 16:
         suggestion = {
             "recommended": "local",
-            "local_model": "qwen2.5:14b",
+            "local_model": "qwen3:14b",
             "tier": "T1",
             "reason": (
-                "Apple Silicon with >=16GB unified memory can comfortably run Qwen2.5-14B "
+                "Apple Silicon with >=16GB unified memory can comfortably run Qwen3-14B "
                 "locally, since the GPU shares the system's unified memory pool -- local is "
                 "recommended."
             ),
