@@ -298,6 +298,110 @@ async def test_ask_no_match_returns_no_evidence(
     assert answer.citations == []
 
 
+# --- per-service nickname threading into ToolRunner (pysaka wave/engine ------
+# contract: ToolRunner(..., subscriber_name: str = "you"), keyword-only) ------
+
+
+def _patch_recording_tool_runner(
+    monkeypatch: pytest.MonkeyPatch, *, accepts_subscriber_name: bool
+) -> dict:
+    """Swap `ks.ToolRunner` for a recording subclass -- either the NEW pysaka
+    wave/engine signature (keyword-only `subscriber_name`) or the LEGACY one
+    (no such param), so both installed-pysaka generations are covered."""
+    from backend.services import knowledge_service as ks
+
+    real_tool_runner = ks.ToolRunner
+    captured: dict = {}
+
+    if accepts_subscriber_name:
+
+        class _RecordingToolRunner(real_tool_runner):  # type: ignore[valid-type,misc]
+            def __init__(
+                self, aliases, registry, retriever, store, *, tz=None, subscriber_name="you"
+            ) -> None:
+                captured["subscriber_name"] = subscriber_name
+                super().__init__(aliases, registry, retriever, store, tz=tz)
+
+    else:
+
+        class _RecordingToolRunner(real_tool_runner):  # type: ignore[valid-type,misc,no-redef]
+            def __init__(self, aliases, registry, retriever, store, *, tz=None) -> None:
+                captured["legacy_init_called"] = True
+                super().__init__(aliases, registry, retriever, store, tz=tz)
+
+    monkeypatch.setattr(ks, "ToolRunner", _RecordingToolRunner)
+    return captured
+
+
+def _patch_nickname_config(
+    monkeypatch: pytest.MonkeyPatch, config: dict
+) -> None:
+    from backend.services import knowledge_service as ks
+
+    monkeypatch.setattr(ks, "load_config", AsyncMock(return_value=config))
+
+
+@pytest.mark.asyncio
+async def test_ask_threads_per_service_nickname_into_tool_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ask()` loads `settings.user_nicknames[<service>]` (the same store
+    `backend/api/profile.py` writes) and threads it through
+    `_run_ask_blocking` -> `_build_agent` -> `ToolRunner(subscriber_name=...)`
+    when the installed pysaka supports the new keyword."""
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    svc, _store = await _build_indexed_service(
+        tmp_path, monkeypatch, FakeLLMClient(script)
+    )
+    captured = _patch_recording_tool_runner(monkeypatch, accepts_subscriber_name=True)
+    _patch_nickname_config(
+        monkeypatch,
+        {"user_nicknames": {_SERVICE: "みーぱん推し", "sakurazaka46": "other"}},
+    )
+
+    await svc.ask("question", Scope(service=_SERVICE), timezone.utc)
+
+    assert captured["subscriber_name"] == "みーぱん推し"
+
+
+@pytest.mark.asyncio
+async def test_ask_nickname_defaults_to_you_when_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No nickname stored for the service (or no `user_nicknames` at all)
+    falls back to the pysaka default `"you"`."""
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    svc, _store = await _build_indexed_service(
+        tmp_path, monkeypatch, FakeLLMClient(script)
+    )
+    captured = _patch_recording_tool_runner(monkeypatch, accepts_subscriber_name=True)
+    _patch_nickname_config(monkeypatch, {"user_nicknames": {"sakurazaka46": "other"}})
+
+    await svc.ask("question", Scope(service=_SERVICE), timezone.utc)
+
+    assert captured["subscriber_name"] == "you"
+
+
+@pytest.mark.asyncio
+async def test_ask_skips_subscriber_name_for_legacy_tool_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Against a pysaka WITHOUT the wave/engine `subscriber_name` param, the
+    kwarg is withheld entirely (guarded by `inspect.signature`) -- the ask
+    must succeed, never TypeError."""
+    script = [LLMResponse(text=json.dumps({"no_evidence": True}))]
+    svc, _store = await _build_indexed_service(
+        tmp_path, monkeypatch, FakeLLMClient(script)
+    )
+    captured = _patch_recording_tool_runner(monkeypatch, accepts_subscriber_name=False)
+    _patch_nickname_config(monkeypatch, {"user_nicknames": {_SERVICE: "みーぱん推し"}})
+
+    answer = await svc.ask("question", Scope(service=_SERVICE), timezone.utc)
+
+    assert captured["legacy_init_called"] is True
+    assert answer.no_evidence is True
+
+
 # --- cancel_event: cooperative-cancel seam (final review, Finding 1 -- the ------
 # dropped P6 brief item) -----------------------------------------------------
 
@@ -1739,6 +1843,44 @@ class TestFingerprint:
         assert stored["dim"] == 2
         assert stored["model_name"]
         assert svc._read_reindex_required() is False
+
+    @pytest.mark.asyncio
+    async def test_fingerprint_changes_when_ingest_normalize_version_differs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`ingest_version` is sourced from pysaka's
+        `knowledge.cleaner.INGEST_NORMALIZE_VERSION` at fingerprint time, so
+        a pysaka-side ingest-normalization change (e.g. the wave/engine
+        full-width ％％％ masking fix) mismatches every stored fingerprint
+        and triggers exactly one reindex-required flag flip."""
+        from pysaka.knowledge import cleaner
+
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.setattr(cleaner, "INGEST_NORMALIZE_VERSION", 999, raising=False)
+        fp_before = await ks._current_fingerprint(_embedder())
+        monkeypatch.setattr(cleaner, "INGEST_NORMALIZE_VERSION", 1000, raising=False)
+        fp_after = await ks._current_fingerprint(_embedder())
+
+        assert fp_before["ingest_version"] == 999
+        assert fp_after["ingest_version"] == 1000
+        assert fp_before != fp_after
+
+    @pytest.mark.asyncio
+    async def test_fingerprint_ingest_version_falls_back_to_1_without_constant(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A pysaka predating `INGEST_NORMALIZE_VERSION` (like the one this
+        repo may currently run against) yields the documented fallback 1 --
+        never an AttributeError, never a missing key."""
+        from pysaka.knowledge import cleaner
+
+        from backend.services import knowledge_service as ks
+
+        monkeypatch.delattr(cleaner, "INGEST_NORMALIZE_VERSION", raising=False)
+        fp = await ks._current_fingerprint(_embedder())
+
+        assert fp["ingest_version"] == 1
 
     @pytest.mark.asyncio
     async def test_matching_fingerprint_is_a_noop(self, tmp_path: Path) -> None:

@@ -279,6 +279,265 @@ async def test_chat_reuses_existing_tool_call_ids_when_present():
     assert body["messages"][1]["tool_call_id"] == "call-1"
 
 
+# --- raw assistant-message echo (gemini-3.x `thought_signature` round-trip) ----------------
+
+
+# A Gemini-3.x-style assistant message: provider extras live BOTH per tool
+# call (`thought_signature`) and at the message level (`extra_content`). The
+# OpenAI-compat layer requires these echoed back VERBATIM on the next turn --
+# reconstructing the turn from only `{name, arguments, id}` drops them and
+# the follow-up request 400s with a `thought_signature` error (classified as
+# `model_incompatible`), so every real 2-turn ask failed even though the
+# model is registry-allowed.
+_RAW_GEMINI3_ASSISTANT_MESSAGE = {
+    "role": "assistant",
+    "content": None,
+    "tool_calls": [
+        {
+            "id": "call_g1",
+            "type": "function",
+            "function": {"name": "search", "arguments": '{"query": "live"}'},
+            "thought_signature": "opaque-sig-abc123",
+        }
+    ],
+    "extra_content": {"google": {"thought": True}},
+}
+
+
+def _agent_echo_turns(resp) -> list[dict]:
+    """Rebuild the exact message dicts `pysaka.knowledge.agent.KnowledgeAgent`
+    appends after a tool-call response (agent.py's `ask` loop): the assistant
+    echo built from only the PARSED `{name, arguments, id}` fields, then one
+    `tool` result per call. This is the shape `_to_openai_messages` receives
+    on the next `chat()` call -- the seam under test."""
+    turns: list[dict] = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"name": c.name, "arguments": c.arguments, "id": c.id}
+                for c in resp.tool_calls
+            ],
+        }
+    ]
+    turns.extend(
+        {"role": "tool", "name": c.name, "id": c.id, "content": '{"hits": []}'}
+        for c in resp.tool_calls
+    )
+    return turns
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_second_turn_echoes_raw_assistant_message_byte_for_byte():
+    """Redteam, FIX 1: a 2-turn tool exchange through the SAME client must
+    send the provider's ORIGINAL assistant message back verbatim -- complete
+    `tool_calls` array plus every extra provider field (`thought_signature`,
+    `extra_content`) -- not a lossy reconstruction from the parsed fields."""
+    route = respx.post(CHAT_URL).mock(
+        side_effect=[
+            httpx.Response(
+                200, json={"choices": [{"message": _RAW_GEMINI3_ASSISTANT_MESSAGE}]}
+            ),
+            httpx.Response(200, json={"choices": [{"message": {"content": "done"}}]}),
+        ]
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    messages: list[dict] = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "question"},
+    ]
+    resp = await client.chat(messages, tools=TOOL_SCHEMAS)
+    assert resp.tool_calls[0].id == "call_g1"
+
+    messages.extend(_agent_echo_turns(resp))
+    await client.chat(messages, tools=TOOL_SCHEMAS)
+
+    body = json.loads(route.calls[1].request.content)
+    echoed_assistant = body["messages"][2]
+    # Byte-for-byte: the raw provider dict survives the round-trip exactly.
+    assert json.dumps(echoed_assistant, sort_keys=True) == json.dumps(
+        _RAW_GEMINI3_ASSISTANT_MESSAGE, sort_keys=True
+    )
+    # The tool result still correlates against the provider's own call id.
+    assert body["messages"][3]["role"] == "tool"
+    assert body["messages"][3]["tool_call_id"] == "call_g1"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_raw_echo_survives_a_multi_call_assistant_turn():
+    """A turn with TWO tool calls is cached/echoed as one unit -- the full
+    original `tool_calls` array comes back intact, extras and all."""
+    raw_message = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "call_a",
+                "type": "function",
+                "function": {"name": "search", "arguments": '{"query": "x"}'},
+                "thought_signature": "sig-a",
+            },
+            {
+                "id": "call_b",
+                "type": "function",
+                "function": {"name": "get_document", "arguments": '{"doc_id": "d1"}'},
+                "thought_signature": "sig-b",
+            },
+        ],
+    }
+    route = respx.post(CHAT_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"choices": [{"message": raw_message}]}),
+            httpx.Response(200, json={"choices": [{"message": {"content": "done"}}]}),
+        ]
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    messages: list[dict] = [{"role": "user", "content": "q"}]
+    resp = await client.chat(messages)
+    messages.extend(_agent_echo_turns(resp))
+    await client.chat(messages)
+
+    body = json.loads(route.calls[1].request.content)
+    assert json.dumps(body["messages"][1], sort_keys=True) == json.dumps(
+        raw_message, sort_keys=True
+    )
+    assert body["messages"][2]["tool_call_id"] == "call_a"
+    assert body["messages"][3]["tool_call_id"] == "call_b"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_raw_echo_not_used_when_ids_do_not_match_a_cached_turn():
+    """An assistant turn whose ids were never seen by THIS client (e.g. a
+    history replayed into a freshly-built client) falls back to the
+    reconstruction path -- never a KeyError, never a wrong echo."""
+    route = respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "final"}}]}
+        )
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+    messages = [
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"name": "search", "arguments": {"query": "x"}, "id": "call_never_seen"}
+            ],
+        },
+        {"role": "tool", "name": "search", "id": "call_never_seen", "content": "{}"},
+    ]
+    await client.chat(messages)
+
+    body = json.loads(route.calls[0].request.content)
+    assistant_msg = body["messages"][0]
+    # Reconstructed shape: OpenAI `function` envelope, no provider extras.
+    assert assistant_msg["tool_calls"][0]["function"]["name"] == "search"
+    assert "thought_signature" not in assistant_msg["tool_calls"][0]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_raw_echo_skipped_for_empty_tool_call_ids():
+    """A provider that never sets tool-call ids can't be correlated back
+    safely -- the raw cache is bypassed and the synthesized-id reconstruction
+    (`call_<n>`) keeps working exactly as before."""
+    raw_message = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "",
+                "type": "function",
+                "function": {"name": "search", "arguments": '{"query": "x"}'},
+                "vendor_extra": "must-not-leak-via-mismatched-echo",
+            }
+        ],
+    }
+    route = respx.post(CHAT_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"choices": [{"message": raw_message}]}),
+            httpx.Response(200, json={"choices": [{"message": {"content": "done"}}]}),
+        ]
+    )
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+
+    messages: list[dict] = [{"role": "user", "content": "q"}]
+    resp = await client.chat(messages)
+    messages.extend(_agent_echo_turns(resp))
+    await client.chat(messages)
+
+    body = json.loads(route.calls[1].request.content)
+    assistant_msg = body["messages"][1]
+    assert assistant_msg["tool_calls"][0]["id"] == "call_0"
+    assert "vendor_extra" not in assistant_msg["tool_calls"][0]
+    assert body["messages"][2]["tool_call_id"] == "call_0"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_raw_message_cache_is_bounded():
+    """The per-client raw-message stash must not grow without bound across a
+    long-lived singleton client (KnowledgeService reuses one client for every
+    ask): oldest entries are evicted past the cap."""
+    from backend.services.llm_client import _RAW_ASSISTANT_CACHE_MAX
+
+    def _tool_call_response(i: int) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [
+                                {
+                                    "id": f"call_{i}",
+                                    "type": "function",
+                                    "function": {"name": "search", "arguments": "{}"},
+                                }
+                            ],
+                        }
+                    }
+                ]
+            },
+        )
+
+    total = _RAW_ASSISTANT_CACHE_MAX + 5
+    respx.post(CHAT_URL).mock(side_effect=[_tool_call_response(i) for i in range(total)])
+    client = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+    for _ in range(total):
+        await client.chat([{"role": "user", "content": "q"}])
+
+    assert len(client._raw_assistant_messages) == _RAW_ASSISTANT_CACHE_MAX
+    # Newest entries survive; the very first was evicted.
+    assert ("call_0",) not in client._raw_assistant_messages
+    assert (f"call_{total - 1}",) in client._raw_assistant_messages
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_chat_max_tokens_included_in_payload_only_when_set():
+    """`max_tokens` (used by the `/config/test` probe to bound cost) is sent
+    when configured and omitted otherwise."""
+    route = respx.post(CHAT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"choices": [{"message": {"content": "ok"}}]}
+        )
+    )
+    bounded = OpenAICompatLLMClient(
+        base_url="http://localhost:11434/v1", model="m", max_tokens=256
+    )
+    await bounded.chat([{"role": "user", "content": "hi"}])
+    assert json.loads(route.calls[0].request.content)["max_tokens"] == 256
+
+    unbounded = OpenAICompatLLMClient(base_url="http://localhost:11434/v1", model="m")
+    await unbounded.chat([{"role": "user", "content": "hi"}])
+    assert "max_tokens" not in json.loads(route.calls[1].request.content)
+
+
 # --- error handling -------------------------------------------------------------------------
 
 

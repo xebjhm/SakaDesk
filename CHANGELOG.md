@@ -35,7 +35,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   events, nicknames, preferences) that pre-fill the message box, so you can
   see what the knowledge base can answer before you type.
 
+### Changed
+- **Better local AI model suggestions**: the hardware check and error
+  messages now point at the newer Qwen3 models that measured fastest and most
+  reliable (qwen3:30b for large GPUs, qwen3:14b for mid-range GPUs and Apple
+  Silicon), instead of older models the model picker itself warns about.
+- **The AI assistant now knows who "you" are**: answers drawn from messages
+  addressed to you use the nickname you saved for each service, instead of a
+  generic placeholder. Requires the paired pysaka update; older versions keep
+  the previous behavior.
+
 ### Fixed
+- **The AI chatbot's Enable switch could briefly look switched off** while
+  Settings was still loading, and stayed stuck at "off" if that check failed —
+  making it seem like the chatbot had turned itself off. The switch now shows
+  a loading placeholder until the real state is known, and a Retry button with
+  a clear message when the check fails.
+- **Gemini 3.x models failed on every real question** even when the settings
+  Test button reported success: the app dropped bookkeeping data those models
+  require when a conversation continues past the first step. Follow-up turns
+  now send it back intact, and the Test button runs the same kind of two-step
+  exchange a real question does, so this failure is caught before you save.
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted
   to Yes, which automated uninstalls auto-accept. Cleanup now runs only when

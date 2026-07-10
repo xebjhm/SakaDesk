@@ -19,7 +19,8 @@ from __future__ import annotations
 
 import json
 import re
-from collections import deque
+from collections import OrderedDict, deque
+from collections.abc import Mapping
 from typing import Any, Callable, Literal, cast
 from urllib.parse import urlparse
 
@@ -55,6 +56,13 @@ LLMErrorKind = Literal[
 # function-calling request is missing/misusing `thought_signature` -- observed
 # for models that don't support tool calling the way this client drives it.
 _THOUGHT_SIGNATURE_MARKER = "thought_signature"
+
+# Cap for `OpenAICompatLLMClient._raw_assistant_messages` (the per-client
+# stash of raw provider assistant messages, keyed by their tool-call id
+# tuple -- see `chat()`). One ask produces at most `max_steps` (6) tool-call
+# turns, so 32 covers several interleaved asks on the long-lived singleton
+# client before the oldest (long-since-echoed) entries are evicted.
+_RAW_ASSISTANT_CACHE_MAX = 32
 
 # Gemini's quota-exceeded body embeds a human-readable "Please retry in Xs"
 # hint in `error.message`, and/or a structured `RetryInfo` detail with a
@@ -178,12 +186,35 @@ class OpenAICompatLLMClient:
         api_key: str | None = None,
         timeout: float = _DEFAULT_TIMEOUT,
         on_request: Callable[[str, str], None] | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model = model
         self._api_key = api_key
         self._timeout = timeout
         self._on_request = on_request
+        # `max_tokens` bounds each completion when set -- used by the
+        # `POST /api/ai/config/test` probe so a connectivity test can never
+        # burn meaningful provider budget. `None` (the default, and what every
+        # real-ask build site passes) omits the field entirely.
+        self._max_tokens = max_tokens
+        # Raw provider assistant messages from previous `chat()` calls, keyed
+        # by the tuple of their tool-call ids -- the gemini-3.x
+        # `thought_signature` round-trip fix. `pysaka.knowledge.agent
+        # .KnowledgeAgent` echoes a tool-call turn back rebuilt from only the
+        # PARSED `{name, arguments, id}` fields (agent.py's ask loop), which
+        # drops any extra provider fields; Gemini 3.x's OpenAI-compat layer
+        # REQUIRES its `thought_signature` (per tool call and/or message
+        # level) echoed back verbatim, else the follow-up request 400s. So
+        # `chat()` stashes each raw tool-call message here at parse time and
+        # `_to_openai_messages` prefers echoing the original dict whenever an
+        # assistant turn's ids match a stashed entry. Bounded FIFO (see
+        # `_remember_raw_assistant_message`); mutated only under CPython's
+        # GIL-atomic dict ops, which is sufficient for this single-user
+        # desktop app's occasional concurrent asks.
+        self._raw_assistant_messages: OrderedDict[tuple[str, ...], dict] = (
+            OrderedDict()
+        )
 
     def _notify_request(self, outcome: str) -> None:
         if self._on_request is None:
@@ -198,7 +229,9 @@ class OpenAICompatLLMClient:
     async def chat(
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> LLMResponse:
-        openai_messages = _to_openai_messages(messages)
+        openai_messages = _to_openai_messages(
+            messages, raw_assistant_messages=self._raw_assistant_messages
+        )
         openai_tools = _to_openai_tools(tools)
 
         payload: dict[str, Any] = {
@@ -208,6 +241,8 @@ class OpenAICompatLLMClient:
         }
         if openai_tools:
             payload["tools"] = openai_tools
+        if self._max_tokens is not None:
+            payload["max_tokens"] = self._max_tokens
 
         headers = {"Content-Type": "application/json"}
         if self._api_key:
@@ -284,11 +319,37 @@ class OpenAICompatLLMClient:
                 kind="malformed_response",
             ) from exc
 
+        self._remember_raw_assistant_message(response)
         self._notify_request("success")
         return response
 
+    def _remember_raw_assistant_message(self, response: LLMResponse) -> None:
+        """Stash a tool-call response's RAW assistant message (attached by
+        `_parse_openai_response` as `response.raw_message`) keyed by its
+        tool-call id tuple, so `_to_openai_messages` can echo it verbatim when
+        the agent replays the turn -- see `_raw_assistant_messages`'s
+        constructor comment for the gemini-3.x `thought_signature` rationale.
 
-def _to_openai_messages(messages: list[dict]) -> list[dict]:
+        Skipped when any call id is empty: without provider-assigned ids
+        there's nothing reliable to correlate the echoed turn back on (and
+        the synthesized `call_<n>` reconstruction path already handles that
+        case exactly as before this fix)."""
+        raw = getattr(response, "raw_message", None)
+        if not isinstance(raw, dict) or not response.tool_calls:
+            return
+        ids = tuple(call.id for call in response.tool_calls)
+        if not all(ids):
+            return
+        self._raw_assistant_messages[ids] = raw
+        self._raw_assistant_messages.move_to_end(ids)
+        while len(self._raw_assistant_messages) > _RAW_ASSISTANT_CACHE_MAX:
+            self._raw_assistant_messages.popitem(last=False)
+
+
+def _to_openai_messages(
+    messages: list[dict],
+    raw_assistant_messages: Mapping[tuple[str, ...], dict] | None = None,
+) -> list[dict]:
     """Translate the agent's generic message list into OpenAI `/chat/completions` messages.
 
     `tool_call_id` correlation: OpenAI ties an `assistant` message's `tool_calls[].id` to
@@ -300,6 +361,15 @@ def _to_openai_messages(messages: list[dict]) -> list[dict]:
     onto `pending_tool_call_ids`; the `tool` messages that immediately follow (one per
     call, same order -- see `KnowledgeAgent.ask`) pop from that queue so the assistant
     tool_call and its tool result always end up sharing the same id, synthesized or not.
+
+    Raw echo (gemini-3.x `thought_signature` fix): when an assistant tool-call
+    turn's id tuple matches an entry in `raw_assistant_messages` (the calling
+    client's stash of raw provider messages -- see `OpenAICompatLLMClient.
+    _remember_raw_assistant_message`), the ORIGINAL provider message dict is
+    echoed verbatim instead of reconstructed, preserving `thought_signature`
+    and any other provider extras the agent's parsed echo dropped. Falls back
+    to reconstruction for unknown/empty ids, so scripted histories and
+    id-less providers behave exactly as before.
     """
     openai_messages: list[dict] = []
     pending_tool_call_ids: deque[str] = deque()
@@ -313,6 +383,18 @@ def _to_openai_messages(messages: list[dict]) -> list[dict]:
         elif role == "assistant":
             calls = msg.get("tool_calls") or []
             if calls:
+                ids = tuple(call.get("id") or "" for call in calls)
+                raw_message = (
+                    raw_assistant_messages.get(ids)
+                    if raw_assistant_messages is not None and all(ids)
+                    else None
+                )
+                if raw_message is not None:
+                    # Echo the provider's original assistant message verbatim
+                    # (complete `tool_calls` array + extra provider fields).
+                    pending_tool_call_ids.extend(ids)
+                    openai_messages.append(raw_message)
+                    continue
                 openai_calls = []
                 for i, call in enumerate(calls):
                     call_id = call.get("id") or f"call_{i}"
@@ -379,7 +461,14 @@ def _parse_openai_response(data: dict) -> LLMResponse:
     raw_tool_calls = message.get("tool_calls")
     if raw_tool_calls:
         tool_calls = [_parse_tool_call(tc) for tc in raw_tool_calls]
-        return LLMResponse(text=None, tool_calls=tool_calls)
+        response = LLMResponse(text=None, tool_calls=tool_calls)
+        # Keep the provider's COMPLETE original assistant message alongside
+        # the parsed convenience fields (`LLMResponse` is a plain, non-slotted
+        # dataclass, so the dynamic attribute is safe). `OpenAICompatLLMClient
+        # ._remember_raw_assistant_message` stashes it so the next turn can
+        # echo it verbatim -- the gemini-3.x `thought_signature` fix.
+        setattr(response, "raw_message", message)  # noqa: B010
+        return response
 
     return LLMResponse(text=message.get("content") or "", tool_calls=[])
 
@@ -551,7 +640,7 @@ async def build_llm_client_from_settings(
 
 
 async def build_llm_client_from_draft(
-    backend: str, base_url: str, model: str
+    backend: str, base_url: str, model: str, *, max_tokens: int | None = None
 ) -> OpenAICompatLLMClient:
     """Build an `OpenAICompatLLMClient` from an explicit, NOT-YET-PERSISTED
     `(backend, base_url, model)` -- `POST /api/ai/config/test`'s draft-config
@@ -574,10 +663,13 @@ async def build_llm_client_from_draft(
 
     Deliberately never wires `on_request`: a connectivity test round-trip is
     not a real user question and must never be recorded against the usage
-    ledger/quota meter.
+    ledger/quota meter. `max_tokens`, when given, caps each probe completion
+    (`POST /api/ai/config/test` bounds its 2-turn exchange this way).
     """
     if backend == "local":
-        return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=None)
+        return OpenAICompatLLMClient(
+            base_url=base_url, model=model, api_key=None, max_tokens=max_tokens
+        )
 
     api_key: str | None = None
     if await _draft_key_host_is_trusted(base_url):
@@ -587,7 +679,9 @@ async def build_llm_client_from_draft(
             "llm_client.draft_key_attach_refused",
             draft_host=_extract_host(base_url),
         )
-    return OpenAICompatLLMClient(base_url=base_url, model=model, api_key=api_key)
+    return OpenAICompatLLMClient(
+        base_url=base_url, model=model, api_key=api_key, max_tokens=max_tokens
+    )
 
 
 def _extract_host(url: str) -> str | None:

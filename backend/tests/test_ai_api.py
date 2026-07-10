@@ -2012,6 +2012,23 @@ class TestListModels:
 class TestConfigTest:
     _URL = "http://localhost:11434/v1/chat/completions"
 
+    # A turn-1 response whose assistant message carries Gemini-3.x-style
+    # provider extras -- the fields the 2-turn probe must echo back verbatim.
+    _TOOL_CALL_MESSAGE = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "1",
+                "type": "function",
+                "function": {"name": "probe_tool", "arguments": '{"ack": true}'},
+                "thought_signature": "opaque-probe-sig",
+            }
+        ],
+    }
+    _TOOL_CALL_RESPONSE = {"choices": [{"message": _TOOL_CALL_MESSAGE}]}
+    _TEXT_RESPONSE = {"choices": [{"message": {"content": "test acknowledged"}}]}
+
     def _post(self, backend="local", base_url="http://localhost:11434/v1", model="m"):
         return client.post(
             "/api/ai/config/test",
@@ -2019,29 +2036,16 @@ class TestConfigTest:
         )
 
     @respx.mock
-    def test_forced_tool_call_response_is_ok(self):
-        respx.post(self._URL).mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "choices": [
-                        {
-                            "message": {
-                                "tool_calls": [
-                                    {
-                                        "id": "1",
-                                        "type": "function",
-                                        "function": {
-                                            "name": "probe_tool",
-                                            "arguments": '{"ack": true}',
-                                        },
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                },
-            )
+    def test_two_turn_tool_exchange_is_ok(self):
+        """The probe is a 2-TURN exchange: forced tool call, then the tool
+        RESULT is sent back and a sane second response is required. A single
+        forced call alone false-passed gemini-3.5-flash, whose OpenAI-compat
+        layer only 400s (`thought_signature`) on the SECOND request."""
+        route = respx.post(self._URL).mock(
+            side_effect=[
+                httpx.Response(200, json=self._TOOL_CALL_RESPONSE),
+                httpx.Response(200, json=self._TEXT_RESPONSE),
+            ]
         )
         r = self._post()
         assert r.status_code == 200
@@ -2049,6 +2053,88 @@ class TestConfigTest:
         assert body["ok"] is True
         assert body["verdict"] == "ok"
         assert isinstance(body["latencyMs"], int)
+
+        # Two provider round-trips actually happened.
+        assert len(route.calls) == 2
+        second_body = json.loads(route.calls[1].request.content)
+        roles = [m["role"] for m in second_body["messages"]]
+        assert roles == ["system", "user", "assistant", "tool"]
+        # The tool result correlates to the forced call's id.
+        assert second_body["messages"][3]["tool_call_id"] == "1"
+
+    @respx.mock
+    def test_second_request_echoes_provider_extras_verbatim(self):
+        """FIX 1 end-to-end at the endpoint level: the probe's second request
+        must carry the provider's ORIGINAL assistant message -- including
+        `thought_signature` -- not a reconstruction that drops it (the exact
+        omission that made real gemini-3.x asks 400 while the probe passed)."""
+        route = respx.post(self._URL).mock(
+            side_effect=[
+                httpx.Response(200, json=self._TOOL_CALL_RESPONSE),
+                httpx.Response(200, json=self._TEXT_RESPONSE),
+            ]
+        )
+        r = self._post()
+        assert r.json()["ok"] is True
+
+        second_body = json.loads(route.calls[1].request.content)
+        assert json.dumps(second_body["messages"][2], sort_keys=True) == json.dumps(
+            self._TOOL_CALL_MESSAGE, sort_keys=True
+        )
+
+    @respx.mock
+    def test_second_turn_thought_signature_400_is_model_incompatible(self):
+        """The live gemini-3.x failure mode the old single-turn probe could
+        never see: turn 1 succeeds, turn 2 400s with `thought_signature`."""
+        respx.post(self._URL).mock(
+            side_effect=[
+                httpx.Response(200, json=self._TOOL_CALL_RESPONSE),
+                httpx.Response(
+                    400,
+                    json={
+                        "error": {
+                            "message": "request is missing thought_signature"
+                        }
+                    },
+                ),
+            ]
+        )
+        r = self._post()
+        body = r.json()
+        assert body["ok"] is False
+        assert body["verdict"] == "model_incompatible"
+
+    @respx.mock
+    def test_second_turn_empty_response_is_malformed_response(self):
+        """A second turn that returns neither text nor tool calls is not a
+        sane completion of the exchange."""
+        respx.post(self._URL).mock(
+            side_effect=[
+                httpx.Response(200, json=self._TOOL_CALL_RESPONSE),
+                httpx.Response(200, json={"choices": [{"message": {"content": ""}}]}),
+            ]
+        )
+        r = self._post()
+        body = r.json()
+        assert body["ok"] is False
+        assert body["verdict"] == "malformed_response"
+
+    @respx.mock
+    def test_probe_requests_are_token_bounded(self):
+        """Both probe round-trips carry a small `max_tokens` so a connectivity
+        test can never burn meaningful provider budget."""
+        route = respx.post(self._URL).mock(
+            side_effect=[
+                httpx.Response(200, json=self._TOOL_CALL_RESPONSE),
+                httpx.Response(200, json=self._TEXT_RESPONSE),
+            ]
+        )
+        r = self._post()
+        assert r.status_code == 200
+
+        for call in route.calls:
+            sent = json.loads(call.request.content)
+            assert 0 < sent["max_tokens"] <= 1024
 
     @respx.mock
     def test_text_only_response_is_no_tool_call(self):

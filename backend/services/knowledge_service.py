@@ -36,13 +36,14 @@ whole thing, so a concurrent index write can never mutate the shared store mid-a
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import sqlite3
 import threading
 from collections import Counter
 from datetime import datetime, timezone, tzinfo
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import structlog
 
@@ -246,6 +247,25 @@ def embedding_model_files_present(model_dir: Path) -> bool:
     ).exists()
 
 
+def _ingest_normalize_version() -> int:
+    """pysaka's ingest-normalization version, baked into the index fingerprint.
+
+    Sourced at call time from `pysaka.knowledge.cleaner.INGEST_NORMALIZE_VERSION`
+    (introduced on pysaka's wave/engine branch alongside the full-width ％％％
+    subscriber-sentinel masking fix) so a pysaka-side change to how raw content
+    is normalized/masked at ingest mismatches every stored fingerprint and
+    triggers exactly one reindex-required flag flip -- without it, documents
+    ingested under the OLD normalization would silently coexist with new ones.
+    Falls back to 1 for pysaka versions that predate the constant.
+    """
+    try:
+        from pysaka.knowledge import cleaner
+    except ImportError:
+        return 1
+    version = getattr(cleaner, "INGEST_NORMALIZE_VERSION", 1)
+    return version if isinstance(version, int) else 1
+
+
 async def _current_fingerprint(embedder: Embedder) -> dict:
     """The fingerprint dict for `embedder`'s ACTIVE config -- compared against
     `kb_meta['embedder_fingerprint']` by `KnowledgeService._check_fingerprint`.
@@ -255,9 +275,11 @@ async def _current_fingerprint(embedder: Embedder) -> dict:
     numerically-close vectors of the SAME embedding space (floating-point
     kernel differences, not a different space) -- so switching GPUs, or
     falling back to CPU because a driver hiccuped, must never trigger a
-    reindex. Only a genuinely different MODEL, output dimensionality, or a
-    normalizer/chunker version bump changes what a vector even means.
-    `quantization` is reserved for a future non-fp32 embedder variant.
+    reindex. Only a genuinely different MODEL, output dimensionality, a
+    normalizer/chunker version bump, or a pysaka ingest-normalization bump
+    (`ingest_version`, see `_ingest_normalize_version`) changes what a vector
+    even means. `quantization` is reserved for a future non-fp32 embedder
+    variant.
     """
     return {
         "model_name": await resolve_embedding_model_name(),
@@ -265,6 +287,7 @@ async def _current_fingerprint(embedder: Embedder) -> dict:
         "quantization": None,
         "normalizer_version": _NORMALIZER_VERSION,
         "chunker_version": _CHUNKER_VERSION,
+        "ingest_version": _ingest_normalize_version(),
     }
 
 
@@ -1110,6 +1133,14 @@ class KnowledgeService:
             # `None` deep inside the agent's tool-calling loop.
             model_name = await resolve_embedding_model_name()
             raise EmbeddingModelMissing(model_name, embedding_model_dir(model_name))
+        # Per-service nickname (settings `user_nicknames`, the same store
+        # `backend/api/profile.py` writes) -- threaded through `_run_ask_blocking`
+        # -> `_build_agent` -> `ToolRunner(subscriber_name=...)` so pysaka can
+        # address the subscriber by their real nickname instead of the generic
+        # "you". Loaded per ask (ToolRunner is built per ask anyway; the
+        # per-service retriever cache stays nickname-agnostic).
+        config = await load_config()
+        nickname = (config.get("user_nicknames") or {}).get(scope.service) or "you"
         logger.debug("knowledge_service.ask", service=scope.service, tz=str(tz))
         # Hold `_store_lock` for the WHOLE ask (retriever assembly AND the agent's
         # tool-calling loop, which reads the shared NumpyVectorStore via
@@ -1129,7 +1160,14 @@ class KnowledgeService:
         # single-user desktop app.
         async with self._store_lock:
             return await asyncio.to_thread(
-                self._run_ask_blocking, question, scope, llm, tz, history, cancel_event
+                self._run_ask_blocking,
+                question,
+                scope,
+                llm,
+                tz,
+                history,
+                cancel_event,
+                nickname,
             )
 
     def _run_ask_blocking(
@@ -1140,6 +1178,7 @@ class KnowledgeService:
         tz: tzinfo,
         history: list[dict] | None,
         cancel_event: threading.Event | None = None,
+        nickname: str = "you",
     ) -> Answer:
         """Build the retriever+agent over the persisted store and run the agent, synchronously.
 
@@ -1172,7 +1211,7 @@ class KnowledgeService:
         propagates as-is so the caller (`ask()`, then `backend/api/ai.py`)
         can tell "the model failed" apart from "we asked it to stop."
         """
-        agent = self._build_agent(scope.service, llm, tz)
+        agent = self._build_agent(scope.service, llm, tz, nickname)
         should_abort = cancel_event.is_set if cancel_event is not None else None
         try:
             return asyncio.run(
@@ -1189,21 +1228,36 @@ class KnowledgeService:
         """
         self._llm = llm
 
-    def _build_agent(self, service: str, llm: LLMClient, tz: tzinfo) -> KnowledgeAgent:
+    def _build_agent(
+        self, service: str, llm: LLMClient, tz: tzinfo, nickname: str = "you"
+    ) -> KnowledgeAgent:
         """Rehydrate a retriever over persisted state (zero corpus re-embedding).
 
         `ToolRunner`/`KnowledgeAgent` are built fresh every call (they carry the
-        per-request `tz`), but the (`DocumentStore`, `HybridRetriever`) pair
-        behind them is reused across asks via `_ensure_retriever_cached` -- see
-        that method for the cache-invalidation rule. This runs on a `to_thread`
-        worker thread from inside `ask()`'s `_store_lock`-held section (see
-        `ask`'s docstring), so the cache read/write here is already serialized
-        against concurrent index writes and other asks -- no lock of its own.
+        per-request `tz` and `nickname`), but the (`DocumentStore`,
+        `HybridRetriever`) pair behind them is reused across asks via
+        `_ensure_retriever_cached` -- see that method for the
+        cache-invalidation rule. This runs on a `to_thread` worker thread from
+        inside `ask()`'s `_store_lock`-held section (see `ask`'s docstring),
+        so the cache read/write here is already serialized against concurrent
+        index writes and other asks -- no lock of its own.
         """
         reference = self._reference_for(service)
         doc_store, retriever = self._ensure_retriever_cached(service)
+        tool_runner_kwargs: dict[str, Any] = {"tz": tz}
+        # `subscriber_name` (keyword-only, default "you") ships with pysaka's
+        # wave/engine branch; the editable pysaka this repo currently runs
+        # against may predate it, and passing it unconditionally would
+        # TypeError every ask. Guarded by signature inspection so both pysaka
+        # generations work; drop the guard once wave/engine is the floor.
+        if "subscriber_name" in inspect.signature(ToolRunner.__init__).parameters:
+            tool_runner_kwargs["subscriber_name"] = nickname
         tools = ToolRunner(
-            reference.aliases, reference.registry, retriever, doc_store, tz=tz
+            reference.aliases,
+            reference.registry,
+            retriever,
+            doc_store,
+            **tool_runner_kwargs,
         )
         return KnowledgeAgent(llm, tools, tz=tz)
 

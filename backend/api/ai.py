@@ -1185,26 +1185,44 @@ _CONFIG_TEST_MESSAGES = [
     {"role": "user", "content": "Run the connectivity test."},
 ]
 
+# Per-completion token cap for both probe round-trips: a connectivity test
+# must never burn meaningful provider budget. Generous enough for a one-arg
+# tool call plus a short acknowledgement (including a thinking model's
+# overhead), tiny next to a real ask.
+_CONFIG_TEST_MAX_TOKENS = 256
+
 
 @router.post("/config/test")
 async def test_ai_config(request: LLMConfigRequest) -> dict:
-    """One minimal forced-tool-call round-trip against the DRAFT config in
-    the request body -- NEVER persisted (Product-wave Task 5, item 2). Backs
-    `KbBackendSelector`'s "Test" button (next to Save): catches auth, a wrong
-    `base_url`, incompatibility, AND a weak model that answers without
-    calling the tool, all in one request.
+    """A minimal TWO-TURN forced-tool-call exchange against the DRAFT config
+    in the request body -- NEVER persisted (Product-wave Task 5, item 2).
+    Backs `KbBackendSelector`'s "Test" button (next to Save): catches auth, a
+    wrong `base_url`, incompatibility, AND a weak model that answers without
+    calling the tool.
 
-    `verdict` is `"ok"` (the model called `probe_tool`), `"no_tool_call"`
+    Why two turns: the original single-turn probe (force one tool call,
+    never send the result back) false-passed gemini-3.5-flash -- Gemini
+    3.x's OpenAI-compat layer only rejects (HTTP 400 `thought_signature`)
+    the SECOND request of a tool exchange, when the assistant tool-call turn
+    is echoed back. So after a successful forced call, the probe now replays
+    the exchange exactly the way a real ask does (`pysaka.knowledge.agent
+    .KnowledgeAgent`'s echo shape, through the same `chat()` raw-echo seam)
+    and requires a sane second response. Both completions are bounded by
+    `_CONFIG_TEST_MAX_TOKENS`.
+
+    `verdict` is `"ok"` (forced call + sane second turn), `"no_tool_call"`
     (it answered with plain text instead -- a weak-tool-calling model, the
-    live-observed `gemini-2.5-flash-lite`/`qwen2.5:14b` failure mode), or an
-    `LLMBackendError.kind` (`auth`, `quota_exhausted`, `unreachable`, ...).
-    `ok` mirrors `verdict == "ok"`. The API key is never read from the
-    request body (there is no such field) or logged -- `build_llm_client_
-    from_draft` loads it from the OS keyring exactly like the real client
-    does (P-5 review, Finding 1: only for a base_url host on its trusted
-    allow-list -- see that function's docstring), and only `backend`/
-    `model`/the classified `verdict` are logged below, never the key or any
-    response content.
+    live-observed `gemini-2.5-flash-lite`/`qwen2.5:14b` failure mode),
+    `"malformed_response"` (the second turn returned neither text nor a tool
+    call), or an `LLMBackendError.kind` (`auth`, `quota_exhausted`,
+    `unreachable`, `model_incompatible`, ...) from either turn. `ok` mirrors
+    `verdict == "ok"`. The API key is never read from the request body
+    (there is no such field) or logged -- `build_llm_client_from_draft`
+    loads it from the OS keyring exactly like the real client does (P-5
+    review, Finding 1: only for a base_url host on its trusted allow-list --
+    see that function's docstring), and only `backend`/`model`/the
+    classified `verdict` are logged below, never the key or any response
+    content.
 
     P-5 review, minors: deliberately NOT gated behind the cloud-privacy
     consent check (`_cloud_consent_required`/`CloudConsentRequired`) that
@@ -1225,34 +1243,66 @@ async def test_ai_config(request: LLMConfigRequest) -> dict:
         raise HTTPException(status_code=400, detail="model must not be empty")
 
     client = await build_llm_client_from_draft(
-        request.backend, request.base_url, request.model
+        request.backend,
+        request.base_url,
+        request.model,
+        max_tokens=_CONFIG_TEST_MAX_TOKENS,
     )
+
+    def _result(verdict: str, start: float) -> dict:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        logger.info(
+            "ai.config_test.result",
+            backend=request.backend,
+            model=request.model,
+            verdict=verdict,
+            latency_ms=latency_ms,
+        )
+        return {"ok": verdict == "ok", "verdict": verdict, "latencyMs": latency_ms}
+
     start = time.monotonic()
     try:
         response = await client.chat(
             _CONFIG_TEST_MESSAGES, tools=[_CONFIG_TEST_TOOL_SCHEMA]
         )
     except LLMBackendError as exc:
-        latency_ms = int((time.monotonic() - start) * 1000)
-        logger.info(
-            "ai.config_test.result",
-            backend=request.backend,
-            model=request.model,
-            verdict=exc.kind,
-            latency_ms=latency_ms,
-        )
-        return {"ok": False, "verdict": exc.kind, "latencyMs": latency_ms}
+        return _result(exc.kind, start)
 
-    latency_ms = int((time.monotonic() - start) * 1000)
-    verdict = "ok" if response.tool_calls else "no_tool_call"
-    logger.info(
-        "ai.config_test.result",
-        backend=request.backend,
-        model=request.model,
-        verdict=verdict,
-        latency_ms=latency_ms,
+    if not response.tool_calls:
+        return _result("no_tool_call", start)
+
+    # Turn 2: echo the tool-call turn and feed a canned tool result back --
+    # the same message shapes `KnowledgeAgent`'s loop appends (agent.py), so
+    # the probe exercises the exact echo path a real ask uses (including the
+    # raw provider-message echo in `OpenAICompatLLMClient`).
+    messages: list[dict] = [
+        *_CONFIG_TEST_MESSAGES,
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {"name": call.name, "arguments": call.arguments, "id": call.id}
+                for call in response.tool_calls
+            ],
+        },
+    ]
+    messages.extend(
+        {
+            "role": "tool",
+            "name": call.name,
+            "id": call.id,
+            "content": json.dumps({"ok": True}),
+        }
+        for call in response.tool_calls
     )
-    return {"ok": verdict == "ok", "verdict": verdict, "latencyMs": latency_ms}
+    try:
+        second = await client.chat(messages, tools=[_CONFIG_TEST_TOOL_SCHEMA])
+    except LLMBackendError as exc:
+        return _result(exc.kind, start)
+
+    # Any parsed 2xx second response proves the echoed exchange was accepted;
+    # text and a follow-up tool call are both sane. Empty is not.
+    verdict = "ok" if (second.text or second.tool_calls) else "malformed_response"
+    return _result(verdict, start)
 
 
 @router.get("/usage")
