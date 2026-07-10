@@ -120,6 +120,8 @@
     "kbDisabledHint": "Enable the knowledge base chatbot above, then try again.",
     "kbEnabled": "Enable knowledge base chatbot",
     "kbEnabledDesc": "Turns on AI-powered Q&A over your synced blogs and messages. The first index build can take a while.",
+    "kbEnabledLoadFailed": "Couldn't check whether the chatbot is enabled.",
+    "kbEnabledRetry": "Retry",
     "kbBackend": "Backend",
     "kbBackendCloud": "Cloud",
     "kbBackendLocal": "Local",

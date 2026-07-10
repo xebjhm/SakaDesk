@@ -108,7 +108,14 @@ export const KbBackendSelector: React.FC = () => {
 
     // Enable switch — independent of the draft below (its own GET/PUT
     // endpoint, see `backend/api/ai.py`'s `get_kb_enabled`/`put_kb_enabled`).
-    const [enabled, setEnabled] = useState(false);
+    // Tri-state: `null` = the GET hasn't resolved yet. Rendering the real
+    // switch only for a resolved boolean fixes the perceived "chatbot
+    // switched itself off" bug — with `useState(false)` the switch rendered
+    // OFF from first paint until the fetch resolved (or forever, if it
+    // failed), indistinguishable from actually disabled. A failed fetch gets
+    // an explicit Retry affordance instead of that silent OFF.
+    const [enabled, setEnabled] = useState<boolean | null>(null);
+    const [enabledLoadFailed, setEnabledLoadFailed] = useState(false);
     const [enabledSaving, setEnabledSaving] = useState(false);
 
     // Draft state, PUT to the backend on Save. Starts as Cloud (the default,
@@ -133,16 +140,27 @@ export const KbBackendSelector: React.FC = () => {
     const [detecting, setDetecting] = useState(false);
     const [hwResult, setHwResult] = useState<HardwareSuggestionResponse | null>(null);
 
-    useEffect(() => {
+    const fetchEnabled = useCallback(() => {
+        setEnabled(null);
+        setEnabledLoadFailed(false);
         fetch('/api/ai/enabled')
-            .then((res) => (res.ok ? res.json() : null))
-            .then((data: { enabled?: boolean } | null) => {
-                if (data && typeof data.enabled === 'boolean') setEnabled(data.enabled);
+            .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
+            .then((data: { enabled?: boolean }) => {
+                if (typeof data.enabled === 'boolean') {
+                    setEnabled(data.enabled);
+                } else {
+                    setEnabledLoadFailed(true);
+                }
             })
             .catch((err: unknown) => {
                 console.error('[KbBackendSelector] Failed to fetch KB enabled state:', err);
+                setEnabledLoadFailed(true);
             });
     }, []);
+
+    useEffect(() => {
+        fetchEnabled();
+    }, [fetchEnabled]);
 
     useEffect(() => {
         fetch('/api/ai/config')
@@ -194,6 +212,7 @@ export const KbBackendSelector: React.FC = () => {
     }, [modelOptions]);
 
     const handleToggleEnabled = () => {
+        if (enabled === null) return; // still loading / load failed — nothing real to flip
         const next = !enabled;
         setEnabled(next); // optimistic — matches `syncReadToPhone`'s toggle idiom elsewhere in Settings
         setEnabledSaving(true);
@@ -319,26 +338,51 @@ export const KbBackendSelector: React.FC = () => {
         // No own top divider: Settings wraps this in a titled "AI assistant"
         // section that already provides the separation.
         <div className="space-y-3">
-            {/* Enable switch — top of the KB settings section (Task 3 item 1) */}
+            {/* Enable switch — top of the KB settings section (Task 3 item 1).
+                Tri-state: skeleton while the GET is pending, an explicit
+                message + Retry if it failed, the real switch only once the
+                actual value is known — never a silent OFF (see the `enabled`
+                state comment above). */}
             <div>
                 <div className="flex items-center justify-between">
                     <label className="text-sm font-medium text-gray-700">{t('settings.kbEnabled')}</label>
-                    <button
-                        type="button"
-                        onClick={handleToggleEnabled}
-                        disabled={enabledSaving}
-                        role="switch"
-                        aria-checked={enabled}
-                        aria-label={t('settings.kbEnabled')}
-                        className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${
-                            enabled ? 'bg-blue-400' : 'bg-gray-300'
-                        }`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                            enabled ? 'translate-x-7' : 'translate-x-1'
-                        }`} />
-                    </button>
+                    {enabled === null ? (
+                        enabledLoadFailed ? (
+                            <button
+                                type="button"
+                                onClick={fetchEnabled}
+                                className="px-2.5 py-1 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            >
+                                {t('settings.kbEnabledRetry')}
+                            </button>
+                        ) : (
+                            <div
+                                role="status"
+                                aria-label={t('settings.kbEnabled')}
+                                className="w-12 h-6 rounded-full bg-gray-200 animate-pulse"
+                            />
+                        )
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={handleToggleEnabled}
+                            disabled={enabledSaving}
+                            role="switch"
+                            aria-checked={enabled}
+                            aria-label={t('settings.kbEnabled')}
+                            className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                                enabled ? 'bg-blue-400' : 'bg-gray-300'
+                            }`}
+                        >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                enabled ? 'translate-x-7' : 'translate-x-1'
+                            }`} />
+                        </button>
+                    )}
                 </div>
+                {enabled === null && enabledLoadFailed && (
+                    <p className="mt-1 text-xs text-red-600">{t('settings.kbEnabledLoadFailed')}</p>
+                )}
                 <p className="mt-1 text-xs text-gray-500">{t('settings.kbEnabledDesc')}</p>
             </div>
 

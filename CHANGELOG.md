@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the previous behavior.
 
 ### Fixed
+- **The AI chatbot's Enable switch could briefly look switched off** while
+  Settings was still loading, and stayed stuck at "off" if that check failed —
+  making it seem like the chatbot had turned itself off. The switch now shows
+  a loading placeholder until the real state is known, and a Retry button with
+  a clear message when the check fails.
 - **Gemini 3.x models failed on every real question** even when the settings
   Test button reported success: the app dropped bookkeeping data those models
   require when a conversation continues past the first step. Follow-up turns

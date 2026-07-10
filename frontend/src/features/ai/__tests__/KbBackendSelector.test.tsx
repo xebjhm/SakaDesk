@@ -298,6 +298,91 @@ describe('KbBackendSelector', () => {
         expect(screen.getByRole('button', { name: 'Local' })).toHaveAttribute('aria-pressed', 'true');
     });
 
+    it('renders a loading placeholder, not an OFF switch, while GET /api/ai/enabled is pending', async () => {
+        // Perceived "chatbot switched off" fix: the switch used to render
+        // unchecked (indistinguishable from actually-disabled) from first
+        // paint until the fetch resolved. Tri-state now: null = loading.
+        const { impl } = buildFetch({ enabled: true });
+        let resolveEnabled: ((response: unknown) => void) | undefined;
+        const gated = (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            if (url === '/api/ai/enabled' && method === 'GET') {
+                return new Promise((resolve) => {
+                    resolveEnabled = resolve;
+                });
+            }
+            return impl(input, init);
+        };
+        vi.stubGlobal('fetch', vi.fn(gated));
+
+        render(<KbBackendSelector />);
+        await screen.findByRole('combobox', { name: 'Model' });
+
+        // While pending: no switch at all (so it can't read as OFF), a
+        // skeleton placeholder instead.
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+        expect(
+            screen.getByRole('status', { name: 'Enable knowledge base chatbot' })
+        ).toBeInTheDocument();
+
+        resolveEnabled!({ ok: true, json: () => Promise.resolve({ enabled: true }) });
+
+        const toggle = await screen.findByRole('switch', { name: 'Enable knowledge base chatbot' });
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(
+            screen.queryByRole('status', { name: 'Enable knowledge base chatbot' })
+        ).not.toBeInTheDocument();
+    });
+
+    it('shows a retry affordance when GET /api/ai/enabled fails, and retrying loads the real state', async () => {
+        const { impl } = buildFetch({ enabled: true });
+        let enabledGetCalls = 0;
+        const flaky = (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            if (url === '/api/ai/enabled' && method === 'GET') {
+                enabledGetCalls += 1;
+                if (enabledGetCalls === 1) {
+                    return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+                }
+            }
+            return impl(input, init);
+        };
+        vi.stubGlobal('fetch', vi.fn(flaky));
+
+        render(<KbBackendSelector />);
+
+        // Failure: no silent OFF switch -- an explicit message + Retry.
+        const retry = await screen.findByRole('button', { name: 'Retry' });
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+        expect(screen.getByText(/Couldn't check whether the chatbot is enabled/)).toBeInTheDocument();
+
+        await userEvent.click(retry);
+
+        const toggle = await screen.findByRole('switch', { name: 'Enable knowledge base chatbot' });
+        expect(toggle).toHaveAttribute('aria-checked', 'true');
+        expect(enabledGetCalls).toBe(2);
+    });
+
+    it('shows the retry affordance when GET /api/ai/enabled rejects (network error)', async () => {
+        const { impl } = buildFetch({ enabled: false });
+        const rejecting = (input: string | URL | Request, init?: RequestInit) => {
+            const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+            const method = (init?.method ?? 'GET').toUpperCase();
+            if (url === '/api/ai/enabled' && method === 'GET') {
+                return Promise.reject(new Error('network down'));
+            }
+            return impl(input, init);
+        };
+        vi.stubGlobal('fetch', vi.fn(rejecting));
+
+        render(<KbBackendSelector />);
+
+        await screen.findByRole('button', { name: 'Retry' });
+        expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+    });
+
     it('loads the Enable switch state from GET /api/ai/enabled', async () => {
         const { impl } = buildFetch({ enabled: true });
         vi.stubGlobal('fetch', vi.fn(impl));
