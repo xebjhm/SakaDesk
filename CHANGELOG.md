@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Silicon), instead of older models the model picker itself warns about.
 
 ### Fixed
+- **Gemini 3.x models failed on every real question** even when the settings
+  Test button reported success: the app dropped bookkeeping data those models
+  require when a conversation continues past the first step. Follow-up turns
+  now send it back intact, and the Test button runs the same kind of two-step
+  exchange a real question does, so this failure is caught before you save.
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted
   to Yes, which automated uninstalls auto-accept. Cleanup now runs only when
