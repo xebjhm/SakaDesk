@@ -153,7 +153,9 @@
     "sectionProvider": "AIプロバイダーとAPIキー",
     "sectionTranscription": "文字起こし",
     "sectionTranslation": "翻訳",
-    "sectionAssistant": "AIアシスタント"
+    "sectionAssistant": "AIアシスタント",
+    "kbEnabledLoadFailed": "チャットボットの有効状態を確認できませんでした。",
+    "kbEnabledRetry": "再試行"
   },
   "time": {
     "minute": "{{count}}分",
@@ -535,7 +537,7 @@
       "quota_exhausted": "{{model}} の利用上限に達しました。しばらく待つか、設定 → AI で別のモデルに切り替えてください。",
       "auth": "AIプロバイダーにAPIキーが拒否されました。設定 → AI でAPIキーを確認してください。",
       "model_not_found": "モデル {{model}} は現在設定中のバックエンドでは利用できません。設定 → AI で別のモデルを選んでください。",
-      "model_incompatible": "{{model}} はナレッジツールにうまく対応できません。代わりに gemini-2.5-flash（クラウド）または qwen2.5:14b（ローカル）をお試しください。",
+      "model_incompatible": "{{model}} は知識ベースツールを安定して扱えません。gemini-2.5-flash（クラウド）または qwen3:30b（ローカル）をお試しください。",
       "unreachable": "設定中のAIバックエンドに接続できません。ローカルモデルを使用している場合は、Ollama（またはローカルサーバー）が起動しているか確認してください。",
       "timeout": "AIバックエンドの応答に時間がかかりすぎました。もう一度お試しください。",
       "malformed_response": "AIバックエンドから理解できない応答が返されました。もう一度お試しください。",

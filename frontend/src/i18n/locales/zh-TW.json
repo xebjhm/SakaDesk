@@ -153,7 +153,9 @@
     "sectionProvider": "AI 服務商與 API 金鑰",
     "sectionTranscription": "轉寫",
     "sectionTranslation": "翻譯",
-    "sectionAssistant": "AI 助理"
+    "sectionAssistant": "AI 助理",
+    "kbEnabledLoadFailed": "無法檢查聊天機器人是否已啟用。",
+    "kbEnabledRetry": "重試"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -535,7 +537,7 @@
       "quota_exhausted": "已達到 {{model}} 的用量上限。請稍後再試，或到「設定 → AI」切換模型。",
       "auth": "AI 供應商拒絕了這組 API 金鑰。請到「設定 → AI」檢查 API 金鑰。",
       "model_not_found": "模型 {{model}} 在目前設定的後端無法使用。請到「設定 → AI」改選其他模型。",
-      "model_incompatible": "{{model}} 無法可靠地支援知識庫工具。請改用 gemini-2.5-flash（雲端）或 qwen2.5:14b（本機）。",
+      "model_incompatible": "{{model}} 無法可靠地支援知識庫工具。請改用 gemini-2.5-flash（雲端）或 qwen3:30b（本機）。",
       "unreachable": "無法連線到已設定的 AI 後端。如果你使用的是本機模型，請確認 Ollama（或本機伺服器）正在執行。",
       "timeout": "AI 後端回應逾時。請再試一次。",
       "malformed_response": "AI 後端回傳了無法解析的內容。請再試一次。",
