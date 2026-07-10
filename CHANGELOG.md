@@ -40,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   messages now point at the newer Qwen3 models that measured fastest and most
   reliable (qwen3:30b for large GPUs, qwen3:14b for mid-range GPUs and Apple
   Silicon), instead of older models the model picker itself warns about.
+- **The AI assistant now knows who "you" are**: answers drawn from messages
+  addressed to you use the nickname you saved for each service, instead of a
+  generic placeholder. Requires the paired pysaka update; older versions keep
+  the previous behavior.
 
 ### Fixed
 - **Gemini 3.x models failed on every real question** even when the settings
