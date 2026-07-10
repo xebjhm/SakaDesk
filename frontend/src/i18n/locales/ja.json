@@ -155,7 +155,8 @@
     "sectionTranslation": "翻訳",
     "sectionAssistant": "AIアシスタント",
     "kbEnabledLoadFailed": "チャットボットの有効状態を確認できませんでした。",
-    "kbEnabledRetry": "再試行"
+    "kbEnabledRetry": "再試行",
+    "kbModelNotInstalledShort": "未インストール"
   },
   "time": {
     "minute": "{{count}}分",

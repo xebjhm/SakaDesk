@@ -1,5 +1,5 @@
 // frontend/src/features/ai/components/KbBackendSelector.tsx
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Copy, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { errorMessageKey } from '../aiErrorCode';
@@ -59,6 +59,19 @@ interface ConfigTestResponse {
 /** Sentinel `<select>` value for the "Custom…" escape hatch -- never a real
  * model id (curated ids never start with `__`), so it can't collide. */
 const CUSTOM_MODEL_VALUE = '__custom__';
+
+// Per-backend draft defaults -- mirror `backend/services/llm_client.py`'s
+// `_CLOUD_DEFAULT_BASE_URL` / `_LOCAL_DEFAULT_BASE_URL` and the registry's
+// recommended models. Used when the user switches to a backend they have no
+// stashed draft for yet.
+const DEFAULT_BASE_URLS: Record<KbBackend, string> = {
+    cloud: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    local: 'http://localhost:11434/v1',
+};
+const DEFAULT_MODELS: Record<KbBackend, string> = {
+    cloud: 'gemini-2.5-flash',
+    local: 'qwen3:30b',
+};
 
 const TIER_BADGE_CLASSES: Record<ModelTier, string> = {
     recommended: 'bg-green-50 text-green-700',
@@ -231,7 +244,21 @@ export const KbBackendSelector: React.FC = () => {
             .finally(() => setEnabledSaving(false));
     };
 
+    // Per-backend draft stash: base_url/model belong to a backend KIND, so
+    // flipping the Cloud/Local toggle must not leak one backend's values into
+    // the other's draft (battle-field bug: a saved cloud config's googleapis
+    // base_url rode along into the Local draft, the local probe hit Google's
+    // API, and every local model read "not installed").
+    const draftStashRef = useRef<Partial<Record<KbBackend, { baseUrl: string; model: string }>>>(
+        {}
+    );
+
     const handleBackendChange = (next: KbBackend) => {
+        if (next === backend) return;
+        draftStashRef.current[backend] = { baseUrl, model };
+        const stashed = draftStashRef.current[next];
+        setBaseUrl(stashed?.baseUrl ?? DEFAULT_BASE_URLS[next]);
+        setModel(stashed?.model ?? DEFAULT_MODELS[next]);
         setBackend(next);
         setTestResult(null);
     };
@@ -316,7 +343,9 @@ export const KbBackendSelector: React.FC = () => {
 
     const handleUseSuggestion = () => {
         if (!hwResult?.suggestion.local_model) return;
-        setBackend('local');
+        // Route through the stash-aware switch so the base URL resets to the
+        // local default too, then override the model with the suggestion.
+        handleBackendChange('local');
         setModel(hwResult.suggestion.local_model);
     };
 
@@ -439,7 +468,9 @@ export const KbBackendSelector: React.FC = () => {
                     {modelOptions.map((opt) => (
                         <option key={opt.id} value={opt.id}>
                             {opt.id} — {t(`settings.kbModelTier.${opt.tier}`)}
-                            {opt.installed === false ? ` (${t('settings.kbModelNotInstalled')})` : ''}
+                            {opt.installed === false
+                                ? ` (${t('settings.kbModelNotInstalledShort')})`
+                                : ''}
                         </option>
                     ))}
                     <option value={CUSTOM_MODEL_VALUE}>{t('settings.kbCustomModel')}</option>

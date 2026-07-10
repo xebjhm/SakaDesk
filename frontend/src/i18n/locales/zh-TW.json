@@ -155,7 +155,8 @@
     "sectionTranslation": "翻譯",
     "sectionAssistant": "AI 助理",
     "kbEnabledLoadFailed": "無法檢查聊天機器人是否已啟用。",
-    "kbEnabledRetry": "重試"
+    "kbEnabledRetry": "重試",
+    "kbModelNotInstalledShort": "尚未安裝"
   },
   "time": {
     "minute": "{{count}} 分鐘",

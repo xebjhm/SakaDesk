@@ -157,6 +157,80 @@ describe('KbBackendSelector', () => {
         });
     });
 
+    it('switching to Local swaps the leaked cloud base URL for the local default', async () => {
+        // Battle-field bug: with a saved CLOUD config, flipping the toggle to
+        // Local kept the googleapis base_url + gemini model in the draft, so
+        // the local probe hit Google's API and every model read "not
+        // installed". The toggle must reset the draft to local defaults.
+        const { calls, impl } = buildFetch();
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        const select = await screen.findByRole('combobox', { name: 'Model' });
+        await waitFor(() => expect(select).toHaveValue('gemini-2.5-flash'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Local' }));
+
+        expect(screen.getByRole('textbox', { name: 'Base URL' })).toHaveValue(
+            'http://localhost:11434/v1'
+        );
+        // The local models probe must use the local default, never the cloud URL.
+        await waitFor(() => {
+            const localProbe = calls.find((c) => c.url.startsWith('/api/ai/models?backend=local'));
+            expect(localProbe).toBeDefined();
+            expect(localProbe!.url).not.toContain('generativelanguage');
+        });
+        // Local default model preselected.
+        await waitFor(() =>
+            expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue('qwen3:30b')
+        );
+    });
+
+    it('switching back to Cloud restores the stashed cloud draft', async () => {
+        const { calls, impl } = buildFetch();
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        const select = await screen.findByRole('combobox', { name: 'Model' });
+        await waitFor(() => expect(select).toHaveValue('gemini-2.5-flash'));
+
+        await userEvent.click(screen.getByRole('button', { name: 'Local' }));
+        await waitFor(() =>
+            expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue('qwen3:30b')
+        );
+        await userEvent.click(screen.getByRole('button', { name: 'Cloud' }));
+        await waitFor(() =>
+            expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue('gemini-2.5-flash')
+        );
+
+        await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => {
+            expect(calls.some((c) => c.url === '/api/ai/config' && c.method === 'PUT')).toBe(true);
+        });
+        const putCall = calls.find((c) => c.url === '/api/ai/config' && c.method === 'PUT')!;
+        expect(putCall.body).toEqual({
+            backend: 'cloud',
+            base_url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+            model: 'gemini-2.5-flash',
+        });
+    });
+
+    it('marks a not-installed model in the dropdown without promising a command', async () => {
+        // The <option> can't render the copyable `ollama pull …` hint, so its
+        // label must not end with a dangling "run:" -- the full hint lives
+        // below the select.
+        const { impl } = buildFetch();
+        vi.stubGlobal('fetch', vi.fn(impl));
+
+        render(<KbBackendSelector />);
+        await screen.findByRole('combobox', { name: 'Model' });
+        await userEvent.click(screen.getByRole('button', { name: 'Local' }));
+
+        const option = await screen.findByRole('option', { name: /qwen2\.5:14b/ });
+        expect(option.textContent).toContain('(not installed)');
+        expect(option.textContent).not.toMatch(/run:|：\)/);
+    });
+
     it('shows the Custom… escape hatch for a model not in the curated/live list', async () => {
         const { impl } = buildFetch({
             config: { backend: 'local', base_url: 'http://localhost:11434/v1', model: 'my-custom-model' },

@@ -156,7 +156,8 @@
     "kbModelNotInstalled": "Not installed yet — run:",
     "kbCopyPullCommand": "Copy",
     "kbCopiedPullCommand": "Copied!",
-    "kbUsageToday": "{{count}} of {{limit}} requests used today"
+    "kbUsageToday": "{{count}} of {{limit}} requests used today",
+    "kbModelNotInstalledShort": "not installed"
   },
   "time": {
     "minute": "{{count}} minute",
