@@ -1,7 +1,7 @@
 {
     "meta": {
         "group": "sakurazaka",
-        "updated": "2026-01-17"
+        "updated": "2026-07-27"
     },
     "members": [
         {
@@ -26,7 +26,7 @@
                 "blue",
                 "blue"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "53",
@@ -86,7 +86,7 @@
                 "passion_pink",
                 "blue"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "46",
@@ -411,6 +411,216 @@
                 "violet"
             ],
             "status": "active"
+        },
+        {
+            "blogId": "02",
+            "nameKanji": "今泉 佑唯",
+            "nameHiragana": "いまいずみ ゆい",
+            "nameRomaji": "Imaizumi Yui",
+            "generation": 1,
+            "oshiColors": [
+                "red",
+                "green"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "22",
+            "nameKanji": "長濱 ねる",
+            "nameHiragana": "ながはま ねる",
+            "nameRomaji": "Nagahama Neru",
+            "generation": 1,
+            "oshiColors": [
+                "purple",
+                "purple"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "05",
+            "nameKanji": "織田 奈那",
+            "nameHiragana": "おだ なな",
+            "nameRomaji": "Oda Nana",
+            "generation": 1,
+            "oshiColors": [
+                "orange",
+                "green"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "12",
+            "nameKanji": "鈴本 美愉",
+            "nameHiragana": "すずもと みゆ",
+            "nameRomaji": "Suzumoto Miyu",
+            "generation": 1,
+            "oshiColors": [
+                "orange",
+                "orange"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "17",
+            "nameKanji": "平手 友梨奈",
+            "nameHiragana": "ひらて ゆりな",
+            "nameRomaji": "Hirate Yurina",
+            "generation": 1,
+            "oshiColors": [],
+            "status": "graduated"
+        },
+        {
+            "blogId": "13",
+            "nameKanji": "長沢 菜々香",
+            "nameHiragana": "ながさわ ななこ",
+            "nameRomaji": "Nagasawa Nanako",
+            "generation": 1,
+            "oshiColors": [
+                "red",
+                "white"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "01",
+            "nameKanji": "石森 虹花",
+            "nameHiragana": "いしもり にじか",
+            "nameRomaji": "Ishimori Nijika",
+            "generation": 1,
+            "oshiColors": [],
+            "status": "graduated"
+        },
+        {
+            "blogId": "09",
+            "nameKanji": "佐藤 詩織",
+            "nameHiragana": "さとう しおり",
+            "nameRomaji": "Sato Shiori",
+            "generation": 1,
+            "oshiColors": [
+                "blue",
+                "purple"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "18",
+            "nameKanji": "守屋 茜",
+            "nameHiragana": "もりや あかね",
+            "nameRomaji": "Moriya Akane",
+            "generation": 1,
+            "oshiColors": [
+                "red",
+                "red"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "20",
+            "nameKanji": "渡辺 梨加",
+            "nameHiragana": "わたなべ りか",
+            "nameRomaji": "Watanabe Rika",
+            "generation": 1,
+            "oshiColors": [
+                "pastel_blue",
+                "pastel_blue"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "21",
+            "nameKanji": "渡邉 理佐",
+            "nameHiragana": "わたなべ りさ",
+            "nameRomaji": "Watanabe Risa",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "blue"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "15",
+            "nameKanji": "原田 葵",
+            "nameHiragana": "はらだ あおい",
+            "nameRomaji": "Harada Aoi",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "white"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "04",
+            "nameKanji": "尾関 梨香",
+            "nameHiragana": "おぜき りか",
+            "nameRomaji": "Ozeki Rika",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "yellow"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "11",
+            "nameKanji": "菅井 友香",
+            "nameHiragana": "すがい ゆうか",
+            "nameRomaji": "Sugai Yuka",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "pastel_blue"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "44",
+            "nameKanji": "関 有美子",
+            "nameHiragana": "せき ゆみこ",
+            "nameRomaji": "Seki Yumiko",
+            "generation": 2,
+            "oshiColors": [
+                "white",
+                "orange"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "14",
+            "nameKanji": "土生 瑞穂",
+            "nameHiragana": "はぶ みづほ",
+            "nameRomaji": "Habu Mizuho",
+            "generation": 1,
+            "oshiColors": [
+                "white",
+                "red"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "07",
+            "nameKanji": "小林 由依",
+            "nameHiragana": "こばやし ゆい",
+            "nameRomaji": "Kobayashi Yui",
+            "generation": 1,
+            "oshiColors": [
+                "yellow",
+                "blue"
+            ],
+            "status": "graduated"
+        },
+        {
+            "blogId": "03",
+            "nameKanji": "上村 莉菜",
+            "nameHiragana": "うえむら りな",
+            "nameRomaji": "Uemura Rina",
+            "generation": 1,
+            "oshiColors": [
+                "sakura_pink",
+                "sakura_pink"
+            ],
+            "status": "graduated"
         }
     ]
 }
