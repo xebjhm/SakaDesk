@@ -91,6 +91,16 @@ Source: "..\..\dist\SakaDesk\*"; DestDir: "{app}"; Flags: ignoreversion recurses
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
+[InstallDelete]
+; An upgrade only adds/replaces files; it never removes ones an older version
+; shipped. A stale pysaka-<old>.dist-info then sits next to the new one and
+; importlib.metadata reports the OLD version (diagnostics said pysaka 0.4.3
+; after upgrading to 0.4.4). dist-info dirs are metadata only and [Files]
+; reinstalls the current ones, so clearing them first is safe. Deliberately
+; narrower than wiping {app}\_internal, which would also delete Playwright's
+; runtime-downloaded browser bundle (see [UninstallDelete]).
+Type: filesandordirs; Name: "{app}\_internal\*.dist-info"
+
 [UninstallDelete]
 ; Playwright can download a Chromium bundle at RUNTIME into
 ; {app}\_internal\playwright\driver\package\.local-browsers (~640 MB), which is
