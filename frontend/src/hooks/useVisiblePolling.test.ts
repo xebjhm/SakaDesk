@@ -37,4 +37,25 @@ describe('useVisiblePolling', () => {
         setVisibility('visible');
         expect(cb).toHaveBeenCalledTimes(1);
     });
+
+    it('re-runs immediately and restarts the interval when a dep changes', () => {
+        const cb = vi.fn();
+        const { rerender } = renderHook(({ dep }) => useVisiblePolling(cb, 1000, [dep]), { initialProps: { dep: 'a' } });
+        vi.advanceTimersByTime(600);
+        expect(cb).toHaveBeenCalledTimes(1);
+        rerender({ dep: 'b' });
+        expect(cb).toHaveBeenCalledTimes(2);
+        // The old interval would have fired at t=1000 (400ms from now); the restarted one has not.
+        vi.advanceTimersByTime(600);
+        expect(cb).toHaveBeenCalledTimes(2);
+        vi.advanceTimersByTime(400);
+        expect(cb).toHaveBeenCalledTimes(3);
+    });
+
+    it('does not fire anything when the window becomes hidden', () => {
+        const cb = vi.fn();
+        renderHook(() => useVisiblePolling(cb, 1000, []));
+        setVisibility('hidden');
+        expect(cb).toHaveBeenCalledTimes(1);
+    });
 });
