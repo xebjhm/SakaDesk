@@ -41,7 +41,11 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
-from backend.services.messages_cache import get_messages_summary, stat_key
+from backend.services.messages_cache import (
+    NO_MESSAGES,
+    get_messages_summary,
+    stat_key,
+)
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -288,7 +292,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                 if msg_file.exists():
                     try:
                         summary = get_messages_summary(msg_file)
-                        m_data = summary.member
+                        m_data = summary.require_member()
                         member_meta["thumbnail"] = m_data.get("thumbnail")
                         member_meta["portrait"] = m_data.get("portrait")
                         member_meta["phone_image"] = m_data.get("phone_image")
@@ -298,13 +302,12 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                             group_thumbnail = m_data.get("group_thumbnail")
 
                         # Get last message ID (last in file order, as before)
-                        if summary.last_raw_id is not None:
-                            last_id = summary.last_raw_id
-                            if last_id > last_message_id:
-                                last_message_id = last_id
+                        last_id = summary.require_last_id()
+                        if last_id is not NO_MESSAGES and last_id > last_message_id:
+                            last_message_id = last_id
 
                         # Count messages
-                        total_messages += summary.total_messages
+                        total_messages += summary.require_total()
                     except Exception as e:
                         logger.warning(
                             "Failed to read messages file",
