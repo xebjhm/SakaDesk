@@ -52,7 +52,7 @@ class StatCache:
         self._lock = threading.Lock()
 
     def get(self, path: Path, build: Callable[[Any], T]) -> T:
-        key = os.path.normcase(str(path.resolve()))
+        key = os.path.normcase(os.path.abspath(path))
         try:
             sk = stat_key(path)
         except OSError:
@@ -147,10 +147,22 @@ class MessagesSummary:
             _reraise(self.total_error)
         return self.total_messages
 
+    def has_id(self, message_id: Any) -> bool:
+        """True if some message of this file has ``id == message_id``.
+
+        A message without an ``id`` counts as id ``0``, as in ``unread_count``.
+        Raises the stored error if the ids could not be computed for this file.
+        """
+        if self.ids_error is not None:
+            _reraise(self.ids_error)
+        if self.id_set is not None:
+            return message_id in self.id_set
+        return message_id in (self.raw_ids or ())
+
     def unread_count(self, last_read_id: Any, revealed: Iterable[Any]) -> int:
         """``sum(1 for m_id in ids if m_id > last_read_id and m_id not in revealed)``.
 
-        Raises whatever that expression would raise for this file and input.
+        Raises where the old expression would raise (exception text may differ).
         """
         if self.ids_error is not None:
             _reraise(self.ids_error)

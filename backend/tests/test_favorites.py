@@ -172,3 +172,68 @@ class TestLocalFavoriteUpdate:
             with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
                 result = _update_local_favorite(12345, True, "not_a_service")
             assert result is False
+
+    def test_update_local_favorite_uses_locked_writer(self):
+        """The write goes through pysaka's per-file-locked writer, not a private
+        read-modify-write that could drop messages a concurrent sync wrote."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            member_dir = (
+                Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            )
+            member_dir.mkdir(parents=True)
+            msg_file = member_dir / "messages.json"
+            msg_file.write_text(
+                json.dumps({"messages": [{"id": 12345, "is_favorite": False}]}),
+                encoding="utf-8",
+            )
+
+            with (
+                patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)),
+                patch(
+                    "api.favorites.SyncManager.update_message_fields_sync",
+                    return_value=True,
+                ) as writer,
+            ):
+                assert _update_local_favorite(12345, True, "hinatazaka46") is True
+
+            writer.assert_called_once_with(msg_file, 12345, {"is_favorite": True})
+
+    def test_update_local_favorite_skips_writer_when_id_absent(self):
+        """Files that do not contain the id are never handed to the writer."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            member_dir = (
+                Path(tmp_dir) / "日向坂46" / "messages" / "1 Group" / "40 Member"
+            )
+            member_dir.mkdir(parents=True)
+            (member_dir / "messages.json").write_text(
+                json.dumps({"messages": [{"id": 1}]}), encoding="utf-8"
+            )
+
+            with (
+                patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)),
+                patch("api.favorites.SyncManager.update_message_fields_sync") as writer,
+            ):
+                assert _update_local_favorite(12345, True, "hinatazaka46") is False
+
+            writer.assert_not_called()
+
+    def test_update_local_favorite_malformed_file_is_logged_and_skipped(self):
+        """A broken file does not stop the scan of the other members."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            group = Path(tmp_dir) / "日向坂46" / "messages" / "1 Group"
+            bad = group / "40 Bad"
+            good = group / "41 Good"
+            bad.mkdir(parents=True)
+            good.mkdir(parents=True)
+            (bad / "messages.json").write_text("{not json", encoding="utf-8")
+            good_file = good / "messages.json"
+            good_file.write_text(
+                json.dumps({"messages": [{"id": 12345, "is_favorite": False}]}),
+                encoding="utf-8",
+            )
+
+            with patch("api.favorites._get_output_dir", return_value=Path(tmp_dir)):
+                assert _update_local_favorite(12345, True, "hinatazaka46") is True
+
+            data = json.loads(good_file.read_text(encoding="utf-8"))
+            assert data["messages"][0]["is_favorite"] is True

@@ -222,7 +222,10 @@ def _old_unread_one(msg_file: Path, last_read_id, revealed_ids):
 
 
 def _old_unread(output_dir: Path, path: str, state) -> int:
-    """Pre-cache ``_compute_unread_counts`` for one path (commit 5fd8a65)."""
+    """Pre-cache ``_compute_unread_counts`` for one path (commit 5fd8a65).
+
+    Equivalent to the pre-cache logic for in-tree paths.
+    """
     try:
         if isinstance(state, dict):
             last_read_id = state.get("lastReadId", 0)
@@ -299,3 +302,26 @@ def test_stored_errors_do_not_pin_parsed_data(tmp_path):
     assert (
         s.ids_error is not None and s.ids_error.__traceback__ is None
     )  # stored copy stays clean
+
+
+# --- has_id (favorites lookup) -----------------------------------------------
+
+
+def test_has_id_orderable_and_unorderable(tmp_path):
+    p = tmp_path / "messages.json"
+    _write(p, [{"id": 1}, {"id": 2}])
+    s = mc.get_messages_summary(p)
+    assert s.has_id(2) and not s.has_id(3)
+    _write(p, [{"id": 1}, {"id": None}, {"id": "x"}])  # mixed types: fallback path
+    s = mc.get_messages_summary(p)
+    assert s.id_set is None
+    assert s.has_id(1) and not s.has_id(7)
+
+
+def test_has_id_raises_stored_ids_error(tmp_path):
+    p = tmp_path / "messages.json"
+    _write(p, [{"id": 1}, 5])  # non-dict message: ids could not be computed
+    s = mc.get_messages_summary(p)
+    assert s.ids_error is not None
+    with pytest.raises(AttributeError):
+        s.has_id(1)
