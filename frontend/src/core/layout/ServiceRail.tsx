@@ -161,7 +161,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                     {getServiceLogoUrl(service) ? (
                                         <img
                                             src={getServiceLogoUrl(service)}
-                                            alt={service}
+                                            alt={getServiceDisplayName(service)}
                                             className="w-8 h-8 object-contain"
                                             draggable={false}
                                             onError={(e) => {

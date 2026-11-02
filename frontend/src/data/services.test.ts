@@ -7,6 +7,7 @@ describe('getServiceDisplayName (service rail tooltip)', () => {
         ['sakurazaka46', '櫻坂46'],
         ['hinatazaka46', '日向坂46'],
         ['yodel', 'Yodel'],
+        ['unknown-id', 'unknown-id'],
     ])('%s -> %s', (id, name) => {
         expect(getServiceDisplayName(id)).toBe(name);
     });

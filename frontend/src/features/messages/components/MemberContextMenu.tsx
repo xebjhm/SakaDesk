@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Image } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Z_CLASS } from '../../../constants/zIndex';
@@ -11,7 +11,7 @@ interface MemberContextMenuProps {
     onClose: () => void;
 }
 
-// Conservative size used until the real one is measured (and where layout is unavailable).
+// Conservative menu size used to keep the menu inside the viewport.
 const ESTIMATED_SIZE = { width: 200, height: 48 };
 const VIEWPORT_PADDING = 8;
 
@@ -19,19 +19,10 @@ const VIEWPORT_PADDING = 8;
 export const MemberContextMenu: React.FC<MemberContextMenuProps> = ({ x, y, onViewImages, onClose }) => {
     const { t } = useTranslation();
     const ref = useRef<HTMLDivElement>(null);
-    const [size, setSize] = useState(ESTIMATED_SIZE);
-
-    // Measure the rendered menu so clamping uses its real size.
-    useLayoutEffect(() => {
-        const rect = ref.current?.getBoundingClientRect();
-        if (rect && rect.width > 0 && rect.height > 0) {
-            setSize(prev => (prev.width === rect.width && prev.height === rect.height ? prev : { width: rect.width, height: rect.height }));
-        }
-    }, []);
 
     // Keep the whole menu inside the viewport.
-    const left = Math.max(VIEWPORT_PADDING, Math.min(x, window.innerWidth - size.width - VIEWPORT_PADDING));
-    const top = Math.max(VIEWPORT_PADDING, Math.min(y, window.innerHeight - size.height - VIEWPORT_PADDING));
+    const left = Math.max(VIEWPORT_PADDING, Math.min(x, window.innerWidth - ESTIMATED_SIZE.width - VIEWPORT_PADDING));
+    const top = Math.max(VIEWPORT_PADDING, Math.min(y, window.innerHeight - ESTIMATED_SIZE.height - VIEWPORT_PADDING));
 
     useEffect(() => {
         const onDown = (e: MouseEvent) => {
