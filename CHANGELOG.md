@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scroll past the post or open another blog.
 
 ### Fixed
+- **A brief server hiccup on one group could stop the entire sync**: if the
+  member list for a single group failed to load, no group synced that round.
+  That group is now skipped for the round and every other group syncs normally.
 - **Some chats silently stopped receiving new messages after 0.3.2** — often
   official group channels and members whose chat history starts at your
   subscription date: every sync of that chat failed in the background, so it
