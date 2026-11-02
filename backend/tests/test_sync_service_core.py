@@ -1452,10 +1452,26 @@ class TestSyncOlderMessages:
 
 
 async def _run_start_sync(
-    svc, tmp_path, *, groups, members, mock_manager, **start_kwargs
+    svc,
+    tmp_path,
+    *,
+    groups,
+    members,
+    mock_manager,
+    metadata=None,
+    saved=None,
+    **start_kwargs,
 ):
     """Run start_sync with the standard set of patches. Returns nothing;
-    inspect the passed mock_manager / mock_client for assertions."""
+    inspect the passed mock_manager / mock_client for assertions. Pass
+    ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
+    last metadata written by save_metadata."""
+
+    async def _capture(md):
+        if saved is not None:
+            saved.clear()
+            saved.update(md)
+
     mock_progress = MagicMock()
     for attr in ("start_phase", "set_completed", "complete", "update", "error"):
         setattr(mock_progress, attr, MagicMock())
@@ -1476,9 +1492,14 @@ async def _run_start_sync(
             return_value={"access_token": "tok"},
         ),
         patch.object(
-            svc, "load_metadata", new_callable=AsyncMock, return_value=_make_metadata()
+            svc,
+            "load_metadata",
+            new_callable=AsyncMock,
+            return_value=metadata if metadata is not None else _make_metadata(),
         ),
-        patch.object(svc, "save_metadata", new_callable=AsyncMock),
+        patch.object(
+            svc, "save_metadata", new_callable=AsyncMock, side_effect=_capture
+        ),
         patch(
             "backend.services.sync_service.get_service_display_name",
             return_value="日向坂46",
@@ -1675,6 +1696,185 @@ class TestInitialLimitAndIncludeInactive:
 
         _, kwargs = mock_client.get_groups.await_args
         assert kwargs.get("include_inactive") is False
+
+    @pytest.mark.asyncio
+    async def test_members_failure_in_one_group_does_not_abort_sync(self, tmp_path):
+        """A transient /members error (5xx, timeout) for one group must not abort the
+        whole sync before phase 2: the other groups still sync and every group's
+        online/offline status is still recorded."""
+        from pysaka import ApiError
+
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+            {
+                "id": 200,
+                "name": "G2",
+                "state": "open",
+                "subscription": {"state": "expired"},
+            },
+        ]
+
+        async def members(_session, gid):
+            if gid == 200:
+                raise ApiError("HTTP 503 on /groups/200/members")
+            return [{"id": 1, "name": "M"}]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        saved: dict = {}
+
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=groups,
+            members=None,
+            mock_manager=mock_manager,
+            saved=saved,
+        )
+
+        synced_groups = {
+            c.args[1]["id"] for c in mock_manager.sync_member.await_args_list
+        }
+        assert synced_groups == {100}
+        assert saved["server_groups"]["200"]["is_active"] is False
+
+    @pytest.mark.asyncio
+    async def test_members_session_expiry_still_propagates(self, tmp_path):
+        """Isolation must not swallow auth failures: an expired session while
+        listing members is re-raised so the UI prompts re-login."""
+        from pysaka import SessionExpiredError
+
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=SessionExpiredError("expired"))
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+
+        with pytest.raises(SessionExpiredError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=groups,
+                members=None,
+                mock_manager=mock_manager,
+            )
+
+    @staticmethod
+    def _lapse_scenario():
+        """Group 100 is still subscribed; group 200's subscription lapsed but the
+        previous sync recorded it as active. get_groups is the REAL pysaka filter
+        over a mocked /groups payload, so the include_inactive contract between
+        SakaDesk and pysaka is exercised end to end."""
+        from pysaka import Client as RealClient, Group
+
+        real = RealClient(group=Group.HINATAZAKA46, access_token="tok")
+        real.fetch_json = AsyncMock(  # type: ignore[method-assign]
+            return_value=[
+                {
+                    "id": 100,
+                    "name": "G1",
+                    "state": "open",
+                    "subscription": {"state": "active"},
+                },
+                {
+                    "id": 200,
+                    "name": "G2",
+                    "state": "open",
+                    "subscription": {"state": "expired"},
+                },
+            ]
+        )
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = real.get_groups
+        mock_client.get_members = AsyncMock(return_value=[{"id": 1, "name": "M"}])
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+
+        metadata = _make_metadata(
+            server_groups={
+                "100": {"state": "open", "is_active": True},
+                "200": {"state": "open", "is_active": True},  # stale: lapsed since
+            }
+        )
+        return mock_manager, metadata
+
+    @pytest.mark.asyncio
+    async def test_lapsed_subscription_flips_offline(self, tmp_path):
+        """Regression (0.3.2): a member whose subscription lapsed must be recorded
+        is_active=False so the sidebar moves her to offline. With lapsed groups
+        fetched (the endpoint default), her stale True is overwritten."""
+        mock_manager, metadata = self._lapse_scenario()
+        saved: dict = {}
+
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=None,
+            members=None,
+            mock_manager=mock_manager,
+            metadata=metadata,
+            saved=saved,
+            include_inactive=True,
+        )
+
+        assert saved["server_groups"]["100"]["is_active"] is True
+        assert saved["server_groups"]["200"]["is_active"] is False
+
+    @pytest.mark.asyncio
+    async def test_lapsed_subscription_stays_online_when_not_fetched(self, tmp_path):
+        """Documents the 0.3.2 failure mode: without include_inactive, pysaka drops
+        the lapsed group, its server_groups entry is never refreshed (merge never
+        deletes), and the stale is_active=True survives — why the endpoint now
+        defaults include_inactive to True."""
+        mock_manager, metadata = self._lapse_scenario()
+        saved: dict = {}
+
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=None,
+            members=None,
+            mock_manager=mock_manager,
+            metadata=metadata,
+            saved=saved,
+            include_inactive=False,
+        )
+
+        assert saved["server_groups"]["200"]["is_active"] is True
 
     @pytest.mark.asyncio
     async def test_initial_limit_caps_cursorless_member(self, tmp_path):

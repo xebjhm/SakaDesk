@@ -65,7 +65,9 @@ async def run_verify_task(service: str):
 @router.post("/start")
 async def start_sync(
     service: str = Query(..., description="Service to sync"),
-    include_inactive: bool = False,
+    # Default True: lapsed subscriptions must still be fetched so their status
+    # flips to offline; a False default left them "online" forever.
+    include_inactive: bool = True,
     force_resync: bool = False,
 ):
     try:

@@ -62,4 +62,4 @@ i18n
 export default i18n;
 
 // Re-export for convenience
-export { useTranslation } from 'react-i18next';
+export { useTranslation, Trans } from 'react-i18next';

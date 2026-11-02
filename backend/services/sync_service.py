@@ -391,7 +391,22 @@ class SyncService:
                     if g.get("state") == "closed":
                         continue
 
-                    members = await client.get_members(session, g["id"])
+                    # Isolate per-group member-list failures (5xx/timeout raise
+                    # ApiError) so one group cannot abort the whole sync before
+                    # phase 2; its server_groups status above is still recorded.
+                    # Auth failures propagate so the UI can prompt re-login.
+                    try:
+                        members = await client.get_members(session, g["id"])
+                    except (SessionExpiredError, RefreshFailedError):
+                        raise
+                    except Exception as e:
+                        logger.error(
+                            "group_members_failed",
+                            group_id=g["id"],
+                            error=str(e),
+                            error_type=type(e).__name__,
+                        )
+                        continue
                     for m in members:
                         tasks.append(
                             {

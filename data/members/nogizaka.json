@@ -1,7 +1,7 @@
 {
     "meta": {
         "group": "nogizaka",
-        "updated": "2026-01-17"
+        "updated": "2026-07-27"
     },
     "members": [
         {
@@ -38,7 +38,7 @@
                 "blue",
                 "light_blue"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "36759",
@@ -110,7 +110,7 @@
                 "pink",
                 "turquoise"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "48013",
@@ -170,7 +170,7 @@
                 "turquoise",
                 "white"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "48019",
@@ -182,7 +182,7 @@
                 "pink",
                 "yellow"
             ],
-            "status": "active"
+            "status": "graduated"
         },
         {
             "blogId": "55387",
@@ -334,7 +334,10 @@
             "nameHiragana": "あたご ここね",
             "nameRomaji": "Atago Kokone",
             "generation": 6,
-            "oshiColors": ["pink", "blue"],
+            "oshiColors": [
+                "pink",
+                "blue"
+            ],
             "status": "active"
         },
         {
@@ -343,7 +346,10 @@
             "nameHiragana": "おおこし ひなの",
             "nameRomaji": "Okoshi Hinano",
             "generation": 6,
-            "oshiColors": ["white", "yellow"],
+            "oshiColors": [
+                "white",
+                "yellow"
+            ],
             "status": "active"
         },
         {
@@ -352,7 +358,10 @@
             "nameHiragana": "おづ れいな",
             "nameRomaji": "Ozu Reina",
             "generation": 6,
-            "oshiColors": ["purple", "turquoise"],
+            "oshiColors": [
+                "purple",
+                "turquoise"
+            ],
             "status": "active"
         },
         {
@@ -361,7 +370,10 @@
             "nameHiragana": "かいべ あかり",
             "nameRomaji": "Kaibe Akari",
             "generation": 6,
-            "oshiColors": ["blue", "red"],
+            "oshiColors": [
+                "blue",
+                "red"
+            ],
             "status": "active"
         },
         {
@@ -370,7 +382,10 @@
             "nameHiragana": "かわばた ひな",
             "nameRomaji": "Kawabata Hina",
             "generation": 6,
-            "oshiColors": ["light_blue", "green"],
+            "oshiColors": [
+                "light_blue",
+                "green"
+            ],
             "status": "active"
         },
         {
@@ -379,7 +394,10 @@
             "nameHiragana": "すずき ゆうな",
             "nameRomaji": "Suzuki Yuuna",
             "generation": 6,
-            "oshiColors": ["light_blue", "white"],
+            "oshiColors": [
+                "light_blue",
+                "white"
+            ],
             "status": "active"
         },
         {
@@ -388,7 +406,10 @@
             "nameHiragana": "せとぐち みつき",
             "nameRomaji": "Setoguchi Mitsuki",
             "generation": 6,
-            "oshiColors": ["blue", "yellow"],
+            "oshiColors": [
+                "blue",
+                "yellow"
+            ],
             "status": "active"
         },
         {
@@ -397,7 +418,10 @@
             "nameHiragana": "ながしま りお",
             "nameRomaji": "Nagashima Rio",
             "generation": 6,
-            "oshiColors": ["pink", "orange"],
+            "oshiColors": [
+                "pink",
+                "orange"
+            ],
             "status": "active"
         },
         {
@@ -406,7 +430,10 @@
             "nameHiragana": "ますだ みりね",
             "nameRomaji": "Masuda Mirine",
             "generation": 6,
-            "oshiColors": ["blue", "blue"],
+            "oshiColors": [
+                "blue",
+                "blue"
+            ],
             "status": "active"
         },
         {
@@ -415,7 +442,10 @@
             "nameHiragana": "もりひら うるみ",
             "nameRomaji": "Morihira Urumi",
             "generation": 6,
-            "oshiColors": ["yellow", "yellow"],
+            "oshiColors": [
+                "yellow",
+                "yellow"
+            ],
             "status": "active"
         },
         {
@@ -424,7 +454,10 @@
             "nameHiragana": "やだ もえか",
             "nameRomaji": "Yada Moeka",
             "generation": 6,
-            "oshiColors": ["white", "purple"],
+            "oshiColors": [
+                "white",
+                "purple"
+            ],
             "status": "active"
         }
     ]

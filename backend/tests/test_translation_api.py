@@ -386,17 +386,33 @@ class TestProviderHttpError:
 
 
 def test_translation_routes_registered():
-    """Translation configure endpoint should be accessible."""
-    response = client.post(
-        "/api/translation/configure",
-        json={
-            "provider": "gemini",
-            "model": "gemini-3.1-flash-lite",
-            "api_key": "test-key",
-            "target_language": "en",
-        },
-    )
+    """Translation configure endpoint should be accessible.
+
+    Persistence seams are patched like the TestConfigurePartialUpdate tests:
+    unpatched, this test wrote "test-key" over the developer's REAL stored
+    API key (and the real settings.json) on every suite run.
+    """
+    writes: dict = {}
+
+    async def fake_update(fn):
+        fn(writes)
+
+    with (
+        patch("backend.api.translation.update_config", new=fake_update),
+        patch("backend.api.translation._save_api_key") as mock_save,
+        patch("backend.api.translation._delete_api_key"),
+    ):
+        response = client.post(
+            "/api/translation/configure",
+            json={
+                "provider": "gemini",
+                "model": "gemini-3.1-flash-lite",
+                "api_key": "test-key",
+                "target_language": "en",
+            },
+        )
     assert response.status_code == 200
+    mock_save.assert_called_once_with("test-key")
 
 
 class TestConfigurePatchSemantics:
@@ -465,16 +481,24 @@ def test_translate_batch_requires_fields():
 
 
 def test_translate_rejects_unconfigured_provider():
-    """Translation should fail when no provider is configured."""
-    client.post(
-        "/api/translation/configure",
-        json={
-            "provider": None,
-            "model": None,
-            "api_key": None,
-            "target_language": "en",
-        },
-    )
+    """Translation should fail when no provider is configured.
+
+    `provider: None` makes the configure endpoint call `_delete_api_key()` by
+    design (SD-BE-API-10) — patched here because, unpatched, this test
+    DELETED the developer's real API key from the OS credential store on
+    every suite run. The config write flows to the session-isolated
+    settings.json (see conftest), which the subsequent translate call reads.
+    """
+    with patch("backend.api.translation._delete_api_key"):
+        client.post(
+            "/api/translation/configure",
+            json={
+                "provider": None,
+                "model": None,
+                "api_key": None,
+                "target_language": "en",
+            },
+        )
     response = client.post(
         "/api/translation/translate",
         json={

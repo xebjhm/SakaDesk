@@ -6,7 +6,7 @@ import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
 import { toGroupId, getMemberByBlogId, getMemberByName, getMemberPenlightHex, getMemberNameKanji } from '../../../data/memberData';
 import { getServiceBlogBaseUrl } from '../../../data/services';
-import { useBlogTheme } from '../hooks';
+import { useBlogTheme, useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
@@ -67,6 +67,9 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const [isTranslating, setIsTranslating] = useState(false);
     const [translationPartial, setTranslationPartial] = useState(false);
     const [translationError, setTranslationError] = useState<string | null>(null);
+    // Auto-expand on completion, collapse on scroll-away / blog switch, manual toggle.
+    const { expanded: translationsExpanded, toggle: toggleTranslations } =
+        useBlogTranslationVisibility(blogTranslations.length, blogContentRef);
     const { t } = useTranslation();
 
     // Get group ID for correct member data lookup
@@ -309,85 +312,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         return () => container.removeEventListener('click', handleImgClick);
     }, [content, blog.published_at]);
 
-    // Inject translations into blog DOM — immersive style.
-    // Walks the <p> child nodes, finds the same <br>-run boundaries used
-    // during extraction, and inserts translation text + <br> after each segment.
-    // Uses only inline elements and <br> to avoid breaking the <p> flow.
-    useEffect(() => {
-        const container = blogContentRef.current;
-        if (!container || blogTranslations.length === 0) return;
-
-        // Remove previous injections
-        container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
-
-        const root = container.querySelector('p') ?? container;
-        const nodes = Array.from(root.childNodes);
-
-        let segmentIndex = 0;
-        let brCount = 0;
-        let hasText = false;
-
-        let lastContentNode: ChildNode | null = null;
-
-        const injectTranslation = (afterNode: ChildNode, text: string) => {
-            // Insert: <br><span class="blog-translation-inline" style="D">text</span>
-            const br = document.createElement('br');
-            br.className = 'blog-translation-inline';
-            const span = document.createElement('span');
-            span.className = 'blog-translation-inline';
-            span.style.cssText = `
-                color: #555;
-                font-style: italic;
-                font-size: 14px;
-                line-height: 1.65;
-                padding-left: 12px;
-                border-left: 1.5px solid #d1d5db;
-                display: inline-block;
-            `;
-            span.textContent = text;
-            const ref = afterNode.nextSibling;
-            root.insertBefore(br, ref);
-            root.insertBefore(span, ref);
-        };
-
-        for (let i = 0; i < nodes.length; i++) {
-            const node = nodes[i];
-
-            if (node.nodeName === 'BR') {
-                brCount++;
-                if (brCount >= 2 && hasText && lastContentNode) {
-                    // End of a segment — inject translation right after the
-                    // last text node (before the <br> spacing run)
-                    const translation = blogTranslations[segmentIndex];
-                    if (translation) {
-                        injectTranslation(lastContentNode, translation);
-                    }
-                    segmentIndex++;
-                    hasText = false;
-                    lastContentNode = null;
-                }
-            } else {
-                brCount = 0;
-                const text = node.textContent?.trim();
-                if (text) {
-                    hasText = true;
-                    lastContentNode = node;
-                }
-            }
-        }
-
-        // Flush final segment
-        if (hasText && lastContentNode && segmentIndex < blogTranslations.length) {
-            const translation = blogTranslations[segmentIndex];
-            if (translation) {
-                injectTranslation(lastContentNode, translation);
-            }
-        }
-
-        return () => {
-            container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
-        };
-    }, [blogTranslations]);
+    // Inject translations into the blog DOM (immersive, per paragraph) while expanded.
+    useInlineBlogTranslations(blogContentRef, blogTranslations, translationsExpanded);
 
     // Reset translations when blog changes
     useEffect(() => {
@@ -511,6 +437,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                                 error={translationError}
                                                 accentColor="#6b7280"
                                                 doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
+                                                expanded={translationsExpanded}
+                                                onToggleExpanded={toggleTranslations}
                                             />
                                         </span>
                                     )}

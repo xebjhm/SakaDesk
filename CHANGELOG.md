@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-03
+
+### Changed
+- **Blog translations can now be shown or hidden**, like message translations:
+  they appear automatically when translation finishes, click the "✓ translated"
+  badge to hide or show them again, and they tuck away on their own once you
+  scroll past the post or open another blog.
+
+### Fixed
+- **A brief server hiccup on one group could stop the entire sync**: if the
+  member list for a single group failed to load, no group synced that round.
+  That group is now skipped for the round and every other group syncs normally.
+- **Some chats silently stopped receiving new messages after 0.3.2** — often
+  official group channels and members whose chat history starts at your
+  subscription date: every sync of that chat failed in the background, so it
+  stayed frozen while your phone kept getting new messages. These chats update
+  again, and messages you missed are filled in automatically on the next sync.
+- **The member profile's subscription streak read awkwardly** (e.g.
+  "購読して 128 日間！"): the line was assembled from separate fragments. Each
+  language now has one natural sentence, such as 「メンバーシップ継続 128 日！」,
+  「已連續訂閱 128 天！」 and "Subscribed for 128 days in a row!".
+- **Members whose subscription you didn't renew stayed under "online"
+  forever**: since 0.3.2, sync stopped checking lapsed subscriptions at all, so
+  their last-known online status never changed. Sync now checks them again, and
+  lapsed members move to the offline section on the next sync.
+- **Copying a blog image to the clipboard showed "Failed to copy"** when
+  the post's images were not backed up locally (blog full backup off, the
+  default): the official image server blocks direct in-app downloads. Copy now
+  fetches the image through the app, the same way Save already did.
+- **Uninstalling offered to delete your saved credentials and settings with
+  Yes preselected**, even during a silent (scripted) uninstall, where a stray
+  Enter would wipe them. Silent uninstalls now never delete your data, and the
+  question during a normal uninstall defaults to No.
+
 ## [0.3.3] - 2026-07-09
 
 ### Fixed
@@ -359,7 +393,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/xebjhm/SakaDesk/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/xebjhm/SakaDesk/compare/v0.3.1...v0.3.2
 [0.2.4]: https://github.com/xebjhm/SakaDesk/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/xebjhm/SakaDesk/compare/v0.2.2...v0.2.3

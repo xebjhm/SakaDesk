@@ -45,12 +45,19 @@ export function useClipboardShortcut(
                     e.preventDefault();
                     copyImageToClipboard(mediaSrc)
                         .then(() => showToast(t('about.goldenFingerCopied')))
-                        .catch(() => showToast(t('about.goldenFingerCopyFailed')));
+                        .catch((err: unknown) => {
+                            // Keep the reason (proxy 403/502, clipboard permission…) for diagnostics.
+                            console.warn('[clipboard] image copy failed', { error: String(err) });
+                            showToast(t('about.goldenFingerCopyFailed'));
+                        });
                 } else if (mediaType === 'video') {
                     e.preventDefault();
                     copyVideoToClipboard(mediaSrc)
                         .then(() => showToast(t('about.goldenFingerCopied')))
-                        .catch(() => showToast(t('about.goldenFingerCopyFailed')));
+                        .catch((err: unknown) => {
+                            console.warn('[clipboard] video copy failed', { error: String(err) });
+                            showToast(t('about.goldenFingerCopyFailed'));
+                        });
                 }
                 // TODO: add voice clipboard support
             }

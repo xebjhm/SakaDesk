@@ -117,3 +117,34 @@ describe('copyVideoToClipboard', () => {
         await expect(copyVideoToClipboard('/api/content/media/test.mp4')).rejects.toThrow();
     });
 });
+
+describe('copyImageToClipboard URL routing', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    // Capture the URL fetched; fail the fetch so the test stops before canvas work.
+    const fetchedUrl = async (src: string): Promise<string> => {
+        const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 418 });
+        vi.stubGlobal('fetch', mockFetch);
+        await expect(copyImageToClipboard(src)).rejects.toThrow('418');
+        return mockFetch.mock.calls[0][0] as string;
+    };
+
+    it('routes an external (uncached) blog image through the CORS proxy', async () => {
+        // Official blog CDNs send no Access-Control-Allow-Origin, so a direct
+        // cross-origin fetch fails; the backend proxy fetches it server-side.
+        const src = 'https://cdn.hinatazaka46.com/files/14/diary/official/member/moblog/202607/mob8wMcsM.jpg';
+        expect(await fetchedUrl(src)).toBe(`/api/blogs/proxy-image?url=${encodeURIComponent(src)}`);
+    });
+
+    it('keeps a locally cached blog image URL as-is (origin stripped)', async () => {
+        const local = '/api/blogs/image?service=hinatazaka46&blog_id=1&filename=img_0.jpg';
+        expect(await fetchedUrl(`${window.location.origin}${local}`)).toBe(local);
+    });
+
+    it('keeps local message media URLs as-is', async () => {
+        const media = '/api/content/media/日向坂46/messages/72 平尾 帆夏/picture/1.jpg';
+        expect(await fetchedUrl(media)).toBe(media);
+    });
+});
