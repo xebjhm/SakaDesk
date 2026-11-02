@@ -16,11 +16,12 @@ pysaka directory structure:
         ...
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 import asyncio
+import hashlib
 import json
 import structlog
 import os
@@ -40,7 +41,8 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
-from backend.services.messages_cache import get_messages_summary
+from backend.services.messages_cache import get_messages_summary, stat_key
+from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
     get_service_identifier,
@@ -378,9 +380,65 @@ def _visible_messages(messages: list) -> list:
     ]
 
 
+_NO_CACHE = "no-cache"
+
+
+def _etag(files: list[Path], *params: Any) -> Optional[str]:
+    """Strong validator for a response built from ``files`` with ``params``.
+
+    Covers every input of the response: the files' stat keys, the query
+    parameters that shape it, and the app version (a code change can change
+    the shape). None if a file vanished mid-request (no caching then).
+    """
+    try:
+        keys = [(str(f), stat_key(f)) for f in files]
+    except OSError:
+        return None
+    raw = json.dumps([keys, [str(p) for p in params], APP_VERSION], ensure_ascii=False)
+    return '"' + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32] + '"'
+
+
+def _not_modified(etag: str) -> Response:
+    return Response(status_code=304, headers={"ETag": etag, "Cache-Control": _NO_CACHE})
+
+
+def _load_member_messages(msg_file: Path, limit: int, last_read_id: int) -> dict:
+    """Blocking body of messages_by_path (unchanged logic) — run in a thread."""
+    with open(msg_file, "r", encoding="utf-8") as f:
+        data: dict = json.load(f)
+    messages = _visible_messages(data.get("messages", []))
+    messages.sort(key=lambda x: x.get("timestamp", ""))
+    total = len(messages)
+    unread_count = 0
+    max_message_id = 0
+    if last_read_id > 0:
+        for m in messages:
+            msg_id = m.get("id", 0)
+            if msg_id > max_message_id:
+                max_message_id = msg_id
+            if msg_id > last_read_id:
+                unread_count += 1
+    else:
+        unread_count = total
+        if messages:
+            max_message_id = max(m.get("id", 0) for m in messages)
+    if limit > 0:
+        messages = messages[-limit:]
+    data["messages"] = messages
+    data["total_count"] = total
+    data["unread_count"] = unread_count
+    data["max_message_id"] = max_message_id
+    return data
+
+
 @router.get("/messages_by_path")
 async def get_messages_by_path(
-    path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0
+    response: Response,
+    path: str,
+    limit: int = 0,
+    offset: int = 0,
+    last_read_id: int = 0,
+    if_none_match: Optional[str] = Header(default=None),
 ):
     """
     Get messages using the relative path from output dir.
@@ -391,6 +449,9 @@ async def get_messages_by_path(
     Parameters:
     - limit: Maximum number of messages to return (returns latest messages)
     - last_read_id: For calculating unread count
+
+    Sends an ETag with ``Cache-Control: no-cache``; a matching
+    ``If-None-Match`` gets ``304`` without the file being parsed.
     """
     if is_test_mode():
         from backend.fixtures.test_data import get_test_messages_response
@@ -406,64 +467,38 @@ async def get_messages_by_path(
         logger.debug("Messages file not found", file_path=str(msg_file))
         raise HTTPException(status_code=404, detail="No messages found")
 
+    etag = _etag([msg_file], "member", path, limit, offset, last_read_id)
+    if etag is not None and if_none_match == etag:
+        return _not_modified(etag)
+
     try:
-        with open(msg_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            messages = _visible_messages(data.get("messages", []))
-
-            # Sort by timestamp
-            messages.sort(key=lambda x: x.get("timestamp", ""))
-
-            total = len(messages)
-
-            # Calculate unread count and max_message_id
-            unread_count = 0
-            max_message_id = 0
-            if last_read_id > 0:
-                for m in messages:
-                    msg_id = m.get("id", 0)
-                    if msg_id > max_message_id:
-                        max_message_id = msg_id
-                    if msg_id > last_read_id:
-                        unread_count += 1
-            else:
-                unread_count = total
-                if messages:
-                    max_message_id = max(m.get("id", 0) for m in messages)
-
-            # Simple pagination: return latest messages
-            if limit > 0:
-                messages = messages[-limit:]
-
-            data["messages"] = messages
-            data["total_count"] = total
-            data["unread_count"] = unread_count
-            data["max_message_id"] = max_message_id
-            return data
+        data = await asyncio.to_thread(
+            _load_member_messages, msg_file, limit, last_read_id
+        )
     except Exception as e:
         logger.error("Failed to load messages", path=path, error=str(e))
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
+    if etag is not None:
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = _NO_CACHE
+    return data
 
-@router.get("/group_messages/{group_path:path}")
-async def get_group_messages(
-    group_path: str, limit: int = 200, offset: int = 0, last_read_id: int = 0
-):
-    """
-    Get merged messages from all members in a group (for group chats).
 
-    Example group_path: "日向坂46/messages/43 日向坂46"
+def _group_member_files(safe_path: Path) -> list[Path]:
+    files = []
+    for member_dir in sorted(safe_path.iterdir()):
+        if member_dir.is_dir() and parse_id_name(member_dir.name)[0]:
+            msg_file = member_dir / "messages.json"
+            if msg_file.exists():
+                files.append(msg_file)
+    return files
 
-    Parameters:
-    - limit: Maximum number of messages to return (returns latest messages)
-    - last_read_id: For calculating unread count
-    """
-    output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, group_path)
 
-    if not safe_path.is_dir():
-        raise HTTPException(status_code=404, detail="Group not found")
-
+def _load_group_messages(
+    safe_path: Path, group_path: str, limit: int, last_read_id: int
+) -> dict:
+    """Blocking body of group_messages (unchanged logic) — run in a thread."""
     all_messages = []
     members_map = {}
 
@@ -535,6 +570,47 @@ async def get_group_messages(
         "members": list(members_map.values()),
         "messages": paginated,
     }
+
+
+@router.get("/group_messages/{group_path:path}")
+async def get_group_messages(
+    response: Response,
+    group_path: str,
+    limit: int = 200,
+    offset: int = 0,
+    last_read_id: int = 0,
+    if_none_match: Optional[str] = Header(default=None),
+):
+    """
+    Get merged messages from all members in a group (for group chats).
+
+    Example group_path: "日向坂46/messages/43 日向坂46"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
+
+    Sends an ETag with ``Cache-Control: no-cache``; a matching
+    ``If-None-Match`` gets ``304`` without the files being parsed.
+    """
+    output_dir = get_output_dir()
+    safe_path = validate_path_within_dir(output_dir, group_path)
+
+    if not safe_path.is_dir():
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    files = await asyncio.to_thread(_group_member_files, safe_path)
+    etag = _etag(files, "group", group_path, limit, offset, last_read_id)
+    if etag is not None and if_none_match == etag:
+        return _not_modified(etag)
+
+    data = await asyncio.to_thread(
+        _load_group_messages, safe_path, group_path, limit, last_read_id
+    )
+    if etag is not None:
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = _NO_CACHE
+    return data
 
 
 class ReadStateInput(BaseModel):
