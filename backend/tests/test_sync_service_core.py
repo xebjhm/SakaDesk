@@ -1491,12 +1491,14 @@ async def _run_start_sync(
     mock_manager,
     metadata=None,
     saved=None,
+    notify_mock=None,
     **start_kwargs,
 ):
     """Run start_sync with the standard set of patches. Returns nothing;
     inspect the passed mock_manager / mock_client for assertions. Pass
     ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
-    last metadata written by save_metadata."""
+    last metadata written by save_metadata; pass ``notify_mock`` to observe
+    the sync-complete notification."""
 
     async def _capture(md):
         if saved is not None:
@@ -1546,7 +1548,7 @@ async def _run_start_sync(
         patch("backend.services.sync_service.progress_manager") as mock_pm,
         patch(
             "backend.services.sync_service.notify_sync_complete_async",
-            new_callable=AsyncMock,
+            notify_mock if notify_mock is not None else AsyncMock(),
         ),
     ):
         mock_pm.get.return_value = mock_progress
@@ -1853,6 +1855,103 @@ class TestInitialLimitAndIncludeInactive:
             200,
         }
         mock_manager.archive_account_profile.assert_awaited_once()
+
+    async def _run_backfill_index_scenario(self, tmp_path, *, synced, backfilled):
+        """Run a one-member sync where ``sync_member`` returns ``synced`` and
+        ``backfill_past_messages`` returns ``backfilled``. Returns
+        ``(search_svc, notify_mock)`` after the background index task has been
+        awaited."""
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+
+        async def members(_session, gid):
+            return [{"id": 101, "name": "M1"}]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=synced)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(return_value=backfilled)
+
+        search_svc = MagicMock()
+        search_svc.index_members = AsyncMock(return_value=1)
+        notify = AsyncMock()
+        bg_coros: list = []
+
+        def _capture_task(coro, name=None):
+            bg_coros.append(coro)
+
+        with (
+            patch(
+                "backend.services.search_service.get_search_service",
+                return_value=search_svc,
+            ),
+            patch(
+                "backend.services.sync_service.track_background_task",
+                side_effect=_capture_task,
+            ),
+        ):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=groups,
+                members=None,
+                mock_manager=mock_manager,
+                notify_mock=notify,
+            )
+        for coro in bg_coros:
+            await coro
+        return search_svc, notify
+
+    @pytest.mark.asyncio
+    async def test_backfill_only_member_is_indexed_but_not_notified(self, tmp_path):
+        """Messages recovered by backfill must become searchable, yet old
+        (pre-subscription) messages are never reported as new."""
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=5
+        )
+
+        notify.assert_not_awaited()
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+
+    @pytest.mark.asyncio
+    async def test_synced_and_backfilled_member_indexed_once_notifies_synced_only(
+        self, tmp_path
+    ):
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=3, backfilled=2
+        )
+
+        notify.assert_awaited_once_with(3, 1)
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+
+    @pytest.mark.asyncio
+    async def test_no_new_and_no_backfill_skips_index(self, tmp_path):
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=0
+        )
+
+        notify.assert_not_awaited()
+        search_svc.index_members.assert_not_awaited()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(

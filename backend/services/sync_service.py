@@ -484,6 +484,12 @@ class SyncService:
 
                 SYNC_OVERLAP_SECONDS = 300  # 5-minute overlap window
 
+                # Pre-subscription messages recovered by backfill, keyed by
+                # (group_id, member_id). Kept apart from the per-member "new"
+                # counts: old messages must be searchable but never reported
+                # as new (notifications, totals).
+                backfilled_by_member: dict[tuple[int, int], int] = {}
+
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
                 ) -> list[tuple[dict[str, Any], int]]:
@@ -582,9 +588,11 @@ class SyncService:
                         # after the first success (flag in sync_state); never
                         # fails the sync.
                         try:
-                            await self.manager.backfill_past_messages(
+                            backfilled = await self.manager.backfill_past_messages(
                                 session, task["group"], task["member"]
                             )
+                            if isinstance(backfilled, int) and backfilled > 0:
+                                backfilled_by_member[(gid, member_id)] = backfilled
                         except (SessionExpiredError, RefreshFailedError):
                             raise
                         except Exception as e:
@@ -702,18 +710,26 @@ class SyncService:
                         total_new_messages, members_with_new
                     )
 
-                    # Update search index in background (non-fatal, must not block sync)
-                    # The single-thread _write_executor can be contended by blog
-                    # indexing; awaiting here would stall Phase 3 for minutes.
+                # Update search index in background (non-fatal, must not block
+                # sync). Covers members with new messages AND members whose
+                # pre-subscription messages were recovered by backfill (those
+                # are searchable but deliberately not counted as new above).
+                # The single-thread _write_executor can be contended by blog
+                # indexing; awaiting here would stall Phase 3 for minutes.
+                members_with_changes = [
+                    (task["group"], task["member"])
+                    for task, count in results
+                    if count > 0
+                    or backfilled_by_member.get(
+                        (task["group"]["id"], task["member"]["id"]), 0
+                    )
+                    > 0
+                ]
+                if members_with_changes:
                     try:
                         from backend.services.search_service import get_search_service
 
                         search_svc = get_search_service()
-                        members_with_changes = [
-                            (task["group"], task["member"])
-                            for task, count in results
-                            if count > 0
-                        ]
 
                         async def _bg_index():
                             try:
