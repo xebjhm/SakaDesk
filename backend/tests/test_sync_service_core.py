@@ -1856,22 +1856,35 @@ class TestInitialLimitAndIncludeInactive:
         }
         mock_manager.archive_account_profile.assert_awaited_once()
 
-    async def _run_backfill_index_scenario(self, tmp_path, *, synced, backfilled):
-        """Run a one-member sync where ``sync_member`` returns ``synced`` and
-        ``backfill_past_messages`` returns ``backfilled``. Returns
+    async def _run_backfill_index_scenario(
+        self,
+        tmp_path,
+        *,
+        synced,
+        backfilled,
+        member_ids_by_group=None,
+        sync_member=None,
+    ):
+        """Run a sync where ``sync_member`` returns ``synced`` and
+        ``backfill_past_messages`` returns ``backfilled`` (default: one group
+        100 with one member 101). ``member_ids_by_group`` ({gid: [member ids]})
+        and ``sync_member`` (an AsyncMock side_effect taking
+        ``(session, group, member, ...)``) override that. Returns
         ``(search_svc, notify_mock)`` after the background index task has been
         awaited."""
+        member_ids_by_group = member_ids_by_group or {100: [101]}
         groups = [
             {
-                "id": 100,
-                "name": "G1",
+                "id": gid,
+                "name": f"G{gid}",
                 "state": "open",
                 "subscription": {"state": "active"},
             }
+            for gid in member_ids_by_group
         ]
 
         async def members(_session, gid):
-            return [{"id": 101, "name": "M1"}]
+            return [{"id": mid, "name": f"M{mid}"} for mid in member_ids_by_group[gid]]
 
         mock_client = MagicMock()
         mock_client.access_token = "tok"
@@ -1884,7 +1897,11 @@ class TestInitialLimitAndIncludeInactive:
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
-        mock_manager.sync_member = AsyncMock(return_value=synced)
+        mock_manager.sync_member = (
+            AsyncMock(side_effect=sync_member)
+            if sync_member is not None
+            else AsyncMock(return_value=synced)
+        )
         mock_manager.process_media_queue = AsyncMock(return_value={})
         mock_manager.backfill_past_messages = AsyncMock(return_value=backfilled)
 
@@ -1930,6 +1947,10 @@ class TestInitialLimitAndIncludeInactive:
         search_svc.index_members.assert_awaited_once()
         indexed = search_svc.index_members.await_args.args[0]
         assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+        # Backfilled ids sit below the watermark -> must be fully scanned.
+        assert search_svc.index_members.await_args.kwargs["full_member_scan"] == [
+            (100, 101)
+        ]
 
     @pytest.mark.asyncio
     async def test_synced_and_backfilled_member_indexed_once_notifies_synced_only(
@@ -1943,6 +1964,46 @@ class TestInitialLimitAndIncludeInactive:
         search_svc.index_members.assert_awaited_once()
         indexed = search_svc.index_members.await_args.args[0]
         assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+
+    @pytest.mark.asyncio
+    async def test_failed_group_members_with_backfill_are_still_indexed(self, tmp_path):
+        """Group 100's first member was backfilled before a later member made
+        the group fail; that member's recovered messages are on disk and must
+        still be indexed (full scan), alongside group 200's normal new data."""
+
+        async def sync_member(_session, group, member, *_a, **_kw):
+            if member["id"] == 102:
+                raise RuntimeError("boom")
+            return 1 if group["id"] == 200 else 0
+
+        search_svc, _notify = await self._run_backfill_index_scenario(
+            tmp_path,
+            synced=0,
+            backfilled=4,
+            member_ids_by_group={100: [101, 102], 200: [201]},
+            sync_member=sync_member,
+        )
+
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert sorted((g["id"], m["id"]) for g, m in indexed) == [
+            (100, 101),
+            (200, 201),
+        ]
+        assert sorted(
+            search_svc.index_members.await_args.kwargs["full_member_scan"]
+        ) == [
+            (100, 101),
+            (200, 201),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_bool_backfill_result_is_not_counted(self, tmp_path):
+        search_svc, _notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=True
+        )
+
+        search_svc.index_members.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_new_and_no_backfill_skips_index(self, tmp_path):

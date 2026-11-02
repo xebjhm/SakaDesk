@@ -484,11 +484,15 @@ class SyncService:
 
                 SYNC_OVERLAP_SECONDS = 300  # 5-minute overlap window
 
-                # Pre-subscription messages recovered by backfill, keyed by
-                # (group_id, member_id). Kept apart from the per-member "new"
-                # counts: old messages must be searchable but never reported
-                # as new (notifications, totals).
-                backfilled_by_member: dict[tuple[int, int], int] = {}
+                # Members whose pre-subscription messages were recovered by
+                # backfill, keyed by (group_id, member_id) -> (group, member).
+                # Kept apart from the per-member "new" counts: old messages
+                # must be searchable but never reported as new (notifications,
+                # totals). Holding the dicts means members of a group that
+                # failed later are still indexed.
+                backfilled_members: dict[
+                    tuple[int, int], tuple[dict[str, Any], dict[str, Any]]
+                ] = {}
 
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
@@ -591,8 +595,11 @@ class SyncService:
                             backfilled = await self.manager.backfill_past_messages(
                                 session, task["group"], task["member"]
                             )
-                            if isinstance(backfilled, int) and backfilled > 0:
-                                backfilled_by_member[(gid, member_id)] = backfilled
+                            if type(backfilled) is int and backfilled > 0:
+                                backfilled_members[(gid, member_id)] = (
+                                    task["group"],
+                                    task["member"],
+                                )
                         except (SessionExpiredError, RefreshFailedError):
                             raise
                         except Exception as e:
@@ -716,15 +723,22 @@ class SyncService:
                 # are searchable but deliberately not counted as new above).
                 # The single-thread _write_executor can be contended by blog
                 # indexing; awaiting here would stall Phase 3 for minutes.
-                members_with_changes = [
-                    (task["group"], task["member"])
+                changed: dict[
+                    tuple[int, int], tuple[dict[str, Any], dict[str, Any]]
+                ] = {
+                    (task["group"]["id"], task["member"]["id"]): (
+                        task["group"],
+                        task["member"],
+                    )
                     for task, count in results
                     if count > 0
-                    or backfilled_by_member.get(
-                        (task["group"]["id"], task["member"]["id"]), 0
-                    )
-                    > 0
-                ]
+                }
+                changed.update(
+                    (key, pair)
+                    for key, pair in backfilled_members.items()
+                    if key not in changed
+                )
+                members_with_changes = list(changed.values())
                 if members_with_changes:
                     try:
                         from backend.services.search_service import get_search_service
@@ -733,8 +747,12 @@ class SyncService:
 
                         async def _bg_index():
                             try:
+                                # Backfilled messages sit below the member's
+                                # indexed watermark: scan those members fully.
                                 indexed = await search_svc.index_members(
-                                    members_with_changes, self._service
+                                    members_with_changes,
+                                    self._service,
+                                    full_member_scan=list(backfilled_members),
                                 )
                                 logger.info("Search index updated", indexed=indexed)
                             except Exception as e:

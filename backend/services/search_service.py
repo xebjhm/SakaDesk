@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import jaconv
 import structlog
@@ -624,11 +624,18 @@ def _index_members_process(
     output_dir_str: str,
     members_json: str,
     service: str,
+    full_scan_json: str = "[]",
 ) -> int:
     """Incremental message index for changed members. Runs in a separate process.
 
     *members_json* is a JSON-encoded list of ``[group_dict, member_dict]`` pairs
     (dicts cannot be passed directly to a process pool, but JSON strings can).
+
+    *full_scan_json* is a JSON-encoded list of ``[group_id, member_id]`` pairs.
+    Those members bypass the ``MAX(message_id)`` watermark and index every
+    message whose id is not yet present for them. This is needed for messages
+    merged in below the watermark (pre-subscription backfill); all other
+    members keep the watermark behaviour.
     """
     import pykakasi
 
@@ -640,6 +647,9 @@ def _index_members_process(
         return 0
 
     members: list[list] = json.loads(members_json)
+    full_scan: set[tuple[Any, Any]] = {
+        (pair[0], pair[1]) for pair in json.loads(full_scan_json)
+    }
 
     service_display = get_service_display_name(service)
 
@@ -668,7 +678,20 @@ def _index_members_process(
         mid = member_dict.get("id")
         m_name = member_dict.get("name", "")
 
-        max_indexed_id = max_indexed_ids.get((gid, mid), 0)
+        if (gid, mid) in full_scan:
+            # Ignore the watermark; skip only ids already indexed for the member.
+            max_indexed_id = 0
+            already_indexed = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT message_id FROM search_messages "
+                    "WHERE service = ? AND group_id = ? AND member_id = ?",
+                    (service, gid, mid),
+                )
+            }
+        else:
+            max_indexed_id = max_indexed_ids.get((gid, mid), 0)
+            already_indexed = set()
 
         msg_file = (
             output_dir
@@ -689,7 +712,7 @@ def _index_members_process(
 
         for msg in data.get("messages", []):
             msg_id = msg.get("id")
-            if msg_id is None or msg_id <= max_indexed_id:
+            if msg_id is None or msg_id <= max_indexed_id or msg_id in already_indexed:
                 continue
             content = msg.get("content")
             if content is None:
@@ -2959,9 +2982,18 @@ class SearchService:
                 self._building = False
 
     async def index_members(
-        self, members: List[Tuple[Dict, Dict]], service: str
+        self,
+        members: List[Tuple[Dict, Dict]],
+        service: str,
+        *,
+        full_member_scan: Iterable[Tuple[int, int]] = (),
     ) -> int:
-        """Incremental message index in a separate **process** (own GIL)."""
+        """Incremental message index in a separate **process** (own GIL).
+
+        Members whose ``(group_id, member_id)`` is in *full_member_scan* skip
+        the max-message-id watermark and index every message not yet present
+        (for messages merged in below the watermark, e.g. backfill).
+        """
         loop = asyncio.get_running_loop()
         output_dir = get_output_dir()
         # Serialize member dicts to JSON for cross-process transfer
@@ -2973,6 +3005,7 @@ class SearchService:
             str(output_dir),
             members_json,
             service,
+            json.dumps([[g, m] for g, m in full_member_scan]),
         )
         logger.info(
             "Incremental index update (process)", service=service, new_messages=count
