@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { cn } from '../../../utils/classnames';
 import { Users, RefreshCw } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
@@ -9,7 +9,8 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
-import { fetchProfileImages, memberImageUrl, type ProfileImagesByKind } from '../profileImages';
+import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
+import { Portal } from '../../../core/common/Portal';
 import { MemberContextMenu } from './MemberContextMenu';
 import { ProfileImageViewer } from './ProfileImageViewer';
 
@@ -60,10 +61,19 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
     const [viewer, setViewer] = useState<ProfileImagesByKind | null>(null);
 
+    // Only the latest "View images" request may open the viewer.
+    const imagesRequestId = useRef(0);
     const openImages = (path: string) => {
+        const requestId = ++imagesRequestId.current;
         fetchProfileImages(path)
-            .then(k => setViewer(k))
-            .catch(err => console.error('Failed to load profile images:', err));
+            .then(k => {
+                if (requestId !== imagesRequestId.current) return;
+                if (PROFILE_IMAGE_KINDS.every(kind => !k[kind]?.length)) return;
+                setViewer(k);
+            })
+            .catch(err => {
+                if (requestId === imagesRequestId.current) console.error('Failed to load profile images:', err);
+            });
     };
 
     // Get theme colors for current service
@@ -397,7 +407,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 <MemberContextMenu x={menu.x} y={menu.y} onViewImages={() => openImages(menu.path)} onClose={() => setMenu(null)} />
             )}
             {viewer && (
-                <ProfileImageViewer images={viewer} initialKind="thumbnail" onClose={() => setViewer(null)} />
+                // Portaled: the sidebar's transformed ancestor would otherwise trap the fixed viewer.
+                <Portal>
+                    <ProfileImageViewer images={viewer} initialKind="thumbnail" onClose={() => setViewer(null)} />
+                </Portal>
             )}
         </div>
     );

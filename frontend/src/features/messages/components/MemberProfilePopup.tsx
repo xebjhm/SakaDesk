@@ -52,6 +52,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     useEffect(() => {
         if (!isOpen || !memberPath) { setImages({}); return; }
         const controller = new AbortController();
+        setImages({});
         fetchProfileImages(memberPath, controller.signal)
             .then(k => { if (!controller.signal.aborted) setImages(k); })
             .catch(() => { if (!controller.signal.aborted) setImages({}); });
@@ -126,8 +127,11 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         if (!isOpen) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            // The image viewer handles its own Escape; don't also close the popup.
-            if (e.key === 'Escape' && !viewerKind) {
+            // The image viewer handles its own Escape and calls preventDefault. React may
+            // already have committed the viewer close (re-registering this listener with
+            // viewerKind null) before the native event reaches document, so the
+            // defaultPrevented check is what keeps one Escape from closing both.
+            if (e.key === 'Escape' && !viewerKind && !e.defaultPrevented) {
                 onClose();
             }
         };
@@ -195,7 +199,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                             disabled={!images.thumbnail?.length}
                             onClick={() => setViewerKind('thumbnail')}
                             className={cn('w-48 h-48 rounded-full bg-white shadow-xl overflow-hidden border-4 border-white', images.thumbnail?.length ? 'cursor-zoom-in' : 'cursor-default')}
-                            aria-label={t('profileImages.thumbnail')}
+                            aria-label={memberName}
                         >
                             {memberAvatar ? (
                                 <img
