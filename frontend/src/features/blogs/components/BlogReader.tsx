@@ -6,7 +6,7 @@ import DOMPurify from 'dompurify';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
 import { toGroupId, getMemberByBlogId, getMemberByName, getMemberPenlightHex, getMemberNameKanji } from '../../../data/memberData';
 import { getServiceBlogBaseUrl } from '../../../data/services';
-import { useBlogTheme } from '../hooks';
+import { useBlogTheme, useBlogTranslationVisibility } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
@@ -67,6 +67,9 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const [isTranslating, setIsTranslating] = useState(false);
     const [translationPartial, setTranslationPartial] = useState(false);
     const [translationError, setTranslationError] = useState<string | null>(null);
+    // Auto-expand on completion, collapse on scroll-away / blog switch, manual toggle.
+    const { expanded: translationsExpanded, toggle: toggleTranslations } =
+        useBlogTranslationVisibility(blogTranslations.length, blogContentRef);
     const { t } = useTranslation();
 
     // Get group ID for correct member data lookup
@@ -315,7 +318,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     // Uses only inline elements and <br> to avoid breaking the <p> flow.
     useEffect(() => {
         const container = blogContentRef.current;
-        if (!container || blogTranslations.length === 0) return;
+        if (!container || blogTranslations.length === 0 || !translationsExpanded) return;
 
         // Remove previous injections
         container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
@@ -387,7 +390,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         return () => {
             container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
         };
-    }, [blogTranslations]);
+    }, [blogTranslations, translationsExpanded]);
 
     // Reset translations when blog changes
     useEffect(() => {
@@ -511,6 +514,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                                 error={translationError}
                                                 accentColor="#6b7280"
                                                 doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
+                                                expanded={translationsExpanded}
+                                                onToggleExpanded={toggleTranslations}
                                             />
                                         </span>
                                     )}

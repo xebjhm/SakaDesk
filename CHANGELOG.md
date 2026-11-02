@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Blog translations can now be shown or hidden**, like message translations:
+  they appear automatically when translation finishes, tap the "✓ translated"
+  badge to hide or show them again, and they tuck away on their own once you
+  scroll past the post or open another blog.
+
 ### Fixed
+- **Some chats silently stopped receiving new messages after 0.3.2** — often
+  official group channels and members whose chat history starts at your
+  subscription date: every sync of that chat failed in the background, so it
+  stayed frozen while your phone kept getting new messages. These chats update
+  again, and messages you missed are filled in automatically on the next sync.
+- **The member profile's subscription streak read awkwardly in Japanese and
+  Chinese** (e.g. "購読して 128 日間！"): the sentence was stitched together in
+  English word order. Each language now has its own natural sentence, such as
+  「メンバーシップ継続 128 日！」 and 「已連續訂閱 128 天！」.
+- **Members whose subscription you didn't renew stayed under "online"
+  forever**: since 0.3.2, sync stopped checking lapsed subscriptions at all, so
+  their last-known online status never changed. Sync now checks them again, and
+  lapsed members move to the offline section on the next sync.
+- **Copying a blog image to the clipboard failed with "copy failed"** when
+  the post's images were not backed up locally (blog full backup off, the
+  default): the official image server blocks direct in-app downloads. Copy now
+  fetches the image through the app, the same way Save already did.
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted
   to Yes, which automated uninstalls auto-accept. Cleanup now runs only when

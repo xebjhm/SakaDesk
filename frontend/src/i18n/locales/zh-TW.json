@@ -468,8 +468,7 @@
     "7th": "７期生"
   },
   "memberProfile": {
-    "subscribedFor": "已訂閱",
-    "days": "天！",
+    "subscribedDays": "已連續訂閱 <num>{{days}}</num> 天！",
     "startSubscription": "開始訂閱吧！",
     "retry": "重試",
     "noService": "沒有作用中的服務",

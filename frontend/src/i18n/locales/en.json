@@ -468,8 +468,7 @@
     "7th": "7TH GEN"
   },
   "memberProfile": {
-    "subscribedFor": "Subscribed for",
-    "days": "days!",
+    "subscribedDays": "Subscribed for <num>{{days}}</num> days in a row!",
     "startSubscription": "Start your subscription!",
     "retry": "Retry",
     "noService": "No active service",

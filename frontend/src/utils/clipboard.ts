@@ -4,13 +4,30 @@
  */
 
 /**
+ * Map an image src to a URL the page can fetch. Blog posts whose images are
+ * not cached locally keep the official CDN URL, which sends no CORS headers,
+ * so a direct fetch fails; route those through the backend proxy (as
+ * downloadMedia does). Local URLs are fetched as-is.
+ */
+function toFetchableImageUrl(src: string): string {
+    let url = src;
+    if (url.startsWith(window.location.origin)) {
+        url = url.slice(window.location.origin.length);
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+        return `/api/blogs/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+    return url;
+}
+
+/**
  * Copy an image to the clipboard as PNG.
  *
  * Fetches the image, draws it onto an offscreen canvas to convert
  * to PNG (Clipboard API requires image/png), and writes to clipboard.
  */
 export async function copyImageToClipboard(src: string): Promise<void> {
-    const response = await fetch(src);
+    const response = await fetch(toFetchableImageUrl(src));
     if (!response.ok) {
         throw new Error(`Failed to fetch image: ${response.status}`);
     }

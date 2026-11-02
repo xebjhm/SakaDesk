@@ -4,7 +4,7 @@ import { Portal } from '../../../core/common/Portal';
 import { Z_CLASS } from '../../../constants/zIndex';
 import type { BaseModalProps } from '../../../types/modal';
 import { getServiceTheme } from '../../../config/serviceThemes';
-import { useTranslation } from '../../../i18n';
+import { useTranslation, Trans } from '../../../i18n';
 import { parseErrorDetail } from '../../../utils/httpError';
 
 interface StreakData {
@@ -209,7 +209,11 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                             </div>
                         ) : streak && streak.days > 0 ? (
                             <p className="text-lg text-gray-700">
-                                {t('memberProfile.subscribedFor')} <span className="font-bold text-2xl text-gray-900">{streak.days}</span> {t('memberProfile.days')}
+                                <Trans
+                                    i18nKey="memberProfile.subscribedDays"
+                                    values={{ days: streak.days }}
+                                    components={{ num: <span className="font-bold text-2xl text-gray-900" /> }}
+                                />
                             </p>
                         ) : (
                             <p className="text-lg text-gray-500">

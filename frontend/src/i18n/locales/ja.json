@@ -468,8 +468,7 @@
     "7th": "七期生"
   },
   "memberProfile": {
-    "subscribedFor": "購読して",
-    "days": "日間！",
+    "subscribedDays": "メンバーシップ継続 <num>{{days}}</num> 日！",
     "startSubscription": "メンバーシップを始めよう！",
     "retry": "再試行",
     "noService": "アクティブなサービスがありません",
