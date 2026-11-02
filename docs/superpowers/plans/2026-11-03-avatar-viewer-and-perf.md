@@ -1077,7 +1077,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: Backfill orchestration in sync
+### Task 7: Backfill, letters and own-profile orchestration in sync
 
 **Files:**
 - Modify: `backend/services/sync_service.py` (~L560, right after `count = await self.manager.sync_member(...)`)
@@ -1114,6 +1114,8 @@ Add to the same test class as `test_members_failure_in_one_group_does_not_abort_
         mock_manager.sync_member = AsyncMock(return_value=0)
         mock_manager.process_media_queue = AsyncMock(return_value={})
         mock_manager.backfill_past_messages = AsyncMock(side_effect=[RuntimeError("boom"), 2])
+        mock_manager.sync_letters = AsyncMock(side_effect=[RuntimeError("boom"), 3])
+        mock_manager.archive_account_profile = AsyncMock(return_value={"downloaded": 1, "skipped": 0, "failed": 0})
         saved: dict = {}
 
         await _run_start_sync(
@@ -1129,6 +1131,8 @@ Add to the same test class as `test_members_failure_in_one_group_does_not_abort_
         backfilled = {c.args[1]["id"] for c in mock_manager.backfill_past_messages.await_args_list}
         assert backfilled == {100, 200}
         assert {c.args[1]["id"] for c in mock_manager.sync_member.await_args_list} == {100, 200}
+        assert {c.args[1]["id"] for c in mock_manager.sync_letters.await_args_list} == {100, 200}
+        mock_manager.archive_account_profile.assert_awaited_once()
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -1138,7 +1142,7 @@ Expected: FAIL — `await_count == 0`.
 
 - [ ] **Step 3: Implement**
 
-After the `count = await self.manager.sync_member(...)` call add:
+After the `count = await self.manager.sync_member(...)` call add the backfill AND letters calls (letters run for every task, which includes expired subscriptions because `include_inactive` defaults to True — the server still returns their letters):
 
 ```python
                         # pysaka 0.4.5: once per member, merge the ~1-1.5 days
@@ -1155,8 +1159,37 @@ After the `count = await self.manager.sync_member(...)` call add:
                             logger.warning(
                                 "past_backfill_failed",
                                 member_id=member_id,
-                                error=str(e),
+                                error_type=type(e).__name__,
                             )
+                        # pysaka 0.4.5: archive the account's sent letters to
+                        # this member (shown inline in the chat later).
+                        try:
+                            await self.manager.sync_letters(
+                                session, task["group"], task["member"]
+                            )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                "letters_sync_failed",
+                                member_id=member_id,
+                                error_type=type(e).__name__,
+                            )
+```
+
+And once per sync, right after `groups = await client.get_groups(...)` succeeds (before the task list is built), archive the account's own nickname/avatar:
+
+```python
+                # pysaka 0.4.5: own nickname + avatar (for the chat's letter
+                # bubbles). Personal fields are never stored by pysaka.
+                try:
+                    await self.manager.archive_account_profile(session)
+                except (SessionExpiredError, RefreshFailedError):
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "account_profile_failed", error_type=type(e).__name__
+                    )
 ```
 
 (`SessionExpiredError`, `RefreshFailedError` are already imported in this module — verify with `grep -n "RefreshFailedError" backend/services/sync_service.py`.)
@@ -1171,7 +1204,7 @@ Expected: all PASS. Existing tests build `mock_manager = MagicMock()` without `b
 ```bash
 uv run ruff check backend && uv run ruff format backend && uv run mypy backend
 git add backend/services/sync_service.py backend/tests/
-uv run git commit -m "feat(sync): recover messages from before the subscription
+uv run git commit -m "feat(sync): recover pre-subscription messages and letters
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
