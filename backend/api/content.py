@@ -40,6 +40,7 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
+from backend.services.messages_cache import get_messages_summary
 from backend.services.service_utils import (
     validate_service,
     get_service_identifier,
@@ -284,29 +285,24 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
 
                 if msg_file.exists():
                     try:
-                        with open(msg_file, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            m_data = data.get("member", {})
-                            member_meta["thumbnail"] = m_data.get("thumbnail")
-                            member_meta["portrait"] = m_data.get("portrait")
-                            member_meta["phone_image"] = m_data.get("phone_image")
-                            member_meta["group_thumbnail"] = m_data.get(
-                                "group_thumbnail"
-                            )
+                        summary = get_messages_summary(msg_file)
+                        m_data = summary.member
+                        member_meta["thumbnail"] = m_data.get("thumbnail")
+                        member_meta["portrait"] = m_data.get("portrait")
+                        member_meta["phone_image"] = m_data.get("phone_image")
+                        member_meta["group_thumbnail"] = m_data.get("group_thumbnail")
 
-                            if m_data.get("group_thumbnail"):
-                                group_thumbnail = m_data.get("group_thumbnail")
+                        if m_data.get("group_thumbnail"):
+                            group_thumbnail = m_data.get("group_thumbnail")
 
-                            # Get last message ID
-                            msgs = data.get("messages", [])
-                            if msgs:
-                                last_id = msgs[-1].get("id", 0)
-                                if last_id > last_message_id:
-                                    last_message_id = last_id
+                        # Get last message ID (last in file order, as before)
+                        if summary.last_raw_id is not None:
+                            last_id = summary.last_raw_id
+                            if last_id > last_message_id:
+                                last_message_id = last_id
 
-                            # Count messages
-                            m_total = data.get("total_messages", len(msgs))
-                            total_messages += m_total
+                        # Count messages
+                        total_messages += summary.total_messages
                     except Exception as e:
                         logger.warning(
                             "Failed to read messages file",
@@ -605,17 +601,9 @@ def _compute_unread_counts(
 
             if msg_file.exists():
                 # Individual member path
-                with open(msg_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    messages = data.get("messages", [])
-                    # A message is unread if: ID > lastReadId AND ID not in revealedIds
-                    unread = sum(
-                        1
-                        for m in messages
-                        if m.get("id", 0) > last_read_id
-                        and m.get("id", 0) not in revealed_ids
-                    )
-                    result[path] = unread
+                result[path] = get_messages_summary(msg_file).unread_count(
+                    last_read_id, revealed_ids
+                )
             elif safe_path.is_dir():
                 # Group chat path - count messages from all member subdirs
                 total_unread = 0
@@ -625,15 +613,9 @@ def _compute_unread_counts(
                     member_msg_file = member_dir / "messages.json"
                     if member_msg_file.exists():
                         try:
-                            with open(member_msg_file, "r", encoding="utf-8") as f:
-                                data = json.load(f)
-                                messages = data.get("messages", [])
-                                total_unread += sum(
-                                    1
-                                    for m in messages
-                                    if m.get("id", 0) > last_read_id
-                                    and m.get("id", 0) not in revealed_ids
-                                )
+                            total_unread += get_messages_summary(
+                                member_msg_file
+                            ).unread_count(last_read_id, revealed_ids)
                         except Exception as e:
                             logger.warning(
                                 "Failed to calculate unread count for member",
