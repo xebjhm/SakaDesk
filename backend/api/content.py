@@ -401,6 +401,25 @@ def _etag(files: list[Path], *params: Any) -> Optional[str]:
     return '"' + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32] + '"'
 
 
+def _etag_matches(if_none_match: Optional[str], etag: Optional[str]) -> bool:
+    """RFC 9110 ``If-None-Match`` check using weak comparison.
+
+    Accepts ``*`` (matches whenever a representation exists), comma-separated
+    lists and weak ``W/"..."`` forms.
+    """
+    if etag is None or not if_none_match:
+        return False
+    for candidate in if_none_match.split(","):
+        candidate = candidate.strip()
+        if candidate == "*":
+            return True
+        if candidate.startswith("W/"):
+            candidate = candidate[2:]
+        if candidate == etag:
+            return True
+    return False
+
+
 def _not_modified(etag: str) -> Response:
     return Response(status_code=304, headers={"ETag": etag, "Cache-Control": _NO_CACHE})
 
@@ -470,8 +489,10 @@ async def get_messages_by_path(
         logger.debug("Messages file not found", file_path=str(msg_file))
         raise HTTPException(status_code=404, detail="No messages found")
 
+    # offset is a response-shaping API parameter, so it is keyed even though
+    # the handler does not use it yet.
     etag = _etag([msg_file], "member", path, limit, offset, last_read_id)
-    if etag is not None and if_none_match == etag:
+    if etag is not None and _etag_matches(if_none_match, etag):
         return _not_modified(etag)
 
     try:
@@ -603,8 +624,10 @@ async def get_group_messages(
         raise HTTPException(status_code=404, detail="Group not found")
 
     files = await asyncio.to_thread(_group_member_files, safe_path)
+    # offset is a response-shaping API parameter, so it is keyed even though
+    # the handler does not use it yet.
     etag = _etag(files, "group", group_path, limit, offset, last_read_id)
-    if etag is not None and if_none_match == etag:
+    if etag is not None and _etag_matches(if_none_match, etag):
         return _not_modified(etag)
 
     data = await asyncio.to_thread(
