@@ -4,7 +4,7 @@ import { Plus, Unplug, Search } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
-import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor } from '../../data/services';
+import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor, getServiceDisplayName } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
@@ -147,7 +147,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 onClick={() => setActiveService(service)}
                                 onContextMenu={(e) => handleContextMenu(e, service)}
                                 className="group relative flex items-center justify-center transition-all duration-200"
-                                title={service}
+                                title={getServiceDisplayName(service)}
                             >
                                 {/* Service Icon Container */}
                                 <div
