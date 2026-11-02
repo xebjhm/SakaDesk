@@ -160,3 +160,227 @@ def test_local_fields_in_groups_and_messages(archive):
     assert member["thumbnail_local"] is None and member["group_thumbnail_local"] is None
     msgs = client.get(f"/api/content/messages_by_path?path={HINATA_SINGLE}").json()
     assert msgs["member"]["phone_image_local"] == f"{PREFIX}/phone_image/p.jpeg"
+
+
+# ---- fix round 1: cheap per-poll lookup, safe read paths -------------------
+
+T_NEW = {
+    "kind": "thumbnail",
+    "file": "thumbnail/new.jpeg",
+    "url": "https://cdn/new.jpeg",
+    "first_seen": "2026-07-05T00:00:00Z",
+}
+
+
+def _sidebar_member(service="hinatazaka46", gid="34"):
+    groups = client.get(f"/api/content/groups?service={service}").json()["groups"]
+    return next(g for g in groups if str(g["id"]) == gid)
+
+
+def test_local_urls_per_poll_is_lexical(tmp_path, monkeypatch):
+    """50 members x 8 entries: no resolve()/relative_to() per entry, <=1
+    is_file() per kind (the hot path of every 2 s /groups poll)."""
+    from backend.services import profile_images_service as pis
+
+    out = tmp_path / "out"
+    members = []
+    for i in range(50):
+        m = out / "日向坂46" / "messages" / f"{i} 金村" / f"{i} 金村"
+        entries = []
+        for kind in pis.KINDS:
+            for h in range(8):
+                entries.append(
+                    {
+                        "kind": kind,
+                        "file": f"{kind}/{i}-{h}.jpeg",
+                        "url": f"https://cdn/{i}-{h}.jpeg",
+                        "first_seen": f"2026-0{h + 1}",
+                    }
+                )
+        _archive_images(
+            m, entries, {k: f"https://cdn/{i}-7.jpeg?s=1" for k in pis.KINDS}
+        )
+        members.append(m)
+    rels = [m.relative_to(out).as_posix() for m in members]
+    for m, rel in zip(members, rels):  # warm the parse cache
+        pis.local_urls(out, m, rel)
+
+    calls = {"resolve": 0, "relative_to": 0, "is_file": 0}
+    for name in calls:
+        orig = getattr(Path, name)
+
+        def counted(self, *a, _o=orig, _n=name, **k):
+            calls[_n] += 1
+            return _o(self, *a, **k)
+
+        monkeypatch.setattr(Path, name, counted)
+    for m, rel in zip(members, rels):
+        urls = pis.local_urls(out, m, rel)
+        assert all(urls.values())
+    assert calls["resolve"] == 0 and calls["relative_to"] == 0
+    assert calls["is_file"] <= 3 * len(members)
+
+
+def test_media_url_is_served_for_cjk_and_space_names(archive):
+    root = archive / HINATA_SINGLE
+    _archive_images(
+        root,
+        [
+            {
+                "kind": "thumbnail",
+                "file": "thumbnail/日本 語.jpeg",
+                "url": "https://cdn/日本 語.jpeg",
+                "first_seen": "2026-01-01T00:00:00Z",
+            }
+        ],
+        {"thumbnail": "https://cdn/日本 語.jpeg?sig=z"},
+    )
+    url = _sidebar_member()["members"][0]["thumbnail_local"]
+    assert url and url.startswith("/api/content/media/hinatazaka46/")
+    res = client.get(url)
+    assert res.status_code == 200 and res.content == b"img"
+
+
+@pytest.mark.parametrize(
+    "bad_file",
+    [
+        "thumbnail/../thumbnail/new.jpeg",
+        "thumbnail/./new.jpeg",
+        "thumbnail/sub/new.jpeg",
+        "thumbnail//new.jpeg",
+        "phone_image/new.jpeg",  # wrong kind directory
+        "thumbnail/new.jpeg ",
+    ],
+)
+def test_non_canonical_index_files_are_rejected(archive, bad_file):
+    root = archive / HINATA_SINGLE
+    good = dict(T_NEW)
+    _archive_images(root, [good], {"thumbnail": good["url"]})
+    bad = dict(T_NEW, file=bad_file, first_seen="2026-08-01T00:00:00Z")
+    (root / "profile_images" / "index.json").write_text(
+        json.dumps(
+            {"version": 1, "current": {"thumbnail": good["url"]}, "images": [bad]}
+        ),
+        encoding="utf-8",
+    )
+    thumbs = client.get(f"/api/content/profile_images?path={HINATA_SINGLE}").json()[
+        "kinds"
+    ]["thumbnail"]
+    assert thumbs == [{"url": good["url"], "first_seen": None, "current": True}]
+    assert _sidebar_member()["members"][0]["thumbnail_local"] is None
+
+
+def test_symlinked_output_dir_keeps_read_paths_working(tmp_path):
+    real = tmp_path / "real"
+    root = build_archive(real)
+    _archive_images(root / HINATA_SINGLE, [T_NEW], {"thumbnail": T_NEW["url"]})
+    link = tmp_path / "link"
+    link.symlink_to(real, target_is_directory=True)
+    with patch("backend.api.content.get_output_dir", return_value=link):
+        member = _sidebar_member()["members"][0]
+        assert member["thumbnail_local"] == f"{PREFIX}/thumbnail/new.jpeg"
+        single = client.get(f"/api/content/messages_by_path?path={HINATA_SINGLE}")
+        assert single.status_code == 200
+        assert single.json()["member"]["thumbnail_local"] == member["thumbnail_local"]
+        listing = client.get(f"/api/content/profile_images?path={HINATA_SINGLE}")
+        assert listing.status_code == 200
+        assert (
+            listing.json()["kinds"]["thumbnail"][0]["url"] == member["thumbnail_local"]
+        )
+        group_path = "日向坂46/messages/43 日向坂46"
+        _archive_images(
+            root / group_path / "1 メンバーA", [T_NEW], {"thumbnail": T_NEW["url"]}
+        )
+        grp = client.get(f"/api/content/group_messages/{group_path}?limit=0").json()
+        assert len(grp["messages"]) == 3
+        a = next(m for m in grp["members"] if str(m["id"]) == "1")
+        assert a["thumbnail_local"].endswith("/profile_images/thumbnail/new.jpeg")
+
+
+MALFORMED = {
+    "mixed_first_seen": {
+        "version": 1,
+        "current": {"thumbnail": "https://cdn/new.jpeg"},
+        "images": [
+            T_NEW,
+            dict(T_NEW, file="thumbnail/a.jpeg", first_seen=5),
+            dict(T_NEW, file="thumbnail/b.jpeg", first_seen=None),
+            dict(T_NEW, file="thumbnail/c.jpeg", first_seen=["x"]),
+        ],
+    },
+    "current_list": {"version": 1, "current": ["x"], "images": [T_NEW]},
+    "current_str": {"version": 1, "current": "x", "images": [T_NEW]},
+    "current_values": {
+        "version": 1,
+        "current": {"thumbnail": 5, "phone_image": None, "group_thumbnail": ["u"]},
+        "images": [T_NEW],
+    },
+    "entries_not_dicts": {"images": [1, "x", None, ["y"], T_NEW]},
+    "file_not_str": {
+        "images": [dict(T_NEW, file=5), dict(T_NEW, file=["a"]), dict(T_NEW, file=None)]
+    },
+    "kind_unhashable": {
+        "images": [dict(T_NEW, kind=["thumbnail"]), dict(T_NEW, kind={})]
+    },
+    "images_not_list": {"images": {"a": 1}},
+    "top_level_list": [T_NEW],
+    "top_level_scalar": 3,
+}
+
+
+@pytest.mark.parametrize("name", sorted(MALFORMED))
+def test_malformed_index_never_breaks_read_paths(archive, name):
+    root = archive / HINATA_SINGLE
+    before = _sidebar_member()
+    (root / "profile_images").mkdir(parents=True)
+    (root / "profile_images" / "thumbnail").mkdir()
+    for n in ("new", "a", "b", "c"):
+        (root / "profile_images" / "thumbnail" / f"{n}.jpeg").write_bytes(b"img")
+    (root / "profile_images" / "index.json").write_text(
+        json.dumps(MALFORMED[name]), encoding="utf-8"
+    )
+    after = _sidebar_member()
+    assert after["last_message_id"] == before["last_message_id"] != 0
+    assert after["total_messages"] == before["total_messages"] != 0
+    assert (
+        client.get(f"/api/content/messages_by_path?path={HINATA_SINGLE}").status_code
+        == 200
+    )
+    assert (
+        client.get(f"/api/content/profile_images?path={HINATA_SINGLE}").status_code
+        == 200
+    )
+    grp = client.get(
+        "/api/content/group_messages/日向坂46/messages/43 日向坂46?limit=0"
+    )
+    assert grp.status_code == 200 and len(grp.json()["messages"]) == 3
+
+
+def test_local_urls_failure_is_contained(archive):
+    from backend.services import profile_images_service as pis
+
+    before = _sidebar_member()
+    with patch.object(pis, "_load_view", side_effect=RuntimeError("boom")):
+        after = _sidebar_member()
+        urls = pis.local_urls(archive, archive / HINATA_SINGLE)
+    assert urls == {f"{k}_local": None for k in pis.KINDS}
+    assert after["last_message_id"] == before["last_message_id"]
+    assert after["total_messages"] == before["total_messages"]
+    assert all(m["thumbnail_local"] is None for m in after["members"])
+
+
+def test_corrupt_index_is_logged_once_per_stat_key(archive):
+    from backend.services import profile_images_service as pis
+
+    member = archive / HINATA_SINGLE
+    index = member / "profile_images" / "index.json"
+    index.parent.mkdir(parents=True)
+    index.write_text("{bad", encoding="utf-8")
+    with patch.object(pis, "logger") as log:
+        for _ in range(5):
+            pis.local_urls(archive, member)
+        assert log.warning.call_count == 1
+        index.write_text("{still bad!", encoding="utf-8")  # new stat key
+        for _ in range(3):
+            pis.local_urls(archive, member)
+        assert log.warning.call_count == 2

@@ -299,23 +299,31 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                         member_meta["portrait"] = m_data.get("portrait")
                         member_meta["phone_image"] = m_data.get("phone_image")
                         member_meta["group_thumbnail"] = m_data.get("group_thumbnail")
-                        member_meta.update(
-                            profile_images_service.local_urls(output_dir, member_dir)
-                        )
 
-                        if m_data.get("group_thumbnail"):
+                        has_group_thumbnail = bool(m_data.get("group_thumbnail"))
+                        if has_group_thumbnail:
                             group_thumbnail = m_data.get("group_thumbnail")
-                            group_thumbnail_local = member_meta.get(
-                                "group_thumbnail_local"
+
+                        try:
+                            # Get last message ID (last in file order, as before)
+                            last_id = summary.require_last_id()
+                            if last_id is not NO_MESSAGES and last_id > last_message_id:
+                                last_message_id = last_id
+
+                            # Count messages
+                            total_messages += summary.require_total()
+                        finally:
+                            # After the sidebar totals, so archived-image trouble
+                            # can never cost a member its counts. Never raises.
+                            member_meta.update(
+                                profile_images_service.local_urls(
+                                    output_dir, member_dir, member_meta["path"]
+                                )
                             )
-
-                        # Get last message ID (last in file order, as before)
-                        last_id = summary.require_last_id()
-                        if last_id is not NO_MESSAGES and last_id > last_message_id:
-                            last_message_id = last_id
-
-                        # Count messages
-                        total_messages += summary.require_total()
+                            if has_group_thumbnail:
+                                group_thumbnail_local = member_meta.get(
+                                    "group_thumbnail_local"
+                                )
                     except Exception as e:
                         logger.warning(
                             "Failed to read messages file",
@@ -433,7 +441,9 @@ def _not_modified(etag: str) -> Response:
     return Response(status_code=304, headers={"ETag": etag, "Cache-Control": _NO_CACHE})
 
 
-def _load_member_messages(msg_file: Path, limit: int, last_read_id: int) -> dict:
+def _load_member_messages(
+    msg_file: Path, limit: int, last_read_id: int, output_dir: Optional[Path] = None
+) -> dict:
     """Blocking body of messages_by_path (unchanged logic) — run in a thread."""
     with open(msg_file, "r", encoding="utf-8") as f:
         data: dict = json.load(f)
@@ -460,8 +470,9 @@ def _load_member_messages(msg_file: Path, limit: int, last_read_id: int) -> dict
     data["unread_count"] = unread_count
     data["max_message_id"] = max_message_id
     if isinstance(data.get("member"), dict):
+        output_dir = output_dir or get_output_dir()
         data["member"].update(
-            profile_images_service.local_urls(get_output_dir(), msg_file.parent)
+            profile_images_service.local_urls(output_dir, msg_file.parent)
         )
     return data
 
@@ -517,7 +528,11 @@ async def get_messages_by_path(
 
     try:
         data = await asyncio.to_thread(
-            _load_member_messages, msg_file, limit, last_read_id
+            _load_member_messages,
+            msg_file,
+            limit,
+            last_read_id,
+            output_dir,
         )
     except Exception as e:
         logger.error("Failed to load messages", path=path, error=str(e))
@@ -541,9 +556,15 @@ def _group_member_files(safe_path: Path) -> list[Path]:
 
 
 def _load_group_messages(
-    safe_path: Path, group_path: str, limit: int, last_read_id: int
+    safe_path: Path,
+    group_path: str,
+    limit: int,
+    last_read_id: int,
+    output_dir: Optional[Path] = None,
 ) -> dict:
     """Blocking body of group_messages (unchanged logic) — run in a thread."""
+    output_dir = output_dir or get_output_dir()  # once, not per member
+    group_rel = profile_images_service.rel_path(output_dir, safe_path)
     all_messages = []
     members_map = {}
 
@@ -572,7 +593,11 @@ def _load_group_messages(
                     "group_thumbnail": member_info.get("group_thumbnail"),
                 }
                 members_map[member_id].update(
-                    profile_images_service.local_urls(get_output_dir(), member_dir)
+                    profile_images_service.local_urls(
+                        output_dir,
+                        member_dir,
+                        f"{group_rel}/{member_dir.name}" if group_rel else None,
+                    )
                 )
 
                 for msg in _visible_messages(data.get("messages", [])):
@@ -655,7 +680,12 @@ async def get_group_messages(
         return _not_modified(etag)
 
     data = await asyncio.to_thread(
-        _load_group_messages, safe_path, group_path, limit, last_read_id
+        _load_group_messages,
+        safe_path,
+        group_path,
+        limit,
+        last_read_id,
+        output_dir,
     )
     if etag is not None:
         response.headers["ETag"] = etag
@@ -678,7 +708,12 @@ async def get_profile_images(path: str):
             member_block = get_messages_summary(msg_file).require_member()
         except (OSError, ValueError, AttributeError):  # unreadable / malformed
             member_block = {}
-        return profile_images_service.list_images(output_dir, member_dir, member_block)
+        return profile_images_service.list_images(
+            output_dir,
+            member_dir,
+            member_block,
+            profile_images_service.rel_path(output_dir, member_dir),
+        )
 
     return await asyncio.to_thread(_build)
 
