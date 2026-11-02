@@ -262,7 +262,10 @@ def test_groups_member_block_matches_old_code(tmp_path, name):
     member = group["members"][0]
     for key, value in meta.items():
         assert member[key] == value, key
-    assert set(member) - {"id", "name", "dir_name", "path"} == set(meta)
+    # ``*_local`` keys are the additive archived-image URLs (None: no archive here)
+    local_keys = {"group_thumbnail_local", "thumbnail_local", "phone_image_local"}
+    assert set(member) - {"id", "name", "dir_name", "path"} - local_keys == set(meta)
+    assert all(member[k] is None for k in local_keys & set(member))
     assert group["thumbnail"] == thumb
     assert group["last_message_id"] == last_id
     assert group["total_messages"] == total

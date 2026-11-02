@@ -46,6 +46,7 @@ from backend.services.messages_cache import (
     get_messages_summary,
     stat_key,
 )
+from backend.services import profile_images_service
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -276,6 +277,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
             last_message_id = 0
             total_messages = 0
             group_thumbnail = None
+            group_thumbnail_local = None
 
             for member_dir in member_dirs:
                 member_id, member_name = parse_id_name(member_dir.name)
@@ -297,9 +299,15 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                         member_meta["portrait"] = m_data.get("portrait")
                         member_meta["phone_image"] = m_data.get("phone_image")
                         member_meta["group_thumbnail"] = m_data.get("group_thumbnail")
+                        member_meta.update(
+                            profile_images_service.local_urls(output_dir, member_dir)
+                        )
 
                         if m_data.get("group_thumbnail"):
                             group_thumbnail = m_data.get("group_thumbnail")
+                            group_thumbnail_local = member_meta.get(
+                                "group_thumbnail_local"
+                            )
 
                         # Get last message ID (last in file order, as before)
                         last_id = summary.require_last_id()
@@ -352,6 +360,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                     "is_graduated": is_graduated,
                     "server_unread_count": server_unread_count,
                     "thumbnail": group_thumbnail,
+                    "thumbnail_local": group_thumbnail_local,
                     "last_message_id": last_message_id,
                     "total_messages": total_messages,
                     "members": members_info,
@@ -450,6 +459,10 @@ def _load_member_messages(msg_file: Path, limit: int, last_read_id: int) -> dict
     data["total_count"] = total
     data["unread_count"] = unread_count
     data["max_message_id"] = max_message_id
+    if isinstance(data.get("member"), dict):
+        data["member"].update(
+            profile_images_service.local_urls(get_output_dir(), msg_file.parent)
+        )
     return data
 
 
@@ -491,7 +504,14 @@ async def get_messages_by_path(
 
     # offset is a response-shaping API parameter, so it is keyed even though
     # the handler does not use it yet.
-    etag = _etag([msg_file], "member", path, limit, offset, last_read_id)
+    etag = _etag(
+        [msg_file, *profile_images_service.index_files(safe_path)],
+        "member",
+        path,
+        limit,
+        offset,
+        last_read_id,
+    )
     if etag is not None and _etag_matches(if_none_match, etag):
         return _not_modified(etag)
 
@@ -516,6 +536,7 @@ def _group_member_files(safe_path: Path) -> list[Path]:
             msg_file = member_dir / "messages.json"
             if msg_file.exists():
                 files.append(msg_file)
+                files.extend(profile_images_service.index_files(member_dir))
     return files
 
 
@@ -550,6 +571,9 @@ def _load_group_messages(
                     "phone_image": member_info.get("phone_image"),
                     "group_thumbnail": member_info.get("group_thumbnail"),
                 }
+                members_map[member_id].update(
+                    profile_images_service.local_urls(get_output_dir(), member_dir)
+                )
 
                 for msg in _visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
@@ -637,6 +661,26 @@ async def get_group_messages(
         response.headers["ETag"] = etag
         response.headers["Cache-Control"] = _NO_CACHE
     return data
+
+
+@router.get("/profile_images")
+async def get_profile_images(path: str):
+    """Archived list icon / chat icon / call-screen images of one member, newest
+    first per kind; falls back to the remote URLs before pysaka archived them."""
+    output_dir = get_output_dir()
+    member_dir = validate_path_within_dir(output_dir, path)
+    msg_file = member_dir / "messages.json"
+    if not msg_file.exists():
+        raise HTTPException(status_code=404, detail="No messages found")
+
+    def _build() -> dict:
+        try:
+            member_block = get_messages_summary(msg_file).require_member()
+        except (OSError, ValueError, AttributeError):  # unreadable / malformed
+            member_block = {}
+        return profile_images_service.list_images(output_dir, member_dir, member_block)
+
+    return await asyncio.to_thread(_build)
 
 
 class ReadStateInput(BaseModel):
