@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forever**: since 0.3.2, sync stopped checking lapsed subscriptions at all, so
   their last-known online status never changed. Sync now checks them again, and
   lapsed members move to the offline section on the next sync.
+- **Copying a blog image to the clipboard failed with "copy failed"** when
+  the post's images were not backed up locally (blog full backup off, the
+  default): the official image server blocks direct in-app downloads. Copy now
+  fetches the image through the app, the same way Save already did.
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted
   to Yes, which automated uninstalls auto-accept. Cleanup now runs only when
