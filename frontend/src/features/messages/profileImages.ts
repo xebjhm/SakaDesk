@@ -30,8 +30,8 @@ export function memberImageUrl(member: MemberImageFields | null | undefined, kin
 export async function fetchProfileImages(path: string, signal?: AbortSignal): Promise<ProfileImagesByKind> {
     const res = await fetch(`/api/content/profile_images?path=${encodeURIComponent(path)}`, { signal });
     if (!res.ok) throw new Error(`profile_images ${res.status}`);
-    const body = (await res.json()) as { kinds: ProfileImagesByKind };
-    return body.kinds;
+    const body = (await res.json()) as { kinds?: ProfileImagesByKind };
+    return body.kinds ?? {};
 }
 
 function day(ts: string): string {

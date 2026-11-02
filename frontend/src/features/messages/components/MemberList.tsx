@@ -9,7 +9,9 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
-import { memberImageUrl } from '../profileImages';
+import { fetchProfileImages, memberImageUrl, type ProfileImagesByKind } from '../profileImages';
+import { MemberContextMenu } from './MemberContextMenu';
+import { ProfileImageViewer } from './ProfileImageViewer';
 
 interface GroupInfo {
     id: string;
@@ -55,6 +57,14 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
+    const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+    const [viewer, setViewer] = useState<ProfileImagesByKind | null>(null);
+
+    const openImages = (path: string) => {
+        fetchProfileImages(path)
+            .then(k => setViewer(k))
+            .catch(err => console.error('Failed to load profile images:', err));
+    };
 
     // Get theme colors for current service
     const theme = useMessagesTheme();
@@ -215,6 +225,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     <button
                         key={group.id}
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
+                        onContextMenu={info.isGroupChat ? undefined : (e) => {
+                            e.preventDefault();
+                            setMenu({ x: e.clientX, y: e.clientY, path: info.path });
+                        }}
                         className="flex flex-col items-center py-1 relative group"
                         title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
@@ -378,6 +392,13 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     )}
                 </div>
             </div>
+
+            {menu && (
+                <MemberContextMenu x={menu.x} y={menu.y} onViewImages={() => openImages(menu.path)} onClose={() => setMenu(null)} />
+            )}
+            {viewer && (
+                <ProfileImageViewer images={viewer} initialKind="thumbnail" onClose={() => setViewer(null)} />
+            )}
         </div>
     );
 };

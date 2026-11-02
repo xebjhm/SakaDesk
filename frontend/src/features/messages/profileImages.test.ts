@@ -33,6 +33,10 @@ describe('fetchProfileImages', () => {
         const kinds = await fetchProfileImages('日向坂46/messages/34 a/58 b');
         expect(kinds.thumbnail?.[0].url).toBe('u');
     });
+    it('returns an empty map when the body has no kinds', async () => {
+        server.use(http.get('/api/content/profile_images', () => HttpResponse.json({})));
+        expect(await fetchProfileImages('x')).toEqual({});
+    });
     it('throws on HTTP errors', async () => {
         server.use(http.get('/api/content/profile_images', () => new HttpResponse(null, { status: 404 })));
         await expect(fetchProfileImages('x')).rejects.toThrow();

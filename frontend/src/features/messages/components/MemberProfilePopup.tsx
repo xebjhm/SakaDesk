@@ -6,6 +6,10 @@ import type { BaseModalProps } from '../../../types/modal';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import { useTranslation, Trans } from '../../../i18n';
 import { parseErrorDetail } from '../../../utils/httpError';
+import { cn } from '../../../utils/classnames';
+import { fetchProfileImages, type ProfileImageKind, type ProfileImagesByKind } from '../profileImages';
+import { ProfileImagePills } from './ProfileImagePills';
+import { ProfileImageViewer } from './ProfileImageViewer';
 
 interface StreakData {
     days: number;
@@ -18,6 +22,8 @@ interface MemberProfilePopupProps extends BaseModalProps {
     memberAvatar?: string;
     groupId?: string;
     activeService?: string; // Service ID for API calls
+    /** Member directory; pills/viewer are shown only when set (single-member chats). */
+    memberPath?: string;
 }
 
 /**
@@ -31,6 +37,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     memberAvatar,
     groupId,
     activeService,
+    memberPath,
 }) => {
     const { t } = useTranslation();
     const [streak, setStreak] = useState<StreakData | null>(null);
@@ -39,6 +46,17 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
     // Bumping this re-runs the fetch effect (used by the Retry button).
     const [retryCounter, setRetryCounter] = useState(0);
     const retry = useCallback(() => setRetryCounter((c) => c + 1), []);
+    const [images, setImages] = useState<ProfileImagesByKind>({});
+    const [viewerKind, setViewerKind] = useState<ProfileImageKind | null>(null);
+
+    useEffect(() => {
+        if (!isOpen || !memberPath) { setImages({}); return; }
+        const controller = new AbortController();
+        fetchProfileImages(memberPath, controller.signal)
+            .then(k => { if (!controller.signal.aborted) setImages(k); })
+            .catch(() => { if (!controller.signal.aborted) setImages({}); });
+        return () => controller.abort();
+    }, [isOpen, memberPath]);
 
     // Get theme for the active service
     const theme = useMemo(() => getServiceTheme(activeService ?? null), [activeService]);
@@ -99,6 +117,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         if (!isOpen) {
             setStreak(null);
             setError(null);
+            setViewerKind(null);
         }
     }, [isOpen]);
 
@@ -107,7 +126,8 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         if (!isOpen) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') {
+            // The image viewer handles its own Escape; don't also close the popup.
+            if (e.key === 'Escape' && !viewerKind) {
                 onClose();
             }
         };
@@ -119,7 +139,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
             document.removeEventListener('keydown', handleKeyDown);
             document.body.style.overflow = '';
         };
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, viewerKind]);
 
     if (!isOpen) return null;
 
@@ -170,7 +190,13 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
 
                     {/* Large Avatar - overlapping header and content */}
                     <div className="flex justify-center -mt-24">
-                        <div className="w-48 h-48 rounded-full bg-white shadow-xl overflow-hidden border-4 border-white">
+                        <button
+                            type="button"
+                            disabled={!images.thumbnail?.length}
+                            onClick={() => setViewerKind('thumbnail')}
+                            className={cn('w-48 h-48 rounded-full bg-white shadow-xl overflow-hidden border-4 border-white', images.thumbnail?.length ? 'cursor-zoom-in' : 'cursor-default')}
+                            aria-label={t('profileImages.thumbnail')}
+                        >
                             {memberAvatar ? (
                                 <img
                                     src={memberAvatar}
@@ -182,15 +208,17 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                                     {memberName.substring(0, 2)}
                                 </div>
                             )}
-                        </div>
+                        </button>
                     </div>
 
                     {/* Content */}
                     <div className="px-6 pt-4 pb-8 text-center">
                         {/* Name */}
-                        <h3 id="profile-title" className="text-xl font-bold text-gray-900 mb-6">
+                        <h3 id="profile-title" className="text-xl font-bold text-gray-900 mb-2">
                             {memberName}
                         </h3>
+
+                        <ProfileImagePills images={images} onOpen={setViewerKind} />
 
                         {/* Streak Display */}
                         {loading ? (
@@ -223,6 +251,9 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                     </div>
                 </div>
             </div>
+            {viewerKind && (
+                <ProfileImageViewer images={images} initialKind={viewerKind} onClose={() => setViewerKind(null)} />
+            )}
         </Portal>
     );
 };

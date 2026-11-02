@@ -39,12 +39,19 @@ describe('MemberList unread badge — poll failure', () => {
         );
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-        render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
+        try {
+            render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
 
-        expect(await screen.findByText('3')).toBeInTheDocument();
-        // Wait until at least two further (failing) polls have happened.
-        await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
-        expect(screen.getByText('3')).toBeInTheDocument();
-        consoleError.mockRestore();
+            expect(await screen.findByText('3')).toBeInTheDocument();
+            // Wait until at least two further (failing) polls have happened and
+            // the failure has been logged.
+            await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
+            await waitFor(() =>
+                expect(consoleError).toHaveBeenCalledWith('Failed to fetch unread counts:', expect.anything()),
+            );
+            expect(screen.getByText('3')).toBeInTheDocument();
+        } finally {
+            consoleError.mockRestore();
+        }
     });
 });
