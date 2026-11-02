@@ -533,5 +533,16 @@
       "geminiPaid": "Paid tier — about US$0.01 per 100 translations. Your data isn't used for training.",
       "openai": "API data not used for training"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "List icon",
+    "thumbnailGroupHint": "Icon shown in the conversation list",
+    "thumbnail": "Chat icon",
+    "thumbnailHint": "Avatar shown next to messages in the chat",
+    "phoneImage": "Call screen",
+    "phoneImageHint": "Photo shown when the member calls",
+    "viewImages": "View images",
+    "current": "Now",
+    "versions": "{{count}} versions"
   }
 }
