@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Installing an update from inside the app could just close SakaDesk and do
+  nothing**: the installer often gave up because SakaDesk hadn't finished
+  closing yet, so nothing was installed and the app didn't reopen. It now waits
+  for SakaDesk to close, installs the update, and reopens it.
+
 ## [0.3.4] - 2026-11-03
 
 ### Changed

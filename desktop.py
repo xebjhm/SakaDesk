@@ -45,7 +45,7 @@ _uvicorn_server: uvicorn.Server | None = None
 
 # Kept alive for the whole process so the mutex persists until the process exits.
 _instance_mutex_handle: int | None = None
-# NAME-SYNC: keep identical to AppMutex in tooling/windows/setup.iss. build.ps1
+# NAME-SYNC: keep identical to MyAppMutex in tooling/windows/setup.iss. build.ps1
 # runs tooling/windows/check_mutex_sync.py as a preflight and fails on drift.
 INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
@@ -56,7 +56,7 @@ _SW_RESTORE = 9
 
 
 def _acquire_instance_mutex() -> bool:
-    """Create a named mutex the Windows installer keys off (Inno ``AppMutex``).
+    """Create a named mutex the Windows installer waits on (``MyAppMutex``).
 
     Windows keeps the mutex alive until every handle is closed — i.e. until this
     process fully terminates (``os._exit`` closes all handles). The installer
@@ -84,7 +84,7 @@ def _acquire_instance_mutex() -> bool:
         _instance_mutex_handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX_NAME)
         if not _instance_mutex_handle:
             # NULL handle: CreateMutexW failed (does not raise). The installer's
-            # AppMutex protection is then absent — surface it, but fail open.
+            # wait-for-exit protection is then absent — surface it, but fail open.
             logger.warning("CreateMutexW returned NULL; instance mutex not held")
             return True
         return kernel32.GetLastError() != _ERROR_ALREADY_EXISTS

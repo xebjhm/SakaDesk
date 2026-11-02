@@ -10,6 +10,11 @@
 #define MyAppPublisher "xebjhm"
 #define MyAppURL "https://github.com/xebjhm/SakaDesk"
 #define MyAppExeName "SakaDesk.exe"
+; The app holds this named mutex (desktop.py) for its whole lifetime; [Code]
+; below waits on it. NAME-SYNC: keep identical to INSTANCE_MUTEX_NAME in
+; desktop.py. build.ps1 runs tooling/windows/check_mutex_sync.py as a preflight
+; and fails the build on drift.
+#define MyAppMutex "SakaDeskInstanceMutex"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application.
@@ -42,13 +47,14 @@ ShowLanguageDialog=yes
 ; Close running SakaDesk before install/uninstall
 CloseApplications=yes
 CloseApplicationsFilter=*.exe
-; The app holds this mutex (desktop.py) for its whole lifetime. Setup detects it
-; and, together with PrepareToInstall below, waits for the app to fully exit
-; before replacing files — the app's loaded DLLs in _internal (e.g. libffi-8.dll)
-; stay locked until the process truly terminates.
-; NAME-SYNC: keep identical to INSTANCE_MUTEX_NAME in desktop.py. build.ps1 runs
-; tooling/windows/check_mutex_sync.py as a preflight and fails the build on drift.
-AppMutex=SakaDeskInstanceMutex
+; Deliberately NO AppMutex directive. Setup checks AppMutex at startup, before
+; PrepareToInstall, and under /SILENT /SUPPRESSMSGBOXES its "app is running"
+; prompt defaults to Cancel, so Setup aborts at once. The in-app upgrade
+; launches Setup that way while the app is still exiting (it releases the mutex
+; only a few seconds later), so AppMutex made the upgrade fail: the app closed
+; and nothing was installed or relaunched. PrepareToInstall (install) and
+; InitializeUninstall (uninstall) wait on {#MyAppMutex} themselves instead.
+; check_mutex_sync.py fails the build if an AppMutex directive comes back.
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -140,10 +146,11 @@ begin
   if Wnd <> 0 then
     PostMessage(Wnd, $0010, 0, 0);  // $0010 = WM_CLOSE
 
-  // 2. Wait up to ~12s for the graceful shutdown (uvicorn stop + worker kills)
-  //    to release the mutex.
+  // 2. Wait up to ~30s for the graceful shutdown (sync stop, uvicorn stop,
+  //    worker kills) to release the mutex. The window-close path alone can
+  //    take 8s (uvicorn join) plus 3s per worker process.
   Waited := 0;
-  while (Waited < 24) and CheckForMutexes('SakaDeskInstanceMutex') do
+  while (Waited < 60) and CheckForMutexes('{#MyAppMutex}') do
   begin
     Sleep(500);
     Waited := Waited + 1;
@@ -152,10 +159,26 @@ begin
   Sleep(500);
 
   // 3. Still alive? Stop cleanly instead of rolling back mid-install.
-  if CheckForMutexes('SakaDeskInstanceMutex') then
+  if CheckForMutexes('{#MyAppMutex}') then
     Result := 'SakaDesk is still running and could not be closed automatically.' + #13#10 +
               'Please close it (check the notification area and Task Manager for' + #13#10 +
               'SakaDesk.exe), then run Setup again.';
+end;
+
+// Uninstall stand-in for the AppMutex check removed from [Setup]: same prompt
+// and default (Cancel) as Inno's built-in check. The uninstaller has no
+// PrepareToInstall step, so this is its only guard against removing files the
+// running app still holds open.
+function InitializeUninstall(): Boolean;
+begin
+  Result := True;
+  while CheckForMutexes('{#MyAppMutex}') do
+    if SuppressibleMsgBox(FmtMessage(SetupMessage(msgUninstallAppRunningError), ['{#MyAppName}']),
+                          mbError, MB_OKCANCEL, IDCANCEL) <> IDOK then
+    begin
+      Result := False;
+      Exit;
+    end;
 end;
 
 // Write installer language choice to settings.json so the app uses it as default

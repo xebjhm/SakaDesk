@@ -8,8 +8,18 @@ upgrade. This can't run in Linux CI — it needs a real Windows machine.
 - `desktop.py` holds a named mutex `SakaDeskInstanceMutex` for the whole process
   lifetime (child workers are killed before `os._exit`, so the mutex clearing
   means the entire process tree is gone).
-- `setup.iss` adds `AppMutex=SakaDeskInstanceMutex` + a `PrepareToInstall()` loop
-  that waits up to ~12 s for that mutex to clear **before** the `[Files]` step.
+- `setup.iss` has a `PrepareToInstall()` loop that waits for that mutex to clear
+  **before** the `[Files]` step (originally ~12 s, now ~30 s).
+
+> **Update (after 0.3.4):** the original fix also set `AppMutex=`. Inno checks
+> `AppMutex` at Setup startup, and under the in-app upgrade's `/SILENT
+> /SUPPRESSMSGBOXES` the "app is running" prompt defaults to Cancel, so Setup
+> aborted at once whenever it started before the app had exited. The app
+> closed and nothing was installed. `AppMutex` is gone; `PrepareToInstall`
+> (install) and `InitializeUninstall` (uninstall) wait on the mutex instead, and
+> `check_mutex_sync.py` fails the build if `AppMutex=` returns. A manual
+> double-click upgrade never hit this (the prompt is interactive there), so
+> **scenario 4 is the one that catches it**.
 
 ---
 
@@ -71,6 +81,9 @@ the mutex). Decide this *before* releasing 0.3.1. See scenario 8.
 - [ ] Trigger via the app's **Check for updates → install** (`/SILENT`
       `launch_installer` flow), not a manual double-click.
 - [ ] Expect: seamless upgrade + relaunch, no dialog.
+- [ ] Check `%LOCALAPPDATA%\SakaDesk\logs\installer.log` (written by the app's
+      `/LOG=` flag): it must **not** contain `Defaulting to Cancel for suppressed
+      message box`, and must end with `Installation process succeeded`.
 
 ### 5. Regression — fresh install
 - [ ] Clean machine (or post-uninstall) → run NEW.
