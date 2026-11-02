@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Some chats silently stopped receiving new messages after 0.3.2** — often
+  official group channels and members whose chat history starts at your
+  subscription date: every sync of that chat failed in the background, so it
+  stayed frozen while your phone kept getting new messages. These chats update
+  again, and messages you missed are filled in automatically on the next sync.
 - **The member profile's subscription streak read awkwardly in Japanese and
   Chinese** (e.g. "購読して 128 日間！"): the sentence was stitched together in
   English word order. Each language now has its own natural sentence, such as
