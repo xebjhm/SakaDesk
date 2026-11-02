@@ -328,7 +328,9 @@ class SyncService:
             existing_content = [
                 f
                 for f in existing_files
-                if f.name not in ["sync_metadata.json", "sync_state.json"]
+                # "account" is written by archive_account_profile early in every
+                # sync, so a first sync that failed afterwards must stay fresh.
+                if f.name not in ["sync_metadata.json", "sync_state.json", "account"]
             ]
             is_fresh = len(existing_content) == 0
 
@@ -359,6 +361,17 @@ class SyncService:
                     logger.info("No groups found!")
                     progress.complete()
                     return
+
+                # pysaka 0.4.5: own nickname + avatar (for the chat's letter
+                # bubbles). Personal fields are never stored by pysaka.
+                try:
+                    await self.manager.archive_account_profile(session)
+                except (SessionExpiredError, RefreshFailedError):
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "account_profile_failed", error_type=type(e).__name__
+                    )
 
                 progress.set_completed(len(groups))
                 # Build task list
@@ -564,6 +577,36 @@ class SyncService:
                             media_queue,
                             prefetched_messages=member_prefetched,
                         )
+                        # pysaka 0.4.5: once per member, merge the ~1-1.5 days
+                        # before the first subscription (and their media). Free
+                        # after the first success (flag in sync_state); never
+                        # fails the sync.
+                        try:
+                            await self.manager.backfill_past_messages(
+                                session, task["group"], task["member"]
+                            )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                "past_backfill_failed",
+                                member_id=member_id,
+                                error_type=type(e).__name__,
+                            )
+                        # pysaka 0.4.5: archive the account's sent letters to
+                        # this member (shown inline in the chat later).
+                        try:
+                            await self.manager.sync_letters(
+                                session, task["group"], task["member"]
+                            )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                "letters_sync_failed",
+                                member_id=member_id,
+                                error_type=type(e).__name__,
+                            )
                         m_name = task["member"]["name"]
                         progress.update(
                             1, detail=f"{m_name} ({count:,})", detail_extra=""

@@ -897,6 +897,37 @@ class TestFreshVsIncrementalSync:
 
         mock_progress.complete.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_account_dir_does_not_defeat_fresh_detection(self, tmp_path):
+        """archive_account_profile writes ``account/`` early in a sync; a first
+        sync that failed afterwards must still be detected as fresh."""
+        service_dir = tmp_path / "日向坂46"
+        (service_dir / "account").mkdir(parents=True)
+        (service_dir / "account" / "profile.json").write_text("{}", encoding="utf-8")
+        (service_dir / "sync_state.json").write_text("{}", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=[])
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+
+        with patch("backend.services.sync_service.logger") as mock_logger:
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[],
+                members=None,
+                mock_manager=mock_manager,
+            )
+
+        starts = [
+            c for c in mock_logger.info.call_args_list if c.args[0] == "sync_start"
+        ]
+        assert len(starts) == 1
+        assert starts[0].kwargs["is_fresh"] is True
+
 
 # ---------------------------------------------------------------------------
 # Sync phase progression — full pipeline with mocked client
@@ -1753,6 +1784,118 @@ class TestInitialLimitAndIncludeInactive:
         }
         assert synced_groups == {100}
         assert saved["server_groups"]["200"]["is_active"] is False
+
+    @pytest.mark.asyncio
+    async def test_phase2_backfills_each_member_and_isolates_errors(self, tmp_path):
+        """Every synced member gets one backfill call and one letters call; an
+        error from either (or the account-profile archive) is logged and never
+        fails the sync."""
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+            {
+                "id": 200,
+                "name": "G2",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+        ]
+
+        async def members(_session, gid):
+            return [{"id": gid + 1, "name": f"M{gid}"}]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(
+            side_effect=[RuntimeError("boom"), 2]
+        )
+        mock_manager.sync_letters = AsyncMock(side_effect=[RuntimeError("boom"), 3])
+        mock_manager.archive_account_profile = AsyncMock(
+            side_effect=OSError("disk full")
+        )
+        saved: dict = {}
+
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=groups,
+            members=None,
+            mock_manager=mock_manager,
+            saved=saved,
+        )
+
+        assert mock_manager.backfill_past_messages.await_count == 2
+        backfilled = {
+            c.args[1]["id"] for c in mock_manager.backfill_past_messages.await_args_list
+        }
+        assert backfilled == {100, 200}
+        assert {c.args[1]["id"] for c in mock_manager.sync_member.await_args_list} == {
+            100,
+            200,
+        }
+        assert {c.args[1]["id"] for c in mock_manager.sync_letters.await_args_list} == {
+            100,
+            200,
+        }
+        mock_manager.archive_account_profile.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method", ["backfill_past_messages", "sync_letters", "archive_account_profile"]
+    )
+    async def test_phase2_new_calls_propagate_auth_errors(self, tmp_path, method):
+        """Isolation must not swallow auth failures from the pysaka 0.4.5 calls."""
+        from pysaka import SessionExpiredError
+
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=[{"id": 101, "name": "M"}])
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = MagicMock()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(return_value=0)
+        mock_manager.sync_letters = AsyncMock(return_value=0)
+        mock_manager.archive_account_profile = AsyncMock(return_value={})
+        setattr(mock_manager, method, AsyncMock(side_effect=SessionExpiredError("x")))
+
+        with pytest.raises(SessionExpiredError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=groups,
+                members=None,
+                mock_manager=mock_manager,
+            )
 
     @pytest.mark.asyncio
     async def test_members_session_expiry_still_propagates(self, tmp_path):
