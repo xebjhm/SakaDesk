@@ -9,6 +9,7 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { memberImageUrl } from '../profileImages';
 
 interface GroupInfo {
     id: string;
@@ -22,6 +23,7 @@ interface GroupInfo {
     is_graduated?: boolean;
     server_unread_count?: number | null; // Server's last-synced unread (phone -> Windows); null = unknown
     thumbnail?: string; // Group thumbnail
+    thumbnail_local?: string | null; // Archived local copy of the group thumbnail, if any
     last_message_id?: number;
     total_messages?: number;
     members: MemberInfo[];
@@ -163,7 +165,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 shortName: getShortName(group.name),
                 path: group.group_path,  // Use full group path from API
                 isGroupChat: true,
-                avatar: group.thumbnail || null, // Use group thumbnail from metadata
+                avatar: group.thumbnail_local || group.thumbnail || null, // Prefer archived copy, then group thumbnail from metadata
                 isActive: group.is_active ?? true
             };
         } else {
@@ -173,8 +175,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 shortName: getShortName(member?.name || group.name),
                 path: member?.path || group.group_path,  // Use member's full path from API
                 isGroupChat: false,
-                // Priority: Group Thumbnail (from messages.json member meta) > Thumbnail > Portrait > Phone
-                avatar: member?.group_thumbnail || member?.thumbnail || member?.portrait || member?.phone_image || null,
+                // Priority: Group Thumbnail (from messages.json member meta) > Thumbnail > Portrait > Phone;
+                // each image prefers its archived local copy over the CDN URL
+                avatar: memberImageUrl(member, 'group_thumbnail') || memberImageUrl(member, 'thumbnail') || member?.portrait || memberImageUrl(member, 'phone_image') || null,
                 isActive: group.is_active ?? true
             };
         }
