@@ -8,6 +8,7 @@ import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
+import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 
 interface GroupInfo {
     id: string;
@@ -128,16 +129,12 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             setUnreadCounts(counts);
         } catch (err) {
             console.error('Failed to fetch unread counts:', err);
-            // Fallback: don't show any unread counts rather than showing wrong ones
-            setUnreadCounts({});
+            // Keep the last known counts: they were correct one poll ago, while
+            // clearing them made every badge flicker off on a single hiccup.
         }
     };
 
-    useEffect(() => {
-        loadGroups();
-        const interval = setInterval(loadGroups, UI_CONSTANTS.polling.sidebarMs);
-        return () => clearInterval(interval);
-    }, [activeService]);
+    useVisiblePolling(loadGroups, UI_CONSTANTS.polling.sidebarMs, [activeService]);
 
     useEffect(() => {
         if (isSyncing === false) {
