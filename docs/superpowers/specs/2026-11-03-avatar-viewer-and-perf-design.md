@@ -47,7 +47,7 @@ Kind ↔ data mapping: list icon = `group_thumbnail`, chat icon = `thumbnail`, c
 - New `ProfileImageViewer` component composing the existing `MediaViewerModal` (no fork): a tab bar of the three kinds (only kinds with images), and the modal's `mediaItems` = that kind's versions **newest first**.
 - Left/Right moves within a kind; clicking a tab switches kind and resets to its newest version.
 - Footer label (`sourceLabel`): `YYYY/MM/DD – YYYY/MM/DD` (from this version's `first_seen` to the next version's `first_seen`), or `YYYY/MM/DD – 目前` for the current one. Dates are UTC in data and localized at display.
-- Copy (button + Ctrl+C) and Save appear only when 金手指 is active — unchanged existing behaviour of `MediaViewerModal` / `useClipboardShortcut`. Saved filename: `<member>_<kind>_<basename>`.
+- Copy (button + Ctrl+C) and Save appear only when 金手指 is active — unchanged existing behaviour of `MediaViewerModal` / `useClipboardShortcut` (default filename = the image basename). `MediaViewerModal` gains one small change: a `sourceLabel` without `onSourceJump` renders as plain text (today it is only shown as a jump link).
 
 ---
 
@@ -64,7 +64,7 @@ Kind ↔ data mapping: list icon = `group_thumbnail`, chat icon = `thumbnail`, c
   }
 }
 ```
-- Reads `profile_images/index.json` (in a thread). `current` comes from the index's `current` map (maintained by pysaka from fresh API data each sync), not from the possibly stale member block in `messages.json`.
+- Reads `profile_images/index.json` (in a thread). The index's `current` map holds each kind's latest API **URL** (maintained by pysaka every sync, even before the download succeeds); the current entry is the archived image whose `url` matches. If none matches yet, a remote entry with that URL is listed first. This avoids the possibly stale member block in `messages.json`.
 - When the index is absent or a kind has no local file yet (before the first post-upgrade sync, or a failed download), that kind falls back to a single entry with the remote CDN URL and `"current": true`, so the viewer works on day one.
 - Path is validated with the existing `validate_path_within_dir`; served files go through the existing `/api/content/media/{file_path}` route.
 
@@ -76,7 +76,7 @@ Kind ↔ data mapping: list icon = `group_thumbnail`, chat icon = `thumbnail`, c
 `_update_local_favorite` keeps its per-service scan to locate the file, but the write becomes `SyncManager.update_message_fields(file, message_id, {"is_favorite": …})` (pysaka 0.4.5). The scan itself moves onto the summary cache (§5.1) to find the owning file without parsing every file.
 
 ### 4.4 Backfill orchestration
-`sync_service` calls `manager.backfill_past_messages(...)` for each member task after its `sync_member`, before the media phase so backfilled media joins the same download queue. Backfill errors are logged and never fail the sync. Progress UI needs no change (counts fold into the existing totals). Changelog tells users their archive may gain a few days of older messages after upgrading.
+`sync_service` calls `manager.backfill_past_messages(session, group, member)` for each member task after its `sync_member` (backfill downloads its own media, see the pysaka spec §5). Backfill errors are logged and never fail the sync. Progress UI needs no change (counts fold into the existing totals). Changelog tells users their archive may gain a few days of older messages after upgrading.
 
 ---
 
@@ -97,8 +97,8 @@ Measured 2026-11-03 on the user's archive: 51 `messages.json`, 14.7 MB total, la
 `messages_by_path` and `group_messages` move their `json.load` + shaping into `asyncio.to_thread` (`/groups` and `/unread_counts` already are).
 
 ### 5.3 Conditional GET for chat loads
-- `messages_by_path` / `group_messages` return `ETag` = hash of (stat keys of the files read, every query parameter that shapes the response, app version). `If-None-Match` match ⇒ `304`, body skipped.
-- Frontend `fetchMessages` sends the last ETag for the same path+params and keeps its current state on `304`; anything else is handled exactly as today.
+- `messages_by_path` / `group_messages` return `ETag` = hash of (stat keys of the files read, every query parameter that shapes the response, app version) plus `Cache-Control: no-cache`. `If-None-Match` match ⇒ `304`, body skipped.
+- No frontend change: with `no-cache` the WebView's HTTP cache revalidates every `fetch` automatically and hands the cached body back on `304`, so the backend skips parsing and serialising while the frontend code path stays identical.
 
 ### 5.4 Frontend polling
 - Interval stays 2 s (now near-free). Polling pauses while `document.visibilityState === 'hidden'` and runs once immediately on becoming visible.
