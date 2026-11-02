@@ -1219,7 +1219,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `backend/tests/golden/read_path.json` (regenerated, additive only)
 
 **Interfaces:**
-- Consumes: `StatCache` (Task 2); pysaka index format `{"version": 1, "current": {kind: url}, "images": [{"kind","file","url","first_seen"}]}` with `file` relative to `profile_images/`.
+- Consumes: `StatCache` (Task 2); `pysaka.profile_images.relative_file(kind, url)` (match current image by basename); pysaka index format `{"version": 1, "current": {kind: url}, "images": [{"kind","file","url","first_seen"}]}` with `file` relative to `profile_images/`; `current` URLs may differ from `images[].url` only by query string.
 - Produces:
   - `KINDS = ("group_thumbnail", "thumbnail", "phone_image")`
   - `local_urls(output_dir: Path, member_dir: Path) -> dict[str, Optional[str]]` (keys `group_thumbnail_local`, `thumbnail_local`, `phone_image_local`)
@@ -1355,6 +1355,8 @@ from pathlib import Path
 from typing import Any, Mapping, Optional
 from urllib.parse import quote
 
+from pysaka.profile_images import relative_file
+
 from backend.services.messages_cache import StatCache
 from backend.services.service_utils import get_service_identifier
 
@@ -1403,9 +1405,15 @@ def _archived(output_dir: Path, member_dir: Path, index: dict[str, Any], kind: s
             continue
         url = _media_url(output_dir, file_path)
         if url:
-            out.append({"url": url, "first_seen": e.get("first_seen"), "source_url": e.get("url")})
+            out.append({"url": url, "first_seen": e.get("first_seen"), "file": str(e["file"])})
     out.sort(key=lambda x: x["first_seen"] or "", reverse=True)
     return out
+
+
+def _is_current(kind: str, entry_file: str, current_url: Optional[str]) -> bool:
+    """Match by archived file (basename), never by full URL: CDN URLs may carry
+    query signatures that change between syncs for the same image."""
+    return bool(current_url) and relative_file(kind, str(current_url)) == entry_file
 
 
 def local_urls(output_dir: Path, member_dir: Path) -> dict[str, Optional[str]]:
@@ -1417,7 +1425,7 @@ def local_urls(output_dir: Path, member_dir: Path) -> dict[str, Optional[str]]:
     current = index.get("current") or {}
     for kind in KINDS:
         for e in _archived(output_dir, member_dir, index, kind):
-            if e["source_url"] == current.get(kind):
+            if _is_current(kind, e["file"], current.get(kind)):
                 result[f"{kind}_local"] = e["url"]
                 break
     return result
@@ -1435,7 +1443,7 @@ def list_images(output_dir: Path, member_dir: Path, member_block: Mapping[str, A
             current_url = (index.get("current") or {}).get(kind)
             archived = _archived(output_dir, member_dir, index, kind)
             entries = [
-                {"url": e["url"], "first_seen": e["first_seen"], "current": e["source_url"] == current_url}
+                {"url": e["url"], "first_seen": e["first_seen"], "current": _is_current(kind, e["file"], current_url)}
                 for e in archived
             ]
             if current_url and not any(e["current"] for e in entries):
