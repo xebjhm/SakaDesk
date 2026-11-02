@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-03
+
 ### Changed
 - **Blog translations can now be shown or hidden**, like message translations:
   they appear automatically when translation finishes, click the "✓ translated"
@@ -391,7 +393,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/xebjhm/SakaDesk/compare/v0.3.3...v0.3.4
+[0.3.3]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/xebjhm/SakaDesk/compare/v0.3.1...v0.3.2
 [0.2.4]: https://github.com/xebjhm/SakaDesk/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/xebjhm/SakaDesk/compare/v0.2.2...v0.2.3
