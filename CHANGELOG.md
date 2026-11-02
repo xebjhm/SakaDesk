@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Blog translations can now be shown or hidden**, like message translations:
+  they appear automatically when translation finishes, tap the "✓ translated"
+  badge to hide or show them again, and they tuck away on their own once you
+  scroll past the post or open another blog.
+
 ### Fixed
 - **Some chats silently stopped receiving new messages after 0.3.2** — often
   official group channels and members whose chat history starts at your

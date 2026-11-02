@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Globe } from 'lucide-react';
+import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 interface TranslateButtonProps {
@@ -16,6 +16,12 @@ interface TranslateButtonProps {
      * persistent "✓ translated" badge next to the post header.
      */
     doneLabel?: string;
+    /**
+     * When set (with `doneLabel`), the done pill becomes a show/hide toggle for
+     * the translated content; `expanded` drives its chevron and aria-expanded.
+     */
+    onToggleExpanded?: () => void;
+    expanded?: boolean;
 }
 
 /**
@@ -29,20 +35,38 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     accentColor = '#6da0d4',
     variant = 'dark',
     doneLabel,
+    onToggleExpanded,
+    expanded = false,
 }) => {
     const { t } = useTranslation();
     const isLight = variant === 'light';
 
     if (state === 'done') {
         if (!doneLabel) return null;
+        const pillStyle = {
+            borderColor: isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`,
+            color: isLight ? 'rgba(255,255,255,0.6)' : '#6b7280',
+            background: isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`,
+        };
+        if (onToggleExpanded) {
+            const Chevron = expanded ? ChevronDown : ChevronRight;
+            return (
+                <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onToggleExpanded(); }}
+                    aria-expanded={expanded}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80"
+                    style={pillStyle}
+                >
+                    <Chevron className="w-3 h-3" />
+                    <span>{doneLabel}</span>
+                </button>
+            );
+        }
         return (
             <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border"
-                style={{
-                    borderColor: isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`,
-                    color: isLight ? 'rgba(255,255,255,0.6)' : '#6b7280',
-                    background: isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`,
-                }}
+                style={pillStyle}
             >
                 {doneLabel}
             </span>

@@ -1,12 +1,6 @@
 # Known Bugs
 
-## 1. Auto-expand/collapse for blog translations
-Message transcriptions and translations now expand when they finish and
-collapse when you scroll away or switch conversations. Blog translations are
-still shown inline with no expand/collapse; they only clear when you switch to
-another blog.
-
-## 2. A chat may stay frozen if its last page is exactly 200 messages
+## 1. A chat may stay frozen if its last page is exactly 200 messages
 Rare edge case left after the frozen-chat fix below. If a chat's whole history
 is an exact multiple of 200 messages and the member posts nothing new, sync for
 that chat keeps failing (it cannot tell the true end of the history from a
@@ -23,6 +17,11 @@ missed messages are filled in on the next sync.
 ### Lapsed subscriptions stayed "online" (0.3.2–0.3.3)
 Sync stopped checking subscriptions you didn't renew, so they never moved to
 the offline section. Sync checks them again.
+
+### Auto-expand/collapse for transcriptions and translations
+Message transcriptions and translations expand when they finish and collapse
+when you scroll away or switch conversations. Blog translations now behave the
+same, with a show/hide toggle on the "✓ translated" badge.
 
 ### Copying a blog image to the clipboard failed
 Only blog images not backed up locally (blog full backup off, the default)
