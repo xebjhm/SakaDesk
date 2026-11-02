@@ -108,6 +108,45 @@ class TestLaunchInstaller:
             result = launch_installer(installer)
         assert result is False
 
+    def test_launches_silently_with_log_in_logs_dir(self, tmp_path):
+        """Setup gets the silent flags plus /LOG into the app's logs dir, so a
+        failed upgrade (which closes the app with no UI) leaves a log."""
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        logs_dir = tmp_path / "ログ"  # non-ASCII path must pass through intact
+        logs_dir.mkdir()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=logs_dir
+            ),
+            patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
+        ):
+            result = launch_installer(installer)
+        assert result is True
+        args = mock_subprocess.Popen.call_args.args[0]
+        assert args == [
+            str(installer),
+            "/SILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            f"/LOG={logs_dir / 'installer.log'}",
+        ]
+
+    def test_returns_false_when_popen_fails(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=tmp_path
+            ),
+            patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
+        ):
+            mock_subprocess.Popen.side_effect = OSError("blocked")
+            result = launch_installer(installer)
+        assert result is False
+
 
 # ── cleanup_upgrade_files ────────────────────────────────────────────
 

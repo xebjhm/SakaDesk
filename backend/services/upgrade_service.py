@@ -5,7 +5,8 @@ Handles downloading new versions and triggering the upgrade process on Windows.
 The upgrade flow:
 1. Download new installer to upgrade directory
 2. Verify SHA-256 digest against GitHub release asset
-3. Launch installer with /SILENT /SUPPRESSMSGBOXES /NORESTART (Inno Setup closes running app + relaunches)
+3. Launch installer with /SILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<logs>/installer.log,
+   then the app exits; Setup waits for it to exit, installs, and relaunches it
 """
 
 import hashlib
@@ -18,7 +19,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from backend.services.platform import is_windows, get_app_data_dir
+from backend.services.platform import is_windows, get_app_data_dir, get_logs_dir
 
 logger = structlog.get_logger(__name__)
 
@@ -234,9 +235,13 @@ def launch_installer(installer_path: Path) -> bool:
     """
     Launch the Inno Setup installer directly and prepare for app exit.
 
-    Inno Setup handles:
-    - CloseApplications=yes → closes the running SakaDesk
+    The caller (``/upgrade/install``) exits the app right after this returns.
+    Inno Setup handles the rest:
+    - PrepareToInstall → waits for the app's instance mutex to clear before
+      replacing files
     - /SILENT → shows a small progress dialog (not invisible like /VERYSILENT)
+    - /LOG → writes ``installer.log`` to the app's logs directory (overwritten
+      on each upgrade), so a failed upgrade leaves evidence behind
     - [Run] section → relaunches SakaDesk.exe after install
 
     No batch script needed — this removes timing/path edge cases.
@@ -256,14 +261,21 @@ def launch_installer(installer_path: Path) -> bool:
         return False
 
     try:
+        log_path = get_logs_dir() / "installer.log"
         subprocess.Popen(
-            [str(installer_path), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART"],
+            [
+                str(installer_path),
+                "/SILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                f"/LOG={log_path}",
+            ],
             creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
             | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )
 
-        logger.info("Installer launched successfully")
+        logger.info("Installer launched successfully", log_path=str(log_path))
         return True
 
     except Exception as e:

@@ -70,9 +70,10 @@ if (-not $ExeOnly -and -not $Iscc) {
     $ExeOnly = $true
 }
 # Guard: the app's instance-mutex name (desktop.py INSTANCE_MUTEX_NAME) must
-# match the installer's AppMutex (setup.iss). If they drift, the in-place
-# upgrade silently regresses to the Restart-Manager-only path and can roll back
-# mid-install. Fail the build before an inconsistent installer can ship.
+# match the installer's MyAppMutex (setup.iss), and setup.iss must not use an
+# AppMutex directive (it aborts the silent in-app upgrade). If the names drift,
+# the in-place upgrade silently regresses to the Restart-Manager-only path and
+# can roll back mid-install. Fail the build before a bad installer can ship.
 # --no-project: the checker is stdlib-only, so skip syncing the pysaka env.
 if (-not $ExeOnly) {
     Write-Host "[0/2] Verifying instance-mutex name is in sync (app <-> installer)..." -ForegroundColor Cyan
