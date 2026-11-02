@@ -97,6 +97,26 @@ class TestStartSync:
 
         assert response.status_code == 200
 
+    def test_start_sync_includes_inactive_by_default(self):
+        """The frontend never sends include_inactive, so the endpoint default must
+        fetch lapsed subscriptions too. With a False default, a member whose
+        subscription expired was dropped from the groups response, her server_groups
+        entry was never refreshed, and she stayed "online" forever (0.3.2 regression).
+        """
+        with patch("backend.api.sync.get_sync_service") as mock_get:
+            mock_svc = MagicMock()
+            mock_svc.running = False
+            mock_get.return_value = mock_svc
+
+            with (
+                patch("backend.api.sync.run_sync_task") as mock_run,
+                patch("backend.api.sync.asyncio.create_task"),
+            ):
+                response = client.post("/api/sync/start?service=hinatazaka46")
+
+        assert response.status_code == 200
+        mock_run.assert_called_once_with("hinatazaka46", True, False)
+
     def test_start_sync_with_force_resync(self):
         """force_resync flag should be accepted."""
         with patch("backend.api.sync.get_sync_service") as mock_get:

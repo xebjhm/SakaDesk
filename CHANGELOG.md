@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Members whose subscription you didn't renew stayed under "online"
+  forever**: since 0.3.2, sync stopped checking lapsed subscriptions at all, so
+  their last-known online status never changed. Sync now checks them again, and
+  lapsed members move to the offline section on the next sync.
 - **A scripted (silent) uninstall could delete your saved credentials and
   settings without ever asking**: the uninstaller's cleanup question defaulted
   to Yes, which automated uninstalls auto-accept. Cleanup now runs only when
