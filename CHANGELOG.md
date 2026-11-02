@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **The member profile's subscription streak read awkwardly in Japanese and
+  Chinese** (e.g. "購読して 128 日間！"): the sentence was stitched together in
+  English word order. Each language now has its own natural sentence, such as
+  「メンバーシップ継続 128 日！」 and 「已連續訂閱 128 天！」.
 - **Members whose subscription you didn't renew stayed under "online"
   forever**: since 0.3.2, sync stopped checking lapsed subscriptions at all, so
   their last-known online status never changed. Sync now checks them again, and
