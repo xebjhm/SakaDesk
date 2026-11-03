@@ -49,6 +49,8 @@ async function ringing(over: Partial<UseIncomingCallArgs> = {}, preload = vi.fn(
     return { ...hook, preload, onOutcome };
 }
 
+const cancelled = (fn: { mock: { calls: [CallOutcome][] } }) => fn.mock.calls.filter(c => c[0].kind === 'cancelled');
+
 describe('useIncomingCall onOutcome', () => {
     it('reports ringing when the call rings', async () => {
         const { onOutcome } = await ringing();
@@ -83,6 +85,7 @@ describe('useIncomingCall onOutcome', () => {
         const { unmount, onOutcome } = await ringing();
         unmount();
         expect(onOutcome).toHaveBeenLastCalledWith({ kind: 'cancelled' });
+        expect(cancelled(onOutcome)).toHaveLength(1);
     });
 
     it('reports cancelled when the setting is turned off while connected', async () => {
@@ -90,6 +93,7 @@ describe('useIncomingCall onOutcome', () => {
         act(() => result.current.answer());
         rerender({ a: makeArgs({ onOutcome, enabled: false, freshFetch: { seq: 1, dir: DIR } }) });
         expect(onOutcome).toHaveBeenLastCalledWith({ kind: 'cancelled' });
+        expect(cancelled(onOutcome)).toHaveLength(1);
     });
 
     it('reports a skipped no_photo for a member without images', async () => {
@@ -124,6 +128,26 @@ describe('useIncomingCall surface', () => {
         act(() => result.current.onPlaybackEnded());
         act(() => { vi.advanceTimersByTime(ENDED_HOLD_MS); });
         expect(events()).toEqual(['call_ring', 'call_answer', 'call_end']);
+        expect(log.mock.calls.every(([, f]) => f?.surface === 'popup')).toBe(true);
+    });
+
+    it("adds surface 'popup' to the call_timeout breadcrumb", async () => {
+        await ringing({ surface: 'popup' });
+        act(() => { vi.advanceTimersByTime(RING_TIMEOUT_MS); });
+        expect(events()).toEqual(['call_ring', 'call_timeout']);
+        expect(log.mock.calls.every(([, f]) => f?.surface === 'popup')).toBe(true);
+    });
+
+    it("adds surface 'popup' to the call_cancel breadcrumb on unmount and when the setting is turned off", async () => {
+        const first = await ringing({ surface: 'popup' });
+        first.unmount();
+        expect(events()).toEqual(['call_ring', 'call_cancel']);
+        expect(log.mock.calls.every(([, f]) => f?.surface === 'popup')).toBe(true);
+
+        log.mockClear();
+        const { rerender, onOutcome } = await ringing({ surface: 'popup' });
+        rerender({ a: makeArgs({ onOutcome, surface: 'popup', enabled: false, freshFetch: { seq: 1, dir: DIR } }) });
+        expect(events()).toEqual(['call_ring', 'call_cancel']);
         expect(log.mock.calls.every(([, f]) => f?.surface === 'popup')).toBe(true);
     });
 
@@ -176,5 +200,34 @@ describe('useIncomingCall isCallElsewhere', () => {
         expect(log).toHaveBeenCalledWith('call_skip', expect.objectContaining({ message_id: 10, reason: 'superseded' }));
         expect(onOutcome).toHaveBeenCalledWith({ kind: 'skipped', reason: 'superseded' });
         expect(events()).not.toContain('call_ring');
+    });
+
+    describe('failed check breadcrumb', () => {
+        const breadcrumb = { message_id: 10, phase: 'idle', error_type: 'popup_check_failed' };
+        const errorCalls = () => log.mock.calls.filter(c => c[0] === 'call_error');
+
+        it('logs popup_check_failed once and rings when the check rejects', async () => {
+            const { result } = await ringing({ isCallElsewhere: vi.fn(() => Promise.reject(new Error('down'))) });
+            expect(result.current.phase).toBe('ringing');
+            expect(errorCalls()).toEqual([['call_error', breadcrumb]]);
+        });
+
+        it('logs popup_check_failed once and still rings when the check throws synchronously', async () => {
+            const isCallElsewhere = vi.fn((): Promise<boolean> => { throw new Error('sync'); });
+            const { result } = await ringing({ isCallElsewhere });
+            expect(isCallElsewhere).toHaveBeenCalledTimes(1);
+            expect(result.current.phase).toBe('ringing');
+            expect(errorCalls()).toEqual([['call_error', breadcrumb]]);
+        });
+
+        it('does not log when the check resolves', async () => {
+            await ringing({ isCallElsewhere: vi.fn(() => Promise.resolve(false)) });
+            expect(errorCalls()).toEqual([]);
+        });
+
+        it("adds surface 'popup' to the failure breadcrumb when a surface is given", async () => {
+            await ringing({ surface: 'popup', isCallElsewhere: vi.fn(() => Promise.reject(new Error('down'))) });
+            expect(errorCalls()).toEqual([['call_error', { ...breadcrumb, surface: 'popup' }]]);
+        });
     });
 });

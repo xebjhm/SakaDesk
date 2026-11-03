@@ -54,7 +54,7 @@ export interface UseIncomingCallArgs {
     /**
      * Asked once, after the preload and the unread check, before ringing: true when another
      * surface (the popup) already owns this voice, so the call is skipped as `popup_active`.
-     * A rejection counts as false.
+     * A rejection or a synchronous throw counts as false (logged as `popup_check_failed`).
      */
     isCallElsewhere?: (messageId: number) => Promise<boolean>;
 }
@@ -297,7 +297,12 @@ export function useIncomingCall(
                 const elsewhere = argsRef.current.isCallElsewhere;
                 if (elsewhere) {
                     // The popup owns this voice (main window visible but unfocused): don't ring it twice.
-                    const active = await elsewhere(message.id).catch(() => false);
+                    // A sync throw or a rejection both count as "not elsewhere" (we ring) and are logged here;
+                    // isCallPopupActive handles its own failures, so there is no double log.
+                    const active = await Promise.resolve().then(() => elsewhere(message.id)).catch(() => {
+                        log('call_error', { message_id: message.id, phase: 'idle', error_type: 'popup_check_failed' });
+                        return false;
+                    });
                     if (stale()) return skip('superseded');
                     if (phaseRef.current !== 'idle') return skip('call_active');
                     if (active) return skip('popup_active');
