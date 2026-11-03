@@ -100,7 +100,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
             role="dialog"
             aria-label={call.name}
             tabIndex={-1}
-            className="absolute inset-0 z-30 overflow-hidden outline-none"
+            className="sd-call-overlay absolute inset-0 z-30 overflow-hidden outline-none"
             style={{ '--sd-accent': accentColor } as React.CSSProperties}
             data-testid="call-overlay"
         >

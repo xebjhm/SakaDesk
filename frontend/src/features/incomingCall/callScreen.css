@@ -4,6 +4,8 @@
    corner radius chosen by the host's frame. */
 
 /* ---------- Chat-area overlay (CallOverlay) ---------- */
+/* Opaque base: the large blur on .sd-call-ambient turns transparent at small sizes, letting the chat show through. */
+.sd-call-overlay { background: #0d0f14; }
 .sd-call-ambient {
   position: absolute; inset: -8%;
   background-size: cover; background-position: center 30%;

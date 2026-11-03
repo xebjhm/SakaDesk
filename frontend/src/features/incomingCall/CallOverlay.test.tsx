@@ -27,6 +27,7 @@ describe('CallOverlay', () => {
             <CallOverlay call={call()} accentColor="#E85298" answerStyle="light" groupLabel="櫻坂46" />,
         );
         const overlay = screen.getByTestId('call-overlay');
+        expect(overlay).toHaveClass('sd-call-overlay');
         expect(overlay.style.getPropertyValue('--sd-accent')).toBe('#E85298');
         expect(container.querySelector('.sd-call-ambient')).toHaveStyle({ backgroundImage: 'url("/img/phone.jpg")' });
         expect(container.querySelector('.sd-call-stage .sd-call-frame .sd-call-screen')).not.toBeNull();
