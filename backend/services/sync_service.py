@@ -713,14 +713,25 @@ class SyncService:
                                 )
                                 member_prefetched = member_msgs[-initial_limit:]
 
-                        count = await self.manager.sync_member(
-                            session,
-                            task["group"],
-                            task["member"],
-                            media_queue,
-                            prefetched_messages=member_prefetched,
-                            **({"ignore_cursor": True} if scan else {}),
-                        )
+                        # ignore_cursor only for scanned rooms; incremental
+                        # calls keep their exact pre-scan arguments.
+                        if scan:
+                            count = await self.manager.sync_member(
+                                session,
+                                task["group"],
+                                task["member"],
+                                media_queue,
+                                prefetched_messages=member_prefetched,
+                                ignore_cursor=True,
+                            )
+                        else:
+                            count = await self.manager.sync_member(
+                                session,
+                                task["group"],
+                                task["member"],
+                                media_queue,
+                                prefetched_messages=member_prefetched,
+                            )
                         # A scanned room's counts and a first-seen extra author's
                         # counts are recovered history: searchable (full scan) but
                         # not reported as new. In a scanned room only the
