@@ -103,8 +103,10 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
                 <CallScreen
                     phase={phase}
                     name={call.name}
+                    groupLabel=""
                     photoUrl={call.photoUrl}
                     talkSeconds={talkSeconds}
+                    answerStyle="solid"
                     onAnswer={answer}
                     onDecline={decline}
                     onHangUp={hangUp}

@@ -1,0 +1,169 @@
+/* Incoming-call screen (spec §2.5). Plain CSS rather than Tailwind because the design relies
+   on container-query units, color-mix(), masked backdrop blur and keyframes. Every class is
+   prefixed `sd-call-`. Colours come from --sd-accent (set by the host); --sd-rad is the
+   corner radius chosen by the host's frame. */
+
+/* ---------- Chat-area overlay (CallOverlay) ---------- */
+.sd-call-ambient {
+  position: absolute; inset: -8%;
+  background-size: cover; background-position: center 30%;
+  filter: blur(64px) saturate(1.35) brightness(.9);
+  transform: scale(1.1);
+}
+.sd-call-vignette {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 90% at 50% 40%, rgba(8,10,18,.05) 0%, rgba(8,10,18,.45) 70%, rgba(8,10,18,.7) 100%);
+}
+.sd-call-stage {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  container-type: size;
+}
+.sd-call-frame {
+  --sd-r: 0.5625; /* 9 / 16 */
+  --sd-pad-y: clamp(12px, 3.2cqh, 40px);
+  --sd-rad: clamp(16px, 2.6cqh, 34px);
+  position: relative;
+  aspect-ratio: 9 / 16;
+  width: min(calc((100cqh - 2 * var(--sd-pad-y)) * var(--sd-r)), calc(100cqw - 32px), calc(1200px * var(--sd-r)));
+}
+.sd-call-halo { position: absolute; inset: 0; border-radius: var(--sd-rad); pointer-events: none; }
+.sd-call-halo[data-phase="ringing"] {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent) 75%, white),
+              0 0 60px 8px color-mix(in srgb, var(--sd-accent) 55%, transparent);
+  animation: sd-call-breathe 2.4s ease-in-out infinite;
+}
+.sd-call-halo[data-phase="connected"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sd-accent) 45%, transparent); }
+@keyframes sd-call-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* ---------- The card (CallScreen; also reused by C's popup) ---------- */
+.sd-call-screen {
+  --sd-accent-deep: color-mix(in srgb, var(--sd-accent, #7cc7e8) 70%, #0b1a33);
+  position: relative; width: 100%; height: 100%;
+  overflow: hidden; border-radius: var(--sd-rad, 24px);
+  container-type: inline-size;
+  color: rgba(255,255,255,.96);
+  box-shadow: 0 30px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.12);
+}
+.sd-call-photo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center 30%;
+  transition: filter .6s ease, transform .6s ease;
+}
+.sd-call-screen[data-phase="ended"] .sd-call-photo { filter: brightness(.72) saturate(.92) blur(1.5px); transform: scale(1.02); }
+
+/* Progressive-blur bands, like the premium voice player */
+.sd-call-band { position: absolute; left: 0; right: 0; pointer-events: none; }
+.sd-call-band > .sd-call-band-blur { position: absolute; inset: 0; backdrop-filter: blur(22px) saturate(150%); -webkit-backdrop-filter: blur(22px) saturate(150%); }
+.sd-call-band > .sd-call-band-tint { position: absolute; inset: 0; }
+.sd-call-band--bottom { bottom: 0; height: 30%; }
+.sd-call-band--bottom > .sd-call-band-blur { -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 62%); mask-image: linear-gradient(to bottom, transparent 0%, black 62%); }
+.sd-call-band--bottom > .sd-call-band-tint { background: linear-gradient(to bottom, rgba(8,10,18,0) 0%, rgba(8,10,18,.45) 50%, rgba(8,10,18,.72) 100%); }
+.sd-call-band--top { top: 0; height: 22%; }
+.sd-call-band--top > .sd-call-band-blur { -webkit-mask-image: linear-gradient(to top, transparent 0%, black 60%); mask-image: linear-gradient(to top, transparent 0%, black 60%); }
+.sd-call-band--top > .sd-call-band-tint { background: linear-gradient(to top, rgba(8,10,18,0), rgba(8,10,18,.5)); }
+.sd-call-shade-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 24%; pointer-events: none; background: linear-gradient(to top, rgba(6,8,14,.72), rgba(6,8,14,.25) 55%, transparent); }
+
+/* Text */
+.sd-call-eyebrow {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: clamp(2px, 1.2cqw, 6px);
+  font-size: clamp(10px, 2.8cqw, 12.5px); font-weight: 600; letter-spacing: .16em;
+  color: rgba(255,255,255,.86); text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.sd-call-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--sd-accent); box-shadow: 0 0 8px var(--sd-accent); }
+.sd-call-name {
+  font-size: clamp(15px, 7cqw, 30px); font-weight: 700; letter-spacing: .04em; line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-shadow: 0 1px 2px rgba(0,0,0,.55), 0 0 22px rgba(0,0,0,.45);
+}
+.sd-call-status {
+  margin-top: clamp(2px, 1.4cqw, 6px);
+  font-size: clamp(11px, 3.2cqw, 13.5px); letter-spacing: .12em;
+  color: rgba(255,255,255,.72); text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+
+/* Ringing layout: row when the card is wide enough, stacked when narrow */
+.sd-call-ring {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 0 clamp(12px, 5.5cqw, 28px) clamp(12px, 5.5cqw, 26px);
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px;
+}
+.sd-call-who { min-width: 0; }
+.sd-call-actions { display: flex; justify-content: center; gap: clamp(20px, 15cqw, 64px); }
+@container (max-width: 400px) {
+  .sd-call-ring { flex-direction: column; align-items: center; text-align: center; gap: clamp(10px, 4cqw, 16px); }
+  .sd-call-eyebrow { justify-content: center; }
+}
+.sd-call-act {
+  display: flex; flex-direction: column; align-items: center; gap: clamp(4px, 1.9cqw, 8px);
+  font-size: clamp(10px, 2.9cqw, 12px); letter-spacing: .1em;
+  color: rgba(255,255,255,.72); text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+@container (max-width: 230px) { .sd-call-act-label { display: none; } }
+
+/* Buttons ("soft solid") */
+.sd-call-btn {
+  position: relative; display: grid; place-items: center;
+  width: clamp(48px, 16cqw, 72px); height: clamp(48px, 16cqw, 72px);
+  border: 0; border-radius: 50%; color: #fff; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.22);
+  transition: transform .15s ease;
+}
+.sd-call-btn::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,0) 50%); }
+.sd-call-btn:hover { transform: scale(1.05); }
+.sd-call-btn:active { transform: scale(.96); }
+.sd-call-btn:focus-visible { outline: 2px solid #fff; outline-offset: 4px; }
+.sd-call-btn svg { position: relative; z-index: 1; width: 42%; height: 42%; }
+/* Decline and hang-up: the same soft red for every group */
+.sd-call-btn--decline { background: linear-gradient(180deg, #ef6a70, #dc4b5a); }
+.sd-call-btn--decline svg { transform: rotate(135deg); }
+/* Answer: the only button carrying the group style */
+.sd-call-btn--answer { background: linear-gradient(180deg, color-mix(in srgb, var(--sd-accent) 80%, white), color-mix(in srgb, var(--sd-accent-deep) 85%, var(--sd-accent))); }
+.sd-call-screen[data-answer-style="light"] .sd-call-btn--answer {
+  background: rgba(255,255,255,.95); color: var(--sd-accent);
+  box-shadow: 0 6px 18px rgba(0,0,0,.22), inset 0 0 0 1.5px var(--sd-accent);
+}
+.sd-call-screen[data-answer-style="light"] .sd-call-btn--answer::after { background: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,0) 50%); }
+.sd-call-ripple {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  border: 1.5px solid color-mix(in srgb, var(--sd-accent) 80%, white);
+  animation: sd-call-ripple 1.8s ease-out infinite;
+}
+.sd-call-ripple--late { animation-delay: .9s; }
+@keyframes sd-call-ripple { from { transform: scale(1); opacity: .5; } to { transform: scale(1.75); opacity: 0; } }
+
+/* Connected */
+.sd-call-talk {
+  position: absolute; left: 0; right: 0; top: 0;
+  padding: clamp(14px, 5cqw, 26px) clamp(14px, 5.5cqw, 28px);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.sd-call-talk .sd-call-name { font-size: clamp(15px, 5.6cqw, 24px); }
+.sd-call-timer {
+  display: flex; align-items: center; gap: 8px; flex: none;
+  font-size: clamp(12px, 3.6cqw, 15px); font-weight: 500; letter-spacing: .04em; font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0,0,0,.6);
+}
+.sd-call-live { width: 7px; height: 7px; border-radius: 50%; background: #5ee08a; box-shadow: 0 0 8px #5ee08a; }
+.sd-call-dock { position: absolute; left: 50%; bottom: clamp(12px, 6.7cqw, 28px); transform: translateX(-50%); }
+
+/* Ended */
+.sd-call-endcard {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: clamp(10px, 4.3cqw, 18px) clamp(16px, 7cqw, 30px);
+  border-radius: calc(var(--sd-rad, 24px) - 10px);
+  text-align: center; white-space: nowrap;
+  background: rgba(22,24,34,.30);
+  backdrop-filter: blur(26px) saturate(170%); -webkit-backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid rgba(255,255,255,.30);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 10px 30px rgba(0,0,0,.25);
+}
+.sd-call-endcard::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.26) 0%, rgba(255,255,255,.06) 42%, rgba(255,255,255,.02) 100%); }
+.sd-call-endcard-title { position: relative; font-size: clamp(14px, 4.3cqw, 18px); font-weight: 600; letter-spacing: .14em; }
+.sd-call-endcard-time { position: relative; margin-top: 4px; font-size: clamp(12px, 3.4cqw, 13px); color: rgba(255,255,255,.72); font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-call-halo { animation: none; }
+  .sd-call-ripple { animation: none; display: none; }
+}
