@@ -10,8 +10,9 @@ from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.services.background_tasks import track_background_task
 from backend.services.shutdown_state import is_shutting_down
+from backend.services.sync_launcher import launch_sync
 from backend.api.progress import progress_manager
-import asyncio
+import asyncio  # noqa: F401  (tests patch backend.api.sync.asyncio.create_task)
 
 logger = structlog.get_logger(__name__)
 
@@ -75,30 +76,18 @@ async def start_sync(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    # C1c: refuse to spawn a NEW writer once shutdown has begun -- a sync
-    # started after this point would still be running (and writing) after
-    # quiesce_writers()/data_lock.release(), escaping the barrier entirely.
-    if is_shutting_down():
+    result = await launch_sync(
+        service,
+        include_inactive=include_inactive,
+        force_resync=force_resync,
+        origin="api",
+    )
+    if result == "shutting_down":
         raise HTTPException(status_code=503, detail="Application is shutting down")
-
-    sync_service = get_sync_service(service)
-    if sync_service.running:
+    if result == "already_running":
         raise HTTPException(
             status_code=400, detail=f"Sync already running for {service}"
         )
-
-    # Get per-service progress tracker
-    progress = progress_manager.get(service)
-    progress.reset()
-    progress.start_phase("starting", "Starting", 0, 0, "")
-    progress.set_detail("Initializing..." + (" (Resyncing)" if force_resync else ""))
-
-    # Register the running task on the service so /cancel can target it with a
-    # real task.cancel() (SVC-C1). start_sync also captures this via
-    # asyncio.current_task(); assigning here closes the schedule-delay gap so a
-    # cancel arriving before the coroutine first runs still finds the task.
-    task = asyncio.create_task(run_sync_task(service, include_inactive, force_resync))
-    sync_service._task = task
 
     return {"status": "started", "service": service}
 
@@ -198,17 +187,11 @@ async def get_next_interval(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    from backend.services.adaptive_sync import calculate_next_sync_interval
+    from backend.services.adaptive_sync import next_interval_minutes
     from backend.services.settings_store import load_config
 
     settings = await load_config()
-    adaptive = settings["adaptive_sync_enabled"]
-
-    if adaptive:
-        interval = calculate_next_sync_interval()
-    else:
-        # Fixed mode: use user's configured interval directly
-        interval = float(settings["sync_interval_minutes"])
+    interval = next_interval_minutes(settings)
 
     return {"interval_minutes": round(interval, 1)}
 

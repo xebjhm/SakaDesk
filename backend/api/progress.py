@@ -29,11 +29,15 @@ class SyncProgress:
 
     def __init__(self):
         self._lock = Lock()
+        # Incremented by every reset(), i.e. once per started run, so a client
+        # that was not watching can tell that a run happened in between.
+        self._run_id = 0
         self.reset()
 
     def reset(self):
-        """Reset all progress state"""
+        """Reset all progress state and start a new run (``run_id`` + 1)"""
         with self._lock:
+            self._run_id += 1
             self._state = "idle"
             self._phase = ""
             self._phase_name = ""
@@ -153,6 +157,7 @@ class SyncProgress:
             eta = int(remaining / speed) if speed > 0 else None
 
             return {
+                "run_id": self._run_id,
                 "state": self._state,
                 "phase": self._phase,
                 "phase_name": self._phase_name,

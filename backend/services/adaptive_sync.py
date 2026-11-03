@@ -23,6 +23,8 @@ because the idols post on a Japan schedule.
 """
 
 import random
+from typing import Any, Mapping
+
 import structlog
 from datetime import datetime, timezone, timedelta
 
@@ -158,6 +160,18 @@ def calculate_next_sync_interval(
     )
 
     return interval
+
+
+def next_interval_minutes(settings: Mapping[str, Any]) -> float:
+    """Minutes until the next auto-sync, from the user's settings.
+
+    Adaptive mode returns :func:`calculate_next_sync_interval`; fixed mode returns
+    the configured ``sync_interval_minutes`` unchanged.
+    """
+    if settings["adaptive_sync_enabled"]:
+        return calculate_next_sync_interval()
+    # Fixed mode: use user's configured interval directly
+    return float(settings["sync_interval_minutes"])
 
 
 def get_sync_interval_description(interval_minutes: float) -> str:
