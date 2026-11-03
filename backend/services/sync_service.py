@@ -303,6 +303,9 @@ class SyncService:
         - force_resync: True to delete previous sync state and fetching fresh logic
         - initial_limit: On a member's initial (cursor-less) sync, keep only the
           newest N messages; 0 (the default) means unlimited — keep full history.
+          Not applied in a room whose one-time history scan runs in this sync,
+          nor to extra room authors (not in the room's member list): both
+          always keep full history, or the scan could never complete.
         """
         if self.running:
             return False
