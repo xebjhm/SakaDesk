@@ -24,12 +24,12 @@ from urllib.parse import parse_qs, urlencode
 import structlog
 
 from backend.services import desktop_bridge
+from backend.services.app_identity import AUMID
 from backend.services.i18n import get_strings
 from backend.services.notification_planner import ChatTarget, ToastPlan
 
 logger = structlog.get_logger(__name__)
 
-AUMID = "SakaDesk"
 _BACKEND_WINDOWS = "windows_toasts"
 _BACKEND_NONE = "none"
 _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fire

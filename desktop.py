@@ -8,6 +8,7 @@ webview.settings["ALLOW_DOWNLOADS"] = True
 import threading  # noqa: E402
 import uvicorn  # noqa: E402
 import os  # noqa: E402
+import sys  # noqa: E402
 import socket  # noqa: E402
 import traceback  # noqa: E402
 import time  # noqa: E402
@@ -23,6 +24,10 @@ from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
 from backend.services import desktop_bridge  # noqa: E402
+from backend.services.app_identity import (  # noqa: E402
+    ensure_start_menu_shortcut,
+    set_process_aumid,
+)
 from backend.services.service_utils import atomic_write_json  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
@@ -148,6 +153,32 @@ def make_open_chat_handler(window, focus_fn):
             )
 
     return handler
+
+
+def _register_app_identity() -> None:
+    """Register the Start Menu shortcut + AUMID so Windows shows toast banners.
+
+    Frozen builds set the process AUMID and ensure the per-user Start Menu
+    shortcut; dev runs only log ``skipped_dev``. Never raises or blocks startup.
+    """
+    try:
+        frozen = bool(getattr(sys, "frozen", False))
+        if frozen:
+            set_process_aumid()
+            programs_dir = (
+                Path(os.environ["APPDATA"])
+                / "Microsoft"
+                / "Windows"
+                / "Start Menu"
+                / "Programs"
+            )
+        else:
+            programs_dir = Path()
+        ensure_start_menu_shortcut(
+            frozen=frozen, exe=Path(sys.executable), programs_dir=programs_dir
+        )
+    except Exception as e:
+        logger.warning("app_identity", action="failed", error_type=type(e).__name__)
 
 
 def _kill_children(children: list) -> None:
@@ -426,6 +457,9 @@ def main() -> None:
             raise RuntimeError(
                 f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s"
             )
+
+        # Start Menu shortcut + AUMID so toast banners show (frozen only).
+        _register_app_identity()
 
         # Load saved window geometry
         geom = _load_window_geometry()
