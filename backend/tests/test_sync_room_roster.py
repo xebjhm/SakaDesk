@@ -381,7 +381,7 @@ async def test_scan_breadcrumbs_logged(tmp_path):
     assert found["group_id"] == 43 and found["member_ids"] == [22, 0]
     assert found["count"] == 2
     (finished,) = _events(logs, "room_history_scan_finished")
-    assert finished["group_id"] == 43 and finished["marked"] is True
+    assert finished["group_id"] == 43 and finished["complete"] is True
     assert finished["fetched_msgs"] == 3 and finished["extra_members"] == 2
     assert "elapsed" in finished
     assert not _events(logs, "room_history_scan_incomplete")
@@ -401,7 +401,7 @@ async def test_incomplete_scan_breadcrumbs(tmp_path):
     (incomplete,) = _events(logs, "room_history_scan_incomplete")
     assert incomplete["group_id"] == 43
     (finished,) = _events(logs, "room_history_scan_finished")
-    assert finished["marked"] is False
+    assert finished["complete"] is False
 
 
 @pytest.mark.parametrize(
@@ -440,3 +440,133 @@ async def test_scan_fetch_failure_breadcrumb(tmp_path):
     assert failed["group_id"] == 43 and failed["error_type"] == "RateLimitedError"
     assert not _events(logs, "room_history_scan_finished")
     m.mark_history_scanned.assert_not_called()
+
+
+# --- Final review item 1: mark a scan only after the media phase ------------
+
+
+def _scan_with_media(m):
+    """Make sync_member queue one media item, so phase 3 has work to do."""
+    counts = {79: 1, 22: 50, 0: 3}
+
+    async def _sync(s, g, member, q, **kw):
+        q.append({"url": "u", "path": "p", "timestamp": "t"})
+        return counts.get(member["id"], 0)
+
+    m.sync_member = AsyncMock(side_effect=_sync)
+    return m
+
+
+async def test_scan_marked_only_after_media_phase(tmp_path):
+    order: list[str] = []
+    m = _scan_with_media(_manager(scanned=False))
+
+    async def _media(session, chunk, progress_callback=None):
+        order.append("media")
+        return {}
+
+    m.process_media_queue = AsyncMock(side_effect=_media)
+    m.mark_history_scanned = MagicMock(side_effect=lambda gid: order.append("mark"))
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert order == ["media", "mark"]
+    (marked,) = _events(logs, "room_history_scan_marked")
+    assert marked["group_id"] == 43
+    assert not _events(logs, "room_history_scan_mark_deferred")
+
+
+async def test_scan_not_marked_when_media_phase_raises(tmp_path):
+    m = _scan_with_media(_manager(scanned=False))
+    m.process_media_queue = AsyncMock(side_effect=OSError("disk full"))
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    m.mark_history_scanned.assert_not_called()
+    (deferred,) = _events(logs, "room_history_scan_mark_deferred")
+    assert deferred["group_ids"] == [43] and deferred["reason"] == "OSError"
+
+
+async def test_scan_not_marked_when_media_phase_cancelled(tmp_path):
+    m = _scan_with_media(_manager(scanned=False))
+    m.process_media_queue = AsyncMock(side_effect=asyncio.CancelledError())
+    with capture_logs() as logs:
+        with pytest.raises(asyncio.CancelledError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[GROUP],
+                members=API_MEMBERS,
+                mock_manager=m,
+            )
+    m.mark_history_scanned.assert_not_called()
+    (deferred,) = _events(logs, "room_history_scan_mark_deferred")
+    assert deferred["group_ids"] == [43] and deferred["reason"] == "cancelled"
+
+
+async def test_scan_marked_despite_failed_downloads(tmp_path):
+    """A download that fails inside process_media_queue (it reports fewer
+    successes, never raises) must not keep the room rescanning forever:
+    Verify & Fix covers the missing file."""
+    m = _scan_with_media(_manager(scanned=False))
+
+    async def _media(session, chunk, progress_callback=None):
+        if progress_callback:
+            await progress_callback(0, len(chunk))  # nothing downloaded
+        return {}
+
+    m.process_media_queue = AsyncMock(side_effect=_media)
+    await _run_start_sync(
+        SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+    )
+    m.mark_history_scanned.assert_called_once_with(43)
+
+
+async def test_scan_not_marked_when_other_room_session_expires(tmp_path):
+    """A sibling room's auth failure aborts the sync before phase 3: the
+    completed scan is deferred, not marked."""
+    from pysaka import SessionExpiredError
+
+    m = _manager(scanned=False, extra=[])
+    m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B])
+
+    async def _extras(session, group, api_members, messages, name_hints=None):
+        if group["id"] == 44:
+            await asyncio.sleep(0)
+            raise SessionExpiredError("expired")
+        return []
+
+    m.extra_room_members = AsyncMock(side_effect=_extras)
+    with capture_logs() as logs:
+        with pytest.raises(SessionExpiredError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[GROUP, GROUP_B],
+                members=API_MEMBERS,
+                mock_manager=m,
+            )
+    m.mark_history_scanned.assert_not_called()
+    (deferred,) = _events(logs, "room_history_scan_mark_deferred")
+    assert deferred["group_ids"] == [43]
+    assert deferred["reason"] == "SessionExpiredError"
+
+
+async def test_scan_mark_failure_logged_and_sync_completes(tmp_path):
+    m = _manager(scanned=False, extra=[])
+    m.mark_history_scanned = MagicMock(side_effect=OSError("locked"))
+    saved: dict = {}
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    (failed,) = _events(logs, "room_history_scan_mark_failed")
+    assert failed["group_id"] == 43 and failed["error_type"] == "OSError"
+    assert "last_sync" in saved

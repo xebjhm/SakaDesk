@@ -293,6 +293,11 @@ class SyncService:
         my_generation = self._generation
         self._task = asyncio.current_task()
         progress = progress_manager.get(self._service)
+        # Rooms whose one-time history scan archived every author's messages
+        # in phase 2. Marked scanned only after phase 3 (media) finishes, so a
+        # sync that stops before then scans them again and their recovered
+        # photos/videos are not stranded (see _mark_scanned_rooms).
+        scan_complete_gids: list[int] = []
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -737,15 +742,16 @@ class SyncService:
                         )
                         group_results.append((task, count))
 
-                    # Mark the one-time scan done only once every author's
-                    # messages in the fetched timeline are on disk; otherwise
-                    # the next sync scans again.
+                    # The one-time scan counts as done only once every
+                    # author's messages in the fetched timeline are on disk;
+                    # otherwise the next sync scans again. A complete room is
+                    # marked after phase 3 (its media), not here.
                     if scan:
-                        marked = await self.manager.room_archive_complete(
+                        complete = await self.manager.room_archive_complete(
                             group, all_messages
                         )
-                        if marked:
-                            self.manager.mark_history_scanned(gid)
+                        if complete:
+                            scan_complete_gids.append(gid)
                         else:
                             # pysaka logs which author is incomplete and why.
                             logger.warning("room_history_scan_incomplete", group_id=gid)
@@ -755,7 +761,7 @@ class SyncService:
                             fetched_msgs=len(all_messages),
                             extra_members=len(extra_members),
                             elapsed=f"{time.monotonic() - g_t0:.1f}s",
-                            marked=marked,
+                            complete=complete,
                         )
 
                     group_new = sum(c for _, c in group_results)
@@ -977,6 +983,10 @@ class SyncService:
                     elapsed=f"{time.monotonic() - phase3_t0:.1f}s",
                     media_count=media_count,
                 )
+                # Phase 3 ran to completion (single failed downloads do not
+                # raise; Verify & Fix covers them): the scanned rooms' media
+                # is queued and fetched, so the scans can be recorded.
+                self._mark_scanned_rooms(scan_complete_gids)
 
                 metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
@@ -1036,17 +1046,20 @@ class SyncService:
             # and re-raise so the task unwinds cleanly and the awaiting cancel()
             # sees it complete.
             logger.warning("Sync cancelled", service=self._service)
+            self._defer_scan_marks(scan_complete_gids, "cancelled")
             with contextlib.suppress(Exception):
                 progress.error("CANCELLED")
             raise
-        except (SessionExpiredError, RefreshFailedError):
+        except (SessionExpiredError, RefreshFailedError) as e:
             # Surface the session-expiry sentinels so the api layer's
             # run_sync_task handler maps them to SESSION_EXPIRED/REFRESH_FAILED,
             # which the frontend keys on to open the re-login modal (SVC-I1).
             # A generic progress.error(str(e)) here would make those detail
             # strings unreachable, so re-raise instead.
+            self._defer_scan_marks(scan_complete_gids, type(e).__name__)
             raise
         except Exception as e:
+            self._defer_scan_marks(scan_complete_gids, type(e).__name__)
             logger.error("Sync error", error=str(e))
             logger.error(traceback.format_exc())
             progress.error(str(e))
@@ -1057,6 +1070,38 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    def _mark_scanned_rooms(self, gids: list[int]) -> None:
+        """Record the one-time history scan of each room in ``gids`` as done.
+
+        Called once phase 3 (media download) has finished. A room whose mark
+        cannot be saved is logged and simply scanned again next sync; it never
+        fails the sync. ``gids`` is emptied, so a later error in this run does
+        not report these rooms as deferred.
+        """
+        if self.manager is None:
+            raise RuntimeError("SyncManager not initialized")
+        for gid in gids:
+            try:
+                self.manager.mark_history_scanned(gid)
+            except Exception as e:
+                logger.warning(
+                    "room_history_scan_mark_failed",
+                    group_id=gid,
+                    error_type=type(e).__name__,
+                )
+                continue
+            logger.info("room_history_scan_marked", group_id=gid)
+        gids.clear()
+
+    @staticmethod
+    def _defer_scan_marks(gids: list[int], reason: str) -> None:
+        """Log rooms whose complete scan is left unmarked because the sync
+        stopped before phase 3 finished; the next sync scans them again."""
+        if gids:
+            logger.warning(
+                "room_history_scan_mark_deferred", group_ids=list(gids), reason=reason
+            )
 
     async def cancel(self) -> bool:
         """Cancel the running sync and wait for it to truly unwind (SVC-C1).
