@@ -350,21 +350,6 @@ async def send_test(lang: str | None) -> bool:
     return await _show_one(await asyncio.to_thread(get_notifier), plan)
 
 
-# TODO(C1 Task 8): remove. sync_service still awaits this until it is rewired
-# to plan_toasts + send_planned; it now only logs.
-async def notify_sync_complete_async(total_new: int, member_count: int) -> bool:
-    """Legacy summary toast: gone. Logs the skip and returns ``False``."""
-    if total_new <= 0:
-        return False
-    logger.info(
-        "notify_skip",
-        reason="legacy_summary_removed",
-        count=total_new,
-        members=member_count,
-    )
-    return False
-
-
 # ---------------------------------------------------------------------- state
 
 

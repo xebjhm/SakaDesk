@@ -574,16 +574,3 @@ def test_enabled_flag_round_trip() -> None:
     assert ns.get_notifications_enabled() is False
     ns.set_notifications_enabled(True)
     assert ns.get_notifications_enabled() is True
-
-
-# ------------------------------------------------------------------------- shim
-
-
-def test_notify_sync_complete_async_shim_only_logs() -> None:
-    with capture_logs() as logs:
-        assert asyncio.run(ns.notify_sync_complete_async(3, 2)) is False
-        assert asyncio.run(ns.notify_sync_complete_async(0, 0)) is False
-    events = [e for e in logs if e["event"] == "notify_skip"]
-    assert len(events) == 1
-    assert events[0]["reason"] == "legacy_summary_removed"
-    assert events[0]["count"] == 3

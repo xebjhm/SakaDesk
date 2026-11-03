@@ -1034,7 +1034,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1135,7 +1135,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1251,7 +1251,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -1270,8 +1270,10 @@ class TestSyncPhaseProgression:
             saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
         )
         assert saved_metadata.get("last_sync") is not None
-        # Notification was sent (SD-BE-SVC-18: awaited async wrapper, off-loop).
-        mock_notify.assert_awaited_once_with(5, 1)
+        # One toast plan was sent for the member's 5 new messages.
+        mock_notify.assert_awaited_once()
+        (plans,) = mock_notify.await_args.args
+        assert [p.count for p in plans] == [5]
 
     @pytest.mark.asyncio
     async def test_server_unread_count_captured_in_metadata(self, tmp_path):
@@ -1369,7 +1371,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1586,7 +1588,7 @@ async def _run_start_sync(
         patch("backend.services.sync_service.SyncManager", return_value=mock_manager),
         patch("backend.services.sync_service.progress_manager") as mock_pm,
         patch(
-            "backend.services.sync_service.notify_sync_complete_async",
+            "backend.services.sync_service.send_planned",
             notify_mock if notify_mock is not None else AsyncMock(),
         ),
     ):
@@ -2003,7 +2005,8 @@ class TestInitialLimitAndIncludeInactive:
             tmp_path, synced=3, backfilled=2, sync_member=sync_member
         )
 
-        notify.assert_awaited_once_with(3, 1)
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [3]
         search_svc.index_members.assert_awaited_once()
         indexed = search_svc.index_members.await_args.args[0]
         assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
@@ -2093,7 +2096,8 @@ class TestInitialLimitAndIncludeInactive:
                 tmp_path, synced=40, backfilled=0, sync_member=sync_member
             )
 
-        notify.assert_awaited_once_with(2, 1)
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [2]
         done = [e for e in logs if e["event"] == "sync_complete"]
         assert done[0]["new_messages"] == 2
         assert done[0]["members_with_new"] == 1
@@ -2765,7 +2769,7 @@ class TestGroupFailureAggregation:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):

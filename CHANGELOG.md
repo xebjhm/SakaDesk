@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newest voice message you haven't heard rings like a phone call; answer to
   play it, or decline and it rings again the next time you open the chat.
   You can turn this off in Settings.
+- **Windows notifications for new messages.** Each member who sends new
+  messages gets one notification with their photo and a preview; click it
+  to open the chat. You can hide message content or turn notifications off
+  in Settings.
 
 ### Changed
 - **Hovering a group in the left rail shows its Japanese name** (乃木坂46,
@@ -43,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   looking empty or missing messages until then.
 
 ### Fixed
+- **The new-message count after a sync is now exact.** It used to include
+  messages that were already saved.
 - **A chat could stay frozen if its whole history was an exact multiple of 200
   messages** and the member had posted nothing new. Sync now handles this case
   and the chat updates again.

@@ -27,7 +27,10 @@ from backend.services.platform import (
     get_default_output_dir,
 )
 from backend.services.new_message_collector import NewMessageCollector
-from backend.services.notification_service import notify_sync_complete_async
+from backend.services.notification_planner import find_avatar, plan_toasts
+from backend.services.notification_service import send_planned
+from backend.services.i18n import get_strings
+from backend.services.ui_state import get_ui_state
 from backend.services.service_utils import (
     get_service_enum,
     get_service_display_name,
@@ -52,6 +55,18 @@ DEFAULT_INITIAL_MESSAGE_LIMIT = 0
 # in five); 20 a minute (100 in five) is what incremental syncs have always run
 # at without a 429. Incremental-only syncs are not paced.
 SCAN_TIMELINE_INTERVAL = 3.0
+
+
+def _count_member_dirs(group_dir: Path) -> int:
+    """Number of member folders (those holding ``messages.json``) in a group folder."""
+    try:
+        return sum(
+            1
+            for d in group_dir.iterdir()
+            if d.is_dir() and (d / "messages.json").exists()
+        )
+    except OSError:
+        return 0
 
 
 def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
@@ -1030,14 +1045,10 @@ class SyncService:
                                 metadata["groups"][key]["last_message_id"] = last_id
                                 metadata["groups"][key]["last_sync_ts"] = last_ts
 
-                # Send notification for new messages (after Phase 2, before media download)
+                # One toast per member / room with new messages (after Phase 2,
+                # before media download). Never fails the sync.
                 if total_new_messages > 0:
-                    # SD-BE-SVC-18: use the async wrapper so plyer's blocking
-                    # Win32 notify runs off the event loop (it otherwise stalls
-                    # the loop mid-sync, exactly while the UI polls /progress).
-                    await notify_sync_complete_async(
-                        total_new_messages, members_with_new
-                    )
+                    await self._notify_new_messages(collector, app_settings)
 
                 # Update search index in background (non-fatal, must not block
                 # sync). Covers members with new messages AND members whose
@@ -1249,6 +1260,60 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    async def _notify_new_messages(
+        self, collector: NewMessageCollector, app_settings: dict[str, Any]
+    ) -> None:
+        """Plan and send one toast per member/room from this run's collector.
+
+        Logs ids, counts and error types only. Any failure is logged as
+        ``notify_failed`` and swallowed: a notification problem must never
+        fail the sync.
+        """
+        try:
+            chats = collector.entries()
+            if not chats:
+                return
+            group_dirs = {c.group_id: c.member_dir.parent for c in chats}
+            plans, skips = plan_toasts(
+                chats,
+                service=self._service,
+                service_display=get_service_display_name(self._service),
+                output_service_dir=self.service_data_dir,
+                ui_state=get_ui_state(),
+                enabled=bool(app_settings.get("notifications_enabled", True)),
+                hide_content=bool(
+                    app_settings.get("notifications_hide_content", False)
+                ),
+                strings=get_strings("notifications", app_settings.get("language")),
+                avatar_for=find_avatar,
+                # C3 hook: divert voice chats to the call popup
+                divert=lambda _t: False,
+                member_count_for=lambda gid: _count_member_dirs(group_dirs[gid]),
+            )
+            for skip in skips:
+                logger.info(
+                    "notify_skip",
+                    service=self._service,
+                    reason=skip.reason,
+                    group_id=skip.group_id,
+                    member_id=skip.member_id,
+                    count=skip.count,
+                )
+            sent = await send_planned(plans) if plans else 0
+            logger.info(
+                "notify_summary",
+                service=self._service,
+                planned=len(plans),
+                sent=sent,
+                skipped=len(skips),
+            )
+        except Exception as e:
+            logger.warning(
+                "notify_failed",
+                service=self._service,
+                error_type=type(e).__name__,
+            )
 
     def _mark_scanned_rooms(self, gids: list[int]) -> None:
         """Record the one-time history scan of each room in ``gids`` as done.

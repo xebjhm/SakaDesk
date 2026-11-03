@@ -72,6 +72,7 @@ export interface AppSettings {
     is_configured: boolean;
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
+    notifications_hide_content?: boolean;  // toasts show a generic body instead of the message preview (default off)
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app

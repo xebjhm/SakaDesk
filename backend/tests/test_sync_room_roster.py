@@ -227,7 +227,9 @@ async def test_scanned_room_extra_totals_follow_cursor(tmp_path):
     assert [c.args[2]["id"] for c in m.sync_member.await_args_list] == [79, 22, 0]
     assert all("ignore_cursor" not in c.kwargs for c in m.sync_member.await_args_list)
     # 79 (1) + 22 (50) are new; 0 (3, no prior cursor) is recovered.
-    notify.assert_awaited_once_with(51, 2)
+    notify.assert_awaited_once()
+    (plans,) = notify.await_args.args
+    assert [p.count for p in plans] == [51]  # one room toast
     m.mark_history_scanned.assert_not_called()
 
 
