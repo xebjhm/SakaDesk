@@ -29,6 +29,7 @@ from backend.services.platform import (
 from backend.services.new_message_collector import NewMessageCollector
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
+from backend.services.chat_kind import is_member_dir
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.ui_state import get_ui_state
 from backend.services.service_utils import (
@@ -58,13 +59,10 @@ SCAN_TIMELINE_INTERVAL = 3.0
 
 
 def _count_member_dirs(group_dir: Path) -> int:
-    """Number of member folders (those holding ``messages.json``) in a group folder."""
+    """Number of member folders in a group folder (``chat_kind.is_member_dir``,
+    the same rule as the content API); 0 when the folder cannot be listed."""
     try:
-        return sum(
-            1
-            for d in group_dir.iterdir()
-            if d.is_dir() and (d / "messages.json").exists()
-        )
+        return sum(1 for d in group_dir.iterdir() if is_member_dir(d))
     except OSError:
         return 0
 

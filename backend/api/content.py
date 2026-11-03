@@ -25,7 +25,6 @@ import hashlib
 import json
 import structlog
 import os
-import re
 from typing import Optional, List, Dict, Any
 
 from backend.services.platform import (
@@ -43,7 +42,9 @@ from backend.services.path_resolver import (
 )
 from backend.services.chat_kind import (  # noqa: F401  (GROUP_CHAT_IDS re-exported)
     GROUP_CHAT_IDS,
+    ID_NAME_PATTERN,
     is_group_chat,
+    is_member_dir,
 )
 from backend.services.message_visibility import visible_messages
 from backend.services.messages_cache import (
@@ -158,21 +159,15 @@ def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
     Parse a folder name in format "{id} {name}" or just "{name}".
     Returns (id, name) tuple. ID may be None if not present.
     """
-    match = re.match(r"^(\d+)\s+(.+)$", folder_name)
+    match = ID_NAME_PATTERN.match(folder_name)
     if match:
         return match.group(1), match.group(2)
     return None, folder_name
 
 
 def get_member_dirs(group_dir: Path) -> List[Path]:
-    """Get all member directories within a group directory."""
-    members = []
-    for item in group_dir.iterdir():
-        if item.is_dir():
-            member_id, _ = parse_id_name(item.name)
-            if member_id and (item / "messages.json").exists():
-                members.append(item)
-    return members
+    """Get all member directories within a group directory (see ``is_member_dir``)."""
+    return [item for item in group_dir.iterdir() if is_member_dir(item)]
 
 
 @router.get("/groups")

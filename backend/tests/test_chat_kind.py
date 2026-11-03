@@ -43,3 +43,44 @@ def test_content_api_reuses_shared_constant():
 def test_every_listed_room_is_group_chat(service):
     for gid in GROUP_CHAT_IDS[service]:
         assert is_group_chat(service, gid, 1) is True
+
+
+# ------------------------------------------------------------ member folders
+
+
+def _dir(root, name, messages=True):
+    d = root / name
+    d.mkdir()
+    if messages:
+        (d / "messages.json").write_text("{}", encoding="utf-8")
+    return d
+
+
+def test_is_member_dir_needs_id_prefix_and_messages(tmp_path):
+    from backend.services.chat_kind import is_member_dir
+
+    assert is_member_dir(_dir(tmp_path, "58 金村 美玖")) is True
+    assert is_member_dir(_dir(tmp_path, "金村 美玖")) is False  # no id prefix
+    assert is_member_dir(_dir(tmp_path, "59")) is False  # id without a name
+    assert is_member_dir(_dir(tmp_path, "60 加藤", messages=False)) is False
+    f = tmp_path / "61 file"
+    f.write_text("x", encoding="utf-8")
+    assert is_member_dir(f) is False
+
+
+def test_sync_and_content_count_member_dirs_the_same_way(tmp_path):
+    """The planner's member count and the content API can never disagree."""
+    from backend.api.content import get_member_dirs
+    from backend.services.sync_service import _count_member_dirs
+
+    _dir(tmp_path, "58 金村 美玖")
+    _dir(tmp_path, "59 小坂 菜緒")
+    _dir(tmp_path, "profile_images")  # has messages.json but no id prefix
+    _dir(tmp_path, "60 加藤", messages=False)
+    assert _count_member_dirs(tmp_path) == len(get_member_dirs(tmp_path)) == 2
+
+
+def test_count_member_dirs_missing_group_is_zero(tmp_path):
+    from backend.services.sync_service import _count_member_dirs
+
+    assert _count_member_dirs(tmp_path / "gone") == 0

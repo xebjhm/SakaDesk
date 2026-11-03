@@ -1,8 +1,16 @@
-"""Shared rule that decides whether a chat is a group (communal) chat.
+"""Shared rules for chats: what is a member folder, and what is a group chat.
 
-Used by the content API and the notification planner so the two can never
-disagree about what counts as a room versus a 1:1 chat.
+Used by the content API and the notification planner (via the sync service)
+so the two can never disagree about member counts or about what counts as a
+room versus a 1:1 chat.
 """
+
+import re
+from pathlib import Path
+
+# "<numeric id> <name>": the folder-name shape pysaka writes for groups and
+# members. content.parse_id_name parses names with the same pattern.
+ID_NAME_PATTERN = re.compile(r"^(\d+)\s+(.+)$")
 
 # Communal (group) chat IDs, keyed by service identifier to avoid cross-service
 # collisions (group IDs are only unique within a single service's API).
@@ -31,3 +39,12 @@ def is_group_chat(service: str, group_id: str | int, member_count: int) -> bool:
     group id is one of the known communal channels for ``service``.
     """
     return member_count > 1 or str(group_id) in GROUP_CHAT_IDS.get(service, set())
+
+
+def is_member_dir(path: Path) -> bool:
+    """True for a member folder: a ``"<id> <name>"`` directory holding ``messages.json``."""
+    return (
+        path.is_dir()
+        and ID_NAME_PATTERN.match(path.name) is not None
+        and (path / "messages.json").exists()
+    )
