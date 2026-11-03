@@ -26,6 +26,7 @@ from backend.services.platform import (
     is_test_mode,
     get_default_output_dir,
 )
+from backend.services.new_message_collector import NewMessageCollector
 from backend.services.notification_service import notify_sync_complete_async
 from backend.services.service_utils import (
     get_service_enum,
@@ -117,6 +118,8 @@ class SyncService:
         # self.metadata_file will be resolved dynamically now based on configured output_dir
         self.metadata_file: Optional[Path] = None
         self.manager: Optional[SyncManager] = None
+        # Collector of the current/last start_sync run (set at phase 2).
+        self.new_message_collector: Optional[NewMessageCollector] = None
         # Concurrency ownership (SVC-C1): a reference to the currently running
         # sync asyncio.Task plus a monotonically increasing generation token.
         # cancel() calls task.cancel() and awaits its unwind; the run's finally
@@ -578,6 +581,12 @@ class SyncService:
                 # no cursor before it (none new). Members not in it report
                 # their sync_member count. These members are indexed fully.
                 reported_new: dict[tuple[int, int], int] = {}
+                # Messages that were genuinely new on disk this run, fed by
+                # pysaka's on_new_messages callback (incremental calls only).
+                # It is the sole source of the new-message totals; Task 8's
+                # notification planner reads it via self.new_message_collector.
+                collector = NewMessageCollector(self._service)
+                self.new_message_collector = collector
 
                 def note_rate_limited(gid: int, err: RateLimitedError) -> None:
                     # Trip the per-sync breaker; logged once per sync.
@@ -819,6 +828,7 @@ class SyncService:
                                 task["member"],
                                 media_queue,
                                 prefetched_messages=member_prefetched,
+                                on_new_messages=collector.on_new_messages,
                             )
                         # A scanned room's counts and a first-seen extra author's
                         # counts are recovered history: searchable (full scan) but
@@ -979,8 +989,18 @@ class SyncService:
                         f"first error (group {first_gid}): {first_err}"
                     )
 
+                # New-message totals come from the collector (messages that
+                # were not on disk before), never from sync_member's return
+                # value, which also counts re-fetched overlap.
+                collected_counts = collector.counts()
+                total_new_messages = sum(collected_counts.values())
+                members_with_new = sum(1 for c in collected_counts.values() if c > 0)
+                collector.log_summary()
+
                 logger.info(
                     "phase2_complete",
+                    new_messages=total_new_messages,
+                    members_with_new=members_with_new,
                     elapsed=f"{time.monotonic() - phase2_t0:.1f}s",
                     groups=len(tasks_by_group),
                     failed_groups=len(group_errors),
@@ -996,16 +1016,10 @@ class SyncService:
                     ),
                 )
 
-                # Update Metadata from results and track new message counts
-                total_new_messages = 0
-                members_with_new = 0
+                # Update Metadata from results (the cursor moves whenever
+                # sync_member processed rows, new or not).
                 for task, count in results:
                     if count > 0:
-                        key_t = (task["group"]["id"], task["member"]["id"])
-                        new = reported_new.get(key_t, count)
-                        if new > 0:
-                            total_new_messages += new
-                            members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(
                             task["group"]["id"], task["member"]["id"]
