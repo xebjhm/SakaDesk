@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.services.chat_kind import is_group_chat
-from backend.services.new_message_collector import CollectedChat
+from backend.services.new_message_collector import CollectedChat, newest_key
 
 PREVIEW_MAX_CHARS = 80
 ROOM_MEMBER_ID = "0"
@@ -110,20 +110,20 @@ def find_avatar(member_dir: Path) -> Path | None:
     return None
 
 
-def _newest_key(message: dict[str, Any]) -> tuple[str, str]:
-    return (str(message.get("timestamp") or ""), str(message.get("id", "")).zfill(20))
-
-
 def _chat_path(chat_dir: Path, output_service_dir: Path, service_display: str) -> str:
     """Path relative to the output root (the dir holding the service folder), POSIX."""
     try:
         return chat_dir.relative_to(output_service_dir.parent).as_posix()
     except ValueError:
-        # Outside the output root: rebuild from the folder names under "messages".
+        # Outside the output root: rebuild from the folder names under the LAST
+        # "messages" component (a parent folder may be called "messages" too).
         parts = chat_dir.parts
-        tail = (
-            parts[parts.index("messages") + 1 :] if "messages" in parts else parts[-1:]
+        last = (
+            len(parts) - 1 - parts[::-1].index("messages")
+            if "messages" in parts
+            else -1
         )
+        tail = parts[last + 1 :] if last >= 0 else parts[-1:]
         return "/".join((service_display, "messages", *tail))
 
 
@@ -168,7 +168,7 @@ def plan_toasts(
     for (group_id, member_id), members in grouped.items():
         is_room = member_id == ROOM_MEMBER_ID and room_groups[group_id]
         count = sum(m.count for m in members)
-        newest_chat = max(members, key=lambda m: _newest_key(m.newest))
+        newest_chat = max(members, key=lambda m: newest_key(m.newest))
         newest = newest_chat.newest
 
         if is_room:

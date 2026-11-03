@@ -379,6 +379,31 @@ def test_path_fallback_when_outside_output_root(tmp_path: Path) -> None:
     assert plans[0].target.path == "日向坂46/messages/34 金村 美玖/58 金村 美玖"
 
 
+def test_path_fallback_uses_last_messages_component(tmp_path: Path) -> None:
+    """A parent folder that is itself called "messages" must not confuse the fallback."""
+    c = chat(tmp_path / "messages" / "export")
+    plans, _ = plan_toasts(
+        [c],
+        service=SERVICE,
+        service_display=DISPLAY,
+        output_service_dir=tmp_path / "elsewhere" / DISPLAY,
+        ui_state=IDLE,
+        enabled=True,
+        hide_content=False,
+        strings=STRINGS,
+        avatar_for=lambda _d: None,
+        divert=lambda _t: False,
+        member_count_for=lambda _g: 1,
+    )
+    assert plans[0].target.path == "日向坂46/messages/34 金村 美玖/58 金村 美玖"
+
+
+def test_newest_key_is_shared_with_the_collector() -> None:
+    from backend.services import new_message_collector, notification_planner
+
+    assert notification_planner.newest_key is new_message_collector.newest_key
+
+
 # ---------------------------------------------------------------------- bodies
 
 

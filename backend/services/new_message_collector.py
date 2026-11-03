@@ -39,7 +39,7 @@ class CollectedChat:
     newest: dict[str, Any]
 
 
-def _newest_key(message: dict[str, Any]) -> tuple[str, str]:
+def newest_key(message: dict[str, Any]) -> tuple[str, str]:
     """Sort key: timestamp, then id (zero-padded so numeric ids order right)."""
     return (str(message.get("timestamp") or ""), str(message.get("id", "")).zfill(20))
 
@@ -88,7 +88,7 @@ class NewMessageCollector:
         hidden = len(new_messages) - len(visible)
         # Everything that can raise happens before any counter moves, so a
         # swallowed failure leaves neither a partial counter nor a partial entry.
-        newest = max(visible, key=_newest_key) if visible else None
+        newest = max(visible, key=newest_key) if visible else None
         member_dir = Path(member_info["member_dir"]) if visible else None
 
         if hidden:
@@ -118,7 +118,7 @@ class NewMessageCollector:
             )
             return
         existing.count += len(visible)
-        if _newest_key(newest) >= _newest_key(existing.newest):
+        if newest_key(newest) >= newest_key(existing.newest):
             existing.newest = newest
 
     def counts(self) -> dict[tuple[str, str], int]:
