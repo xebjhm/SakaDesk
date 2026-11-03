@@ -1,12 +1,10 @@
-"""Native toast notifier: launch args, Null/Windows notifiers, delivery."""
+"""Native toast notifier: Null/Windows notifiers, click callback, delivery."""
 
 import asyncio
 import sys
 import types
-import warnings
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import urlparse
 
 import pytest
 from structlog.testing import capture_logs
@@ -54,41 +52,6 @@ def _reset_state():
     yield
     ns.set_notifications_enabled(True)
     ns._reset_notifier_for_tests()
-
-
-# ------------------------------------------------------------ launch arguments
-
-
-@pytest.mark.parametrize("target", [CJK_TARGET, ROOM_TARGET])
-def test_launch_args_round_trip(target: ChatTarget) -> None:
-    args = ns.build_launch_args(target)
-    assert args.startswith("action=open&service=hinatazaka46&")
-    assert ns.parse_launch_args(args) == target
-
-
-def test_launch_args_group_flag() -> None:
-    assert ns.build_launch_args(CJK_TARGET).endswith("&group=0")
-    assert ns.build_launch_args(ROOM_TARGET).endswith("&group=1")
-
-
-@pytest.mark.parametrize(
-    "garbage",
-    [
-        "",
-        "garbage",
-        "action=open",
-        "action=close&service=a&path=b&name=c&group=0",
-        "action=open&service=&path=b&name=c&group=0",
-        "action=open&service=a&path=&name=c&group=0",
-        "action=open&service=a&path=b&name=c&group=7",
-        "action=open&service=a&path=b&name=c",
-        "%%%\x00&&&===",
-        None,
-        123,
-    ],
-)
-def test_parse_launch_args_garbage_returns_none(garbage) -> None:
-    assert ns.parse_launch_args(garbage) is None
 
 
 # --------------------------------------------------------------- NullNotifier
@@ -161,25 +124,25 @@ def _fake_windows_toasts() -> types.ModuleType:
             shown.append(toast)
 
     class Toast:
-        def __init__(self, text_fields=None, launch_action=None, **kw):
+        def __init__(self, text_fields=None, **kw):
+            assert "launch_action" not in kw, "launch_action makes clicks protocol"
             self.text_fields = text_fields
-            self.launch_action = launch_action  # goes through the setter
             self.images: list = []
             self.on_activated = None
             self.on_failed = None
+            self.tag = "uuid-default"
+            self.group = None
+            self.launch_action_set: list = []
 
         @property
         def launch_action(self):
-            return self._launch_action
+            return None
 
         @launch_action.setter
         def launch_action(self, value):
-            # Like windows-toasts 1.3.1: warn (embedding the string) w/o a scheme.
-            if value is not None and not urlparse(value).scheme:
-                warnings.warn(
-                    f"Ensure your launch action is a URL: {value}", UserWarning
-                )
-            self._launch_action = value
+            # windows-toasts 1.3.1 turns any launch action into a protocol
+            # activation; record it so tests can prove it is never set.
+            self.launch_action_set.append(value)
 
         def AddImage(self, image):
             self.images.append(image)
@@ -222,7 +185,9 @@ def test_windows_notifier_builds_and_shows_the_toast(fake_wt, tmp_path) -> None:
     assert n.show(plan) is True
     (toast,) = fake_wt.shown
     assert toast.text_fields == [plan.title, plan.body]
-    assert ns.parse_launch_args(toast.launch_action) == plan.target
+    assert toast.launch_action_set == []
+    assert toast.tag == "34:58"
+    assert toast.group == "hinatazaka46"
     (img,) = toast.images
     assert img.position == "AppLogo"
     assert img.image.path == avatar
@@ -255,37 +220,6 @@ def test_windows_notifier_bad_avatar_still_shows_toast(fake_wt, tmp_path) -> Non
     assert "金村" not in repr(logs) and "gone" not in repr(logs)
 
 
-def test_windows_notifier_launch_action_does_not_warn(fake_wt) -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        # Built inside the block: the notifier installs its targeted filter
-        # in front of "always", as it does once in the real process.
-        n = ns.WindowsToastNotifier()
-        assert n.show(make_plan()) is True
-    assert [str(w.message) for w in caught] == []
-
-
-def test_fake_toast_warns_without_the_filter(fake_wt) -> None:
-    """Guards the guard: the fake really warns on a scheme-less launch string."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        fake_wt.Toast(launch_action="action=open&x=1")
-    assert len(caught) == 1
-    assert str(caught[0].message).startswith("Ensure your launch action")
-
-
-def test_launch_warning_filter_is_narrow(fake_wt) -> None:
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        ns.WindowsToastNotifier()
-        warnings.warn("something else", UserWarning)
-        warnings.warn("Ensure your launch action", DeprecationWarning)
-    assert sorted(str(w.message) for w in caught) == [
-        "Ensure your launch action",
-        "something else",
-    ]
-
-
 def test_windows_notifier_show_failure_sets_last_error(fake_wt) -> None:
     n = ns.WindowsToastNotifier()
 
@@ -298,14 +232,15 @@ def test_windows_notifier_show_failure_sets_last_error(fake_wt) -> None:
     assert n.status()["last_error"] == "RuntimeError"
 
 
-def test_on_activated_opens_the_chat_and_logs_ids(fake_wt) -> None:
+def test_on_activated_opens_the_planned_chat_and_logs_ids(fake_wt) -> None:
     n = ns.WindowsToastNotifier()
     n.show(make_plan())
     toast = fake_wt.shown[0]
     opened: list[ChatTarget] = []
     with patch.object(ns.desktop_bridge, "open_chat", opened.append):
         with capture_logs() as logs:
-            toast.on_activated(types.SimpleNamespace(arguments=toast.launch_action))
+            # The WinRT event args are ignored: the target comes from the plan.
+            toast.on_activated(types.SimpleNamespace(arguments="uuid-default"))
     assert opened == [CJK_TARGET]
     (clicked,) = [e for e in logs if e["event"] == "notify_clicked"]
     assert clicked["service"] == "hinatazaka46"
@@ -314,31 +249,50 @@ def test_on_activated_opens_the_chat_and_logs_ids(fake_wt) -> None:
     assert "金村" not in repr(logs)
 
 
-def test_on_activated_room_has_member_zero(fake_wt) -> None:
+def test_each_toast_opens_its_own_chat(fake_wt) -> None:
     n = ns.WindowsToastNotifier()
-    n.show(make_plan(ROOM_TARGET))
-    toast = fake_wt.shown[0]
-    with patch.object(ns.desktop_bridge, "open_chat", lambda _t: None):
-        with capture_logs() as logs:
-            toast.on_activated(types.SimpleNamespace(arguments=toast.launch_action))
-    (clicked,) = [e for e in logs if e["event"] == "notify_clicked"]
-    assert clicked["group_id"] == "79"
-    assert clicked["member_id"] == "0"
-
-
-def test_on_activated_with_bad_arguments_is_unhandled(fake_wt) -> None:
-    n = ns.WindowsToastNotifier()
+    room = ToastPlan(ROOM_TARGET, "79", "0", "t", "b", None, 2, "text", "9")
     n.show(make_plan())
+    n.show(room)
+    first, second = fake_wt.shown
+    assert second.tag == "79:0"
+    opened: list[ChatTarget] = []
+    with patch.object(ns.desktop_bridge, "open_chat", opened.append):
+        with capture_logs() as logs:
+            second.on_activated(None)
+            first.on_activated(None)
+    assert opened == [ROOM_TARGET, CJK_TARGET]
+    clicked = [e for e in logs if e["event"] == "notify_clicked"]
+    assert [(e["group_id"], e["member_id"]) for e in clicked] == [
+        ("79", "0"),
+        ("34", "58"),
+    ]
+
+
+def test_tag_is_short_and_id_only(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    plan = ToastPlan(CJK_TARGET, "1" * 12, "2" * 12, "t", "b", None, 1, "text", "1")
+    n.show(plan)
+    tag = fake_wt.shown[0].tag
+    assert tag == f"{'1' * 12}:{'2' * 12}" and len(tag) <= 64
+
+
+def test_test_toast_click_is_unhandled_and_keeps_default_tag(fake_wt) -> None:
+    fake = FakeNotifier()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        asyncio.run(ns.send_test("en"))
+    (plan,) = fake.shown
+    n = ns.WindowsToastNotifier()
+    n.show(plan)
     toast = fake_wt.shown[0]
+    assert toast.tag == "uuid-default" and toast.group is None
     opened: list = []
     with patch.object(ns.desktop_bridge, "open_chat", opened.append):
         with capture_logs() as logs:
-            toast.on_activated(types.SimpleNamespace(arguments="junk"))
-            toast.on_activated(types.SimpleNamespace(arguments=None))
+            toast.on_activated(None)
     assert opened == []
-    unhandled = [e for e in logs if e["event"] == "notify_click_unhandled"]
-    assert len(unhandled) == 2
-    assert unhandled[0]["reason"] == "bad_arguments"
+    (unhandled,) = [e for e in logs if e["event"] == "notify_click_unhandled"]
+    assert unhandled["reason"] == "no_target"
 
 
 def test_on_activated_never_raises(fake_wt) -> None:
@@ -347,10 +301,14 @@ def test_on_activated_never_raises(fake_wt) -> None:
     toast = fake_wt.shown[0]
 
     def boom(_t):
-        raise RuntimeError("x")
+        raise RuntimeError("x 金村")
 
     with patch.object(ns.desktop_bridge, "open_chat", boom):
-        toast.on_activated(types.SimpleNamespace(arguments=toast.launch_action))
+        with capture_logs() as logs:
+            toast.on_activated(None)
+    (failed,) = [e for e in logs if e["event"] == "notify_open_chat_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert "金村" not in repr(logs)
 
 
 def test_on_failed_logs_error_type_and_records_last_error(fake_wt) -> None:
@@ -489,12 +447,6 @@ def test_notifier_is_resolved_off_the_event_loop() -> None:
 
     main = asyncio.run(run())
     assert len(threads) == 2 and all(t != main for t in threads)
-
-
-def test_ids_from_path_uses_the_last_messages_component() -> None:
-    t = ChatTarget("s", "messages/x/messages/34 n/58 m", "n", False)
-    assert ns._ids_from_path(t) == ("34", "58")
-    assert ns._ids_from_path(ChatTarget("s", "no-marker/34 n", "n", False)) == ("", "")
 
 
 def test_send_planned_runs_show_off_the_event_loop() -> None:

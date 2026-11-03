@@ -165,8 +165,9 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
   - The two text fields are the title and the body.
   - The avatar is set as `ToastImagePosition.AppLogo` when one exists.
   - It uses the default audio.
-  - `launch_args` are a URL-encoded query, `action=open&service=…&path=…&name=…&group=0|1`. They are parsed back into a `ChatTarget` by `parse_launch_args`.
-  - **Click:** `on_activated` calls the registered **open-chat handler** (§7) with the parsed target, and logs `notify_clicked` (`service`, `group_id`, `member_id`). Ids are parsed from the path's leading numbers.
+  - **No launch arguments.** `Toast.launch_action` is never set: in windows-toasts 1.3.1 it also sets `activationType="protocol"`, so a click would make Windows open the string as a URI instead of firing the in-process callback (verified on Windows; the spike validated `on_activated` without a launch action).
+  - `toast.tag` is `"{group_id}:{member_id}"` (ids only, ≤ 64 characters) and `toast.group` is the service, so a newer toast for the same chat replaces the older one. The test toast keeps the library's default tag.
+  - **Click:** each toast's `on_activated` is a closure over its own `ToastPlan`. It logs `notify_clicked` (`service`, `group_id`, `member_id`, from the plan) and calls the registered **open-chat handler** (§7) with `plan.target`. A plan without a chat (the test toast) logs `notify_click_unhandled` (`reason=no_target`).
   - **Failure:** `on_failed` logs `notify_failed` (`error_type`, ids).
   - **Threading:** `show()` runs `toaster.show_toast` inside `asyncio.to_thread`, so it never blocks the event loop. WinRT calls happen on that worker thread.
 - **`NullNotifier`** (non-Windows, or a `windows_toasts` import failure) returns `False` and logs `notify_unavailable` once per process, with `reason` = `not_windows` or `import_error`.
@@ -271,7 +272,7 @@ Check whether a notifications toggle already exists in `SettingsModal`. If it do
   - avatar fallback order.
 - **i18n:** every locale has every key; the loader falls back to `en`.
 - **Notifier:**
-  - the launch-args round trip;
+  - no launch action is ever set; each toast's `on_activated` opens its own plan's target;
   - `NullNotifier` on a non-Windows platform;
   - `send_planned` logging with a fake notifier.
 - **App identity:** the logic with a fake shell layer (create / update / ok / failed / skipped_dev).

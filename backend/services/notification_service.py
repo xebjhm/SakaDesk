@@ -2,9 +2,12 @@
 
 The planner (:mod:`backend.services.notification_planner`) decides what to
 show; this module delivers it. On Windows a toast is sent through
-``windows_toasts`` under the ``SakaDesk`` AUMID, and clicking it opens the chat
-via :mod:`backend.services.desktop_bridge`. Everywhere else (or when
-``windows_toasts`` cannot be imported) a :class:`NullNotifier` is used.
+``windows_toasts`` under the ``SakaDesk`` AUMID. A click fires the toast's
+in-process ``on_activated`` callback, whose closure holds the plan, and opens
+that chat via :mod:`backend.services.desktop_bridge`. No launch action is set:
+in windows-toasts it turns the click into a protocol activation. Everywhere
+else (or when ``windows_toasts`` cannot be imported) a :class:`NullNotifier`
+is used.
 
 Logs carry ids, counts, codes and error types only: never titles, bodies,
 names, paths or URLs.
@@ -13,13 +16,10 @@ names, paths or URLs.
 from __future__ import annotations
 
 import asyncio
-import re
 import sys
 import threading
-import warnings
 from collections import deque
 from typing import Any, Protocol
-from urllib.parse import parse_qs, urlencode
 
 import structlog
 
@@ -36,16 +36,6 @@ _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fi
 
 _notifications_enabled = True
 
-# windows_toasts warns when a launch string has no URL scheme; ours is a plain
-# query string handled by parse_launch_args. The warning text embeds the launch
-# string (names, paths), so it must never reach the logs.
-_LAUNCH_WARNING = r"Ensure your launch action"
-
-
-def _silence_launch_action_warning() -> None:
-    """Install the targeted filter. Idempotent: ``filterwarnings`` de-duplicates."""
-    warnings.filterwarnings("ignore", message=_LAUNCH_WARNING, category=UserWarning)
-
 
 class Notifier(Protocol):
     """Shows one planned toast and reports its own health."""
@@ -53,66 +43,6 @@ class Notifier(Protocol):
     def show(self, plan: ToastPlan) -> bool: ...
 
     def status(self) -> dict: ...
-
-
-# ------------------------------------------------------------ launch arguments
-
-
-def build_launch_args(target: ChatTarget) -> str:
-    """Encode ``target`` as the toast's launch string (a URL-encoded query)."""
-    return urlencode(
-        {
-            "action": "open",
-            "service": target.service,
-            "path": target.path,
-            "name": target.name,
-            "group": "1" if target.is_group_chat else "0",
-        }
-    )
-
-
-def parse_launch_args(args: object) -> ChatTarget | None:
-    """Decode a launch string from :func:`build_launch_args`; ``None`` if invalid."""
-    if not isinstance(args, str) or not args:
-        return None
-    try:
-        q = parse_qs(args, keep_blank_values=True, strict_parsing=True)
-    except ValueError:
-        return None
-    if q.get("action") != ["open"]:
-        return None
-    service = (q.get("service") or [""])[0]
-    path = (q.get("path") or [""])[0]
-    name = (q.get("name") or [""])[0]
-    group = (q.get("group") or [""])[0]
-    if not service or not path or group not in ("0", "1"):
-        return None
-    return ChatTarget(service=service, path=path, name=name, is_group_chat=group == "1")
-
-
-_LEADING_ID = re.compile(r"^(\d+)(?:\s|$)")
-
-
-def _ids_from_path(target: ChatTarget) -> tuple[str, str]:
-    """``(group_id, member_id)`` from the path's numeric folder prefixes.
-
-    The path is ``<service>/messages/<group dir>[/<member dir>]``; a room has
-    no member dir, so its member id is ``"0"``. ``""`` when a prefix is missing.
-    """
-    parts = target.path.split("/")
-    if "messages" not in parts:
-        return "", ""
-    # Last "messages" component, as the planner does (a parent folder may share
-    # the name).
-    tail = parts[len(parts) - parts[::-1].index("messages") :]
-
-    def lead(part: str) -> str:
-        m = _LEADING_ID.match(part)
-        return m.group(1) if m else ""
-
-    group_id = lead(tail[0]) if tail else ""
-    member_id = lead(tail[1]) if len(tail) > 1 else "0"
-    return group_id, member_id
 
 
 # ------------------------------------------------------------------- notifiers
@@ -150,7 +80,6 @@ class WindowsToastNotifier:
     def __init__(self) -> None:
         import windows_toasts as wt  # lazy: Windows-only dependency
 
-        _silence_launch_action_warning()
         self._wt = wt
         self._toaster = wt.InteractableWindowsToaster(AUMID, notifierAUMID=AUMID)
         self._last_error: str | None = None
@@ -160,14 +89,19 @@ class WindowsToastNotifier:
         """Show the toast; raises on failure (callers log ``notify_failed``)."""
         wt = self._wt
         try:
-            toast = wt.Toast(
-                text_fields=[plan.title, plan.body],
-                launch_action=build_launch_args(plan.target),
-            )
+            # Never set launch_action: windows-toasts then makes the click a
+            # protocol activation (Windows opens it as a URI) instead of
+            # firing on_activated in this process.
+            toast = wt.Toast(text_fields=[plan.title, plan.body])
+            if plan.group_id and plan.member_id:
+                # Ids only (<= 64 chars): a newer toast for the same chat
+                # replaces the older one in the Action Center.
+                toast.tag = f"{plan.group_id}:{plan.member_id}"
+                toast.group = plan.target.service
             if plan.avatar is not None:
                 self._add_avatar(toast, plan)
-            toast.on_activated = self._on_activated
-            toast.on_failed = lambda args: self._on_failed(plan, args)
+            toast.on_activated = lambda _args, p=plan: self._on_click(p)
+            toast.on_failed = lambda args, p=plan: self._on_failed(p, args)
             self._live.append(toast)
             self._toaster.show_toast(toast)
         except Exception as e:
@@ -204,21 +138,20 @@ class WindowsToastNotifier:
                 error_type=type(e).__name__,
             )
 
-    def _on_activated(self, event_args: Any) -> None:
-        """WinRT-thread callback. Never raises."""
+    def _on_click(self, plan: ToastPlan) -> None:
+        """WinRT-thread ``on_activated`` callback for ``plan``'s toast. Never raises."""
         try:
-            target = parse_launch_args(getattr(event_args, "arguments", None))
-            if target is None:
-                logger.info("notify_click_unhandled", reason="bad_arguments")
+            if not plan.target.service or not plan.target.path:
+                # The test toast has no chat behind it.
+                logger.info("notify_click_unhandled", reason="no_target")
                 return
-            group_id, member_id = _ids_from_path(target)
             logger.info(
                 "notify_clicked",
-                service=target.service,
-                group_id=group_id,
-                member_id=member_id,
+                service=plan.target.service,
+                group_id=plan.group_id,
+                member_id=plan.member_id,
             )
-            desktop_bridge.open_chat(target)
+            desktop_bridge.open_chat(plan.target)
         except Exception as e:
             logger.warning("notify_open_chat_failed", error_type=type(e).__name__)
 
