@@ -57,8 +57,14 @@ SERVER_STARTUP_TIMEOUT = 30  # seconds; > backend data-lock acquire timeout (10s
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
-# Set by the tray's Quit item so the closing handler lets the window close.
+# Set by the tray's Quit item (and the session-end guard) so the closing handler
+# lets the window close.
 _quitting = False
+
+# How long the one-time tray hint waits before sending, so the session-end guard
+# (which runs synchronously on the GUI thread right after the closing handler) has
+# had its chance to flag a Windows shutdown / Task Manager / installer close.
+TRAY_HINT_GUARD_DELAY_S = 0.5
 
 
 def _mark_quitting() -> None:
@@ -311,7 +317,9 @@ def make_closing_handler(
     clears the flag; the flag is only about the in-flight attempt. Persisting
     ``tray_hint_shown`` is the toast coroutine's job, after the toast was
     really sent (see :func:`_show_tray_hint`), so a failed send is retried on a
-    later close.
+    later close. The toast coroutine also waits briefly and skips itself when
+    the session-end guard marked the app as quitting meanwhile, because that
+    guard runs only after this handler.
 
     Logs ``window_close`` with ``action`` (``hidden``/``quit``), ``reason`` for
     a quit, and for a hide ``hint`` (``queued``/``pending``/``skipped``). It
@@ -447,8 +455,20 @@ def attach_session_end_guard(window, guard) -> bool:
     return True
 
 
-async def _show_tray_hint(mark_hint_shown=None) -> None:
+async def _show_tray_hint(
+    mark_hint_shown=None, *, delay: float | None = None, is_quitting=None
+) -> None:
     """Show the one-time "still running in the tray" toast. Never raises.
+
+    The closing handler queues this before the session-end guard has run (the
+    guard is subscribed after pywebview's handler), so a Task Manager "End task",
+    a Windows shutdown or an installer's Restart Manager close would otherwise get
+    the hint while the app is exiting. It therefore first waits ``delay`` seconds
+    (default :data:`TRAY_HINT_GUARD_DELAY_S`) and then checks ``is_quitting()``
+    (default: the module's ``_quitting`` flag, set by the guard and the Quit
+    item). If the app is quitting it sends nothing, persists nothing (so the
+    user still gets the hint at a real close) and logs ``tray_hint`` with
+    ``shown=False`` and ``reason=quitting``.
 
     Runs on the server loop (``send_simple`` needs it). The text follows the
     UI language and is never logged. Only when ``send_simple`` returns True is
@@ -457,12 +477,17 @@ async def _show_tray_hint(mark_hint_shown=None) -> None:
     send leaves it unset so a later close retries. Logs ``tray_hint`` with
     ``shown`` and, when shown, ``persisted``.
     """
+    quitting_fn = is_quitting if is_quitting is not None else (lambda: _quitting)
     mark_fn = (
         mark_hint_shown
         if mark_hint_shown is not None
         else settings_store.mark_tray_hint_shown
     )
     try:
+        await asyncio.sleep(TRAY_HINT_GUARD_DELAY_S if delay is None else delay)
+        if quitting_fn():
+            logger.info("tray_hint", shown=False, reason="quitting")
+            return
         from backend.services.notification_service import send_simple
         from backend.services.settings_store import load_config
 

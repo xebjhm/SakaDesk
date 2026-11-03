@@ -381,7 +381,7 @@ async def test_show_tray_hint_sends_the_localized_toast_then_persists(monkeypatc
 
     _patch_hint(monkeypatch, fake_send)
     with capture_logs() as logs:
-        await desktop._show_tray_hint(mark)
+        await desktop._show_tray_hint(mark, delay=0)
     # Strings from backend/i18n/ja/tray.json.
     assert sent == [
         (
@@ -396,6 +396,72 @@ async def test_show_tray_hint_sends_the_localized_toast_then_persists(monkeypatc
 
 
 @pytest.mark.asyncio
+async def test_show_tray_hint_skips_send_and_persist_when_the_guard_fired(monkeypatch):
+    """Task Manager / shutdown / installer close: the guard sets quitting in the delay."""
+    sent: list = []
+    marked: list = []
+    state = {"quitting": False}
+
+    async def fake_send(title, body):
+        sent.append(1)
+        return True
+
+    async def fake_sleep(seconds):
+        assert seconds == 0.25  # the injected delay is honoured
+        state["quitting"] = True  # the guard runs while we wait
+
+    _patch_hint(monkeypatch, fake_send)
+    monkeypatch.setattr(desktop.asyncio, "sleep", fake_sleep)
+    with capture_logs() as logs:
+        await desktop._show_tray_hint(
+            lambda: marked.append(1) or True,
+            delay=0.25,
+            is_quitting=lambda: state["quitting"],
+        )
+    assert sent == [] and marked == []
+    (event,) = [e for e in logs if e["event"] == "tray_hint"]
+    assert event["shown"] is False and event["reason"] == "quitting"
+
+
+@pytest.mark.asyncio
+async def test_show_tray_hint_on_a_normal_close_sends_and_persists(monkeypatch):
+    sent: list = []
+    marked: list = []
+    waited: list = []
+
+    async def fake_send(title, body):
+        sent.append(1)
+        return True
+
+    async def fake_sleep(seconds):
+        waited.append(seconds)
+
+    _patch_hint(monkeypatch, fake_send)
+    monkeypatch.setattr(desktop.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(desktop, "_quitting", False)
+    with capture_logs() as logs:
+        await desktop._show_tray_hint(lambda: marked.append(1) or True)
+    assert waited == [desktop.TRAY_HINT_GUARD_DELAY_S] and waited[0] > 0
+    assert sent == [1] and marked == [1]
+    (event,) = [e for e in logs if e["event"] == "tray_hint"]
+    assert event["shown"] is True and event["persisted"] is True
+
+
+@pytest.mark.asyncio
+async def test_show_tray_hint_default_quitting_flag_is_the_module_flag(monkeypatch):
+    sent: list = []
+
+    async def fake_send(title, body):
+        sent.append(1)
+        return True
+
+    _patch_hint(monkeypatch, fake_send)
+    monkeypatch.setattr(desktop, "_quitting", True)
+    await desktop._show_tray_hint(lambda: True, delay=0)
+    assert sent == []
+
+
+@pytest.mark.asyncio
 async def test_show_tray_hint_does_not_persist_when_the_send_failed(monkeypatch):
     marked: list = []
 
@@ -404,7 +470,7 @@ async def test_show_tray_hint_does_not_persist_when_the_send_failed(monkeypatch)
 
     _patch_hint(monkeypatch, fake_send)
     with capture_logs() as logs:
-        await desktop._show_tray_hint(lambda: marked.append(1) or True)
+        await desktop._show_tray_hint(lambda: marked.append(1) or True, delay=0)
     assert marked == []
     (event,) = [e for e in logs if e["event"] == "tray_hint"]
     assert event["shown"] is False and "persisted" not in event
@@ -417,7 +483,7 @@ async def test_show_tray_hint_reports_a_persist_failure(monkeypatch):
 
     _patch_hint(monkeypatch, fake_send)
     with capture_logs() as logs:
-        await desktop._show_tray_hint(lambda: False)
+        await desktop._show_tray_hint(lambda: False, delay=0)
     (event,) = [e for e in logs if e["event"] == "tray_hint"]
     assert event["shown"] is True and event["persisted"] is False
 
@@ -429,7 +495,7 @@ async def test_show_tray_hint_never_raises(monkeypatch):
 
     monkeypatch.setattr("backend.services.settings_store.load_config", boom)
     with capture_logs() as logs:
-        await desktop._show_tray_hint(lambda: True)
+        await desktop._show_tray_hint(lambda: True, delay=0)
     (failed,) = [e for e in logs if e["event"] == "tray_hint_failed"]
     assert failed["error_type"] == "OSError"
 

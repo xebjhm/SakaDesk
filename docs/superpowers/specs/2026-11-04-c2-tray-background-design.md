@@ -191,7 +191,7 @@ The `closing` hook cannot tell the user pressing ✕ from Windows shutting down,
 
 - `make_session_end_guard(*, mark_quitting, stop_tray, load_reasons=None)` builds a native `FormClosing` handler. When `args.CloseReason` is `CloseReason.WindowsShutDown` or `CloseReason.TaskManagerClosing`, it calls `mark_quitting()` and `stop_tray()` (the same state as the tray Quit item), sets `args.Cancel = False` and logs `window_close` with `action=quit`, `reason=session_end`. Any other reason is left untouched. `load_reasons` supplies the two values (lazy `System.Windows.Forms` import) and is injectable for tests. It never raises (`session_end_guard_failed`, `error_type`).
 - `attach_session_end_guard(window, guard)` subscribes it to `window.native.FormClosing` from `window.events.before_show`. At that point pywebview's `BrowserForm` exists and has already subscribed its own handler, so the guard runs after it and sees the `Cancel` it set. `before_show` also fires for a window created with `hidden=True`. Logs `session_end_guard` (`attached`, and `reason` when not). Verified against pywebview 5.3.2 (the CI and local build pin) and 6.x.
-- Known limitation: the closing handler still runs first, so on a session end the window has already been hidden and a first-run hint may have been queued before the guard overrides the cancel. This is accepted.
+- Known limitation, mitigated: the closing handler still runs first, so on a session end (confirmed on Windows: Task Manager "End task" and an installer's Restart Manager close arrive as `TaskManagerClosing` / `WindowsShutDown`) the window has already been hidden and the hint queued before the guard overrides the cancel. The hint coroutine (`_show_tray_hint`) therefore waits `TRAY_HINT_GUARD_DELAY_S` (0.5 s, injectable) so the guard, which runs synchronously on the GUI thread right after the handler, has set `_quitting`; if it is set, nothing is sent or persisted and `tray_hint shown=False reason=quitting` is logged, so a first-time user still gets the hint at a real ✕. The `window_close action=hidden` entry before `action=quit reason=session_end` remains in the log.
 
 ### 5.2 `--background`
 
@@ -273,6 +273,7 @@ Frontend: `client_log` gains `backend_sync_followed` (`service`) when the watche
   - close-to-tray off;
   - hide + hint once;
   - hint already shown;
+  - `_show_tray_hint`: after the (injected) delay a normal ✕ sends and persists; if the guard set the quitting flag meanwhile, nothing is sent or persisted;
   - no tray;
   - the ui-state reset.
 - **`TrayController`, with a fake pystray:**
