@@ -113,3 +113,81 @@ async def test_incoming_call_enabled_round_trips(client, isolated_settings):
     assert client.get("/api/settings").json()["incoming_call_enabled"] is False
     saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
     assert saved["incoming_call_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_tray_settings_defaults(client, isolated_settings):
+    data = client.get("/api/settings").json()
+    assert data["close_to_tray"] is True
+    assert data["autostart"] is False
+    assert "tray_hint_shown" not in data
+
+
+@pytest.mark.asyncio
+async def test_close_to_tray_round_trips_without_touching_autostart(
+    client, isolated_settings
+):
+    with patch("backend.services.autostart.apply") as apply:
+        response = client.post("/api/settings", json={"close_to_tray": False})
+    assert response.status_code == 200
+    assert response.json()["close_to_tray"] is False
+    assert client.get("/api/settings").json()["close_to_tray"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["close_to_tray"] is False
+    apply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_autostart_change_calls_apply_off_the_loop(client, isolated_settings):
+    import sys
+    import threading
+    from pathlib import Path
+
+    seen: dict = {}
+
+    def fake_apply(enabled, *, frozen, exe, reg=None):
+        seen["thread"] = threading.current_thread()
+        seen["args"] = (enabled, frozen, exe)
+        return "enabled"
+
+    with patch("backend.services.autostart.apply", fake_apply):
+        response = client.post("/api/settings", json={"autostart": True})
+    assert response.status_code == 200
+    assert response.json()["autostart"] is True
+    assert seen["args"] == (
+        True,
+        getattr(sys, "frozen", False),
+        Path(sys.executable),
+    )
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["autostart"] is True
+
+
+@pytest.mark.asyncio
+async def test_autostart_unchanged_value_does_not_call_apply(client, isolated_settings):
+    isolated_settings.write_text(json.dumps({"autostart": True}), encoding="utf-8")
+    with patch("backend.services.autostart.apply") as apply:
+        client.post("/api/settings", json={"autostart": True})
+    apply.assert_not_called()
+    with patch("backend.services.autostart.apply") as apply:
+        client.post("/api/settings", json={"autostart": False})
+    apply.assert_called_once()
+    assert apply.call_args.args == (False,)
+
+
+@pytest.mark.asyncio
+async def test_autostart_apply_failure_does_not_break_the_update(
+    client, isolated_settings
+):
+    with patch("backend.services.autostart.apply", side_effect=OSError("x")):
+        response = client.post("/api/settings", json={"autostart": True})
+    assert response.status_code == 200
+    assert response.json()["autostart"] is True
+
+
+@pytest.mark.asyncio
+async def test_tray_hint_shown_cannot_be_set_via_the_api(client, isolated_settings):
+    response = client.post("/api/settings", json={"tray_hint_shown": True})
+    assert response.status_code == 200
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved.get("tray_hint_shown", False) is False

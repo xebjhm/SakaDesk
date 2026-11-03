@@ -53,3 +53,40 @@ def test_handler_can_be_cleared() -> None:
     with capture_logs() as logs:
         desktop_bridge.open_chat(TARGET)
     assert any(e["event"] == "notify_click_unhandled" for e in logs)
+
+
+# ------------------------------------------------------------ open_window
+
+
+@pytest.fixture(autouse=True)
+def _reset_window_handler():
+    desktop_bridge.set_open_window_handler(None)
+    yield
+    desktop_bridge.set_open_window_handler(None)
+
+
+def test_open_window_calls_the_handler() -> None:
+    calls: list[int] = []
+    desktop_bridge.set_open_window_handler(lambda: calls.append(1))
+    desktop_bridge.open_window()
+    assert calls == [1]
+
+
+def test_open_window_without_handler_logs_and_does_not_raise() -> None:
+    with capture_logs() as logs:
+        desktop_bridge.open_window()
+    events = [e for e in logs if e["event"] == "window_open_unhandled"]
+    assert len(events) == 1
+    assert events[0]["reason"] == "no_handler"
+
+
+def test_open_window_raising_handler_is_logged_by_type_only() -> None:
+    def boom() -> None:
+        raise ValueError("secret 金村 detail")
+
+    desktop_bridge.set_open_window_handler(boom)
+    with capture_logs() as logs:
+        desktop_bridge.open_window()
+    (event,) = [e for e in logs if e["event"] == "window_open_failed"]
+    assert event["error_type"] == "ValueError"
+    assert "金村" not in repr(logs)

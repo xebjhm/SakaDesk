@@ -35,6 +35,9 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "auto_download_updates": False,
     "sync_read_to_phone": False,  # Opt-in: opening a chat in SakaDesk clears its unread on the official app
     "incoming_call_enabled": True,  # Ring an in-app call for the newest unheard voice message when opening a chat
+    "close_to_tray": True,  # The window's close button hides it to the tray instead of quitting
+    "autostart": False,  # Start at Windows sign-in, hidden in the tray
+    "tray_hint_shown": False,  # Internal: the "still running" toast has been shown once
     "translation_provider": None,  # "gemini" or "openai"
     "translation_model": None,  # e.g., "gemini-3.1-flash-lite", "gpt-4o-mini"
     "translation_target_language": None,  # Defaults to UI language at runtime
@@ -108,3 +111,24 @@ async def update_config(updater: Callable[[dict], None]) -> dict:
         updater(config)
         await loop.run_in_executor(None, _write_file, path, config)
         return config
+
+
+def mark_tray_hint_shown() -> bool:
+    """Persist ``tray_hint_shown=True``; return whether it was saved.
+
+    Synchronous and lock-free on purpose: the closing handler calls it from the
+    GUI thread, outside the event loop (like the window-geometry save in
+    ``desktop.py``). The write is atomic, so the file is never corrupted; at
+    worst a settings update landing in the same instant is lost. Never raises:
+    a failure logs ``tray_hint_persist_failed`` (error type only) and returns
+    ``False``.
+    """
+    try:
+        path = get_settings_path()
+        config = _read_file(path)
+        config["tray_hint_shown"] = True
+        _write_file(path, config)
+    except Exception as e:
+        logger.warning("tray_hint_persist_failed", error_type=type(e).__name__)
+        return False
+    return True

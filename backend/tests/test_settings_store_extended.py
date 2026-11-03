@@ -151,6 +151,11 @@ class TestSettingsDefaults:
         assert "incoming_call_enabled" in _SETTINGS_DEFAULTS
         assert _SETTINGS_DEFAULTS["incoming_call_enabled"] is True
 
+    def test_tray_defaults(self):
+        assert _SETTINGS_DEFAULTS["close_to_tray"] is True
+        assert _SETTINGS_DEFAULTS["autostart"] is False
+        assert _SETTINGS_DEFAULTS["tray_hint_shown"] is False
+
     def test_has_notifications_hide_content(self):
         assert _SETTINGS_DEFAULTS["notifications_hide_content"] is False
 
@@ -223,3 +228,38 @@ class TestAsyncApi:
         ):
             result = await update_config(add_key)
         assert result["new_key"] == "new_value"
+
+
+# ── mark_tray_hint_shown ─────────────────────────────────────────────
+
+
+class TestMarkTrayHintShown:
+    def test_persists_flag_and_keeps_other_keys(self, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text(
+            json.dumps({"output_dir": "x", "window": {"width": 9}}), "utf-8"
+        )
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            assert settings_store_mod.mark_tray_hint_shown() is True
+        saved = json.loads(path.read_text("utf-8"))
+        assert saved["tray_hint_shown"] is True
+        assert saved["output_dir"] == "x"
+        assert saved["window"] == {"width": 9}
+
+    def test_creates_the_file_when_missing(self, tmp_path):
+        path = tmp_path / "sub" / "settings.json"
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            assert settings_store_mod.mark_tray_hint_shown() is True
+        assert json.loads(path.read_text("utf-8"))["tray_hint_shown"] is True
+
+    def test_failure_returns_false_and_logs_type_only(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        path = tmp_path / "settings.json"
+        path.write_text("{not json 金村", "utf-8")
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            with capture_logs() as logs:
+                assert settings_store_mod.mark_tray_hint_shown() is False
+        (e,) = [x for x in logs if x["event"] == "tray_hint_persist_failed"]
+        assert e["error_type"] == "JSONDecodeError"
+        assert "金村" not in repr(logs)
