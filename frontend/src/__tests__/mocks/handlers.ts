@@ -162,6 +162,11 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
+  // Call popup ownership (main-window check)
+  http.get('/api/call-popup/active', () => {
+    return HttpResponse.json({ active: false })
+  }),
+
   // Blog cache size
   http.get('/api/blogs/cache-size', () => {
     return HttpResponse.json({ size_bytes: 0 })

@@ -6,11 +6,14 @@
 export type ClientLogEvent =
     | 'call_ring' | 'call_skip' | 'call_answer' | 'call_decline'
     | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error'
-    | 'notify_open_chat' | 'backend_sync_followed' | 'backend_sync_skipped';
+    | 'notify_open_chat' | 'backend_sync_followed' | 'backend_sync_skipped'
+    | 'call_popup_start' | 'call_popup_error'
+    | 'call_popup_heard_applied' | 'call_popup_heard_ignored';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
-    | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type';
+    | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
+    | 'surface' | 'call_id' | 'changed';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

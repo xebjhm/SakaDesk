@@ -1,9 +1,12 @@
 import type { Message } from '../../types';
 
-/** Why a call did not ring. Logged verbatim as the `reason` breadcrumb field. */
+/**
+ * Why a call did not ring. Logged verbatim as the `reason` breadcrumb field.
+ * `popup_active` is produced only by useIncomingCall's isCallElsewhere check, never by decideCall.
+ */
 export type CallSkipReason =
     | 'disabled' | 'group_chat' | 'no_voice' | 'already_read'
-    | 'no_photo' | 'dismissed_this_visit' | 'call_active';
+    | 'no_photo' | 'dismissed_this_visit' | 'call_active' | 'popup_active';
 
 export interface CallDecisionInput {
     enabled: boolean;

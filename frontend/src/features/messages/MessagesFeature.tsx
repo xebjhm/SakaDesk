@@ -22,6 +22,7 @@ import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
+import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 
 // Types specific to messages feature
@@ -564,6 +565,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages]);
 
+    // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
+    const isCallElsewhere = useCallback((messageId: number) => {
+        const ctx = selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null;
+        return ctx ? isCallPopupActive(ctx, messageId) : Promise.resolve(false);
+    }, [selectedGroupDir]);
+
     const callMember = isGroupChat ? undefined : Object.values(membersMap)[0];
     const incomingCall = useIncomingCall({
         service: messagesService,
@@ -579,6 +586,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         revealMessage,
         scrollToMessage,
         logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
+        isCallElsewhere,
     });
     useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';
