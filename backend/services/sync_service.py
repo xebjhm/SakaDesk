@@ -493,6 +493,16 @@ class SyncService:
                 backfilled_members: dict[
                     tuple[int, int], tuple[dict[str, Any], dict[str, Any]]
                 ] = {}
+                # Every API member of this sync by id: names for room authors
+                # missing from a room's own member list (pysaka extra_room_members).
+                name_hints = {t["member"]["id"]: t["member"] for t in tasks}
+                # One-time room history scans re-read whole timelines; run them one
+                # at a time (with page_delay) to stay under the API rate limit.
+                scan_sem = asyncio.Semaphore(1)
+                # (group_id, member_id) whose counts are recovered history, not new:
+                # every task of a room scanned in this sync, and extra members with
+                # no cursor before it. Excluded from totals/notifications, indexed fully.
+                recovered_keys: set[tuple[int, int]] = set()
 
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
@@ -501,7 +511,12 @@ class SyncService:
                         raise RuntimeError("SyncManager not initialized")
 
                     g_t0 = time.monotonic()
-                    g_name = group_tasks[0]["group"].get("name", "?")
+                    group = group_tasks[0]["group"]
+                    g_name = group.get("name", "?")
+                    # pysaka 0.4.6: a room whose history was never fully read is
+                    # re-read once from the start (ignoring cursors) so authors
+                    # missing from its member list and any gaps are archived.
+                    scan = not self.manager.history_scanned(gid)
 
                     # Find the oldest timestamp cursor across all members.
                     # Only consider SYNCED members; unsynced ones (last_ts=None)
@@ -538,6 +553,8 @@ class SyncService:
                         # with at least one unsynced member — full fetch so the
                         # unsynced members get complete history (SVC-I2).
                         min_since_ts = None
+                    if scan:
+                        min_since_ts = None
 
                     if none_count:
                         logger.debug(
@@ -550,13 +567,56 @@ class SyncService:
                         )
 
                     # ONE API call for the entire group
-                    all_messages = await self.manager.client.get_messages(
-                        session, gid, since_ts=min_since_ts
-                    )
+                    if scan:
+                        async with scan_sem:
+                            progress.set_detail_code("scanning_history")
+                            progress.set_detail(g_name)
+                            try:
+                                all_messages = await self.manager.client.get_messages(
+                                    session, gid, since_ts=None, page_delay=1.0
+                                )
+                            finally:
+                                progress.set_detail_code(None)
+                    else:
+                        all_messages = await self.manager.client.get_messages(
+                            session, gid, since_ts=min_since_ts
+                        )
+
+                    # pysaka 0.4.6: room authors missing from the API member
+                    # list (graduated members, the official account). Archived
+                    # like members but never written to metadata["groups"].
+                    try:
+                        extra_members = await self.manager.extra_room_members(
+                            session,
+                            group,
+                            [t["member"] for t in group_tasks],
+                            all_messages,
+                            name_hints,
+                        )
+                    except (SessionExpiredError, RefreshFailedError):
+                        raise
+                    except Exception as e:
+                        logger.warning(
+                            "room_extra_members_failed",
+                            group_id=gid,
+                            error_type=type(e).__name__,
+                        )
+                        extra_members = []
+                    if extra_members:
+                        progress.extend_total(len(extra_members))
+                    run_list = list(zip(group_tasks, since_timestamps)) + [
+                        (
+                            {"group": group, "member": m},
+                            self.manager.get_last_ts(gid, m["id"]),
+                        )
+                        for m in extra_members
+                    ]
+                    n_api = len(group_tasks)
 
                     # Process each member using pre-fetched data (in-memory filtering)
                     group_results: list[tuple[dict[str, Any], int]] = []
-                    for task, member_ts in zip(group_tasks, since_timestamps):
+                    for idx, (task, member_ts) in enumerate(run_list):
+                        is_extra = idx >= n_api
                         member_id = task["member"]["id"]
                         member_prefetched = all_messages
 
@@ -568,7 +628,13 @@ class SyncService:
                         # the cursor from the newest message it writes, so the
                         # cursor stays correct; older history beyond the cap is
                         # intentionally not fetched (the documented first-sync cap).
-                        if member_ts is None and initial_limit and initial_limit > 0:
+                        # Extra room authors bypass the cap (spec §4).
+                        if (
+                            not is_extra
+                            and member_ts is None
+                            and initial_limit
+                            and initial_limit > 0
+                        ):
                             member_msgs = [
                                 m
                                 for m in all_messages
@@ -586,7 +652,17 @@ class SyncService:
                             task["member"],
                             media_queue,
                             prefetched_messages=member_prefetched,
+                            **({"ignore_cursor": True} if scan else {}),
                         )
+                        # A scanned room's counts and a first-seen extra author's
+                        # counts are recovered history: searchable (full scan) but
+                        # never reported as new.
+                        if scan or (is_extra and member_ts is None):
+                            recovered_keys.add((gid, member_id))
+                            backfilled_members[(gid, member_id)] = (
+                                task["group"],
+                                task["member"],
+                            )
                         # pysaka 0.4.5: once per member, merge the ~1-1.5 days
                         # before the first subscription (and their media). Free
                         # after the first success (flag in sync_state); never
@@ -627,6 +703,14 @@ class SyncService:
                             1, detail=f"{m_name} ({count:,})", detail_extra=""
                         )
                         group_results.append((task, count))
+
+                    # Mark the one-time scan done only once every author's
+                    # messages in the fetched timeline are on disk; otherwise
+                    # the next sync scans again.
+                    if scan and await self.manager.room_archive_complete(
+                        group, all_messages
+                    ):
+                        self.manager.mark_history_scanned(gid)
 
                     group_new = sum(c for _, c in group_results)
                     logger.debug(
@@ -694,8 +778,10 @@ class SyncService:
                 members_with_new = 0
                 for task, count in results:
                     if count > 0:
-                        total_new_messages += count
-                        members_with_new += 1
+                        key_t = (task["group"]["id"], task["member"]["id"])
+                        if key_t not in recovered_keys:
+                            total_new_messages += count
+                            members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(
                             task["group"]["id"], task["member"]["id"]
@@ -719,8 +805,9 @@ class SyncService:
 
                 # Update search index in background (non-fatal, must not block
                 # sync). Covers members with new messages AND members whose
-                # pre-subscription messages were recovered by backfill (those
-                # are searchable but deliberately not counted as new above).
+                # messages were recovered by backfill or by a room's one-time
+                # history scan (those are searchable but deliberately not
+                # counted as new above).
                 # The single-thread _write_executor can be contended by blog
                 # indexing; awaiting here would stall Phase 3 for minutes.
                 changed: dict[
@@ -747,8 +834,9 @@ class SyncService:
 
                         async def _bg_index():
                             try:
-                                # Backfilled messages sit below the member's
-                                # indexed watermark: scan those members fully.
+                                # Backfilled and scan-recovered messages sit
+                                # below the member's indexed watermark: scan
+                                # those members fully.
                                 indexed = await search_svc.index_members(
                                     members_with_changes,
                                     self._service,

@@ -78,7 +78,7 @@ class SyncProgress:
 
     def set_detail_code(self, code: Optional[str]):
         """Set a machine-readable detail (e.g. "scanning_history") the frontend
-        localises; None clears it. Cleared by start_phase."""
+        localises; None clears it. Cleared by start_phase, complete and error."""
         with self._lock:
             self._detail_code = code
 
@@ -124,6 +124,7 @@ class SyncProgress:
             self._completed = self._total
             self._detail = "Sync complete!"
             self._detail_extra = ""
+            self._detail_code = None
 
     def error(self, message: str, code: Optional[str] = None):
         """Mark sync as errored.
@@ -140,6 +141,7 @@ class SyncProgress:
             self._phase_name = "Error"
             self._error = message
             self._detail = message
+            self._detail_code = None
             self._error_code = code or _SENTINEL_ERROR_CODES.get(message)
 
     def get_status(self) -> dict:

@@ -73,3 +73,19 @@ def test_detail_code_set_and_cleared():
     assert p.get_status()["detail_code"] == "scanning_history"
     p.start_phase("downloading", "Downloading Media", 3, 1, "files")
     assert p.get_status()["detail_code"] is None
+
+
+def test_complete_clears_detail_code():
+    p = SyncProgress()
+    p.start_phase("syncing", "Collecting Metadata", 2, 1, "members")
+    p.set_detail_code("scanning_history")
+    p.complete()
+    assert p.get_status()["detail_code"] is None
+
+
+def test_error_clears_detail_code():
+    p = SyncProgress()
+    p.start_phase("syncing", "Collecting Metadata", 2, 1, "members")
+    p.set_detail_code("scanning_history")
+    p.error("boom")
+    assert p.get_status()["detail_code"] is None
