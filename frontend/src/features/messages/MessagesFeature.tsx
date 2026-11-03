@@ -10,6 +10,7 @@ import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings, toLocalDateStr } from '../../utils';
 import { cn } from '../../utils/classnames';
+import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
@@ -51,6 +52,7 @@ export interface SyncProgress {
     speed_unit?: string;
     detail?: string;
     detail_extra?: string;
+    detail_code?: string | null;
     result?: {
         members: number; checked: number; missing: number;
         repaired: number; failed: number; still_missing: number;
@@ -723,7 +725,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             }}
                         >
                             <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                            <span>{syncProgress.detail || t('sync.syncing')}</span>
+                            <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
                         </div>
                     )}
                     {selectedGroupDir && (

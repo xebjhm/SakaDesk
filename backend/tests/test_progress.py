@@ -55,3 +55,21 @@ class TestErrorCode:
         p = SyncProgress()
         assert "error_code" in p.get_status()
         assert p.get_status()["error_code"] is None
+
+
+def test_extend_total_grows_current_phase():
+    p = SyncProgress()
+    p.start_phase("syncing", "Collecting Metadata", 2, 3, "members")
+    p.update(3)
+    p.extend_total(2)
+    status = p.get_status()
+    assert status["total"] == 5 and status["completed"] == 3
+
+
+def test_detail_code_set_and_cleared():
+    p = SyncProgress()
+    assert p.get_status()["detail_code"] is None
+    p.set_detail_code("scanning_history")
+    assert p.get_status()["detail_code"] == "scanning_history"
+    p.start_phase("downloading", "Downloading Media", 3, 1, "files")
+    assert p.get_status()["detail_code"] is None
