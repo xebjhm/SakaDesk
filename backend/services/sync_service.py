@@ -63,6 +63,11 @@ def _rows_newer_than(
     room's, member 0) and ``published_at`` is compared as pysaka compares its
     cursor (ISO strings). No cursor means the member had nothing archived
     before, so nothing counts as new: 0.
+
+    Known over-count, once: pysaka holds a cursor back at an older message
+    whose media is still missing, so rows between that held cursor and the
+    newest archived row were already on disk yet count as new here. It
+    happens only on the scan sync (the cursor is recomputed after it).
     """
     if cursor is None:
         return 0
