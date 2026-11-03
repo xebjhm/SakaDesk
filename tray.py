@@ -33,6 +33,7 @@ logger = structlog.get_logger(__name__)
 ICON_NAME = "SakaDesk"
 # NOTIFYICONDATA.szTip holds 128 UTF-16 units including the terminator.
 MAX_TOOLTIP_LENGTH = 127
+MENU_LABEL_KEYS = ("open", "sync_now", "quit")
 
 _ICON_RELATIVE = Path("tooling") / "windows" / "SakaDesk.ico"
 
@@ -72,6 +73,8 @@ class TrayController:
         self._on_quit = on_quit
         self._icon_factory = icon_factory or _load_icon_image
         self._icon: Any = None
+        # The menu labels the pystray menu was last built with (None until started).
+        self._built_labels: dict[str, str] | None = None
 
     @property
     def available(self) -> bool:
@@ -86,6 +89,10 @@ class TrayController:
         except Exception as e:
             logger.warning("tray_label_failed", error_type=type(e).__name__)
             return key
+
+    def _menu_labels(self) -> dict[str, str]:
+        """The resolved label of every menu item, in the current language."""
+        return {key: self._label(key) for key in MENU_LABEL_KEYS}
 
     def _dynamic_label(self, key: str) -> Callable[[Any], str]:
         """A pystray ``text(item)`` callable, evaluated whenever pystray builds the menu."""
@@ -150,21 +157,36 @@ class TrayController:
             logger.warning("tray", action="failed", error_type=type(e).__name__)
             return
         self._icon = icon
+        self._built_labels = self._menu_labels()
         logger.info("tray", action="started")
 
     def refresh_menu(self) -> None:
-        """Rebuild the menu so its labels use the current UI language. Never raises."""
+        """Rebuild the menu only when its resolved labels changed. Never raises.
+
+        pystray destroys and recreates the native menu on every rebuild, which
+        can glitch a menu the user has open, so an unchanged label set (the
+        common case: a tooltip update) is skipped. Logs ``tray
+        action=menu_refreshed`` when a rebuild happens; after a failed rebuild
+        the labels are not recorded, so the next call retries.
+        """
         icon = self._icon
         if icon is None:
             logger.debug("tray_menu_refresh_skipped", reason="no_icon")
+            return
+        labels = self._menu_labels()
+        if labels == self._built_labels:
+            logger.debug("tray_menu_refresh_skipped", reason="unchanged")
             return
         try:
             icon.update_menu()
         except Exception as e:
             logger.warning("tray_menu_refresh_failed", error_type=type(e).__name__)
+            return
+        self._built_labels = labels
+        logger.info("tray", action="menu_refreshed")
 
     def set_tooltip(self, text: str) -> None:
-        """Set the hover text and refresh the menu labels.
+        """Set the hover text and refresh the menu labels if they changed.
 
         Never blocks or raises (called from the backend).
         """

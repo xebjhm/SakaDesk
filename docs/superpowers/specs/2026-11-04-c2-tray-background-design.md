@@ -119,11 +119,12 @@ class TrayController:
     def __init__(self, *, strings: Mapping[str,str] | Callable[[], Mapping[str,str]], on_open, on_sync_now, on_quit, icon_factory=None) -> None
     def start(self) -> None            # logs tray action=started | unavailable(reason) | failed(error_type)
     def set_tooltip(self, text: str) -> None   # also calls refresh_menu()
-    def refresh_menu(self) -> None     # icon.update_menu(); logs tray_menu_refresh_failed(error_type)
+    def refresh_menu(self) -> None     # icon.update_menu() only if the resolved open/sync_now/quit labels differ from the last build; logs tray action=menu_refreshed on a rebuild, tray_menu_refresh_skipped(reason=unchanged|no_icon), tray_menu_refresh_failed(error_type)
     def stop(self) -> None
 ```
 
 - `strings` is either a fixed mapping or a callable returning the current mapping. The code passes a callable that resolves the UI language, so the labels follow a language change without a restart.
+- The pystray menu is rebuilt (`update_menu`, which destroys and recreates the native menu from the backend's thread) only when the resolved label strings changed since the last build. A tooltip update alone never rebuilds it, so a menu the user has open is not disturbed.
 - **Label refresh on Windows.** The labels are callables, but pystray builds the native menu once and rebuilds it only on `update_menu()` (also after each menu action). A language change therefore shows in the menu after the next menu action or the next tooltip update, which happens after every sync. `set_tooltip` calls `refresh_menu()` for this.
 
 - **Menu items**, localized: `open` (the default, so a left click triggers it), `sync_now`, `quit`.
@@ -296,5 +297,6 @@ Frontend: `client_log` gains `backend_sync_followed` (`service`) when the watche
 - `autostart` on writes the Run value, and off removes it. Restore afterwards.
 - `--background` starts hidden, and the tray Open shows the window.
 - A second launch shows the hidden window.
+- Open the tray menu and keep it open while a tooltip update happens (a sync finishing, or a conversation being read); the menu must not flicker or close. Then change the UI language: the next time the menu is opened its labels are in the new language.
 - With `autostart` on, uninstall (in the copy) removes the `SakaDesk` Run value.
 - An expired session found by a scheduled sync (window hidden or visible) shows the login modal after the window is next shown, and the scheduler logs `not_authenticated` from then on.

@@ -164,23 +164,77 @@ def test_set_tooltip_never_raises_and_logs_only_the_error_type(fake_pystray):
     assert "unread" not in str(logs)
 
 
-def test_set_tooltip_rebuilds_the_menu_labels(fake_pystray):
+def _switchable_strings():
+    """A strings callable whose language the test can flip, like the UI setting."""
+    state = {"strings": dict(STRINGS)}
+    return state, (lambda: state["strings"])
+
+
+EN = {"open": "Open SakaDesk", "sync_now": "Sync now", "quit": "Quit"}
+
+
+def test_tooltip_updates_do_not_rebuild_an_unchanged_menu(fake_pystray):
     controller, _ = make()
     controller.start()
     (icon,) = FakeIcon.instances
-    controller.set_tooltip("SakaDesk")
+    with capture_logs() as logs:
+        controller.set_tooltip("SakaDesk")
+        controller.set_tooltip("SakaDesk — 3 則未讀")
+        controller.refresh_menu()
+    assert icon.menu_updates == 0
+    assert not [e for e in logs if e.get("action") == "menu_refreshed"]
+    assert [e["reason"] for e in logs if e["event"] == "tray_menu_refresh_skipped"] == [
+        "unchanged"
+    ] * 3
+
+
+def test_a_language_change_rebuilds_the_menu_once(fake_pystray):
+    state, strings = _switchable_strings()
+    controller, _ = make(strings=strings)
+    controller.start()
+    (icon,) = FakeIcon.instances
+    state["strings"] = {**STRINGS, **EN}
+    with capture_logs() as logs:
+        controller.set_tooltip("SakaDesk")
+        controller.set_tooltip("SakaDesk — 1 unread")
     assert icon.menu_updates == 1
+    assert [e for e in logs if e.get("action") == "menu_refreshed"] == [
+        {"event": "tray", "action": "menu_refreshed", "log_level": "info"}
+    ]
+    assert [i.text(i) for i in icon.menu.items] == [
+        "Open SakaDesk",
+        "Sync now",
+        "Quit",
+    ]
+
+
+def test_a_change_only_in_the_tooltip_string_does_not_rebuild(fake_pystray):
+    state, strings = _switchable_strings()
+    controller, _ = make(strings=strings)
+    controller.start()
+    (icon,) = FakeIcon.instances
+    state["strings"] = {**STRINGS, "tooltip_idle": "other"}
+    controller.refresh_menu()
+    assert icon.menu_updates == 0
 
 
 def test_refresh_menu_failure_is_logged_with_the_error_type_only(fake_pystray):
-    controller, _ = make()
+    state, strings = _switchable_strings()
+    controller, _ = make(strings=strings)
     controller.start()
-    FakeIcon.instances[0].fail_on_update_menu = True
+    (icon,) = FakeIcon.instances
+    state["strings"] = {**STRINGS, **EN}
+    icon.fail_on_update_menu = True
     with capture_logs() as logs:
         controller.refresh_menu()
     (failed,) = [e for e in logs if e["event"] == "tray_menu_refresh_failed"]
     assert failed["error_type"] == "RuntimeError"
     assert "menu gone" not in str(logs)
+    assert not [e for e in logs if e.get("action") == "menu_refreshed"]
+    # The failed rebuild is not recorded, so the next refresh retries.
+    icon.fail_on_update_menu = False
+    controller.refresh_menu()
+    assert icon.menu_updates == 1
 
 
 def test_refresh_menu_before_start_is_skipped(fake_pystray):
