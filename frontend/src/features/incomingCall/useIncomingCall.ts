@@ -64,9 +64,9 @@ interface ActiveCall {
  * Incoming-call state machine for the selected chat (spec §2.4).
  * Every decision, skip and failure is logged through clientLog. Skips decided
  * before the preload are deduped per chat within a visit (reset when the chat is
- * selected again); skips after a successful preload (`superseded`, `call_active`,
- * `already_read`) are always logged, with the chat context captured when the
- * evaluation started.
+ * selected again); skips after the preload settles (`superseded`, which also covers a
+ * failed preload whose evaluation was replaced, plus `call_active` and `already_read`)
+ * are always logged, with the chat context captured when the evaluation started.
  */
 export function useIncomingCall(
     args: UseIncomingCallArgs,
@@ -198,7 +198,11 @@ export function useIncomingCall(
         }
         const message = decision.message;
         const fail = () => {
-            if (evalId !== evalIdRef.current || mediaErrorLoggedRef.current.has(message.id)) return;
+            if (evalId !== evalIdRef.current) {
+                clientLog('call_skip', { ...ctx, message_id: message.id, reason: 'superseded' });
+                return;
+            }
+            if (mediaErrorLoggedRef.current.has(message.id)) return;
             mediaErrorLoggedRef.current.add(message.id);
             clientLog('call_error', {
                 ...ctx, message_id: message.id, error_type: 'media_unavailable', phase: 'idle',

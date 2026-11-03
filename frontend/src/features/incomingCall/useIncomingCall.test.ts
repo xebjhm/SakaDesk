@@ -210,6 +210,24 @@ describe('useIncomingCall', () => {
         });
     });
 
+    it('a failing preload that was superseded logs call_skip superseded with the original context', async () => {
+        let fail!: (e: Error) => void;
+        const slow = vi.fn(() => new Promise<void>((_, rej) => { fail = rej; }));
+        const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+        rerender({
+            a: makeArgs({
+                chatDir: 'other', freshFetch: null,
+                logContext: { service: 'sakurazaka46', groupId: 99, memberId: 77 },
+            }),
+        });
+        await act(async () => { fail(new Error('media_unavailable')); await Promise.resolve(); await Promise.resolve(); });
+        expect(result.current.phase).toBe('idle');
+        expect(events()).not.toContain('call_error');
+        expect(log).toHaveBeenCalledWith('call_skip', {
+            service: 'hinatazaka46', group_id: 34, member_id: 58, message_id: 10, reason: 'superseded',
+        });
+    });
+
     it('logs the same skip only once per chat', async () => {
         const { rerender } = await ringing({ isUnread: () => false });
         rerender({ a: makeArgs({ isUnread: () => false, freshFetch: { seq: 2, dir: DIR } }) });
