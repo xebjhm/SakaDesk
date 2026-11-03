@@ -284,6 +284,20 @@ var
   OutputDir: String;
   SettingsFile: String;
 begin
+  if CurUninstallStep = usUninstall then
+  begin
+    // Remove the "Start with Windows" entry the app writes (backend/services/
+    // autostart.py: HKCU Run value "SakaDesk"). It is not user data, so it goes
+    // regardless of the cleanup prompt below and of silent uninstalls; without
+    // this an orphan "SakaDesk" startup item points at the deleted exe. Setup is
+    // PrivilegesRequired=lowest, so HKCU is the installing user's hive.
+    if RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+                      'SakaDesk') then
+      Log('Removed the SakaDesk autostart Run value.')
+    else
+      Log('No SakaDesk autostart Run value to remove.');
+  end;
+
   if CurUninstallStep = usPostUninstall then
   begin
     // Destructive cleanup requires a real, interactive Yes. A plain MsgBox is
