@@ -6,13 +6,13 @@ import { formatName } from '../../utils';
 import type { MemberInfo, Message } from '../../types';
 import { CallAudio } from '../incomingCall/CallAudio';
 import { CallScreen } from '../incomingCall/CallScreen';
-import { preloadAudio } from '../incomingCall/preloadAudio';
 import { getRingtone } from '../incomingCall/ringtone';
 import { useIncomingCall, type CallOutcome } from '../incomingCall/useIncomingCall';
 import type { AppSettings } from '../messages/MessagesFeature';
 import { parseReadStatePath } from '../messages/readStatePath';
 import { isUnreadIn, type ReadState } from '../messages/readStateStore';
 import type { CallEventExtra, CallPopupEvent, CallPopupInfo } from './callPopupApi';
+import { fetchPreload } from './fetchPreload';
 
 interface PopupCallProps {
     info: CallPopupInfo;
@@ -21,12 +21,13 @@ interface PopupCallProps {
     member: MemberInfo | undefined;
     readState: ReadState;
     post: (event: CallPopupEvent, extra?: CallEventExtra) => void;
+    /** Defaults to `fetchPreload`: the hidden popup page cannot preload an audio element. */
     preload?: (url: string, signal?: AbortSignal) => Promise<void>;
 }
 
 /** One popup call: B's call state machine on the shared CallScreen, reporting outcomes through `post`. */
 export const PopupCall: React.FC<PopupCallProps> = ({
-    info, settings, messages, member, readState, post, preload = preloadAudio,
+    info, settings, messages, member, readState, post, preload = fetchPreload,
 }) => {
     const { t } = useTranslation();
     const isUnread = useMemo(() => isUnreadIn(readState), [readState]);
