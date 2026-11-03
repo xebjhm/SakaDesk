@@ -197,3 +197,127 @@ def test_set_process_aumid_nonzero_hresult_is_logged(monkeypatch) -> None:
         set_process_aumid()
     assert logs[-1]["action"] == "process_aumid_failed"
     assert logs[-1]["error_type"] == "HRESULT"
+
+
+# --------------------------------------------- PyWin32ShellLinks (fake pywin32)
+
+RPC_E_CHANGED_MODE = -2147417850
+
+
+class _ComError(Exception):
+    pass
+
+
+_ComError.__name__ = "com_error"
+
+
+def _fake_pywin32(monkeypatch, co_init_error: Exception | None = None) -> dict:
+    """Install fake pythoncom / win32com modules; return the recorded state."""
+    import types
+
+    state: dict = {"loads": [], "saves": [], "set": [], "commits": 0, "aumid": None}
+
+    class Store:
+        def GetValue(self, _key):
+            return types.SimpleNamespace(GetValue=lambda: state["aumid"])
+
+        def SetValue(self, key, value):
+            state["set"].append((key, value))
+            state["aumid"] = value
+
+        def Commit(self):
+            state["commits"] += 1
+
+    class PersistFile:
+        def Load(self, path, *mode):
+            state["loads"].append((path, *mode))
+
+        def Save(self, path, remember):
+            state["saves"].append((path, remember))
+
+    class Link:
+        def QueryInterface(self, iid):
+            return PersistFile() if iid == "IID_IPersistFile" else Store()
+
+        def SetPath(self, p):  # must never be called on an existing link
+            state.setdefault("set_path", []).append(p)
+
+    pythoncom = types.ModuleType("pythoncom")
+    pythoncom.com_error = _ComError  # type: ignore[attr-defined]
+    pythoncom.IID_IPersistFile = "IID_IPersistFile"  # type: ignore[attr-defined]
+    pythoncom.CLSCTX_INPROC_SERVER = 1  # type: ignore[attr-defined]
+    pythoncom.CoCreateInstance = lambda *a: Link()  # type: ignore[attr-defined]
+
+    def co_init():
+        if co_init_error is not None:
+            raise co_init_error
+
+    pythoncom.CoInitialize = co_init  # type: ignore[attr-defined]
+
+    win32com = types.ModuleType("win32com")
+    propsys_pkg = types.ModuleType("win32com.propsys")
+    propsys_pkg.propsys = types.SimpleNamespace(  # type: ignore[attr-defined]
+        IID_IPropertyStore="IID_IPropertyStore", PROPVARIANTType=lambda v: v
+    )
+    propsys_pkg.pscon = types.SimpleNamespace(  # type: ignore[attr-defined]
+        PKEY_AppUserModel_ID="PKEY_AUMID"
+    )
+    shell_pkg = types.ModuleType("win32com.shell")
+    shell_pkg.shell = types.SimpleNamespace(  # type: ignore[attr-defined]
+        CLSID_ShellLink="CLSID", IID_IShellLink="IID_IShellLink"
+    )
+    for name, mod in {
+        "pythoncom": pythoncom,
+        "win32com": win32com,
+        "win32com.propsys": propsys_pkg,
+        "win32com.shell": shell_pkg,
+    }.items():
+        monkeypatch.setitem(sys.modules, name, mod)
+    return state
+
+
+def test_set_aumid_loads_the_link_read_write(monkeypatch) -> None:
+    state = _fake_pywin32(monkeypatch)
+    links = app_identity.PyWin32ShellLinks()
+    links.set_aumid(LNK, AUMID)
+    # STGM_READWRITE = 2: the default read-only Load makes Save fail with
+    # STG_E_ACCESSDENIED on the installer's existing shortcut.
+    assert state["loads"] == [(str(LNK), 2)]
+    assert state["set"] == [("PKEY_AUMID", AUMID)]
+    assert state["commits"] == 1
+    assert state["saves"] == [(str(LNK), 0)]
+    assert "set_path" not in state  # the target is never touched
+
+
+def test_read_aumid_keeps_the_default_read_mode(monkeypatch) -> None:
+    state = _fake_pywin32(monkeypatch)
+    state["aumid"] = "Other"
+    assert app_identity.PyWin32ShellLinks().read_aumid(LNK) == "Other"
+    assert state["loads"] == [(str(LNK),)]
+
+
+def test_coinitialize_changed_mode_is_tolerated(monkeypatch) -> None:
+    _fake_pywin32(monkeypatch, co_init_error=_ComError(RPC_E_CHANGED_MODE, "x"))
+    with capture_logs() as logs:
+        links = app_identity.PyWin32ShellLinks()  # must not raise
+    assert isinstance(links, app_identity.PyWin32ShellLinks)
+    (event,) = [e for e in logs if e["event"] == "app_identity"]
+    assert event["action"] == "com_already_initialized"
+    assert event["hresult"] == RPC_E_CHANGED_MODE
+
+
+def test_coinitialize_other_com_error_still_fails(monkeypatch) -> None:
+    _fake_pywin32(monkeypatch, co_init_error=_ComError(-2147024891, "denied"))
+    with pytest.raises(_ComError):
+        app_identity.PyWin32ShellLinks()
+
+
+def test_ensure_updates_an_existing_shortcut_through_pywin32(monkeypatch) -> None:
+    state = _fake_pywin32(monkeypatch)
+    state["aumid"] = None
+    monkeypatch.setattr(app_identity.Path, "exists", lambda self: True)
+    with capture_logs() as logs:
+        result = ensure_start_menu_shortcut(frozen=True, exe=EXE, programs_dir=PROGRAMS)
+    assert result == "updated"
+    assert state["loads"][-1] == (str(LNK), 2)
+    assert [e["action"] for e in logs if e["event"] == "app_identity"] == ["updated"]

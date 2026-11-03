@@ -179,7 +179,8 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
 - **`ensure_start_menu_shortcut()`** is called once at startup from `desktop.py`. In a frozen build it:
   - targets `%APPDATA%\Microsoft\Windows\Start Menu\Programs\SakaDesk.lnk`;
   - if the file is missing, creates it pointing at `sys.executable` with the AUMID;
-  - if it exists without the AUMID (or with another AUMID), sets only the AUMID property and never changes the target;
+  - if it exists without the AUMID (or with another AUMID), sets only the AUMID property and never changes the target. The link is loaded with write access (`IPersistFile.Load(path, STGM_READWRITE=2)`), then `SetValue`/`Commit` and `Save(path, 0)`; the default read mode makes the save fail with `STG_E_ACCESSDENIED` on the installer's shortcut (verified on Windows);
+  - `pythoncom.CoInitialize()` failing with `RPC_E_CHANGED_MODE` means COM is already initialised on the thread: it is logged (`app_identity`, `action=com_already_initialized`) and work continues;
   - logs `app_identity` with `action` = `created`, `updated`, `ok` or `failed` and `error_type`;
   - never raises.
 - **Dev runs** (not frozen) skip it and log `app_identity` with `action=skipped_dev`. Dev testing uses the frozen build.

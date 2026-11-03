@@ -23,6 +23,11 @@ logger = structlog.get_logger(__name__)
 AUMID = "SakaDesk"
 SHORTCUT_NAME = "SakaDesk.lnk"
 
+# IPersistFile.Load mode for an in-place edit (pythoncom has no constant).
+_STGM_READWRITE = 2
+# CoInitialize on a thread whose COM apartment was already set another way.
+_RPC_E_CHANGED_MODE = -2147417850
+
 
 class ShellLinks(Protocol):
     """Thin seam over pywin32 so the shortcut logic is testable."""
@@ -52,7 +57,18 @@ class PyWin32ShellLinks:
         self._pscon: Any = pscon
         self._shell: Any = shell
         # May run on a non-main thread; CoInitialize is idempotent per thread.
-        pythoncom.CoInitialize()
+        try:
+            pythoncom.CoInitialize()
+        except pythoncom.com_error as e:
+            # RPC_E_CHANGED_MODE: COM is already initialised on this thread
+            # (another apartment model), which is fine for IShellLink.
+            if not e.args or e.args[0] != _RPC_E_CHANGED_MODE:
+                raise
+            logger.info(
+                "app_identity",
+                action="com_already_initialized",
+                hresult=_RPC_E_CHANGED_MODE,
+            )
 
     def _new_link(self) -> Any:
         return self._pythoncom.CoCreateInstance(
@@ -62,9 +78,15 @@ class PyWin32ShellLinks:
             self._shell.IID_IShellLink,
         )
 
-    def _load(self, path: Path) -> Any:
+    def _load(self, path: Path, *, writable: bool = False) -> Any:
         link = self._new_link()
-        link.QueryInterface(self._pythoncom.IID_IPersistFile).Load(str(path))
+        persist = link.QueryInterface(self._pythoncom.IID_IPersistFile)
+        if writable:
+            # The default (read) mode makes the later Save fail with
+            # STG_E_ACCESSDENIED on an existing shortcut.
+            persist.Load(str(path), _STGM_READWRITE)
+        else:
+            persist.Load(str(path))
         return link
 
     def _store(self, link: Any) -> Any:
@@ -95,7 +117,7 @@ class PyWin32ShellLinks:
 
     def set_aumid(self, path: Path, aumid: str) -> None:
         # Only the AUMID property changes: never SetPath on an existing link.
-        link = self._load(path)
+        link = self._load(path, writable=True)
         store = self._store(link)
         store.SetValue(
             self._pscon.PKEY_AppUserModel_ID, self._propsys.PROPVARIANTType(aumid)
