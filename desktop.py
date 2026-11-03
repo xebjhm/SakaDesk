@@ -28,7 +28,7 @@ from backend.services.app_identity import (  # noqa: E402
     ensure_start_menu_shortcut,
     set_process_aumid,
 )
-from backend.services.service_utils import atomic_write_json  # noqa: E402
+from backend.services import settings_store  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -469,22 +469,13 @@ def _load_window_geometry() -> dict:
 def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
     """Write the window data dict into settings.json under the 'window' key.
 
-    SD-AUX-03: use the shared atomic tmp-file+``os.replace`` writer
-    (``atomic_write_json``) rather than a truncating ``write_text`` — a crash or
-    force-close mid-write must not leave a corrupt settings.json that
-    ``settings_store`` then fails to parse. (A cross-process lock can't be taken
-    from here, but atomic replace removes the corruption risk and shrinks the
-    lost-update window to a single last-writer-wins.)
+    SD-AUX-03: goes through ``settings_store.update_raw_sync``, which writes
+    atomically (tmp file + ``os.replace``) so a crash or force-close mid-write
+    cannot leave a corrupt settings.json, and takes the same cross-thread lock
+    as ``update_config`` / ``mark_tray_hint_shown`` so this GUI-thread save and
+    a concurrent API settings update cannot overwrite each other.
     """
-    settings: dict = {}
-    if settings_path.exists():
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    settings["window"] = window_data
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(settings_path, settings)
+    settings_store.update_raw_sync(settings_path, {"window": window_data})
 
 
 def _save_window_geometry(geom: dict) -> None:

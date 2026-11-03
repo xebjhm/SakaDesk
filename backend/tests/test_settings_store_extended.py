@@ -263,3 +263,90 @@ class TestMarkTrayHintShown:
         (e,) = [x for x in logs if x["event"] == "tray_hint_persist_failed"]
         assert e["error_type"] == "JSONDecodeError"
         assert "金村" not in repr(logs)
+
+
+# ── cross-thread serialization ───────────────────────────────────────
+
+
+class TestSettingsWritesAreSerialized:
+    @pytest.mark.asyncio
+    async def test_mark_tray_hint_and_update_config_both_persist(self, tmp_path):
+        """A GUI-thread mark_tray_hint_shown racing update_config loses nothing.
+
+        A barrier in the patched read forces both read-modify-write cycles to be
+        in flight at once: without a shared lock both would read the same
+        snapshot and the later write would drop the other's change.
+        """
+        import threading
+
+        settings_store_mod._lock = asyncio.Lock()
+        path = tmp_path / "settings.json"
+        path.write_text("{}", encoding="utf-8")
+        real_read = settings_store_mod._read_file
+        barrier = threading.Barrier(2, timeout=0.2)
+
+        def racing_read(p):
+            result = real_read(p)
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                pass  # serialized: the other cycle cannot start until we finish
+            return result
+
+        results: list = []
+        with (
+            patch.object(settings_store_mod, "get_settings_path", return_value=path),
+            patch.object(settings_store_mod, "_read_file", racing_read),
+        ):
+            t = threading.Thread(
+                target=lambda: results.append(settings_store_mod.mark_tray_hint_shown())
+            )
+            t.start()
+            await update_config(lambda c: c.__setitem__("sync_interval_minutes", 99))
+            t.join(5)
+        assert results == [True]
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        assert saved["tray_hint_shown"] is True
+        assert saved["sync_interval_minutes"] == 99
+
+    @pytest.mark.asyncio
+    async def test_many_interleavings_keep_every_update(self, tmp_path):
+        import threading
+
+        settings_store_mod._lock = asyncio.Lock()
+        path = tmp_path / "settings.json"
+        path.write_text("{}", encoding="utf-8")
+        n = 25
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            threads = [
+                threading.Thread(
+                    target=settings_store_mod.update_raw_sync,
+                    args=(path, {f"k{i}": i}),
+                )
+                for i in range(n)
+            ]
+            for t in threads:
+                t.start()
+            await asyncio.gather(
+                *(
+                    update_config(lambda c, i=i: c.__setitem__(f"a{i}", i))
+                    for i in range(n)
+                )
+            )
+            for t in threads:
+                t.join(5)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        assert all(saved[f"k{i}"] == i and saved[f"a{i}"] == i for i in range(n))
+
+
+class TestUpdateRawSync:
+    def test_merges_without_materialising_defaults(self, tmp_path):
+        path = tmp_path / "sub" / "settings.json"
+        settings_store_mod.update_raw_sync(path, {"window": {"width": 1}})
+        assert json.loads(path.read_text(encoding="utf-8")) == {"window": {"width": 1}}
+
+    def test_unreadable_file_is_treated_as_empty(self, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text("{broken", encoding="utf-8")
+        settings_store_mod.update_raw_sync(path, {"window": {}})
+        assert json.loads(path.read_text(encoding="utf-8")) == {"window": {}}

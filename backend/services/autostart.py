@@ -96,7 +96,8 @@ def build_command(exe: Path) -> str:
 
 
 def _log(action: str, **extra: object) -> str:
-    logger.info("autostart", action=action, **extra)
+    log = logger.warning if action == ACTION_FAILED else logger.info
+    log("autostart", action=action, **extra)
     return action
 
 

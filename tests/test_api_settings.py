@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from unittest.mock import patch
 import json
@@ -144,13 +146,24 @@ async def test_autostart_change_calls_apply_off_the_loop(client, isolated_settin
     from pathlib import Path
 
     seen: dict = {}
+    handler_thread: list = []
 
     def fake_apply(enabled, *, frozen, exe, reg=None):
-        seen["thread"] = threading.current_thread()
+        seen["thread"] = threading.get_ident()
         seen["args"] = (enabled, frozen, exe)
         return "enabled"
 
-    with patch("backend.services.autostart.apply", fake_apply):
+    real_to_thread = asyncio.to_thread
+
+    async def recording_to_thread(fn, /, *args, **kwargs):
+        # Called on the event-loop thread; remember which one that is.
+        handler_thread.append(threading.get_ident())
+        return await real_to_thread(fn, *args, **kwargs)
+
+    with (
+        patch("backend.services.autostart.apply", fake_apply),
+        patch("asyncio.to_thread", recording_to_thread),
+    ):
         response = client.post("/api/settings", json={"autostart": True})
     assert response.status_code == 200
     assert response.json()["autostart"] is True
@@ -159,6 +172,9 @@ async def test_autostart_change_calls_apply_off_the_loop(client, isolated_settin
         getattr(sys, "frozen", False),
         Path(sys.executable),
     )
+    # apply ran on a worker thread, not on the event-loop thread that awaited it.
+    assert handler_thread, "loop thread was not recorded"
+    assert seen["thread"] != handler_thread[0]
     saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
     assert saved["autostart"] is True
 
