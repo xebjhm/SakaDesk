@@ -549,6 +549,44 @@ async def test_scan_mark_failure_logged_and_sync_completes(tmp_path):
     assert "last_sync" in saved
 
 
+async def test_scan_mark_returning_false_logged_and_not_marked(tmp_path):
+    m = _manager(scanned=False, extra=[])
+    m.mark_history_scanned = MagicMock(return_value=False)
+    saved: dict = {}
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    m.mark_history_scanned.assert_called_once_with(43)
+    (failed,) = _events(logs, "room_history_scan_mark_failed")
+    assert failed["group_id"] == 43 and failed["log_level"] == "warning"
+    assert not _events(logs, "room_history_scan_marked")
+    assert "last_sync" in saved
+
+
+async def test_scan_mark_returning_true_or_none_counts_as_marked(tmp_path):
+    for ret in (True, None):
+        m = _manager(scanned=False, extra=[])
+        m.mark_history_scanned = MagicMock(return_value=ret)
+        with capture_logs() as logs:
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[GROUP],
+                members=API_MEMBERS,
+                mock_manager=m,
+            )
+        assert [e["group_id"] for e in _events(logs, "room_history_scan_marked")] == [
+            43
+        ]
+        assert not _events(logs, "room_history_scan_mark_failed")
+
+
 # --- Final review item 2: genuinely new messages in a scanned room ----------
 
 

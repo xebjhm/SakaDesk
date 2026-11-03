@@ -1242,7 +1242,8 @@ class SyncService:
         """Record the one-time history scan of each room in ``gids`` as done.
 
         Called once phase 3 (media download) has finished. A room whose mark
-        cannot be saved is logged and simply scanned again next sync; it never
+        cannot be saved (an exception, or ``mark_history_scanned`` returning
+        False) is logged and simply scanned again next sync; it never
         fails the sync. ``gids`` is emptied, so a later error in this run does
         not report these rooms as deferred.
         """
@@ -1250,13 +1251,18 @@ class SyncService:
             raise RuntimeError("SyncManager not initialized")
         for gid in gids:
             try:
-                self.manager.mark_history_scanned(gid)
+                saved = self.manager.mark_history_scanned(gid)
             except Exception as e:
                 logger.warning(
                     "room_history_scan_mark_failed",
                     group_id=gid,
                     error_type=type(e).__name__,
                 )
+                continue
+            # False means sync_state.json could not be saved; only an explicit
+            # False counts (older mocks/managers may return None).
+            if saved is False:
+                logger.warning("room_history_scan_mark_failed", group_id=gid)
                 continue
             logger.info("room_history_scan_marked", group_id=gid)
         gids.clear()
@@ -1561,13 +1567,43 @@ class SyncService:
                     "repairing", "Repairing Media", 2, totals["missing"], "files"
                 )
                 done = 0
+                rate_limited = False
                 for gid, members in gaps_by_group.items():
-                    since_ts = _compute_group_since_ts(
-                        [d["timestamp"] for _, miss in members for d in miss]
-                    )
-                    timeline = await manager.client.get_messages(
-                        session, gid, since_ts=since_ts
-                    )
+                    timeline = None
+                    if not rate_limited:
+                        since_ts = _compute_group_since_ts(
+                            [d["timestamp"] for _, miss in members for d in miss]
+                        )
+                        # One failing group must not abort the whole run: skip it
+                        # (its gaps stay missing). Auth failures propagate so the
+                        # UI can prompt re-login. Never log message text/URLs.
+                        try:
+                            timeline = await manager.client.get_messages(
+                                session, gid, since_ts=since_ts
+                            )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except RateLimitedError as e:
+                            # Stop fetching: further groups would only be
+                            # refused too.
+                            rate_limited = True
+                            logger.warning(
+                                "verify_rate_limited",
+                                group_id=gid,
+                                retry_after=e.retry_after,
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "verify_group_fetch_failed",
+                                group_id=gid,
+                                error_type=type(e).__name__,
+                            )
+                    if timeline is None:
+                        for _, missing in members:
+                            totals["still_missing"] += len(missing)
+                            done += len(missing)
+                        progress.set_completed(done, detail=f"{done:,} files")
+                        continue
                     for member_dir, missing in members:
                         base = done
 
