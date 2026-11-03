@@ -46,8 +46,7 @@ export const PopupCall: React.FC<PopupCallProps> = ({
         messages,
         member,
         name: formatName(member?.name ?? ''),
-        // The popup's own switch (Task 11 adds the field to AppSettings and drops the cast).
-        enabled: (settings as { call_popup_enabled?: boolean }).call_popup_enabled ?? true,
+        enabled: settings.call_popup_enabled ?? true,
         isUnread,
         freshFetch,
         revealMessage,

@@ -57,6 +57,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
     // A loaded settings object without the field means the default: on.
     const incomingCallEnabled = appSettings.incoming_call_enabled ?? true;
+    const callPopupEnabled = appSettings.call_popup_enabled ?? true;
     const closeToTray = appSettings.close_to_tray ?? true;
     const autostart = appSettings.autostart ?? false;
     const notificationsEnabled = appSettings.notifications_enabled ?? true;
@@ -172,6 +173,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             blogs_full_backup: false,
             auto_download_updates: false,
             incoming_call_enabled: true,
+            call_popup_enabled: true,
             close_to_tray: true,
             autostart: false,
             notifications_enabled: true,
@@ -277,6 +279,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
                             {t('settings.incomingCallDesc')}
+                        </p>
+                    </div>
+
+                    {/* Background call popup (default on) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.callPopup')}
+                            </label>
+                            <button
+                                role="switch"
+                                aria-checked={callPopupEnabled}
+                                aria-label={t('settings.callPopup')}
+                                onClick={() => onSaveSettings({ call_popup_enabled: !callPopupEnabled })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    callPopupEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    callPopupEnabled ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.callPopupDesc')}
                         </p>
                     </div>
 

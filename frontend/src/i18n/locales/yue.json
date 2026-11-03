@@ -86,6 +86,8 @@
     "syncReadToPhoneDesc": "喺呢度開個 chat 嗰陣，會一併清除佢喺官方 App 嘅未讀計數（消紅點），就好似你喺官方 App 打開一樣。預設係關。",
     "incomingCall": "來電",
     "incomingCallDesc": "打開有未聽語音嘅成員聊天室時，以來電方式播放最新語音",
+    "callPopup": "背景來電小窗",
+    "callPopupDesc": "SakaDesk 喺背景時收到成員語音，會喺右下角小窗以來電方式響起",
     "closeToTray": "閂視窗時縮到系統匣",
     "closeToTrayDesc": "閂咗視窗之後 SakaDesk 會喺背景繼續同步",
     "autostart": "開機時自動啟動",

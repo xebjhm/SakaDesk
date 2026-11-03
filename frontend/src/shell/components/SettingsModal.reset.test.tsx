@@ -39,6 +39,13 @@ describe('SettingsModal reset to defaults', () => {
         expect(save).toHaveBeenCalledWith(expect.objectContaining({ incoming_call_enabled: true, auto_sync_enabled: true }));
     });
 
+    it('turns the background call popup back on', async () => {
+        const save = renderModal(undefined, { ...settings, call_popup_enabled: false });
+        fireEvent.click(screen.getByText('Reset to defaults'));
+        await waitFor(() => expect(save).toHaveBeenCalled());
+        expect(save).toHaveBeenCalledWith(expect.objectContaining({ call_popup_enabled: true }));
+    });
+
     it('a loaded setting without the field reads as on and toggles off', () => {
         const { incoming_call_enabled: _omit, ...withoutField } = settings;
         void _omit;
