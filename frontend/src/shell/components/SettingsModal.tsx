@@ -55,6 +55,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     // Optimistic toggle: local override while the API call is in flight
     const [blogTogglePending, setBlogTogglePending] = useState<boolean | null>(null);
     const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
+    // A loaded settings object without the field means the default: on.
+    const incomingCallEnabled = appSettings.incoming_call_enabled ?? true;
     // Clear pending state once appSettings catches up
     React.useEffect(() => {
         if (blogTogglePending !== null && appSettings.blogs_full_backup === blogTogglePending) {
@@ -165,6 +167,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             sync_interval_minutes: 15,
             blogs_full_backup: false,
             auto_download_updates: false,
+            incoming_call_enabled: true,
         });
         setTranscriptionEnabled(true);
         setTranslationEnabled(false);
@@ -252,15 +255,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </label>
                             <button
                                 role="switch"
-                                aria-checked={appSettings.incoming_call_enabled ?? true}
+                                aria-checked={incomingCallEnabled}
                                 aria-label={t('settings.incomingCall')}
-                                onClick={() => onSaveSettings({ incoming_call_enabled: !(appSettings.incoming_call_enabled ?? true) })}
+                                onClick={() => onSaveSettings({ incoming_call_enabled: !incomingCallEnabled })}
                                 className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    (appSettings.incoming_call_enabled ?? true) ? 'bg-blue-400' : 'bg-gray-300'
+                                    incomingCallEnabled ? 'bg-blue-400' : 'bg-gray-300'
                                 }`}
                             >
                                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    (appSettings.incoming_call_enabled ?? true) ? 'translate-x-7' : 'translate-x-1'
+                                    incomingCallEnabled ? 'translate-x-7' : 'translate-x-1'
                                 }`} />
                             </button>
                         </div>
