@@ -112,6 +112,12 @@ export interface UseSyncReturn {
     sessionExpiredService: string | null;
     /** Clear the session expiry state */
     clearSessionExpired: (reconnectedService?: string) => void;
+    /** Whether a progress poll is currently running for the service */
+    isPolling: (service: string) => boolean;
+    /** Follow a sync that is already running (started by the backend) without blocking the UI */
+    followSync: (service: string) => void;
+    /** Trigger a message refresh (increments syncVersion) */
+    bumpSyncVersion: () => void;
 }
 
 /** Options for the useSync hook. */
@@ -172,8 +178,6 @@ export function useSync({
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
     const syncCompleteCallbacks = useRef<Record<string, () => void>>({});
 
-    const syncIntervalRefs = useRef<Record<string, ReturnType<typeof setInterval>>>({});
-    const syncTimeoutRefs = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
     const hasStartedSyncRef = useRef(false);
     // Track which services have already been synced on startup (to sync newly connected services)
@@ -621,68 +625,14 @@ export function useSync({
         }
     }, [isAuthenticated, appSettings, connectedServices]);
 
-    // Effect 2: Auto-sync interval setup — re-runs when settings or services change.
-    // Adaptive mode uses setTimeout chain with dynamic intervals from the backend;
-    // fixed mode uses a plain setInterval.
-    // Uses startSyncRef to avoid re-running when startSync is recreated.
-    useEffect(() => {
-        if (!isAuthenticated || !appSettings || connectedServices.length === 0) return;
-        if (!appSettings.auto_sync_enabled) return;
-        // Don't start auto-sync until app is fully configured
-        if (!appSettings.is_configured) return;
-
-        // Cancellation flag: when the effect cleans up, this prevents
-        // any in-flight fetch callbacks from setting orphaned timeouts.
-        let cancelled = false;
-
-        const clearAllTimers = () => {
-            cancelled = true;
-            Object.values(syncIntervalRefs.current).forEach(clearInterval);
-            Object.values(syncTimeoutRefs.current).forEach(clearTimeout);
-            syncIntervalRefs.current = {};
-            syncTimeoutRefs.current = {};
-        };
-
-        if (appSettings.adaptive_sync_enabled) {
-            // Adaptive: setTimeout chain — ask backend for next interval after each tick
-            const scheduleNext = (service: string) => {
-                fetch(`/api/sync/next_interval?service=${encodeURIComponent(service)}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if (cancelled) return;
-                        const ms = (data.interval_minutes ?? appSettings.sync_interval_minutes) * 60 * 1000;
-                        log(`${service}: adaptive next sync in ${(ms / 60000).toFixed(1)}m`);
-                        syncTimeoutRefs.current[service] = setTimeout(() => {
-                            if (cancelled) return;
-                            startSyncRef.current(false, service);
-                            scheduleNext(service);
-                        }, ms);
-                    })
-                    .catch((err) => {
-                        if (cancelled) return;
-                        // Fallback to fixed interval on error
-                        log(`${service}: adaptive interval fetch failed, using fixed interval`, err);
-                        const ms = appSettings.sync_interval_minutes * 60 * 1000;
-                        syncTimeoutRefs.current[service] = setTimeout(() => {
-                            if (cancelled) return;
-                            startSyncRef.current(false, service);
-                            scheduleNext(service);
-                        }, ms);
-                    });
-            };
-            connectedServices.forEach(scheduleNext);
-        } else {
-            // Fixed: plain setInterval
-            const intervalMs = appSettings.sync_interval_minutes * 60 * 1000;
-            connectedServices.forEach(service => {
-                syncIntervalRefs.current[service] = setInterval(() => {
-                    startSyncRef.current(false, service);
-                }, intervalMs);
-            });
-        }
-
-        return clearAllTimers;
-    }, [isAuthenticated, appSettings?.auto_sync_enabled, appSettings?.adaptive_sync_enabled, appSettings?.sync_interval_minutes, connectedServices]);
+    // Backend-started syncs (the AutoSyncScheduler, tray "Sync now") are followed by
+    // useBackendSyncWatcher through these three helpers; the frontend no longer
+    // schedules syncs itself.
+    const isPolling = useCallback((service: string) => !!isPollingRef.current[service], []);
+    const followSync = useCallback((service: string) => {
+        void pollSyncProgress(service, false);
+    }, [pollSyncProgress]);
+    const bumpSyncVersion = useCallback(() => setSyncVersion(v => v + 1), []);
 
     return {
         syncProgress,
@@ -699,5 +649,8 @@ export function useSync({
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
+        isPolling,
+        followSync,
+        bumpSyncVersion,
     };
 }

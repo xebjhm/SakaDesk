@@ -32,6 +32,7 @@ ClientEvent = Literal[
     "call_cancel",
     "call_error",
     "notify_open_chat",
+    "backend_sync_followed",
 ]
 
 ALLOWED_FIELDS = frozenset(

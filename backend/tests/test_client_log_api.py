@@ -118,3 +118,20 @@ def test_notify_open_chat_event_is_accepted():
     assert events[0]["event"] == "notify_open_chat"
     assert events[0]["log_level"] == "info"
     assert events[0]["service"] == "hinatazaka46"
+
+
+def test_backend_sync_followed_event_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "backend_sync_followed",
+                "fields": {"service": "hinatazaka46"},
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert len(events) == 1
+    assert events[0]["event"] == "backend_sync_followed"
+    assert events[0]["log_level"] == "info"
+    assert events[0]["service"] == "hinatazaka46"
