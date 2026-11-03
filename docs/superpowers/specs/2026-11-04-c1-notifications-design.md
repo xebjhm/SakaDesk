@@ -136,7 +136,7 @@ class ToastPlan:
 The backend has no translations today. Add `backend/i18n/` holding one `notifications.json` per locale (`en`, `ja`, `zh-TW`, `zh-CN`, `yue`), and a small loader `backend/services/i18n.py`:
 
 - `get_strings(section: str, lang: str | None) -> dict[str, str]`;
-- the language comes from `settings.language`, falling back to `en`;
+- the language comes from `resolve_ui_language(config)`: the app_state prefs `language` (the choice made in Settings, `persisted.setPref('language')`), else `settings.json` `language` (written by the installer), else `None`, which `get_strings` maps to `en`. This is the frontend's own order;
 - every locale has every key (enforced by a test);
 - C2 and C3 add their own sections to the same files.
 
@@ -228,7 +228,7 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
 
 After phase 2, where today's `notify_sync_complete_async` call is:
 
-1. Read the settings `notifications_enabled`, `notifications_hide_content` and `language` once per sync.
+1. Read the settings `notifications_enabled` and `notifications_hide_content`, and the language via `resolve_ui_language` (§5), once per sync.
 2. `plans, skips = plan_toasts(collector.entries(), …)`, called per service.
 3. Log `notify_skip` for each skip (`reason`, `group_id`, `member_id`, `count`).
 4. `await send_planned(plans)`, wrapped so that a notifier failure never fails the sync (log `notify_failed`, `error_type`).

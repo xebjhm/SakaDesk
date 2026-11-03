@@ -29,7 +29,7 @@ from backend.services.platform import (
 from backend.services.new_message_collector import NewMessageCollector
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
-from backend.services.i18n import get_strings
+from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.ui_state import get_ui_state
 from backend.services.service_utils import (
     get_service_enum,
@@ -1275,6 +1275,7 @@ class SyncService:
             if not chats:
                 return
             group_dirs = {c.group_id: c.member_dir.parent for c in chats}
+            language = await asyncio.to_thread(resolve_ui_language, app_settings)
             plans, skips = plan_toasts(
                 chats,
                 service=self._service,
@@ -1285,7 +1286,7 @@ class SyncService:
                 hide_content=bool(
                     app_settings.get("notifications_hide_content", False)
                 ),
-                strings=get_strings("notifications", app_settings.get("language")),
+                strings=get_strings("notifications", language),
                 avatar_for=find_avatar,
                 # C3 hook: gets each built ToastPlan (newest_type/newest_id) and
                 # returns True to divert it (e.g. voice to the call popup).

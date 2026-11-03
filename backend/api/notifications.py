@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.i18n import get_strings
+from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.notification_service import (
     get_notification_status,
     send_test,
@@ -56,7 +56,7 @@ async def update_settings(settings: NotificationSettings):
 async def test_notification():
     """Send a test toast in the UI language; echo the strings it carries."""
     config = await load_config()
-    language = config.get("language")
+    language = await asyncio.to_thread(resolve_ui_language, config)
     strings = get_strings("notifications", language)
     success = await send_test(language)
     return {

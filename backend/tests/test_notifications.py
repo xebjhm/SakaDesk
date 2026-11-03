@@ -71,12 +71,34 @@ class TestNotificationAPI:
         with (
             patch.object(ns, "get_notifier", lambda: Fake()),
             patch("backend.api.notifications.load_config", fake_config),
+            patch("backend.services.app_state.get_prefs", lambda: {}),
         ):
             response = client.post("/api/notifications/test")
         assert response.status_code == 200
         data = response.json()
         assert data == {"success": True, "title": "SakaDesk", "body": body}
         assert [(p.title, p.body) for p in shown] == [("SakaDesk", body)]
+
+    def test_test_notification_uses_the_language_chosen_in_settings(self, client):
+        """The Settings choice (app_state prefs) beats settings.json."""
+
+        class Fake:
+            def show(self, plan):
+                return True
+
+            def status(self):
+                return {}
+
+        async def fake_config():
+            return {"language": "en"}
+
+        with (
+            patch.object(ns, "get_notifier", lambda: Fake()),
+            patch("backend.api.notifications.load_config", fake_config),
+            patch("backend.services.app_state.get_prefs", lambda: {"language": "ja"}),
+        ):
+            response = client.post("/api/notifications/test")
+        assert response.json()["body"] == "通知は正常に動作しています"
 
     def test_test_notification_endpoint_reports_unavailable(self, client):
         """Off Windows the Null notifier cannot show it: success is False."""

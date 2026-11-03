@@ -105,6 +105,17 @@ def test_disabled_sends_nothing(tmp_path: Path) -> None:
     assert plans == []
 
 
+def test_toast_language_is_the_settings_choice(tmp_path: Path) -> None:
+    """app_state prefs ``language`` (Settings) beats settings.json ``language``."""
+    with patch("backend.services.app_state.get_prefs", return_value={"language": "ja"}):
+        send = _run(
+            _service(tmp_path),
+            _collector(tmp_path),
+            settings={"notifications_hide_content": True, "language": "en"},
+        )
+    assert {p.body for p in send.await_args.args[0]} == {"新しいメッセージがあります"}
+
+
 def test_hide_content_uses_hidden_body(tmp_path: Path) -> None:
     send = _run(
         _service(tmp_path),

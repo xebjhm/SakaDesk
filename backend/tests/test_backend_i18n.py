@@ -73,3 +73,67 @@ def test_results_are_cached_and_callers_cannot_poison_cache():
     a = get_strings("notifications", "en")
     a["sent_photo"] = "mutated"
     assert get_strings("notifications", "en")["sent_photo"] == "Sent a photo"
+
+
+# ------------------------------------------------------- resolve_ui_language
+
+
+def _prefs(monkeypatch, value) -> None:
+    from backend.services import app_state
+
+    def fake() -> dict:
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(app_state, "get_prefs", fake)
+
+
+def test_ui_language_prefers_the_settings_choice(monkeypatch):
+    from backend.services.i18n import resolve_ui_language
+
+    _prefs(monkeypatch, {"language": "ja", "other": 1})
+    assert resolve_ui_language({"language": "en"}) == "ja"
+
+
+@pytest.mark.parametrize(
+    "prefs", [{}, {"language": None}, {"language": ""}, {"language": 3}]
+)
+def test_ui_language_falls_back_to_settings_json(monkeypatch, prefs):
+    from backend.services.i18n import resolve_ui_language
+
+    _prefs(monkeypatch, prefs)
+    assert resolve_ui_language({"language": "zh-TW"}) == "zh-TW"
+
+
+def test_ui_language_none_when_unset(monkeypatch):
+    from backend.services.i18n import resolve_ui_language
+
+    _prefs(monkeypatch, {})
+    assert resolve_ui_language({}) is None
+    assert resolve_ui_language({"language": ""}) is None
+
+
+def test_ui_language_unreadable_prefs_fall_back_and_log(monkeypatch):
+    import sqlite3
+
+    from structlog.testing import capture_logs
+
+    from backend.services.i18n import resolve_ui_language
+
+    _prefs(monkeypatch, sqlite3.OperationalError("no such table: prefs C:/secret"))
+    with capture_logs() as logs:
+        assert resolve_ui_language({"language": "yue"}) == "yue"
+    (event,) = [e for e in logs if e["event"] == "ui_language_prefs_unreadable"]
+    assert event["error_type"] == "OperationalError"
+    assert "secret" not in repr(logs)
+
+
+def test_ui_language_reads_the_real_prefs_store(tmp_path, monkeypatch):
+    from backend.services import app_state
+    from backend.services.i18n import resolve_ui_language
+
+    monkeypatch.setattr(app_state, "_db_path", tmp_path / "app_state.db")
+    app_state.init_db()
+    app_state.set_prefs({"language": "zh-CN"})
+    assert resolve_ui_language({"language": "en"}) == "zh-CN"
