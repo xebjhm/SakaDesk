@@ -36,6 +36,9 @@ def tooltip_text(n: int, strings: dict[str, str]) -> str:
 
 
 READ_STATE_KEY_PREFIX = "read_state_"
+# The sidebar's state for a non-object JSON value (see _stored_state). A shared
+# constant so _total can count, and log, how often that fallback was taken.
+_NON_OBJECT_STATE: dict[str, Any] = {"lastReadId": 0, "revealedIds": []}
 
 
 def _stored_state(stored: Mapping[str, Any], rel: str) -> Optional[dict[str, Any]]:
@@ -62,7 +65,7 @@ def _stored_state(stored: Mapping[str, Any], rel: str) -> Optional[dict[str, Any
     if parsed is None:
         return None
     if not isinstance(parsed, dict):
-        return {"lastReadId": 0, "revealedIds": []}
+        return _NON_OBJECT_STATE
     return {
         "lastReadId": parsed.get("lastReadId") or 0,
         "revealedIds": parsed.get("revealedIds") or [],
@@ -94,6 +97,7 @@ def _total(output_dir: Path, stored: Mapping[str, Any]) -> int:
     refs, _ = _list_group_refs(output_dir, server_groups)
     states: dict[str, dict[str, Any]] = {}
     unparsable = 0
+    non_object = 0
     caps: dict[str, int | None] = {}
     for ref in refs:
         if ref.is_group_chat and ref.is_graduated:
@@ -104,10 +108,17 @@ def _total(output_dir: Path, stored: Mapping[str, Any]) -> int:
         if state is None:
             unparsable += 1
             continue
+        if state is _NON_OBJECT_STATE:
+            non_object += 1
+            state = dict(state)  # never hand the shared default to the counter
         states[rel] = state
         caps[rel] = ref.server_unread_count
     if unparsable:
         logger.info("tray_tooltip_state_skipped", reason="unparsable", count=unparsable)
+    if non_object:
+        logger.info(
+            "tray_tooltip_state_defaulted", reason="non_object", count=non_object
+        )
 
     counts = _compute_unread_counts(output_dir, states)
     total = 0

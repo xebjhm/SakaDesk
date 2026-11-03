@@ -292,6 +292,9 @@ async def test_non_object_json_counts_from_zero_like_the_sidebar(env, legacy) ->
     with capture_logs() as logs:
         assert await unread_total() == 3
     assert not [e for e in logs if e["event"] == "tray_tooltip_state_skipped"]
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip_state_defaulted"]
+    assert event["reason"] == "non_object"
+    assert event["count"] == 1
 
 
 @pytest.mark.asyncio
