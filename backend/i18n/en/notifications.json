@@ -1,0 +1,10 @@
+{
+  "sent_photo": "Sent a photo",
+  "sent_video": "Sent a video",
+  "sent_voice": "Sent a voice message",
+  "sent_message": "Sent a message",
+  "hidden_body": "Sent a new message",
+  "more": "+{n} more",
+  "test_title": "SakaDesk",
+  "test_body": "Notifications are working"
+}

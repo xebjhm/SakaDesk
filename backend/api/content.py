@@ -41,6 +41,10 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
+from backend.services.chat_kind import (  # noqa: F401  (GROUP_CHAT_IDS re-exported)
+    GROUP_CHAT_IDS,
+    is_group_chat,
+)
 from backend.services.message_visibility import visible_messages
 from backend.services.messages_cache import (
     NO_MESSAGES,
@@ -60,25 +64,6 @@ logger = structlog.get_logger(__name__)
 
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = get_default_output_dir()
-
-# Communal (group) chat IDs, keyed by service identifier to avoid cross-service
-# collisions (group IDs are only unique within a single service's API).
-#
-# LOAD-BEARING — do not "simplify" this away in favour of member_count alone.
-# member_count here is the number of distinct on-disk *senders* (get_member_dirs),
-# NOT the API's /groups/{id}/members count. An official communal channel posts
-# from a single account, so it has one sender folder and member_count == 1;
-# `member_count > 1` therefore cannot detect it. The IDs below are the communal
-# channels verified against real synced data (2026-07-02) that need this override:
-#   hinatazaka46 43 (日向坂46), nogizaka46 45 (乃木坂46), sakurazaka46 33 (櫻坂46).
-# 79/93 (hinatazaka46) also have >1 sender so member_count catches them too; they
-# are listed for clarity. 78/70/73 are closed/future channels kept so they classify
-# correctly if they reopen (currently no synced messages → no group emitted).
-GROUP_CHAT_IDS: dict[str, set[str]] = {
-    "hinatazaka46": {"43", "78", "79", "93"},
-    "sakurazaka46": {"33", "73"},
-    "nogizaka46": {"45", "70"},  # 70 is closed but keep for if it reopens
-}
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
@@ -336,8 +321,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
 
             member_count = len(members_info)
             # Check if this is a group chat (multiple members or special group ID)
-            service_chat_ids = GROUP_CHAT_IDS.get(service_id, set())
-            is_group_chat = member_count > 1 or group_id in service_chat_ids
+            is_group = is_group_chat(service_id, group_id, member_count)
 
             # Derive status from group-level server state
             sg = server_groups.get(f"{service_display_name}:{group_id}")
@@ -364,7 +348,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
                         "\\", "/"
                     ),
                     "member_count": member_count,
-                    "is_group_chat": is_group_chat,
+                    "is_group_chat": is_group,
                     "is_active": is_active,
                     "is_graduated": is_graduated,
                     "server_unread_count": server_unread_count,
@@ -876,10 +860,9 @@ async def get_talk_rooms(service: str = Query(..., description="Service identifi
             if d.is_dir() and (d / "messages.json").exists()
         ]
         member_count = len(member_dirs)
-        service_chat_ids = GROUP_CHAT_IDS.get(service, set())
         room_type = (
             "group_event"
-            if member_count > 1 or talk_room_id in service_chat_ids
+            if is_group_chat(service, talk_room_id, member_count)
             else "individual"
         )
 
