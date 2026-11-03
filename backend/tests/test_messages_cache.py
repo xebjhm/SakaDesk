@@ -34,12 +34,68 @@ def test_summary_fields(tmp_path):
     assert s.sorted_ids == (3, 5, 9) and s.id_set == frozenset({3, 5, 9})
 
 
-def test_summary_empty_and_explicit_total(tmp_path):
+def test_summary_empty_ignores_stored_total(tmp_path):
+    """The total counts rows the app shows; a stored total_messages (pysaka
+    counts withdrawn rows too) is not used."""
     p = tmp_path / "messages.json"
     with open(p, "w", encoding="utf-8") as f:
         json.dump({"messages": [], "total_messages": 7}, f)
     s = mc.get_messages_summary(p)
-    assert s.last_raw_id is mc.NO_MESSAGES and s.total_messages == 7 and s.member == {}
+    assert s.last_raw_id is mc.NO_MESSAGES and s.total_messages == 0 and s.member == {}
+
+
+# --- withdrawn (non-published) rows are hidden like the message list --------
+
+CANCELED_TAIL = [
+    {"id": 1},
+    {"id": 2, "state": "published"},
+    {"id": 3, "state": "canceled"},
+]
+
+
+def test_unread_count_skips_trailing_canceled(tmp_path):
+    p = tmp_path / "messages.json"
+    _write(p, CANCELED_TAIL)
+    s = mc.get_messages_summary(p)
+    assert s.unread_count(1, set()) == 1
+    assert s.unread_count(0, set()) == 2
+    assert s.unread_count(0, {3}) == 2  # revealing a hidden id changes nothing
+
+
+def test_totals_and_last_id_skip_canceled(tmp_path):
+    p = tmp_path / "messages.json"
+    with open(p, "w", encoding="utf-8") as f:
+        json.dump({"messages": CANCELED_TAIL, "total_messages": 3}, f)
+    s = mc.get_messages_summary(p)
+    assert s.total_messages == 2 and s.last_raw_id == 2
+    assert s.sorted_ids == (1, 2)
+
+
+def test_all_canceled_has_no_visible_messages(tmp_path):
+    p = tmp_path / "messages.json"
+    _write(p, [{"id": 5, "state": "canceled"}])
+    s = mc.get_messages_summary(p)
+    assert s.last_raw_id is mc.NO_MESSAGES and s.total_messages == 0
+    assert s.unread_count(0, set()) == 0
+
+
+def test_has_id_still_finds_hidden_rows(tmp_path):
+    """Favorites locate a message's file by id; a withdrawn row is still there."""
+    p = tmp_path / "messages.json"
+    _write(p, CANCELED_TAIL)
+    s = mc.get_messages_summary(p)
+    assert s.has_id(3) and s.has_id(1) and not s.has_id(4)
+
+
+def test_groups_and_unread_endpoints_skip_canceled(tmp_path):
+    member_dir = tmp_path / SERVICE_MEMBER
+    member_dir.mkdir(parents=True)
+    _write(member_dir / "messages.json", CANCELED_TAIL)
+    group = _collect_groups(tmp_path)["groups"][0]
+    assert group["total_messages"] == 2 and group["last_message_id"] == 2
+    assert _compute_unread_counts(
+        tmp_path, {SERVICE_MEMBER: {"lastReadId": 1}, SERVICE_GROUP_PATH: 0}
+    ) == {SERVICE_MEMBER: 1, SERVICE_GROUP_PATH: 2}
 
 
 @pytest.mark.parametrize(
@@ -165,6 +221,14 @@ RAW_FILES = {
     "total_float": '{"member": {"thumbnail": "t"}, "total_messages": 2.5,'
     ' "messages": [{"id": 4}]}',
     "no_messages_key": '{"member": {"thumbnail": "t"}}',
+    "canceled_last": '{"member": {"thumbnail": "t"}, "total_messages": 3,'
+    ' "messages": [{"id": 1}, {"id": 2}, {"id": 3, "state": "canceled"}]}',
+    "canceled_middle_non_dict": '{"member": {"thumbnail": "t"},'
+    ' "messages": [{"id": 1, "state": "canceled"}, 7, {"id": 3}]}',
+    "all_canceled": '{"member": {"thumbnail": "t"},'
+    ' "messages": [{"id": 1, "state": "canceled"}]}',
+    "published_state": '{"member": {"thumbnail": "t"},'
+    ' "messages": [{"id": 1, "state": "published"}, {"id": 2, "state": ""}]}',
     "top_level_list": "[1, 2]",
     "corrupt": "{bad",
 }
@@ -182,8 +246,21 @@ READ_STATES = [
 ]
 
 
+def _visible(msgs):
+    """Reference: rows the message list shows (non-dict rows are not judged)."""
+    return [
+        m
+        for m in msgs
+        if not (
+            isinstance(m, dict) and m.get("state") and m.get("state") != "published"
+        )
+    ]
+
+
 def _old_member_block(msg_file: Path):
-    """Verbatim pre-cache ``_collect_groups`` member logic (commit 5fd8a65)."""
+    """Pre-cache ``_collect_groups`` member logic (commit 5fd8a65), restricted
+    to visible rows: withdrawn rows are skipped and the total is the visible
+    row count (a stored ``total_messages`` is not used)."""
     meta: dict = {}
     group_thumbnail = None
     last_message_id = 0
@@ -200,10 +277,12 @@ def _old_member_block(msg_file: Path):
                 group_thumbnail = m_data.get("group_thumbnail")
             msgs = data.get("messages", [])
             if msgs:
-                last_id = msgs[-1].get("id", 0)
-                if last_id > last_message_id:
-                    last_message_id = last_id
-            m_total = data.get("total_messages", len(msgs))
+                visible = _visible(msgs)
+                if visible:
+                    last_id = visible[-1].get("id", 0)
+                    if last_id > last_message_id:
+                        last_message_id = last_id
+            m_total = len(_visible(msgs))
             total_messages += m_total
     except Exception:
         pass
@@ -211,12 +290,13 @@ def _old_member_block(msg_file: Path):
 
 
 def _old_unread_one(msg_file: Path, last_read_id, revealed_ids):
+    """Pre-cache per-file unread count, over visible rows only."""
     with open(msg_file, "r", encoding="utf-8") as f:
         data = json.load(f)
         messages = data.get("messages", [])
         return sum(
             1
-            for m in messages
+            for m in _visible(messages)
             if m.get("id", 0) > last_read_id and m.get("id", 0) not in revealed_ids
         )
 

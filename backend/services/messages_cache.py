@@ -12,11 +12,15 @@ Limits of the key: on a filesystem without stable inodes and with coarse mtime
 from the cache. Current writers (atomic ``os.replace`` on NTFS/ext4) cannot hit
 that, so it is accepted.
 
+Counts, totals and the last id cover only the messages the app shows
+(``message_visibility``): a withdrawn message is neither unread nor counted.
+
 Malformed files keep their pre-cache behaviour: building a summary never raises
 for a defect that only one consumer of the old code would have hit. Such defects
 are stored and re-raised by the consumer that needs the broken part, so the
 ``/groups`` and ``/unread_counts`` results (including their error paths) stay
-identical to the code that parsed ``messages.json`` on every request.
+those of the code that parsed ``messages.json`` on every request, over the shown
+messages.
 """
 
 from __future__ import annotations
@@ -29,6 +33,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Iterable, Mapping, NoReturn, Optional, TypeVar
+
+from backend.services.message_visibility import is_hidden_message
 
 T = TypeVar("T")
 StatKey = tuple[int, int, int]
@@ -116,16 +122,21 @@ class MessagesSummary:
 
     ``member`` / ``last_raw_id`` / ``total_messages`` serve ``/groups`` and are
     read through ``require_*`` so a defect raises where the old inline code did.
-    ``unread_count`` serves ``/unread_counts``.
+    ``unread_count`` serves ``/unread_counts``. All of them cover shown
+    messages only; ``has_id`` also finds hidden ones.
     """
 
     member: Mapping[str, Any]
-    last_raw_id: Any  # id of the LAST message in file order; NO_MESSAGES if none
-    total_messages: Any  # data["total_messages"] if present, else len(messages)
-    # Ids sorted for bisect; None when unorderable or when ids_error is set.
+    # id of the last shown message in file order; NO_MESSAGES if none
+    last_raw_id: Any
+    total_messages: Any  # number of shown messages
+    # Shown messages' ids sorted for bisect; None when unorderable or when
+    # ids_error is set.
     sorted_ids: Optional[tuple[Any, ...]] = None
     id_set: Optional[frozenset[Any]] = None
     raw_ids: Optional[tuple[Any, ...]] = None  # file order; fallback path only
+    # Ids of hidden (withdrawn) messages, for has_id only; usually empty.
+    hidden_ids: tuple[Any, ...] = ()
     member_error: Optional[Exception] = None
     last_error: Optional[Exception] = None
     total_error: Optional[Exception] = None
@@ -148,19 +159,23 @@ class MessagesSummary:
         return self.total_messages
 
     def has_id(self, message_id: Any) -> bool:
-        """True if some message of this file has ``id == message_id``.
+        """True if some message of this file, shown or hidden, has
+        ``id == message_id``.
 
         A message without an ``id`` counts as id ``0``, as in ``unread_count``.
         Raises the stored error if the ids could not be computed for this file.
         """
         if self.ids_error is not None:
             _reraise(self.ids_error)
+        if message_id in self.hidden_ids:
+            return True
         if self.id_set is not None:
             return message_id in self.id_set
         return message_id in (self.raw_ids or ())
 
     def unread_count(self, last_read_id: Any, revealed: Iterable[Any]) -> int:
-        """``sum(1 for m_id in ids if m_id > last_read_id and m_id not in revealed)``.
+        """``sum(1 for m_id in ids if m_id > last_read_id and m_id not in revealed)``
+        over the ids of shown messages.
 
         Raises where the old expression would raise (exception text may differ).
         """
@@ -184,10 +199,27 @@ class MessagesSummary:
 def build_messages_summary(data: Any) -> MessagesSummary:
     """Summarise parsed JSON; defects are stored, not raised (see module doc).
 
-    Only ``data.get`` can fail here, as it did in both old code paths.
+    Only ``data.get`` can fail here, as it did in both old code paths. A row
+    that is not a dict is kept as shown (it has no state to hide it), so it
+    raises where the old code read it.
     """
     member = data.get("member", {})
     msgs = data.get("messages", [])
+
+    visible: list[Any] = []
+    hidden_ids: tuple[Any, ...] = ()
+    visible_error = None
+    try:
+        hidden = [m for m in msgs if isinstance(m, dict) and is_hidden_message(m)]
+        if hidden:
+            hidden_ids = tuple(m.get("id", 0) for m in hidden)
+            visible = [
+                m for m in msgs if not (isinstance(m, dict) and is_hidden_message(m))
+            ]
+        else:
+            visible = list(msgs)
+    except Exception as e:  # e.g. "messages" is null or a number
+        visible_error = _stored(e)
 
     member_map: Mapping[str, Any] = MappingProxyType({})
     member_error = None
@@ -200,29 +232,31 @@ def build_messages_summary(data: Any) -> MessagesSummary:
 
     last_raw_id: Any = NO_MESSAGES
     last_error = None
-    try:
-        if msgs:
-            last_raw_id = msgs[-1].get("id", 0)
-    except Exception as e:
-        last_error = _stored(e)
+    if msgs and visible_error is not None:
+        last_error = visible_error
+    elif visible:
+        try:
+            last_raw_id = visible[-1].get("id", 0)
+        except Exception as e:
+            last_error = _stored(e)
 
     total: Any = 0
-    total_error = None
-    try:
-        total = data.get("total_messages", len(msgs))
-    except Exception as e:
-        total_error = _stored(e)
+    total_error = visible_error
+    if visible_error is None:
+        total = len(visible)
 
-    sorted_ids = id_set = raw_ids = ids_error = None
-    try:
-        ids = [m.get("id", 0) for m in msgs]
-        if _orderable(ids):
-            sorted_ids = tuple(sorted(ids))
-            id_set = frozenset(ids)
-        else:
-            raw_ids = tuple(ids)
-    except Exception as e:
-        ids_error = _stored(e)
+    sorted_ids = id_set = raw_ids = None
+    ids_error = visible_error
+    if visible_error is None:
+        try:
+            ids = [m.get("id", 0) for m in visible]
+            if _orderable(ids):
+                sorted_ids = tuple(sorted(ids))
+                id_set = frozenset(ids)
+            else:
+                raw_ids = tuple(ids)
+        except Exception as e:
+            ids_error = _stored(e)
 
     return MessagesSummary(
         member=member_map,
@@ -235,6 +269,7 @@ def build_messages_summary(data: Any) -> MessagesSummary:
         last_error=last_error,
         total_error=total_error,
         ids_error=ids_error,
+        hidden_ids=hidden_ids,
     )
 
 
