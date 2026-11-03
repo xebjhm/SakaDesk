@@ -36,6 +36,7 @@ from backend.services.notification_planner import UiState  # noqa: E402
 from backend.services.tray_tooltip import refresh_tray_tooltip  # noqa: E402
 from backend.services.ui_state import set_ui_state  # noqa: E402
 from tray import TrayController  # noqa: E402
+from call_popup_window import CallPopupWindow  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -285,6 +286,76 @@ def make_open_window_handler(window, focus_fn):
         window.show()
         focus_fn(_native_hwnd(window))
         logger.info("window_shown")
+
+    return handler
+
+
+def make_quit_handler(*, mark_quitting, stop_tray, destroy_popup, destroy_window):
+    """Build the tray Quit handler.
+
+    Runs ``mark_quitting``, ``stop_tray``, ``destroy_popup`` and
+    ``destroy_window`` in that order. The popup is destroyed before the main
+    window because pywebview exits only when no window is left, so a hidden
+    popup would keep the process (and its single-instance mutex) alive. A
+    callback that raises does not skip the later ones: the failure is logged as
+    ``quit_step_failed`` (``step``, ``error_type``) and the next step runs.
+    """
+    steps = (
+        ("mark_quitting", mark_quitting),
+        ("stop_tray", stop_tray),
+        ("destroy_popup", destroy_popup),
+        ("destroy_window", destroy_window),
+    )
+
+    def handler() -> None:
+        for step, fn in steps:
+            try:
+                fn()
+            except Exception as e:
+                logger.warning(
+                    "quit_step_failed", step=step, error_type=type(e).__name__
+                )
+
+    return handler
+
+
+def make_popup_preloader(ensure, read_settings):
+    """Build the main window's ``loaded`` handler that creates the call popup.
+
+    The first ``loaded`` event (it fires for a window started hidden with
+    ``--background`` too) runs ``ensure()`` once, when the ``call_popup_enabled``
+    setting is on (default on; a missing key counts as on). Later ``loaded``
+    events (page reloads) are ignored, and so are positional arguments (pywebview
+    may pass the window). A once-flag under a lock keeps two threads from
+    creating it twice. Logs ``call_popup_window action=preload_skipped`` with
+    ``reason`` ``disabled`` or ``settings_unreadable`` (``error_type``) and never
+    raises: ``ensure()`` reports its own failures.
+    """
+    lock = threading.Lock()
+    done = False
+
+    def handler(*_args) -> None:
+        nonlocal done
+        with lock:
+            if done:
+                return
+            done = True
+        try:
+            enabled = read_settings().get("call_popup_enabled", True)
+        except Exception as e:
+            logger.warning(
+                "call_popup_window",
+                action="preload_skipped",
+                reason="settings_unreadable",
+                error_type=type(e).__name__,
+            )
+            return
+        if not enabled:
+            logger.info(
+                "call_popup_window", action="preload_skipped", reason="disabled"
+            )
+            return
+        ensure()
 
     return handler
 
@@ -969,10 +1040,29 @@ def main() -> None:
 
         show_window = make_open_window_handler(window, _focus_window)
 
-        def on_quit() -> None:
-            _mark_quitting()
-            tray.stop()
-            window.destroy()
+        # Background call popup (Windows only): one hidden window, created after
+        # the main window first loads and reused for every call.
+        popup: CallPopupWindow | None = None
+        if platform.system() == "Windows":
+            popup = CallPopupWindow(
+                main_window=window,
+                url=f"http://{HOST}:{port}/?view=call-popup",
+                is_quitting=lambda: _quitting,
+            )
+            desktop_bridge.set_call_popup_host(popup)
+            window.events.loaded += make_popup_preloader(
+                popup.ensure, settings_store.read_config_sync
+            )
+            # Whatever closes the main window also closes the popup, so
+            # webview.start() can return and the process (and its mutex) exits.
+            window.events.closed += popup.destroy_on_main_closed
+
+        on_quit = make_quit_handler(
+            mark_quitting=_mark_quitting,
+            stop_tray=lambda: tray.stop(),
+            destroy_popup=popup.destroy if popup is not None else (lambda: None),
+            destroy_window=window.destroy,
+        )
 
         # System tray: Open / Sync now / Quit, and the unread tooltip.
         tray = TrayController(
@@ -1022,6 +1112,7 @@ def main() -> None:
         )
 
         # Cleanup AFTER webview closes but BEFORE process exits.
+        desktop_bridge.set_call_popup_host(None)
         tray.stop()
 
         # Snapshot child processes NOW, before any shutdown logic can
