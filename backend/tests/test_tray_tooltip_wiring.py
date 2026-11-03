@@ -35,44 +35,71 @@ def test_lifespan_registers_the_server_loop_and_clears_it_on_shutdown():
 # ------------------------------------------------------------- read states
 
 
-def _svc():
+@pytest.fixture
+def app_state_db(tmp_path):
+    from backend.services import app_state
+
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    return app_state
+
+
+@patch("backend.api.app_state.schedule_refresh_debounced")
+def test_read_state_conversation_write_schedules_a_debounced_refresh(
+    mock_schedule, app_state_db
+):
+    client = TestClient(app)
+    r = client.patch(
+        "/api/app-state/conversation",
+        params={"path": "read_state_日向坂46/messages/34 金村 美玖/58 金村 美玖"},
+        json={"value": '{"lastReadId": 3, "readCount": 0, "revealedIds": []}'},
+    )
+    assert r.status_code == 200
+    mock_schedule.assert_called_once_with()
+
+
+@patch("backend.api.app_state.schedule_refresh_debounced")
+def test_other_conversation_writes_do_not_schedule(mock_schedule, app_state_db):
+    client = TestClient(app)
+    for key in ("sakadesk_scroll_58", "bg_settings_日向坂46/messages/x"):
+        r = client.patch(
+            "/api/app-state/conversation", params={"path": key}, json={"value": "1"}
+        )
+        assert r.status_code == 200
+    mock_schedule.assert_not_called()
+
+
+@patch("backend.api.app_state.schedule_refresh_debounced")
+def test_a_failed_conversation_write_does_not_schedule(mock_schedule, app_state_db):
+    client = TestClient(app, raise_server_exceptions=False)
+    with patch(
+        "backend.api.app_state.app_state.aset_conversation",
+        side_effect=OSError("disk"),
+    ):
+        r = client.patch(
+            "/api/app-state/conversation",
+            params={"path": "read_state_x"},
+            json={"value": "{}"},
+        )
+    assert r.status_code == 500
+    mock_schedule.assert_not_called()
+
+
+@patch("backend.api.read_states.get_search_service")
+def test_search_read_state_upserts_no_longer_drive_the_tooltip(mock_get_svc):
+    """The search DB copy is not the tooltip's source, so it must not trigger it."""
+    from unittest.mock import AsyncMock
+
     svc = MagicMock()
     svc.upsert_read_state = AsyncMock()
     svc.batch_upsert_read_states = AsyncMock(return_value=1)
-    return svc
-
-
-@patch("backend.api.read_states.schedule_refresh_debounced")
-@patch("backend.api.read_states.get_search_service")
-def test_put_read_state_schedules_a_debounced_refresh(mock_get_svc, mock_schedule):
-    mock_get_svc.return_value = _svc()
-    client = TestClient(app)
-    r = client.put(
-        "/api/read-states",
-        json={"service": "hinatazaka46", "group_id": 1, "member_id": 2},
-    )
-    assert r.status_code == 200
-    mock_schedule.assert_called_once_with()
-
-
-@patch("backend.api.read_states.schedule_refresh_debounced")
-@patch("backend.api.read_states.get_search_service")
-def test_batch_read_states_schedules_one_debounced_refresh(mock_get_svc, mock_schedule):
-    mock_get_svc.return_value = _svc()
-    client = TestClient(app)
-    r = client.post(
-        "/api/read-states/batch",
-        json=[{"service": "hinatazaka46", "group_id": 1, "member_id": 2}],
-    )
-    assert r.status_code == 200
-    mock_schedule.assert_called_once_with()
-
-
-@patch("backend.api.read_states.schedule_refresh_debounced")
-def test_invalid_read_state_does_not_schedule(mock_schedule):
-    client = TestClient(app)
-    assert client.put("/api/read-states", json={}).status_code == 422
-    mock_schedule.assert_not_called()
+    mock_get_svc.return_value = svc
+    with patch("backend.services.tray_tooltip.schedule_refresh_debounced") as sched:
+        client = TestClient(app)
+        entry = {"service": "hinatazaka46", "group_id": 1, "member_id": 2}
+        assert client.put("/api/read-states", json=entry).status_code == 200
+        assert client.post("/api/read-states/batch", json=[entry]).status_code == 200
+    sched.assert_not_called()
 
 
 # -------------------------------------------------------------------- sync

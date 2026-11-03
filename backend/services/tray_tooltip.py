@@ -2,7 +2,8 @@
 
 ``refresh_tray_tooltip`` computes the text and hands it to
 ``desktop_bridge.set_tray_tooltip``. It runs after each sync
-(:func:`schedule_refresh`) and after read-state writes
+(:func:`schedule_refresh`) and after a ``read_state_*`` conversation write of
+the app-state API, the sidebar's own read-state store
 (:func:`schedule_refresh_debounced`, which coalesces bursts). Nothing is
 scheduled when no tray registered a tooltip handler (no tray, or not Windows).
 """
@@ -43,9 +44,8 @@ async def refresh_tray_tooltip() -> None:
 
     Does nothing when no tooltip handler is registered. Concurrent calls run one
     at a time (compute and set together), so the last call to start is the last
-    to set. Logs ``tray_tooltip``
-    (``unread``) on success and ``tray_tooltip_failed`` (error type only) on
-    failure.
+    to set. Logs ``tray_tooltip`` (``unread``) on success and
+    ``tray_tooltip_failed`` (error type only) on failure.
     """
     if not desktop_bridge.has_tray_tooltip_handler():
         return
