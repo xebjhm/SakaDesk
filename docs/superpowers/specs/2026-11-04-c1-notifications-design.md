@@ -170,9 +170,9 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
   - **Click:** each toast's `on_activated` is a closure over its own `ToastPlan`. It logs `notify_clicked` (`service`, `group_id`, `member_id`, from the plan) and calls the registered **open-chat handler** (§7) with `plan.target`. A plan without a chat (the test toast) logs `notify_click_unhandled` (`reason=no_target`).
   - **Failure:** `on_failed` logs `notify_failed` (`error_type`, ids).
   - **Threading:** `show()` runs `toaster.show_toast` inside `asyncio.to_thread`, so it never blocks the event loop. WinRT calls happen on that worker thread.
-- **`NullNotifier`** (non-Windows, or a `windows_toasts` import failure) returns `False` and logs `notify_unavailable` once per process, with `reason` = `not_windows` or `import_error`.
+- **`NullNotifier`** (non-Windows, a `windows_toasts` import failure, or a toaster that fails to initialise) returns `False`. `notify_unavailable` is logged once per process, when the notifier is built, with `reason` = `not_windows`, `import_error` (`error_type`, `module`) or `init_error` (`error_type`).
 - **`get_notifier()`** returns a process-wide singleton.
-- **`async def send_planned(plans) -> int`** shows each plan. It logs `notify_sent` per toast (`service`, `group_id`, `member_id`, `count`, `newest_type`) or `notify_failed`, and returns the number sent.
+- **`async def send_planned(plans) -> int`** shows each plan, each bounded by a 10-second timeout (`asyncio.wait_for`). It logs `notify_sent` per toast (`service`, `group_id`, `member_id`, `count`, `newest_type`) or `notify_failed` (a timeout is `error_type=TimeoutError`; the next plan is still shown), and returns the number sent. With an unavailable notifier it logs one `notify_skip reason=unavailable` (`backend_reason`, `count`) instead.
 - **`send_test()`** is kept for `/api/notifications/test`. It uses the i18n test strings. `get_notification_status()` reports the notifier status: `plyer_available` is renamed `available`. Update the API model, the frontend user of that field (if any) and the diagnostics code.
 
 **Shortcut / AUMID** (`backend/services/app_identity.py`, Windows only):

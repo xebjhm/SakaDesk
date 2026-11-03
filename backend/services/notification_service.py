@@ -33,6 +33,7 @@ logger = structlog.get_logger(__name__)
 _BACKEND_WINDOWS = "windows_toasts"
 _BACKEND_NONE = "none"
 _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fire
+_SHOW_TIMEOUT_S = 10  # seconds one show may take before it counts as failed
 
 _notifications_enabled = True
 
@@ -49,16 +50,16 @@ class Notifier(Protocol):
 
 
 class NullNotifier:
-    """Used where toasts are unavailable. ``show`` is a logged no-op."""
+    """Used where toasts are unavailable. ``show`` returns ``False``.
+
+    :func:`get_notifier` logs ``notify_unavailable`` (with the reason) once,
+    when it builds this notifier; ``show`` itself does not log.
+    """
 
     def __init__(self, reason: str) -> None:
         self._reason = reason
-        self._logged = False
 
     def show(self, plan: ToastPlan) -> bool:
-        if not self._logged:
-            self._logged = True
-            logger.warning("notify_unavailable", reason=self._reason)
         return False
 
     def status(self) -> dict:
@@ -182,11 +183,19 @@ def _is_windows() -> bool:
 
 
 def _build_notifier() -> Notifier:
+    """Build the notifier; log ``notify_unavailable`` with the reason when it is null."""
     if not _is_windows():
+        logger.warning("notify_unavailable", reason="not_windows")
         return NullNotifier("not_windows")
     try:
         return WindowsToastNotifier()
-    except ImportError:
+    except ImportError as e:
+        logger.warning(
+            "notify_unavailable",
+            reason="import_error",
+            error_type=type(e).__name__,
+            module=e.name,
+        )
         return NullNotifier("import_error")
     except Exception as e:
         logger.warning(
@@ -196,7 +205,10 @@ def _build_notifier() -> Notifier:
 
 
 def get_notifier() -> Notifier:
-    """The process-wide notifier (Windows toasts, else a :class:`NullNotifier`)."""
+    """The process-wide notifier (Windows toasts, else a :class:`NullNotifier`).
+
+    Built once per process, so ``notify_unavailable`` is logged at most once.
+    """
     global _notifier
     with _notifier_lock:
         if _notifier is None:
@@ -222,9 +234,19 @@ def _fail_fields(plan: ToastPlan) -> dict[str, Any]:
 
 
 async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
-    """Show ``plan`` on a worker thread; log the outcome. Never raises."""
+    """Show ``plan`` on a worker thread; log the outcome. Never raises.
+
+    A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
+    ``notify_failed`` (``error_type=TimeoutError``); its worker thread is left
+    to finish on its own.
+    """
     try:
-        shown = await asyncio.to_thread(notifier.show, plan)
+        shown = await asyncio.wait_for(
+            asyncio.to_thread(notifier.show, plan), timeout=_SHOW_TIMEOUT_S
+        )
+    except TimeoutError:
+        logger.warning("notify_failed", **_fail_fields(plan), error_type="TimeoutError")
+        return False
     except Exception as e:
         logger.warning(
             "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
@@ -246,10 +268,12 @@ async def send_planned(plans: list[ToastPlan]) -> int:
     """Show every plan (off the event loop) and return how many were shown.
 
     Skips everything when notifications are disabled (the planner already
-    skips in that case, so this is a second guard) or when the notifier is
-    unavailable (it logged why once; one summary line replaces a failure log
-    per plan). The notifier is resolved on a worker thread: its first use
-    imports ``windows_toasts``/WinRT and builds the toaster.
+    skips in that case, so this is a second guard; ``notify_skip
+    reason=disabled``) or when the notifier is unavailable (``notify_skip
+    reason=unavailable`` with ``backend_reason``; the notifier already logged
+    ``notify_unavailable`` once, when it was built). Each show is bounded by
+    ``_SHOW_TIMEOUT_S``. The notifier is resolved on a worker thread: its
+    first use imports ``windows_toasts``/WinRT and builds the toaster.
     """
     if not plans:
         return 0
@@ -257,8 +281,14 @@ async def send_planned(plans: list[ToastPlan]) -> int:
         logger.info("notify_skip", reason="disabled", count=len(plans))
         return 0
     notifier = await asyncio.to_thread(get_notifier)
-    if not notifier.status().get("available", True):
-        logger.info("notify_skip", reason="unavailable", count=len(plans))
+    status = notifier.status()
+    if not status.get("available", True):
+        logger.info(
+            "notify_skip",
+            reason="unavailable",
+            backend_reason=status.get("last_error"),
+            count=len(plans),
+        )
         return 0
     sent = 0
     for plan in plans:

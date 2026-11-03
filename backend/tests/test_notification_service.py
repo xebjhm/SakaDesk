@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import threading
 import types
 from pathlib import Path
 from unittest.mock import patch
@@ -57,14 +58,13 @@ def _reset_state():
 # --------------------------------------------------------------- NullNotifier
 
 
-def test_null_notifier_returns_false_and_logs_once() -> None:
+def test_null_notifier_returns_false_without_logging() -> None:
+    """The reason is logged once, when the notifier is built (not per show)."""
     n = ns.NullNotifier("not_windows")
     with capture_logs() as logs:
         assert n.show(make_plan()) is False
         assert n.show(make_plan()) is False
-    events = [e for e in logs if e["event"] == "notify_unavailable"]
-    assert len(events) == 1
-    assert events[0]["reason"] == "not_windows"
+    assert logs == []
 
 
 def test_null_notifier_status() -> None:
@@ -75,21 +75,35 @@ def test_null_notifier_status() -> None:
     assert st["last_error"] == "import_error"
 
 
+def _unavailable(logs: list[dict]) -> list[dict]:
+    return [e for e in logs if e["event"] == "notify_unavailable"]
+
+
 def test_get_notifier_is_null_off_windows_and_a_singleton() -> None:
     with patch.object(ns, "_is_windows", lambda: False):
-        a = ns.get_notifier()
-        b = ns.get_notifier()
+        with capture_logs() as logs:
+            a = ns.get_notifier()
+            b = ns.get_notifier()
+            a.show(make_plan())
     assert isinstance(a, ns.NullNotifier)
     assert a is b
     assert a.status()["last_error"] == "not_windows"
+    (event,) = _unavailable(logs)  # once per process, at construction
+    assert event["reason"] == "not_windows"
 
 
 def test_get_notifier_falls_back_on_import_error() -> None:
     with patch.object(ns, "_is_windows", lambda: True):
         with patch.dict(sys.modules, {"windows_toasts": None}):
-            n = ns.get_notifier()
+            with capture_logs() as logs:
+                n = ns.get_notifier()
+                ns.get_notifier()
     assert isinstance(n, ns.NullNotifier)
     assert n.status()["last_error"] == "import_error"
+    (event,) = _unavailable(logs)
+    assert event["reason"] == "import_error"
+    assert event["error_type"] == "ModuleNotFoundError"
+    assert event["module"] == "windows_toasts"
 
 
 def test_get_notifier_falls_back_on_init_error() -> None:
@@ -105,6 +119,9 @@ def test_get_notifier_falls_back_on_init_error() -> None:
                 n = ns.get_notifier()
     assert isinstance(n, ns.NullNotifier)
     assert n.status()["last_error"] == "init_error"
+    (event,) = _unavailable(logs)
+    assert event["reason"] == "init_error"
+    assert event["error_type"] == "OSError"
     assert "no winrt" not in repr(logs)
 
 
@@ -427,6 +444,39 @@ def test_send_planned_unavailable_notifier_logs_one_skip() -> None:
     assert not [e for e in logs if e["event"] == "notify_failed"]
     (skip,) = [e for e in logs if e["event"] == "notify_skip"]
     assert skip["reason"] == "unavailable" and skip["count"] == 2
+    assert skip["backend_reason"] == "not_windows"
+
+
+def test_send_planned_times_out_a_stuck_show_and_continues() -> None:
+    release = threading.Event()
+
+    class Stuck(FakeNotifier):
+        def show(self, plan):
+            self.shown.append(plan)
+            if plan.group_id == "34":
+                release.wait(5)  # a hung WinRT call
+            else:
+                release.set()  # unblock it once the next plan is shown
+            return True
+
+    fake = Stuck()
+    try:
+        with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
+            with patch.object(ns, "get_notifier", lambda: fake):
+                with capture_logs() as logs:
+                    sent = asyncio.run(ns.send_planned([_plan("34"), _plan("79")]))
+    finally:
+        release.set()
+    assert sent == 1
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["error_type"] == "TimeoutError"
+    assert failed["group_id"] == "34"
+    sent_events = [e for e in logs if e["event"] == "notify_sent"]
+    assert [e["group_id"] for e in sent_events] == ["79"]
+
+
+def test_show_timeout_is_ten_seconds() -> None:
+    assert ns._SHOW_TIMEOUT_S == 10
 
 
 def test_notifier_is_resolved_off_the_event_loop() -> None:
