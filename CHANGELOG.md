@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **SakaDesk keeps running in the system tray.** Closing the window now hides
+  it to the tray and keeps syncing in the background, so notifications still
+  arrive; use the tray icon to open the app, sync now, or quit. You can also
+  start SakaDesk with Windows. Both are in Settings.
 - **See a member's list icon, chat icon and call-screen photo.** Open them from
   the new buttons on the profile card, by clicking the large avatar, or with
   View images on a member's right-click menu. Copy and save work like other

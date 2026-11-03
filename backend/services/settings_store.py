@@ -158,6 +158,17 @@ def update_raw_sync(path: Path, updates: dict[str, Any]) -> None:
         _write_file(path, raw)
 
 
+def read_config_sync() -> dict[str, Any]:
+    """Load settings.json (defaults merged in) from a non-async thread.
+
+    For the GUI thread (the tray and the closing handler), which has no event
+    loop. Takes ``_file_lock`` so it never reads a half-written update.
+    Raises if the file is unreadable; callers decide the fallback.
+    """
+    with _file_lock:
+        return _read_file(get_settings_path())
+
+
 def mark_tray_hint_shown() -> bool:
     """Persist ``tray_hint_shown=True``; return whether it was saved.
 

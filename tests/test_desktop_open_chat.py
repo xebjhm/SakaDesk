@@ -169,14 +169,19 @@ def test_focus_failure_is_also_contained():
 
 
 class _FakeUser32:
-    def __init__(self, iconic: bool, found: int = 0) -> None:
+    def __init__(self, iconic: bool, found: int = 0, visible: bool = True) -> None:
         self.iconic = iconic
         self.found = found
+        self.visible = visible
         self.calls: list[tuple] = []
 
     def FindWindowW(self, cls, title):
         self.calls.append(("FindWindowW", cls, title))
         return self.found
+
+    def IsWindowVisible(self, hwnd):
+        self.calls.append(("IsWindowVisible", hwnd))
+        return 1 if self.visible else 0
 
     def IsIconic(self, hwnd):
         self.calls.append(("IsIconic", hwnd))
@@ -214,11 +219,16 @@ def test_configure_user32_declares_hwnd_and_bool_signatures():
         return types.SimpleNamespace(argtypes=None, restype=None)
 
     user32 = types.SimpleNamespace(
-        IsIconic=fn(), ShowWindow=fn(), SetForegroundWindow=fn()
+        IsIconic=fn(),
+        IsWindowVisible=fn(),
+        ShowWindow=fn(),
+        SetForegroundWindow=fn(),
     )
     desktop._configure_user32(user32)
     assert user32.IsIconic.argtypes == [wintypes.HWND]
     assert user32.IsIconic.restype is wintypes.BOOL
+    assert user32.IsWindowVisible.argtypes == [wintypes.HWND]
+    assert user32.IsWindowVisible.restype is wintypes.BOOL
     assert user32.ShowWindow.argtypes[0] is wintypes.HWND
     assert user32.ShowWindow.restype is wintypes.BOOL
     assert user32.SetForegroundWindow.argtypes == [wintypes.HWND]
@@ -229,6 +239,7 @@ def test_focus_minimized_window_is_restored():
     u = _FakeUser32(iconic=True)
     desktop._focus_window(42, user32=u)
     assert u.calls == [
+        ("IsWindowVisible", 42),
         ("IsIconic", 42),
         ("ShowWindow", 42, desktop._SW_RESTORE),
         ("SetForegroundWindow", 42),
@@ -239,11 +250,27 @@ def test_focus_maximized_or_normal_window_keeps_its_state():
     u = _FakeUser32(iconic=False)
     desktop._focus_window(42, user32=u)
     assert u.calls == [
+        ("IsWindowVisible", 42),
         ("IsIconic", 42),
         ("ShowWindow", 42, desktop._SW_SHOW),  # never SW_RESTORE: keeps maximized
         ("SetForegroundWindow", 42),
     ]
     assert desktop._SW_SHOW == 5 and desktop._SW_RESTORE == 9
+
+
+def test_focus_hidden_window_is_shown():
+    u = _FakeUser32(iconic=False, visible=False)
+    with capture_logs() as logs:
+        desktop._focus_window(42, user32=u)
+    assert ("ShowWindow", 42, desktop._SW_SHOW) in u.calls
+    (focus,) = [e for e in logs if e["event"] == "window_focus"]
+    assert focus["visible"] is False and focus["minimized"] is False
+
+
+def test_focus_hidden_and_minimized_window_is_restored():
+    u = _FakeUser32(iconic=True, visible=False)
+    desktop._focus_window(42, user32=u)
+    assert ("ShowWindow", 42, desktop._SW_RESTORE) in u.calls
 
 
 def test_focus_without_handle_finds_the_window_by_title():

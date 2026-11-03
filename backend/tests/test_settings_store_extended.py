@@ -230,6 +230,31 @@ class TestAsyncApi:
         assert result["new_key"] == "new_value"
 
 
+# ── read_config_sync ─────────────────────────────────────────────────
+
+
+class TestReadConfigSync:
+    def test_merges_defaults_over_the_file(self, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"close_to_tray": False}), "utf-8")
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            config = settings_store_mod.read_config_sync()
+        assert config["close_to_tray"] is False
+        assert config["autostart"] is False and config["tray_hint_shown"] is False
+
+    def test_missing_file_gives_the_defaults(self, tmp_path):
+        path = tmp_path / "settings.json"
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            assert settings_store_mod.read_config_sync() == dict(_SETTINGS_DEFAULTS)
+
+    def test_unreadable_file_raises_for_the_caller_to_handle(self, tmp_path):
+        path = tmp_path / "settings.json"
+        path.write_text("{not json", "utf-8")
+        with patch.object(settings_store_mod, "get_settings_path", return_value=path):
+            with pytest.raises(json.JSONDecodeError):
+                settings_store_mod.read_config_sync()
+
+
 # ── mark_tray_hint_shown ─────────────────────────────────────────────
 
 
