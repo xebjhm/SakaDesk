@@ -84,6 +84,8 @@
     "syncSmart": "智能排程",
     "syncReadToPhone": "与手机同步已读",
     "syncReadToPhoneDesc": "在这里打开聊天时，会一并清除它在官方 App 的未读计数（消红点），就像你在官方 App 打开一样。默认关闭。",
+    "incomingCall": "来电",
+    "incomingCallDesc": "打开有未听语音的成员聊天室时，以来电方式播放最新语音",
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
@@ -103,6 +105,13 @@
     "transcriptionGpuTesting": "测试 GPU 中...",
     "transcriptionGpuSuccess": "GPU 可用且运行正常",
     "transcriptionGpuFailed": "GPU 测试失败"
+  },
+  "call": {
+    "incoming": "来电中…",
+    "ended": "通话结束",
+    "answer": "接听",
+    "decline": "拒接",
+    "hangUp": "挂断"
   },
   "time": {
     "minute": "{{count}} 分钟",

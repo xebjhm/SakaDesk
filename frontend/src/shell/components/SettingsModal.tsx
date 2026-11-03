@@ -243,6 +243,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             </button>
                         </div>
                     </div>
+
+                    {/* Incoming call (default on) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.incomingCall')}
+                            </label>
+                            <button
+                                role="switch"
+                                aria-checked={appSettings.incoming_call_enabled ?? true}
+                                aria-label={t('settings.incomingCall')}
+                                onClick={() => onSaveSettings({ incoming_call_enabled: !(appSettings.incoming_call_enabled ?? true) })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    (appSettings.incoming_call_enabled ?? true) ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    (appSettings.incoming_call_enabled ?? true) ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.incomingCallDesc')}
+                        </p>
+                    </div>
                     </>)}
 
                     {activeTab === 'sync' && (<>
