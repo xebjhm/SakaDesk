@@ -1504,20 +1504,22 @@ async def _run_start_sync(
     metadata=None,
     saved=None,
     notify_mock=None,
+    progress_mock=None,
     **start_kwargs,
 ):
     """Run start_sync with the standard set of patches. Returns nothing;
     inspect the passed mock_manager / mock_client for assertions. Pass
     ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
     last metadata written by save_metadata; pass ``notify_mock`` to observe
-    the sync-complete notification."""
+    the sync-complete notification; pass ``progress_mock`` to observe the
+    progress tracker."""
 
     async def _capture(md):
         if saved is not None:
             saved.clear()
             saved.update(md)
 
-    mock_progress = MagicMock()
+    mock_progress = progress_mock if progress_mock is not None else MagicMock()
     for attr in ("start_phase", "set_completed", "complete", "update", "error"):
         setattr(mock_progress, attr, MagicMock())
 

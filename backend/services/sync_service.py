@@ -556,11 +556,21 @@ class SyncService:
                 # pysaka 0.4.6: rooms whose history was never fully read are
                 # re-read once from the start (ignoring cursors) so authors
                 # missing from their member list and any gaps are archived.
-                scan_gids = {
-                    gid
-                    for gid in tasks_by_group
-                    if not self.manager.history_scanned(gid)
-                }
+                # A flag that cannot be read counts as "not scanned": a
+                # redundant scan is safe, failing the whole sync is not.
+                scan_gids: set[int] = set()
+                for gid in tasks_by_group:
+                    try:
+                        scanned = self.manager.history_scanned(gid)
+                    except Exception as e:
+                        logger.warning(
+                            "room_scan_flag_unreadable",
+                            group_id=gid,
+                            error_type=type(e).__name__,
+                        )
+                        scanned = False
+                    if not scanned:
+                        scan_gids.add(gid)
                 # (group_id, member_id) -> messages reported as new, for members
                 # whose sync_member count is mostly recovered history: every
                 # author of a room scanned in this sync (only rows newer than
@@ -580,11 +590,13 @@ class SyncService:
                         )
 
                 def defer_room(
-                    gid: int, scan: bool
+                    gid: int, scan: bool, n_tasks: int
                 ) -> list[tuple[dict[str, Any], int]]:
                     # Nothing fetched, so no cursor moves and no scan mark: the
                     # next sync retries the room (and its scan) from scratch.
                     deferred_gids.append(gid)
+                    # Count its members as handled so the member bar completes.
+                    progress.update(n_tasks)
                     logger.warning(
                         "room_sync_deferred",
                         group_id=gid,
@@ -596,6 +608,12 @@ class SyncService:
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
                 ) -> list[tuple[dict[str, Any], int]]:
+                    # Deferral after a 429 applies only to rooms that have not
+                    # started their timeline fetch. Rooms run concurrently, so
+                    # in practice those are scan rooms still waiting on
+                    # scan_sem; rooms already fetching finish, or fail on their
+                    # own (pysaka fails timeline requests fast after a 429)
+                    # before any cursor moves.
                     try:
                         return await sync_room(gid, group_tasks)
                     except RateLimitedError as e:
@@ -613,7 +631,7 @@ class SyncService:
                     g_name = group.get("name", "?")
                     scan = gid in scan_gids
                     if rate_limited.is_set():
-                        return defer_room(gid, scan)
+                        return defer_room(gid, scan, len(group_tasks))
 
                     # Find the oldest timestamp cursor across all members.
                     # Only consider SYNCED members; unsynced ones (last_ts=None)
@@ -668,7 +686,7 @@ class SyncService:
                         async with scan_sem:
                             # A sibling may have hit 429 while this room waited.
                             if rate_limited.is_set():
-                                return defer_room(gid, scan)
+                                return defer_room(gid, scan, len(group_tasks))
                             logger.info(
                                 "room_history_scan_started",
                                 group=g_name,

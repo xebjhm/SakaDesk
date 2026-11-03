@@ -811,12 +811,20 @@ async def test_rate_limited_scan_defers_later_rooms(tmp_path, yield_first):
     assert _events(logs, "sync_complete")
 
 
-async def test_rate_limited_incremental_room_defers_remaining(tmp_path):
+async def test_started_incremental_rooms_fail_without_cursor_moves(tmp_path):
+    """Incremental rooms fetch concurrently, so all have started before the
+    first 429 lands: none is deferred. Each fails on its own (pysaka fails
+    timeline requests fast after a 429) before any cursor moves."""
     from pysaka import RateLimitedError
 
     m = _manager(scanned=True, extra=[])
     m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B, GROUP_C])
-    m.client.get_messages = AsyncMock(side_effect=RateLimitedError("429"))
+
+    async def _fetch(session, gid, **kw):
+        await asyncio.sleep(0)
+        raise RateLimitedError("429")
+
+    m.client.get_messages = AsyncMock(side_effect=_fetch)
     with capture_logs() as logs:
         await _run_start_sync(
             SyncService(),
@@ -825,17 +833,56 @@ async def test_rate_limited_incremental_room_defers_remaining(tmp_path):
             members=API_MEMBERS,
             mock_manager=m,
         )
-    assert _fetched_gids(m) == [43]
+    assert sorted(_fetched_gids(m)) == [43, 44, 45]
     m.sync_member.assert_not_awaited()
-    deferred = _events(logs, "room_sync_deferred")
-    assert [(e["group_id"], e["scan"]) for e in deferred] == [
-        (44, False),
-        (45, False),
-    ]
+    m.backfill_past_messages.assert_not_awaited()
+    m.sync_letters.assert_not_awaited()
+    assert not _events(logs, "room_sync_deferred")
+    failed = sorted(e["group_id"] for e in _events(logs, "group_sync_failed"))
+    assert failed == [43, 44, 45]
     (limited,) = _events(logs, "sync_rate_limited")
     assert limited["group_id"] == 43 and limited["retry_after"] is None
     (summary,) = _events(logs, "sync_rate_limit_summary")
-    assert summary["deferred_rooms"] == 2 and summary["group_ids"] == [44, 45]
+    assert summary["deferred_rooms"] == 0 and summary["group_ids"] == []
+
+
+async def test_rate_limited_incremental_room_defers_waiting_scan_rooms(tmp_path):
+    """A 429 in an incremental room defers the scan rooms still queued on the
+    scan semaphore; the scan already fetching finishes normally."""
+    from pysaka import RateLimitedError
+
+    m = _manager(scanned=False, extra=[])
+    m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B, GROUP_C])
+    m.history_scanned = MagicMock(side_effect=lambda gid: gid == 43)
+    rows = [_make_message(1, 79, "2022-04-01T03:05:10Z")]
+
+    async def _fetch(session, gid, **kw):
+        if gid == 43:
+            await asyncio.sleep(0)
+            raise RateLimitedError("429", retry_after=60)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return rows
+
+    m.client.get_messages = AsyncMock(side_effect=_fetch)
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP, GROUP_B, GROUP_C],
+            members=API_MEMBERS,
+            mock_manager=m,
+        )
+    assert sorted(_fetched_gids(m)) == [43, 44]
+    assert _synced_group_ids(m) == [44]
+    m.mark_history_scanned.assert_called_once_with(44)
+    (deferred,) = _events(logs, "room_sync_deferred")
+    assert deferred["group_id"] == 45 and deferred["scan"] is True
+    assert [e["group_id"] for e in _events(logs, "group_sync_failed")] == [43]
+    (limited,) = _events(logs, "sync_rate_limited")
+    assert limited["group_id"] == 43 and limited["retry_after"] == 60
+    (summary,) = _events(logs, "sync_rate_limit_summary")
+    assert summary["deferred_rooms"] == 1 and summary["group_ids"] == [45]
 
 
 async def test_room_past_fetch_completes_after_rate_limit(tmp_path):
@@ -914,3 +961,61 @@ async def test_no_rate_limit_summary_without_429(tmp_path):
         )
     assert not _events(logs, "sync_rate_limit_summary")
     assert not _events(logs, "sync_rate_limited")
+
+
+async def test_deferred_room_advances_member_progress(tmp_path):
+    from pysaka import RateLimitedError
+
+    m = _manager(scanned=False, extra=[])
+    m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B])
+
+    async def _fetch(session, gid, **kw):
+        raise RateLimitedError("429")
+
+    m.client.get_messages = AsyncMock(side_effect=_fetch)
+    progress = MagicMock()
+    await _run_start_sync(
+        SyncService(),
+        tmp_path,
+        groups=[GROUP, GROUP_B],
+        members=API_MEMBERS,
+        mock_manager=m,
+        progress_mock=progress,
+    )
+    # Room 44 (one API member) is deferred and counted as handled.
+    progress.update.assert_called_once_with(len(API_MEMBERS))
+
+
+async def test_unreadable_scan_flag_scans_room(tmp_path):
+    """A corrupt scan flag treats that room as needing a scan instead of
+    failing the whole sync."""
+    m = _manager(scanned=True, extra=[])
+    m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B])
+
+    def _flag(gid):
+        if gid == 43:
+            raise ValueError("corrupt room_43")
+        return True
+
+    m.history_scanned = MagicMock(side_effect=_flag)
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP, GROUP_B],
+            members=API_MEMBERS,
+            mock_manager=m,
+        )
+    (bad,) = _events(logs, "room_scan_flag_unreadable")
+    assert bad == {
+        "event": "room_scan_flag_unreadable",
+        "log_level": "warning",
+        "group_id": 43,
+        "error_type": "ValueError",
+    }
+    by_gid = {c.args[1]: c.kwargs for c in m.client.get_messages.await_args_list}
+    assert by_gid[43].get("page_delay") == 0 and by_gid[43].get("since_ts") is None
+    assert "page_delay" not in by_gid[44]
+    assert _synced_group_ids(m) == [43, 44]
+    m.mark_history_scanned.assert_called_once_with(43)
+    assert _events(logs, "sync_complete")

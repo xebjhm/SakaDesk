@@ -62,8 +62,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier lineups of a single's live-event room, and announcements posted as the
   room itself. After updating, the first sync re-reads each chat once and adds
   them with their photos and videos. It goes slowly so the server doesn't refuse
-  it and can take about 15 minutes; if the server still asks it to slow down,
-  the remaining chats are read on the next sync.
+  it, so it can take a while; if the server still asks it to slow down, the
+  remaining chats are read on the next sync.
 
 ## [0.3.4] - 2026-11-03
 
