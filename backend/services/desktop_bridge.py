@@ -169,7 +169,12 @@ class HeardTarget:
 
 
 class CallPopupHost(Protocol):
-    """The desktop popup window host. Its methods block, so they run off-loop."""
+    """The desktop popup window host.
+
+    ``available()`` must be a non-blocking flag read (no window or Win32 calls):
+    the gate calls it directly on the server loop. Every other method may block,
+    so the bridge runs it on a worker thread with a timeout.
+    """
 
     def available(self) -> bool: ...
     def ensure(self) -> bool: ...

@@ -105,13 +105,18 @@ def test_hanging_host_times_out(monkeypatch):
     gate = threading.Event()
     db.set_call_popup_host(Host(block=gate))
     monkeypatch.setattr(db, "BRIDGE_TIMEOUT_S", 0.05)
-    try:
-        with capture_logs() as logs:
-            assert asyncio.run(db.call_popup_reveal()) is False
-        (e,) = [e for e in logs if e["event"] == "call_popup_bridge_failed"]
-        assert e["op"] == "reveal" and e["reason"] == "timeout"
-    finally:
-        gate.set()
+
+    async def run() -> bool:
+        try:
+            return await db.call_popup_reveal()
+        finally:
+            # Release the hung worker before asyncio.run joins the executor.
+            gate.set()
+
+    with capture_logs() as logs:
+        assert asyncio.run(run()) is False
+    (e,) = [e for e in logs if e["event"] == "call_popup_bridge_failed"]
+    assert e["op"] == "reveal" and e["reason"] == "timeout"
 
 
 def test_start_uses_the_longer_timeout(monkeypatch):
