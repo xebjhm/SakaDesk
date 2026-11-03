@@ -199,7 +199,11 @@ Frontend helper `frontend/src/utils/clientLog.ts`: `clientLog(event, fields)` is
 | `call_cancel` | chat or service switch during a call | message_id, phase |
 
 **Dedupe:**
-- `call_skip` is logged only when its (candidate id, reason) differs from the last skip logged for that chat. A sync that reaches the same skip again does not log again.
+- `call_skip` is logged only when its (candidate id, reason) differs from the last skip logged for that chat during the current visit. A sync that reaches the same skip again does not log again, but the next visit does.
+- A preload that succeeds but may no longer ring is always logged as `call_skip`, using the chat context captured when the evaluation started:
+  - `superseded`: a newer evaluation or a chat switch replaced it;
+  - `already_read`: the voice was read while the preload ran;
+  - `call_active`: a call is already showing.
 - `call_error media_unavailable` is logged once per (chat, candidate id) per visit.
 
 **Never logged:** member names, message text, URLs or file paths.
