@@ -71,7 +71,8 @@ any phase ──chat/service switch──▶ idle        (no "ended" screen, no 
 ```
 
 - Answering marks the voice heard immediately, through the existing `revealMessage` path, so read-state consolidation and the backend read-state sync work as today. Hanging up early does not undo this.
-- Constants: `RING_TIMEOUT_MS = 30_000` and `ENDED_HOLD_MS = 800`.
+- Constants: `RING_TIMEOUT_MS = 30_000`, `ENDED_HOLD_MS = 800` and `PRELOAD_TIMEOUT_MS = 10_000`. A preload that neither loads nor fails within that time counts as `media_unavailable`.
+- Only the latest evaluation's preload may start ringing. A visit change or a newer evaluation makes an in-flight preload's result void.
 
 ### 2.5 Screen
 
@@ -117,12 +118,13 @@ This module has no timers, network, DOM or React.
 
 ### 3.2 `useIncomingCall.ts` (state machine hook)
 
-- **Inputs:**
-  - `service`, `selectedGroupDir`, `isGroupChat`, `messages`, `member`;
-  - `enabled` (the setting), `isUnread`;
-  - `fetchSeq`: a counter that `MessagesFeature` bumps when a fresh fetch for the selected chat completes;
+- **Inputs** (one `UseIncomingCallArgs` object):
+  - `service` (the media service), `chatDir` (the selected chat dir), `isGroupChat`, `messages`, `member`, `name`;
+  - `enabled` (the setting; `undefined` while settings load), `isUnread`;
+  - `freshFetch: { seq, dir } | null`: `MessagesFeature` bumps `seq` when a fresh fetch completes for `dir`;
   - `revealMessage(id)`, `scrollToMessage(id)`;
-  - `audioUrlFor(message)`.
+  - `logContext`: the `parseReadStatePath` result.
+  - An optional second argument `preload(url)` lets tests replace the audio preloader. The audio URL is built with the shared `buildMediaUrl` helper, which `MessageBubble` also uses.
 - **State and timers:**
   - It owns `phase: 'idle' | 'ringing' | 'connected' | 'ended'`, the current call message and photo URL, the dismissed set, the 30 s and 0.8 s timers, the preload, and `talkStartedAt` for the timer display.
   - Timers are cleared on every transition and on unmount.
@@ -155,7 +157,7 @@ No state beyond animation. Every visible string and button `aria-label` goes thr
 
 ### 3.5 Changes to `MessagesFeature.tsx`
 
-1. Add a `fetchSeq` state, bumped when `fetchMessages` for the selected chat finishes successfully.
+1. Add a `freshFetch` state (`{ seq, dir }`), bumped when `fetchMessages` finishes successfully. Hide the unread jump buttons while a call is active: they sit above the chat area.
 2. Add `scrollToMessage(id)`: find the index and call `virtuosoRef.scrollToIndex({ index, align: 'center' })`.
 3. Call `useIncomingCall(...)` and render `<CallOverlay>` inside the chat-area container, next to `MessageList`.
 4. Read the setting `appSettings.incoming_call_enabled`. Treat `undefined` (settings not loaded yet) as off, so a call never rings before settings load.
@@ -197,7 +199,7 @@ Frontend helper `frontend/src/utils/clientLog.ts`: `clientLog(event, fields)` is
 | `call_cancel` | chat or service switch during a call | message_id, phase |
 
 **Dedupe:**
-- `call_skip` is logged once per (chat, candidate id, reason). A sync that reaches the same skip again does not log again.
+- `call_skip` is logged only when its (candidate id, reason) differs from the last skip logged for that chat. A sync that reaches the same skip again does not log again.
 - `call_error media_unavailable` is logged once per (chat, candidate id) per visit.
 
 **Never logged:** member names, message text, URLs or file paths.
@@ -253,10 +255,12 @@ Frontend helper `frontend/src/utils/clientLog.ts`: `clientLog(event, fields)` is
    - Settings not loaded means no ring.
 3. **`CallScreen.test.tsx`**: each phase renders its translated text, buttons call their callbacks, and aria labels are present.
 4. **`CallOverlay.test.tsx`**: Esc/Enter, audio `ended` → `onPlaybackEnded`, and audio `error` → `onPlaybackError`.
-5. **`MessagesFeature` integration:**
+5. **Integration harness (`incomingCall.integration.test.tsx`).** A small test component wires `useIncomingCall` and `CallOverlay` exactly as `MessagesFeature` does:
    - a 1:1 chat with an unheard voice shows the overlay;
    - a group chat does not;
    - setting off does not.
+
+   `MessagesFeature` itself has no render tests today: it needs the store, Virtuoso and many endpoints. Its wiring is covered by the manual Windows check below.
 6. **i18n:** the new keys are present in all five locales, and non-ASCII renders.
 
 ### Backend (pytest)
