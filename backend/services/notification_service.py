@@ -19,6 +19,7 @@ import asyncio
 import sys
 import threading
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
 
 import structlog
@@ -36,6 +37,12 @@ _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fi
 _SHOW_TIMEOUT_S = 10  # seconds one show may take before it counts as failed
 
 _notifications_enabled = True
+
+# Toast shows run on one dedicated worker thread, so a hung WinRT call can
+# only ever block this thread, never the default executor other code uses.
+_toast_executor: ThreadPoolExecutor | None = None
+_show_running = False  # a show is on (or queued for) the worker thread
+_show_state_lock = threading.Lock()
 
 
 class Notifier(Protocol):
@@ -233,16 +240,71 @@ def _fail_fields(plan: ToastPlan) -> dict[str, Any]:
     }
 
 
+def _get_toast_executor() -> ThreadPoolExecutor:
+    """The single-worker toast executor (created on first use)."""
+    global _toast_executor
+    with _show_state_lock:
+        if _toast_executor is None:
+            _toast_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="toast"
+            )
+        return _toast_executor
+
+
+def _claim_show_slot() -> bool:
+    """Mark a show as running; False when a previous show is still running."""
+    global _show_running
+    with _show_state_lock:
+        if _show_running:
+            return False
+        _show_running = True
+        return True
+
+
+def _release_show_slot() -> None:
+    global _show_running
+    with _show_state_lock:
+        _show_running = False
+
+
+def _reset_toast_executor_for_tests() -> None:
+    """Drop the executor and busy flag (does not wait for a stuck worker)."""
+    global _toast_executor, _show_running
+    with _show_state_lock:
+        executor, _toast_executor = _toast_executor, None
+        _show_running = False
+    if executor is not None:
+        executor.shutdown(wait=False)
+
+
 async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
-    """Show ``plan`` on a worker thread; log the outcome. Never raises.
+    """Show ``plan`` on the toast worker thread; log the outcome. Never raises.
 
     A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
     ``notify_failed`` (``error_type=TimeoutError``); its worker thread is left
-    to finish on its own.
+    to finish on its own. While such a show is still running, further shows
+    are not queued behind it: they are skipped with ``notify_skip
+    reason=busy`` (ids and ``count`` only).
     """
+    if not _claim_show_slot():
+        logger.info(
+            "notify_skip", reason="busy", **_fail_fields(plan), count=plan.count
+        )
+        return False
+    try:
+        # submit + done-callback (not run_in_executor) so the slot is also
+        # freed if the job is cancelled before the worker ever starts it.
+        job = _get_toast_executor().submit(notifier.show, plan)
+    except Exception as e:  # e.g. the executor was shut down
+        _release_show_slot()
+        logger.warning(
+            "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
+        )
+        return False
+    job.add_done_callback(lambda _f: _release_show_slot())
     try:
         shown = await asyncio.wait_for(
-            asyncio.to_thread(notifier.show, plan), timeout=_SHOW_TIMEOUT_S
+            asyncio.wrap_future(job), timeout=_SHOW_TIMEOUT_S
         )
     except TimeoutError:
         logger.warning("notify_failed", **_fail_fields(plan), error_type="TimeoutError")
@@ -272,7 +334,8 @@ async def send_planned(plans: list[ToastPlan]) -> int:
     reason=disabled``) or when the notifier is unavailable (``notify_skip
     reason=unavailable`` with ``backend_reason``; the notifier already logged
     ``notify_unavailable`` once, when it was built). Each show is bounded by
-    ``_SHOW_TIMEOUT_S``. The notifier is resolved on a worker thread: its
+    ``_SHOW_TIMEOUT_S``, and while a timed-out show is still stuck the rest
+    are skipped (``notify_skip reason=busy``). The notifier is resolved on a worker thread: its
     first use imports ``windows_toasts``/WinRT and builds the toaster.
     """
     if not plans:

@@ -105,7 +105,9 @@ def _native_hwnd(window) -> int | None:
     """The pywebview window's own HWND (WinForms ``window.native.Handle``), or None.
 
     Never raises: any failure (no native form yet, a cross-thread access
-    error) returns None so the caller falls back to finding the window by title.
+    error) returns None so the caller falls back to finding the window by
+    title, and is logged as ``window_native_handle_unavailable`` (error type
+    only). A missing handle (``None``) is not an error and is not logged.
     """
     try:
         handle = window.native.Handle
@@ -113,8 +115,26 @@ def _native_hwnd(window) -> int | None:
             return None
         to_int = getattr(handle, "ToInt64", None)  # pythonnet IntPtr
         return int(to_int()) if to_int is not None else int(handle)
-    except Exception:
+    except Exception as e:
+        logger.warning("window_native_handle_unavailable", error_type=type(e).__name__)
         return None
+
+
+def _configure_user32(user32) -> None:
+    """Declare the HWND/BOOL signatures of the user32 calls ``_focus_window`` makes.
+
+    Without them ctypes passes the handle as a 32-bit int and returns an int,
+    which truncates 64-bit handles. Windows only (``wintypes`` is not used
+    elsewhere); ``FindWindowW`` is left at its defaults.
+    """
+    from ctypes import wintypes
+
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
 
 
 def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
@@ -124,14 +144,16 @@ def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
     window title). A minimized window is restored (``SW_RESTORE``); any other
     window is only shown (``SW_SHOW``) so a maximized window stays maximized.
     ``user32`` is injectable for tests; without it this is a no-op off Windows.
-    Logs ``window_focus`` (``minimized``, ``source``), ``window_focus_skipped``
-    or ``window_focus_failed`` (error type only).
+    Logs ``window_focus`` (``minimized``, ``source``, ``foreground`` = the
+    ``SetForegroundWindow`` result), ``window_focus_skipped`` or
+    ``window_focus_failed`` (error type only).
     """
     if user32 is None and platform.system() != "Windows":
         return
     try:
         if user32 is None:
             user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            _configure_user32(user32)
         source = "native"
         if not hwnd:
             source = "find_window"
@@ -141,8 +163,10 @@ def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
             return
         minimized = bool(user32.IsIconic(hwnd))
         user32.ShowWindow(hwnd, _SW_RESTORE if minimized else _SW_SHOW)
-        user32.SetForegroundWindow(hwnd)
-        logger.debug("window_focus", minimized=minimized, source=source)
+        foreground = bool(user32.SetForegroundWindow(hwnd))
+        logger.debug(
+            "window_focus", minimized=minimized, source=source, foreground=foreground
+        )
     except Exception as e:
         logger.warning("window_focus_failed", error_type=type(e).__name__)
 

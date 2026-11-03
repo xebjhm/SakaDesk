@@ -102,7 +102,24 @@ def test_native_hwnd_variants():
         def Handle(self):
             raise RuntimeError("cross-thread")
 
-    assert desktop._native_hwnd(types.SimpleNamespace(native=Broken())) is None
+    with capture_logs() as logs:
+        assert desktop._native_hwnd(types.SimpleNamespace(native=Broken())) is None
+    (unavailable,) = [
+        e for e in logs if e["event"] == "window_native_handle_unavailable"
+    ]
+    assert unavailable["error_type"] == "RuntimeError"
+    assert "cross-thread" not in str(unavailable)
+
+
+def test_native_hwnd_none_handle_is_not_an_error():
+    with capture_logs() as logs:
+        assert desktop._native_hwnd(types.SimpleNamespace(native=None)) is None
+    # no native form yet: the AttributeError on None.Handle is logged ...
+    assert [e["event"] for e in logs] == ["window_native_handle_unavailable"]
+    with capture_logs() as logs:
+        none_handle = types.SimpleNamespace(native=types.SimpleNamespace(Handle=None))
+        assert desktop._native_hwnd(none_handle) is None
+    assert logs == []  # ... a None handle is not
 
 
 def test_frontend_not_mounted_is_logged_as_not_ready():
@@ -172,6 +189,40 @@ class _FakeUser32:
     def SetForegroundWindow(self, hwnd):
         self.calls.append(("SetForegroundWindow", hwnd))
         return 1
+
+
+def test_focus_logs_the_foreground_result():
+    class Refused(_FakeUser32):
+        def SetForegroundWindow(self, hwnd):
+            return 0
+
+    for user32, expected in (
+        (_FakeUser32(iconic=False), True),
+        (Refused(False), False),
+    ):
+        with capture_logs() as logs:
+            desktop._focus_window(42, user32=user32)
+        (focus,) = [e for e in logs if e["event"] == "window_focus"]
+        assert focus["foreground"] is expected
+        assert focus["source"] == "native" and focus["minimized"] is False
+
+
+def test_configure_user32_declares_hwnd_and_bool_signatures():
+    from ctypes import wintypes
+
+    def fn():
+        return types.SimpleNamespace(argtypes=None, restype=None)
+
+    user32 = types.SimpleNamespace(
+        IsIconic=fn(), ShowWindow=fn(), SetForegroundWindow=fn()
+    )
+    desktop._configure_user32(user32)
+    assert user32.IsIconic.argtypes == [wintypes.HWND]
+    assert user32.IsIconic.restype is wintypes.BOOL
+    assert user32.ShowWindow.argtypes[0] is wintypes.HWND
+    assert user32.ShowWindow.restype is wintypes.BOOL
+    assert user32.SetForegroundWindow.argtypes == [wintypes.HWND]
+    assert user32.SetForegroundWindow.restype is wintypes.BOOL
 
 
 def test_focus_minimized_window_is_restored():

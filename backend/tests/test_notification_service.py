@@ -50,9 +50,11 @@ def make_plan(
 def _reset_state():
     ns.set_notifications_enabled(True)
     ns._reset_notifier_for_tests()
+    ns._reset_toast_executor_for_tests()
     yield
     ns.set_notifications_enabled(True)
     ns._reset_notifier_for_tests()
+    ns._reset_toast_executor_for_tests()
 
 
 # --------------------------------------------------------------- NullNotifier
@@ -447,7 +449,7 @@ def test_send_planned_unavailable_notifier_logs_one_skip() -> None:
     assert skip["backend_reason"] == "not_windows"
 
 
-def test_send_planned_times_out_a_stuck_show_and_continues() -> None:
+def test_stuck_show_times_out_then_later_shows_are_skipped_as_busy() -> None:
     release = threading.Event()
 
     class Stuck(FakeNotifier):
@@ -455,8 +457,6 @@ def test_send_planned_times_out_a_stuck_show_and_continues() -> None:
             self.shown.append(plan)
             if plan.group_id == "34":
                 release.wait(5)  # a hung WinRT call
-            else:
-                release.set()  # unblock it once the next plan is shown
             return True
 
     fake = Stuck()
@@ -464,15 +464,95 @@ def test_send_planned_times_out_a_stuck_show_and_continues() -> None:
         with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
             with patch.object(ns, "get_notifier", lambda: fake):
                 with capture_logs() as logs:
-                    sent = asyncio.run(ns.send_planned([_plan("34"), _plan("79")]))
+                    sent = asyncio.run(
+                        ns.send_planned([_plan("34"), _plan("79", count=3)])
+                    )
     finally:
         release.set()
-    assert sent == 1
+    assert sent == 0
     (failed,) = [e for e in logs if e["event"] == "notify_failed"]
     assert failed["error_type"] == "TimeoutError"
     assert failed["group_id"] == "34"
-    sent_events = [e for e in logs if e["event"] == "notify_sent"]
-    assert [e["group_id"] for e in sent_events] == ["79"]
+    (busy,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert busy["reason"] == "busy"
+    assert busy["group_id"] == "79" and busy["member_id"] == "58"
+    assert busy["count"] == 3
+    assert [p.group_id for p in fake.shown] == ["34"]  # 79 never reached show
+    assert not [e for e in logs if e["event"] == "notify_sent"]
+
+
+def test_shows_work_again_after_the_stuck_show_finishes() -> None:
+    release = threading.Event()
+    started = threading.Event()
+
+    class Stuck(FakeNotifier):
+        def show(self, plan):
+            self.shown.append(plan)
+            if plan.group_id == "34":
+                started.set()
+                release.wait(5)
+            return True
+
+    fake = Stuck()
+
+    async def run():
+        with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
+            with patch.object(ns, "get_notifier", lambda: fake):
+                first = await ns.send_planned([_plan("34")])
+                assert started.is_set()
+                busy = await ns.send_planned([_plan("79")])
+                release.set()
+                # the freed slot is released by the worker's done-callback
+                for _ in range(100):
+                    if not ns._show_running:
+                        break
+                    await asyncio.sleep(0.01)
+                after = await ns.send_planned([_plan("80")])
+        return first, busy, after
+
+    try:
+        with capture_logs() as logs:
+            first, busy, after = asyncio.run(run())
+    finally:
+        release.set()
+    assert (first, busy, after) == (0, 0, 1)
+    assert [p.group_id for p in fake.shown] == ["34", "80"]
+    assert [e["group_id"] for e in logs if e["event"] == "notify_sent"] == ["80"]
+    assert [e["reason"] for e in logs if e["event"] == "notify_skip"] == ["busy"]
+
+
+def test_raising_show_frees_the_slot_for_the_next_one() -> None:
+    fake = FakeNotifier(exc={"34": RuntimeError("boom")})
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            sent = asyncio.run(ns.send_planned([_plan("34"), _plan("79")]))
+    assert sent == 1
+    assert not [e for e in logs if e["event"] == "notify_skip"]
+
+
+def test_shows_run_on_the_dedicated_toast_thread() -> None:
+    names: list[str] = []
+
+    class Spy(FakeNotifier):
+        def show(self, plan):
+            names.append(threading.current_thread().name)
+            return True
+
+    with patch.object(ns, "get_notifier", lambda: Spy()):
+        asyncio.run(ns.send_planned([_plan("34"), _plan("79")]))
+    assert len(names) == 2 and all(n.startswith("toast") for n in names)
+    assert ns._get_toast_executor() is ns._get_toast_executor()
+
+
+def test_executor_failure_is_logged_and_frees_the_slot() -> None:
+    ns._get_toast_executor().shutdown(wait=False)  # submit() now raises
+    with patch.object(ns, "get_notifier", lambda: FakeNotifier()):
+        with capture_logs() as logs:
+            sent = asyncio.run(ns.send_planned([_plan("34")]))
+    assert sent == 0
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert not ns._show_running
 
 
 def test_show_timeout_is_ten_seconds() -> None:
