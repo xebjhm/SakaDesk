@@ -20,7 +20,17 @@ from pysaka import (
 )
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
+from backend.services import desktop_bridge
 from backend.services.background_tasks import track_background_task
+from backend.services.call_popup import (
+    PendingCall,
+    QuietProbe,
+    divert_gate,
+    get_call_popup_controller,
+    log_gate_skip,
+    make_call_divert,
+    select_call_candidate,
+)
 from backend.services.platform import (
     get_session_dir,
     is_test_mode,
@@ -31,6 +41,7 @@ from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
 from backend.services.i18n import get_strings, resolve_ui_language
+from backend.services.quiet_state import query_quiet_state
 from backend.services.ui_state import get_ui_state
 from backend.services.service_utils import (
     get_service_enum,
@@ -382,6 +393,11 @@ class SyncService:
         # next sync (no cursor moves, no scan mark) instead of piling on.
         rate_limited = asyncio.Event()
         deferred_gids: list[int] = []
+        # C3: a popup call reserved by _notify_new_messages; dispatched after
+        # its voice downloads, or abandoned if the run stops first.
+        pending_call: PendingCall | None = None
+        call_dispatched = False
+        call_abort_reason = "sync_failed"
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -1068,7 +1084,9 @@ class SyncService:
                 # One toast per member / room with new messages (after Phase 2,
                 # before media download). Never fails the sync.
                 if total_new_messages > 0:
-                    await self._notify_new_messages(collector, app_settings)
+                    pending_call = await self._notify_new_messages(
+                        collector, app_settings
+                    )
 
                 # Update search index in background (non-fatal, must not block
                 # sync). Covers members with new messages AND members whose
@@ -1132,20 +1150,64 @@ class SyncService:
                     "downloading", "Downloading Media", 3, media_count, "files"
                 )
 
-                if media_queue:
+                # Track accumulation manually to ensure we report honest numbers
+                total_successed = 0
+
+                # Collect all dimensions for batch update. Keyed by member dir,
+                # then by message id (int) -> metadata, matching
+                # process_media_queue / update_message_metadata.
+                all_dimensions_by_dir: dict[Path, dict[int, dict[str, Any]]] = {}
+
+                if pending_call is not None:
+                    # C3: download the diverted voice first, then ring. The
+                    # rest of the queue is fetched after the popup is dispatched.
+                    cand = pending_call.candidate
+                    voice_items = [
+                        item
+                        for item in media_queue
+                        if str(item.get("message_id")) == cand.message_id
+                        and item.get("member_dir") == cand.member_dir
+                    ]
+                    voice_downloaded = 0
+                    if voice_items:
+                        media_queue[:] = [
+                            i
+                            for i in media_queue
+                            if not any(i is v for v in voice_items)
+                        ]
+                        voice_stats = [0]
+
+                        async def voice_cb(c, t):
+                            voice_stats[0] = c
+                            progress.set_completed(c, detail=f"{c:,} files")
+
+                        voice_dims = await self.manager.process_media_queue(
+                            session, voice_items, progress_callback=voice_cb
+                        )
+                        for member_dir, dims in voice_dims.items():
+                            all_dimensions_by_dir.setdefault(member_dir, {}).update(
+                                dims
+                            )
+                        voice_downloaded = voice_stats[0]
+                        total_successed += voice_downloaded
+                    logger.info(
+                        "call_popup_voice_first",
+                        call_id=pending_call.call_id,
+                        items=len(voice_items),
+                        downloaded=voice_downloaded,
+                    )
+                    track_background_task(
+                        get_call_popup_controller().dispatch(pending_call.call_id),
+                        name="call_popup_dispatch",
+                    )
+                    call_dispatched = True
+
+                if media_count:
                     logger.info("Downloading media files", media_count=media_count)
-
-                    # Track accumulation manually to ensure we report honest numbers
-                    total_successed = 0
-
-                    # Collect all dimensions for batch update. Keyed by member dir,
-                    # then by message id (int) -> metadata, matching
-                    # process_media_queue / update_message_metadata.
-                    all_dimensions_by_dir: dict[Path, dict[int, dict[str, Any]]] = {}
 
                     # CLI-style: Process in chunks of 50
                     chunk_size = 50
-                    for i in range(0, media_count, chunk_size):
+                    for i in range(0, len(media_queue), chunk_size):
                         chunk = media_queue[i : i + chunk_size]
 
                         # Use list to capture successes from callback scope
@@ -1174,13 +1236,13 @@ class SyncService:
                         # Add chunk's actual successes to total
                         total_successed += chunk_stats[0]
 
-                    # Update messages.json files with extracted metadata (dimensions, duration, is_muted)
-                    for member_dir, meta in all_dimensions_by_dir.items():
-                        messages_file = member_dir / "messages.json"
-                        await self.manager.update_message_metadata(messages_file, meta)
-
                 else:
                     logger.info("No new media to download.")
+
+                # Update messages.json files with extracted metadata (dimensions, duration, is_muted)
+                for member_dir, meta in all_dimensions_by_dir.items():
+                    messages_file = member_dir / "messages.json"
+                    await self.manager.update_message_metadata(messages_file, meta)
 
                 logger.info(
                     "phase3_complete",
@@ -1249,6 +1311,7 @@ class SyncService:
             # Cooperative cancellation via cancel() (SVC-C1). Report the cancel
             # and re-raise so the task unwinds cleanly and the awaiting cancel()
             # sees it complete.
+            call_abort_reason = "cancelled"
             logger.warning("Sync cancelled", service=self._service)
             self._defer_scan_marks(scan_complete_gids, "cancelled")
             with contextlib.suppress(Exception):
@@ -1268,6 +1331,11 @@ class SyncService:
             logger.error(traceback.format_exc())
             progress.error(str(e))
         finally:
+            if pending_call is not None and not call_dispatched:
+                # Never awaits: abandon spawns its fallback toast as a background task.
+                get_call_popup_controller().abandon(
+                    pending_call.call_id, reason=call_abort_reason
+                )
             if rate_limited.is_set():
                 logger.warning(
                     "sync_rate_limit_summary",
@@ -1283,35 +1351,62 @@ class SyncService:
 
     async def _notify_new_messages(
         self, collector: NewMessageCollector, app_settings: dict[str, Any]
-    ) -> None:
-        """Plan and send one toast per member/room from this run's collector.
+    ) -> PendingCall | None:
+        """Plan and send one toast per member/room; divert the newest 1:1 voice to the popup.
 
-        Logs ids, counts and error types only. Any failure is logged as
-        ``notify_failed`` and swallowed: a notification problem must never
-        fail the sync.
+        Returns the reserved popup call (or None). Logs ids, counts and error
+        types only. A failure is logged as ``notify_failed`` and swallowed (a
+        notification problem must never fail the sync); a call reserved before
+        the failure is still returned so the sync dispatches or abandons it.
         """
+        divert = None
         try:
             chats = collector.entries()
             if not chats:
-                return
+                return None
             group_dirs = {c.group_id: c.member_dir.parent for c in chats}
+
+            def member_count_for(gid: str) -> int:
+                return _count_member_dirs(group_dirs[gid])
+
+            ui = get_ui_state()
+            controller = get_call_popup_controller()
+            candidate = select_call_candidate(
+                chats, service=self._service, member_count_for=member_count_for
+            )
+            probe = QuietProbe(query_quiet_state)
+            gate_reason = divert_gate(
+                candidate=candidate,
+                enabled=bool(app_settings.get("call_popup_enabled", True)),
+                host_available=desktop_bridge.call_popup_available(),
+                ui_state=ui,
+                busy=controller.busy,
+                quiet=probe,
+            )
+            if gate_reason is not None:
+                log_gate_skip(
+                    service=self._service,
+                    reason=gate_reason,
+                    candidate=candidate,
+                    quiet=probe.state,
+                )
+            divert = make_call_divert(candidate, gate_reason, controller)
             language = await asyncio.to_thread(resolve_ui_language, app_settings)
             plans, skips = plan_toasts(
                 chats,
                 service=self._service,
                 service_display=get_service_display_name(self._service),
                 output_service_dir=self.service_data_dir,
-                ui_state=get_ui_state(),
+                ui_state=ui,
                 enabled=bool(app_settings.get("notifications_enabled", True)),
                 hide_content=bool(
                     app_settings.get("notifications_hide_content", False)
                 ),
                 strings=get_strings("notifications", language),
                 avatar_for=find_avatar,
-                # C3 hook: gets each built ToastPlan (newest_type/newest_id) and
-                # returns True to divert it (e.g. voice to the call popup).
-                divert=lambda _p: False,
-                member_count_for=lambda gid: _count_member_dirs(group_dirs[gid]),
+                # C3: the newest new 1:1 voice goes to the bottom-right call popup.
+                divert=divert,
+                member_count_for=member_count_for,
             )
             for skip in skips:
                 logger.info(
@@ -1336,6 +1431,7 @@ class SyncService:
                 service=self._service,
                 error_type=type(e).__name__,
             )
+        return divert.pending if divert is not None else None
 
     def _mark_scanned_rooms(self, gids: list[int]) -> None:
         """Record the one-time history scan of each room in ``gids`` as done.
