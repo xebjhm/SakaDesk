@@ -5,8 +5,11 @@ Sync now, Quit) and a tooltip. ``pystray`` and ``PIL`` are imported lazily
 inside :meth:`TrayController.start`, so Linux CI and dev runs never import
 them; there the tray reports itself unavailable.
 
-Menu labels are callables, so pystray re-resolves them each time the menu is
-shown and they follow a UI language change without a restart.
+Menu labels are callables that read the current UI language, but on Windows
+pystray builds the native menu only when it is created and again on
+``update_menu``. A language change therefore shows up after the next menu action
+or the next :meth:`TrayController.set_tooltip` call (which rebuilds the menu
+through :meth:`TrayController.refresh_menu`), not instantly.
 
 Menu callbacks run on pystray's thread. They are wrapped so they never raise,
 and each logs ``tray_click`` (``item``). :meth:`TrayController.start` logs
@@ -85,7 +88,7 @@ class TrayController:
             return key
 
     def _dynamic_label(self, key: str) -> Callable[[Any], str]:
-        """A pystray ``text(item)`` callable, evaluated each time the menu opens."""
+        """A pystray ``text(item)`` callable, evaluated whenever pystray builds the menu."""
         return lambda _item: self._label(key)
 
     def _wrap(self, item: str, callback: Callable[[], None]) -> Callable[..., None]:
@@ -149,8 +152,22 @@ class TrayController:
         self._icon = icon
         logger.info("tray", action="started")
 
+    def refresh_menu(self) -> None:
+        """Rebuild the menu so its labels use the current UI language. Never raises."""
+        icon = self._icon
+        if icon is None:
+            logger.debug("tray_menu_refresh_skipped", reason="no_icon")
+            return
+        try:
+            icon.update_menu()
+        except Exception as e:
+            logger.warning("tray_menu_refresh_failed", error_type=type(e).__name__)
+
     def set_tooltip(self, text: str) -> None:
-        """Set the hover text. Never blocks or raises (called from the backend)."""
+        """Set the hover text and refresh the menu labels.
+
+        Never blocks or raises (called from the backend).
+        """
         icon = self._icon
         if icon is None:
             logger.debug("tray_tooltip_skipped", reason="no_icon")
@@ -159,6 +176,7 @@ class TrayController:
             icon.title = text[:MAX_TOOLTIP_LENGTH]
         except Exception as e:
             logger.warning("tray_title_failed", error_type=type(e).__name__)
+        self.refresh_menu()
 
     def stop(self) -> None:
         """Remove the icon. Idempotent; never raises."""

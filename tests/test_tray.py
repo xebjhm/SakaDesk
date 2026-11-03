@@ -36,6 +36,8 @@ class FakeIcon:
     fail_on_stop = False
 
     def __init__(self, name, icon, title, menu):
+        self.menu_updates = 0
+        self.fail_on_update_menu = False
         self.name, self.image, self._title, self.menu = name, icon, title, menu
         self.detached = False
         self.stopped = False
@@ -56,6 +58,11 @@ class FakeIcon:
         if FakeIcon.fail_on_run:
             raise RuntimeError("no shell")
         self.detached = True
+
+    def update_menu(self):
+        if self.fail_on_update_menu:
+            raise RuntimeError("menu gone")
+        self.menu_updates += 1
 
     def stop(self):
         if FakeIcon.fail_on_stop:
@@ -155,6 +162,34 @@ def test_set_tooltip_never_raises_and_logs_only_the_error_type(fake_pystray):
     (failed,) = [e for e in logs if e["event"] == "tray_title_failed"]
     assert failed["error_type"] == "OSError"
     assert "unread" not in str(logs)
+
+
+def test_set_tooltip_rebuilds_the_menu_labels(fake_pystray):
+    controller, _ = make()
+    controller.start()
+    (icon,) = FakeIcon.instances
+    controller.set_tooltip("SakaDesk")
+    assert icon.menu_updates == 1
+
+
+def test_refresh_menu_failure_is_logged_with_the_error_type_only(fake_pystray):
+    controller, _ = make()
+    controller.start()
+    FakeIcon.instances[0].fail_on_update_menu = True
+    with capture_logs() as logs:
+        controller.refresh_menu()
+    (failed,) = [e for e in logs if e["event"] == "tray_menu_refresh_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert "menu gone" not in str(logs)
+
+
+def test_refresh_menu_before_start_is_skipped(fake_pystray):
+    controller, _ = make()
+    with capture_logs() as logs:
+        controller.refresh_menu()
+    assert [e["reason"] for e in logs if e["event"] == "tray_menu_refresh_skipped"] == [
+        "no_icon"
+    ]
 
 
 def test_set_tooltip_before_start_is_skipped(fake_pystray):
