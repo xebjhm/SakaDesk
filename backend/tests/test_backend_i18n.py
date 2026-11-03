@@ -137,3 +137,63 @@ def test_ui_language_reads_the_real_prefs_store(tmp_path, monkeypatch):
     app_state.init_db()
     app_state.set_prefs({"language": "zh-CN"})
     assert resolve_ui_language({"language": "en"}) == "zh-CN"
+
+
+# ------------------------------------------------------- per-key en fallback
+
+
+@pytest.fixture
+def catalog(tmp_path, monkeypatch):
+    """A temporary i18n dir; the load cache is cleared around the test."""
+    from backend.services import i18n
+
+    monkeypatch.setattr(i18n, "_I18N_DIR", tmp_path)
+    i18n._load.cache_clear()
+    yield tmp_path
+    i18n._load.cache_clear()
+
+
+def _write(root: Path, lang: str, content: str) -> None:
+    (root / lang).mkdir(parents=True, exist_ok=True)
+    (root / lang / "notifications.json").write_text(content, encoding="utf-8")
+
+
+EN = {"sent_photo": "Sent a photo", "more": "+{n} more", "test_title": "SakaDesk"}
+
+
+def test_missing_key_falls_back_to_en_per_key(catalog):
+    _write(catalog, "en", json.dumps(EN))
+    _write(catalog, "ja", json.dumps({"sent_photo": "写真を送信しました"}))
+    s = get_strings("notifications", "ja")
+    assert s == {**EN, "sent_photo": "写真を送信しました"}
+
+
+@pytest.mark.parametrize("content", [None, "{not json", "[1, 2]", '"text"'])
+def test_missing_or_corrupt_locale_yields_en(catalog, content):
+    from structlog.testing import capture_logs
+
+    _write(catalog, "en", json.dumps(EN))
+    if content is not None:
+        _write(catalog, "zh-TW", content)
+    with capture_logs() as logs:
+        assert get_strings("notifications", "zh-TW") == EN
+    failed = [e for e in logs if e["event"] == "i18n_load_failed"]
+    assert [(e["lang"], e["section"]) for e in failed] == [("zh-TW", "notifications")]
+
+
+def test_missing_en_never_raises_and_logs_once(catalog):
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        s = get_strings("notifications", "en")
+        assert s["test_title"] == "" and s["more"].format(n=2) == ""
+        get_strings("notifications", "en")
+    failed = [e for e in logs if e["event"] == "i18n_load_failed"]
+    assert len(failed) == 1 and failed[0]["lang"] == "en"
+
+
+def test_missing_en_still_uses_the_requested_locale(catalog):
+    _write(catalog, "ja", json.dumps({"sent_photo": "写真を送信しました"}))
+    s = get_strings("notifications", "ja")
+    assert s["sent_photo"] == "写真を送信しました"
+    assert s["sent_video"] == ""

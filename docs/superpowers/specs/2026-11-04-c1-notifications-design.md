@@ -137,7 +137,7 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
 
 - `get_strings(section: str, lang: str | None) -> dict[str, str]`;
 - the language comes from `resolve_ui_language(config)`: the app_state prefs `language` (the choice made in Settings, `persisted.setPref('language')`), else `settings.json` `language` (written by the installer), else `None`, which `get_strings` maps to `en`. This is the frontend's own order;
-- every locale has every key (enforced by a test);
+- every locale has every key (enforced by a test). At runtime `en` is also merged in per key under the requested locale, so a missing or corrupt locale file never yields missing keys; if `en` itself is unusable, missing keys read as `""` instead of raising. Each unusable file logs `i18n_load_failed` once;
 - C2 and C3 add their own sections to the same files.
 
 | key | en | ja | zh-TW | zh-CN | yue |
@@ -271,7 +271,7 @@ Check whether a notifications toggle already exists in `SettingsModal`. If it do
   - the title and body for text, the 80-character cut and whitespace collapse, each media type, empty text, `hide_content`, the room prefix and `more`;
   - path building;
   - avatar fallback order.
-- **i18n:** every locale has every key; the loader falls back to `en`.
+- **i18n:** every locale has every key; the loader falls back to `en` per key; a missing `en` never raises; `resolve_ui_language` precedence (prefs, then settings.json, then none).
 - **Notifier:**
   - no launch action is ever set; each toast's `on_activated` opens its own plan's target;
   - `NullNotifier` on a non-Windows platform;

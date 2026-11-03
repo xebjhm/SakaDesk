@@ -22,12 +22,23 @@ _FALLBACK = "en"
 _I18N_DIR = Path(__file__).resolve().parent.parent / "i18n"
 
 
+class Strings(dict[str, str]):
+    """A string table whose missing keys read as ``""`` (never ``KeyError``)."""
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
 @lru_cache(maxsize=None)
 def _load(section: str, lang: str) -> tuple[tuple[str, str], ...]:
+    """The ``(key, value)`` pairs of one file; ``()`` (logged once) if unusable."""
     path = _I18N_DIR / lang / f"{section}.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as e:
+        if not isinstance(data, dict):
+            raise TypeError("catalog is not a JSON object")
+    except (OSError, ValueError, TypeError) as e:
+        # Cached: logged once per (section, lang) per process.
         logger.warning(
             "i18n_load_failed",
             section=section,
@@ -39,15 +50,22 @@ def _load(section: str, lang: str) -> tuple[tuple[str, str], ...]:
 
 
 def get_strings(section: str, lang: str | None) -> dict[str, str]:
-    """Return the strings for ``section`` in ``lang`` (fallback ``en``).
+    """Return the strings for ``section`` in ``lang``, filled per key from ``en``.
 
-    The file read is cached; each call returns a fresh dict so callers may
+    Unknown or missing languages use ``en``. A key missing from the requested
+    locale (or a missing/corrupt locale file) takes the ``en`` value, and a
+    key missing from both reads as ``""``, so callers never get a
+    ``KeyError``. Unusable files are logged once (``i18n_load_failed``). The
+    file read is cached; each call returns a fresh dict so callers may
     mutate the result safely.
     """
     resolved = lang if lang in SUPPORTED else _FALLBACK
     if resolved != lang:
         logger.debug("i18n_lang_fallback", section=section, fallback=resolved)
-    return dict(_load(section, resolved))
+    strings = Strings(_load(section, _FALLBACK))
+    if resolved != _FALLBACK:
+        strings.update(_load(section, resolved))
+    return strings
 
 
 def resolve_ui_language(config: Mapping[str, Any]) -> str | None:
