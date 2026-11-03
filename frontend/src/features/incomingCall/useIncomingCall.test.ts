@@ -34,6 +34,11 @@ function makeArgs(over: Partial<UseIncomingCallArgs> = {}): UseIncomingCallArgs 
     };
 }
 
+/** A preload that stays pending until its signal aborts, then rejects like preloadAudio does. */
+const abortable = () => vi.fn((_url: string, signal?: AbortSignal) => new Promise<void>((_, reject) => {
+    signal?.addEventListener('abort', () => reject(new Error('aborted')));
+}));
+
 const events = () => log.mock.calls.map(c => c[0]);
 const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
@@ -49,7 +54,7 @@ async function ringing(over: Partial<UseIncomingCallArgs> = {}, preload = vi.fn(
 describe('useIncomingCall', () => {
     it('rings after a fresh fetch and preloads the audio URL', async () => {
         const { result, preload } = await ringing();
-        expect(preload).toHaveBeenCalledWith(expect.stringContaining('/api/content/media/hinatazaka46/messages/'));
+        expect(preload).toHaveBeenCalledWith(expect.stringContaining('/api/content/media/hinatazaka46/messages/'), expect.any(AbortSignal));
         expect(result.current.phase).toBe('ringing');
         expect(result.current.message?.id).toBe(10);
         expect(result.current.photoUrl).toBe('/img/phone.jpg');
@@ -255,5 +260,98 @@ describe('useIncomingCall', () => {
                 if (typeof v === 'string') expect(v).toMatch(/^[a-z0-9_]{1,40}$/);
             }
         }
+    });
+
+    describe('setting turned off during a call', () => {
+        it.each(['ringing', 'connected'] as const)('ends a %s call immediately: idle, no ended screen, no scroll', async (phase) => {
+            const scrollToMessage = vi.fn();
+            const { result, rerender } = await ringing({ scrollToMessage });
+            if (phase === 'connected') act(() => result.current.answer());
+            rerender({ a: makeArgs({ enabled: false, scrollToMessage }) });
+            expect(result.current.phase).toBe('idle');
+            expect(result.current.message).toBeNull();
+            expect(log).toHaveBeenCalledWith('call_cancel', { message_id: 10, phase, reason: 'disabled' });
+            act(() => { vi.advanceTimersByTime(ENDED_HOLD_MS + RING_TIMEOUT_MS); });
+            expect(result.current.phase).toBe('idle');
+            expect(scrollToMessage).not.toHaveBeenCalled();
+            expect(events()).not.toContain('call_timeout');
+        });
+
+        it('does nothing when no call is active', async () => {
+            const { result, rerender } = await ringing({ isUnread: () => false });
+            log.mockClear();
+            rerender({ a: makeArgs({ enabled: false, isUnread: () => false }) });
+            expect(result.current.phase).toBe('idle');
+            expect(events()).not.toContain('call_cancel');
+        });
+
+        it('stops an in-flight preload so it never rings', async () => {
+            const slow = abortable();
+            const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+            rerender({ a: makeArgs({ enabled: false }) });
+            await flush();
+            expect(slow.mock.calls[0][1]!.aborted).toBe(true);
+            expect(result.current.phase).toBe('idle');
+            expect(events()).not.toContain('call_ring');
+            expect(log).toHaveBeenCalledWith('call_skip', expect.objectContaining({ message_id: 10, reason: 'superseded' }));
+        });
+    });
+
+    describe('preload cancellation', () => {
+        const supersededLogs = () => log.mock.calls.filter(c => c[0] === 'call_skip' && c[1]?.reason === 'superseded');
+
+        it('a newer evaluation cancels the in-flight preload and logs superseded once', async () => {
+            const slow = abortable();
+            const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+            rerender({ a: makeArgs({ freshFetch: { seq: 2, dir: DIR } }) });
+            await flush();
+            expect(slow.mock.calls[0][1]!.aborted).toBe(true);
+            expect(slow.mock.calls[1][1]!.aborted).toBe(false);
+            expect(supersededLogs()).toHaveLength(1);
+            expect(result.current.phase).toBe('idle');
+        });
+
+        it('a visit change cancels the in-flight preload; the skip keeps the original chat context', async () => {
+            const slow = abortable();
+            const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+            rerender({
+                a: makeArgs({
+                    chatDir: 'other', freshFetch: null,
+                    logContext: { service: 'sakurazaka46', groupId: 99, memberId: 77 },
+                }),
+            });
+            await flush();
+            expect(slow.mock.calls[0][1]!.aborted).toBe(true);
+            expect(supersededLogs()).toEqual([[
+                'call_skip', { service: 'hinatazaka46', group_id: 34, member_id: 58, message_id: 10, reason: 'superseded' },
+            ]]);
+            expect(events()).not.toContain('call_error');
+            expect(result.current.phase).toBe('idle');
+        });
+
+        it('unmount cancels the in-flight preload', async () => {
+            const slow = abortable();
+            const { unmount } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+            unmount();
+            await flush();
+            expect(slow.mock.calls[0][1]!.aborted).toBe(true);
+            expect(supersededLogs()).toHaveLength(1);
+        });
+
+        it('does not cancel a preload that already finished', async () => {
+            const { unmount, preload } = await ringing();
+            const signal = (preload.mock.calls[0] as unknown as [string, AbortSignal])[1];
+            unmount();
+            expect(signal.aborted).toBe(false);
+        });
+
+        it('a preload that resolves after being superseded is also logged once', async () => {
+            const releases: Array<() => void> = [];
+            const slow = vi.fn(() => new Promise<void>(r => { releases.push(r); }));
+            const { rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+            rerender({ a: makeArgs({ freshFetch: { seq: 2, dir: DIR } }) });
+            await act(async () => { releases[0](); await Promise.resolve(); await Promise.resolve(); });
+            expect(supersededLogs()).toHaveLength(1);
+        });
     });
 });

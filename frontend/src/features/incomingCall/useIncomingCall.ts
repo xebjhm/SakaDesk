@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { MemberInfo, Message } from '../../types';
 import { memberImageUrl } from '../messages/profileImages';
 import { buildMediaUrl } from '../messages/mediaUrl';
@@ -70,17 +70,20 @@ interface ActiveCall {
  */
 export function useIncomingCall(
     args: UseIncomingCallArgs,
-    preload: (url: string) => Promise<void> = preloadAudio,
+    preload: (url: string, signal?: AbortSignal) => Promise<void> = preloadAudio,
 ): IncomingCall {
     const [phase, setPhase] = useState<CallPhase>('idle');
     const [call, setCall] = useState<ActiveCall | null>(null);
     const [talkStartedAt, setTalkStartedAt] = useState<number | null>(null);
 
-    // Latest props for timers/promises that outlive the render they started in.
+    // Latest props for timers/promises that outlive the render they started in. Synced in a
+    // layout effect (not during render); layout effects run before every passive effect below.
     const argsRef = useRef(args);
-    argsRef.current = args;
     const preloadRef = useRef(preload);
-    preloadRef.current = preload;
+    useLayoutEffect(() => {
+        argsRef.current = args;
+        preloadRef.current = preload;
+    });
 
     const phaseRef = useRef<CallPhase>('idle');
     const callRef = useRef<ActiveCall | null>(null);
@@ -90,6 +93,8 @@ export function useIncomingCall(
     // Bumped by every evaluation and visit change; a preload may only ring if
     // its evaluation is still the latest.
     const evalIdRef = useRef(0);
+    // Aborts the in-flight preload when its evaluation is superseded (or on unmount).
+    const preloadAbortRef = useRef<AbortController | null>(null);
     const dismissedRef = useRef(new Set<number>());
     const mediaErrorLoggedRef = useRef(new Set<number>());
     const lastSkipRef = useRef(new Map<string, string>());
@@ -104,6 +109,11 @@ export function useIncomingCall(
             clearTimeout(timerRef.current);
             timerRef.current = null;
         }
+    }, []);
+
+    const cancelPreload = useCallback(() => {
+        preloadAbortRef.current?.abort();
+        preloadAbortRef.current = null;
     }, []);
 
     const enter = useCallback((next: CallPhase) => {
@@ -165,13 +175,27 @@ export function useIncomingCall(
         if (args.chatDir) lastSkipRef.current.delete(args.chatDir);
         return () => {
             evalIdRef.current += 1;
+            cancelPreload();
             const active = callRef.current;
             if (phaseRef.current !== 'idle' && active) {
                 clientLog('call_cancel', { message_id: active.message.id, phase: phaseRef.current });
             }
             toIdle();
         };
-    }, [args.chatDir, toIdle]);
+    }, [args.chatDir, toIdle, cancelPreload]);
+
+    // Turning the setting off ends any call immediately (no ended screen, no scroll) and drops
+    // a preload that has not rung yet.
+    useEffect(() => {
+        if (args.enabled !== false) return;
+        evalIdRef.current += 1;
+        cancelPreload();
+        const active = callRef.current;
+        if ((phaseRef.current === 'ringing' || phaseRef.current === 'connected') && active) {
+            clientLog('call_cancel', { message_id: active.message.id, phase: phaseRef.current, reason: 'disabled' });
+            toIdle();
+        }
+    }, [args.enabled, toIdle, cancelPreload]);
 
     // Evaluate after each fresh fetch of the selected chat (never on the cached render).
     const freshSeq = args.freshFetch?.seq;
@@ -180,6 +204,7 @@ export function useIncomingCall(
         if (freshSeq === undefined || !a.chatDir || a.freshFetch?.dir !== a.chatDir) return;
         const chatDir = a.chatDir;
         const evalId = ++evalIdRef.current;
+        cancelPreload();
         // Chat context as of this evaluation; a chat switch must not relabel its logs.
         const ctx = ctxFields();
         const photoUrl = memberImageUrl(a.member, 'phone_image') || memberImageUrl(a.member, 'thumbnail');
@@ -213,19 +238,32 @@ export function useIncomingCall(
             fail();
             return;
         }
-        preloadRef.current(audioUrl).then(
+        const controller = new AbortController();
+        preloadAbortRef.current = controller;
+        const settled = () => {
+            if (preloadAbortRef.current === controller) preloadAbortRef.current = null;
+        };
+        preloadRef.current(audioUrl, controller.signal).then(
             () => {
+                settled();
                 const latest = argsRef.current;
                 const skip = (reason: 'superseded' | 'call_active' | 'already_read') =>
                     clientLog('call_skip', { ...ctx, message_id: message.id, reason });
                 if (evalId !== evalIdRef.current || latest.chatDir !== chatDir) return skip('superseded');
+                // Defensive and effectively unreachable: ringing starts only from this branch, and
+                // every newer evaluation or visit change bumps evalId first (so an older preload
+                // takes the `superseded` exit above). Kept, with its breadcrumb, in case another
+                // ring path is ever added.
                 if (phaseRef.current !== 'idle') return skip('call_active');
                 if (!latest.isUnread(message.id)) return skip('already_read');
                 startRinging({ message, name: a.name, photoUrl: photoUrl as string, audioUrl });
             },
-            fail,
+            () => {
+                settled();
+                fail();
+            },
         );
-    }, [freshSeq, ctxFields, logSkip, startRinging]);
+    }, [freshSeq, ctxFields, logSkip, startRinging, cancelPreload]);
 
     const answer = useCallback(() => {
         const active = callRef.current;
