@@ -51,6 +51,7 @@ class ToastPlan:
     avatar: Path | None
     count: int  # visible new messages in this chat
     newest_type: str  # text|picture|video|voice (as stored)
+    newest_id: str  # id of the newest message ("" when it has none)
 
 
 @dataclass(frozen=True)
@@ -142,15 +143,16 @@ def plan_toasts(
     hide_content: bool,
     strings: dict[str, str],
     avatar_for: Callable[[Path], Path | None],
-    divert: Callable[[ChatTarget], bool],
+    divert: Callable[[ToastPlan], bool],
     member_count_for: Callable[[str], int],
 ) -> tuple[list[ToastPlan], list[Skip]]:
     """Plan one toast per 1:1 member or room, and report what was skipped.
 
     Rules apply per chat in this order: disabled, viewing (focused app on that
-    chat), diverted. ``member_count_for(group_id)`` is the number of member
-    folders in the group, which together with ``GROUP_CHAT_IDS`` decides
-    whether a chat is a room.
+    chat), diverted. ``divert`` (the C3 hook) receives the fully built
+    :class:`ToastPlan` and returns True to suppress it. ``member_count_for(group_id)``
+    is the number of member folders in the group, which together with
+    ``GROUP_CHAT_IDS`` decides whether a chat is a room.
     """
     # Group: a room is one chat keyed by group_id; a 1:1 member is its own chat.
     grouped: dict[tuple[str, str], list[CollectedChat]] = {}
@@ -195,10 +197,6 @@ def plan_toasts(
         ):
             skips.append(Skip("viewing", group_id, member_id, count))
             continue
-        if divert(target):
-            skips.append(Skip("diverted", group_id, member_id, count))
-            continue
-
         if hide_content:
             body = strings["hidden_body"]
         else:
@@ -208,16 +206,19 @@ def plan_toasts(
         if count > 1:
             body = f"{body}\n{strings['more'].format(n=count - 1)}"
 
-        plans.append(
-            ToastPlan(
-                target=target,
-                group_id=group_id,
-                member_id=member_id,
-                title=name,
-                body=body,
-                avatar=avatar_for(newest_chat.member_dir),
-                count=count,
-                newest_type=str(newest.get("type", "")),
-            )
+        plan = ToastPlan(
+            target=target,
+            group_id=group_id,
+            member_id=member_id,
+            title=name,
+            body=body,
+            avatar=avatar_for(newest_chat.member_dir),
+            count=count,
+            newest_type=str(newest.get("type", "")),
+            newest_id=str(newest.get("id", "")),
         )
+        if divert(plan):
+            skips.append(Skip("diverted", group_id, member_id, count))
+            continue
+        plans.append(plan)
     return plans, skips

@@ -43,6 +43,7 @@ def make_plan(
         avatar=avatar,
         count=count,
         newest_type="text",
+        newest_id="101",
     )
 
 
@@ -402,6 +403,7 @@ def _plan(group_id: str, member_id: str = "58", count: int = 1) -> ToastPlan:
         None,
         count,
         "picture",
+        "1",
     )
 
 

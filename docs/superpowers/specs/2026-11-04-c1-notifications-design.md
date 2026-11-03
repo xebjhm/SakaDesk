@@ -95,6 +95,7 @@ class ToastPlan:
     avatar: Path | None   # local file, or None
     count: int            # visible new messages in this chat
     newest_type: str      # text|picture|video|voice
+    newest_id: str        # id of the newest message ("" when it has none)
 ```
 
 **`plan_toasts(entries, *, service, service_display, is_group_chat, ui_state, enabled, hide_content, strings, avatar_for, divert) -> tuple[list[ToastPlan], list[Skip]]`**
@@ -105,7 +106,7 @@ class ToastPlan:
    - All members of a room share one chat, `(group_id, room)`.
    - `is_group_chat(group_id, member_count)` reuses the content API rule: `member_count > 1 or group_id in GROUP_CHAT_IDS[service]`, where `member_count` is the number of member folders in the group folder. Move the rule to a shared helper (`backend/services/chat_kind.py`). `content.py` and the planner both import it, so the two can never disagree.
 3. **Viewing.** If `ui_state.focused` and `ui_state.chat == (service, group_id, member_id_or_0)`, the chat is skipped with `reason=viewing`.
-4. **Divert (the hook for C3).** If `divert(chat) is True`, the chat is skipped with `reason=diverted`. C1 passes `lambda _: False`.
+4. **Divert (the hook for C3).** The chat's `ToastPlan` is built first (title, body, avatar, `newest_type`, `newest_id`; steps 5–7), then passed to `divert(plan)`. If it returns `True`, the chat is skipped with `reason=diverted`. C1 passes `lambda _p: False`.
 5. **Title:**
    - member name (1:1);
    - room name (room), as stored in the folder name without the leading id.

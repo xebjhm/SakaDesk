@@ -346,6 +346,7 @@ async def send_test(lang: str | None) -> bool:
         avatar=None,
         count=1,
         newest_type="text",
+        newest_id="",
     )
     return await _show_one(await asyncio.to_thread(get_notifier), plan)
 

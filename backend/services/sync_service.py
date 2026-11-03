@@ -1287,8 +1287,9 @@ class SyncService:
                 ),
                 strings=get_strings("notifications", app_settings.get("language")),
                 avatar_for=find_avatar,
-                # C3 hook: divert voice chats to the call popup
-                divert=lambda _t: False,
+                # C3 hook: gets each built ToastPlan (newest_type/newest_id) and
+                # returns True to divert it (e.g. voice to the call popup).
+                divert=lambda _p: False,
                 member_count_for=lambda gid: _count_member_dirs(group_dirs[gid]),
             )
             for skip in skips:

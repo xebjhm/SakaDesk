@@ -78,7 +78,7 @@ def run(
     enabled: bool = True,
     hide_content: bool = False,
     avatar_for: Any = lambda _d: None,
-    divert: Any = lambda _t: False,
+    divert: Any = lambda _p: False,
     member_count_for: Any = lambda _g: 1,
 ) -> tuple[list[ToastPlan], list[Skip]]:
     return plan_toasts(
@@ -183,28 +183,42 @@ def test_room_not_viewing_when_member_id_is_a_member(tmp_path: Path) -> None:
     assert len(plans) == 1
 
 
-def test_divert_skips_and_receives_target(tmp_path: Path) -> None:
-    seen: list[ChatTarget] = []
+def test_divert_skips_and_receives_the_built_plan(tmp_path: Path) -> None:
+    seen: list[ToastPlan] = []
 
-    def divert(t: ChatTarget) -> bool:
-        seen.append(t)
+    def divert(p: ToastPlan) -> bool:
+        seen.append(p)
         return True
 
-    plans, skips = run([chat(tmp_path)], tmp_path, divert=divert)
+    plans, skips = run(
+        [chat(tmp_path, newest=msg(7, type_="voice"))], tmp_path, divert=divert
+    )
     assert plans == []
     assert skips == [Skip("diverted", "34", "58", 1)]
-    assert seen == [
-        ChatTarget(
-            SERVICE, "日向坂46/messages/34 金村 美玖/58 金村 美玖", "金村 美玖", False
-        )
-    ]
+    (p,) = seen
+    assert p.target == ChatTarget(
+        SERVICE, "日向坂46/messages/34 金村 美玖/58 金村 美玖", "金村 美玖", False
+    )
+    assert p.newest_type == "voice" and p.newest_id == "7"
+    assert p.body == "Sent a voice message"
+
+
+def test_divert_false_keeps_the_same_plan(tmp_path: Path) -> None:
+    seen: list[ToastPlan] = []
+
+    def divert(p: ToastPlan) -> bool:
+        seen.append(p)
+        return False
+
+    plans, skips = run([chat(tmp_path)], tmp_path, divert=divert)
+    assert skips == [] and plans == seen
 
 
 def test_rule_order_disabled_before_viewing_before_divert(tmp_path: Path) -> None:
     ui = UiState(SERVICE, "34", "58", True)
     called: list[int] = []
 
-    def divert(_t: ChatTarget) -> bool:
+    def divert(_p: ToastPlan) -> bool:
         called.append(1)
         return True
 
@@ -238,6 +252,7 @@ def test_one_to_one_plan_fields(tmp_path: Path) -> None:
     assert p.body == "hello"
     assert p.group_id == "34" and p.member_id == "58"
     assert p.count == 1 and p.newest_type == "text"
+    assert p.newest_id == "1"
     assert p.avatar == avatar
     assert p.target == ChatTarget(
         SERVICE, "日向坂46/messages/34 金村 美玖/58 金村 美玖", "金村 美玖", False
@@ -309,6 +324,7 @@ def test_room_newest_ties_broken_by_numeric_id(tmp_path: Path) -> None:
     )
     (p,), _ = run([a, b], tmp_path, member_count_for=lambda _g: 2)
     assert p.body == "B: ten\n+1 more"
+    assert p.newest_id == "10"  # the room's newest, across members
 
 
 def test_single_member_group_chat_id_is_a_room(tmp_path: Path) -> None:
@@ -373,7 +389,7 @@ def test_path_fallback_when_outside_output_root(tmp_path: Path) -> None:
         hide_content=False,
         strings=STRINGS,
         avatar_for=lambda _d: None,
-        divert=lambda _t: False,
+        divert=lambda _p: False,
         member_count_for=lambda _g: 1,
     )
     assert plans[0].target.path == "日向坂46/messages/34 金村 美玖/58 金村 美玖"
@@ -392,7 +408,7 @@ def test_path_fallback_uses_last_messages_component(tmp_path: Path) -> None:
         hide_content=False,
         strings=STRINGS,
         avatar_for=lambda _d: None,
-        divert=lambda _t: False,
+        divert=lambda _p: False,
         member_count_for=lambda _g: 1,
     )
     assert plans[0].target.path == "日向坂46/messages/34 金村 美玖/58 金村 美玖"
