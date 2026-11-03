@@ -74,14 +74,66 @@ any phase ──chat/service switch──▶ idle        (no "ended" screen, no 
 - Constants: `RING_TIMEOUT_MS = 30_000`, `ENDED_HOLD_MS = 800` and `PRELOAD_TIMEOUT_MS = 10_000`. A preload that neither loads nor fails within that time counts as `media_unavailable`.
 - Only the latest evaluation's preload may start ringing. A visit change or a newer evaluation makes an in-flight preload's result void.
 
-### 2.5 Screen
+### 2.5 Screen (revised 2026-11-04)
+
+This replaces the first "phone frame" design, which was too small: its height was capped at 560 px, half of a typical chat area. The approved mockup is `C:\D\saka-verify\mockups\call-glass.html`. It is a local reference only and is not committed, because it embeds member photos.
+
+**Principle: it must feel like a real call.** Nothing on screen may hint that this is a recording: no voice length, no progress bar, no "voice message" label.
 
 - **Scope.** The overlay covers the chat area only. The member list stays usable; clicking it counts as a chat switch.
-- **Layout.** A blurred photo backdrop fills the chat area, with an upright "phone" centred on it.
-- **Ringing.** Photo, name and the text 着信中… (translated). Red decline and blue answer buttons sit on a white bottom bar. The photo pulses slowly and the buttons sway gently.
-- **Connected.** Immersive FaceTime style: the photo fills the phone, the name and an `m:ss` timer sit at the top, and a single hang-up button floats over the photo. No other controls.
-- **Ended.** The text 通話終了 (translated) over the dimmed photo for 0.8 s.
+- **Backdrop.**
+  - The same photo fills the chat area, blurred (64 px, saturate 1.35, brightness 0.9, scaled 1.1).
+  - A radial vignette darkens the edges.
+- **Portrait.**
+  - The member's photo is shown frameless and upright, centred in the chat area.
+  - Every photo is cropped to a **uniform 9:16**, using `object-fit: cover` anchored at `center 30%`.
+  - Size: width = `min((areaHeight − 2·padY) × 9/16, areaWidth − 32 px, 1200 px × 9/16)`, where `padY = clamp(12px, 3.2% of area height, 40px)`. The photo shrinks with the window, and the tighter of height or width wins.
+  - Corner radius `clamp(16px, 2.6% of area height, 34px)`, with a 1 px soft white rim and a deep drop shadow.
+- **Halo** (the one signature element).
+  - **Ringing:** a ring in the group colour around the portrait, with an outer glow that breathes (2.4 s ease-in-out, opacity 0.55↔1).
+  - **Connected:** a thin, still ring.
+  - **None** while ended.
+- **Group colour.**
+  - `--accent` comes from the service theme:
+    - solid services use `modals.accentColor`: 日向坂 `#7cc7e8`, 乃木坂 `#9B59B6`, Yodel `#5a8a6a`;
+    - the light service 櫻坂 uses `messages.bubbleBorder` (`#E85298`), the pink of its bubble edges.
+  - `--accent-deep` is `color-mix(in srgb, var(--accent) 70%, #0b1a33)`.
+- **Ringing.**
+  - **Band:** a bottom band about 30% of the portrait height, using progressive blur like the premium voice player. Its backdrop blur is 22 px, masked from transparent to opaque at 62%. On top sits a dark gradient: 0 → 0.45 at 50% → 0.72.
+  - **Text on the band:**
+    - an eyebrow: an accent dot and the group display name (e.g. 日向坂46);
+    - the name, bold, with a two-layer shadow so it stays legible on bright photos;
+    - "Incoming call…" (`call.incoming`).
+  - **Buttons:** decline and answer, each with a small visible label below (`call.decline` / `call.answer`).
+  - **Layout by portrait width:**
+    - 400 px or wider: the text block on the left and the buttons on the right, in one row;
+    - narrower: stacked and centred;
+    - below 230 px: the button labels are hidden and the icons stay.
+- **Connected.**
+  - A top progressive-blur band holds the name, a green live dot and an `m:ss` timer.
+  - A soft bottom shade sits behind a single hang-up button, labelled `call.hangUp`.
+  - No other controls.
+- **Ended.**
+  - The photo keeps its colour: brightness 0.72, saturate 0.92, blur 1.5 px, scale 1.02. Never greyscale.
+  - A small dark-glass pill in the centre shows "Call ended" (`call.ended`) and the talk time in `m:ss`, for 0.8 s.
+- **Buttons ("soft solid").**
+  - Circles of `clamp(48px, 16% of portrait width, 72px)`, with the icon at 42%.
+  - Decline and hang-up are the same soft red for every group: `linear-gradient(180deg, #ef6a70, #dc4b5a)`, with the phone icon rotated 135°.
+  - Answer is the only button that carries the group style:
+    - **solid services** (theme `messages.headerStyle === 'gradient'`: 日向坂, 乃木坂, Yodel): `linear-gradient(180deg, color-mix(var(--accent) 80%, white), color-mix(var(--accent-deep) 85%, var(--accent)))`;
+    - **light services** (`headerStyle === 'light'`: 櫻坂), matching the app's white-with-pink sakura UI: a white fill (`rgba(255,255,255,.95)`), a 1.5 px inner ring and an icon in `--accent`.
+  - Both: a 1 px inner white rim at 0.22, a faint top sheen, and shadow `0 6px 18px rgba(0,0,0,.28)`.
+  - Hover scales to 1.05 and press to 0.96. Focus shows a 2 px white outline.
+  - While ringing, the answer button emits two 1.5 px rings in the accent colour, which expand to 1.75× and fade out over 1.8 s.
+- **Fluid sizing.** Every text size, padding and radius inside the portrait scales with the portrait width using container-query units, with the min/max listed above. Nothing clips at any window size down to about 300 px wide.
+- **Motion.** The halo breathing and the answer rings are the only animations. Both stop under `prefers-reduced-motion`.
 - **Keyboard.** Esc declines (ringing) or hangs up (connected). Enter answers (ringing).
+- **Bottom-right popup (sub-project C).** It reuses `CallScreen` unchanged:
+  - the window takes the card's 9:16 shape;
+  - there is no backdrop;
+  - the halo is drawn inside the edge (inset ring plus inner glow), so the window needs no transparent margin.
+
+  This is recorded here so that C does not redesign the screen.
 
 ---
 
@@ -131,29 +183,42 @@ This module has no timers, network, DOM or React.
 - **Returns:** `{ phase, message, photoUrl, name, talkStartedAt, answer, decline, hangUp, onPlaybackEnded, onPlaybackError }`.
 - **Logging:** all logging in §4.2 happens here.
 
-### 3.3 `CallScreen.tsx` (presentational, reused by C)
+### 3.3 `CallScreen.tsx` + `callScreen.css` (presentational, reused by C)
 
 ```ts
+export type AnswerStyle = 'solid' | 'light';
+
 interface CallScreenProps {
   phase: 'ringing' | 'connected' | 'ended';
   name: string;
+  groupLabel: string;      // service display name, e.g. 日向坂46 (not translated)
   photoUrl: string;
-  talkSeconds: number;
+  talkSeconds: number;     // connected: live; ended: the final talk time
+  answerStyle: AnswerStyle;
   onAnswer: () => void;
   onDecline: () => void;
   onHangUp: () => void;
 }
 ```
 
-No state beyond animation. Every visible string and button `aria-label` goes through `t()`.
+- **Sizing.** The root fills its parent. The parent decides the size (the chat overlay's 9:16 frame, or C's popup window) and provides the CSS variables `--sd-accent` and `--sd-rad`.
+- **Styling.**
+  - The styles live in `callScreen.css`, plain CSS with an `sd-call-` prefix.
+  - The design needs container-query units, `color-mix()`, a masked backdrop blur and keyframes, none of which Tailwind 3 expresses cleanly.
+  - The file is imported by `CallScreen.tsx`.
+- **No state** beyond CSS animation.
+- **Strings.** Every visible string and every `aria-label` goes through `t()`. The visible button labels reuse `call.decline`, `call.answer` and `call.hangUp`, and are `aria-hidden` because the button already carries that name.
 
 ### 3.4 `CallOverlay.tsx`
 
-- An absolutely positioned layer over the chat area, with the blurred photo backdrop and `CallScreen` centred.
-- It owns a hidden `<audio>` element:
-  - volume comes from the existing `useAmplifiedVolume(VOLUME_STORAGE_KEY)` that `VoicePlayer` uses, so call volume matches the voice player;
-  - `ended` calls `onPlaybackEnded` and `error` calls `onPlaybackError`.
-- It owns the Esc/Enter key handlers. They are active only while the phase is not `idle`.
+- **Props:** `{ call, accentColor, answerStyle, groupLabel }`.
+  - `MessagesFeature` passes the accent, the answer style (both from the service theme, §2.5) and `getServiceDisplayName(service)`.
+- **Layout.** An absolutely positioned layer over the chat area:
+  - the blurred ambient photo and the vignette;
+  - a `container-type: size` stage;
+  - a 9:16 frame sized by the §2.5 formula, holding the halo and `CallScreen`.
+- **Audio.** It hosts `CallAudio`, keyed per call, with volume from `useAmplifiedVolume(VOLUME_STORAGE_KEY)`.
+- **Keys and focus.** It owns the Esc/Enter handler, the focus-on-ring behaviour and the persistent live region. These are unchanged from the reviewed implementation.
 
 ### 3.5 Changes to `MessagesFeature.tsx`
 
