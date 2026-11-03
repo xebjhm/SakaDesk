@@ -96,13 +96,15 @@ def test_focused_viewed_chat_is_skipped(tmp_path: Path) -> None:
 
 
 def test_disabled_sends_nothing(tmp_path: Path) -> None:
-    send = _run(
-        _service(tmp_path),
-        _collector(tmp_path),
-        settings={"notifications_enabled": False},
-    )
-    plans = send.await_args.args[0] if send.await_args else []
-    assert plans == []
+    with structlog.testing.capture_logs() as logs:
+        send = _run(
+            _service(tmp_path),
+            _collector(tmp_path),
+            settings={"notifications_enabled": False},
+        )
+    send.assert_not_awaited()
+    skips = [e for e in logs if e["event"] == "notify_skip"]
+    assert {e["reason"] for e in skips} == {"disabled"} and len(skips) == 2
 
 
 def test_toast_language_is_the_settings_choice(tmp_path: Path) -> None:
