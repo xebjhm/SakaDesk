@@ -25,11 +25,30 @@ export function readStateKey(path: string): string {
     return `read_state_${path}`;
 }
 
+/**
+ * Make a parsed row safe to use. A well-formed row (numeric `lastReadId`, array
+ * `revealedIds`) is returned untouched; a JSON `null`, a non-object, or a row
+ * missing either field is repaired field by field so `isUnreadIn` / `applyReveal`
+ * never throw on it.
+ */
+function normalizeReadState(parsed: unknown): ReadState {
+    if (parsed === null || typeof parsed !== 'object') return emptyReadState();
+    const o = parsed as Partial<ReadState>;
+    if (Number.isFinite(o.lastReadId) && Array.isArray(o.revealedIds)) return o as ReadState;
+    return {
+        lastReadId: Number.isFinite(o.lastReadId) ? (o.lastReadId as number) : 0,
+        readCount: Number.isFinite(o.readCount) ? (o.readCount as number) : 0,
+        revealedIds: Array.isArray(o.revealedIds)
+            ? o.revealedIds.filter((id): id is number => Number.isFinite(id))
+            : [],
+    };
+}
+
 /** Parse a stored conversation row (`{ value: '<json>' }`); any failure yields an empty state. */
 export function parseReadState(row: unknown): ReadState {
     try {
         const saved = (row as { value?: string } | null)?.value ?? null;
-        return saved ? JSON.parse(saved) : emptyReadState();
+        return saved ? normalizeReadState(JSON.parse(saved)) : emptyReadState();
     } catch {
         return emptyReadState();
     }
@@ -106,6 +125,30 @@ export function applyReveal(prev: ReadState, msgId: number, messageIds: number[]
 
 export function isUnreadIn(state: ReadState): (id: number) => boolean {
     return (id: number) => id > state.lastReadId && !state.revealedIds.includes(id);
+}
+
+/** True when both states describe the same read progress. */
+export function readStateEquals(a: ReadState, b: ReadState): boolean {
+    return a.lastReadId === b.lastReadId
+        && (a.readCount || 0) === (b.readCount || 0)
+        && a.revealedIds.length === b.revealedIds.length
+        && a.revealedIds.every(id => b.revealedIds.includes(id));
+}
+
+/**
+ * Union of two states for the same chat: `lastReadId` is the max, `revealedIds`
+ * the union above it, and `readCount` counts every reveal once (`base.readCount`
+ * plus the ids only `other` knows about, never less than `other.readCount`).
+ * Returns `base` itself when `other` adds nothing. Never loses a reveal, which is
+ * what reconciles an in-flight in-chat update with a bridge write.
+ */
+export function mergeReadState(base: ReadState, other: ReadState): ReadState {
+    const lastReadId = Math.max(base.lastReadId, other.lastReadId);
+    const added = other.revealedIds.filter(id => !base.revealedIds.includes(id) && id > base.lastReadId);
+    const revealedIds = [...base.revealedIds, ...added].filter(id => id > lastReadId);
+    const readCount = Math.max((base.readCount || 0) + added.length, other.readCount || 0);
+    const merged: ReadState = { lastReadId, revealedIds, readCount };
+    return readStateEquals(base, merged) ? base : merged;
 }
 
 export type ReadStateListener = (path: string) => void;

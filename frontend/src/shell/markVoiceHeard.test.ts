@@ -44,12 +44,27 @@ describe('markVoiceHeard', () => {
         ['fractional id', { service: 'hinatazaka46', path: PATH, message_id: 1.5 }],
         ['zero id', { service: 'hinatazaka46', path: PATH, message_id: 0 }],
         ['missing service', { path: PATH, message_id: 10 }],
+        ['service not matching the path', { service: 'sakurazaka46', path: PATH, message_id: 10 }],
         ['unparsable path', { service: 'hinatazaka46', path: 'x/y', message_id: 10 }],
     ])('ignores a malformed payload (%s)', (_n, payload) => {
         expect(markVoiceHeard(payload)).toBe(true);
         expect(clientLog).toHaveBeenCalledTimes(1);
         expect(clientLog).toHaveBeenCalledWith('call_popup_heard_ignored', { reason: 'malformed' });
         expect(setConv).not.toHaveBeenCalled();
+    });
+
+    it('applies a heard request over a malformed stored row (JSON null)', () => {
+        row[`read_state_${PATH}`] = { value: 'null' };
+        expect(markVoiceHeard({ service: 'hinatazaka46', path: PATH, message_id: 10 })).toBe(true);
+        expect(clientLog).toHaveBeenLastCalledWith('call_popup_heard_applied', expect.objectContaining({ changed: true }));
+    });
+
+    it('catches any failure, logs reason=error and still returns true (final, no retry)', () => {
+        vi.spyOn(persisted, 'getConv').mockImplementation((() => { throw new Error('boom 金村'); }) as never);
+        expect(markVoiceHeard({ service: 'hinatazaka46', path: PATH, message_id: 10 })).toBe(true);
+        expect(clientLog).toHaveBeenCalledTimes(1);
+        expect(clientLog).toHaveBeenCalledWith('call_popup_heard_ignored', { reason: 'error' });
+        expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toMatch(/金村|boom/);
     });
 
     it('never logs the path or a name', () => {

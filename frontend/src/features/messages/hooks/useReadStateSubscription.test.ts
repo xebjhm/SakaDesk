@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { useState } from 'react';
+import { renderHook, act } from '@testing-library/react';
 import { persisted } from '../../../core/persistence/persisted';
-import { revealInStore } from '../readStateStore';
+import {
+    applyReveal, loadReadState, mergeReadState, readStateEquals, revealInStore, saveReadState,
+} from '../readStateStore';
+import type { ReadState } from '../readStateStore';
 import { useReadStateSubscription } from './useReadStateSubscription';
 
 const A = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
@@ -52,5 +56,35 @@ describe('useReadStateSubscription', () => {
         revealInStore(B, 4);
         expect(sel).toHaveBeenCalledTimes(1);
         expect(any).toHaveBeenCalledTimes(1);
+    });
+
+    it('never loses a reveal when a bridge write races a queued in-chat update', () => {
+        // Same wiring as MessagesFeature: a merging subscriber that writes back
+        // when the merge holds more than the stored row.
+        function useHarness(path: string) {
+            const [state, setState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
+            const [, setBump] = useState(0);
+            useReadStateSubscription(path, loaded => {
+                setState(prev => {
+                    const merged = mergeReadState(prev, loaded);
+                    if (!readStateEquals(merged, loaded)) saveReadState(path, merged);
+                    return merged;
+                });
+            }, () => {});
+            return { state, setState, setBump };
+        }
+        const { result } = renderHook(() => useHarness(A));
+        act(() => {
+            result.current.setBump(1); // schedules a render, so the next update stays queued (not eager)
+            result.current.setState(prev => {
+                const next = applyReveal(prev, 5, []);
+                saveReadState(A, next);
+                return next;
+            });
+            revealInStore(A, 7); // bridge write before the queued updater has run
+        });
+        const expected = { lastReadId: 0, revealedIds: [5, 7], readCount: 2 };
+        expect(result.current.state).toEqual(expected);
+        expect(loadReadState(A)).toEqual(expected);
     });
 });

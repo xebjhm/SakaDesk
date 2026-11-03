@@ -15,7 +15,7 @@ import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
-import { loadReadState, saveReadState, applyReveal } from './readStateStore';
+import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
 import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
@@ -438,7 +438,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [selectedGroupDir, messages, saveAndBump]);
 
     // A heard change made through the main-window bridge (popup answered a voice).
-    useReadStateSubscription(selectedGroupDir, setReadState, () => setReadStateVersion(v => v + 1));
+    // Merge, never replace: an in-chat reveal still queued in setReadState would
+    // otherwise be overwritten (and its later save would clobber the bridge write).
+    // When the merge holds more than the stored row, write it back.
+    const mergeLoadedReadState = useCallback((loaded: ReadState) => {
+        setReadState(prev => {
+            const merged = mergeReadState(prev, loaded);
+            if (selectedGroupDir && !readStateEquals(merged, loaded)) saveAndBump(selectedGroupDir, merged);
+            return merged;
+        });
+    }, [selectedGroupDir, saveAndBump]);
+    useReadStateSubscription(selectedGroupDir, mergeLoadedReadState, () => setReadStateVersion(v => v + 1));
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;

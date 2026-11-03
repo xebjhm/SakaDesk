@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { persisted } from '../../core/persistence/persisted';
 import {
-    EMPTY_READ_STATE, applyReveal, isUnreadIn, loadReadState, parseReadState,
-    readStateKey, revealInStore, subscribeReadState,
+    EMPTY_READ_STATE, applyReveal, isUnreadIn, loadReadState, mergeReadState, parseReadState,
+    readStateEquals, readStateKey, revealInStore, subscribeReadState,
 } from './readStateStore';
 import type { ReadState } from './readStateStore';
 
@@ -23,6 +23,50 @@ describe('parseReadState', () => {
     });
     it('returns a fresh object each time', () => {
         expect(parseReadState({})).not.toBe(parseReadState({}));
+    });
+});
+
+describe('parseReadState with malformed stored rows', () => {
+    it.each([
+        ['JSON null', 'null', { lastReadId: 0, readCount: 0, revealedIds: [] }],
+        ['JSON number', '5', { lastReadId: 0, readCount: 0, revealedIds: [] }],
+        ['empty object', '{}', { lastReadId: 0, readCount: 0, revealedIds: [] }],
+        ['missing revealedIds', '{"lastReadId":4,"readCount":2}', { lastReadId: 4, readCount: 2, revealedIds: [] }],
+        ['missing lastReadId', '{"revealedIds":[7,"x"],"readCount":1}', { lastReadId: 0, readCount: 1, revealedIds: [7] }],
+        ['non-array revealedIds', '{"lastReadId":3,"revealedIds":"7"}', { lastReadId: 3, readCount: 0, revealedIds: [] }],
+    ])('repairs %s so isUnreadIn and applyReveal never throw', (_n, value, expected) => {
+        const state = parseReadState({ value });
+        expect(state).toEqual(expected);
+        expect(() => isUnreadIn(state)(9)).not.toThrow();
+        expect(() => applyReveal(state, 9, [])).not.toThrow();
+    });
+    it('returns a well-formed row as the parsed object (extra fields kept)', () => {
+        const value = JSON.stringify({ lastReadId: 1, revealedIds: [], readCount: 0, extra: true });
+        expect(parseReadState({ value })).toEqual({ lastReadId: 1, revealedIds: [], readCount: 0, extra: true });
+    });
+});
+
+describe('mergeReadState', () => {
+    const rs = (lastReadId: number, revealedIds: number[], readCount: number): ReadState =>
+        ({ lastReadId, revealedIds, readCount });
+    it('returns base itself when other adds nothing', () => {
+        const base = rs(3, [5], 2);
+        expect(mergeReadState(base, rs(3, [5], 2))).toBe(base);
+        expect(mergeReadState(base, rs(2, [], 1))).toBe(base);
+    });
+    it('unions revealed ids and counts each reveal once', () => {
+        expect(mergeReadState(rs(0, [5], 1), rs(0, [7], 1))).toEqual(rs(0, [5, 7], 2));
+    });
+    it('takes the max lastReadId and drops ids it covers', () => {
+        expect(mergeReadState(rs(2, [5], 1), rs(6, [], 3))).toEqual(rs(6, [], 3));
+        expect(mergeReadState(rs(2, [5, 8], 2), rs(6, [], 3))).toEqual(rs(6, [8], 3));
+    });
+    it('adopts the loaded state when base is stale', () => {
+        expect(mergeReadState(rs(0, [], 0), rs(0, [7], 1))).toEqual(rs(0, [7], 1));
+    });
+    it('readStateEquals ignores revealedIds order', () => {
+        expect(readStateEquals(rs(0, [5, 7], 2), rs(0, [7, 5], 2))).toBe(true);
+        expect(readStateEquals(rs(0, [5], 2), rs(0, [5], 3))).toBe(false);
     });
 });
 
@@ -127,5 +171,11 @@ describe('revealInStore', () => {
         revealInStore(PATH, 2);
         expect(seen).toEqual([PATH]);
         offBad();
+    });
+
+    it('repairs a malformed stored row and still marks the voice heard', () => {
+        row[`read_state_${PATH}`] = { value: 'null' };
+        expect(revealInStore(PATH, 10)).toBe(true);
+        expect(loadReadState(PATH)).toEqual({ lastReadId: 0, revealedIds: [10], readCount: 1 });
     });
 });
