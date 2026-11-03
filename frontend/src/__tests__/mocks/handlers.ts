@@ -157,6 +157,11 @@ export const handlers = [
     return HttpResponse.json({ success: true })
   }),
 
+  // UI breadcrumbs (fire-and-forget)
+  http.post('/api/client-log', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   // Blog cache size
   http.get('/api/blogs/cache-size', () => {
     return HttpResponse.json({ size_bytes: 0 })
