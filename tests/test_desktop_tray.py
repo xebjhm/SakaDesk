@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import types
 
 import pytest
@@ -23,7 +24,6 @@ class Recorder:
         settings=None,
         settings_error=None,
         hide_error=None,
-        mark_result=True,
     ):
         self.calls: list[str] = []
         self.quitting, self.tray = quitting, tray
@@ -33,7 +33,7 @@ class Recorder:
             else settings
         )
         self.settings_error, self.hide_error = settings_error, hide_error
-        self.mark_result = mark_result
+        self.done: list = []  # on_done callbacks handed to notify_hint
 
     def _get_settings(self):
         if self.settings_error:
@@ -45,9 +45,9 @@ class Recorder:
         if self.hide_error:
             raise self.hide_error
 
-    def _mark(self):
-        self.calls.append("mark")
-        return self.mark_result
+    def _notify(self, on_done):
+        self.calls.append("hint")
+        self.done.append(on_done)
 
     def handler(self):
         return desktop.make_closing_handler(
@@ -56,8 +56,7 @@ class Recorder:
             get_settings=self._get_settings,
             hide_fn=self._hide,
             reset_ui_state=lambda: self.calls.append("reset"),
-            mark_hint_shown=self._mark,
-            notify_hint=lambda: self.calls.append("hint"),
+            notify_hint=self._notify,
             save_geometry=lambda: self.calls.append("save"),
         )
 
@@ -95,8 +94,8 @@ def test_hide_saves_geometry_hides_resets_ui_state_and_shows_the_hint_once():
     rec = Recorder()
     result, event, _ = run(rec)
     assert result is False
-    assert rec.calls == ["save", "hide", "reset", "mark", "hint"]
-    assert event["action"] == "hidden" and event["hint"] == "shown"
+    assert rec.calls == ["save", "hide", "reset", "hint"]
+    assert event["action"] == "hidden" and event["hint"] == "queued"
 
 
 def test_hint_already_shown_is_skipped():
@@ -107,11 +106,56 @@ def test_hint_already_shown_is_skipped():
     assert event["hint"] == "skipped"
 
 
-def test_hint_is_not_shown_when_it_cannot_be_persisted():
-    rec = Recorder(mark_result=False)
-    result, event, _ = run(rec)
-    assert result is False
-    assert "hint" not in rec.calls and event["hint"] == "skipped"
+def test_the_hint_is_not_persisted_by_the_close_hook():
+    # Persisting is the toast coroutine's job, after a real send.
+    rec = Recorder()
+    handler = rec.handler()
+    assert handler() is False
+    assert rec.calls == ["save", "hide", "reset", "hint"]
+
+
+def test_two_rapid_closes_queue_one_hint():
+    rec = Recorder()
+    handler = rec.handler()
+    with capture_logs() as logs:
+        assert handler() is False
+        assert handler() is False
+    assert rec.calls.count("hint") == 1
+    hints = [e["hint"] for e in logs if e["event"] == "window_close"]
+    assert hints == ["queued", "pending"]
+
+
+def test_a_later_close_retries_once_the_pending_hint_finished_unpersisted():
+    # The toast failed: tray_hint_shown is still false, so the next close
+    # (after on_done) queues it again.
+    rec = Recorder()
+    handler = rec.handler()
+    handler()
+    rec.done[0]()
+    handler()
+    assert rec.calls.count("hint") == 2
+
+
+def test_a_hint_that_cannot_be_scheduled_does_not_stay_pending():
+    attempts: list[str] = []
+
+    def notify(on_done):
+        attempts.append("try")
+        if len(attempts) == 1:
+            raise RuntimeError("no loop")
+
+    handler = desktop.make_closing_handler(
+        is_quitting=lambda: False,
+        tray_available=lambda: True,
+        get_settings=lambda: {"close_to_tray": True, "tray_hint_shown": False},
+        hide_fn=lambda: None,
+        reset_ui_state=lambda: None,
+        notify_hint=notify,
+        save_geometry=lambda: None,
+    )
+    assert handler() is False
+    assert handler() is False
+    assert attempts == ["try", "try"]
 
 
 def test_missing_close_to_tray_key_defaults_to_hiding():
@@ -148,8 +192,7 @@ def test_a_geometry_save_failure_does_not_block_the_close_decision():
         get_settings=lambda: {"close_to_tray": True, "tray_hint_shown": True},
         hide_fn=lambda: rec.calls.append("hide"),
         reset_ui_state=lambda: rec.calls.append("reset"),
-        mark_hint_shown=lambda: True,
-        notify_hint=lambda: None,
+        notify_hint=lambda on_done: None,
         save_geometry=boom,
     )
     with capture_logs() as logs:
@@ -159,7 +202,7 @@ def test_a_geometry_save_failure_does_not_block_the_close_decision():
 
 
 def test_a_failing_hint_never_breaks_the_hide():
-    def boom():
+    def boom(on_done):
         raise RuntimeError("no loop")
 
     handler = desktop.make_closing_handler(
@@ -168,7 +211,6 @@ def test_a_failing_hint_never_breaks_the_hide():
         get_settings=lambda: {"close_to_tray": True, "tray_hint_shown": False},
         hide_fn=lambda: None,
         reset_ui_state=lambda: None,
-        mark_hint_shown=lambda: True,
         notify_hint=boom,
         save_geometry=lambda: None,
     )
@@ -284,37 +326,100 @@ def test_request_tray_sync_schedules_on_the_server_loop(monkeypatch):
 
 
 def test_notify_tray_hint_does_not_wait_and_goes_through_the_loop(monkeypatch):
+    import concurrent.futures
+
     seen: list = []
+    future: concurrent.futures.Future = concurrent.futures.Future()
 
     def fake_run(coro):
         seen.append(coro.cr_code.co_name)
         coro.close()
+        return future
 
     monkeypatch.setattr(desktop_bridge, "run_on_server_loop", fake_run)
-    desktop._notify_tray_hint()
+    done: list = []
+    desktop._notify_tray_hint(lambda: done.append(1))
     assert seen == ["_show_tray_hint"]
+    assert done == []  # not waited on
+    future.set_result(None)
+    assert done == [1]
 
 
-@pytest.mark.asyncio
-async def test_show_tray_hint_sends_the_localized_toast(monkeypatch):
-    sent: list = []
+def test_notify_tray_hint_releases_at_once_without_a_server_loop(monkeypatch):
+    def fake_run(coro):
+        coro.close()
+        return None
 
-    async def fake_send(title, body):
-        sent.append((title, body))
-        return True
+    monkeypatch.setattr(desktop_bridge, "run_on_server_loop", fake_run)
+    done: list = []
+    desktop._notify_tray_hint(lambda: done.append(1))
+    assert done == [1]
 
+
+def _patch_hint(monkeypatch, send):
     async def fake_config():
         return {"language": "ja"}
 
-    monkeypatch.setattr("backend.services.notification_service.send_simple", fake_send)
+    monkeypatch.setattr("backend.services.notification_service.send_simple", send)
     monkeypatch.setattr("backend.services.settings_store.load_config", fake_config)
     monkeypatch.setattr(desktop, "resolve_ui_language", lambda cfg: cfg["language"])
+
+
+@pytest.mark.asyncio
+async def test_show_tray_hint_sends_the_localized_toast_then_persists(monkeypatch):
+    sent: list = []
+    order: list = []
+
+    async def fake_send(title, body):
+        order.append("send")
+        sent.append((title, body))
+        return True
+
+    def mark():
+        order.append("mark")
+        return True
+
+    _patch_hint(monkeypatch, fake_send)
     with capture_logs() as logs:
-        await desktop._show_tray_hint()
-    assert sent == [("SakaDesk は実行中です", sent[0][1])]
+        await desktop._show_tray_hint(mark)
+    # Strings from backend/i18n/ja/tray.json.
+    assert sent == [
+        (
+            "SakaDesk は実行中です",
+            "トレイで同期を続けます。終了するにはトレイアイコンを右クリックしてください。",
+        )
+    ]
+    assert order == ["send", "mark"]
     (event,) = [e for e in logs if e["event"] == "tray_hint"]
-    assert event["shown"] is True
+    assert event["shown"] is True and event["persisted"] is True
     assert "実行中" not in str(logs)
+
+
+@pytest.mark.asyncio
+async def test_show_tray_hint_does_not_persist_when_the_send_failed(monkeypatch):
+    marked: list = []
+
+    async def fake_send(title, body):
+        return False
+
+    _patch_hint(monkeypatch, fake_send)
+    with capture_logs() as logs:
+        await desktop._show_tray_hint(lambda: marked.append(1) or True)
+    assert marked == []
+    (event,) = [e for e in logs if e["event"] == "tray_hint"]
+    assert event["shown"] is False and "persisted" not in event
+
+
+@pytest.mark.asyncio
+async def test_show_tray_hint_reports_a_persist_failure(monkeypatch):
+    async def fake_send(title, body):
+        return True
+
+    _patch_hint(monkeypatch, fake_send)
+    with capture_logs() as logs:
+        await desktop._show_tray_hint(lambda: False)
+    (event,) = [e for e in logs if e["event"] == "tray_hint"]
+    assert event["shown"] is True and event["persisted"] is False
 
 
 @pytest.mark.asyncio
@@ -324,7 +429,7 @@ async def test_show_tray_hint_never_raises(monkeypatch):
 
     monkeypatch.setattr("backend.services.settings_store.load_config", boom)
     with capture_logs() as logs:
-        await desktop._show_tray_hint()
+        await desktop._show_tray_hint(lambda: True)
     (failed,) = [e for e in logs if e["event"] == "tray_hint_failed"]
     assert failed["error_type"] == "OSError"
 
@@ -419,3 +524,145 @@ def test_tray_strings_use_the_ui_language_and_fall_back_to_english(monkeypatch):
 
 def test_desktop_quitting_flag_starts_false():
     assert desktop._quitting is False
+
+
+# ------------------------------------------------------ session-end FormClosing
+
+
+class FakeCloseReason:
+    UserClosing = "UserClosing"
+    WindowsShutDown = "WindowsShutDown"
+    TaskManagerClosing = "TaskManagerClosing"
+    ApplicationExitCall = "ApplicationExitCall"
+
+
+def _reasons():
+    return (FakeCloseReason.WindowsShutDown, FakeCloseReason.TaskManagerClosing)
+
+
+def _guard(**overrides):
+    calls: list[str] = []
+    kwargs = dict(
+        mark_quitting=lambda: calls.append("quitting"),
+        stop_tray=lambda: calls.append("stop_tray"),
+        load_reasons=_reasons,
+    )
+    kwargs.update(overrides)
+    return desktop.make_session_end_guard(**kwargs), calls
+
+
+@pytest.mark.parametrize(
+    "reason, cancel_after",
+    [
+        (FakeCloseReason.UserClosing, True),
+        (FakeCloseReason.ApplicationExitCall, True),
+        (FakeCloseReason.WindowsShutDown, False),
+        (FakeCloseReason.TaskManagerClosing, False),
+    ],
+)
+def test_session_end_guard_only_uncancels_session_end_reasons(reason, cancel_after):
+    guard, calls = _guard()
+    args = types.SimpleNamespace(CloseReason=reason, Cancel=True)  # pywebview cancelled
+    with capture_logs() as logs:
+        guard(object(), args)
+    assert args.Cancel is cancel_after
+    closes = [e for e in logs if e["event"] == "window_close"]
+    if cancel_after:
+        assert calls == [] and closes == []
+    else:
+        assert calls == ["quitting", "stop_tray"]
+        (event,) = closes
+        assert event["action"] == "quit" and event["reason"] == "session_end"
+        assert set(event) == {"event", "action", "reason", "log_level"}
+
+
+def test_session_end_guard_never_raises_and_logs_the_error_type():
+    def boom():
+        raise RuntimeError("tray gone 金村")
+
+    guard, _ = _guard(stop_tray=boom)
+    args = types.SimpleNamespace(
+        CloseReason=FakeCloseReason.WindowsShutDown, Cancel=True
+    )
+    with capture_logs() as logs:
+        guard(object(), args)
+    assert args.Cancel is False  # the shutdown still goes through
+    (failed,) = [e for e in logs if e["event"] == "session_end_guard_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert "金村" not in str(logs)
+
+
+def test_session_end_guard_survives_an_unloadable_close_reason_enum():
+    def no_dotnet():
+        raise ImportError("no System.Windows.Forms")
+
+    guard, calls = _guard(load_reasons=no_dotnet)
+    args = types.SimpleNamespace(
+        CloseReason=FakeCloseReason.WindowsShutDown, Cancel=True
+    )
+    with capture_logs() as logs:
+        guard(object(), args)
+    assert args.Cancel is True and calls == []
+    (failed,) = [e for e in logs if e["event"] == "session_end_guard_failed"]
+    assert failed["error_type"] == "ImportError"
+
+
+def test_default_reason_loader_imports_lazily_and_only_on_windows(monkeypatch):
+    forms = types.ModuleType("System.Windows.Forms")
+    forms.CloseReason = FakeCloseReason  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "System", types.ModuleType("System"))
+    monkeypatch.setitem(
+        sys.modules, "System.Windows", types.ModuleType("System.Windows")
+    )
+    monkeypatch.setitem(sys.modules, "System.Windows.Forms", forms)
+    assert desktop._load_session_end_reasons() == _reasons()
+
+
+class FakeEvent:
+    """A .NET event: ``obj.FormClosing += handler`` subscribes."""
+
+    def __init__(self):
+        self.handlers: list = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+
+def test_attach_subscribes_the_guard_to_the_native_form():
+    native = types.SimpleNamespace(FormClosing=FakeEvent())
+    window = types.SimpleNamespace(native=native)
+    guard = object()
+    with capture_logs() as logs:
+        assert desktop.attach_session_end_guard(window, guard) is True
+    assert native.FormClosing.handlers == [guard]
+    (event,) = [e for e in logs if e["event"] == "session_end_guard"]
+    assert event["attached"] is True
+
+
+def test_attach_without_a_native_form_logs_and_does_not_crash():
+    window = types.SimpleNamespace(native=None)
+    with capture_logs() as logs:
+        assert desktop.attach_session_end_guard(window, object()) is False
+    (event,) = [e for e in logs if e["event"] == "session_end_guard"]
+    assert event["attached"] is False and event["reason"] == "no_native"
+    # A window object without the attribute at all behaves the same.
+    assert desktop.attach_session_end_guard(object(), object()) is False
+
+
+def test_attach_failure_is_logged_with_the_error_type():
+    class Broken:
+        @property
+        def FormClosing(self):
+            raise AttributeError("not a WinForms form")
+
+        @FormClosing.setter
+        def FormClosing(self, value):  # pragma: no cover
+            raise AssertionError
+
+    window = types.SimpleNamespace(native=Broken())
+    with capture_logs() as logs:
+        assert desktop.attach_session_end_guard(window, object()) is False
+    (event,) = [e for e in logs if e["event"] == "session_end_guard"]
+    assert event["attached"] is False and event["reason"] == "attach_failed"
+    assert event["error_type"] == "AttributeError"

@@ -96,7 +96,7 @@ def test_start_builds_a_localized_menu_with_open_as_default(fake_pystray):
         controller.start()
     (icon,) = FakeIcon.instances
     assert icon.detached and icon.image == "IMAGE" and icon.title == "SakaDesk"
-    labels = [item.text for item in icon.menu.items]
+    labels = [item.text(item) for item in icon.menu.items]
     assert labels == ["打開 SakaDesk", "立即同步", "結束"]
     assert [item.default for item in icon.menu.items] == [True, False, False]
     assert controller.available
@@ -133,7 +133,7 @@ def test_missing_strings_fall_back_to_the_key(fake_pystray):
     controller, _ = make(strings={})
     controller.start()
     (icon,) = FakeIcon.instances
-    assert [i.text for i in icon.menu.items] == ["open", "sync_now", "quit"]
+    assert [i.text(i) for i in icon.menu.items] == ["open", "sync_now", "quit"]
 
 
 def test_set_tooltip_updates_and_truncates(fake_pystray):
@@ -247,3 +247,28 @@ def test_default_icon_factory_loads_the_icon_with_pillow():
     pytest.importorskip("PIL")
     image = tray_module._load_icon_image()
     assert image.size[0] > 0
+
+
+def test_menu_labels_follow_a_language_change(fake_pystray):
+    current = {"strings": STRINGS}
+    controller, _ = make(strings=lambda: current["strings"])
+    controller.start()
+    (icon,) = FakeIcon.instances
+    assert [i.text(i) for i in icon.menu.items] == ["打開 SakaDesk", "立即同步", "結束"]
+    current["strings"] = {"open": "Open", "sync_now": "Sync now", "quit": "Quit"}
+    assert [i.text(i) for i in icon.menu.items] == ["Open", "Sync now", "Quit"]
+
+
+def test_a_failing_strings_provider_falls_back_to_the_key(fake_pystray):
+    def boom():
+        raise OSError("settings 金村")
+
+    controller, _ = make(strings=boom)
+    with capture_logs() as logs:
+        controller.start()
+        (icon,) = FakeIcon.instances
+        assert [i.text(i) for i in icon.menu.items] == ["open", "sync_now", "quit"]
+    assert controller.available
+    failed = [e for e in logs if e["event"] == "tray_label_failed"]
+    assert failed and failed[0]["error_type"] == "OSError"
+    assert "金村" not in str(logs)

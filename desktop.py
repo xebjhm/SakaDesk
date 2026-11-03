@@ -60,6 +60,13 @@ _uvicorn_server: uvicorn.Server | None = None
 # Set by the tray's Quit item so the closing handler lets the window close.
 _quitting = False
 
+
+def _mark_quitting() -> None:
+    """Remember that the app is quitting, so the closing handler lets it close."""
+    global _quitting
+    _quitting = True
+
+
 # Kept alive for the whole process so the mutex persists until the process exits.
 _instance_mutex_handle: int | None = None
 # NAME-SYNC: keep identical to MyAppMutex in tooling/windows/setup.iss. build.ps1
@@ -283,7 +290,6 @@ def make_closing_handler(
     get_settings,
     hide_fn,
     reset_ui_state,
-    mark_hint_shown,
     notify_hint,
     save_geometry,
 ):
@@ -296,16 +302,31 @@ def make_closing_handler(
     be reopened), ``close_to_tray`` is off, the settings cannot be read, or
     ``hide_fn()`` fails. Otherwise the window is hidden, ``reset_ui_state()``
     marks it unfocused with no open chat (so toasts are not suppressed), and the
-    one-time "still running" hint is shown: when ``tray_hint_shown`` is false,
-    ``mark_hint_shown()`` must persist it (returns a bool) before
-    ``notify_hint()`` fires, so the hint appears at most once. The handler
-    returns ``False``.
+    one-time "still running" hint is queued. The handler returns ``False``.
+
+    The hint is queued when ``tray_hint_shown`` is false and no hint is already
+    pending: a "pending" flag, set here synchronously, makes two quick closes
+    queue one hint. ``notify_hint(on_done)`` must schedule the toast without
+    waiting and call ``on_done()`` once it has finished (any outcome), which
+    clears the flag; the flag is only about the in-flight attempt. Persisting
+    ``tray_hint_shown`` is the toast coroutine's job, after the toast was
+    really sent (see :func:`_show_tray_hint`), so a failed send is retried on a
+    later close.
 
     Logs ``window_close`` with ``action`` (``hidden``/``quit``), ``reason`` for
-    a quit, and for a hide ``hint`` (``shown``/``skipped``). It never raises.
+    a quit, and for a hide ``hint`` (``queued``/``pending``/``skipped``). It
+    never raises.
     """
+    pending_lock = threading.Lock()
+    hint_pending = False
+
+    def release_hint() -> None:
+        nonlocal hint_pending
+        with pending_lock:
+            hint_pending = False
 
     def handler() -> bool:
+        nonlocal hint_pending
         try:
             save_geometry()
         except Exception as e:
@@ -335,9 +356,19 @@ def make_closing_handler(
         hint = "skipped"
         try:
             reset_ui_state()
-            if not settings.get("tray_hint_shown") and mark_hint_shown():
-                notify_hint()
-                hint = "shown"
+            if not settings.get("tray_hint_shown"):
+                with pending_lock:
+                    already_pending = hint_pending
+                    hint_pending = True
+                if already_pending:
+                    hint = "pending"
+                else:
+                    try:
+                        notify_hint(release_hint)
+                    except Exception:
+                        release_hint()
+                        raise
+                    hint = "queued"
         except Exception as e:
             logger.warning("window_close_hint_failed", error_type=type(e).__name__)
         logger.info("window_close", action="hidden", hint=hint)
@@ -346,12 +377,91 @@ def make_closing_handler(
     return handler
 
 
-async def _show_tray_hint() -> None:
+def _load_session_end_reasons():
+    """The ``CloseReason`` values meaning the session, not the user, is closing.
+
+    Imported lazily: ``System.Windows.Forms`` exists only on Windows (pythonnet).
+    """
+    from System.Windows.Forms import CloseReason  # type: ignore[import-not-found]
+
+    return (CloseReason.WindowsShutDown, CloseReason.TaskManagerClosing)
+
+
+def make_session_end_guard(*, mark_quitting, stop_tray, load_reasons=None):
+    """Build a native ``FormClosing`` handler that lets a session end through.
+
+    The ``closing`` hook cannot tell the user pressing X from Windows
+    shutting down, so close-to-tray would cancel a shutdown, logoff or an
+    installer's Restart Manager close ("SakaDesk is preventing shutdown").
+    This guard is subscribed to the form's own ``FormClosing`` after pywebview's
+    handler, so it runs after it and sees the ``Cancel`` pywebview set. When
+    ``args.CloseReason`` is ``WindowsShutDown`` or ``TaskManagerClosing`` it
+    calls ``mark_quitting()`` and ``stop_tray()`` (the same state as the Quit
+    item), sets ``args.Cancel = False`` and logs ``window_close`` with
+    ``action=quit`` and ``reason=session_end``. Any other reason is left
+    untouched. ``load_reasons()`` returns the session-end values (the lazy
+    ``System.Windows.Forms`` import by default). It never raises; a failure
+    logs ``session_end_guard_failed`` (``error_type``).
+    """
+    reasons_loader = (
+        load_reasons if load_reasons is not None else _load_session_end_reasons
+    )
+
+    def guard(_sender, args) -> None:
+        try:
+            if args.CloseReason not in reasons_loader():
+                return
+            args.Cancel = False
+            logger.info("window_close", action="quit", reason="session_end")
+            mark_quitting()
+            stop_tray()
+        except Exception as e:
+            logger.warning("session_end_guard_failed", error_type=type(e).__name__)
+
+    return guard
+
+
+def attach_session_end_guard(window, guard) -> bool:
+    """Subscribe ``guard`` to ``window.native.FormClosing``; return success.
+
+    Call it from ``window.events.before_show``: by then pywebview's BrowserForm
+    exists (``window.native``) and has already subscribed its own handler, so
+    ``guard`` runs after it. Logs ``session_end_guard`` (``attached``, and a
+    ``reason`` when not). Never raises; a failure logs ``error_type``.
+    """
+    native = getattr(window, "native", None)
+    if native is None:
+        logger.warning("session_end_guard", attached=False, reason="no_native")
+        return False
+    try:
+        native.FormClosing += guard
+    except Exception as e:
+        logger.warning(
+            "session_end_guard",
+            attached=False,
+            reason="attach_failed",
+            error_type=type(e).__name__,
+        )
+        return False
+    logger.info("session_end_guard", attached=True)
+    return True
+
+
+async def _show_tray_hint(mark_hint_shown=None) -> None:
     """Show the one-time "still running in the tray" toast. Never raises.
 
     Runs on the server loop (``send_simple`` needs it). The text follows the
-    UI language and is never logged.
+    UI language and is never logged. Only when ``send_simple`` returns True is
+    ``tray_hint_shown`` persisted (``mark_hint_shown``, default
+    ``settings_store.mark_tray_hint_shown``, off the loop thread); a failed
+    send leaves it unset so a later close retries. Logs ``tray_hint`` with
+    ``shown`` and, when shown, ``persisted``.
     """
+    mark_fn = (
+        mark_hint_shown
+        if mark_hint_shown is not None
+        else settings_store.mark_tray_hint_shown
+    )
     try:
         from backend.services.notification_service import send_simple
         from backend.services.settings_store import load_config
@@ -359,17 +469,33 @@ async def _show_tray_hint() -> None:
         config = await load_config()
         language = await asyncio.to_thread(resolve_ui_language, config)
         strings = get_strings("tray", language)
-        shown = await send_simple(
-            strings["still_running_title"], strings["still_running_body"]
+        shown = bool(
+            await send_simple(
+                strings["still_running_title"], strings["still_running_body"]
+            )
         )
-        logger.info("tray_hint", shown=shown)
+        if shown:
+            persisted = bool(await asyncio.to_thread(mark_fn))
+            logger.info("tray_hint", shown=True, persisted=persisted)
+        else:
+            logger.info("tray_hint", shown=False)
     except Exception as e:
         logger.warning("tray_hint_failed", error_type=type(e).__name__)
 
 
-def _notify_tray_hint() -> None:
-    """Queue the hint toast on the server loop without waiting for it."""
-    desktop_bridge.run_on_server_loop(_show_tray_hint())
+def _notify_tray_hint(on_done=None) -> None:
+    """Queue the hint toast on the server loop without waiting for it.
+
+    ``on_done()`` is called when the toast coroutine finishes (or is cancelled),
+    or at once when it could not be scheduled (no server loop).
+    """
+    future = desktop_bridge.run_on_server_loop(_show_tray_hint())
+    if on_done is None:
+        return
+    if future is None:
+        on_done()
+    else:
+        future.add_done_callback(lambda _f: on_done())
 
 
 async def _default_is_authenticated(service: str) -> bool:
@@ -819,14 +945,13 @@ def main() -> None:
         show_window = make_open_window_handler(window, _focus_window)
 
         def on_quit() -> None:
-            global _quitting
-            _quitting = True
+            _mark_quitting()
             tray.stop()
             window.destroy()
 
         # System tray: Open / Sync now / Quit, and the unread tooltip.
         tray = TrayController(
-            strings=_tray_strings(),
+            strings=_tray_strings,
             on_open=show_window,
             on_sync_now=_request_tray_sync,
             on_quit=on_quit,
@@ -845,10 +970,17 @@ def main() -> None:
             get_settings=settings_store.read_config_sync,
             hide_fn=window.hide,
             reset_ui_state=lambda: set_ui_state(UiState(None, None, None, False)),
-            mark_hint_shown=settings_store.mark_tray_hint_shown,
             notify_hint=_notify_tray_hint,
             save_geometry=save_geometry,
         )
+        if tray.available:
+            # Windows shutdown, logoff and installer closes must not be
+            # cancelled by close-to-tray. Subscribed once pywebview's own
+            # FormClosing handler exists, so it runs after it.
+            guard = make_session_end_guard(
+                mark_quitting=_mark_quitting, stop_tray=tray.stop
+            )
+            window.events.before_show += lambda: attach_session_end_guard(window, guard)
 
         def reveal_without_tray() -> None:
             # A hidden window with no tray icon could never be reopened.

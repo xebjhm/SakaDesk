@@ -5,6 +5,9 @@ Sync now, Quit) and a tooltip. ``pystray`` and ``PIL`` are imported lazily
 inside :meth:`TrayController.start`, so Linux CI and dev runs never import
 them; there the tray reports itself unavailable.
 
+Menu labels are callables, so pystray re-resolves them each time the menu is
+shown and they follow a UI language change without a restart.
+
 Menu callbacks run on pystray's thread. They are wrapped so they never raise,
 and each logs ``tray_click`` (``item``). :meth:`TrayController.start` logs
 ``tray`` with ``action=started``, ``unavailable`` (``reason``) or ``failed``
@@ -16,7 +19,7 @@ from __future__ import annotations
 import importlib
 import platform
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -52,12 +55,14 @@ class TrayController:
     def __init__(
         self,
         *,
-        strings: dict[str, str],
+        strings: Mapping[str, str] | Callable[[], Mapping[str, str]],
         on_open: Callable[[], None],
         on_sync_now: Callable[[], None],
         on_quit: Callable[[], None],
         icon_factory: Callable[[], Any] | None = None,
     ) -> None:
+        # A callable is re-evaluated for every label, so the menu follows the
+        # current UI language; a mapping is fixed.
         self._strings = strings
         self._on_open = on_open
         self._on_sync_now = on_sync_now
@@ -71,7 +76,17 @@ class TrayController:
         return self._icon is not None
 
     def _label(self, key: str) -> str:
-        return self._strings.get(key) or key
+        """The label for ``key`` in the current language (the key if unavailable)."""
+        try:
+            strings = self._strings() if callable(self._strings) else self._strings
+            return strings.get(key) or key
+        except Exception as e:
+            logger.warning("tray_label_failed", error_type=type(e).__name__)
+            return key
+
+    def _dynamic_label(self, key: str) -> Callable[[Any], str]:
+        """A pystray ``text(item)`` callable, evaluated each time the menu opens."""
+        return lambda _item: self._label(key)
 
     def _wrap(self, item: str, callback: Callable[[], None]) -> Callable[..., None]:
         """A pystray action that logs the click and never raises."""
@@ -112,13 +127,16 @@ class TrayController:
         try:
             menu = pystray.Menu(
                 pystray.MenuItem(
-                    self._label("open"), self._wrap("open", self._on_open), default=True
+                    self._dynamic_label("open"),
+                    self._wrap("open", self._on_open),
+                    default=True,
                 ),
                 pystray.MenuItem(
-                    self._label("sync_now"), self._wrap("sync_now", self._on_sync_now)
+                    self._dynamic_label("sync_now"),
+                    self._wrap("sync_now", self._on_sync_now),
                 ),
                 pystray.MenuItem(
-                    self._label("quit"), self._wrap("quit", self._on_quit)
+                    self._dynamic_label("quit"), self._wrap("quit", self._on_quit)
                 ),
             )
             icon = pystray.Icon(
