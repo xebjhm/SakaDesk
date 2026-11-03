@@ -35,6 +35,28 @@ describe('pickCandidate', () => {
         const b = msg(8, '2026-11-02T00:00:00Z');
         expect(pickCandidate([b, a])?.id).toBe(8);
     });
+
+    it('breaks a three-way timestamp tie by the largest id, in any order', () => {
+        const ts = '2026-11-02T00:00:00Z';
+        const [a, b, c] = [msg(7, ts), msg(9, ts), msg(8, ts)];
+        for (const order of [[a, b, c], [a, c, b], [b, a, c], [b, c, a], [c, a, b], [c, b, a]]) {
+            expect(pickCandidate(order)?.id).toBe(9);
+        }
+    });
+
+    it('an unparsable timestamp loses to a valid one, whatever the id or order', () => {
+        const bad = msg(99, 'garbage');
+        const good = msg(5, '2026-11-01T00:00:00Z');
+        expect(pickCandidate([bad, good])?.id).toBe(5);
+        expect(pickCandidate([good, bad])?.id).toBe(5);
+    });
+
+    it('two unparsable timestamps tie-break by the larger id', () => {
+        const a = msg(3, 'garbage');
+        const b = msg(4, 'nope');
+        expect(pickCandidate([a, b])?.id).toBe(4);
+        expect(pickCandidate([b, a])?.id).toBe(4);
+    });
 });
 
 describe('decideCall', () => {
