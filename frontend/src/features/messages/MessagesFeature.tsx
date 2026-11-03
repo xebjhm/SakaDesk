@@ -20,6 +20,7 @@ import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
+import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -438,19 +439,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         updateUnreadNavState();
     }, [updateUnreadNavState]);
 
-    // Keyboard navigation using Virtuoso
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Home') {
-            e.preventDefault();
-            e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
-        } else if (e.key === 'End') {
-            e.preventDefault();
-            e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'auto' });
-        }
-    }, [messages.length]);
-
     // === READ STATE ===
     const loadReadState = (path: string): ReadState => {
         try {
@@ -609,6 +597,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
     });
     const callActive = incomingCall.phase !== 'idle';
+
+    // Keyboard navigation using Virtuoso (inert while a call covers the timeline)
+    const handleKeyDown = useTimelineKeyNav(virtuosoRef, messages.length, callActive);
 
     // Scroll to first message of a given date (for calendar navigation).
     // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend

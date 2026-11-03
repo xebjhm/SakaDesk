@@ -35,6 +35,8 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
         // Close on escape key
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
+                // Claim the key so the incoming-call overlay doesn't also decline.
+                e.preventDefault();
                 onClose();
             }
         };

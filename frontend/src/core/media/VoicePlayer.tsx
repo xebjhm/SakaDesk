@@ -359,7 +359,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             }
         };
         const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setShowMenu(false);
+            if (e.key !== 'Escape') return;
+            // Claim the key so the incoming-call overlay doesn't also decline.
+            e.preventDefault();
+            setShowMenu(false);
         };
 
         document.addEventListener('mousedown', handleClickOutside);

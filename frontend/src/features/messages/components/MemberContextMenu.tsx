@@ -28,7 +28,12 @@ export const MemberContextMenu: React.FC<MemberContextMenuProps> = ({ x, y, onVi
         const onDown = (e: MouseEvent) => {
             if (ref.current && !ref.current.contains(e.target as Node)) onClose();
         };
-        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape') return;
+            // Claim the key so the incoming-call overlay doesn't also decline.
+            e.preventDefault();
+            onClose();
+        };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey);
         return () => {
