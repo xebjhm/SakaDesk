@@ -4,7 +4,9 @@ The popup page reads its call (``GET /calls/{id}``) and reports what B's call
 hook did (``POST /calls/{id}/events``); the main window asks whether the popup
 already owns a voice (``GET /active``) before ringing it in the app. Only
 code-like values are accepted, so names, text or paths never reach the log;
-the returned ``path`` is never logged.
+the returned ``path`` is never logged. A well-formed ``reason`` that is not a
+known skip code is passed on as ``other``, so the controller only ever logs a
+fixed vocabulary.
 """
 
 from dataclasses import asdict
@@ -31,6 +33,23 @@ EventName = Literal[
 ]
 
 
+# B's CallSkipReason plus the codes the popup page adds (spec §4.6, §7).
+KNOWN_REASONS = frozenset(
+    {
+        "disabled",
+        "group_chat",
+        "no_voice",
+        "already_read",
+        "no_photo",
+        "dismissed_this_visit",
+        "call_active",
+        "superseded",
+        "media_unavailable",
+        "popup_active",
+    }
+)
+
+
 class CallEventBody(BaseModel):
     """One popup-page report; extra keys are rejected."""
 
@@ -54,9 +73,12 @@ async def get_call(call_id: CallId) -> dict[str, Any]:
 @router.post("/calls/{call_id}/events", status_code=204)
 async def post_call_event(call_id: CallId, body: CallEventBody) -> Response:
     """Forward a popup event to the controller; 409 when it was not applied."""
+    reason = body.reason
+    if reason is not None and reason not in KNOWN_REASONS:
+        reason = "other"
     ok = await get_call_popup_controller().on_event(
         call_id,
-        CallEvent(body.event, body.reason, body.error_type, body.message_id),
+        CallEvent(body.event, reason, body.error_type, body.message_id),
     )
     return Response(status_code=204 if ok else 409)
 

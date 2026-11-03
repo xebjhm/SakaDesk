@@ -157,3 +157,24 @@ def test_active_rejects_bad_query(fake, query):
     assert res.status_code == 422
     assert fake.active_args == []
     assert _api_popup_logs(logs) == []
+
+
+@pytest.mark.parametrize(
+    "reason",
+    ["already_read", "no_photo", "superseded", "media_unavailable", "popup_active"],
+)
+def test_known_skip_reasons_pass_through(fake, reason):
+    res = client.post(
+        "/api/call-popup/calls/1/events", json={"event": "skipped", "reason": reason}
+    )
+    assert res.status_code == 204
+    assert fake.events[-1][1].reason == reason
+
+
+def test_unknown_but_well_formed_reason_becomes_other(fake):
+    res = client.post(
+        "/api/call-popup/calls/1/events",
+        json={"event": "skipped", "reason": "kanemura_miku_58"},
+    )
+    assert res.status_code == 204
+    assert fake.events == [(1, CallEvent("skipped", "other", None, None))]
