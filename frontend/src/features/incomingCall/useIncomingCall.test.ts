@@ -169,6 +169,45 @@ describe('useIncomingCall', () => {
         unread = false;
         await act(async () => { release(); await Promise.resolve(); });
         expect(result.current.phase).toBe('idle');
+        expect(events()).not.toContain('call_ring');
+        expect(log).toHaveBeenCalledWith('call_skip', {
+            service: 'hinatazaka46', group_id: 34, member_id: 58, message_id: 10, reason: 'already_read',
+        });
+    });
+
+    it('a newer evaluation supersedes an in-flight preload and the skip is logged', async () => {
+        const releases: Array<() => void> = [];
+        const slow = vi.fn(() => new Promise<void>(r => { releases.push(r); }));
+        const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+        rerender({ a: makeArgs({ freshFetch: { seq: 2, dir: DIR } }) });
+        expect(releases).toHaveLength(2);
+        await act(async () => { releases[0](); await Promise.resolve(); await Promise.resolve(); });
+        expect(result.current.phase).toBe('idle');
+        expect(events()).not.toContain('call_ring');
+        expect(log).toHaveBeenCalledWith('call_skip', {
+            service: 'hinatazaka46', group_id: 34, member_id: 58, message_id: 10, reason: 'superseded',
+        });
+        await act(async () => { releases[1](); await Promise.resolve(); await Promise.resolve(); });
+        expect(result.current.phase).toBe('ringing');
+        expect(events().filter(e => e === 'call_ring')).toHaveLength(1);
+    });
+
+    it('a visit change during an in-flight preload logs superseded with the original chat context', async () => {
+        let release!: () => void;
+        const slow = vi.fn(() => new Promise<void>(r => { release = r; }));
+        const { result, rerender } = renderHook(({ a }) => useIncomingCall(a, slow), { initialProps: { a: makeArgs() } });
+        rerender({
+            a: makeArgs({
+                chatDir: 'other', freshFetch: null,
+                logContext: { service: 'sakurazaka46', groupId: 99, memberId: 77 },
+            }),
+        });
+        await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); });
+        expect(result.current.phase).toBe('idle');
+        expect(events()).not.toContain('call_ring');
+        expect(log).toHaveBeenCalledWith('call_skip', {
+            service: 'hinatazaka46', group_id: 34, member_id: 58, message_id: 10, reason: 'superseded',
+        });
     });
 
     it('logs the same skip only once per chat', async () => {
@@ -176,6 +215,17 @@ describe('useIncomingCall', () => {
         rerender({ a: makeArgs({ isUnread: () => false, freshFetch: { seq: 2, dir: DIR } }) });
         await flush();
         expect(log.mock.calls.filter(c => c[0] === 'call_skip')).toHaveLength(1);
+    });
+
+    it('resets the skip dedupe on each visit to a chat', async () => {
+        const skips = () => log.mock.calls.filter(c => c[0] === 'call_skip' && c[1]?.reason === 'already_read');
+        const { rerender } = await ringing({ isUnread: () => false });
+        expect(skips()).toHaveLength(1);
+        rerender({ a: makeArgs({ chatDir: 'other', freshFetch: null }) });
+        await flush();
+        rerender({ a: makeArgs({ isUnread: () => false, freshFetch: { seq: 2, dir: DIR } }) });
+        await flush();
+        expect(skips()).toHaveLength(2);
     });
 
     it('never logs names, text or URLs', async () => {

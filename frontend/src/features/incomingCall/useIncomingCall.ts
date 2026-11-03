@@ -62,7 +62,11 @@ interface ActiveCall {
 
 /**
  * Incoming-call state machine for the selected chat (spec §2.4).
- * Every decision, skip and failure is logged through clientLog.
+ * Every decision, skip and failure is logged through clientLog. Skips decided
+ * before the preload are deduped per chat within a visit (reset when the chat is
+ * selected again); skips after a successful preload (`superseded`, `call_active`,
+ * `already_read`) are always logged, with the chat context captured when the
+ * evaluation started.
  */
 export function useIncomingCall(
     args: UseIncomingCallArgs,
@@ -157,6 +161,8 @@ export function useIncomingCall(
         evalIdRef.current += 1;
         dismissedRef.current = new Set();
         mediaErrorLoggedRef.current = new Set();
+        // Skip dedupe is per visit: a repeat skip on a later visit is logged again.
+        if (args.chatDir) lastSkipRef.current.delete(args.chatDir);
         return () => {
             evalIdRef.current += 1;
             const active = callRef.current;
@@ -174,6 +180,8 @@ export function useIncomingCall(
         if (freshSeq === undefined || !a.chatDir || a.freshFetch?.dir !== a.chatDir) return;
         const chatDir = a.chatDir;
         const evalId = ++evalIdRef.current;
+        // Chat context as of this evaluation; a chat switch must not relabel its logs.
+        const ctx = ctxFields();
         const photoUrl = memberImageUrl(a.member, 'phone_image') || memberImageUrl(a.member, 'thumbnail');
         const decision = decideCall({
             enabled: a.enabled === true,
@@ -193,7 +201,7 @@ export function useIncomingCall(
             if (evalId !== evalIdRef.current || mediaErrorLoggedRef.current.has(message.id)) return;
             mediaErrorLoggedRef.current.add(message.id);
             clientLog('call_error', {
-                ...ctxFields(), message_id: message.id, error_type: 'media_unavailable', phase: 'idle',
+                ...ctx, message_id: message.id, error_type: 'media_unavailable', phase: 'idle',
             });
         };
         const audioUrl = a.service && message.media_file ? buildMediaUrl(a.service, message.media_file) : '';
@@ -204,8 +212,11 @@ export function useIncomingCall(
         preloadRef.current(audioUrl).then(
             () => {
                 const latest = argsRef.current;
-                if (evalId !== evalIdRef.current || phaseRef.current !== 'idle') return;
-                if (latest.chatDir !== chatDir || !latest.isUnread(message.id)) return;
+                const skip = (reason: 'superseded' | 'call_active' | 'already_read') =>
+                    clientLog('call_skip', { ...ctx, message_id: message.id, reason });
+                if (evalId !== evalIdRef.current || latest.chatDir !== chatDir) return skip('superseded');
+                if (phaseRef.current !== 'idle') return skip('call_active');
+                if (!latest.isUnread(message.id)) return skip('already_read');
                 startRinging({ message, name: a.name, photoUrl: photoUrl as string, audioUrl });
             },
             fail,
