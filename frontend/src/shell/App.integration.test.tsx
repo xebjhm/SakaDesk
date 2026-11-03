@@ -40,6 +40,16 @@ describe('App Integration Tests', () => {
     })
   })
 
+  it('installs window.__sakadeskOpenChat on mount and removes it on unmount', async () => {
+    const { unmount } = renderApp()
+
+    await waitFor(() => {
+      expect(typeof window.__sakadeskOpenChat).toBe('function')
+    })
+    unmount()
+    expect(window.__sakadeskOpenChat).toBeUndefined()
+  })
+
   it('should show welcome message when no conversation selected', async () => {
     renderApp()
 

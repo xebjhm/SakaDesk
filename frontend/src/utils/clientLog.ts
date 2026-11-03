@@ -5,7 +5,8 @@
  */
 export type ClientLogEvent =
     | 'call_ring' | 'call_skip' | 'call_answer' | 'call_decline'
-    | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error';
+    | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error'
+    | 'notify_open_chat';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

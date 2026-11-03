@@ -13,6 +13,7 @@ import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import i18n from '../i18n'
+import { openChatFromToast } from './openChat'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -231,6 +232,12 @@ function App() {
             window.removeEventListener('pagehide', flush);
             document.removeEventListener('visibilitychange', onVisibility);
         };
+    }, []);
+
+    // Desktop toast click: the pywebview host calls window.__sakadeskOpenChat(target).
+    useEffect(() => {
+        window.__sakadeskOpenChat = openChatFromToast;
+        return () => { delete window.__sakadeskOpenChat; };
     }, []);
 
     // === RENDER ===

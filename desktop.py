@@ -15,12 +15,14 @@ import json  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
+from dataclasses import asdict  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
+from backend.services import desktop_bridge  # noqa: E402
 from backend.services.service_utils import atomic_write_json  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
@@ -110,6 +112,42 @@ def _focus_existing_window() -> None:
             user32.SetForegroundWindow(hwnd)
     except Exception:
         logger.debug("Failed to focus existing window", exc_info=True)
+
+
+def make_open_chat_handler(window, focus_fn):
+    """Build the toast-click handler that brings ``window`` forward on a chat.
+
+    The handler runs on a WinRT thread. It restores/shows the window, calls
+    ``focus_fn`` (the Win32 foreground technique), then asks the frontend to
+    navigate via ``window.__sakadeskOpenChat``. It never raises; it logs
+    ``notify_open_chat`` (service, is_group_chat) or ``notify_open_chat_failed``
+    (error_type only). Names and paths are never logged.
+    """
+
+    def handler(target) -> None:
+        try:
+            window.restore()
+            window.show()
+            focus_fn()
+            payload = json.dumps(asdict(target), ensure_ascii=False)
+            window.evaluate_js(
+                "window.__sakadeskOpenChat && window.__sakadeskOpenChat("
+                + payload
+                + ")"
+            )
+            logger.info(
+                "notify_open_chat",
+                service=target.service,
+                is_group_chat=target.is_group_chat,
+            )
+        except Exception as e:
+            logger.warning(
+                "notify_open_chat_failed",
+                service=getattr(target, "service", None),
+                error_type=type(e).__name__,
+            )
+
+    return handler
 
 
 def _kill_children(children: list) -> None:
@@ -427,6 +465,11 @@ def main() -> None:
             _save_window_geometry(geom)
 
         window.events.closing += on_closing
+
+        # Toast click -> restore, focus and open that chat (runs on a WinRT thread).
+        desktop_bridge.set_open_chat_handler(
+            make_open_chat_handler(window, _focus_existing_window)
+        )
 
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)
