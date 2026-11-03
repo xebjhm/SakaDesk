@@ -42,6 +42,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "auto_download_updates": False,
     "sync_read_to_phone": False,  # Opt-in: opening a chat in SakaDesk clears its unread on the official app
     "incoming_call_enabled": True,  # Ring an in-app call for the newest unheard voice message when opening a chat
+    "call_popup_enabled": True,  # Ring a background call in a bottom-right popup when a 1:1 voice arrives while the app is not in front
     "close_to_tray": True,  # The window's close button hides it to the tray instead of quitting
     "autostart": False,  # Start at Windows sign-in, hidden in the tray
     "tray_hint_shown": False,  # Internal: the "still running" toast has been shown once

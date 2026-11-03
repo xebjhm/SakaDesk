@@ -131,3 +131,37 @@ def test_invalid_body_is_rejected_and_state_unchanged(body):
     res = client.post("/api/ui-state", json=body)
     assert res.status_code == 422
     assert get_ui_state() == UiState(None, None, None, False)
+
+
+def _fake_popup_controller(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+
+    fake = MagicMock()
+    fake.on_foreground = AsyncMock()
+    monkeypatch.setattr("backend.api.ui_state.get_call_popup_controller", lambda: fake)
+    return fake
+
+
+def test_focused_true_tells_the_call_popup_controller(monkeypatch):
+    fake = _fake_popup_controller(monkeypatch)
+    res = client.post(
+        "/api/ui-state",
+        json={
+            "service": "hinatazaka46",
+            "group_id": "43",
+            "member_id": "58",
+            "focused": True,
+        },
+    )
+    assert res.status_code == 204
+    fake.on_foreground.assert_awaited_once_with()
+
+
+def test_focused_false_never_calls_the_call_popup_controller(monkeypatch):
+    fake = _fake_popup_controller(monkeypatch)
+    res = client.post(
+        "/api/ui-state",
+        json={"service": None, "group_id": None, "member_id": None, "focused": False},
+    )
+    assert res.status_code == 204
+    fake.on_foreground.assert_not_awaited()

@@ -151,6 +151,9 @@ class TestSettingsDefaults:
         assert "incoming_call_enabled" in _SETTINGS_DEFAULTS
         assert _SETTINGS_DEFAULTS["incoming_call_enabled"] is True
 
+    def test_has_call_popup_enabled(self):
+        assert _SETTINGS_DEFAULTS["call_popup_enabled"] is True
+
     def test_tray_defaults(self):
         assert _SETTINGS_DEFAULTS["close_to_tray"] is True
         assert _SETTINGS_DEFAULTS["autostart"] is False

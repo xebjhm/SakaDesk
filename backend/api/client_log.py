@@ -31,6 +31,10 @@ ClientEvent = Literal[
     "call_end",
     "call_cancel",
     "call_error",
+    "call_popup_start",
+    "call_popup_error",
+    "call_popup_heard_applied",
+    "call_popup_heard_ignored",
     "notify_open_chat",
     "backend_sync_followed",
     "backend_sync_skipped",
@@ -47,6 +51,9 @@ ALLOWED_FIELDS = frozenset(
         "ring_ms",
         "talk_ms",
         "error_type",
+        "surface",
+        "call_id",
+        "changed",
     }
 )
 WARNING_EVENTS = frozenset({"call_error"})

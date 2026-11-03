@@ -20,8 +20,9 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
-from backend.services import autostart
+from backend.services import autostart, desktop_bridge
 from backend.services.auto_sync_scheduler import wake_scheduler
+from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
     load_config as _store_load,
@@ -107,6 +108,9 @@ class SettingsResponse(BaseModel):
     incoming_call_enabled: bool = (
         True  # Ring when opening a 1:1 chat whose newest voice is unheard
     )
+    call_popup_enabled: bool = (
+        True  # Ring a background call in a bottom-right popup (app not in front)
+    )
     close_to_tray: bool = True  # Closing the window hides it to the tray
     autostart: bool = False  # Start at Windows sign-in, hidden in the tray
 
@@ -126,6 +130,7 @@ class SettingsUpdate(BaseModel):
     auto_download_updates: Optional[bool] = None
     sync_read_to_phone: Optional[bool] = None
     incoming_call_enabled: Optional[bool] = None
+    call_popup_enabled: Optional[bool] = None
     close_to_tray: Optional[bool] = None
     autostart: Optional[bool] = None
 
@@ -190,6 +195,7 @@ async def get_settings():
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
         incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
         close_to_tray=config.get("close_to_tray", True),
         autostart=config.get("autostart", False),
     )
@@ -199,10 +205,11 @@ async def get_settings():
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
     autostart_change: Optional[bool] = None
+    call_popup_change: Optional[bool] = None
     schedule_changed = False
 
     def _apply(config: dict) -> None:
-        nonlocal autostart_change, schedule_changed
+        nonlocal autostart_change, call_popup_change, schedule_changed
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
@@ -226,6 +233,10 @@ async def update_settings(update: SettingsUpdate):
             config["sync_read_to_phone"] = update.sync_read_to_phone
         if update.incoming_call_enabled is not None:
             config["incoming_call_enabled"] = update.incoming_call_enabled
+        if update.call_popup_enabled is not None:
+            if update.call_popup_enabled != config.get("call_popup_enabled", True):
+                call_popup_change = update.call_popup_enabled
+            config["call_popup_enabled"] = update.call_popup_enabled
         if update.close_to_tray is not None:
             config["close_to_tray"] = update.close_to_tray
         if update.autostart is not None:
@@ -243,6 +254,12 @@ async def update_settings(update: SettingsUpdate):
     if autostart_change is not None:
         await _apply_autostart(autostart_change)
 
+    if call_popup_change is True:
+        # Create the popup window now (in a thread; never blocks this response).
+        desktop_bridge.call_popup_ensure()
+    elif call_popup_change is False:
+        await get_call_popup_controller().cancel(reason="disabled")
+
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
         auto_sync_enabled=config["auto_sync_enabled"],
@@ -258,6 +275,7 @@ async def update_settings(update: SettingsUpdate):
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
         incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
         close_to_tray=config.get("close_to_tray", True),
         autostart=config.get("autostart", False),
     )

@@ -66,6 +66,7 @@ from backend.api import (  # noqa: E402
     chat_features,
     client_log,
     ui_state,
+    call_popup,
     blogs,
     search,
     read_states,
@@ -246,6 +247,11 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    # Drop any popup call (no toast) before syncs and writers stop.
+    from backend.services.call_popup import get_call_popup_controller
+
+    await get_call_popup_controller().shutdown()
+
     # Stop the auto-sync scheduler before the write barrier so it cannot launch
     # a sync while writers are being drained (launch_sync also refuses once
     # begin_shutdown() has run).
@@ -403,6 +409,7 @@ app.include_router(favorites.router)
 app.include_router(chat_features.router)
 app.include_router(client_log.router)
 app.include_router(ui_state.router)
+app.include_router(call_popup.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])

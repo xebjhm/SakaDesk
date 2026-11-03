@@ -1,7 +1,9 @@
 """Foreground / current-chat reporting.
 
 The webview POSTs the chat it is showing and whether the window is focused, so
-toasts can skip the chat being viewed. Only code-like values are accepted
+toasts can skip the chat being viewed. A focused report also tells the
+call popup controller that the main window came forward, so a popup that is
+still ringing yields to it (no toast). Only code-like values are accepted
 (ids and the service code), so names, text or paths can never reach the log.
 """
 
@@ -11,6 +13,7 @@ import structlog
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, StrictBool, StringConstraints
 
+from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_planner import UiState
 from backend.services.ui_state import set_ui_state
 
@@ -48,4 +51,7 @@ async def post_ui_state(body: UiStateRequest) -> Response:
         member_id=body.member_id,
         focused=body.focused,
     )
+    if body.focused:
+        # The main window came forward: a popup that is still ringing yields to it (no toast).
+        await get_call_popup_controller().on_foreground()
     return Response(status_code=204)

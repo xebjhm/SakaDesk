@@ -207,3 +207,67 @@ async def test_tray_hint_shown_cannot_be_set_via_the_api(client, isolated_settin
     assert response.status_code == 200
     saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
     assert saved.get("tray_hint_shown", False) is False
+
+
+@pytest.mark.asyncio
+async def test_call_popup_enabled_defaults_to_true(client, isolated_settings):
+    assert client.get("/api/settings").json()["call_popup_enabled"] is True
+
+
+def _fake_popup_controller():
+    from unittest.mock import AsyncMock, MagicMock
+
+    fake = MagicMock()
+    fake.cancel = AsyncMock()
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_call_popup_enabled_round_trips_and_cancels_when_turned_off(
+    client, isolated_settings
+):
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        response = client.post("/api/settings", json={"call_popup_enabled": False})
+    assert response.status_code == 200
+    assert response.json()["call_popup_enabled"] is False
+    assert client.get("/api/settings").json()["call_popup_enabled"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["call_popup_enabled"] is False
+    fake.cancel.assert_awaited_once_with(reason="disabled")
+    ensure.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_call_popup_turned_on_ensures_the_window(client, isolated_settings):
+    isolated_settings.write_text(
+        json.dumps({"call_popup_enabled": False}), encoding="utf-8"
+    )
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        response = client.post("/api/settings", json={"call_popup_enabled": True})
+    assert response.json()["call_popup_enabled"] is True
+    ensure.assert_called_once_with()
+    fake.cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_call_popup_unchanged_value_calls_neither(client, isolated_settings):
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        client.post("/api/settings", json={"call_popup_enabled": True})
+        isolated_settings.write_text(
+            json.dumps({"call_popup_enabled": False}), encoding="utf-8"
+        )
+        client.post("/api/settings", json={"call_popup_enabled": False})
+    ensure.assert_not_called()
+    fake.cancel.assert_not_awaited()

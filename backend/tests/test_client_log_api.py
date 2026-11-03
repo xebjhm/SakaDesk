@@ -151,3 +151,87 @@ def test_backend_sync_skipped_event_is_accepted():
     assert len(events) == 1
     assert events[0]["event"] == "backend_sync_skipped"
     assert events[0]["reason"] == "already_handled"
+
+
+def test_call_popup_heard_applied_is_accepted_with_its_fields():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_popup_heard_applied",
+                "fields": {
+                    "service": "hinatazaka46",
+                    "group_id": 34,
+                    "member_id": 58,
+                    "message_id": 10,
+                    "changed": True,
+                },
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert len(events) == 1
+    assert events[0]["event"] == "call_popup_heard_applied"
+    assert events[0]["log_level"] == "info"
+    assert events[0]["changed"] is True
+    assert events[0]["message_id"] == 10
+
+
+def test_call_popup_heard_ignored_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_popup_heard_ignored",
+                "fields": {"reason": "already_heard"},
+            },
+        )
+    assert res.status_code == 204
+    assert _client_events(logs)[0]["reason"] == "already_heard"
+
+
+def test_call_ring_from_the_popup_carries_surface():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_ring",
+                "fields": {"surface": "popup", "message_id": 10},
+            },
+        )
+    assert res.status_code == 204
+    assert _client_events(logs)[0]["surface"] == "popup"
+
+
+def test_call_popup_start_accepts_call_id():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "call_popup_start", "fields": {"call_id": 1}},
+        )
+    assert res.status_code == 204
+    assert _client_events(logs)[0]["call_id"] == 1
+
+
+def test_call_popup_error_is_accepted_with_error_type():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_popup_error",
+                "fields": {"call_id": 1, "error_type": "type_error"},
+            },
+        )
+    assert res.status_code == 204
+    assert _client_events(logs)[0]["error_type"] == "type_error"
+
+
+def test_call_popup_events_still_reject_unknown_keys_and_bad_values():
+    for body in (
+        {"event": "call_popup_start", "fields": {"path": "x"}},
+        {"event": "call_popup_error", "fields": {"error_type": "Has Space"}},
+    ):
+        with capture_logs() as logs:
+            res = client.post("/api/client-log", json=body)
+        assert res.status_code == 422
+        assert _client_events(logs) == []
