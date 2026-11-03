@@ -593,8 +593,9 @@ class SyncService:
                 reported_new: dict[tuple[int, int], int] = {}
                 # Messages that were genuinely new on disk this run, fed by
                 # pysaka's on_new_messages callback (incremental calls only).
-                # It is the sole source of the new-message totals (a later
-                # task's notification planner reads it from here).
+                # It is the sole source of the new-message totals, and after
+                # phase 2 _notify_new_messages plans and sends this run's
+                # toasts from its entries().
                 collector = NewMessageCollector(self._service)
 
                 def note_rate_limited(gid: int, err: RateLimitedError) -> None:

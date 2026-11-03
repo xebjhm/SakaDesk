@@ -214,7 +214,8 @@ When running the backend, interactive API documentation is available at:
 - **python-multipart** + **aiofiles** - File upload and async file I/O
 - **keyring** + **keyrings-alt** - Secure credential storage
 - **structlog** - Structured logging
-- **windows-toasts** - Native Windows toast notifications
+- **windows-toasts** - Native Windows toast notifications (Windows only)
+- **pywin32** - Start Menu shortcut / app identity so toasts show as banners (Windows only)
 - **pykakasi** + **jaconv** - Japanese transliteration for search
 - **tk** - Tkinter for native file dialogs
 
