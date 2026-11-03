@@ -62,6 +62,17 @@ describe('MemberProfilePopup — member images', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
+    it('claims Escape (defaultPrevented) when it closes the popup', async () => {
+        mockImages();
+        const onClose = vi.fn();
+        render(<MemberProfilePopup isOpen onClose={onClose} memberName="石塚 瑶季" memberPath={MEMBER_PATH} />);
+        await screen.findByRole('button', { name: /Chat icon/ });
+        const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        document.dispatchEvent(ev);
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(ev.defaultPrevented).toBe(true);
+    });
+
     it('clears the previous member\'s images when memberPath changes, before the new fetch resolves', async () => {
         let release!: () => void;
         const gate = new Promise<void>(r => { release = r; });
