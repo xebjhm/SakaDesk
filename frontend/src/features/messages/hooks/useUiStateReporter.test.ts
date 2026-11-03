@@ -119,12 +119,56 @@ describe('useUiStateReporter', () => {
         expect(debug).toHaveBeenCalled();
     });
 
-    it('cancels a pending post and removes listeners on unmount', () => {
+    it('on unmount sends exactly one immediate cleared report, and no stale debounced one after it', () => {
         const { unmount } = renderHook(() => useUiStateReporter(ROOM));
-        vi.advanceTimersByTime(100);
+        vi.advanceTimersByTime(100); // a chat report is still pending
         unmount();
+        expect(bodies()).toEqual([
+            { service: null, group_id: null, member_id: null, focused: true },
+        ]);
         vi.advanceTimersByTime(1000);
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('the cleared report carries the current focused state', () => {
+        const { unmount } = renderHook(() => useUiStateReporter(ROOM));
+        vi.advanceTimersByTime(300);
+        hasFocus = false;
+        unmount();
+        expect(bodies()[1]).toEqual({
+            service: null,
+            group_id: null,
+            member_id: null,
+            focused: false,
+        });
+    });
+
+    it('does not send a cleared report when only chatDir changes', () => {
+        const { rerender, unmount } = renderHook(({ dir }) => useUiStateReporter(dir), {
+            initialProps: { dir: ONE_ON_ONE },
+        });
+        vi.advanceTimersByTime(300);
+        rerender({ dir: ROOM });
+        expect(fetchMock).toHaveBeenCalledTimes(1); // only the first chat report so far
+        vi.advanceTimersByTime(300);
+        expect(bodies().map(b => b.member_id)).toEqual(['58', '0']);
+        unmount();
+        expect(bodies().map(b => b.member_id)).toEqual(['58', '0', null]);
+    });
+
+    it('swallows a failing cleared report on unmount', async () => {
+        const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+        fetchMock.mockRejectedValue(new Error('down'));
+        const { unmount } = renderHook(() => useUiStateReporter(ROOM));
+        unmount();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(debug).toHaveBeenCalled();
+    });
+
+    it('removes listeners on unmount', () => {
+        const { unmount } = renderHook(() => useUiStateReporter(ROOM));
+        unmount();
+        fetchMock.mockClear();
         window.dispatchEvent(new Event('blur'));
         document.dispatchEvent(new Event('visibilitychange'));
         vi.advanceTimersByTime(1000);
