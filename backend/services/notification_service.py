@@ -36,6 +36,16 @@ _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fi
 
 _notifications_enabled = True
 
+# windows_toasts warns when a launch string has no URL scheme; ours is a plain
+# query string handled by parse_launch_args. The warning text embeds the launch
+# string (names, paths), so it must never reach the logs.
+_LAUNCH_WARNING = r"Ensure your launch action"
+
+
+def _silence_launch_action_warning() -> None:
+    """Install the targeted filter. Idempotent: ``filterwarnings`` de-duplicates."""
+    warnings.filterwarnings("ignore", message=_LAUNCH_WARNING, category=UserWarning)
+
 
 class Notifier(Protocol):
     """Shows one planned toast and reports its own health."""
@@ -90,10 +100,11 @@ def _ids_from_path(target: ChatTarget) -> tuple[str, str]:
     no member dir, so its member id is ``"0"``. ``""`` when a prefix is missing.
     """
     parts = target.path.split("/")
-    try:
-        tail = parts[parts.index("messages") + 1 :]
-    except ValueError:
+    if "messages" not in parts:
         return "", ""
+    # Last "messages" component, as the planner does (a parent folder may share
+    # the name).
+    tail = parts[len(parts) - parts[::-1].index("messages") :]
 
     def lead(part: str) -> str:
         m = _LEADING_ID.match(part)
@@ -139,6 +150,7 @@ class WindowsToastNotifier:
     def __init__(self) -> None:
         import windows_toasts as wt  # lazy: Windows-only dependency
 
+        _silence_launch_action_warning()
         self._wt = wt
         self._toaster = wt.InteractableWindowsToaster(AUMID, notifierAUMID=AUMID)
         self._last_error: str | None = None
@@ -148,14 +160,10 @@ class WindowsToastNotifier:
         """Show the toast; raises on failure (callers log ``notify_failed``)."""
         wt = self._wt
         try:
-            with warnings.catch_warnings():
-                # windows_toasts warns when a launch string has no URL scheme;
-                # ours is a plain query string handled by parse_launch_args.
-                warnings.simplefilter("ignore")
-                toast = wt.Toast(
-                    text_fields=[plan.title, plan.body],
-                    launch_action=build_launch_args(plan.target),
-                )
+            toast = wt.Toast(
+                text_fields=[plan.title, plan.body],
+                launch_action=build_launch_args(plan.target),
+            )
             if plan.avatar is not None:
                 self._add_avatar(toast, plan)
             toast.on_activated = self._on_activated
@@ -304,15 +312,21 @@ async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
 async def send_planned(plans: list[ToastPlan]) -> int:
     """Show every plan (off the event loop) and return how many were shown.
 
-    Skips everything when notifications are disabled; the planner already
-    skips in that case, so this is a second guard.
+    Skips everything when notifications are disabled (the planner already
+    skips in that case, so this is a second guard) or when the notifier is
+    unavailable (it logged why once; one summary line replaces a failure log
+    per plan). The notifier is resolved on a worker thread: its first use
+    imports ``windows_toasts``/WinRT and builds the toaster.
     """
     if not plans:
         return 0
     if not _notifications_enabled:
         logger.info("notify_skip", reason="disabled", count=len(plans))
         return 0
-    notifier = get_notifier()
+    notifier = await asyncio.to_thread(get_notifier)
+    if not notifier.status().get("available", True):
+        logger.info("notify_skip", reason="unavailable", count=len(plans))
+        return 0
     sent = 0
     for plan in plans:
         if await _show_one(notifier, plan):
@@ -333,7 +347,7 @@ async def send_test(lang: str | None) -> bool:
         count=1,
         newest_type="text",
     )
-    return await _show_one(get_notifier(), plan)
+    return await _show_one(await asyncio.to_thread(get_notifier), plan)
 
 
 # TODO(C1 Task 8): remove. sync_service still awaits this until it is rewired

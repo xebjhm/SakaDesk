@@ -6,6 +6,7 @@ import types
 import warnings
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlparse
 
 import pytest
 from structlog.testing import capture_logs
@@ -161,10 +162,23 @@ def _fake_windows_toasts() -> types.ModuleType:
     class Toast:
         def __init__(self, text_fields=None, launch_action=None, **kw):
             self.text_fields = text_fields
-            self.launch_action = launch_action
+            self.launch_action = launch_action  # goes through the setter
             self.images: list = []
             self.on_activated = None
             self.on_failed = None
+
+        @property
+        def launch_action(self):
+            return self._launch_action
+
+        @launch_action.setter
+        def launch_action(self, value):
+            # Like windows-toasts 1.3.1: warn (embedding the string) w/o a scheme.
+            if value is not None and not urlparse(value).scheme:
+                warnings.warn(
+                    f"Ensure your launch action is a URL: {value}", UserWarning
+                )
+            self._launch_action = value
 
         def AddImage(self, image):
             self.images.append(image)
@@ -241,10 +255,34 @@ def test_windows_notifier_bad_avatar_still_shows_toast(fake_wt, tmp_path) -> Non
 
 
 def test_windows_notifier_launch_action_does_not_warn(fake_wt) -> None:
-    n = ns.WindowsToastNotifier()
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        n.show(make_plan())
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # Built inside the block: the notifier installs its targeted filter
+        # in front of "always", as it does once in the real process.
+        n = ns.WindowsToastNotifier()
+        assert n.show(make_plan()) is True
+    assert [str(w.message) for w in caught] == []
+
+
+def test_fake_toast_warns_without_the_filter(fake_wt) -> None:
+    """Guards the guard: the fake really warns on a scheme-less launch string."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fake_wt.Toast(launch_action="action=open&x=1")
+    assert len(caught) == 1
+    assert str(caught[0].message).startswith("Ensure your launch action")
+
+
+def test_launch_warning_filter_is_narrow(fake_wt) -> None:
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ns.WindowsToastNotifier()
+        warnings.warn("something else", UserWarning)
+        warnings.warn("Ensure your launch action", DeprecationWarning)
+    assert sorted(str(w.message) for w in caught) == [
+        "Ensure your launch action",
+        "something else",
+    ]
 
 
 def test_windows_notifier_show_failure_sets_last_error(fake_wt) -> None:
@@ -418,6 +456,43 @@ def test_send_planned_disabled_is_a_second_guard() -> None:
     assert fake.shown == []
     (skip,) = [e for e in logs if e["event"] == "notify_skip"]
     assert skip["reason"] == "disabled" and skip["count"] == 2
+
+
+def test_send_planned_unavailable_notifier_logs_one_skip() -> None:
+    null = ns.NullNotifier("not_windows")
+    with patch.object(ns, "get_notifier", lambda: null):
+        with capture_logs() as logs:
+            sent = asyncio.run(ns.send_planned([_plan("34"), _plan("79")]))
+    assert sent == 0
+    assert not [e for e in logs if e["event"] == "notify_failed"]
+    (skip,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert skip["reason"] == "unavailable" and skip["count"] == 2
+
+
+def test_notifier_is_resolved_off_the_event_loop() -> None:
+    import threading
+
+    threads: list[int] = []
+
+    def resolve():
+        threads.append(threading.get_ident())
+        return FakeNotifier()
+
+    async def run():
+        main = threading.get_ident()
+        with patch.object(ns, "get_notifier", resolve):
+            await ns.send_planned([_plan("34")])
+            await ns.send_test("en")
+        return main
+
+    main = asyncio.run(run())
+    assert len(threads) == 2 and all(t != main for t in threads)
+
+
+def test_ids_from_path_uses_the_last_messages_component() -> None:
+    t = ChatTarget("s", "messages/x/messages/34 n/58 m", "n", False)
+    assert ns._ids_from_path(t) == ("34", "58")
+    assert ns._ids_from_path(ChatTarget("s", "no-marker/34 n", "n", False)) == ("", "")
 
 
 def test_send_planned_runs_show_off_the_event_loop() -> None:

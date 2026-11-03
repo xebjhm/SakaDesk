@@ -4,6 +4,7 @@ Notification Settings API for SakaDesk.
 Provides endpoints to manage desktop notification preferences.
 """
 
+import asyncio
 from typing import Optional
 
 from fastapi import APIRouter
@@ -39,7 +40,8 @@ class NotificationStatus(BaseModel):
 @router.get("", response_model=NotificationStatus)
 async def get_status():
     """Get notification system status."""
-    status = get_notification_status()
+    # First call builds the notifier (WinRT imports): keep it off the event loop.
+    status = await asyncio.to_thread(get_notification_status)
     return NotificationStatus(**status)
 
 
