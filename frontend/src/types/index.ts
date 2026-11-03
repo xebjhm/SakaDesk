@@ -31,6 +31,8 @@ export interface Message {
     media_duration?: number;  // Duration in seconds (for video/voice)
     is_muted?: boolean;  // Whether video has no audio
     _raw_type?: string;
+    member_id?: number | string;  // Group chats: author id (0 = the room itself; the endpoint sends a string)
+    member_name?: string;  // Group chats: author display name
 }
 
 export interface MessagesResponse {

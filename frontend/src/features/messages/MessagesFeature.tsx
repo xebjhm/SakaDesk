@@ -20,10 +20,8 @@ import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 
 // Types specific to messages feature
-export interface GroupMessage extends Message {
-    member_id?: string;
-    member_name?: string;
-}
+// member_id / member_name now live on Message; kept as an alias for call sites.
+export type GroupMessage = Message;
 
 export interface GroupMessagesResponse {
     group_dir: string;
