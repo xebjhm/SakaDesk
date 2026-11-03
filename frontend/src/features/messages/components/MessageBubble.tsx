@@ -17,6 +17,7 @@ import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
+import { buildMediaUrl } from '../mediaUrl';
 
 interface ShelterColors {
     picture: string;
@@ -205,7 +206,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../voice/346492.m4a")
     // API expects full path from output dir (e.g., "櫻坂46/messages/62 石森 璃花/.../voice/346492.m4a")
     const mediaUrl = message.media_file && service
-        ? `${api_base}/${encodeURIComponent(service)}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
+        ? buildMediaUrl(service, message.media_file, api_base)
         : null;
 
     // Transcription — only active for voice and non-muted video messages
