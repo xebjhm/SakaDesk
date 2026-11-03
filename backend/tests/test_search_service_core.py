@@ -1917,6 +1917,8 @@ class TestHiddenMessagesNotIndexed:
                 str(db_path), str(output_dir), json.dumps(members), _SERVICE_ID
             )
             assert self._indexed_ids(db_path) == {1, 2, 3}
+            # Message 2 was indexed with the fixture's original text.
+            assert self._fts_matches(db_path, "お昼ごはん") == 1
             _write_messages_json(
                 member_file,
                 [
@@ -1943,18 +1945,27 @@ class TestHiddenMessagesNotIndexed:
                 json.dumps([[1, 100]]),
             ) == (0, 1)
         assert self._indexed_ids(db_path) == {1, 3}
+        # The purge removed the FTS entry of the originally indexed text too.
+        assert self._fts_matches(db_path, "お昼ごはん") == 0
         conn = sqlite3.connect(str(db_path))
         try:
-            fts = conn.execute(
-                "SELECT count(*) FROM search_fts WHERE search_fts MATCH ?",
-                ('"取り消し"',),
-            ).fetchone()[0]
             other = conn.execute(
                 "SELECT count(*) FROM search_messages WHERE member_id = 200"
             ).fetchone()[0]
         finally:
             conn.close()
-        assert fts == 0 and other == 2
+        assert other == 2
+
+    @staticmethod
+    def _fts_matches(db_path: Path, term: str) -> int:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            return conn.execute(
+                "SELECT count(*) FROM search_fts WHERE search_fts MATCH ?",
+                (f'"{term}"',),
+            ).fetchone()[0]
+        finally:
+            conn.close()
 
     @pytest.mark.asyncio
     async def test_index_members_logs_purged(self, service: SearchService, monkeypatch):
