@@ -285,6 +285,36 @@ async def test_missing_last_read_id_or_revealed_ids_default_like_the_sidebar(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("legacy", ["12345", '"12345"', "true", "[1, 2, 3]", "0"])
+async def test_non_object_json_counts_from_zero_like_the_sidebar(env, legacy) -> None:
+    _write_member(env, REL, [{"id": i} for i in range(1, 4)])
+    app_state.set_conversation(f"read_state_{REL}", {"value": legacy})
+    with capture_logs() as logs:
+        assert await unread_total() == 3
+    assert not [e for e in logs if e["event"] == "tray_tooltip_state_skipped"]
+
+
+@pytest.mark.asyncio
+async def test_json_null_row_is_skipped_like_the_sidebar_and_logged(env) -> None:
+    other = f"{DISPLAY}/messages/35 小坂 菜緒/59 小坂 菜緒"
+    _write_member(env, REL, [{"id": 1}, {"id": 2}])
+    _write_member(env, other, [{"id": 5}])
+    app_state.set_conversation(f"read_state_{REL}", {"value": "null"})
+    with capture_logs() as logs:
+        assert await unread_total() == 1  # null.lastReadId throws in the sidebar
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip_state_skipped"]
+    assert event["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_falsy_or_null_fields_default_like_the_sidebar(env) -> None:
+    _write_member(env, REL, [{"id": i} for i in range(1, 4)])
+    value = json.dumps({"lastReadId": None, "revealedIds": None})
+    app_state.set_conversation(f"read_state_{REL}", {"value": value})
+    assert await unread_total() == 3
+
+
+@pytest.mark.asyncio
 async def test_an_unparsable_row_is_skipped_like_the_sidebar_and_logged(env) -> None:
     other = f"{DISPLAY}/messages/35 小坂 菜緒/59 小坂 菜緒"
     _write_member(env, REL, [{"id": 1}, {"id": 2}])

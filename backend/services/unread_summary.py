@@ -45,8 +45,11 @@ def _stored_state(stored: Mapping[str, Any], rel: str) -> Optional[dict[str, Any
     ``{"value": "<JSON>"}`` where the JSON is the frontend's ``ReadState``
     (``lastReadId``, ``readCount``, ``revealedIds``). A conversation with no row,
     or a row without a value, counts from ``lastReadId`` 0 with nothing revealed.
-    Returns ``None`` for a value that is not valid JSON: the sidebar skips such a
-    conversation (it gets no badge), so it is not counted here either.
+    Returns ``None`` for a value the sidebar skips: text that is not valid JSON,
+    or JSON ``null`` (``null.lastReadId`` throws there). Any other JSON that is
+    not an object (a number, string, boolean or array, e.g. a migrated legacy
+    ``"12345"``) has no ``lastReadId``/``revealedIds`` property in JavaScript, so
+    it counts from ``lastReadId`` 0 with nothing revealed, like a missing row.
     """
     row = stored.get(f"{READ_STATE_KEY_PREFIX}{rel}")
     raw = row.get("value") if isinstance(row, dict) else None
@@ -54,12 +57,16 @@ def _stored_state(stored: Mapping[str, Any], rel: str) -> Optional[dict[str, Any
         return {"lastReadId": 0, "revealedIds": []}
     try:
         parsed = json.loads(raw)
-        return {
-            "lastReadId": parsed.get("lastReadId") or 0,
-            "revealedIds": parsed.get("revealedIds") or [],
-        }
-    except (TypeError, ValueError, AttributeError):
+    except (TypeError, ValueError):
         return None
+    if parsed is None:
+        return None
+    if not isinstance(parsed, dict):
+        return {"lastReadId": 0, "revealedIds": []}
+    return {
+        "lastReadId": parsed.get("lastReadId") or 0,
+        "revealedIds": parsed.get("revealedIds") or [],
+    }
 
 
 def _total(output_dir: Path, stored: Mapping[str, Any]) -> int:
