@@ -110,6 +110,26 @@ def test_failure_returns_failed_logs_type_and_never_raises() -> None:
     assert "secret" not in repr(logs)
 
 
+def test_com_error_logs_hresult() -> None:
+    class com_error(Exception):  # noqa: N801 - mimics pywintypes.com_error
+        pass
+
+    links = FakeLinks()
+    links.fail_with = com_error(-2147467259, "Unspecified error", None, None)
+    result, logs = _ensure(links)
+    assert result == "failed"
+    assert logs[0]["hresult"] == -2147467259
+    assert logs[0]["error_type"] == "com_error"
+    assert "Unspecified" not in repr(logs)
+
+
+def test_non_com_failure_has_no_hresult() -> None:
+    links = FakeLinks()
+    links.fail_with = OSError(5, "denied")  # args[0] is an int but not a COM error
+    _, logs = _ensure(links)
+    assert "hresult" not in logs[0]
+
+
 def test_logs_never_contain_paths() -> None:
     links = FakeLinks()
     _, logs = _ensure(links)

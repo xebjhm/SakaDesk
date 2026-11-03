@@ -114,7 +114,8 @@ def ensure_start_menu_shortcut(
     """Make sure the Start Menu shortcut exists and carries the AUMID.
 
     Returns (and logs as ``app_identity``) one of ``skipped_dev``, ``created``,
-    ``updated``, ``ok`` or ``failed`` (with ``error_type``). An existing
+    ``updated``, ``ok`` or ``failed`` (with ``error_type``, plus ``hresult``
+    for a pywin32 ``com_error``). An existing
     shortcut's target is never changed. Never raises.
     """
     if not frozen:
@@ -133,7 +134,11 @@ def ensure_start_menu_shortcut(
         else:
             action = "ok"
     except Exception as e:
-        logger.warning("app_identity", action="failed", error_type=type(e).__name__)
+        fields: dict[str, Any] = {"error_type": type(e).__name__}
+        # pywin32 com_error carries the HRESULT as args[0]; log the code only.
+        if type(e).__name__ == "com_error" and e.args and isinstance(e.args[0], int):
+            fields["hresult"] = e.args[0]
+        logger.warning("app_identity", action="failed", **fields)
         return "failed"
     logger.info("app_identity", action=action)
     return action

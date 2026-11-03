@@ -26,6 +26,13 @@ hiddenimports = [
     'uvicorn.lifespan.on',
     'keyring.backends.Windows',
     'win32ctypes.core',
+    # pywin32 (Start Menu shortcut + AUMID in app_identity.py): imported lazily
+    # inside functions, so PyInstaller cannot trace them.
+    'win32com',
+    'win32com.shell',
+    'win32com.propsys',
+    'pythoncom',
+    'pywintypes',
 ]
 
 # Auto-collect packages
