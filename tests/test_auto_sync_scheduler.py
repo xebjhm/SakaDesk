@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from structlog.testing import capture_logs
 
+from backend.services import auto_sync_scheduler as scheduler_module
 from backend.services import shutdown_state
 from backend.services.auto_sync_scheduler import (
     AutoSyncScheduler,
@@ -18,8 +19,11 @@ SVC = "hinatazaka46"
 class _Harness:
     """Fake sleep/settings/auth/launch; stops the loop after `ticks` ticks."""
 
-    def __init__(self, settings, *, ticks=1, authed=True, launch_result="started"):
+    def __init__(
+        self, settings, *, ticks=1, authed=True, launch_result="started", previous=None
+    ):
         self.settings = settings
+        self.previous = previous
         self.ticks = ticks
         self.authed = authed
         self.launch_result = launch_result
@@ -56,6 +60,7 @@ class _Harness:
             load_settings=self.load_settings,
             is_authenticated=self.is_authenticated,
             launch=self.launch,
+            previous_error_code=lambda service: self.previous,
         )
 
     async def run(self, services=(SVC,)):
@@ -84,6 +89,7 @@ def _ticks(logs):
 def _restore_shutdown_flag():
     yield
     shutdown_state.reset_for_tests()
+    scheduler_module._active = None
 
 
 @pytest.mark.asyncio
@@ -342,3 +348,178 @@ def test_lifespan_starts_and_stops_scheduler_when_opted_in(monkeypatch):
         st.assert_called_once()
     assert order == ["stop", "quiesce"]
     shutdown_state.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_tick_logs_the_previous_runs_error_code():
+    h = _Harness(_settings(), previous="session_expired")
+    with capture_logs() as logs:
+        await h.run()
+    assert _ticks(logs)[0]["previous_error_code"] == "session_expired"
+
+
+@pytest.mark.asyncio
+async def test_tick_has_no_previous_error_code_after_a_clean_run():
+    h = _Harness(_settings())
+    with capture_logs() as logs:
+        await h.run()
+    assert "previous_error_code" not in _ticks(logs)[0]
+
+
+def test_default_previous_error_code_reads_the_progress_tracker():
+    from backend.api.progress import progress_manager
+    from backend.services.auto_sync_scheduler import _default_previous_error_code
+
+    tracker = progress_manager.get("previous-error-svc")
+    tracker.reset()
+    assert _default_previous_error_code("previous-error-svc") is None
+    tracker.error("SESSION_EXPIRED")
+    assert _default_previous_error_code("previous-error-svc") == "session_expired"
+    tracker.error("something odd")
+    assert _default_previous_error_code("previous-error-svc") == "unknown"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("minutes", [0, -5, 0.2])
+async def test_interval_is_clamped_to_one_minute(minutes):
+    h = _Harness(_settings(sync_interval_minutes=minutes), ticks=2)
+    await h.run()
+    assert h.sleeps[:3] == [60, 60, 60]
+
+
+@pytest.mark.asyncio
+async def test_interval_clamp_also_applies_to_the_adaptive_calculator():
+    h = _Harness(_settings(adaptive_sync_enabled=True))
+    with patch(
+        "backend.services.adaptive_sync.calculate_next_sync_interval",
+        side_effect=[0.0, 0.0],
+    ):
+        await h.run()
+    assert h.sleeps[0] == 60
+
+
+class _WakeHarness:
+    """A scheduler whose sleep blocks until cancelled, with swappable settings."""
+
+    def __init__(self, settings):
+        self.settings = settings
+        self.fail_settings = False
+        self.sleeps: list[float] = []
+        self.launches: list[str] = []
+
+    async def sleep(self, seconds):
+        self.sleeps.append(seconds)
+        await asyncio.sleep(3600)
+
+    async def load_settings(self):
+        if self.fail_settings:
+            raise OSError("disk")
+        return self.settings
+
+    async def is_authenticated(self, service):
+        return True
+
+    async def launch(self, service, **kwargs):
+        self.launches.append(service)
+        return "started"
+
+    def scheduler(self):
+        return AutoSyncScheduler(
+            [SVC],
+            sleep=self.sleep,
+            load_settings=self.load_settings,
+            is_authenticated=self.is_authenticated,
+            launch=self.launch,
+            previous_error_code=lambda service: None,
+        )
+
+
+async def _until(predicate):
+    for _ in range(200):
+        if predicate():
+            return
+        await asyncio.sleep(0.005)
+    raise AssertionError("condition not reached")
+
+
+@pytest.mark.asyncio
+async def test_wake_ends_the_wait_and_rereads_the_settings_without_a_tick():
+    h = _WakeHarness(_settings(sync_interval_minutes=60))
+    sched = h.scheduler()
+    with capture_logs() as logs:
+        sched.start()
+        await _until(lambda: len(h.sleeps) == 1)
+        assert h.sleeps == [3600]
+        h.settings = _settings(sync_interval_minutes=1)
+        sched.wake()
+        await _until(lambda: len(h.sleeps) == 2)
+        await sched.stop()
+    assert h.sleeps == [3600, 60]
+    assert h.launches == []  # a wake re-arms the wait; it is not a tick
+    assert _ticks(logs) == []
+    (wake,) = [e for e in logs if e["event"] == "auto_sync_wake"]
+    assert wake["service"] == SVC
+    assert wake["next_minutes"] == 1.0
+
+
+@pytest.mark.asyncio
+async def test_wake_twice_in_a_row_keeps_working():
+    h = _WakeHarness(_settings())
+    sched = h.scheduler()
+    sched.start()
+    await _until(lambda: len(h.sleeps) == 1)
+    sched.wake()
+    await _until(lambda: len(h.sleeps) == 2)
+    sched.wake()
+    await _until(lambda: len(h.sleeps) == 3)
+    await sched.stop()
+
+
+@pytest.mark.asyncio
+async def test_wake_before_start_and_after_stop_is_a_noop():
+    h = _WakeHarness(_settings())
+    sched = h.scheduler()
+    sched.wake()
+    sched.start()
+    await _until(lambda: len(h.sleeps) == 1)
+    await sched.stop()
+    sched.wake()
+    assert len(h.sleeps) == 1
+
+
+@pytest.mark.asyncio
+async def test_wake_survives_a_settings_failure_on_rewake():
+    h = _WakeHarness(_settings(sync_interval_minutes=30))
+    sched = h.scheduler()
+    with capture_logs() as logs:
+        sched.start()
+        await _until(lambda: len(h.sleeps) == 1)
+
+        h.fail_settings = True
+        sched.wake()
+        await _until(lambda: any(e["event"] == "auto_sync_failed" for e in logs))
+        h.fail_settings = False
+        await _until(lambda: len(h.sleeps) == 2)
+        await sched.stop()
+    assert h.sleeps[1] == 30 * 60  # last known fixed interval, loop carries on
+
+
+@pytest.mark.asyncio
+async def test_wake_scheduler_wakes_the_running_scheduler():
+    from backend.services.auto_sync_scheduler import wake_scheduler
+
+    h = _WakeHarness(_settings())
+    sched = h.scheduler()
+    with capture_logs() as logs:
+        assert wake_scheduler() is False  # none running
+        sched.start()
+        await _until(lambda: len(h.sleeps) == 1)
+        assert wake_scheduler() is True
+        await _until(lambda: len(h.sleeps) == 2)
+        await sched.stop()
+        assert wake_scheduler() is False  # stopped again
+    assert [e["woken"] for e in logs if e["event"] == "auto_sync_wake_requested"] == [
+        False,
+        True,
+        False,
+    ]

@@ -287,19 +287,44 @@ describe('useSync', () => {
         })
     })
 
-    it('exposes isPolling, followSync and bumpSyncVersion for the backend sync watcher', async () => {
+    it('exposes isPolling and followSync for the backend sync watcher', async () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: () => Promise.resolve({ is_fresh: false, state: 'idle' }),
         }))
         const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
         expect(result.current.isPolling('hinatazaka46')).toBe(false)
-        const before = result.current.syncVersion
-        act(() => result.current.bumpSyncVersion())
-        expect(result.current.syncVersion).toBe(before + 1)
         await act(async () => { result.current.followSync('hinatazaka46') })
         await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle'))
         expect(result.current.isPolling('hinatazaka46')).toBe(false)
+    })
+
+    describe('followSync on a backend sync that already finished', () => {
+        const progressFetch = (body: Record<string, unknown>) =>
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({ is_fresh: false, ...body }),
+            }))
+
+        it('surfaces session expiry: modal, disconnected marking, no leftover poller', async () => {
+            progressFetch({ state: 'error', run_id: 5, error_code: 'session_expired', detail: 'SESSION_EXPIRED' })
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.sessionExpiredService).toBe('hinatazaka46'))
+            expect(defaultOptions.markServiceDisconnected).toHaveBeenCalledWith('hinatazaka46', 'Session expired')
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(result.current.showSyncModal).toBe(false)
+        })
+
+        it('refreshes messages once for a run that completed unseen', async () => {
+            progressFetch({ state: 'complete', run_id: 5 })
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            const before = result.current.syncVersion
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.syncVersion).toBe(before + 1))
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(defaultOptions.markServiceDisconnected).not.toHaveBeenCalled()
+        })
     })
 
     describe('startSync racing the backend sync watcher', () => {

@@ -85,7 +85,6 @@ function App() {
         clearSessionExpired,
         isPolling,
         followSync,
-        bumpSyncVersion,
     } = useSync({
         isAuthenticated,
         appSettings,
@@ -118,13 +117,12 @@ function App() {
         markServiceDisconnected,
     });
 
-    // Follow syncs the backend scheduler / tray started on its own, and refresh
-    // messages for ones that finished while the window was hidden.
+    // Follow syncs the backend scheduler / tray started on its own, including ones
+    // that finished (or failed) while nobody was watching.
     useBackendSyncWatcher({
         services: isAuthenticated ? connectedServices : [],
         isPolling,
         follow: followSync,
-        onMissedCompletion: bumpSyncVersion,
     })
 
     // Track active feature per service for disconnected-service detection

@@ -244,6 +244,24 @@ class SyncService:
             with contextlib.suppress(OSError):
                 os.unlink(str(state_file))
 
+    def _invalidate_auth_cache(self) -> None:
+        """Tell AuthService that this service's stored session just changed.
+
+        The sync saves refreshed tokens and deletes expired sessions through the
+        TokenManager directly, which AuthService's in-process cache cannot see.
+        Never raises; a failure is logged as ``auth_cache_invalidate_failed``.
+        """
+        try:
+            from backend.api.auth import auth_service
+
+            auth_service.invalidate_session(self._service)
+        except Exception as exc:
+            logger.warning(
+                "auth_cache_invalidate_failed",
+                service=self._service,
+                error_type=type(exc).__name__,
+            )
+
     async def _authenticated_client(self, session: aiohttp.ClientSession) -> Client:
         """Build an authenticated Client for this service, refreshing the token if
         needed. Verifies a failed refresh with a live get_groups call before giving
@@ -282,11 +300,13 @@ class SyncService:
                     logger.error("Token verification failed - session is truly expired")
                     tm = get_token_manager()
                     tm.delete_session(self._service)
+                    self._invalidate_auth_cache()
                     raise SessionExpiredError("Session expired") from refresh_err
             except SessionExpiredError:
                 logger.error("Token verification confirmed session is expired")
                 tm = get_token_manager()
                 tm.delete_session(self._service)
+                self._invalidate_auth_cache()
                 raise
 
         if client.access_token != token:
@@ -314,6 +334,7 @@ class SyncService:
                         client.refresh_token,
                         client.cookies,
                     )
+                    self._invalidate_auth_cache()
                     logger.info("Refreshed tokens saved successfully to TokenManager")
             except Exception as e:
                 logger.error(

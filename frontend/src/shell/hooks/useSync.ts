@@ -116,8 +116,6 @@ export interface UseSyncReturn {
     isPolling: (service: string) => boolean;
     /** Follow a sync that is already running (started by the backend) without blocking the UI */
     followSync: (service: string) => void;
-    /** Trigger a message refresh (increments syncVersion) */
-    bumpSyncVersion: () => void;
 }
 
 /** Options for the useSync hook. */
@@ -652,7 +650,7 @@ export function useSync({
     }, [isAuthenticated, appSettings, connectedServices]);
 
     // Backend-started syncs (the AutoSyncScheduler, tray "Sync now") are followed by
-    // useBackendSyncWatcher through these three helpers; the frontend no longer
+    // useBackendSyncWatcher through these two helpers; the frontend no longer
     // schedules syncs itself.
     const isPolling = useCallback(
         (service: string) => !!isPollingRef.current[service] || !!startingRef.current[service],
@@ -661,7 +659,6 @@ export function useSync({
     const followSync = useCallback((service: string) => {
         void pollSyncProgress(service, false);
     }, [pollSyncProgress]);
-    const bumpSyncVersion = useCallback(() => setSyncVersion(v => v + 1), []);
 
     return {
         syncProgress,
@@ -680,6 +677,5 @@ export function useSync({
         clearSessionExpired,
         isPolling,
         followSync,
-        bumpSyncVersion,
     };
 }

@@ -21,6 +21,7 @@ from backend.services.service_utils import (
     validate_service,
 )
 from backend.services import autostart
+from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
     load_config as _store_load,
@@ -143,6 +144,10 @@ class ServiceSettings(BaseModel):
     blogs_full_backup: bool = False
 
 
+# Settings that change when the auto-sync scheduler should next run.
+_SCHEDULE_KEYS = ("auto_sync_enabled", "sync_interval_minutes", "adaptive_sync_enabled")
+
+
 async def _apply_autostart(enabled: bool) -> None:
     """Sync the Windows Run value with the saved setting, off the event loop.
 
@@ -194,9 +199,11 @@ async def get_settings():
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
     autostart_change: Optional[bool] = None
+    schedule_changed = False
 
     def _apply(config: dict) -> None:
-        nonlocal autostart_change
+        nonlocal autostart_change, schedule_changed
+        before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
             config["is_configured"] = True
@@ -225,8 +232,13 @@ async def update_settings(update: SettingsUpdate):
             if update.autostart != config.get("autostart", False):
                 autostart_change = update.autostart
             config["autostart"] = update.autostart
+        schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
 
     config = await _store_update(_apply)
+
+    if schedule_changed:
+        # The scheduler would otherwise only notice after its current wait.
+        wake_scheduler()
 
     if autostart_change is not None:
         await _apply_autostart(autostart_change)

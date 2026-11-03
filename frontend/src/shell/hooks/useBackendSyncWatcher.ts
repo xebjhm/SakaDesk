@@ -6,8 +6,10 @@
  * visible again) it reads `/api/sync/progress` for each service that is not already
  * being polled:
  * - `running`: hand over to `follow`, which attaches the normal progress poller;
- * - `run_id` changed and the state is `complete`/`idle`: the sync finished while
- *   nobody was looking, so call `onMissedCompletion` once to refresh messages.
+ * - `run_id` changed and the state is `complete`/`idle`/`error`: the sync ended
+ *   while nobody was looking, so call `follow` once. Its single progress check
+ *   runs the normal terminal branch (message refresh, profile refresh, and for a
+ *   failed sync the session-expired modal and disconnected marking) and stops.
  * The first observation of a service only records its `run_id`.
  *
  * @module useBackendSyncWatcher
@@ -24,8 +26,6 @@ export interface UseBackendSyncWatcherOptions {
     isPolling: (service: string) => boolean;
     /** Attach the progress poller to a backend-started sync */
     follow: (service: string) => void;
-    /** A sync finished while it was not being followed; refresh messages */
-    onMissedCompletion: (service: string) => void;
     /** Check period while visible (default 5000 ms) */
     intervalMs?: number;
 }
@@ -39,17 +39,14 @@ export function useBackendSyncWatcher({
     services,
     isPolling,
     follow,
-    onMissedCompletion,
     intervalMs = 5000,
 }: UseBackendSyncWatcherOptions): void {
     const lastRunIdRef = useRef<Record<string, number>>({});
     const aliveRef = useRef(true);
     const isPollingRef = useRef(isPolling);
     const followRef = useRef(follow);
-    const missedRef = useRef(onMissedCompletion);
     isPollingRef.current = isPolling;
     followRef.current = follow;
-    missedRef.current = onMissedCompletion;
 
     useEffect(() => {
         aliveRef.current = true;
@@ -85,10 +82,14 @@ export function useBackendSyncWatcher({
             clientLog('backend_sync_followed', { service });
             followRef.current(service);
         } else if (
-            (data.state === 'complete' || data.state === 'idle') &&
+            (data.state === 'complete' || data.state === 'idle' || data.state === 'error') &&
             previous !== undefined && runId !== undefined && runId !== previous
         ) {
-            missedRef.current(service);
+            // Finished between two checks: let the normal poller process the
+            // terminal state once (it is not polling, and the guard above just
+            // confirmed nothing started one in the meantime).
+            clientLog('backend_sync_followed', { service, reason: `finished_${data.state}` });
+            followRef.current(service);
         }
     };
 

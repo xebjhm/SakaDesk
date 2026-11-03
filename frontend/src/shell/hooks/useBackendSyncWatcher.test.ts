@@ -10,7 +10,7 @@ function setVisibility(state: 'visible' | 'hidden') {
     document.dispatchEvent(new Event('visibilitychange'));
 }
 
-type Progress = { state: string; run_id: number };
+type Progress = { state: string; run_id: number; error_code?: string };
 let progress: Record<string, Progress>;
 const fetchMock = vi.fn();
 
@@ -23,11 +23,10 @@ async function tick(ms = 5000) {
 
 describe('useBackendSyncWatcher', () => {
     const follow = vi.fn();
-    const onMissedCompletion = vi.fn();
     const isPolling = vi.fn((_s: string) => false);
 
     const mount = (services = ['hinatazaka46']) =>
-        renderHook(() => useBackendSyncWatcher({ services, isPolling, follow, onMissedCompletion }));
+        renderHook(() => useBackendSyncWatcher({ services, isPolling, follow }));
 
     beforeEach(() => {
         vi.useFakeTimers();
@@ -40,7 +39,6 @@ describe('useBackendSyncWatcher', () => {
         });
         vi.stubGlobal('fetch', fetchMock);
         follow.mockReset();
-        onMissedCompletion.mockReset();
         isPolling.mockReset();
         isPolling.mockReturnValue(false);
         vi.mocked(clientLog).mockReset();
@@ -54,7 +52,6 @@ describe('useBackendSyncWatcher', () => {
         expect(follow).toHaveBeenCalledTimes(1);
         expect(follow).toHaveBeenCalledWith('hinatazaka46');
         expect(clientLog).toHaveBeenCalledWith('backend_sync_followed', { service: 'hinatazaka46' });
-        expect(onMissedCompletion).not.toHaveBeenCalled();
     });
 
     it('does not fetch or follow a service that is already polled', async () => {
@@ -74,47 +71,85 @@ describe('useBackendSyncWatcher', () => {
         await flush();
         expect(debug).toHaveBeenCalledWith('[backendSyncWatcher] progress rejected', 'hinatazaka46', 503);
         expect(follow).not.toHaveBeenCalled();
-        expect(onMissedCompletion).not.toHaveBeenCalled();
         debug.mockRestore();
     });
 
-    it('only records run_id on first observation (no missed completion)', async () => {
+    it('only records run_id on first observation (no follow)', async () => {
         progress.hinatazaka46 = { state: 'complete', run_id: 7 };
         mount();
         await flush();
         await tick();
-        expect(onMissedCompletion).not.toHaveBeenCalled();
+        expect(follow).not.toHaveBeenCalled();
     });
 
-    it('reports a missed completion once per new run_id', async () => {
+    it('only records run_id on first observation of an error too', async () => {
+        progress.hinatazaka46 = { state: 'error', run_id: 7 };
+        mount();
+        await flush();
+        await tick();
+        expect(follow).not.toHaveBeenCalled();
+    });
+
+    it('follows a run that completed while nobody was looking, once per new run_id', async () => {
         mount();
         await flush();
         progress.hinatazaka46 = { state: 'complete', run_id: 2 };
         await tick();
-        expect(onMissedCompletion).toHaveBeenCalledTimes(1);
-        expect(onMissedCompletion).toHaveBeenCalledWith('hinatazaka46');
+        expect(follow).toHaveBeenCalledTimes(1);
+        expect(follow).toHaveBeenCalledWith('hinatazaka46');
+        expect(clientLog).toHaveBeenCalledWith('backend_sync_followed', {
+            service: 'hinatazaka46', reason: 'finished_complete',
+        });
         await tick();
-        expect(onMissedCompletion).toHaveBeenCalledTimes(1);
+        expect(follow).toHaveBeenCalledTimes(1);
         progress.hinatazaka46 = { state: 'idle', run_id: 3 };
         await tick();
-        expect(onMissedCompletion).toHaveBeenCalledTimes(2);
+        expect(follow).toHaveBeenCalledTimes(2);
     });
 
-    it('does not report a completion while the new run is still running', async () => {
+    it('follows a run that failed with session_expired so the normal poller can surface it', async () => {
+        mount();
+        await flush();
+        progress.hinatazaka46 = { state: 'error', run_id: 2, error_code: 'session_expired' };
+        await tick();
+        expect(follow).toHaveBeenCalledTimes(1);
+        expect(follow).toHaveBeenCalledWith('hinatazaka46');
+        expect(clientLog).toHaveBeenCalledWith('backend_sync_followed', {
+            service: 'hinatazaka46', reason: 'finished_error',
+        });
+        // The same failed run is not followed again.
+        await tick();
+        await tick();
+        expect(follow).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not follow a finished run while a poller owns the service', async () => {
+        mount();
+        await flush();
+        isPolling.mockReturnValue(true);
+        progress.hinatazaka46 = { state: 'error', run_id: 2, error_code: 'session_expired' };
+        await tick();
+        expect(follow).not.toHaveBeenCalled();
+        // Once the poller is done the handled run is only recorded, not re-followed.
+        isPolling.mockReturnValue(false);
+        await tick();
+        expect(follow).not.toHaveBeenCalled();
+    });
+
+    it('does not follow a second time while the new run is still running', async () => {
         mount();
         await flush();
         progress.hinatazaka46 = { state: 'running', run_id: 2 };
         await tick();
         expect(follow).toHaveBeenCalledTimes(1);
-        expect(onMissedCompletion).not.toHaveBeenCalled();
-        // The followed poll resolves the completion itself: same run_id -> no extra bump.
+        // The followed poll resolves the completion itself: same run_id -> no extra follow.
         isPolling.mockReturnValue(false);
         progress.hinatazaka46 = { state: 'complete', run_id: 2 };
         await tick();
-        expect(onMissedCompletion).not.toHaveBeenCalled();
+        expect(follow).toHaveBeenCalledTimes(1);
     });
 
-    it('does not report a bogus completion for a run that finished under a user poll', async () => {
+    it('does not follow a run that finished under a user poll', async () => {
         mount();
         await flush();
         isPolling.mockReturnValue(true);
@@ -123,7 +158,7 @@ describe('useBackendSyncWatcher', () => {
         progress.hinatazaka46 = { state: 'complete', run_id: 2 };
         isPolling.mockReturnValue(false);
         await tick();
-        expect(onMissedCompletion).not.toHaveBeenCalled();
+        expect(follow).not.toHaveBeenCalled();
     });
 
     it('skips hidden ticks and checks immediately on visibility regain', async () => {
@@ -137,7 +172,7 @@ describe('useBackendSyncWatcher', () => {
         setVisibility('visible');
         await flush();
         expect(fetchMock).toHaveBeenCalledTimes(2);
-        expect(onMissedCompletion).toHaveBeenCalledTimes(1);
+        expect(follow).toHaveBeenCalledTimes(1);
     });
 
     it('swallows fetch failures and keeps polling', async () => {

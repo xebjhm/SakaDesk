@@ -612,3 +612,45 @@ class TestInitServiceSettings:
         response = client.post("/api/settings/service/invalid_service/init")
         assert response.status_code == 400
         assert "invalid service" in response.json()["detail"].lower()
+
+
+class TestSchedulerWake:
+    """Changing a scheduling setting wakes the auto-sync scheduler (once)."""
+
+    @staticmethod
+    def _post(body, cfg=None):
+        cfg = cfg or _default_config(
+            auto_sync_enabled=True, sync_interval_minutes=15, adaptive_sync_enabled=True
+        )
+        with (
+            _patch_store(load_return=cfg),
+            patch("backend.api.settings.wake_scheduler") as wake,
+        ):
+            response = client.post("/api/settings", json=body)
+        assert response.status_code == 200
+        return wake
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"auto_sync_enabled": False},
+            {"sync_interval_minutes": 30},
+            {"adaptive_sync_enabled": False},
+            {"auto_sync_enabled": False, "sync_interval_minutes": 30},
+        ],
+    )
+    def test_changed_schedule_setting_wakes_the_scheduler(self, body):
+        self._post(body).assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {},
+            {"auto_sync_enabled": True},  # same value as stored
+            {"sync_interval_minutes": 15},
+            {"notifications_enabled": False},
+            {"close_to_tray": False},
+        ],
+    )
+    def test_unchanged_or_unrelated_settings_do_not_wake(self, body):
+        self._post(body).assert_not_called()
