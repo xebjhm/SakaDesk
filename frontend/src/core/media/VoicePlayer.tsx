@@ -11,7 +11,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
 
-const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
+export const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;
@@ -359,7 +359,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             }
         };
         const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setShowMenu(false);
+            if (e.key !== 'Escape') return;
+            // Claim the key so the incoming-call overlay doesn't also decline.
+            e.preventDefault();
+            setShowMenu(false);
         };
 
         document.addEventListener('mousedown', handleClickOutside);

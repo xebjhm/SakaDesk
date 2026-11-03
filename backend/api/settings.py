@@ -97,6 +97,9 @@ class SettingsResponse(BaseModel):
     sync_read_to_phone: bool = (
         False  # Opt-in: opening a chat here clears its unread on the official app
     )
+    incoming_call_enabled: bool = (
+        True  # Ring when opening a 1:1 chat whose newest voice is unheard
+    )
 
 
 class SettingsUpdate(BaseModel):
@@ -112,6 +115,7 @@ class SettingsUpdate(BaseModel):
     blogs_full_backup: Optional[bool] = None
     auto_download_updates: Optional[bool] = None
     sync_read_to_phone: Optional[bool] = None
+    incoming_call_enabled: Optional[bool] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -150,6 +154,7 @@ async def get_settings():
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
     )
 
 
@@ -176,6 +181,8 @@ async def update_settings(update: SettingsUpdate):
             config["auto_download_updates"] = update.auto_download_updates
         if update.sync_read_to_phone is not None:
             config["sync_read_to_phone"] = update.sync_read_to_phone
+        if update.incoming_call_enabled is not None:
+            config["incoming_call_enabled"] = update.incoming_call_enabled
 
     config = await _store_update(_apply)
 
@@ -192,6 +199,7 @@ async def update_settings(update: SettingsUpdate):
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
     )
 
 

@@ -96,3 +96,20 @@ async def test_check_fresh_install(client, isolated_settings):
     (tmp_output / "some_folder").mkdir()
     response = client.get("/api/settings/fresh")
     assert response.json()["is_fresh"] is False
+
+
+@pytest.mark.asyncio
+async def test_incoming_call_enabled_defaults_true(client, isolated_settings):
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    assert response.json()["incoming_call_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_incoming_call_enabled_round_trips(client, isolated_settings):
+    response = client.post("/api/settings", json={"incoming_call_enabled": False})
+    assert response.status_code == 200
+    assert response.json()["incoming_call_enabled"] is False
+    assert client.get("/api/settings").json()["incoming_call_enabled"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["incoming_call_enabled"] is False

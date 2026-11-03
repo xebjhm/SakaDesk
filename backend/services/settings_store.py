@@ -33,6 +33,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "blogs_full_backup": False,
     "auto_download_updates": False,
     "sync_read_to_phone": False,  # Opt-in: opening a chat in SakaDesk clears its unread on the official app
+    "incoming_call_enabled": True,  # Ring an in-app call for the newest unheard voice message when opening a chat
     "translation_provider": None,  # "gemini" or "openai"
     "translation_model": None,  # e.g., "gemini-3.1-flash-lite", "gpt-4o-mini"
     "translation_target_language": None,  # Defaults to UI language at runtime

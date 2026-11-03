@@ -20,6 +20,8 @@ export function useModalClose(isOpen: boolean, onClose: () => void) {
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && !document.fullscreenElement) {
+                // Claim the key so the incoming-call overlay doesn't also decline.
+                e.preventDefault();
                 onClose();
             }
         };

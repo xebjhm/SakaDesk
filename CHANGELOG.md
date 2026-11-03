@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   will come later.
 - **Your own nickname and avatar for each group are now archived.** Only those
   two are kept; other profile details are not stored.
+- **Incoming calls for new voice messages.** Opening a member's chat whose
+  newest voice message you haven't heard rings like a phone call; answer to
+  play it, or decline and it rings again the next time you open the chat.
+  You can turn this off in Settings.
 
 ### Changed
 - **Hovering a group in the left rail shows its Japanese name** (乃木坂46,

@@ -13,11 +13,14 @@ import { cn } from '../../utils/classnames';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
-import { getServiceIdFromDisplayName } from '../../data/services';
+import { getServiceDisplayName, getServiceIdFromDisplayName } from '../../data/services';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
+import { useIncomingCall } from '../incomingCall/useIncomingCall';
+import { CallOverlay } from '../incomingCall/CallOverlay';
+import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -70,6 +73,7 @@ export interface AppSettings {
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
+    incoming_call_enabled?: boolean;  // ring when opening a 1:1 chat whose newest voice is unheard (default on)
     translation_provider?: string | null;
     translation_model?: string | null;
     translation_api_key?: string | null;
@@ -162,6 +166,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Unread state
     const [readState, setReadState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
+    // Bumped after each successful fetch; the incoming-call hook evaluates on it
+    // (never on the cached render, which may be stale).
+    const [freshFetch, setFreshFetch] = useState<{ seq: number; dir: string } | null>(null);
     const [readStateVersion, setReadStateVersion] = useState(0); // Increments on read state change to trigger sidebar refresh
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
@@ -315,6 +322,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessagesForDir(path);
                 messagesPathRef.current = path;
                 setCacheEntry(path, { messages: msgs, membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
+                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
             } else {
                 const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
                 if (thisId !== fetchIdRef.current) return; // stale
@@ -323,7 +331,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 if (thisId !== fetchIdRef.current) return; // stale
                 const memberInfo = data.member as MemberInfo;
                 const mMap = memberInfo ? { [memberInfo.id]: memberInfo } : {};
-                if (memberInfo) setMembersMap(mMap);
+                setMembersMap(mMap);
                 const msgs = data.messages || [];
                 setMessages(msgs);
                 setTotalMessages(data.total_count || 0);
@@ -332,6 +340,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessagesForDir(path);
                 messagesPathRef.current = path;
                 setCacheEntry(path, { messages: msgs, membersMap: mMap, totalMessages: data.total_count || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
+                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
             }
         } catch (err: unknown) {
             if (thisId !== fetchIdRef.current) return; // stale
@@ -429,19 +438,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     useEffect(() => {
         updateUnreadNavState();
     }, [updateUnreadNavState]);
-
-    // Keyboard navigation using Virtuoso
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-        if (e.key === 'Home') {
-            e.preventDefault();
-            e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
-        } else if (e.key === 'End') {
-            e.preventDefault();
-            e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: messages.length - 1, behavior: 'auto' });
-        }
-    }, [messages.length]);
 
     // === READ STATE ===
     const loadReadState = (path: string): ReadState => {
@@ -576,6 +572,34 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
         }
     }, [messages, readState]);
+
+    const scrollToMessage = useCallback((id: number) => {
+        const index = messages.findIndex(m => m.id === id);
+        if (index !== -1) {
+            virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
+        }
+    }, [messages]);
+
+    const callMember = isGroupChat ? undefined : Object.values(membersMap)[0];
+    const incomingCall = useIncomingCall({
+        service: messagesService,
+        chatDir: selectedGroupDir,
+        isGroupChat,
+        messages,
+        member: callMember,
+        name: formatName(callMember?.name || selectedName || ''),
+        // undefined until settings load → no ring; a loaded value without the field defaults on
+        enabled: appSettings ? (appSettings.incoming_call_enabled ?? true) : undefined,
+        isUnread,
+        freshFetch,
+        revealMessage,
+        scrollToMessage,
+        logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
+    });
+    const callActive = incomingCall.phase !== 'idle';
+
+    // Keyboard navigation using Virtuoso (inert while a call covers the timeline)
+    const handleKeyDown = useTimelineKeyNav(virtuosoRef, messages.length, callActive);
 
     // Scroll to first message of a given date (for calendar navigation).
     // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend
@@ -810,11 +834,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getMemberPath={getMemberPath}
                         />
                     )}
+                    <CallOverlay
+                        call={incomingCall}
+                        // Light-style services (櫻坂) use their bubble-edge pink and a white answer button.
+                        accentColor={theme.messages.headerStyle === 'light' ? theme.messages.bubbleBorder : theme.modals.accentColor}
+                        answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
+                        groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
+                    />
                 </div>
 
                 {/* Navigation Buttons */}
                 {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
-                {selectedGroupDir && hasUnreadAbove && (
+                {selectedGroupDir && hasUnreadAbove && !callActive && (
                     <div className="absolute right-4 bottom-4 z-20">
                         <button
                             onClick={scrollToFirstUnread}
@@ -827,7 +858,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     </div>
                 )}
                 {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
-                {selectedGroupDir && hasUnreadBelow && (
+                {selectedGroupDir && hasUnreadBelow && !callActive && (
                     <div className="absolute right-4 top-20 z-20">
                         <button
                             onClick={scrollToFirstUnread}

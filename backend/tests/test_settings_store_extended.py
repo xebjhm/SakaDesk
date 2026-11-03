@@ -147,6 +147,10 @@ class TestSettingsDefaults:
         assert "blogs_full_backup" in _SETTINGS_DEFAULTS
         assert _SETTINGS_DEFAULTS["blogs_full_backup"] is False
 
+    def test_has_incoming_call_enabled(self):
+        assert "incoming_call_enabled" in _SETTINGS_DEFAULTS
+        assert _SETTINGS_DEFAULTS["incoming_call_enabled"] is True
+
 
 # ── Async API (load_config, save_config, update_config) ─────────────
 

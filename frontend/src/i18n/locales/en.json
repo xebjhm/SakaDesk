@@ -84,6 +84,8 @@
     "syncSmart": "Smart Timing",
     "syncReadToPhone": "Sync read status to phone",
     "syncReadToPhoneDesc": "Opening a chat here also clears its unread count (the red dot) in the official app, just like opening it there. Off by default.",
+    "incomingCall": "Incoming calls",
+    "incomingCallDesc": "When you open a member's chat with an unheard voice message, play the newest one as an incoming call",
     "serviceSettings": "Service Settings",
     "syncCurrentOff": "Currently: Manual sync only",
     "syncCurrentFixed": "Currently: Every {{minutes}} minutes",
@@ -103,6 +105,13 @@
     "transcriptionGpuTesting": "Testing GPU...",
     "transcriptionGpuSuccess": "GPU is available and working",
     "transcriptionGpuFailed": "GPU test failed"
+  },
+  "call": {
+    "incoming": "Incoming call…",
+    "ended": "Call ended",
+    "answer": "Answer",
+    "decline": "Decline",
+    "hangUp": "Hang up"
   },
   "time": {
     "minute": "{{count}} minute",

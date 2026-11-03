@@ -132,6 +132,8 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
             // viewerKind null) before the native event reaches document, so the
             // defaultPrevented check is what keeps one Escape from closing both.
             if (e.key === 'Escape' && !viewerKind && !e.defaultPrevented) {
+                // Claim the key so the incoming-call overlay doesn't also decline.
+                e.preventDefault();
                 onClose();
             }
         };
