@@ -46,6 +46,9 @@ KNOWN_REASONS = frozenset(
         "superseded",
         "media_unavailable",
         "popup_active",
+        # B's call_end reasons, so an ended call keeps how it ended.
+        "played",
+        "hung_up",
     }
 )
 

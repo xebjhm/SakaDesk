@@ -178,3 +178,13 @@ def test_unknown_but_well_formed_reason_becomes_other(fake):
     )
     assert res.status_code == 204
     assert fake.events == [(1, CallEvent("skipped", "other", None, None))]
+
+
+@pytest.mark.parametrize("reason", ["played", "hung_up"])
+def test_b_end_reasons_pass_through(fake, reason):
+    res = client.post(
+        "/api/call-popup/calls/1/events",
+        json={"event": "ended", "reason": reason},
+    )
+    assert res.status_code == 204
+    assert fake.events == [(1, CallEvent("ended", reason, None, None))]
