@@ -43,7 +43,7 @@
 
 **Interpretations made in this spec** (where the decisions leave a detail open):
 - **When "heard" is marked.** The voice is marked heard **when the user answers**, exactly as in B (§2.4 of B: "answering marks the voice heard immediately … hanging up early does not undo this"). By the time the popup closes the voice is heard, which satisfies the decision, and both call surfaces behave the same.
-- **Notifications switched off.** When `notifications_enabled` is off, C1's planner skips every chat as `disabled` before it calls `divert`, so there is no popup either. Turning notifications off silences everything in the background. The popup switch only matters while notifications are on.
+- **Notifications switched off** (decided by the user, 2026-11-04). The popup is governed **only** by its own switch (`call_popup_enabled`), not by `notifications_enabled`. With notifications off and the popup on, a qualifying voice still shows the popup. Only toasts are suppressed: the normal message toasts, the missed-call toast and the fallback toast (for a quiet state or a failed popup). Each suppression logs a skip reason. The divert hook therefore runs before C1's `disabled` skip (§4.2).
 - **"New voice".** This means any new visible voice among the chat's new messages in this sync, not only the newest message. A member often sends a voice and then a text. The popup rings that voice (the newest new voice), which is also B's candidate for the chat.
 
 ---
@@ -132,6 +132,14 @@ The quiet state is read last, and only when gates 1–5 passed, because it is a 
 - for every other plan it returns `False`, so those plans are toasted exactly as in C1;
 - the planner then records `Skip("diverted", …)` for the diverted plan, logged by C1's existing `notify_skip`.
 
+**Planner order change (C1 `plan_toasts`, minimal).** C1 checks `disabled`, then `viewing`, then builds the plan and calls `divert`. The popup must not depend on `notifications_enabled`, so the divert check moves to the front:
+1. build the chat's `ToastPlan` first (title, body, avatar; unchanged code, now also for chats that end up `disabled`, which costs one avatar directory listing per chat);
+2. `divert(plan)` → `Skip("diverted")`;
+3. `not enabled` → `Skip("disabled")`, exactly as today. C1's `notify_skip reason=disabled` breadcrumb is unchanged for every chat that is not diverted, including the candidate's chat when a gate refused the popup (for example `quiet`);
+4. `viewing` → `Skip("viewing")`, as today.
+
+Moving `divert` ahead of `viewing` changes no outcome: the hook only diverts when the app is not focused (gate 4), and `viewing` requires focus. The docstring's rule order and C1's rule-order test are updated to `diverted`, `disabled`, `viewing`.
+
 ### 4.3 Quiet state (`backend/services/quiet_state.py`, Windows only)
 
 `query_quiet_state() -> QuietState(code: str, quiet: bool, quns: int, focus_assist: int)`. It never raises. Off Windows it returns `QuietState("unknown", False, -1, -1)`.
@@ -211,7 +219,8 @@ On expiry the controller cancels the popup (`bridge.call_popup_cancel`) and appl
 **Toasts.** Both go through C1's `send_planned([plan])`, so the notifier, the tag `"{group_id}:{member_id}"`, the avatar, the click-to-open-chat closure (`on_activated` → `desktop_bridge.open_chat(plan.target)`) and the `notify_sent` / `notify_failed` logging are C1's own.
 - **Fallback toast:** the original `PendingCall.plan`, unchanged.
 - **Missed-call toast:** `build_missed_plan(plan, strings) -> ToastPlan` (pure) returns `dataclasses.replace(plan, title=strings["missed_title"].format(name=plan.title), body=…)`, where the body is `strings["missed_more"].format(n=plan.count - 1)` when `plan.count > 1`, else `strings["missed_body"]`. The strings are `get_strings("call_popup", resolve_ui_language(config))`, read when the toast is sent. `notifications_hide_content` does not change this toast: the popup already showed the caller's name on screen, and the title carries no message content.
-- Both log `call_popup_toast` (`call_id`, `kind=fallback|missed`, `reason`, `sent`).
+- **Notifications switch.** Before sending either toast, the controller reads `notifications_enabled` (via `load_config`, at send time). When it is off, nothing is sent and `call_popup_toast_skip` (`call_id`, `kind`, `reason=notifications_disabled`) is logged. The call's own state change happens as usual.
+- Both log `call_popup_toast` (`call_id`, `kind=fallback|missed`, `reason`, `sent`) when a toast is attempted.
 
 **Heard delivery (`deliver_heard`).** It calls `bridge.call_popup_deliver_heard(HeardTarget(service, path, message_id))` up to 3 times, 1 s apart, while the result is "not ready" or an error. It logs `call_popup_heard` (`call_id`, `message_id`, `delivered`, `attempts`, and `reason` = `not_ready|error|no_host` when not delivered). When it is not delivered, the voice stays unheard and B rings in the app later: a degraded but safe outcome.
 
@@ -556,6 +565,7 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_event_stale` | call_id, event, reason (`unknown_call`/`wrong_phase`/`message_mismatch`) |
 | `call_popup_hide` | call_id, reason (the event or watchdog that ended the call) |
 | `call_popup_toast` | call_id, kind (`fallback`/`missed`), reason, sent |
+| `call_popup_toast_skip` | call_id, kind (`fallback`/`missed`), reason (`notifications_disabled`) |
 | `call_popup_heard` | call_id, message_id, delivered, attempts, reason (`not_ready`/`error`/`no_host`) |
 | `call_popup_cancel` | call_id, reason (`foreground`/`disabled`/`app_exit`), phase |
 | `call_popup_watchdog` | call_id, phase |
@@ -596,7 +606,8 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 | Quit, ✕ with close-to-tray off, or session end while the popup is open | The popup is destroyed with the main window (§6.5). `controller.shutdown()` sends no toast. The process exits. |
 | Sync fails or is cancelled after reserving | `abandon`: fallback toast on failure; nothing on cancel. |
 | Setting turned off while ringing | `cancel(reason=disabled)`, with no toast. |
-| Notifications off | C1 skips everything as `disabled`. No popup and no toasts. |
+| Notifications off, popup on | The popup still rings for a qualifying voice. Every other chat is skipped as `disabled` (`notify_skip`). A missed call or a fallback (quiet state, failed popup) sends no toast and logs `call_popup_toast_skip reason=notifications_disabled`; a quiet-state refusal leaves the candidate's plan to C1's `disabled` skip. |
+| Notifications on, popup off | `popup_disabled` → toasts only. |
 | Fullscreen, presentation or Focus Assist | `quiet` → the normal toast (which Windows itself holds back under Focus Assist). |
 | Answered call, chat had other new messages | No toast for that chat. The unread badge and the tray tooltip show them. |
 
@@ -615,10 +626,13 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 - **Divert hook with the real `plan_toasts`:**
   - only the candidate's plan is diverted (`Skip("diverted")`) and every other plan is returned;
   - a lost `reserve` race keeps the plan;
-  - `notifications_enabled` off → no reservation.
+  - rule order `diverted`, `disabled`, `viewing`: with `enabled=False`, `divert` is still called for every chat; a `True` gives `Skip("diverted")` and a `False` gives `Skip("disabled")`; viewing still skips when the hook returns False;
+  - `notifications_enabled` off and `call_popup_enabled` on → the candidate is reserved and every other chat is `disabled`;
+  - a gate refusal (e.g. `quiet`) with notifications off → the candidate's chat is `disabled`, not toasted.
 - **Quiet state (fake `shell32`/`ntdll`):** every QUNS value; WNF 0/1/2/other; failures → `unknown`/not quiet with `quiet_state_failed`; non-Windows → `unknown`.
 - **Controller** (fake bridge, fake `send_toasts`, injected sleep):
   - every event × phase in §4.4, including stale events and `message_mismatch`;
+  - with `notifications_enabled` off, the missed-call and fallback toasts (decline, timeout, skipped, start failure, dispatch-time foreground, `abandon(sync_failed)`) are not sent and each logs `call_popup_toast_skip reason=notifications_disabled`;
   - dispatch re-check (focused on that chat → nothing; focused elsewhere → toast);
   - each watchdog;
   - `already_read` → no toast;
@@ -701,7 +715,8 @@ Build and launch as in the C1/C2 specs:
 8. **Quit and sign-out.** Quit from the tray while ringing → the process is gone in Task Manager (the mutex is released). Signing out while ringing is not blocked.
 9. **Two voices.** Two members send voices in one sync → one popup (the newer one) and one normal toast.
 10. **Setting off.** Toasts only.
-11. **Logs.** `debug.log` has a breadcrumb for every step, with no names, text or paths.
+11. **Notifications off, popup on.** A new 1:1 voice still rings. Decline it: no missed-call toast. Other chats get no toast. `debug.log` has `notify_skip reason=disabled` and `call_popup_toast_skip`.
+12. **Logs.** `debug.log` has a breadcrumb for every step, with no names, text or paths.
 
 ---
 
