@@ -59,7 +59,8 @@ INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
 # Win32 error / message constants used by the single-instance guard.
 _ERROR_ALREADY_EXISTS = 183
-_SW_RESTORE = 9
+_SW_RESTORE = 9  # un-minimize (also un-maximizes a maximized window)
+_SW_SHOW = 5  # show in its current size state
 
 
 def _acquire_instance_mutex() -> bool:
@@ -100,51 +101,98 @@ def _acquire_instance_mutex() -> bool:
         return True
 
 
+def _native_hwnd(window) -> int | None:
+    """The pywebview window's own HWND (WinForms ``window.native.Handle``), or None.
+
+    Never raises: any failure (no native form yet, a cross-thread access
+    error) returns None so the caller falls back to finding the window by title.
+    """
+    try:
+        handle = window.native.Handle
+        if handle is None:
+            return None
+        to_int = getattr(handle, "ToInt64", None)  # pythonnet IntPtr
+        return int(to_int()) if to_int is not None else int(handle)
+    except Exception:
+        return None
+
+
+def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
+    """Bring the SakaDesk window to the foreground (best-effort, never raises).
+
+    Uses ``hwnd`` when given, else ``FindWindowW(None, "SakaDesk")`` (pywebview's
+    window title). A minimized window is restored (``SW_RESTORE``); any other
+    window is only shown (``SW_SHOW``) so a maximized window stays maximized.
+    ``user32`` is injectable for tests; without it this is a no-op off Windows.
+    Logs ``window_focus`` (``minimized``, ``source``), ``window_focus_skipped``
+    or ``window_focus_failed`` (error type only).
+    """
+    if user32 is None and platform.system() != "Windows":
+        return
+    try:
+        if user32 is None:
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        source = "native"
+        if not hwnd:
+            source = "find_window"
+            hwnd = user32.FindWindowW(None, "SakaDesk")
+        if not hwnd:
+            logger.info("window_focus_skipped", reason="no_window")
+            return
+        minimized = bool(user32.IsIconic(hwnd))
+        user32.ShowWindow(hwnd, _SW_RESTORE if minimized else _SW_SHOW)
+        user32.SetForegroundWindow(hwnd)
+        logger.debug("window_focus", minimized=minimized, source=source)
+    except Exception as e:
+        logger.warning("window_focus_failed", error_type=type(e).__name__)
+
+
 def _focus_existing_window() -> None:
     """Bring the already-running SakaDesk window to the foreground (best-effort).
 
     Called when the single-instance guard (SD-AUX-01) detects a second launch,
     so a re-click of the taskbar/desktop icon focuses the live window instead of
-    silently doing nothing. Matches pywebview's window title ("SakaDesk").
+    silently doing nothing. Finds the window by pywebview's title ("SakaDesk").
     """
-    if platform.system() != "Windows":
-        return
-    try:
-        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        hwnd = user32.FindWindowW(None, "SakaDesk")
-        if hwnd:
-            user32.ShowWindow(hwnd, _SW_RESTORE)  # un-minimize if needed
-            user32.SetForegroundWindow(hwnd)
-    except Exception:
-        logger.debug("Failed to focus existing window", exc_info=True)
+    _focus_window(None)
 
 
 def make_open_chat_handler(window, focus_fn):
     """Build the toast-click handler that brings ``window`` forward on a chat.
 
-    The handler runs on a WinRT thread. It restores/shows the window, calls
-    ``focus_fn`` (the Win32 foreground technique), then asks the frontend to
-    navigate via ``window.__sakadeskOpenChat``. It never raises; it logs
-    ``notify_open_chat`` (service, is_group_chat) or ``notify_open_chat_failed``
-    (error_type only). Names and paths are never logged.
+    The handler runs on a WinRT thread. It shows the window (never
+    ``window.restore()``, which would un-maximize it), calls
+    ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
+    frontend to navigate via ``window.__sakadeskOpenChat``. The script returns
+    whether that function existed: it logs ``notify_open_chat``
+    (service, is_group_chat, ``delivered=True``) or ``notify_open_chat_failed``
+    with ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
+    It never raises. Names and paths are never logged.
     """
 
     def handler(target) -> None:
         try:
-            window.restore()
             window.show()
-            focus_fn()
+            focus_fn(_native_hwnd(window))
             payload = json.dumps(asdict(target), ensure_ascii=False)
-            window.evaluate_js(
-                "window.__sakadeskOpenChat && window.__sakadeskOpenChat("
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
                 + payload
-                + ")"
+                + "), true) : false"
             )
-            logger.info(
-                "notify_open_chat",
-                service=target.service,
-                is_group_chat=target.is_group_chat,
-            )
+            if delivered is True:
+                logger.info(
+                    "notify_open_chat",
+                    service=target.service,
+                    is_group_chat=target.is_group_chat,
+                    delivered=True,
+                )
+            else:
+                logger.warning(
+                    "notify_open_chat_failed",
+                    service=target.service,
+                    reason="not_ready",
+                )
         except Exception as e:
             logger.warning(
                 "notify_open_chat_failed",
@@ -500,9 +548,9 @@ def main() -> None:
 
         window.events.closing += on_closing
 
-        # Toast click -> restore, focus and open that chat (runs on a WinRT thread).
+        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
         desktop_bridge.set_open_chat_handler(
-            make_open_chat_handler(window, _focus_existing_window)
+            make_open_chat_handler(window, _focus_window)
         )
 
         # Start native GUI loop

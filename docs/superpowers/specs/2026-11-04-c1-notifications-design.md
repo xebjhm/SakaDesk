@@ -196,10 +196,10 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
   - `open_chat(target)` calls it, or logs `notify_click_unhandled` when there is none.
   - It never raises; exceptions are logged with their type.
 - **`desktop.py` handler.**
-  - Restores and shows the window (`window.restore()`, `window.show()`).
-  - Brings it to the front with the existing `_focus_existing_window()` technique.
-  - Calls `window.evaluate_js(f"window.__sakadeskOpenChat({json.dumps(target_dict)})")`.
-  - Logs `notify_open_chat` (`service`, `is_group_chat`) or `notify_open_chat_failed` (`error_type`).
+  - Shows the window (`window.show()`). It never calls `window.restore()`: pywebview forces `WindowState = Normal`, which un-maximizes the window.
+  - Brings it to the front with `_focus_window(hwnd)`, using the window's own handle (`window.native.Handle` on WinForms) or, without one, `FindWindowW(None, "SakaDesk")`. If `IsIconic(hwnd)` it calls `ShowWindow(SW_RESTORE)`, otherwise `ShowWindow(SW_SHOW)` (a maximized window stays maximized), then `SetForegroundWindow`. Best-effort and never raises; it logs `window_focus`, `window_focus_skipped` or `window_focus_failed`. The single-instance `_focus_existing_window()` uses the same function.
+  - Calls `window.evaluate_js("window.__sakadeskOpenChat ? (window.__sakadeskOpenChat(<payload>), true) : false")`, where the payload is `json.dumps(target_dict)`.
+  - Logs `notify_open_chat` (`service`, `is_group_chat`, `delivered=true`) when the script returned `true`; `notify_open_chat_failed` with `reason=not_ready` when the frontend has not installed the function yet; or `notify_open_chat_failed` (`error_type`) on an exception.
 - **Frontend.** `frontend/src/shell/openChat.ts` exports `openChat(target)`, which performs exactly the navigation `SearchModal` uses, minus `setTargetMessageId`. In order:
   1. `setSelectedConversation(service, {path, name: formatName(name), isGroupChat})`;
   2. `setActiveFeature(service, 'messages')`;
@@ -298,5 +298,5 @@ Check whether a notifications toggle already exists in `SettingsModal`. If it do
 ## 12. Risks
 
 - **Toast click when the process is gone.** Not handled: there is no COM activator. C2 keeps the app alive in the tray.
-- **Foreground rules.** Windows may refuse `SetForegroundWindow` from a background thread. The existing `_focus_existing_window()` handles the single-instance case; if it fails, the window is at least restored and flashes in the taskbar. This is logged.
+- **Foreground rules.** Windows may refuse `SetForegroundWindow` from a background thread. `_focus_window()` (shared with the single-instance case) is best-effort; if `SetForegroundWindow` is refused, the window is at least shown (or un-minimized) and flashes in the taskbar. Failures are logged (`window_focus_failed`).
 - **`windows-toasts` / `winrt` packaging.** Covered by the spike. The build spec change is required.
