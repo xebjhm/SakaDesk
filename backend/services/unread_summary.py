@@ -1,16 +1,15 @@
 """The unread total shown in the tray tooltip.
 
-The count reuses the content API's per-conversation computation
-(``_compute_unread_counts``: hidden/withdrawn messages are never counted) over
-the read states the frontend pushes to ``/api/read-states``. Only conversations
-that have a stored read state are counted: the backend cannot tell a
-never-opened chat's old history from new messages.
+It is the sum of the sidebar's unread badges: the content API's per-conversation
+computation (``_compute_unread_counts``: hidden/withdrawn messages are never
+counted) over every conversation ``/api/content/groups`` lists, using the read
+states the frontend pushes to ``/api/read-states`` (none stored = nothing read),
+each capped by the server's unread snapshot when known.
 """
 
 from __future__ import annotations
 
 import asyncio
-import re
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +17,8 @@ import structlog
 
 from backend.services.path_resolver import get_output_dir
 from backend.services.search_service import get_search_service
-from backend.services.service_utils import get_service_display_name
 
 logger = structlog.get_logger(__name__)
-
-_FOLDER_ID = re.compile(r"^(\d+)\s")
 
 
 def tooltip_text(n: int, strings: dict[str, str]) -> str:
@@ -32,70 +28,85 @@ def tooltip_text(n: int, strings: dict[str, str]) -> str:
     return strings["tooltip_idle"]
 
 
-def _child_dirs_by_id(base: Path) -> dict[int, str]:
-    """``{id: folder name}`` of the ``"<id> <name>"`` subfolders of ``base``."""
-    found: dict[int, str] = {}
-    try:
-        entries = list(base.iterdir())
-    except OSError:
-        return found
-    for entry in entries:
-        match = _FOLDER_ID.match(entry.name)
-        if match and entry.is_dir():
-            found.setdefault(int(match.group(1)), entry.name)
-    return found
+def _stored_state(
+    indexed: dict[tuple[str, str, int], Any],
+    service_id: str,
+    group_id: str,
+    member_id: int,
+) -> dict[str, Any]:
+    """The ``{lastReadId, revealedIds}`` for one conversation.
 
-
-def _conversation_paths(
-    output_dir: Path, stored: dict[str, Any]
-) -> dict[str, dict[str, Any]]:
-    """Map stored read states onto ``_compute_unread_counts`` input.
-
-    Returns ``{path relative to output_dir: {"lastReadId", "revealedIds"}}``.
-    A ``member_id`` of 0 is a group chat (the talk-room folder); anything else
-    is a member folder inside the talk room. Entries whose service is unknown
-    or whose folder is missing are skipped.
+    Mirrors the sidebar: a conversation with no stored read state counts from
+    ``lastReadId`` 0 with nothing revealed.
     """
-    rooms_cache: dict[str, dict[int, str]] = {}
-    members_cache: dict[str, dict[int, str]] = {}
-    paths: dict[str, dict[str, Any]] = {}
+    entry = indexed.get((service_id, group_id, member_id))
+    if entry is None:
+        return {"lastReadId": 0, "revealedIds": []}
+    return {
+        "lastReadId": entry.get("last_read_id") or 0,
+        "revealedIds": entry.get("revealed_ids") or [],
+    }
+
+
+def _index_stored(stored: dict[str, Any]) -> dict[tuple[str, str, int], Any]:
+    """Re-key the stored read states by ``(service id, group id, member id)``."""
+    indexed: dict[tuple[str, str, int], Any] = {}
     for entry in stored.values():
         try:
-            display = get_service_display_name(entry["service"])
-            group_id = int(entry["group_id"])
-            member_id = int(entry["member_id"])
+            indexed[
+                (
+                    str(entry["service"]),
+                    str(int(entry["group_id"])),
+                    int(entry["member_id"]),
+                )
+            ] = entry
         except (KeyError, TypeError, ValueError):
             continue
-        messages_rel = f"{display}/messages"
-        if messages_rel not in rooms_cache:
-            rooms_cache[messages_rel] = _child_dirs_by_id(output_dir / messages_rel)
-        room = rooms_cache[messages_rel].get(group_id)
-        if room is None:
-            continue
-        rel = f"{messages_rel}/{room}"
-        if member_id != 0:
-            if rel not in members_cache:
-                members_cache[rel] = _child_dirs_by_id(output_dir / rel)
-            member = members_cache[rel].get(member_id)
-            if member is None:
-                continue
-            rel = f"{rel}/{member}"
-        paths[rel] = {
-            "lastReadId": entry.get("last_read_id") or 0,
-            "revealedIds": entry.get("revealed_ids") or [],
-        }
-    return paths
+    return indexed
 
 
 def _total(output_dir: Path, stored: dict[str, Any]) -> int:
-    """Blocking: the summed unread count of every stored conversation."""
+    """Blocking: the unread total the sidebar badges add up to.
+
+    Same rule as the sidebar (``MemberList.tsx``): every conversation listed by
+    ``/api/content/groups`` counts, a group chat by its room folder and any
+    other by its first member folder; the count is the stored read state's
+    (or a fresh ``lastReadId`` 0) ``_compute_unread_counts``, capped by the
+    group's ``server_unread_count`` when the server's snapshot is known.
+    """
     # Imported lazily: backend.api.content pulls in the whole API layer.
-    from backend.api.content import _compute_unread_counts
+    from backend.api.content import (
+        _compute_unread_counts,
+        _list_group_refs,
+        load_sync_metadata,
+        parse_id_name,
+    )
 
     if not output_dir.exists():
         return 0
-    paths = _conversation_paths(output_dir, stored)
-    return sum(_compute_unread_counts(output_dir, paths).values())
+    _, server_groups, _ = load_sync_metadata(output_dir)
+    refs, _ = _list_group_refs(output_dir, server_groups)
+    indexed = _index_stored(stored)
+
+    states: dict[str, dict[str, Any]] = {}
+    caps: dict[str, int | None] = {}
+    for ref in refs:
+        if ref.is_group_chat:
+            folder, member_id = ref.group_dir, 0
+        else:
+            folder = ref.member_dirs[0]
+            raw_id, _name = parse_id_name(folder.name)
+            member_id = int(raw_id) if raw_id and raw_id.isdigit() else -1
+        rel = str(folder.relative_to(output_dir)).replace("\\", "/")
+        states[rel] = _stored_state(indexed, ref.service_id, ref.group_id, member_id)
+        caps[rel] = ref.server_unread_count
+
+    counts = _compute_unread_counts(output_dir, states)
+    total = 0
+    for rel, cap in caps.items():
+        unread = counts.get(rel) or 0
+        total += unread if cap is None else min(unread, cap)
+    return total
 
 
 async def unread_total() -> int:

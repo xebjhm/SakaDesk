@@ -41,7 +41,7 @@
 
 ### Logging
 - Ids, codes and counts only.
-- Event names: `sync_launch`, `auto_sync_tick`, `auto_sync_failed`, `auto_sync_scheduler_skipped`, `tray`, `tray_click`, `tray_sync_now`, `tray_tooltip`, `tray_tooltip_unhandled`, `window_close`, `window_open_unhandled`, `window_open_failed`, `tray_hint_persist_failed`, `settings_raw_read_failed`, `app_start`, `autostart`, plus the client-log event `backend_sync_followed`.
+- Event names: `sync_launch`, `auto_sync_tick`, `auto_sync_failed`, `auto_sync_scheduler_skipped`, `tray`, `tray_click`, `tray_sync_now`, `tray_tooltip`, `tray_tooltip_unhandled`, `tray_tooltip_failed`, `server_loop_unavailable`, `window_close`, `window_open_unhandled`, `window_open_failed`, `tray_hint_persist_failed`, `settings_raw_read_failed`, `app_start`, `autostart`, plus the client-log event `backend_sync_followed`.
 
 ### Strings
 - **Frontend:** `settings.closeToTray`, `settings.closeToTrayDesc`, `settings.autostart` and `settings.autostartDesc`, in 5 locales. Exact values are in spec §3.

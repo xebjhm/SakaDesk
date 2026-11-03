@@ -51,6 +51,50 @@ async def test_refresh_sets_the_localized_tooltip_and_logs_the_count(tooltips):
 
 
 @pytest.mark.asyncio
+async def test_overlapping_refreshes_cannot_apply_an_older_total_last(
+    tooltips, monkeypatch
+):
+    seen, _ = tooltips
+    first_started = asyncio.Event()
+    release_first = asyncio.Event()
+    totals = iter([5, 2])  # the first computation is the older (stale) one
+
+    async def slow_total() -> int:
+        n = next(totals)
+        if n == 5:
+            first_started.set()
+            await release_first.wait()
+        return n
+
+    monkeypatch.setattr(tray_tooltip, "unread_total", slow_total)
+    older = asyncio.create_task(tray_tooltip.refresh_tray_tooltip())
+    await first_started.wait()
+    newer = asyncio.create_task(tray_tooltip.refresh_tray_tooltip())
+    await asyncio.sleep(0.02)
+    assert seen == []  # the newer one waits for the older one to finish
+    release_first.set()
+    await asyncio.gather(older, newer)
+    assert seen == ["SakaDesk — 5 unread", "SakaDesk — 2 unread"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_refresh_does_not_block_the_next_one(tooltips, monkeypatch):
+    seen, _ = tooltips
+    calls = {"n": 0}
+
+    async def flaky() -> int:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("x")
+        return 4
+
+    monkeypatch.setattr(tray_tooltip, "unread_total", flaky)
+    await tray_tooltip.refresh_tray_tooltip()
+    await tray_tooltip.refresh_tray_tooltip()
+    assert seen == ["SakaDesk — 4 unread"]
+
+
+@pytest.mark.asyncio
 async def test_refresh_idle_text_when_nothing_unread(tooltips):
     seen, state = tooltips
     state["unread"] = 0

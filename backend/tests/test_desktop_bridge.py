@@ -168,7 +168,9 @@ def test_run_on_server_loop_without_loop_logs_and_closes_the_coroutine(
     import gc
 
     gc.collect()
-    assert not [w for w in recwarn if "never awaited" in str(w.message)]
+    # Only this test's coroutine: gc.collect() also reaps unrelated leaks from
+    # other tests' mocks, whose timing depends on test order.
+    assert not [w for w in recwarn if "'work' was never awaited" in str(w.message)]
 
 
 def test_run_on_server_loop_with_closed_loop_returns_none() -> None:

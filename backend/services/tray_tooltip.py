@@ -24,24 +24,39 @@ logger = structlog.get_logger(__name__)
 DEBOUNCE_SECONDS = 2.0
 
 _debounce_task: asyncio.Task[None] | None = None
+# Serializes compute+set so an older computation can never overwrite a newer
+# one. Created lazily: an asyncio.Lock binds to the loop that first waits on it.
+_refresh_lock: asyncio.Lock | None = None
+_refresh_lock_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_refresh_lock() -> asyncio.Lock:
+    global _refresh_lock, _refresh_lock_loop
+    loop = asyncio.get_running_loop()
+    if _refresh_lock is None or _refresh_lock_loop is not loop:
+        _refresh_lock, _refresh_lock_loop = asyncio.Lock(), loop
+    return _refresh_lock
 
 
 async def refresh_tray_tooltip() -> None:
     """Compute the unread tooltip and push it to the tray. Never raises.
 
-    Does nothing when no tooltip handler is registered. Logs ``tray_tooltip``
+    Does nothing when no tooltip handler is registered. Concurrent calls run one
+    at a time (compute and set together), so the last call to start is the last
+    to set. Logs ``tray_tooltip``
     (``unread``) on success and ``tray_tooltip_failed`` (error type only) on
     failure.
     """
     if not desktop_bridge.has_tray_tooltip_handler():
         return
     try:
-        unread = await unread_total()
-        config = await load_config()
-        language = await asyncio.to_thread(resolve_ui_language, config)
-        text = tooltip_text(unread, get_strings("tray", language))
-        desktop_bridge.set_tray_tooltip(text)
-        logger.info("tray_tooltip", unread=unread)
+        async with _get_refresh_lock():
+            unread = await unread_total()
+            config = await load_config()
+            language = await asyncio.to_thread(resolve_ui_language, config)
+            text = tooltip_text(unread, get_strings("tray", language))
+            desktop_bridge.set_tray_tooltip(text)
+            logger.info("tray_tooltip", unread=unread)
     except Exception as e:
         logger.warning("tray_tooltip_failed", error_type=type(e).__name__)
 
