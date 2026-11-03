@@ -12,7 +12,7 @@ import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
-import i18n from '../i18n'
+import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
 import { markVoiceHeard } from './markVoiceHeard'
 
@@ -202,24 +202,10 @@ function App() {
                 // be bounced back to the ToS gate on every launch.
                 setTosAccepted(persisted.getPref('tos_accepted_at', null) !== null);
             })
-            .then(async () => {
-                // Apply language now that hydration + migration have run, so the
-                // first gated render is in the right language. This is the SINGLE
-                // ordered decision for language (i18n/index.ts no longer applies
-                // /api/settings itself, avoiding a startup race between the two):
-                // 1) explicit persisted user choice, 2) installer/settings.json
-                // language, 3) browser-detected default (already applied by
-                // i18n/index.ts's synchronous init, so no action needed for #3).
-                const lang = persisted.getPref<string | null>('language', null);
-                if (lang) {
-                    await i18n.changeLanguage(lang);
-                } else {
-                    try {
-                        const s = await (await fetch('/api/settings')).json();
-                        if (s?.language) await i18n.changeLanguage(s.language);
-                    } catch { /* keep browser-detected default */ }
-                }
-            })
+            // Apply language now that hydration + migration have run, so the first
+            // gated render is in the right language (the single ordered decision lives
+            // in language.ts).
+            .then(() => applyStartupLanguage())
             .then(() =>
                 // Load the app-state bundle (selected services, favorites, etc.)
                 // from the backend now that the prefs cache is hydrated. Storage

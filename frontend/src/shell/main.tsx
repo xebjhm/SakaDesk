@@ -8,13 +8,27 @@ import '../i18n'
 
 import { ErrorBoundary } from '../core/common/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
+import { CallPopupApp } from '../features/callPopup'
+import { isCallPopupView } from './callPopupRoute'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
-        <AuthProvider>
+const root = ReactDOM.createRoot(document.getElementById('root')!)
+if (isCallPopupView(window.location.search)) {
+    // The bottom-right call popup: no auth, no App shell, no sync, no ui-state reporter.
+    root.render(
+        <React.StrictMode>
             <ErrorBoundary>
-                <App />
+                <CallPopupApp />
             </ErrorBoundary>
-        </AuthProvider>
-    </React.StrictMode>,
-)
+        </React.StrictMode>,
+    )
+} else {
+    root.render(
+        <React.StrictMode>
+            <AuthProvider>
+                <ErrorBoundary>
+                    <App />
+                </ErrorBoundary>
+            </AuthProvider>
+        </React.StrictMode>,
+    )
+}

@@ -167,6 +167,14 @@ export const handlers = [
     return HttpResponse.json({ active: false })
   }),
 
+  // Call popup page (default: the backend no longer knows the call; events accepted)
+  http.get('/api/call-popup/calls/:id', () => {
+    return new HttpResponse(null, { status: 404 })
+  }),
+  http.post('/api/call-popup/calls/:id/events', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   // Blog cache size
   http.get('/api/blogs/cache-size', () => {
     return HttpResponse.json({ size_bytes: 0 })

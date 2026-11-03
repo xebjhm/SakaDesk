@@ -36,3 +36,45 @@ export async function isCallPopupActive(
         return false;
     }
 }
+
+/** What the popup page needs to know about a reserved call (GET /api/call-popup/calls/{id}). */
+export interface CallPopupInfo {
+    call_id: number;
+    service: string;
+    path: string;
+    is_group_chat: boolean;
+    group_id: string;
+    member_id: string;
+    message_id: number;
+}
+
+export type CallPopupEvent =
+    'ringing' | 'skipped' | 'answered' | 'declined' | 'timeout' | 'ended' | 'cancelled' | 'error';
+
+export interface CallEventExtra {
+    reason?: string;
+    error_type?: string;
+    message_id?: number;
+}
+
+/** The reserved call's info, or null when the backend no longer knows it (404). Throws on any other failure. */
+export async function fetchCallInfo(callId: number): Promise<CallPopupInfo | null> {
+    const res = await fetch(`/api/call-popup/calls/${callId}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`call info ${res.status}`);
+    return await res.json() as CallPopupInfo;
+}
+
+/** Report a call outcome to the backend controller. Fire-and-forget; a failed post is logged once. */
+export function postCallEvent(callId: number, event: CallPopupEvent, extra: CallEventExtra = {}): void {
+    const failed = () => clientLog('call_popup_error', { call_id: callId, error_type: 'event_post_failed' });
+    try {
+        fetch(`/api/call-popup/calls/${callId}/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event, ...extra }),
+        }).then(res => { if (!res.ok) failed(); }).catch(failed);
+    } catch {
+        failed();
+    }
+}

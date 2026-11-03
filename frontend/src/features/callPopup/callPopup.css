@@ -1,0 +1,6 @@
+/* Bottom-right call popup (spec C3 §7.5). The window is the card; DWM draws its shadow. */
+html.sd-call-popup-doc,
+html.sd-call-popup-doc body,
+html.sd-call-popup-doc #root { margin: 0; height: 100%; overflow: hidden; background: #0D0F14; }
+.sd-call-popup { position: fixed; inset: 0; }
+.sd-call-popup .sd-call-screen { box-shadow: none; }
