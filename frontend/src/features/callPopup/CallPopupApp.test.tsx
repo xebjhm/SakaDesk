@@ -6,7 +6,9 @@ import { persisted } from '../../core/persistence/persisted';
 import { clientLog } from '../../utils/clientLog';
 import * as ringtoneModule from '../incomingCall/ringtone';
 import { ENDED_HOLD_MS, RING_TIMEOUT_MS } from '../incomingCall/useIncomingCall';
+import i18n from '../../i18n';
 import { CallPopupApp } from './CallPopupApp';
+import { resetCallPopupBridge } from './callPopupBridge';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 const log = vi.mocked(clientLog);
@@ -16,8 +18,8 @@ const INFO = {
     call_id: 1, service: 'hinatazaka46', path: PATH, is_group_chat: false,
     group_id: '34', member_id: '58', message_id: 10,
 };
-const voice = (id: number) => ({
-    id, timestamp: '2026-11-01T10:00:00Z', type: 'voice', is_favorite: false, content: null,
+const voice = (id: number, timestamp = '2026-11-01T10:00:00Z') => ({
+    id, timestamp, type: 'voice', is_favorite: false, content: null,
     media_file: `messages/34 金村 美玖/58 金村 美玖/voice/${id}.m4a`,
 });
 const MEMBER = { id: 58, name: '金村 美玖', phone_image_local: '/img/p.jpg' };
@@ -70,6 +72,7 @@ async function start(id = 1) {
 const settled = () => act(async () => { await vi.advanceTimersByTimeAsync(50); });
 
 beforeEach(() => {
+    resetCallPopupBridge();
     vi.useFakeTimers({ shouldAdvanceTime: true });
     posts = [];
     puts = [];
@@ -189,6 +192,105 @@ describe('CallPopupApp', () => {
         await waitFor(() => expect(posts.some(p => p.callId === '2' && p.body.event === 'ringing')).toBe(true));
     });
 
+    it('unmounting mid-ring posts no cancelled', async () => {
+        const { unmount } = await ringing();
+        unmount();
+        await settled();
+        expect(events()).toEqual(['ringing']);
+    });
+
+    it('start(2) while call 1 rings supersedes it: call 1 posts nothing more, call 2 rings', async () => {
+        await ringing();
+        await start(2);
+        await waitFor(() => expect(posts.some(p => p.callId === '2' && p.body.event === 'ringing')).toBe(true));
+        await settled();
+        expect(posts.filter(p => p.callId === '1').map(p => p.body.event)).toEqual(['ringing']);
+        expect(posts.filter(p => p.callId === '2').map(p => p.body.event)).toEqual(['ringing']);
+        expect(screen.getByRole('button', { name: 'Answer' })).toBeInTheDocument();
+    });
+
+    it('posts error start_failed when the startup language step throws', async () => {
+        mockBackend();
+        // Only the persisted-language branch of applyStartupLanguage can throw out of start().
+        vi.spyOn(persisted, 'getPref').mockReturnValue('ja' as never);
+        vi.spyOn(i18n, 'changeLanguage').mockRejectedValue(new Error('boom'));
+        render_();
+        await start();
+        await waitFor(() => expect(events()).toEqual(['error']));
+        expect(posts[0].body.error_type).toBe('start_failed');
+        expect(posts[0].body.error_type).toMatch(/^[a-z0-9_]{1,40}$/);
+        expect(log).toHaveBeenCalledWith('call_popup_error', { call_id: 1, error_type: 'start_failed' });
+    });
+
+    it('a render crash is logged and posted as error render_failed, with no cancelled after it', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(ringtoneModule, 'getRingtone').mockImplementation(() => { throw new Error('boom'); });
+        mockBackend();
+        render_();
+        await start();
+        await waitFor(() => expect(events()).toContain('error'));
+        await settled();
+        const err = posts.find(p => p.body.event === 'error')!;
+        expect(err.body.error_type).toBe('render_failed');
+        expect(log).toHaveBeenCalledWith('call_popup_error', { call_id: 1, error_type: 'render_failed' });
+        expect(events()).not.toContain('cancelled');
+        expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull();
+    });
+
+    it('rings exactly the reserved voice when a newer one arrived, and logs message_mismatch', async () => {
+        mockBackend({
+            messages: {
+                messages: [voice(10), voice(11, '2026-11-02T10:00:00Z')],
+                member: MEMBER,
+            },
+        });
+        render_();
+        await start();
+        await waitFor(() => expect(events()).toContain('ringing'));
+        expect(log).toHaveBeenCalledWith('call_popup_error', { call_id: 1, error_type: 'message_mismatch' });
+        fireEvent.click(screen.getByRole('button', { name: 'Answer' }));
+        await waitFor(() => expect(events()).toContain('answered'));
+        expect(posts.find(p => p.body.event === 'answered')!.body.message_id).toBe(10);
+    });
+
+    it('does not log message_mismatch when the reserved voice is the newest', async () => {
+        await ringing();
+        expect(log).not.toHaveBeenCalledWith('call_popup_error', expect.objectContaining({ error_type: 'message_mismatch' }));
+    });
+
+    it('a start that arrives before the page mounts is queued and rings after mount', async () => {
+        mockBackend();
+        window.__sakadeskCallPopup!.start(1);
+        expect(posts).toEqual([]);
+        render_();
+        await waitFor(() => expect(events()).toEqual(['ringing']));
+        expect(posts[0].callId).toBe('1');
+        expect(screen.getByRole('button', { name: 'Answer' })).toBeInTheDocument();
+    });
+
+    it('a cancel before mount drops the queued start: it never rings', async () => {
+        mockBackend();
+        window.__sakadeskCallPopup!.start(1);
+        window.__sakadeskCallPopup!.cancel(1);
+        render_();
+        await settled();
+        expect(posts).toEqual([]);
+        expect(screen.queryByRole('button', { name: 'Answer' })).toBeNull();
+    });
+
+    it('the newest queued start wins', async () => {
+        mockBackend();
+        window.__sakadeskCallPopup!.start(1);
+        window.__sakadeskCallPopup!.start(2);
+        render_();
+        await waitFor(() => expect(events()).toEqual(['ringing']));
+        expect(posts[0].callId).toBe('2');
+    });
+
+    it('the global exists before any mount', () => {
+        expect(window.__sakadeskCallPopup).toBeDefined();
+    });
+
     it('the inset halo follows the phase', async () => {
         const { container } = await ringing();
         const halo = () => container.querySelector('.sd-call-halo--inset');
@@ -213,7 +315,7 @@ describe('CallPopupApp', () => {
         const { unmount } = await ringing();
         unmount();
         expect(rt.stop).toHaveBeenCalledTimes(1);
-        expect(window.__sakadeskCallPopup).toBeUndefined();
+        expect(events()).toEqual(['ringing']);
     });
 
     it("tags the call's breadcrumbs with surface popup", async () => {

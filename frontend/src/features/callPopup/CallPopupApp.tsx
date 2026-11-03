@@ -9,15 +9,14 @@ import {
     fetchCallInfo, postCallEvent,
     type CallEventExtra, type CallPopupEvent, type CallPopupInfo,
 } from './callPopupApi';
+import { pickCandidate } from '../incomingCall/callDecision';
+import { attachCallPopupHandler, installCallPopupBridge, requeueCallPopupStart } from './callPopupBridge';
+import { CallPopupBoundary } from './CallPopupBoundary';
 import { PopupCall } from './PopupCall';
 import './callPopup.css';
 
-declare global {
-    interface Window {
-        /** Called by the desktop host: ring the reserved call / cancel it. */
-        __sakadeskCallPopup?: { start(callId: number): void; cancel(callId: number): void };
-    }
-}
+// Published at module load so a host `start` that races the first mount is queued, not lost.
+installCallPopupBridge();
 
 interface CallPopupAppProps {
     /** Test seam: replaces the audio preload. */
@@ -33,7 +32,7 @@ interface LoadedCall {
     readState: ReadState;
 }
 
-interface ActiveRecord { callId: number; cancelled: boolean }
+interface ActiveRecord { callId: number; cancelled: boolean; loaded: boolean }
 
 async function getJson<T>(url: string): Promise<T> {
     const res = await fetch(url);
@@ -65,7 +64,7 @@ export const CallPopupApp: React.FC<CallPopupAppProps> = ({ preload }) => {
 
         const start = (callId: number) => {
             if (activeRef.current) activeRef.current.cancelled = true;
-            const record: ActiveRecord = { callId, cancelled: false };
+            const record: ActiveRecord = { callId, cancelled: false, loaded: false };
             activeRef.current = record;
             setCall(null);
             clientLog('call_popup_start', { call_id: callId });
@@ -103,11 +102,19 @@ export const CallPopupApp: React.FC<CallPopupAppProps> = ({ preload }) => {
                 if (settings.status === 'rejected') { fail(callId, 'settings_failed'); return; }
                 if (messagesRes.status === 'rejected') { fail(callId, 'messages_failed'); return; }
                 if (readRow.status === 'rejected') { fail(callId, 'read_state_failed'); return; }
+                const all = messagesRes.value.messages ?? [];
+                // The popup rings exactly the voice the backend reserved: an `answered` for any other
+                // message id is rejected as stale, so the heard mark would never be delivered. A newer
+                // voice that arrived since gets its own call.
+                if (pickCandidate(all)?.id !== info.message_id) {
+                    clientLog('call_popup_error', { call_id: callId, error_type: 'message_mismatch' });
+                }
+                record.loaded = true;
                 setCall({
                     callId,
                     info,
                     settings: settings.value,
-                    messages: messagesRes.value.messages ?? [],
+                    messages: all.filter(m => m.type !== 'voice' || m.id === info.message_id),
                     member: messagesRes.value.member ?? undefined,
                     readState: parseReadState(readRow.value),
                 });
@@ -121,25 +128,39 @@ export const CallPopupApp: React.FC<CallPopupAppProps> = ({ preload }) => {
             setCall(null);
         };
 
-        window.__sakadeskCallPopup = { start, cancel };
+        installCallPopupBridge();
+        const detach = attachCallPopupHandler({ start, cancel });
         return () => {
-            delete window.__sakadeskCallPopup;
+            detach();
             document.documentElement.classList.remove('sd-call-popup-doc');
-            if (activeRef.current) activeRef.current.cancelled = true;
+            const active = activeRef.current;
+            if (!active) return;
+            active.cancelled = true;
+            // A start that never got as far as ringing survives a remount (StrictMode, hot reload).
+            if (!active.loaded) requeueCallPopupStart(active.callId);
         };
     }, [post]);
 
     if (!call) return null;
+
+    const onRenderCrash = () => {
+        clientLog('call_popup_error', { call_id: call.callId, error_type: 'render_failed' });
+        post(call.callId, 'error', { error_type: 'render_failed' });
+        // The unmount that follows runs the hook's cleanup; its `cancelled` must not follow the error.
+        if (activeRef.current?.callId === call.callId) activeRef.current.cancelled = true;
+    };
+
     return (
-        <PopupCall
-            key={call.callId}
-            info={call.info}
-            settings={call.settings}
-            messages={call.messages}
-            member={call.member}
-            readState={call.readState}
-            post={(event, extra) => post(call.callId, event, extra)}
-            preload={preload}
-        />
+        <CallPopupBoundary key={call.callId} onError={onRenderCrash}>
+            <PopupCall
+                info={call.info}
+                settings={call.settings}
+                messages={call.messages}
+                member={call.member}
+                readState={call.readState}
+                post={(event, extra) => post(call.callId, event, extra)}
+                preload={preload}
+            />
+        </CallPopupBoundary>
     );
 };
