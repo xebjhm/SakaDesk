@@ -65,7 +65,7 @@ describe('CallOverlay', () => {
     });
 
     describe('keyboard handling', () => {
-        it('Enter on the focused Decline button declines instead of answering', () => {
+        it('Enter on a focused Decline button is left to the button (not answered, not cancelled)', () => {
             const c = call();
             render(<CallOverlay call={c} />);
             const decline = screen.getByRole('button', { name: /decline/i });
@@ -74,6 +74,76 @@ describe('CallOverlay', () => {
             expect(c.answer).not.toHaveBeenCalled();
             // Native activation is left to the browser: the key event was not cancelled.
             expect(fireEvent.keyDown(decline, { key: 'Enter' })).toBe(true);
+        });
+
+        describe('focus on ring', () => {
+            const idle = () => call({ phase: 'idle', message: null });
+
+            it('moves focus from an outside button to the overlay; Enter then answers', () => {
+                const c = call();
+                const { rerender } = render(<div><button data-testid="outside">m</button><CallOverlay call={idle()} /></div>);
+                const outside = screen.getByTestId('outside');
+                outside.focus();
+                expect(document.activeElement).toBe(outside);
+                rerender(<div><button data-testid="outside">m</button><CallOverlay call={c} /></div>);
+                expect(document.activeElement).toBe(screen.getByTestId('call-overlay'));
+                fireEvent.keyDown(document.activeElement!, { key: 'Enter' });
+                expect(c.answer).toHaveBeenCalledTimes(1);
+            });
+
+            it('moves focus from an outside button to the overlay; Escape then declines', () => {
+                const c = call();
+                const { rerender } = render(<div><button data-testid="outside">m</button><CallOverlay call={idle()} /></div>);
+                screen.getByTestId('outside').focus();
+                rerender(<div><button data-testid="outside">m</button><CallOverlay call={c} /></div>);
+                expect(document.activeElement).toBe(screen.getByTestId('call-overlay'));
+                fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+                expect(c.decline).toHaveBeenCalledTimes(1);
+            });
+
+            it('takes focus from a focusable ancestor that contains the overlay; Escape declines', () => {
+                const c = call();
+                const tree = (call_: IncomingCall) => <div tabIndex={0} data-testid="timeline"><CallOverlay call={call_} /></div>;
+                const { rerender } = render(tree(idle()));
+                const timeline = screen.getByTestId('timeline');
+                timeline.focus();
+                expect(document.activeElement).toBe(timeline);
+                rerender(tree(c));
+                expect(document.activeElement).toBe(screen.getByTestId('call-overlay'));
+                fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+                expect(c.decline).toHaveBeenCalledTimes(1);
+            });
+
+            it('does not steal focus from an editable element; Enter there does not answer', () => {
+                const c = call();
+                const tree = (call_: IncomingCall) => <div><input data-testid="search" /><CallOverlay call={call_} /></div>;
+                const { rerender } = render(tree(idle()));
+                const input = screen.getByTestId('search');
+                input.focus();
+                rerender(tree(c));
+                expect(document.activeElement).toBe(input);
+                fireEvent.keyDown(input, { key: 'Enter' });
+                expect(c.answer).not.toHaveBeenCalled();
+            });
+
+            it('does not steal focus from an element inside another modal dialog', () => {
+                const c = call();
+                const tree = (call_: IncomingCall) => (
+                    <div>
+                        <div role="dialog" aria-modal="true" aria-label="settings">
+                            <button data-testid="in-modal">ok</button>
+                        </div>
+                        <CallOverlay call={call_} />
+                    </div>
+                );
+                const { rerender } = render(tree(idle()));
+                const inModal = screen.getByTestId('in-modal');
+                inModal.focus();
+                rerender(tree(c));
+                expect(document.activeElement).toBe(inModal);
+                fireEvent.keyDown(inModal, { key: 'Escape' });
+                expect(c.decline).not.toHaveBeenCalled();
+            });
         });
 
         it('ignores Enter / Escape from an input outside the overlay', () => {

@@ -17,6 +17,23 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
         return () => clearInterval(id);
     }, [phase]);
 
+    // Take keyboard focus when the call starts ringing so Enter/Esc work wherever focus was
+    // (a clicked sidebar button, the timeline). Never steal it from text entry or another modal.
+    const hasOverlay = phase !== 'idle' && !!call.message;
+    useEffect(() => {
+        if (phase !== 'ringing' || !hasOverlay) return;
+        const overlay = overlayRef.current;
+        if (!overlay) return;
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active !== overlay) {
+            if (active.isContentEditable) return;
+            if (active.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+            const modal = active.closest('[role="dialog"], [aria-modal="true"]');
+            if (modal && modal !== overlay) return;
+        }
+        overlay.focus({ preventScroll: true });
+    }, [phase, hasOverlay]);
+
     // Bubble-phase window keys: modals and other handlers get the key first, and we only act
     // when nothing else has claimed it (default not prevented, focus on the call or the page).
     useEffect(() => {
@@ -58,7 +75,8 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
             ref={overlayRef}
             role="dialog"
             aria-label={call.name}
-            className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden"
+            tabIndex={-1}
+            className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden outline-none"
             data-testid="call-overlay"
         >
             <div
