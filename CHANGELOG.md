@@ -35,9 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   diagnostics report is safer to share.
 - **The sync screen says when it is scanning a chat's full history for the first
   time**, and the member count no longer runs past its total.
-- **A chat that fails to sync does not stop the others.** If one chat cannot be
-  synced, for example because of a temporary server error, the other chats
-  still finish, and that chat is retried on the next sync.
+- **When the server is busy, a chat is retried on the next sync** instead of
+  looking empty or missing messages until then.
 
 ### Fixed
 - **A chat could stay frozen if its whole history was an exact multiple of 200
@@ -46,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Favoriting a message during a sync could lose the messages that sync had
   just downloaded.** Both now take turns writing the file.
 - **One failed refresh no longer hides every unread badge** in the sidebar.
+- **An unread badge could never clear after a member withdrew a message**, and
+  withdrawn messages still counted in chat totals and showed up in search. They
+  are now left out everywhere, as in the chat itself.
 - **Installing an update from inside the app could just close SakaDesk and do
   nothing**: the installer often gave up because SakaDesk hadn't finished
   closing yet, so nothing was installed and the app didn't reopen. It now waits
