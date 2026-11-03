@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CallScreen } from './CallScreen';
 import { formatTalkTime } from './formatTalkTime';
@@ -10,6 +10,8 @@ const base = {
 };
 
 describe('CallScreen', () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
     it('fills its parent and exposes phase and answer style for styling', () => {
         const { container } = render(<CallScreen {...base} phase="ringing" answerStyle="light" />);
         const root = container.firstElementChild as HTMLElement;
@@ -59,6 +61,18 @@ describe('CallScreen', () => {
         render(<CallScreen {...base} phase="ringing" talkSeconds={136} />);
         expect(screen.queryByRole('progressbar')).toBeNull();
         expect(screen.queryByText('2:16')).toBeNull();
+    });
+
+    it('hides the visible button labels from assistive tech (the buttons carry aria-labels)', () => {
+        const { container, rerender } = render(<CallScreen {...base} phase="ringing" />);
+        const check = () => {
+            const labels = container.querySelectorAll('.sd-call-act-label');
+            expect(labels.length).toBeGreaterThan(0);
+            labels.forEach(l => expect(l).toHaveAttribute('aria-hidden', 'true'));
+        };
+        check();
+        rerender(<CallScreen {...base} phase="connected" />);
+        check();
     });
 
     it('formats talk time as m:ss', () => {

@@ -29,11 +29,11 @@
 }
 .sd-call-halo { position: absolute; inset: 0; border-radius: var(--sd-rad); pointer-events: none; }
 .sd-call-halo[data-phase="ringing"] {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent) 75%, white),
-              0 0 60px 8px color-mix(in srgb, var(--sd-accent) 55%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--sd-accent, #7cc7e8) 75%, white),
+              0 0 60px 8px color-mix(in srgb, var(--sd-accent, #7cc7e8) 55%, transparent);
   animation: sd-call-breathe 2.4s ease-in-out infinite;
 }
-.sd-call-halo[data-phase="connected"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sd-accent) 45%, transparent); }
+.sd-call-halo[data-phase="connected"] { box-shadow: 0 0 0 1px color-mix(in srgb, var(--sd-accent, #7cc7e8) 45%, transparent); }
 @keyframes sd-call-breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
 
 /* ---------- The card (CallScreen; also reused by C's popup) ---------- */
@@ -71,7 +71,7 @@
   font-size: clamp(10px, 2.8cqw, 12.5px); font-weight: 600; letter-spacing: .16em;
   color: rgba(255,255,255,.86); text-shadow: 0 1px 2px rgba(0,0,0,.6);
 }
-.sd-call-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--sd-accent); box-shadow: 0 0 8px var(--sd-accent); }
+.sd-call-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--sd-accent, #7cc7e8); box-shadow: 0 0 8px var(--sd-accent, #7cc7e8); }
 .sd-call-name {
   font-size: clamp(15px, 7cqw, 30px); font-weight: 700; letter-spacing: .04em; line-height: 1.25;
   overflow-wrap: anywhere;
@@ -119,15 +119,15 @@
 .sd-call-btn--decline { background: linear-gradient(180deg, #ef6a70, #dc4b5a); }
 .sd-call-btn--decline svg { transform: rotate(135deg); }
 /* Answer: the only button carrying the group style */
-.sd-call-btn--answer { background: linear-gradient(180deg, color-mix(in srgb, var(--sd-accent) 80%, white), color-mix(in srgb, var(--sd-accent-deep) 85%, var(--sd-accent))); }
+.sd-call-btn--answer { background: linear-gradient(180deg, color-mix(in srgb, var(--sd-accent, #7cc7e8) 80%, white), color-mix(in srgb, var(--sd-accent-deep) 85%, var(--sd-accent, #7cc7e8))); }
 .sd-call-screen[data-answer-style="light"] .sd-call-btn--answer {
-  background: rgba(255,255,255,.95); color: var(--sd-accent);
-  box-shadow: 0 6px 18px rgba(0,0,0,.22), inset 0 0 0 1.5px var(--sd-accent);
+  background: rgba(255,255,255,.95); color: var(--sd-accent, #7cc7e8);
+  box-shadow: 0 6px 18px rgba(0,0,0,.22), inset 0 0 0 1.5px var(--sd-accent, #7cc7e8);
 }
 .sd-call-screen[data-answer-style="light"] .sd-call-btn--answer::after { background: linear-gradient(180deg, rgba(255,255,255,.6), rgba(255,255,255,0) 50%); }
 .sd-call-ripple {
   position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
-  border: 1.5px solid color-mix(in srgb, var(--sd-accent) 80%, white);
+  border: 1.5px solid color-mix(in srgb, var(--sd-accent, #7cc7e8) 80%, white);
   animation: sd-call-ripple 1.8s ease-out infinite;
 }
 .sd-call-ripple--late { animation-delay: .9s; }
