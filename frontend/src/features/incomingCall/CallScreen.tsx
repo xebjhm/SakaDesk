@@ -35,7 +35,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                             />
                             <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/70 to-transparent text-white">
                                 <p className="text-xl font-semibold">{name}</p>
-                                <p aria-live="polite" className="text-sm opacity-90">{t('call.incoming')}</p>
+                                <p className="text-sm opacity-90">{t('call.incoming')}</p>
                             </div>
                         </div>
                         <div className="flex items-center justify-around bg-white py-6">
@@ -87,7 +87,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                     <>
                         <img src={photoUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-40 grayscale" />
                         <div className="absolute inset-0 flex items-center justify-center">
-                            <p aria-live="polite" className="text-lg font-semibold text-white">{t('call.ended')}</p>
+                            <p className="text-lg font-semibold text-white">{t('call.ended')}</p>
                         </div>
                     </>
                 )}

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { IncomingCall } from './useIncomingCall';
 import { CallOverlay } from './CallOverlay';
 import { persisted } from '../../core/persistence/persisted';
@@ -14,9 +14,10 @@ const call = (over: Partial<IncomingCall> = {}): IncomingCall => ({
 });
 
 describe('CallOverlay', () => {
-    it('renders nothing when idle', () => {
-        const { container } = render(<CallOverlay call={call({ phase: 'idle', message: null })} />);
-        expect(container).toBeEmptyDOMElement();
+    it('renders no call UI when idle (only the empty live region)', () => {
+        render(<CallOverlay call={call({ phase: 'idle', message: null })} />);
+        expect(screen.queryByTestId('call-overlay')).toBeNull();
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
     it('Enter answers and Escape declines while ringing', () => {
@@ -50,18 +51,81 @@ describe('CallOverlay', () => {
     });
 
     it('reports a playback error when play() rejects', async () => {
-        const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValueOnce(new Error('NotAllowedError'));
-        const c = call({ phase: 'connected', talkStartedAt: Date.now() });
-        render(<CallOverlay call={c} />);
-        await vi.waitFor(() => expect(c.onPlaybackError).toHaveBeenCalledTimes(1));
-        play.mockRestore();
+        // Swap by assignment: spy.mockRestore() would leave the global setup mock without its resolved value.
+        const originalPlay = HTMLMediaElement.prototype.play;
+        HTMLMediaElement.prototype.play = vi.fn().mockRejectedValueOnce(new Error('NotAllowedError'));
+        try {
+            const c = call({ phase: 'connected', talkStartedAt: Date.now() });
+            render(<CallOverlay call={c} />);
+            await vi.waitFor(() => expect(c.onPlaybackError).toHaveBeenCalledTimes(1));
+        } finally {
+            HTMLMediaElement.prototype.play = originalPlay;
+        }
     });
 
-    it('labels the overlay as a dialog named after the caller, with a polite live status', () => {
+    it('pauses the audio when the call leaves connected', () => {
+        const pause = vi.mocked(HTMLMediaElement.prototype.pause);
+        const connected = call({ phase: 'connected', talkStartedAt: Date.now() });
+        const { rerender } = render(<CallOverlay call={connected} />);
+        pause.mockClear();
+        rerender(<CallOverlay call={{ ...connected, phase: 'ended' }} />);
+        expect(pause).toHaveBeenCalled();
+    });
+
+    describe('talk timer', () => {
+        beforeEach(() => { vi.useFakeTimers(); });
+        afterEach(() => { vi.useRealTimers(); });
+
+        it('advances while connected and its interval is cleared when the call leaves connected', () => {
+            const connected = call({ phase: 'connected', talkStartedAt: Date.now() });
+            const { rerender } = render(<CallOverlay call={connected} />);
+            expect(screen.getByText('0:00')).toBeInTheDocument();
+            act(() => { vi.advanceTimersByTime(3000); });
+            expect(screen.getByText('0:03')).toBeInTheDocument();
+
+            const withInterval = vi.getTimerCount();
+            rerender(<CallOverlay call={{ ...connected, phase: 'ended' }} />);
+            expect(vi.getTimerCount()).toBe(withInterval - 1);
+        });
+    });
+
+    it('keys are inert while the call has ended', () => {
+        const c = call({ phase: 'ended', talkStartedAt: Date.now() });
+        render(<CallOverlay call={c} />);
+        const notCancelled = fireEvent.keyDown(document.body, { key: 'Enter' });
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(notCancelled).toBe(true);
+        expect(c.answer).not.toHaveBeenCalled();
+        expect(c.decline).not.toHaveBeenCalled();
+        expect(c.hangUp).not.toHaveBeenCalled();
+    });
+
+    describe('live region', () => {
+        it('is one persistent element whose text follows the phase', () => {
+            const ringing = call();
+            const { rerender } = render(<CallOverlay call={call({ phase: 'idle', message: null })} />);
+            const region = screen.getByRole('status');
+            expect(region).toHaveAttribute('aria-live', 'polite');
+            expect(region).toBeEmptyDOMElement();
+
+            rerender(<CallOverlay call={ringing} />);
+            expect(screen.getByRole('status')).toBe(region);
+            expect(region).toHaveTextContent('金村 美玖');
+            expect(region).toHaveTextContent('Incoming call…');
+
+            rerender(<CallOverlay call={{ ...ringing, phase: 'connected', talkStartedAt: Date.now() }} />);
+            expect(region).toBeEmptyDOMElement();
+
+            rerender(<CallOverlay call={{ ...ringing, phase: 'ended', talkStartedAt: Date.now() }} />);
+            expect(screen.getByRole('status')).toBe(region);
+            expect(region).toHaveTextContent('Call ended');
+        });
+    });
+
+    it('labels the overlay as a dialog named after the caller', () => {
         render(<CallOverlay call={call()} />);
         const dialog = screen.getByRole('dialog', { name: '金村 美玖' });
         expect(dialog).toBe(screen.getByTestId('call-overlay'));
-        expect(dialog.querySelector('[aria-live="polite"]')).not.toBeNull();
     });
 
     describe('keyboard handling', () => {

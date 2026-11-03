@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from '../../i18n';
 import { CallAudio } from './CallAudio';
 import { CallScreen } from './CallScreen';
 import type { IncomingCall } from './useIncomingCall';
 
 /** Covers the chat area while a call is active; hosts the call audio and handles Esc/Enter. */
 export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
+    const { t } = useTranslation();
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const [now, setNow] = useState(() => Date.now());
     const { phase, answer, decline, hangUp } = call;
@@ -66,11 +68,23 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
         return () => window.removeEventListener('keydown', onKey);
     }, [phase, answer, decline, hangUp]);
 
-    if (phase === 'idle' || !call.message) return null;
+    // One visually-hidden live region that outlives the call screens: a region that mounts
+    // together with its text is often not announced, so this one is always in the DOM and
+    // only its text changes.
+    const liveText = phase === 'ringing' ? `${call.name} ${t('call.incoming')}`
+        : phase === 'ended' ? t('call.ended')
+        : '';
+    const liveRegion = (
+        <div role="status" aria-live="polite" className="sr-only">{liveText}</div>
+    );
+
+    if (phase === 'idle' || !call.message) return liveRegion;
 
     const talkSeconds = call.talkStartedAt ? (now - call.talkStartedAt) / 1000 : 0;
 
     return (
+        <>
+        {liveRegion}
         <div
             ref={overlayRef}
             role="dialog"
@@ -104,5 +118,6 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
                 onPlaybackError={call.onPlaybackError}
             />
         </div>
+        </>
     );
 };
