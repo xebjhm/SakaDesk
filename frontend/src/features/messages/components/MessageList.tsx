@@ -6,6 +6,15 @@ import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 
+/**
+ * Avatar click handler for a message. Member 0 is the room itself (messages
+ * the API returns without an author), which has no profile card to open.
+ * The group endpoint serialises member_id as a string (from the folder name),
+ * so both 0 and "0" are treated as the room.
+ */
+export const avatarClickFor = (msg: Message, onAvatarClick?: () => void) =>
+    String(msg.member_id) === '0' ? undefined : onAvatarClick;
+
 interface ChatListProps {
     /** Unique identifier for the current room/member */
     memberId: string;
@@ -163,7 +172,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                             onReveal={() => onReveal(msg.id)}
                             onLongPress={onLongPress}
                             onToggleFavorite={onToggleFavorite}
-                            onAvatarClick={onAvatarClick}
+                            onAvatarClick={avatarClickFor(msg, onAvatarClick)}
                             onMediaClick={onMediaClick}
                             theme={bubbleTheme}
                             service={service}

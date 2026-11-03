@@ -54,6 +54,21 @@ describe('MessageBubble component', () => {
     expect(avatar).toHaveAttribute('src', '/avatar.jpg')
   })
 
+  it('makes the avatar look clickable only with onAvatarClick', async () => {
+    // Room-author (member 0) messages pass no handler: no pointer, no hover ring.
+    const { rerender } = render(<MessageBubble {...defaultProps} />)
+    const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
+    expect(button.className).not.toContain('cursor-pointer')
+    expect(button.className).not.toContain('hover:ring')
+
+    const onAvatarClick = vi.fn()
+    rerender(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
+    expect(button.className).toContain('cursor-pointer')
+    expect(button.className).toContain('hover:ring-2')
+    await userEvent.click(button)
+    expect(onAvatarClick).toHaveBeenCalledTimes(1)
+  })
+
   it('should render initials when no avatar provided', () => {
     render(<MessageBubble {...defaultProps} member_avatar={undefined} />)
     // Should show first 2 chars of name

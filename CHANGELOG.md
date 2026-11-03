@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archive, so they also show offline.
 - **Logs no longer contain letter contents or signed image links**, so a
   diagnostics report is safer to share.
+- **The sync screen says when it is scanning a chat's full history for the first
+  time**, and the member count no longer runs past its total.
+- **When the server is busy, a chat is retried on the next sync** instead of
+  looking empty or missing messages until then.
 
 ### Fixed
 - **A chat could stay frozen if its whole history was an exact multiple of 200
@@ -41,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Favoriting a message during a sync could lose the messages that sync had
   just downloaded.** Both now take turns writing the file.
 - **One failed refresh no longer hides every unread badge** in the sidebar.
+- **An unread badge could never clear after a member withdrew a message**, and
+  withdrawn messages still counted in chat totals and showed up in search.
+  Badges and totals now leave them out, as the chat does, and search no longer
+  adds them; the one-time full re-read of each chat after updating also removes
+  the ones search already had.
 - **Installing an update from inside the app could just close SakaDesk and do
   nothing**: the installer often gave up because SakaDesk hadn't finished
   closing yet, so nothing was installed and the app didn't reopen. It now waits
@@ -48,6 +57,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **After an update, the diagnostics report could list an outdated component
   version**, which made bug reports misleading. Leftover version information
   from the previous install is now removed when updating.
+- **Some chats were missing many messages from members who were not in the room's
+  current lineup** — for example the official 日向坂46 room's 2021–2022 member posts,
+  earlier lineups of a single's live-event room, and announcements posted as the
+  room itself. After updating, the first sync re-reads each chat once and adds
+  them with their photos and videos. It goes slowly so the server doesn't refuse
+  it, so it can take a while; if the server still asks it to slow down, the
+  remaining chats are read on the next sync.
 
 ## [0.3.4] - 2026-11-03
 

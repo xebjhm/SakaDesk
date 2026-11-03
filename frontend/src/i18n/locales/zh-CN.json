@@ -176,6 +176,7 @@
     "phase": "阶段 {{number}}：{{name}}",
     "starting": "正在开始",
     "phaseScanning": "扫描群组",
+    "scanningHistory": "首次完整扫描聊天室历史…",
     "phaseDiscovering": "发现中",
     "phaseSyncing": "获取元数据",
     "phaseDownloading": "下载媒体",

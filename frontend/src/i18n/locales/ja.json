@@ -176,6 +176,7 @@
     "phase": "フェーズ {{number}}: {{name}}",
     "starting": "開始中",
     "phaseScanning": "グループをスキャン中",
+    "scanningHistory": "トーク履歴を初回スキャン中…",
     "phaseDiscovering": "検出中",
     "phaseSyncing": "メタデータ取得中",
     "phaseDownloading": "メディアダウンロード中",

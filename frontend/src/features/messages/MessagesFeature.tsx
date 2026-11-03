@@ -10,6 +10,7 @@ import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings, toLocalDateStr } from '../../utils';
 import { cn } from '../../utils/classnames';
+import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceIdFromDisplayName } from '../../data/services';
@@ -19,10 +20,8 @@ import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 
 // Types specific to messages feature
-export interface GroupMessage extends Message {
-    member_id?: string;
-    member_name?: string;
-}
+// member_id / member_name now live on Message; kept as an alias for call sites.
+export type GroupMessage = Message;
 
 export interface GroupMessagesResponse {
     group_dir: string;
@@ -51,6 +50,7 @@ export interface SyncProgress {
     speed_unit?: string;
     detail?: string;
     detail_extra?: string;
+    detail_code?: string | null;
     result?: {
         members: number; checked: number; missing: number;
         repaired: number; failed: number; still_missing: number;
@@ -723,7 +723,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             }}
                         >
                             <Loader2 className="w-3 h-3 animate-spin mr-2" />
-                            <span>{syncProgress.detail || t('sync.syncing')}</span>
+                            <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
                         </div>
                     )}
                     {selectedGroupDir && (

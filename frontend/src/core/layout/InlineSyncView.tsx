@@ -2,7 +2,7 @@ import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { getServiceTheme } from '../../config/serviceThemes';
-import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
+import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface InlineSyncViewProps {
@@ -121,7 +121,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                             <div className="flex items-center gap-2">
                                 <Loader2 className="w-4 h-4 animate-spin" style={{ color: theme.modals.accentColor }} />
                                 <span className="text-sm text-gray-700 font-medium truncate">
-                                    {syncProgress.detail || t('sync.processing')}
+                                    {getSyncDetail(syncProgress, t, t('sync.processing'))}
                                     {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
                                 </span>
                             </div>

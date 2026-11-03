@@ -325,7 +325,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         e.stopPropagation();
                         onAvatarClick?.();
                     }}
-                    className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+                    // Only a clickable avatar (it opens a profile card) looks
+                    // clickable; the room author (member 0) gets no handler.
+                    className={`w-10 h-10 rounded-full bg-gray-200 overflow-hidden ${
+                        onAvatarClick
+                            ? 'hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer'
+                            : 'cursor-default'
+                    }`}
                 >
                     {member_avatar ? (
                         <img

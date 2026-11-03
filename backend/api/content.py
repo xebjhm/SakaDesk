@@ -41,6 +41,7 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
+from backend.services.message_visibility import visible_messages
 from backend.services.messages_cache import (
     NO_MESSAGES,
     get_messages_summary,
@@ -391,15 +392,6 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
     return {"groups": groups, "last_sync": last_sync_map}
 
 
-def _visible_messages(messages: list) -> list:
-    """Hide non-'published' messages from the UI (e.g. state='canceled' — the
-    member withdrew the post, which strips its media). The state is still recorded
-    in messages.json on disk; it is just not shown to normal users."""
-    return [
-        m for m in messages if not (m.get("state") and m.get("state") != "published")
-    ]
-
-
 _NO_CACHE = "no-cache"
 
 
@@ -447,7 +439,7 @@ def _load_member_messages(
     """Blocking body of messages_by_path (unchanged logic) — run in a thread."""
     with open(msg_file, "r", encoding="utf-8") as f:
         data: dict = json.load(f)
-    messages = _visible_messages(data.get("messages", []))
+    messages = visible_messages(data.get("messages", []))
     messages.sort(key=lambda x: x.get("timestamp", ""))
     total = len(messages)
     unread_count = 0
@@ -600,7 +592,7 @@ def _load_group_messages(
                     )
                 )
 
-                for msg in _visible_messages(data.get("messages", [])):
+                for msg in visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)
@@ -1044,7 +1036,7 @@ async def get_talk_room_messages_param(
                     "thumbnail": member_info.get("thumbnail"),
                 }
 
-                for msg in _visible_messages(data.get("messages", [])):
+                for msg in visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)

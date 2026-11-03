@@ -8,7 +8,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
     class="flex-shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
     >
       <img
         alt="Test User"
@@ -73,7 +73,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
     class="flex-shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
     >
       <img
         alt="Test User"
@@ -127,7 +127,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     class="flex-shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
+      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
     >
       <img
         alt="Test User"

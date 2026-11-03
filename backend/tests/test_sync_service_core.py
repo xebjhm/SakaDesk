@@ -69,6 +69,18 @@ def _make_message(msg_id: int, member_id: int, published_at: str) -> dict:
     }
 
 
+def _mock_sync_manager() -> MagicMock:
+    """A MagicMock SyncManager whose rooms are already history-scanned and have
+    no extra room authors (pysaka 0.4.6 roster API), so start_sync takes the
+    plain incremental path these tests assert on."""
+    manager = MagicMock()
+    manager.history_scanned = MagicMock(return_value=True)
+    manager.mark_history_scanned = MagicMock()
+    manager.room_archive_complete = AsyncMock(return_value=True)
+    manager.extra_room_members = AsyncMock(return_value=[])
+    return manager
+
+
 # ---------------------------------------------------------------------------
 # check_new_messages — timestamp cursor operations
 # ---------------------------------------------------------------------------
@@ -910,7 +922,7 @@ class TestFreshVsIncrementalSync:
         mock_client.access_token = "tok"
         mock_client.refresh_if_needed = AsyncMock()
         mock_client.get_groups = AsyncMock(return_value=[])
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
 
         with patch("backend.services.sync_service.logger") as mock_logger:
@@ -973,7 +985,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1075,7 +1087,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1172,7 +1184,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=999)
         mock_manager.sync_member = AsyncMock(return_value=5)  # 5 new messages
@@ -1296,7 +1308,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=999)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1492,20 +1504,22 @@ async def _run_start_sync(
     metadata=None,
     saved=None,
     notify_mock=None,
+    progress_mock=None,
     **start_kwargs,
 ):
     """Run start_sync with the standard set of patches. Returns nothing;
     inspect the passed mock_manager / mock_client for assertions. Pass
     ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
     last metadata written by save_metadata; pass ``notify_mock`` to observe
-    the sync-complete notification."""
+    the sync-complete notification; pass ``progress_mock`` to observe the
+    progress tracker."""
 
     async def _capture(md):
         if saved is not None:
             saved.clear()
             saved.update(md)
 
-    mock_progress = MagicMock()
+    mock_progress = progress_mock if progress_mock is not None else MagicMock()
     for attr in ("start_phase", "set_completed", "complete", "update", "error"):
         setattr(mock_progress, attr, MagicMock())
 
@@ -1646,7 +1660,7 @@ class TestNewMemberFullHistory:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(
             side_effect=lambda gid, mid: "2025-03-20T12:00:00Z" if mid == 1 else None
         )
@@ -1687,7 +1701,7 @@ class TestNewMemberFullHistory:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1715,7 +1729,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.refresh_if_needed = AsyncMock()
         mock_client.get_groups = AsyncMock(return_value=groups)
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
 
         await _run_start_sync(
@@ -1764,7 +1778,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(side_effect=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -1817,7 +1831,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(side_effect=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -1893,7 +1907,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(side_effect=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -2037,7 +2051,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(return_value=[{"id": 101, "name": "M"}])
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -2076,7 +2090,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.refresh_if_needed = AsyncMock()
         mock_client.get_groups = AsyncMock(return_value=groups)
         mock_client.get_members = AsyncMock(side_effect=SessionExpiredError("expired"))
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
 
         with pytest.raises(SessionExpiredError):
@@ -2120,7 +2134,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(return_value=[{"id": 1, "name": "M"}])
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -2214,7 +2228,7 @@ class TestInitialLimitAndIncludeInactive:
             captured["prefetched"] = kwargs.get("prefetched_messages")
             return len(kwargs.get("prefetched_messages") or [])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
@@ -2274,7 +2288,7 @@ class TestInitialLimitAndIncludeInactive:
             captured["prefetched"] = kwargs.get("prefetched_messages")
             return len(kwargs.get("prefetched_messages") or [])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
@@ -2632,7 +2646,7 @@ class TestGroupFailureAggregation:
 
         mock_client.get_messages = AsyncMock(side_effect=_get_messages)
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=5)
         mock_manager.sync_member = AsyncMock(return_value=1)

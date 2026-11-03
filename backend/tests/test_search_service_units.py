@@ -547,7 +547,7 @@ class TestBuildFullIndexShutdownGuard:
         loop = asyncio.get_running_loop()
 
         async def fake_run_in_executor(executor, func, *args):
-            return 0  # stands in for _index_members_process's return count
+            return 0, 0  # stands in for _index_members_process_stats
 
         shutdown_state.begin_shutdown()
         with (
@@ -568,7 +568,7 @@ class TestBuildFullIndexShutdownGuard:
 
         async def fake_run_in_executor(executor, func, *args):
             captured.extend(args)
-            return 0
+            return 0, 0
 
         shutdown_state.begin_shutdown()
         with patch.object(loop, "run_in_executor", side_effect=fake_run_in_executor):

@@ -48,3 +48,17 @@ export function getSyncUnitLabel(
     if (syncProgress.phase_number === 3) return t('sync.files');
     return t('sync.items');
 }
+
+/** Detail line for a sync progress state; prefixes known detail codes with their localized text. */
+export function getSyncDetail(
+    syncProgress: SyncProgress,
+    t: (key: string) => string,
+    fallback: string,
+): string {
+    const detail = syncProgress.detail || '';
+    if (syncProgress.detail_code === 'scanning_history') {
+        const scanning = t('sync.scanningHistory');
+        return detail ? `${scanning} · ${detail}` : scanning;
+    }
+    return detail || fallback;
+}

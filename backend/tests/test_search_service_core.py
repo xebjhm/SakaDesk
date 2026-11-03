@@ -1794,3 +1794,202 @@ class TestSchemaDirectCreation:
         conn.executescript(_SCHEMA_SQL)
         conn.executescript(_SCHEMA_SQL)
         conn.close()
+
+
+# =====================================================================
+# Withdrawn (non-published) messages are never indexed
+# =====================================================================
+
+
+class TestHiddenMessagesNotIndexed:
+    """Every indexing path skips rows the message list hides (state set and
+    not "published"), so search cannot surface a withdrawn post."""
+
+    MEMBER = ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"})
+
+    @pytest.fixture()
+    def with_hidden(self, output_dir: Path) -> Path:
+        _write_messages_json(
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json",
+            [
+                {"id": 1, "content": "見えるメッセージ🎉", "timestamp": "t1"},
+                {"id": 2, "content": "公開", "timestamp": "t2", "state": "published"},
+                {
+                    "id": 3,
+                    "content": "取り消し",
+                    "timestamp": "t3",
+                    "state": "canceled",
+                },
+            ],
+        )
+        return output_dir
+
+    @staticmethod
+    def _indexed_ids(db_path: Path) -> set[int]:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            return {
+                r[0]
+                for r in conn.execute(
+                    "SELECT message_id FROM search_messages WHERE member_id = 100"
+                )
+            }
+        finally:
+            conn.close()
+
+    def test_index_members_sync_skips_hidden(
+        self, service: SearchService, with_hidden: Path, db_path: Path
+    ):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=with_hidden
+        ):
+            count = service._index_members_sync([self.MEMBER], _SERVICE_ID)
+        assert count == 2
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    def test_build_full_index_sync_skips_hidden(
+        self, service: SearchService, with_hidden: Path, db_path: Path
+    ):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=with_hidden
+        ):
+            service._build_full_index_sync()
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    def _mock_pykakasi(self) -> MagicMock:
+        mock_module = MagicMock()
+        mock_module.kakasi.return_value.convert.side_effect = lambda text: [
+            {"orig": text, "hira": text}
+        ]
+        return mock_module
+
+    def test_build_full_index_process_skips_hidden(
+        self, with_hidden: Path, db_path: Path
+    ):
+        with patch.dict("sys.modules", {"pykakasi": self._mock_pykakasi()}):
+            _build_full_index_process(str(db_path), str(with_hidden))
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    @pytest.mark.parametrize("full", [False, True])
+    def test_index_members_process_skips_hidden(
+        self, with_hidden: Path, db_path: Path, full: bool
+    ):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with patch.dict("sys.modules", {"pykakasi": self._mock_pykakasi()}):
+            count = _index_members_process(
+                str(db_path),
+                str(with_hidden),
+                json.dumps([list(self.MEMBER)]),
+                _SERVICE_ID,
+                *([json.dumps([[1, 100]])] if full else []),
+            )
+        assert count == 2
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    def test_full_member_scan_purges_rows_withdrawn_since_indexing(
+        self, output_dir: Path, db_path: Path
+    ):
+        """A message indexed while published and withdrawn later is removed
+        (with its FTS entry) when the member is fully scanned, so search
+        matches the chat; other members' rows are untouched."""
+        from backend.services.search_service import _index_members_process_stats
+
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        member_file = (
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json"
+        )
+        members = [
+            list(self.MEMBER),
+            [{"id": 1, "name": "テストグループ"}, {"id": 200, "name": "佐々木久美"}],
+        ]
+        with patch.dict("sys.modules", {"pykakasi": self._mock_pykakasi()}):
+            _index_members_process(
+                str(db_path), str(output_dir), json.dumps(members), _SERVICE_ID
+            )
+            assert self._indexed_ids(db_path) == {1, 2, 3}
+            # Message 2 was indexed with the fixture's original text.
+            assert self._fts_matches(db_path, "お昼ごはん") == 1
+            _write_messages_json(
+                member_file,
+                [
+                    {"id": 1, "content": "こんにちは🎉", "timestamp": "t1"},
+                    {
+                        "id": 2,
+                        "content": "取り消し済み",
+                        "timestamp": "t2",
+                        "state": "canceled",
+                    },
+                    {"id": 3, "content": "おやすみ", "timestamp": "t3"},
+                ],
+            )
+            # Incremental (no full scan): nothing is purged.
+            assert _index_members_process_stats(
+                str(db_path), str(output_dir), json.dumps(members[:1]), _SERVICE_ID
+            ) == (0, 0)
+            assert self._indexed_ids(db_path) == {1, 2, 3}
+            assert _index_members_process_stats(
+                str(db_path),
+                str(output_dir),
+                json.dumps(members[:1]),
+                _SERVICE_ID,
+                json.dumps([[1, 100]]),
+            ) == (0, 1)
+        assert self._indexed_ids(db_path) == {1, 3}
+        # The purge removed the FTS entry of the originally indexed text too.
+        assert self._fts_matches(db_path, "お昼ごはん") == 0
+        conn = sqlite3.connect(str(db_path))
+        try:
+            other = conn.execute(
+                "SELECT count(*) FROM search_messages WHERE member_id = 200"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert other == 2
+
+    @staticmethod
+    def _fts_matches(db_path: Path, term: str) -> int:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            return conn.execute(
+                "SELECT count(*) FROM search_fts WHERE search_fts MATCH ?",
+                (f'"{term}"',),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+    @pytest.mark.asyncio
+    async def test_index_members_logs_purged(self, service: SearchService, monkeypatch):
+        import asyncio
+
+        from structlog.testing import capture_logs
+
+        from backend.services import search_service as ss
+
+        calls: list = []
+
+        async def fake_run_in_executor(executor, func, *args):
+            calls.append(func)
+            return 4, 2
+
+        loop = asyncio.get_running_loop()
+        monkeypatch.setattr(loop, "run_in_executor", fake_run_in_executor)
+        monkeypatch.setattr(service, "_needs_build", lambda: False)
+        with capture_logs() as logs:
+            count = await service.index_members(
+                [self.MEMBER], _SERVICE_ID, full_member_scan=[(1, 100)]
+            )
+        assert count == 4 and calls == [ss._index_members_process_stats]
+        (entry,) = [
+            e for e in logs if e["event"] == "Incremental index update (process)"
+        ]
+        assert entry["new_messages"] == 4 and entry["hidden_purged"] == 2

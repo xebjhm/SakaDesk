@@ -42,6 +42,7 @@ class SyncProgress:
             self._total = 0
             self._detail = ""
             self._detail_extra = ""
+            self._detail_code: Optional[str] = None
             self._speed_unit = ""
             self._phase_start: Optional[float] = None
             self._error: Optional[str] = None
@@ -68,6 +69,18 @@ class SyncProgress:
             self._phase_start = time.time()
             self._detail = ""
             self._detail_extra = ""
+            self._detail_code = None
+
+    def extend_total(self, n: int):
+        """Grow the current phase's total (e.g. room authors found mid-phase)."""
+        with self._lock:
+            self._total += n
+
+    def set_detail_code(self, code: Optional[str]):
+        """Set a machine-readable detail (e.g. "scanning_history") the frontend
+        localises; None clears it. Cleared by start_phase, complete and error."""
+        with self._lock:
+            self._detail_code = code
 
     def update(
         self,
@@ -111,6 +124,7 @@ class SyncProgress:
             self._completed = self._total
             self._detail = "Sync complete!"
             self._detail_extra = ""
+            self._detail_code = None
 
     def error(self, message: str, code: Optional[str] = None):
         """Mark sync as errored.
@@ -127,6 +141,7 @@ class SyncProgress:
             self._phase_name = "Error"
             self._error = message
             self._detail = message
+            self._detail_code = None
             self._error_code = code or _SENTINEL_ERROR_CODES.get(message)
 
     def get_status(self) -> dict:
@@ -150,6 +165,7 @@ class SyncProgress:
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,
                 "detail_extra": self._detail_extra,
+                "detail_code": self._detail_code,
                 "error_code": self._error_code,
                 "result": self._result,
             }

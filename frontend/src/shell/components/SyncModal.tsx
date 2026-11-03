@@ -3,7 +3,7 @@ import { Download, Loader2, Image as ImageIcon, Video, Mic } from 'lucide-react'
 import { useTranslation } from '../../i18n';
 import { formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
-import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
+import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 import type { SequentialSyncInfo } from '../hooks/useSync';
 
@@ -178,7 +178,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                                 <div className="flex items-center gap-2">
                                     <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                                     <span className="text-sm text-gray-700 font-medium truncate">
-                                        {syncProgress.detail || t('sync.processing')}
+                                        {getSyncDetail(syncProgress, t, t('sync.processing'))}
                                         {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
                                     </span>
                                 </div>
