@@ -56,7 +56,7 @@ class ToastPlan:
 
 @dataclass(frozen=True)
 class Skip:
-    """A chat that was suppressed. ``reason``: disabled|viewing|diverted."""
+    """A chat that was suppressed. ``reason``: diverted|disabled|viewing."""
 
     reason: str
     group_id: str
@@ -148,9 +148,10 @@ def plan_toasts(
 ) -> tuple[list[ToastPlan], list[Skip]]:
     """Plan one toast per 1:1 member or room, and report what was skipped.
 
-    Rules apply per chat in this order: disabled, viewing (focused app on that
-    chat), diverted. ``divert`` (the C3 hook) receives the fully built
-    :class:`ToastPlan` and returns True to suppress it. ``member_count_for(group_id)``
+    Rules apply per chat in this order: diverted (the C3 hook, which receives
+    every fully built :class:`ToastPlan`, even when notifications are off, and
+    returns True to suppress it), disabled, viewing (focused app on that
+    chat). ``member_count_for(group_id)``
     is the number of member folders in the group, which together with
     ``GROUP_CHAT_IDS`` decides whether a chat is a room.
     """
@@ -186,17 +187,6 @@ def plan_toasts(
             service=service, path=path, name=name, is_group_chat=is_room
         )
 
-        if not enabled:
-            skips.append(Skip("disabled", group_id, member_id, count))
-            continue
-        if (
-            ui_state.focused
-            and ui_state.service == service
-            and ui_state.group_id == group_id
-            and ui_state.member_id == member_id
-        ):
-            skips.append(Skip("viewing", group_id, member_id, count))
-            continue
         if hide_content:
             body = strings["hidden_body"]
         else:
@@ -219,6 +209,17 @@ def plan_toasts(
         )
         if divert(plan):
             skips.append(Skip("diverted", group_id, member_id, count))
+            continue
+        if not enabled:
+            skips.append(Skip("disabled", group_id, member_id, count))
+            continue
+        if (
+            ui_state.focused
+            and ui_state.service == service
+            and ui_state.group_id == group_id
+            and ui_state.member_id == member_id
+        ):
+            skips.append(Skip("viewing", group_id, member_id, count))
             continue
         plans.append(plan)
     return plans, skips

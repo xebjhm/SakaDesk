@@ -4,7 +4,8 @@ pysaka's ``SyncManager.sync_member(..., on_new_messages=cb)`` calls
 ``cb(member_info, new_messages)`` once after a successful write when at least
 one message was not on disk before. This collector is that callback target: it
 drops first-sync history (``initial_sync``) and withdrawn rows, and keeps a
-visible count and the newest visible message per ``(group_id, member_id)``.
+visible count, the newest visible message and the newest visible voice message
+(``newest_voice``, for the C3 call popup) per ``(group_id, member_id)``.
 
 Its counts are the only source of the "new messages" totals; the count that
 ``sync_member`` returns includes re-fetched overlap and is not a new-message
@@ -37,6 +38,7 @@ class CollectedChat:
     member_dir: Path
     count: int
     newest: dict[str, Any]
+    newest_voice: dict[str, Any] | None = None
 
 
 def newest_key(message: dict[str, Any]) -> tuple[str, str]:
@@ -89,6 +91,8 @@ class NewMessageCollector:
         # Everything that can raise happens before any counter moves, so a
         # swallowed failure leaves neither a partial counter nor a partial entry.
         newest = max(visible, key=newest_key) if visible else None
+        voices = [m for m in visible if m.get("type") == "voice"]
+        newest_voice = max(voices, key=newest_key) if voices else None
         member_dir = Path(member_info["member_dir"]) if visible else None
 
         if hidden:
@@ -115,11 +119,17 @@ class NewMessageCollector:
                 member_dir=member_dir,
                 count=len(visible),
                 newest=newest,
+                newest_voice=newest_voice,
             )
             return
         existing.count += len(visible)
         if newest_key(newest) >= newest_key(existing.newest):
             existing.newest = newest
+        if newest_voice is not None and (
+            existing.newest_voice is None
+            or newest_key(newest_voice) >= newest_key(existing.newest_voice)
+        ):
+            existing.newest_voice = newest_voice
 
     def counts(self) -> dict[tuple[str, str], int]:
         """``{(group_id, member_id): visible new message count}``."""
