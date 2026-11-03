@@ -570,3 +570,108 @@ async def test_scan_mark_failure_logged_and_sync_completes(tmp_path):
     (failed,) = _events(logs, "room_history_scan_mark_failed")
     assert failed["group_id"] == 43 and failed["error_type"] == "OSError"
     assert "last_sync" in saved
+
+
+# --- Final review item 2: genuinely new messages in a scanned room ----------
+
+
+def _scan_rows_with_new():
+    return [
+        _make_message(1, 79, "2022-04-01T03:05:10Z"),  # older than 79's cursor
+        _make_message(4, 79, "2026-10-02T09:00:00Z"),  # new since 79's cursor
+        _make_message(2, 22, "2021-09-16T06:37:53Z"),
+        _make_message(5, 22, "2026-10-03T09:00:00Z"),  # 22 has no cursor
+        {"id": 3, "published_at": "2022-04-01T03:00:10Z", "text": "x"},
+        {"id": 6, "published_at": "2026-10-04T00:00:00Z", "text": "y"},  # member 0
+    ]
+
+
+async def test_scanning_room_reports_messages_newer_than_cursor(tmp_path):
+    """The upgrade sync scans every room; a post newer than an author's
+    cursor is genuinely new and must still be notified and counted. Rows at
+    or before the cursor, and every row of an author with no cursor, are
+    recovered history."""
+    notify = AsyncMock()
+    m = _manager(scanned=False, sync_counts={79: 2, 22: 2, 0: 2})
+    m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
+    m.get_last_ts = MagicMock(
+        side_effect=lambda gid, mid: {
+            79: "2026-10-01T00:00:00Z",
+            0: "2026-10-04T00:00:00Z",  # cursor == newest member-0 row: not new
+        }.get(mid)
+    )
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            notify_mock=notify,
+        )
+    notify.assert_awaited_once_with(1, 1)  # only 79's post of 2026-10-02
+    (phase2,) = _events(logs, "phase2_complete")
+    assert phase2["recovered_members"] == 3
+    assert phase2["excluded_new_messages"] == 5  # 6 written - 1 new
+    (finished,) = _events(logs, "room_history_scan_finished")
+    assert finished["new_msgs"] == 1
+
+
+async def test_scanning_room_extra_with_cursor_reports_new(tmp_path):
+    notify = AsyncMock()
+    m = _manager(scanned=False, sync_counts={79: 2, 22: 2, 0: 2})
+    m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
+    m.get_last_ts = MagicMock(
+        side_effect=lambda gid, mid: None if mid == 0 else "2026-10-01T00:00:00Z"
+    )
+    await _run_start_sync(
+        SyncService(),
+        tmp_path,
+        groups=[GROUP],
+        members=API_MEMBERS,
+        mock_manager=m,
+        notify_mock=notify,
+    )
+    # 79: one row after its cursor; 22: one; member 0 has no cursor -> 0.
+    notify.assert_awaited_once_with(2, 2)
+
+
+async def test_scanning_room_new_count_capped_by_written(tmp_path):
+    """sync_member wrote nothing (e.g. a folder rename failed): nothing is new."""
+    notify = AsyncMock()
+    m = _manager(scanned=False, extra=[], sync_counts={79: 0})
+    m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
+    await _run_start_sync(
+        SyncService(),
+        tmp_path,
+        groups=[GROUP],
+        members=API_MEMBERS,
+        mock_manager=m,
+        notify_mock=notify,
+    )
+    notify.assert_not_awaited()
+
+
+async def test_scanning_room_still_fully_indexed_with_new(tmp_path):
+    m = _manager(scanned=False, sync_counts={79: 2, 22: 2, 0: 2})
+    m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
+    search = MagicMock()
+    search.index_members = AsyncMock(return_value=3)
+    bg: list = []
+    with (
+        patch(
+            "backend.services.search_service.get_search_service",
+            return_value=search,
+        ),
+        patch(
+            "backend.services.sync_service.track_background_task",
+            lambda coro, name=None: bg.append(coro),
+        ),
+    ):
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+        for coro in bg:
+            await coro
+    _, kw = search.index_members.await_args
+    assert set(kw["full_member_scan"]) == {(43, 79), (43, 22), (43, 0)}

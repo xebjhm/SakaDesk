@@ -54,6 +54,28 @@ def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
         return None
 
 
+def _rows_newer_than(
+    messages: list[dict[str, Any]], member_id: int, cursor: Optional[str]
+) -> int:
+    """Number of ``member_id``'s rows in ``messages`` published after ``cursor``.
+
+    Authors are read as pysaka reads them (a row without ``member_id`` is the
+    room's, member 0) and ``published_at`` is compared as pysaka compares its
+    cursor (ISO strings). No cursor means the member had nothing archived
+    before, so nothing counts as new: 0.
+    """
+    if cursor is None:
+        return 0
+    # pysaka >= 0.4.6 (as the room-scan API this is used with).
+    from pysaka.roster import author_id
+
+    return sum(
+        1
+        for m in messages
+        if author_id(m) == member_id and (m.get("published_at") or "") > cursor
+    )
+
+
 class SyncService:
     """
     Per-service sync orchestrator for SakaDesk.
@@ -504,10 +526,13 @@ class SyncService:
                 # One-time room history scans re-read whole timelines; run them one
                 # at a time (with page_delay) to stay under the API rate limit.
                 scan_sem = asyncio.Semaphore(1)
-                # (group_id, member_id) whose counts are recovered history, not new:
-                # every task of a room scanned in this sync, and extra members with
-                # no cursor before it. Excluded from totals/notifications, indexed fully.
-                recovered_keys: set[tuple[int, int]] = set()
+                # (group_id, member_id) -> messages reported as new, for members
+                # whose sync_member count is mostly recovered history: every
+                # author of a room scanned in this sync (only rows newer than
+                # the cursor before this sync are new) and extra authors with
+                # no cursor before it (none new). Members not in it report
+                # their sync_member count. These members are indexed fully.
+                reported_new: dict[tuple[int, int], int] = {}
 
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
@@ -651,6 +676,7 @@ class SyncService:
 
                     # Process each member using pre-fetched data (in-memory filtering)
                     group_results: list[tuple[dict[str, Any], int]] = []
+                    scan_new = 0
                     for idx, (task, member_ts) in enumerate(run_list):
                         is_extra = idx >= n_api
                         member_id = task["member"]["id"]
@@ -694,9 +720,22 @@ class SyncService:
                         )
                         # A scanned room's counts and a first-seen extra author's
                         # counts are recovered history: searchable (full scan) but
-                        # never reported as new.
+                        # not reported as new. In a scanned room only the
+                        # author's rows newer than its cursor are new (none
+                        # without a cursor), never more than sync_member wrote.
                         if scan or (is_extra and member_ts is None):
-                            recovered_keys.add((gid, member_id))
+                            new = (
+                                min(
+                                    count,
+                                    _rows_newer_than(
+                                        all_messages, member_id, member_ts
+                                    ),
+                                )
+                                if scan
+                                else 0
+                            )
+                            reported_new[(gid, member_id)] = new
+                            scan_new += new
                             backfilled_members[(gid, member_id)] = (
                                 task["group"],
                                 task["member"],
@@ -762,6 +801,7 @@ class SyncService:
                             extra_members=len(extra_members),
                             elapsed=f"{time.monotonic() - g_t0:.1f}s",
                             complete=complete,
+                            new_msgs=scan_new,
                         )
 
                     group_new = sum(c for _, c in group_results)
@@ -827,12 +867,11 @@ class SyncService:
                     total_members=total_members,
                     # Recovered history (scanned rooms, first-seen extra
                     # authors): indexed for search, not reported as new.
-                    recovered_members=len(recovered_keys),
+                    recovered_members=len(reported_new),
                     excluded_new_messages=sum(
-                        c
+                        c - reported_new[k]
                         for t, c in results
-                        if c > 0
-                        and (t["group"]["id"], t["member"]["id"]) in recovered_keys
+                        if (k := (t["group"]["id"], t["member"]["id"])) in reported_new
                     ),
                 )
 
@@ -842,8 +881,9 @@ class SyncService:
                 for task, count in results:
                     if count > 0:
                         key_t = (task["group"]["id"], task["member"]["id"])
-                        if key_t not in recovered_keys:
-                            total_new_messages += count
+                        new = reported_new.get(key_t, count)
+                        if new > 0:
+                            total_new_messages += new
                             members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(
