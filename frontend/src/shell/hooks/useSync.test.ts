@@ -327,6 +327,18 @@ describe('useSync', () => {
         })
     })
 
+    it('records the run_id of every handled progress response per service', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ is_fresh: false, state: 'complete', run_id: 9 }),
+        }))
+        const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+        expect(result.current.lastHandledRunId('hinatazaka46')).toBeUndefined()
+        await act(async () => { result.current.followSync('hinatazaka46') })
+        await waitFor(() => expect(result.current.lastHandledRunId('hinatazaka46')).toBe(9))
+        expect(result.current.lastHandledRunId('sakurazaka46')).toBeUndefined()
+    })
+
     describe('startSync racing the backend sync watcher', () => {
         afterEach(() => { vi.useRealTimers() })
 

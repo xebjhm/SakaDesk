@@ -107,6 +107,36 @@ describe('useBackendSyncWatcher', () => {
         expect(follow).toHaveBeenCalledTimes(2);
     });
 
+    it('does not follow a run the frontend poller already handled between two checks', async () => {
+        const lastHandledRunId = vi.fn((_s: string): number | undefined => undefined);
+        renderHook(() => useBackendSyncWatcher({
+            services: ['hinatazaka46'], isPolling, follow, lastHandledRunId,
+        }));
+        await flush();
+        // Run 2 starts, is polled to completion by the frontend and ends before the next tick.
+        progress.hinatazaka46 = { state: 'complete', run_id: 2 };
+        lastHandledRunId.mockReturnValue(2);
+        await tick();
+        expect(follow).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('backend_sync_skipped', {
+            service: 'hinatazaka46', reason: 'already_handled',
+        });
+    });
+
+    it('still follows a scheduler run the frontend never saw once', async () => {
+        const lastHandledRunId = vi.fn((_s: string): number | undefined => 2);
+        renderHook(() => useBackendSyncWatcher({
+            services: ['hinatazaka46'], isPolling, follow, lastHandledRunId,
+        }));
+        await flush();
+        // Frontend handled run 2 earlier; the scheduler's run 3 is new to it.
+        progress.hinatazaka46 = { state: 'error', run_id: 3, error_code: 'session_expired' };
+        await tick();
+        expect(follow).toHaveBeenCalledTimes(1);
+        await tick();
+        expect(follow).toHaveBeenCalledTimes(1);
+    });
+
     it('follows a run that failed with session_expired so the normal poller can surface it', async () => {
         mount();
         await flush();

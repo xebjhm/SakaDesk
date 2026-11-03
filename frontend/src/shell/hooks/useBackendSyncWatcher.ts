@@ -11,6 +11,9 @@
  *   runs the normal terminal branch (message refresh, profile refresh, and for a
  *   failed sync the session-expired modal and disconnected marking) and stops.
  * The first observation of a service only records its `run_id`.
+ * A terminal run whose `run_id` the frontend poller already handled (reported by
+ * `lastHandledRunId`, e.g. a short frontend-started sync that began and ended
+ * between two checks) is not followed again.
  *
  * @module useBackendSyncWatcher
  */
@@ -26,6 +29,8 @@ export interface UseBackendSyncWatcherOptions {
     isPolling: (service: string) => boolean;
     /** Attach the progress poller to a backend-started sync */
     follow: (service: string) => void;
+    /** `run_id` of the last progress response the frontend poller handled for the service */
+    lastHandledRunId?: (service: string) => number | undefined;
     /** Check period while visible (default 5000 ms) */
     intervalMs?: number;
 }
@@ -39,14 +44,17 @@ export function useBackendSyncWatcher({
     services,
     isPolling,
     follow,
+    lastHandledRunId,
     intervalMs = 5000,
 }: UseBackendSyncWatcherOptions): void {
     const lastRunIdRef = useRef<Record<string, number>>({});
     const aliveRef = useRef(true);
     const isPollingRef = useRef(isPolling);
     const followRef = useRef(follow);
+    const lastHandledRunIdRef = useRef(lastHandledRunId);
     isPollingRef.current = isPolling;
     followRef.current = follow;
+    lastHandledRunIdRef.current = lastHandledRunId;
 
     useEffect(() => {
         aliveRef.current = true;
@@ -85,6 +93,13 @@ export function useBackendSyncWatcher({
             (data.state === 'complete' || data.state === 'idle' || data.state === 'error') &&
             previous !== undefined && runId !== undefined && runId !== previous
         ) {
+            if (lastHandledRunIdRef.current?.(service) === runId) {
+                // The frontend poller already processed this run (it started and
+                // ended between two checks): handling it again would bump
+                // syncVersion and refresh the profile a second time.
+                clientLog('backend_sync_skipped', { service, reason: 'already_handled' });
+                return;
+            }
             // Finished between two checks: let the normal poller process the
             // terminal state once (it is not polling, and the guard above just
             // confirmed nothing started one in the meantime).

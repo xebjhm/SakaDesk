@@ -77,7 +77,7 @@ async def launch_sync(service: str, *, include_inactive: bool = True, force_resy
   - every 5 s while the document is visible, it `GET`s `/api/sync/progress?service=` for each connected service that is not already being polled;
   - if `state === 'running'`, it calls the existing `pollSyncProgress(service, false)` (exposed as `follow`), so the UI follows backend-started syncs exactly as it does user-started ones;
   - on visibility regained, it checks immediately.
-- **Finished unseen.** A sync can finish (or fail) between two checks, or while the window is hidden. The progress response gains `run_id: int`, incremented by `SyncProgress.reset()`. The watcher remembers the last `run_id` it saw per service. When the `run_id` changed and the state is `complete`, `idle` or `error`, it calls `follow(service)` once. That single progress check runs the normal terminal branch of `pollSyncProgress`: the `syncVersion` bump and profile refresh for a finished run, and for a failed run the session-expired / refresh-failed handling (disconnected marking and the login modal). The first observation only records the value. A service that has a poller (`isPolling`, which also covers a frontend-started sync that is still starting) is skipped and its remembered `run_id` is forgotten, so a sync the frontend started is never handled twice. Without this the removal of Effect 2 would drop failures of scheduler syncs silently.
+- **Finished unseen.** A sync can finish (or fail) between two checks, or while the window is hidden. The progress response gains `run_id: int`, incremented by `SyncProgress.reset()`. The watcher remembers the last `run_id` it saw per service. When the `run_id` changed and the state is `complete`, `idle` or `error`, it calls `follow(service)` once. That single progress check runs the normal terminal branch of `pollSyncProgress`: the `syncVersion` bump and profile refresh for a finished run, and for a failed run the session-expired / refresh-failed handling (disconnected marking and the login modal). The first observation only records the value. A service that has a poller (`isPolling`, which also covers a frontend-started sync that is still starting) is skipped and its remembered `run_id` is forgotten, so a sync the frontend started is never handled twice. A frontend-started sync that begins and ends between two checks never shows the watcher a tick with the poller active, so `pollSyncProgress` also records the `run_id` of every progress response it handles (per service, exposed as `lastHandledRunId`), and the watcher skips `follow` for a terminal run whose `run_id` equals that value (logged as `backend_sync_skipped reason=already_handled`). A scheduler run the frontend never saw has a different `run_id` and is still followed once. Without this the removal of Effect 2 would drop failures of scheduler syncs silently.
 
 ---
 
@@ -239,7 +239,7 @@ New events:
 - `app_start`;
 - `autostart`.
 
-Frontend: `client_log` gains `backend_sync_followed` (`service`) when the watcher attaches to a sync started by the backend, with `reason=finished_<state>` when it follows a run that already ended. Add it to both whitelists.
+Frontend: `client_log` gains `backend_sync_followed` (`service`) when the watcher attaches to a sync started by the backend, with `reason=finished_<state>` when it follows a run that already ended. Add it to both whitelists. The watcher also logs `backend_sync_skipped` (`service`, `reason=already_handled`) when it skips a run the frontend already handled; it is whitelisted the same way.
 
 ---
 

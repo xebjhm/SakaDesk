@@ -85,6 +85,7 @@ function App() {
         clearSessionExpired,
         isPolling,
         followSync,
+        lastHandledRunId,
     } = useSync({
         isAuthenticated,
         appSettings,
@@ -123,6 +124,7 @@ function App() {
         services: isAuthenticated ? connectedServices : [],
         isPolling,
         follow: followSync,
+        lastHandledRunId,
     })
 
     // Track active feature per service for disconnected-service detection

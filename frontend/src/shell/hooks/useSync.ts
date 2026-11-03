@@ -116,6 +116,8 @@ export interface UseSyncReturn {
     isPolling: (service: string) => boolean;
     /** Follow a sync that is already running (started by the backend) without blocking the UI */
     followSync: (service: string) => void;
+    /** `run_id` of the last progress response a poller handled for the service (undefined if none) */
+    lastHandledRunId: (service: string) => number | undefined;
 }
 
 /** Options for the useSync hook. */
@@ -185,6 +187,9 @@ export function useSync({
     // startSync's POST /api/sync/start is in flight for the service; isPolling()
     // reports true meanwhile so the backend-sync watcher does not attach a poller.
     const startingRef = useRef<Record<string, boolean>>({});
+    // Per-service run_id of the last /api/sync/progress response a poller handled;
+    // lets the backend-sync watcher skip runs the frontend already processed.
+    const handledRunIdRef = useRef<Record<string, number>>({});
     const hasStartedSyncRef = useRef(false);
     // Track which services have already been synced on startup (to sync newly connected services)
     const syncedServicesRef = useRef<Set<string>>(new Set());
@@ -258,6 +263,7 @@ export function useSync({
             try {
                 const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
                 const data = await res.json();
+                if (typeof data.run_id === 'number') handledRunIdRef.current[service] = data.run_id;
 
                 const currentActiveService = activeServiceRef.current;
                 // Read at completion time (not the call argument): the modal may
@@ -656,6 +662,10 @@ export function useSync({
         (service: string) => !!isPollingRef.current[service] || !!startingRef.current[service],
         [],
     );
+    const lastHandledRunId = useCallback(
+        (service: string): number | undefined => handledRunIdRef.current[service],
+        [],
+    );
     const followSync = useCallback((service: string) => {
         void pollSyncProgress(service, false);
     }, [pollSyncProgress]);
@@ -677,5 +687,6 @@ export function useSync({
         clearSessionExpired,
         isPolling,
         followSync,
+        lastHandledRunId,
     };
 }
