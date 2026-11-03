@@ -13,7 +13,7 @@ import { cn } from '../../utils/classnames';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
-import { getServiceIdFromDisplayName } from '../../data/services';
+import { getServiceDisplayName, getServiceIdFromDisplayName } from '../../data/services';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { persisted } from '../../core/persistence/persisted';
@@ -834,7 +834,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getMemberPath={getMemberPath}
                         />
                     )}
-                    <CallOverlay call={incomingCall} />
+                    <CallOverlay
+                        call={incomingCall}
+                        // Light-style services (櫻坂) use their bubble-edge pink and a white answer button.
+                        accentColor={theme.messages.headerStyle === 'light' ? theme.messages.bubbleBorder : theme.modals.accentColor}
+                        answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
+                        groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
+                    />
                 </div>
 
                 {/* Navigation Buttons */}

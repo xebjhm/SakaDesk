@@ -2,10 +2,20 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../i18n';
 import { CallAudio } from './CallAudio';
 import { CallScreen } from './CallScreen';
+import type { AnswerStyle } from './CallScreen';
 import type { IncomingCall } from './useIncomingCall';
 
+interface CallOverlayProps {
+    call: IncomingCall;
+    /** Group colour for the halo, the eyebrow dot and the answer button. */
+    accentColor: string;
+    answerStyle: AnswerStyle;
+    /** Service display name shown above the member's name. */
+    groupLabel: string;
+}
+
 /** Covers the chat area while a call is active; hosts the call audio and handles Esc/Enter. */
-export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
+export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, answerStyle, groupLabel }) => {
     const { t } = useTranslation();
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const [now, setNow] = useState(() => Date.now());
@@ -90,27 +100,27 @@ export const CallOverlay: React.FC<{ call: IncomingCall }> = ({ call }) => {
             role="dialog"
             aria-label={call.name}
             tabIndex={-1}
-            className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden outline-none"
+            className="absolute inset-0 z-30 overflow-hidden outline-none"
+            style={{ '--sd-accent': accentColor } as React.CSSProperties}
             data-testid="call-overlay"
         >
-            <div
-                aria-hidden
-                className="absolute inset-0 scale-110 bg-cover bg-center blur-2xl"
-                style={{ backgroundImage: `url("${call.photoUrl}")` }}
-            />
-            <div aria-hidden className="absolute inset-0 bg-black/40" />
-            <div className="relative flex h-full w-full items-center justify-center">
-                <CallScreen
-                    phase={phase}
-                    name={call.name}
-                    groupLabel=""
-                    photoUrl={call.photoUrl}
-                    talkSeconds={talkSeconds}
-                    answerStyle="solid"
-                    onAnswer={answer}
-                    onDecline={decline}
-                    onHangUp={hangUp}
-                />
+            <div aria-hidden className="sd-call-ambient" style={{ backgroundImage: `url("${call.photoUrl}")` }} />
+            <div aria-hidden className="sd-call-vignette" />
+            <div className="sd-call-stage">
+                <div className="sd-call-frame">
+                    <div aria-hidden className="sd-call-halo" data-phase={phase} />
+                    <CallScreen
+                        phase={phase}
+                        name={call.name}
+                        groupLabel={groupLabel}
+                        photoUrl={call.photoUrl}
+                        talkSeconds={talkSeconds}
+                        answerStyle={answerStyle}
+                        onAnswer={answer}
+                        onDecline={decline}
+                        onHangUp={hangUp}
+                    />
+                </div>
             </div>
             <CallAudio
                 key={call.message.id}

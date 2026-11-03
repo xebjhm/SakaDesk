@@ -28,7 +28,7 @@ function Harness({
         },
         () => Promise.resolve(),
     );
-    return <div className="relative"><CallOverlay call={call} /></div>;
+    return <div className="relative"><CallOverlay call={call} accentColor="#7cc7e8" answerStyle="solid" groupLabel="日向坂46" /></div>;
 }
 
 function ModalHarness() {
