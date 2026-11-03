@@ -330,7 +330,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 if (thisId !== fetchIdRef.current) return; // stale
                 const memberInfo = data.member as MemberInfo;
                 const mMap = memberInfo ? { [memberInfo.id]: memberInfo } : {};
-                if (memberInfo) setMembersMap(mMap);
+                setMembersMap(mMap);
                 const msgs = data.messages || [];
                 setMessages(msgs);
                 setTotalMessages(data.total_count || 0);
