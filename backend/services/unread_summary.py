@@ -73,6 +73,7 @@ def _total(output_dir: Path, stored: dict[str, Any]) -> int:
     other by its first member folder; the count is the stored read state's
     (or a fresh ``lastReadId`` 0) ``_compute_unread_counts``, capped by the
     group's ``server_unread_count`` when the server's snapshot is known.
+    Graduated group chats are skipped because the sidebar does not show them.
     """
     # Imported lazily: backend.api.content pulls in the whole API layer.
     from backend.api.content import (
@@ -91,6 +92,8 @@ def _total(output_dir: Path, stored: dict[str, Any]) -> int:
     states: dict[str, dict[str, Any]] = {}
     caps: dict[str, int | None] = {}
     for ref in refs:
+        if ref.is_group_chat and ref.is_graduated:
+            continue  # the sidebar does not show graduated group chats
         if ref.is_group_chat:
             folder, member_id = ref.group_dir, 0
         else:

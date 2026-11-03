@@ -177,6 +177,18 @@ async def test_group_chat_is_capped_by_server_unread(env) -> None:
 
 
 @pytest.mark.asyncio
+async def test_graduated_group_chat_is_not_counted(env) -> None:
+    root, _svc = env
+    _write_member(root, f"{DISPLAY}/messages/43 {DISPLAY}/1 A", [{"id": 1}, {"id": 2}])
+    _write_member(root, f"{DISPLAY}/messages/43 {DISPLAY}/2 B", [{"id": 3}])
+    (root / DISPLAY / "sync_metadata.json").write_text(
+        json.dumps({"groups": {}, "server_groups": {"43": {"state": "closed"}}}),
+        encoding="utf-8",
+    )
+    assert await unread_total() == 0
+
+
+@pytest.mark.asyncio
 async def test_a_state_stored_under_a_member_id_does_not_apply_to_a_group_chat(
     env,
 ) -> None:
