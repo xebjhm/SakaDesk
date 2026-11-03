@@ -10,7 +10,14 @@ from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
-from pysaka import Client, Group, SyncManager, RefreshFailedError, SessionExpiredError
+from pysaka import (
+    Client,
+    Group,
+    RateLimitedError,
+    RefreshFailedError,
+    SessionExpiredError,
+    SyncManager,
+)
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
 from backend.services.background_tasks import track_background_task
@@ -37,6 +44,13 @@ logger = structlog.get_logger(__name__)
 # positive value still caps the first sync to the newest N messages per member
 # (see the guard in start_sync); callers may pass one explicitly.
 DEFAULT_INITIAL_MESSAGE_LIMIT = 0
+
+# Minimum seconds between two timeline requests while a sync contains a room's
+# one-time history scan (pysaka Client.timeline_min_interval). Only the timeline
+# endpoint was ever rate limited (HTTP 429, after ~35 requests a minute / ~170
+# in five); 20 a minute (100 in five) is what incremental syncs have always run
+# at without a 429. Incremental-only syncs are not paced.
+SCAN_TIMELINE_INTERVAL = 3.0
 
 
 def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
@@ -328,6 +342,11 @@ class SyncService:
         # sync that stops before then scans them again and their recovered
         # photos/videos are not stranded (see _mark_scanned_rooms).
         scan_complete_gids: list[int] = []
+        # Per-sync 429 circuit breaker: once any call of a room is rate limited,
+        # rooms that have not fetched their timeline yet are deferred to the
+        # next sync (no cursor moves, no scan mark) instead of piling on.
+        rate_limited = asyncio.Event()
+        deferred_gids: list[int] = []
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -532,8 +551,16 @@ class SyncService:
                 # missing from a room's own member list (pysaka extra_room_members).
                 name_hints = {t["member"]["id"]: t["member"] for t in tasks}
                 # One-time room history scans re-read whole timelines; run them one
-                # at a time (with page_delay) to stay under the API rate limit.
+                # at a time (paced, see below) to stay under the API rate limit.
                 scan_sem = asyncio.Semaphore(1)
+                # pysaka 0.4.6: rooms whose history was never fully read are
+                # re-read once from the start (ignoring cursors) so authors
+                # missing from their member list and any gaps are archived.
+                scan_gids = {
+                    gid
+                    for gid in tasks_by_group
+                    if not self.manager.history_scanned(gid)
+                }
                 # (group_id, member_id) -> messages reported as new, for members
                 # whose sync_member count is mostly recovered history: every
                 # author of a room scanned in this sync (only rows newer than
@@ -542,7 +569,40 @@ class SyncService:
                 # their sync_member count. These members are indexed fully.
                 reported_new: dict[tuple[int, int], int] = {}
 
+                def note_rate_limited(gid: int, err: RateLimitedError) -> None:
+                    # Trip the per-sync breaker; logged once per sync.
+                    if not rate_limited.is_set():
+                        rate_limited.set()
+                        logger.warning(
+                            "sync_rate_limited",
+                            group_id=gid,
+                            retry_after=err.retry_after,
+                        )
+
+                def defer_room(
+                    gid: int, scan: bool
+                ) -> list[tuple[dict[str, Any], int]]:
+                    # Nothing fetched, so no cursor moves and no scan mark: the
+                    # next sync retries the room (and its scan) from scratch.
+                    deferred_gids.append(gid)
+                    logger.warning(
+                        "room_sync_deferred",
+                        group_id=gid,
+                        reason="rate_limited",
+                        scan=scan,
+                    )
+                    return []
+
                 async def sync_group(
+                    gid: int, group_tasks: list[dict[str, Any]]
+                ) -> list[tuple[dict[str, Any], int]]:
+                    try:
+                        return await sync_room(gid, group_tasks)
+                    except RateLimitedError as e:
+                        note_rate_limited(gid, e)
+                        raise
+
+                async def sync_room(
                     gid: int, group_tasks: list[dict[str, Any]]
                 ) -> list[tuple[dict[str, Any], int]]:
                     if self.manager is None:
@@ -551,10 +611,9 @@ class SyncService:
                     g_t0 = time.monotonic()
                     group = group_tasks[0]["group"]
                     g_name = group.get("name", "?")
-                    # pysaka 0.4.6: a room whose history was never fully read is
-                    # re-read once from the start (ignoring cursors) so authors
-                    # missing from its member list and any gaps are archived.
-                    scan = not self.manager.history_scanned(gid)
+                    scan = gid in scan_gids
+                    if rate_limited.is_set():
+                        return defer_room(gid, scan)
 
                     # Find the oldest timestamp cursor across all members.
                     # Only consider SYNCED members; unsynced ones (last_ts=None)
@@ -607,6 +666,9 @@ class SyncService:
                     # ONE API call for the entire group
                     if scan:
                         async with scan_sem:
+                            # A sibling may have hit 429 while this room waited.
+                            if rate_limited.is_set():
+                                return defer_room(gid, scan)
                             logger.info(
                                 "room_history_scan_started",
                                 group=g_name,
@@ -615,8 +677,9 @@ class SyncService:
                             progress.set_detail_code("scanning_history")
                             progress.set_detail(g_name)
                             try:
+                                # Paced by timeline_min_interval, not page_delay.
                                 all_messages = await self.manager.client.get_messages(
-                                    session, gid, since_ts=None, page_delay=1.0
+                                    session, gid, since_ts=None, page_delay=0
                                 )
                             except Exception as e:
                                 # The room stays unmarked; the next sync scans
@@ -648,6 +711,8 @@ class SyncService:
                     except (SessionExpiredError, RefreshFailedError):
                         raise
                     except Exception as e:
+                        if isinstance(e, RateLimitedError):
+                            note_rate_limited(gid, e)
                         # In a room being scanned it is safe to go on without
                         # extras: room_archive_complete then stays False, so
                         # the room is scanned again next sync. In a room
@@ -775,6 +840,8 @@ class SyncService:
                         except (SessionExpiredError, RefreshFailedError):
                             raise
                         except Exception as e:
+                            if isinstance(e, RateLimitedError):
+                                note_rate_limited(gid, e)
                             logger.warning(
                                 "past_backfill_failed",
                                 member_id=member_id,
@@ -789,6 +856,8 @@ class SyncService:
                         except (SessionExpiredError, RefreshFailedError):
                             raise
                         except Exception as e:
+                            if isinstance(e, RateLimitedError):
+                                note_rate_limited(gid, e)
                             logger.warning(
                                 "letters_sync_failed",
                                 member_id=member_id,
@@ -844,10 +913,23 @@ class SyncService:
                 # files while the session is torn down. gather awaits every group
                 # (success or failure) before returning, so no writer is orphaned.
                 group_ids = list(tasks_by_group.keys())
-                all_group_results = await asyncio.gather(
-                    *[sync_group(gid, tasks_by_group[gid]) for gid in group_ids],
-                    return_exceptions=True,
-                )
+                # Pace every timeline request of a sync that scans (the client
+                # is per service); reset however phase 2 ends.
+                if scan_gids:
+                    client.timeline_min_interval = SCAN_TIMELINE_INTERVAL
+                    logger.info(
+                        "sync_timeline_pacing",
+                        scan_rooms=len(scan_gids),
+                        interval=SCAN_TIMELINE_INTERVAL,
+                    )
+                try:
+                    all_group_results = await asyncio.gather(
+                        *[sync_group(gid, tasks_by_group[gid]) for gid in group_ids],
+                        return_exceptions=True,
+                    )
+                finally:
+                    if scan_gids:
+                        client.timeline_min_interval = 0.0
 
                 # Aggregate per-group outcomes. Successful groups are kept even
                 # when a sibling failed (partial success). Session-expiry errors
@@ -870,8 +952,9 @@ class SyncService:
                     results.extend(res)
 
                 # Only fail the whole sync if EVERY group failed; a partial
-                # failure still persists the groups that succeeded.
-                if group_errors and not results:
+                # failure still persists the groups that succeeded, and rooms
+                # deferred by the 429 breaker are not failures.
+                if group_errors and len(group_errors) == len(group_ids):
                     first_gid, first_err = group_errors[0]
                     raise RuntimeError(
                         f"All {len(group_errors)} group(s) failed to sync; "
@@ -883,6 +966,7 @@ class SyncService:
                     elapsed=f"{time.monotonic() - phase2_t0:.1f}s",
                     groups=len(tasks_by_group),
                     failed_groups=len(group_errors),
+                    deferred_groups=len(deferred_gids),
                     total_members=total_members,
                     # Recovered history (scanned rooms, first-seen extra
                     # authors): indexed for search, not reported as new.
@@ -1123,6 +1207,12 @@ class SyncService:
             logger.error(traceback.format_exc())
             progress.error(str(e))
         finally:
+            if rate_limited.is_set():
+                logger.warning(
+                    "sync_rate_limit_summary",
+                    deferred_rooms=len(deferred_gids),
+                    group_ids=sorted(deferred_gids),
+                )
             # Only the run that still owns the current generation may clear the
             # running flag / task reference. A stale run (cancelled, superseded
             # by a newer /start) must not clobber a newer run's bookkeeping.
