@@ -11,7 +11,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
 
-const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
+export const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;
