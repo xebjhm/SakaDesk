@@ -569,12 +569,26 @@ class SyncService:
                     # ONE API call for the entire group
                     if scan:
                         async with scan_sem:
+                            logger.info(
+                                "room_history_scan_started",
+                                group=g_name,
+                                group_id=gid,
+                            )
                             progress.set_detail_code("scanning_history")
                             progress.set_detail(g_name)
                             try:
                                 all_messages = await self.manager.client.get_messages(
                                     session, gid, since_ts=None, page_delay=1.0
                                 )
+                            except Exception as e:
+                                # The room stays unmarked; the next sync scans
+                                # it again. The group fails as a whole below.
+                                logger.warning(
+                                    "room_history_scan_fetch_failed",
+                                    group_id=gid,
+                                    error_type=type(e).__name__,
+                                )
+                                raise
                             finally:
                                 progress.set_detail_code(None)
                     else:
@@ -596,13 +610,30 @@ class SyncService:
                     except (SessionExpiredError, RefreshFailedError):
                         raise
                     except Exception as e:
+                        # In a room being scanned it is safe to go on without
+                        # extras: room_archive_complete then stays False, so
+                        # the room is scanned again next sync. In a room
+                        # already scanned, syncing the API members would move
+                        # their cursors past messages of the extra authors and
+                        # strand them; fail the whole room before any cursor
+                        # moves so the next sync retries the same window.
                         logger.warning(
                             "room_extra_members_failed",
                             group_id=gid,
                             error_type=type(e).__name__,
+                            scanned=not scan,
+                            action="continue" if scan else "fail_room",
                         )
+                        if not scan:
+                            raise
                         extra_members = []
                     if extra_members:
+                        logger.info(
+                            "room_extra_members_found",
+                            group_id=gid,
+                            member_ids=[m["id"] for m in extra_members],
+                            count=len(extra_members),
+                        )
                         progress.extend_total(len(extra_members))
                     run_list = list(zip(group_tasks, since_timestamps)) + [
                         (
@@ -628,9 +659,11 @@ class SyncService:
                         # the cursor from the newest message it writes, so the
                         # cursor stays correct; older history beyond the cap is
                         # intentionally not fetched (the documented first-sync cap).
-                        # Extra room authors bypass the cap (spec §4).
+                        # Extra room authors and rooms being scanned bypass
+                        # the cap: a capped scan could never be marked complete.
                         if (
                             not is_extra
+                            and not scan
                             and member_ts is None
                             and initial_limit
                             and initial_limit > 0
@@ -707,10 +740,23 @@ class SyncService:
                     # Mark the one-time scan done only once every author's
                     # messages in the fetched timeline are on disk; otherwise
                     # the next sync scans again.
-                    if scan and await self.manager.room_archive_complete(
-                        group, all_messages
-                    ):
-                        self.manager.mark_history_scanned(gid)
+                    if scan:
+                        marked = await self.manager.room_archive_complete(
+                            group, all_messages
+                        )
+                        if marked:
+                            self.manager.mark_history_scanned(gid)
+                        else:
+                            # pysaka logs which author is incomplete and why.
+                            logger.warning("room_history_scan_incomplete", group_id=gid)
+                        logger.info(
+                            "room_history_scan_finished",
+                            group_id=gid,
+                            fetched_msgs=len(all_messages),
+                            extra_members=len(extra_members),
+                            elapsed=f"{time.monotonic() - g_t0:.1f}s",
+                            marked=marked,
+                        )
 
                     group_new = sum(c for _, c in group_results)
                     logger.debug(
@@ -721,6 +767,8 @@ class SyncService:
                         fetched_msgs=len(all_messages),
                         new_msgs=group_new,
                         min_since_ts=min_since_ts,
+                        history_scan=scan,
+                        extra_members=len(extra_members),
                         elapsed=f"{time.monotonic() - g_t0:.1f}s",
                     )
                     return group_results
@@ -771,6 +819,15 @@ class SyncService:
                     groups=len(tasks_by_group),
                     failed_groups=len(group_errors),
                     total_members=total_members,
+                    # Recovered history (scanned rooms, first-seen extra
+                    # authors): indexed for search, not reported as new.
+                    recovered_members=len(recovered_keys),
+                    excluded_new_messages=sum(
+                        c
+                        for t, c in results
+                        if c > 0
+                        and (t["group"]["id"], t["member"]["id"]) in recovered_keys
+                    ),
                 )
 
                 # Update Metadata from results and track new message counts
