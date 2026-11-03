@@ -124,3 +124,18 @@ def test_log_summary():
     assert s["skipped_initial"] == 2
     assert s["skipped_hidden"] == 1
     assert s["service"] == "hinatazaka46"
+
+
+def test_failed_call_leaves_no_partial_hidden_counter():
+    """A swallowed failure after the hidden filter must not move skipped_hidden."""
+    c = NewMessageCollector("hinatazaka46")
+    info = _info()
+    del info["member_dir"]  # visible rows present -> KeyError while recording
+    with capture_logs() as logs:
+        c.on_new_messages(info, [_msg(1, "t"), _msg(2, "t", state="canceled")])
+        c.log_summary()
+    assert [e for e in logs if e["event"] == "notify_collect_failed"]
+    assert not [e for e in logs if e["event"] == "notify_collect_skip"]
+    (s,) = [e for e in logs if e["event"] == "notify_collected"]
+    assert s["skipped_hidden"] == 0
+    assert c.counts() == {}

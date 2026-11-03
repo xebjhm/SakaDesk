@@ -86,6 +86,11 @@ class NewMessageCollector:
 
         visible = [m for m in new_messages if not is_hidden_message(m)]
         hidden = len(new_messages) - len(visible)
+        # Everything that can raise happens before any counter moves, so a
+        # swallowed failure leaves neither a partial counter nor a partial entry.
+        newest = max(visible, key=_newest_key) if visible else None
+        member_dir = Path(member_info["member_dir"]) if visible else None
+
         if hidden:
             self._skipped_hidden += hidden
             logger.info(
@@ -96,10 +101,9 @@ class NewMessageCollector:
                 member_id=member_id,
                 count=hidden,
             )
-        if not visible:
+        if newest is None or member_dir is None:
             return
 
-        newest = max(visible, key=_newest_key)
         key = (group_id, member_id)
         existing = self._chats.get(key)
         if existing is None:
@@ -108,7 +112,7 @@ class NewMessageCollector:
                 group_name=str(member_info.get("group_name") or ""),
                 member_id=member_id,
                 member_name=str(member_info.get("member_name") or ""),
-                member_dir=Path(member_info["member_dir"]),
+                member_dir=member_dir,
                 count=len(visible),
                 newest=newest,
             )

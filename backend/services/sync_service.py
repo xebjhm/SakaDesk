@@ -118,8 +118,6 @@ class SyncService:
         # self.metadata_file will be resolved dynamically now based on configured output_dir
         self.metadata_file: Optional[Path] = None
         self.manager: Optional[SyncManager] = None
-        # Collector of the current/last start_sync run (set at phase 2).
-        self.new_message_collector: Optional[NewMessageCollector] = None
         # Concurrency ownership (SVC-C1): a reference to the currently running
         # sync asyncio.Task plus a monotonically increasing generation token.
         # cancel() calls task.cancel() and awaits its unwind; the run's finally
@@ -574,19 +572,17 @@ class SyncService:
                         scanned = False
                     if not scanned:
                         scan_gids.add(gid)
-                # (group_id, member_id) -> messages reported as new, for members
-                # whose sync_member count is mostly recovered history: every
-                # author of a room scanned in this sync (only rows newer than
-                # the cursor before this sync are new) and extra authors with
-                # no cursor before it (none new). Members not in it report
-                # their sync_member count. These members are indexed fully.
+                # (group_id, member_id) -> rows of recovered history: every
+                # author of a room scanned in this sync, and extra authors with
+                # no cursor before it. Log diagnostics only (recovered_members /
+                # recovered_rows_excluded); reported new-message totals come
+                # from the collector below, to which scan calls contribute 0.
                 reported_new: dict[tuple[int, int], int] = {}
                 # Messages that were genuinely new on disk this run, fed by
                 # pysaka's on_new_messages callback (incremental calls only).
-                # It is the sole source of the new-message totals; Task 8's
-                # notification planner reads it via self.new_message_collector.
+                # It is the sole source of the new-message totals (a later
+                # task's notification planner reads it from here).
                 collector = NewMessageCollector(self._service)
-                self.new_message_collector = collector
 
                 def note_rate_limited(gid: int, err: RateLimitedError) -> None:
                     # Trip the per-sync breaker; logged once per sync.
@@ -831,10 +827,11 @@ class SyncService:
                                 on_new_messages=collector.on_new_messages,
                             )
                         # A scanned room's counts and a first-seen extra author's
-                        # counts are recovered history: searchable (full scan) but
-                        # not reported as new. In a scanned room only the
-                        # author's rows newer than its cursor are new (none
-                        # without a cursor), never more than sync_member wrote.
+                        # counts are recovered history: searchable (full scan)
+                        # but never reported as new. `new` below is a log
+                        # diagnostic only: the author's rows newer than its
+                        # cursor, capped by what sync_member wrote (0 without
+                        # a cursor); it does not feed the reported totals.
                         if scan or (is_extra and member_ts is None):
                             new = (
                                 min(
@@ -917,7 +914,7 @@ class SyncService:
                             extra_members=len(extra_members),
                             elapsed=f"{time.monotonic() - g_t0:.1f}s",
                             complete=complete,
-                            new_msgs=scan_new,
+                            rows_newer_than_cursor=scan_new,
                         )
 
                     group_new = sum(c for _, c in group_results)
@@ -1006,10 +1003,11 @@ class SyncService:
                     failed_groups=len(group_errors),
                     deferred_groups=len(deferred_gids),
                     total_members=total_members,
-                    # Recovered history (scanned rooms, first-seen extra
-                    # authors): indexed for search, not reported as new.
+                    # Diagnostics, not reported counts: recovered history
+                    # (scanned rooms, first-seen extra authors) is indexed for
+                    # search and never reported as new.
                     recovered_members=len(reported_new),
-                    excluded_new_messages=sum(
+                    recovered_rows_excluded=sum(
                         c - reported_new[k]
                         for t, c in results
                         if (k := (t["group"]["id"], t["member"]["id"])) in reported_new

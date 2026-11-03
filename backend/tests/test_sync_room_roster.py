@@ -395,7 +395,7 @@ async def test_scan_breadcrumbs_logged(tmp_path):
     assert not _events(logs, "room_history_scan_incomplete")
     (phase2,) = _events(logs, "phase2_complete")
     assert phase2["recovered_members"] == 3
-    assert phase2["excluded_new_messages"] == 54  # 1 + 50 + 3
+    assert phase2["recovered_rows_excluded"] == 54  # 1 + 50 + 3
     # Breadcrumbs carry ids/counts only, never message text.
     assert "Message 1" not in repr(logs)
 
@@ -661,9 +661,9 @@ async def test_scanning_room_reports_no_new_messages(tmp_path):
     (phase2,) = _events(logs, "phase2_complete")
     assert phase2["new_messages"] == 0
     assert phase2["recovered_members"] == 3
-    assert phase2["excluded_new_messages"] == 5  # 6 written - 1 newer than cursor
+    assert phase2["recovered_rows_excluded"] == 5  # 6 written - 1 newer than cursor
     (finished,) = _events(logs, "room_history_scan_finished")
-    assert finished["new_msgs"] == 1
+    assert finished["rows_newer_than_cursor"] == 1
 
 
 async def test_scanning_room_new_count_capped_by_written(tmp_path):
