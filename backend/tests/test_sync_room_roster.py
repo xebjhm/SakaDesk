@@ -421,7 +421,7 @@ async def test_extra_failure_breadcrumb_fields(tmp_path, scanned, action, synced
         "log_level": "warning",
         "group_id": 43,
         "error_type": "RuntimeError",
-        "scanned": scanned,
+        "already_scanned": scanned,
         "action": action,
     }
     assert _synced_group_ids(m) == synced

@@ -651,7 +651,7 @@ class SyncService:
                             "room_extra_members_failed",
                             group_id=gid,
                             error_type=type(e).__name__,
-                            scanned=not scan,
+                            already_scanned=not scan,
                             action="continue" if scan else "fail_room",
                         )
                         if not scan:
