@@ -49,6 +49,8 @@ packages_to_collect = [
     'structlog',
     'pykakasi',
     'jaconv',
+    'windows_toasts',
+    'winrt',
 ]
 
 for pkg in packages_to_collect:

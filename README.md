@@ -156,7 +156,7 @@ SakaDesk/
 │       ├── adaptive_sync.py # Adaptive sync scheduling
 │       ├── auth_service.py  # Authentication logic
 │       ├── blog_service.py  # Blog backup engine
-│       ├── notification_service.py # Notification handling
+│       ├── notification_service.py # Native Windows toast delivery
 │       ├── path_resolver.py # Data path resolution
 │       ├── platform.py      # Cross-platform utilities
 │       ├── search_service.py # Search index & query
@@ -214,7 +214,7 @@ When running the backend, interactive API documentation is available at:
 - **python-multipart** + **aiofiles** - File upload and async file I/O
 - **keyring** + **keyrings-alt** - Secure credential storage
 - **structlog** - Structured logging
-- **plyer** - Native desktop notifications
+- **windows-toasts** - Native Windows toast notifications
 - **pykakasi** + **jaconv** - Japanese transliteration for search
 - **tk** - Tkinter for native file dialogs
 

@@ -9,11 +9,13 @@ from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from backend.services.i18n import get_strings
 from backend.services.notification_service import (
-    set_notifications_enabled,
     get_notification_status,
-    send_notification,
+    send_test,
+    set_notifications_enabled,
 )
+from backend.services.settings_store import load_config
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
@@ -28,8 +30,10 @@ class NotificationStatus(BaseModel):
     """Notification system status."""
 
     enabled: bool
-    plyer_available: bool
+    available: bool
+    backend: str
     last_error: Optional[str]
+    aumid: str
 
 
 @router.get("", response_model=NotificationStatus)
@@ -48,15 +52,13 @@ async def update_settings(settings: NotificationSettings):
 
 @router.post("/test")
 async def test_notification():
-    """Send a test notification to verify the system works."""
-    success = send_notification(
-        title="SakaDesk Test",
-        message="Notifications are working!",
-        timeout=5,
-    )
+    """Send a test toast in the UI language; echo the strings it carries."""
+    config = await load_config()
+    language = config.get("language")
+    strings = get_strings("notifications", language)
+    success = await send_test(language)
     return {
         "success": success,
-        "message": "Test notification sent"
-        if success
-        else "Failed to send notification",
+        "title": strings["test_title"],
+        "body": strings["test_body"],
     }
