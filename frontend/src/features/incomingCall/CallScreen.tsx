@@ -2,12 +2,8 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Phone, PhoneOff } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { formatTalkTime } from './formatTalkTime';
 import type { CallPhase } from './useIncomingCall';
-
-export function formatTalkTime(seconds: number): string {
-    const s = Math.max(0, Math.floor(seconds));
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
 
 interface CallScreenProps {
     phase: Exclude<CallPhase, 'idle'>;
@@ -25,7 +21,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
 }) => {
     const { t } = useTranslation();
     return (
-        <div className="relative w-[280px] h-[560px] rounded-[44px] bg-black p-2.5 shadow-2xl">
+        <div className="relative shrink-0 w-auto aspect-[1/2] h-[min(560px,calc(100%-32px))] rounded-[44px] bg-black p-2.5 shadow-2xl">
             <div className="relative w-full h-full rounded-[36px] overflow-hidden bg-gray-900">
                 {phase === 'ringing' && (
                     <div className="flex flex-col h-full">
@@ -39,7 +35,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                             />
                             <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-black/70 to-transparent text-white">
                                 <p className="text-xl font-semibold">{name}</p>
-                                <p className="text-sm opacity-90">{t('call.incoming')}</p>
+                                <p aria-live="polite" className="text-sm opacity-90">{t('call.incoming')}</p>
                             </div>
                         </div>
                         <div className="flex items-center justify-around bg-white py-6">
@@ -91,7 +87,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                     <>
                         <img src={photoUrl} alt="" className="absolute inset-0 w-full h-full object-cover opacity-40 grayscale" />
                         <div className="absolute inset-0 flex items-center justify-center">
-                            <p className="text-lg font-semibold text-white">{t('call.ended')}</p>
+                            <p aria-live="polite" className="text-lg font-semibold text-white">{t('call.ended')}</p>
                         </div>
                     </>
                 )}

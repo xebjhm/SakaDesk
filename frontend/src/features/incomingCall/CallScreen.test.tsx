@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { CallScreen, formatTalkTime } from './CallScreen';
+import { CallScreen } from './CallScreen';
+import { formatTalkTime } from './formatTalkTime';
 
 const props = {
     name: '金村 美玖', photoUrl: '/img/phone.jpg', talkSeconds: 0,
@@ -8,6 +9,12 @@ const props = {
 };
 
 describe('CallScreen', () => {
+    it('sizes the phone by height at 1:2, capped at 560px and the available height', () => {
+        const { container } = render(<CallScreen {...props} phase="ringing" />);
+        const phone = container.firstElementChild as HTMLElement;
+        expect(phone).toHaveClass('aspect-[1/2]', 'w-auto', 'h-[min(560px,calc(100%-32px))]');
+    });
+
     it('ringing shows the name, the incoming text and answer/decline', () => {
         render(<CallScreen {...props} phase="ringing" />);
         expect(screen.getByText('金村 美玖')).toBeInTheDocument();
