@@ -67,6 +67,17 @@ describe('useBackendSyncWatcher', () => {
         expect(follow).not.toHaveBeenCalled();
     });
 
+    it('logs a breadcrumb and does nothing when the progress request is rejected', async () => {
+        const debug = vi.spyOn(console, 'debug').mockImplementation(() => {});
+        fetchMock.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) });
+        mount();
+        await flush();
+        expect(debug).toHaveBeenCalledWith('[backendSyncWatcher] progress rejected', 'hinatazaka46', 503);
+        expect(follow).not.toHaveBeenCalled();
+        expect(onMissedCompletion).not.toHaveBeenCalled();
+        debug.mockRestore();
+    });
+
     it('only records run_id on first observation (no missed completion)', async () => {
         progress.hinatazaka46 = { state: 'complete', run_id: 7 };
         mount();

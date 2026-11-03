@@ -302,6 +302,65 @@ describe('useSync', () => {
         expect(result.current.isPolling('hinatazaka46')).toBe(false)
     })
 
+    describe('startSync racing the backend sync watcher', () => {
+        afterEach(() => { vi.useRealTimers() })
+
+        function stubStartAndProgress() {
+            let resolvePost: (r: unknown) => void = () => {}
+            const progress = { state: 'running' as string }
+            vi.stubGlobal('fetch', vi.fn((url: string) => {
+                if (String(url).includes('/api/sync/start')) {
+                    return new Promise(resolve => { resolvePost = resolve })
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ...progress }) })
+            }))
+            return { progress, resolvePost: (r: unknown) => resolvePost(r) }
+        }
+
+        it('reports isPolling true while the start POST is in flight', async () => {
+            const { resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+
+            let pending: Promise<void> = Promise.resolve()
+            act(() => { pending = result.current.startSync(true, 'hinatazaka46') })
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
+                await pending
+            })
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+
+        it('closes the blocking modal when a follow lands before the start POST resolves', async () => {
+            vi.useFakeTimers()
+            const { progress, resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let pending: Promise<void> = Promise.resolve()
+            act(() => { pending = result.current.startSync(true, 'hinatazaka46') })
+            expect(result.current.showSyncModal).toBe(true)
+
+            // Watcher-style follow (non-blocking) attaches the poller first.
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('running')
+
+            // POST resolves afterwards: its blocking poll request must upgrade the live poller.
+            await act(async () => {
+                resolvePost({ ok: true, json: () => Promise.resolve({ status: 'started' }) })
+                await pending
+            })
+            expect(result.current.showSyncModal).toBe(true)
+
+            progress.state = 'idle'
+            await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle')
+            expect(result.current.showSyncModal).toBe(false)
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+    })
+
     it('should provide verifyAndFix callback', () => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,

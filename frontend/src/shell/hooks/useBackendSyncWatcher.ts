@@ -66,7 +66,10 @@ export function useBackendSyncWatcher({
         let data: ProgressResponse;
         try {
             const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
-            if (!res.ok) return;
+            if (!res.ok) {
+                console.debug('[backendSyncWatcher] progress rejected', service, res.status);
+                return;
+            }
             data = await res.json();
         } catch (err) {
             console.debug('[useBackendSyncWatcher] progress check failed', service, err);
