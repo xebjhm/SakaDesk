@@ -17,7 +17,7 @@ import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-import { buildMediaUrl } from '../mediaUrl';
+import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
 
 interface ShelterColors {
     picture: string;
@@ -153,7 +153,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     message,
     member_name,
     member_avatar,
-    api_base = "/api/content/media",
+    api_base = MEDIA_API_BASE,
     isUnread = false,
     onReveal,
     onLongPress,

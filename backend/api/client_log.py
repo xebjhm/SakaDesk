@@ -12,6 +12,7 @@ import structlog
 from fastapi import APIRouter, Response
 from pydantic import (
     BaseModel,
+    Field,
     StrictBool,
     StrictInt,
     StringConstraints,
@@ -53,7 +54,7 @@ FieldValue = Union[StrictBool, StrictInt, CodeStr]
 
 class ClientLogEntry(BaseModel):
     event: ClientEvent
-    fields: dict[str, FieldValue] = {}
+    fields: dict[str, FieldValue] = Field(default_factory=dict)
 
     @field_validator("fields")
     @classmethod

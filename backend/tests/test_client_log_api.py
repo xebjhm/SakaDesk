@@ -69,6 +69,18 @@ def test_call_error_logs_at_warning():
     assert _client_events(logs)[0]["log_level"] == "warning"
 
 
+def test_non_error_event_logs_at_info():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "call_skip", "fields": {"reason": "no_voice"}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert len(events) == 1
+    assert events[0]["log_level"] == "info"
+
+
 @pytest.mark.parametrize(
     "body",
     [
