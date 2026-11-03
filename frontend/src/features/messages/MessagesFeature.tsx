@@ -16,6 +16,7 @@ import { getServiceIdFromDisplayName } from '../../data/services';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { persisted } from '../../core/persistence/persisted';
+import { memberImageUrl } from './profileImages';
 
 // Types specific to messages feature
 export interface GroupMessage extends Message {
@@ -553,7 +554,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
         return {
             name: formatName(msg.member_name || memberInfo?.name || selectedName || 'Unknown'),
-            avatar: memberInfo?.thumbnail || memberInfo?.portrait || memberInfo?.phone_image
+            avatar: memberImageUrl(memberInfo, 'thumbnail') || memberInfo?.portrait || memberImageUrl(memberInfo, 'phone_image')
         };
     }, [isGroupChat, membersMap, selectedName]);
 
@@ -731,7 +732,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             isGroupChat={isGroupChat}
                             messages={messages}
                             memberName={selectedName || ''}
-                            memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
+                            memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
                             activeService={activeService || undefined}
                             onSelectDate={scrollToDate}
@@ -875,9 +876,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 isOpen={showMemberProfile}
                 onClose={() => setShowMemberProfile(false)}
                 memberName={selectedName || ''}
-                memberAvatar={Object.values(membersMap)[0]?.thumbnail || Object.values(membersMap)[0]?.portrait}
+                memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
                 groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
                 activeService={activeService || undefined}
+                memberPath={isGroupChat ? undefined : selectedGroupDir}
             />
 
             {/* Media Viewer Modal */}

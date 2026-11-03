@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { cn } from '../../../utils/classnames';
 import { Users, RefreshCw } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
@@ -8,6 +8,11 @@ import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
+import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
+import { Portal } from '../../../core/common/Portal';
+import { MemberContextMenu } from './MemberContextMenu';
+import { ProfileImageViewer } from './ProfileImageViewer';
 
 interface GroupInfo {
     id: string;
@@ -21,6 +26,7 @@ interface GroupInfo {
     is_graduated?: boolean;
     server_unread_count?: number | null; // Server's last-synced unread (phone -> Windows); null = unknown
     thumbnail?: string; // Group thumbnail
+    thumbnail_local?: string | null; // Archived local copy of the group thumbnail, if any
     last_message_id?: number;
     total_messages?: number;
     members: MemberInfo[];
@@ -52,6 +58,23 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
+    const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+    const [viewer, setViewer] = useState<ProfileImagesByKind | null>(null);
+
+    // Only the latest "View images" request may open the viewer.
+    const imagesRequestId = useRef(0);
+    const openImages = (path: string) => {
+        const requestId = ++imagesRequestId.current;
+        fetchProfileImages(path)
+            .then(k => {
+                if (requestId !== imagesRequestId.current) return;
+                if (PROFILE_IMAGE_KINDS.every(kind => !k[kind]?.length)) return;
+                setViewer(k);
+            })
+            .catch(err => {
+                if (requestId === imagesRequestId.current) console.error('Failed to load profile images:', err);
+            });
+    };
 
     // Get theme colors for current service
     const theme = useMessagesTheme();
@@ -128,16 +151,12 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             setUnreadCounts(counts);
         } catch (err) {
             console.error('Failed to fetch unread counts:', err);
-            // Fallback: don't show any unread counts rather than showing wrong ones
-            setUnreadCounts({});
+            // Keep the last known counts: they were correct one poll ago, while
+            // clearing them made every badge flicker off on a single hiccup.
         }
     };
 
-    useEffect(() => {
-        loadGroups();
-        const interval = setInterval(loadGroups, UI_CONSTANTS.polling.sidebarMs);
-        return () => clearInterval(interval);
-    }, [activeService]);
+    useVisiblePolling(loadGroups, UI_CONSTANTS.polling.sidebarMs, [activeService]);
 
     useEffect(() => {
         if (isSyncing === false) {
@@ -166,7 +185,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 shortName: getShortName(group.name),
                 path: group.group_path,  // Use full group path from API
                 isGroupChat: true,
-                avatar: group.thumbnail || null, // Use group thumbnail from metadata
+                avatar: group.thumbnail_local || group.thumbnail || null, // Prefer archived copy, then group thumbnail from metadata
                 isActive: group.is_active ?? true
             };
         } else {
@@ -176,8 +195,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 shortName: getShortName(member?.name || group.name),
                 path: member?.path || group.group_path,  // Use member's full path from API
                 isGroupChat: false,
-                // Priority: Group Thumbnail (from messages.json member meta) > Thumbnail > Portrait > Phone
-                avatar: member?.group_thumbnail || member?.thumbnail || member?.portrait || member?.phone_image || null,
+                // Priority: Group Thumbnail (from messages.json member meta) > Thumbnail > Portrait > Phone;
+                // each image prefers its archived local copy over the CDN URL
+                avatar: memberImageUrl(member, 'group_thumbnail') || memberImageUrl(member, 'thumbnail') || member?.portrait || memberImageUrl(member, 'phone_image') || null,
                 isActive: group.is_active ?? true
             };
         }
@@ -215,6 +235,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     <button
                         key={group.id}
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
+                        onContextMenu={info.isGroupChat ? undefined : (e) => {
+                            e.preventDefault();
+                            setMenu({ x: e.clientX, y: e.clientY, path: info.path });
+                        }}
                         className="flex flex-col items-center py-1 relative group"
                         title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
@@ -378,6 +402,16 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     )}
                 </div>
             </div>
+
+            {menu && (
+                <MemberContextMenu x={menu.x} y={menu.y} onViewImages={() => openImages(menu.path)} onClose={() => setMenu(null)} />
+            )}
+            {viewer && (
+                // Portaled: the sidebar's transformed ancestor would otherwise trap the fixed viewer.
+                <Portal>
+                    <ProfileImageViewer images={viewer} initialKind="thumbnail" onClose={() => setViewer(null)} />
+                </Portal>
+            )}
         </div>
     );
 };

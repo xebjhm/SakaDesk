@@ -6,6 +6,9 @@ export interface MemberInfo {
     thumbnail?: string;
     phone_image?: string;
     group_thumbnail?: string;
+    thumbnail_local?: string | null;  // Archived local copy (pysaka profile_images), if any
+    phone_image_local?: string | null;
+    group_thumbnail_local?: string | null;
     dir_name?: string;
     path?: string;  // Full path to member directory from output_dir
 }

@@ -1,12 +1,14 @@
 # Known Bugs
 
-## 1. A chat may stay frozen if its last page is exactly 200 messages
-Rare edge case left after the frozen-chat fix below. If a chat was synced from
-its very first message, its whole history is an exact multiple of 200 messages,
-and the member posts nothing new, sync for that chat keeps failing (it cannot tell the true end of the history from a
-dropped page). It recovers on its own as soon as the member posts again.
+No known bugs at the moment.
 
 ## Resolved
+
+### A chat could stay frozen if its last page was exactly 200 messages
+If a chat was synced from its very first message, its whole history was an
+exact multiple of 200 messages, and the member posted nothing new, sync for
+that chat kept failing until the member posted again. Fixed by updating the
+sync library (pysaka 0.4.5).
 
 ### Some chats stopped receiving new messages (0.3.2–0.3.3)
 Chats whose sync position sat at their oldest message (often official group

@@ -38,6 +38,8 @@ interface MediaViewerModalProps {
     currentIndex: number;
     onClose: () => void;
     onNavigate: (index: number) => void;
+    /** Optional content shown top-centre (e.g. tabs); clicks on it don't close the viewer. */
+    headerSlot?: React.ReactNode;
 }
 
 /**
@@ -53,6 +55,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     currentIndex,
     onClose,
     onNavigate,
+    headerSlot,
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -131,6 +134,12 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <X className="w-6 h-6" />
             </button>
 
+            {headerSlot && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10" onClick={e => e.stopPropagation()}>
+                    {headerSlot}
+                </div>
+            )}
+
             {/* Media content */}
             <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
                 {item.type === 'picture' && (
@@ -193,7 +202,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 </div>
             )}
 
-            {/* Source label */}
+            {/* Source label: a jump link when it has a target, plain text otherwise */}
             {item.sourceLabel && item.onSourceJump && (
                 <button
                     onClick={(e) => { e.stopPropagation(); item.onSourceJump!(); }}
@@ -201,6 +210,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 >
                     {item.sourceLabel}
                 </button>
+            )}
+            {item.sourceLabel && !item.onSourceJump && (
+                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm max-w-[60vw] truncate">
+                    {item.sourceLabel}
+                </div>
             )}
 
             {/* Clipboard toast */}

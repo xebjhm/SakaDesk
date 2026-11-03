@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from pysaka import Client
+from pysaka.manager import SyncManager
 from pysaka.credentials import get_token_manager
 from backend.services.platform import (
     get_settings_path,
@@ -35,11 +36,11 @@ from backend.services.platform import (
     is_test_mode,
     get_default_output_dir,
 )
+from backend.services.messages_cache import get_messages_summary
 from backend.services.service_utils import (
     get_service_enum,
     validate_service,
     get_service_display_name,
-    atomic_write_json,
 )
 
 router = APIRouter(prefix="/api/favorites", tags=["favorites"])
@@ -77,8 +78,9 @@ def _update_local_favorite(message_id: int, is_favorite: bool, service: str) -> 
     matching the first bare id could flip the wrong message on a cross-service
     collision (SD-BE-API-05), so we scope the search to this service's directory.
 
-    Writes are atomic (temp file + os.replace) so a crash mid-write cannot corrupt
-    the synced archive (SD-BE-API-02). Returns True if found and updated.
+    Writes go through pysaka's ``SyncManager.update_message_fields_sync``, which is
+    atomic and holds the same per-file lock as sync (SD-BE-API-02). Returns True if
+    found and updated.
 
     Blocking I/O — call via ``asyncio.to_thread`` from async handlers.
     """
@@ -107,25 +109,20 @@ def _update_local_favorite(message_id: int, is_favorite: bool, service: str) -> 
                 continue
 
             try:
-                with open(msg_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-
-                messages = data.get("messages", [])
-                found = False
-
-                for msg in messages:
-                    if msg.get("id") == message_id:
-                        msg["is_favorite"] = is_favorite
-                        found = True
-                        break
-
-                if found:
-                    atomic_write_json(msg_file, data)
+                # Locate via the stat-keyed summary (no full parse unless the
+                # file changed), then write through pysaka's per-file lock so a
+                # sync writing the same file cannot drop either change.
+                if not get_messages_summary(msg_file).has_id(message_id):
+                    continue
+                if SyncManager.update_message_fields_sync(
+                    msg_file, message_id, {"is_favorite": is_favorite}
+                ):
                     logger.info(
                         f"Updated local favorite: service={service}, "
                         f"msg={message_id}, is_favorite={is_favorite}"
                     )
                     return True
+                return False
 
             except Exception as e:
                 logger.warning(f"Error updating {msg_file}: {e}")

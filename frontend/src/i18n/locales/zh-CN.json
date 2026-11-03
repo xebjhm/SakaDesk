@@ -533,5 +533,16 @@
       "geminiPaid": "付费方案 — 每 100 次翻译约 US$0.01。数据不会用于训练。",
       "openai": "API 数据不会用于训练"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "列表头像",
+    "thumbnailGroupHint": "显示在聊天室列表上的图标",
+    "thumbnail": "聊天头像",
+    "thumbnailHint": "聊天室内消息旁的头像",
+    "phoneImage": "来电画面",
+    "phoneImageHint": "来电时显示的照片",
+    "viewImages": "查看图片",
+    "current": "目前",
+    "versions": "{{count}} 个版本"
   }
 }

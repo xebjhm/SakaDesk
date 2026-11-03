@@ -328,7 +328,9 @@ class SyncService:
             existing_content = [
                 f
                 for f in existing_files
-                if f.name not in ["sync_metadata.json", "sync_state.json"]
+                # "account" is written by archive_account_profile early in every
+                # sync, so a first sync that failed afterwards must stay fresh.
+                if f.name not in ["sync_metadata.json", "sync_state.json", "account"]
             ]
             is_fresh = len(existing_content) == 0
 
@@ -359,6 +361,17 @@ class SyncService:
                     logger.info("No groups found!")
                     progress.complete()
                     return
+
+                # pysaka 0.4.5: own nickname + avatar (for the chat's letter
+                # bubbles). Personal fields are never stored by pysaka.
+                try:
+                    await self.manager.archive_account_profile(session)
+                except (SessionExpiredError, RefreshFailedError):
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "account_profile_failed", error_type=type(e).__name__
+                    )
 
                 progress.set_completed(len(groups))
                 # Build task list
@@ -471,6 +484,16 @@ class SyncService:
 
                 SYNC_OVERLAP_SECONDS = 300  # 5-minute overlap window
 
+                # Members whose pre-subscription messages were recovered by
+                # backfill, keyed by (group_id, member_id) -> (group, member).
+                # Kept apart from the per-member "new" counts: old messages
+                # must be searchable but never reported as new (notifications,
+                # totals). Holding the dicts means members of a group that
+                # failed later are still indexed.
+                backfilled_members: dict[
+                    tuple[int, int], tuple[dict[str, Any], dict[str, Any]]
+                ] = {}
+
                 async def sync_group(
                     gid: int, group_tasks: list[dict[str, Any]]
                 ) -> list[tuple[dict[str, Any], int]]:
@@ -564,6 +587,41 @@ class SyncService:
                             media_queue,
                             prefetched_messages=member_prefetched,
                         )
+                        # pysaka 0.4.5: once per member, merge the ~1-1.5 days
+                        # before the first subscription (and their media). Free
+                        # after the first success (flag in sync_state); never
+                        # fails the sync.
+                        try:
+                            backfilled = await self.manager.backfill_past_messages(
+                                session, task["group"], task["member"]
+                            )
+                            if type(backfilled) is int and backfilled > 0:
+                                backfilled_members[(gid, member_id)] = (
+                                    task["group"],
+                                    task["member"],
+                                )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                "past_backfill_failed",
+                                member_id=member_id,
+                                error_type=type(e).__name__,
+                            )
+                        # pysaka 0.4.5: archive the account's sent letters to
+                        # this member (shown inline in the chat later).
+                        try:
+                            await self.manager.sync_letters(
+                                session, task["group"], task["member"]
+                            )
+                        except (SessionExpiredError, RefreshFailedError):
+                            raise
+                        except Exception as e:
+                            logger.warning(
+                                "letters_sync_failed",
+                                member_id=member_id,
+                                error_type=type(e).__name__,
+                            )
                         m_name = task["member"]["name"]
                         progress.update(
                             1, detail=f"{m_name} ({count:,})", detail_extra=""
@@ -659,23 +717,42 @@ class SyncService:
                         total_new_messages, members_with_new
                     )
 
-                    # Update search index in background (non-fatal, must not block sync)
-                    # The single-thread _write_executor can be contended by blog
-                    # indexing; awaiting here would stall Phase 3 for minutes.
+                # Update search index in background (non-fatal, must not block
+                # sync). Covers members with new messages AND members whose
+                # pre-subscription messages were recovered by backfill (those
+                # are searchable but deliberately not counted as new above).
+                # The single-thread _write_executor can be contended by blog
+                # indexing; awaiting here would stall Phase 3 for minutes.
+                changed: dict[
+                    tuple[int, int], tuple[dict[str, Any], dict[str, Any]]
+                ] = {
+                    (task["group"]["id"], task["member"]["id"]): (
+                        task["group"],
+                        task["member"],
+                    )
+                    for task, count in results
+                    if count > 0
+                }
+                changed.update(
+                    (key, pair)
+                    for key, pair in backfilled_members.items()
+                    if key not in changed
+                )
+                members_with_changes = list(changed.values())
+                if members_with_changes:
                     try:
                         from backend.services.search_service import get_search_service
 
                         search_svc = get_search_service()
-                        members_with_changes = [
-                            (task["group"], task["member"])
-                            for task, count in results
-                            if count > 0
-                        ]
 
                         async def _bg_index():
                             try:
+                                # Backfilled messages sit below the member's
+                                # indexed watermark: scan those members fully.
                                 indexed = await search_svc.index_members(
-                                    members_with_changes, self._service
+                                    members_with_changes,
+                                    self._service,
+                                    full_member_scan=list(backfilled_members),
                                 )
                                 logger.info("Search index updated", indexed=indexed)
                             except Exception as e:

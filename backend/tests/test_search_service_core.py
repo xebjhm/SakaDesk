@@ -1262,6 +1262,115 @@ class TestProcessLevelFunctions:
         assert first == 3
         assert second == 0
 
+    def test_index_members_process_full_scan_indexes_ids_below_watermark(
+        self, db_path: Path, output_dir: Path
+    ):
+        """Backfilled (pre-subscription) messages have ids BELOW the member's
+        newest indexed message. The watermark path skips them; a full-scan
+        member must index exactly the missing ones, once."""
+        group = {"id": 1, "name": "テストグループ"}
+        member = {"id": 100, "name": "田中美久"}
+        members_json = json.dumps([[group, member]])
+        msg_file = (
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json"
+        )
+        mock_pykakasi = self._make_mock_pykakasi()
+        with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
+            # Existing user: only the high-id message is indexed so far.
+            _write_messages_json(
+                msg_file,
+                [{"id": 50, "content": "新しい投稿", "timestamp": "2026-01-03"}],
+            )
+            assert (
+                _index_members_process(
+                    str(db_path), str(output_dir), members_json, _SERVICE_ID
+                )
+                == 1
+            )
+
+            # Backfill merges older messages (ids 5 and 6) into the file.
+            _write_messages_json(
+                msg_file,
+                [
+                    {"id": 5, "content": "過去のメッセージ", "timestamp": "2026-01-01"},
+                    {"id": 6, "content": "もう一つ過去", "timestamp": "2026-01-01"},
+                    {"id": 50, "content": "新しい投稿", "timestamp": "2026-01-03"},
+                ],
+            )
+            # Normal incremental path is unchanged: skips ids <= watermark.
+            assert (
+                _index_members_process(
+                    str(db_path), str(output_dir), members_json, _SERVICE_ID
+                )
+                == 0
+            )
+            full_scan_json = json.dumps([[1, 100]])
+            first = _index_members_process(
+                str(db_path),
+                str(output_dir),
+                members_json,
+                _SERVICE_ID,
+                full_scan_json,
+            )
+            second = _index_members_process(
+                str(db_path),
+                str(output_dir),
+                members_json,
+                _SERVICE_ID,
+                full_scan_json,
+            )
+
+        assert first == 2
+        assert second == 0
+        conn = sqlite3.connect(str(db_path))
+        try:
+            ids = sorted(
+                r[0] for r in conn.execute("SELECT message_id FROM search_messages")
+            )
+            assert ids == [5, 6, 50]
+            hits = conn.execute(
+                "SELECT message_id FROM search_fts "
+                "JOIN search_messages ON search_messages.rowid = search_fts.rowid "
+                "WHERE search_fts MATCH ?",
+                ('"過去のメッセージ"',),
+            ).fetchall()
+            assert [h[0] for h in hits] == [5]
+        finally:
+            conn.close()
+
+    def test_index_members_process_full_scan_only_applies_to_listed_members(
+        self, db_path: Path, output_dir: Path
+    ):
+        """A member not listed for full scan keeps the watermark behaviour."""
+        members_json = json.dumps(
+            [
+                [{"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"}],
+                [
+                    {"id": 1, "name": "テストグループ"},
+                    {"id": 200, "name": "佐々木久美"},
+                ],
+            ]
+        )
+        mock_pykakasi = self._make_mock_pykakasi()
+        with patch.dict("sys.modules", {"pykakasi": mock_pykakasi}):
+            _index_members_process(
+                str(db_path), str(output_dir), members_json, _SERVICE_ID
+            )
+            # Nothing new anywhere, and the full scan finds nothing missing.
+            count = _index_members_process(
+                str(db_path),
+                str(output_dir),
+                members_json,
+                _SERVICE_ID,
+                json.dumps([[1, 100]]),
+            )
+        assert count == 0
+
     def test_index_blogs_for_service_process(self, db_path: Path, output_dir: Path):
         db_path.parent.mkdir(parents=True, exist_ok=True)
         mock_pykakasi = self._make_mock_pykakasi()

@@ -533,5 +533,16 @@
       "geminiPaid": "有料枠 — 翻訳100件あたり約US$0.01。データはトレーニングに使用されません。",
       "openai": "APIデータはトレーニングに使用されません"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "一覧アイコン",
+    "thumbnailGroupHint": "トーク一覧に表示されるアイコン",
+    "thumbnail": "トークアイコン",
+    "thumbnailHint": "トーク内のメッセージ横に表示されるアイコン",
+    "phoneImage": "着信画面",
+    "phoneImageHint": "着信時に表示される写真",
+    "viewImages": "画像を見る",
+    "current": "現在",
+    "versions": "{{count}} 件"
   }
 }

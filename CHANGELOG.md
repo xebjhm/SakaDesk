@@ -7,7 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **See a member's list icon, chat icon and call-screen photo.** Open them from
+  the new buttons on the profile card, by clicking the large avatar, or with
+  View images on a member's right-click menu. Copy and save work like other
+  photos.
+- **Avatar history.** Every time a member changes one of these images,
+  SakaDesk keeps the old one; flip through them with the arrow keys and see
+  when each was in use.
+- **Messages from just before you subscribed.** After updating, the next sync
+  adds the day or so of messages the member sent right before your first
+  subscription, which the app never downloaded before. These recovered
+  messages also show up in search.
+- **Your sent letters are now kept in your archive**, even after a
+  subscription ends. They are only saved for now; showing them in the chat
+  will come later.
+- **Your own nickname and avatar for each group are now archived.** Only those
+  two are kept; other profile details are not stored.
+
+### Changed
+- **Hovering a group in the left rail shows its Japanese name** (乃木坂46,
+  櫻坂46, 日向坂46) instead of an internal id.
+- **The sidebar no longer re-reads your whole archive every two seconds**, and
+  it pauses while the window is minimized. Avatars load from your local
+  archive, so they also show offline.
+- **Logs no longer contain letter contents or signed image links**, so a
+  diagnostics report is safer to share.
+
 ### Fixed
+- **A chat could stay frozen if its whole history was an exact multiple of 200
+  messages** and the member had posted nothing new. Sync now handles this case
+  and the chat updates again.
+- **Favoriting a message during a sync could lose the messages that sync had
+  just downloaded.** Both now take turns writing the file.
+- **One failed refresh no longer hides every unread badge** in the sidebar.
 - **Installing an update from inside the app could just close SakaDesk and do
   nothing**: the installer often gave up because SakaDesk hadn't finished
   closing yet, so nothing was installed and the app didn't reopen. It now waits

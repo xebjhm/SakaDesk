@@ -171,7 +171,14 @@ async def get_letters(group_id: int, service: str, count: int = 200):
         letters_data = await client.get_letters(session, group_id, count=count)
 
         if letters_data:
-            logger.debug(f"Letter API response sample: {letters_data[0]}")
+            # Log shape only: values hold letter text, signed URLs and tokens.
+            logger.debug(
+                "letters_api_response",
+                count=len(letters_data),
+                first_item_keys=(
+                    sorted(letters_data[0]) if isinstance(letters_data[0], dict) else []
+                ),
+            )
 
         letters = []
         for letter in letters_data:
