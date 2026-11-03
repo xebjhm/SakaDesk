@@ -1,7 +1,6 @@
 """Room roster + one-time history scan in SyncService (spec §4, §7)."""
 
 import asyncio
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -214,7 +213,7 @@ def _synced_group_ids(m) -> list[int]:
     return [c.args[1]["id"] for c in m.sync_member.await_args_list]
 
 
-async def test_scanned_room_extra_failure_fails_group_only(tmp_path, caplog):
+async def test_scanned_room_extra_failure_fails_group_only(tmp_path):
     """Already-scanned room: a non-auth extra_room_members failure must fail the
     whole group before any sync_member advances a cursor (the next sync
     retries the same window); sibling groups still sync."""
@@ -227,7 +226,7 @@ async def test_scanned_room_extra_failure_fails_group_only(tmp_path, caplog):
         return []
 
     m.extra_room_members = AsyncMock(side_effect=_extras)
-    with caplog.at_level(logging.WARNING):
+    with capture_logs() as logs:
         await _run_start_sync(
             SyncService(),
             tmp_path,
@@ -238,20 +237,27 @@ async def test_scanned_room_extra_failure_fails_group_only(tmp_path, caplog):
     assert _synced_group_ids(m) == [44]
     assert all(c.args[1]["id"] != 43 for c in m.backfill_past_messages.await_args_list)
     m.mark_history_scanned.assert_not_called()
-    assert "room_extra_members_failed" in caplog.text
-    assert "group_sync_failed" in caplog.text
+    (extra_failed,) = _events(logs, "room_extra_members_failed")
+    assert extra_failed["group_id"] == 43
+    assert extra_failed["already_scanned"] is True
+    assert extra_failed["action"] == "fail_room"
+    (group_failed,) = _events(logs, "group_sync_failed")
+    assert group_failed["group_id"] == 43
 
 
-async def test_scanning_room_extra_failure_logged_and_continues(tmp_path, caplog):
+async def test_scanning_room_extra_failure_logged_and_continues(tmp_path):
     m = _manager(scanned=False)
     m.extra_room_members = AsyncMock(side_effect=RuntimeError("boom"))
-    with caplog.at_level(logging.WARNING):
+    with capture_logs() as logs:
         await _run_start_sync(
             SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
         )
     assert _synced_group_ids(m) == [43]
-    assert "room_extra_members_failed" in caplog.text
-    assert "group_sync_failed" not in caplog.text
+    (extra_failed,) = _events(logs, "room_extra_members_failed")
+    assert extra_failed["group_id"] == 43
+    assert extra_failed["already_scanned"] is False
+    assert extra_failed["action"] == "continue"
+    assert _events(logs, "group_sync_failed") == []
 
 
 async def test_scanning_room_ignores_initial_limit(tmp_path):
