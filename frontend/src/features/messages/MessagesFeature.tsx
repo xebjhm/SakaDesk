@@ -18,6 +18,8 @@ import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
+import { useIncomingCall } from '../incomingCall/useIncomingCall';
+import { CallOverlay } from '../incomingCall/CallOverlay';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -163,6 +165,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Unread state
     const [readState, setReadState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
+    // Bumped after each successful fetch; the incoming-call hook evaluates on it
+    // (never on the cached render, which may be stale).
+    const [freshFetch, setFreshFetch] = useState<{ seq: number; dir: string } | null>(null);
     const [readStateVersion, setReadStateVersion] = useState(0); // Increments on read state change to trigger sidebar refresh
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
@@ -316,6 +321,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessagesForDir(path);
                 messagesPathRef.current = path;
                 setCacheEntry(path, { messages: msgs, membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
+                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
             } else {
                 const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
                 if (thisId !== fetchIdRef.current) return; // stale
@@ -333,6 +339,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setMessagesForDir(path);
                 messagesPathRef.current = path;
                 setCacheEntry(path, { messages: msgs, membersMap: mMap, totalMessages: data.total_count || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
+                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
             }
         } catch (err: unknown) {
             if (thisId !== fetchIdRef.current) return; // stale
@@ -578,6 +585,31 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages, readState]);
 
+    const scrollToMessage = useCallback((id: number) => {
+        const index = messages.findIndex(m => m.id === id);
+        if (index !== -1) {
+            virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
+        }
+    }, [messages]);
+
+    const callMember = isGroupChat ? undefined : Object.values(membersMap)[0];
+    const incomingCall = useIncomingCall({
+        service: messagesService,
+        chatDir: selectedGroupDir,
+        isGroupChat,
+        messages,
+        member: callMember,
+        name: formatName(callMember?.name || selectedName || ''),
+        // undefined until settings load → no ring; a loaded value without the field defaults on
+        enabled: appSettings ? (appSettings.incoming_call_enabled ?? true) : undefined,
+        isUnread,
+        freshFetch,
+        revealMessage,
+        scrollToMessage,
+        logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
+    });
+    const callActive = incomingCall.phase !== 'idle';
+
     // Scroll to first message of a given date (for calendar navigation).
     // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend
     // `_local_date`), and bubbles render local time — so match by the message's
@@ -811,11 +843,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getMemberPath={getMemberPath}
                         />
                     )}
+                    <CallOverlay call={incomingCall} />
                 </div>
 
                 {/* Navigation Buttons */}
                 {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
-                {selectedGroupDir && hasUnreadAbove && (
+                {selectedGroupDir && hasUnreadAbove && !callActive && (
                     <div className="absolute right-4 bottom-4 z-20">
                         <button
                             onClick={scrollToFirstUnread}
@@ -828,7 +861,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     </div>
                 )}
                 {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
-                {selectedGroupDir && hasUnreadBelow && (
+                {selectedGroupDir && hasUnreadBelow && !callActive && (
                     <div className="absolute right-4 top-20 z-20">
                         <button
                             onClick={scrollToFirstUnread}
