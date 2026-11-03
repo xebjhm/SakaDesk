@@ -146,6 +146,11 @@ async def lifespan(app: FastAPI):
 
     cleanup_upgrade_files()
 
+    # Let desktop threads (the tray) schedule coroutines on this loop.
+    from backend.services import desktop_bridge
+
+    desktop_bridge.set_server_loop(asyncio.get_running_loop())
+
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
     app_state.init_db()
@@ -225,6 +230,13 @@ async def lifespan(app: FastAPI):
     # entirely, since quiesce_writers() only drains writers that already
     # existed at the moment it runs.
     begin_shutdown()
+
+    # Desktop threads must stop scheduling onto this loop, and a waiting
+    # debounced tray refresh must not outlive it.
+    from backend.services.tray_tooltip import cancel_pending
+
+    desktop_bridge.set_server_loop(None)
+    await cancel_pending()
 
     # Cancel the deferred blog backup if it's still pending
     if not background_task.done():

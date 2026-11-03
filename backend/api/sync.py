@@ -11,6 +11,7 @@ from backend.services.service_utils import validate_service
 from backend.services.background_tasks import track_background_task
 from backend.services.shutdown_state import is_shutting_down
 from backend.services.sync_launcher import launch_sync
+from backend.services.tray_tooltip import schedule_refresh
 from backend.api.progress import progress_manager
 
 logger = structlog.get_logger(__name__)
@@ -43,6 +44,11 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
     except Exception as e:
         logger.error(f"Background sync error for {service}: {e}")
         progress.error(str(e))
+    finally:
+        # New messages change the tray tooltip's unread total. Scheduled in the
+        # background so it never delays (or fails) the sync result.
+        if not is_shutting_down():
+            schedule_refresh()
 
 
 async def run_verify_task(service: str):

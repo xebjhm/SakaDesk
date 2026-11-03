@@ -1,0 +1,9 @@
+{
+  "open": "打開 SakaDesk",
+  "sync_now": "立即同步",
+  "quit": "結束",
+  "tooltip_idle": "SakaDesk",
+  "tooltip_unread": "SakaDesk — {n} 則未讀",
+  "still_running_title": "SakaDesk 仍在背景執行",
+  "still_running_body": "會在系統匣繼續同步。要結束請在系統匣圖示上按右鍵。"
+}

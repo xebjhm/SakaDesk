@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.search_service import get_search_service
+from backend.services.tray_tooltip import schedule_refresh_debounced
 
 router = APIRouter()
 
@@ -36,6 +37,8 @@ async def upsert_read_state(entry: ReadStateEntry):
         entry.read_count,
         entry.revealed_ids,
     )
+    # The tray tooltip's unread total follows the stored read states.
+    schedule_refresh_debounced()
     return {"status": "ok"}
 
 
@@ -44,4 +47,5 @@ async def batch_upsert_read_states(entries: List[ReadStateEntry]):
     svc = get_search_service()
     dicts = [e.model_dump() for e in entries]
     count = await svc.batch_upsert_read_states(dicts)
+    schedule_refresh_debounced()
     return {"status": "ok", "count": count}

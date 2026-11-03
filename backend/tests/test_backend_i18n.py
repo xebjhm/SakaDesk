@@ -25,6 +25,50 @@ def _load(lang: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+TRAY_KEYS = {
+    "open",
+    "sync_now",
+    "quit",
+    "tooltip_idle",
+    "tooltip_unread",
+    "still_running_title",
+    "still_running_body",
+}
+
+
+def _load_tray(lang: str) -> dict:
+    path = I18N_DIR / lang / "tray.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("lang", SUPPORTED)
+def test_tray_locale_has_same_keys_as_en(lang):
+    assert set(_load_tray(lang)) == TRAY_KEYS
+    assert all(isinstance(v, str) and v for v in _load_tray(lang).values())
+
+
+@pytest.mark.parametrize("lang", SUPPORTED)
+def test_tray_tooltip_unread_has_n_placeholder(lang):
+    assert "{n}" in _load_tray(lang)["tooltip_unread"]
+    assert "{n}" not in _load_tray(lang)["tooltip_idle"]
+
+
+@pytest.mark.parametrize("lang", SUPPORTED)
+def test_tray_get_strings_matches_file(lang):
+    assert get_strings("tray", lang) == _load_tray(lang)
+
+
+def test_tray_non_ascii_round_trip():
+    assert get_strings("tray", "ja")["sync_now"] == "今すぐ同期"
+    assert get_strings("tray", "zh-CN")["quit"] == "退出"
+    assert get_strings("tray", "yue")["tooltip_unread"].format(n=2) == (
+        "SakaDesk — 2 則未讀"
+    )
+    assert get_strings("tray", "en")["tooltip_unread"].format(n=2) == (
+        "SakaDesk — 2 unread"
+    )
+
+
 def test_supported_locales():
     assert SUPPORTED == ("en", "ja", "zh-TW", "zh-CN", "yue")
 

@@ -1,5 +1,8 @@
 """desktop_bridge: the hand-off from a toast click to the window."""
 
+import asyncio
+import threading
+
 import pytest
 from structlog.testing import capture_logs
 
@@ -90,3 +93,114 @@ def test_open_window_raising_handler_is_logged_by_type_only() -> None:
     (event,) = [e for e in logs if e["event"] == "window_open_failed"]
     assert event["error_type"] == "ValueError"
     assert "金村" not in repr(logs)
+
+
+# ---------------------------------------------------------- tray tooltip
+
+
+@pytest.fixture(autouse=True)
+def _reset_tooltip_handler():
+    desktop_bridge.set_tray_tooltip_handler(None)
+    yield
+    desktop_bridge.set_tray_tooltip_handler(None)
+
+
+def test_set_tray_tooltip_calls_the_handler() -> None:
+    seen: list[str] = []
+    desktop_bridge.set_tray_tooltip_handler(seen.append)
+    assert desktop_bridge.has_tray_tooltip_handler()
+    desktop_bridge.set_tray_tooltip("SakaDesk — 3 unread")
+    assert seen == ["SakaDesk — 3 unread"]
+
+
+def test_set_tray_tooltip_without_handler_logs_once() -> None:
+    assert not desktop_bridge.has_tray_tooltip_handler()
+    with capture_logs() as logs:
+        desktop_bridge.set_tray_tooltip("a")
+        desktop_bridge.set_tray_tooltip("b")
+    events = [e for e in logs if e["event"] == "tray_tooltip_unhandled"]
+    assert len(events) == 1
+    assert "a" not in events[0].values()
+
+
+def test_unhandled_log_rearms_when_the_handler_is_cleared() -> None:
+    desktop_bridge.set_tray_tooltip("a")
+    desktop_bridge.set_tray_tooltip_handler(None)
+    with capture_logs() as logs:
+        desktop_bridge.set_tray_tooltip("b")
+    assert [e["event"] for e in logs] == ["tray_tooltip_unhandled"]
+
+
+def test_raising_tooltip_handler_is_logged_by_type_only() -> None:
+    def boom(_t: str) -> None:
+        raise ValueError("secret 金村 detail")
+
+    desktop_bridge.set_tray_tooltip_handler(boom)
+    with capture_logs() as logs:
+        desktop_bridge.set_tray_tooltip("x")
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip_failed"]
+    assert event["error_type"] == "ValueError"
+    assert "金村" not in repr(logs)
+
+
+# ------------------------------------------------------- run_on_server_loop
+
+
+@pytest.fixture(autouse=True)
+def _reset_server_loop():
+    desktop_bridge.set_server_loop(None)
+    yield
+    desktop_bridge.set_server_loop(None)
+
+
+def test_run_on_server_loop_without_loop_logs_and_closes_the_coroutine(
+    recwarn,
+) -> None:
+    async def work() -> int:
+        return 1
+
+    coro = work()
+    with capture_logs() as logs:
+        assert desktop_bridge.run_on_server_loop(coro) is None
+    (event,) = [e for e in logs if e["event"] == "server_loop_unavailable"]
+    assert event["reason"] == "no_loop"
+    assert coro.cr_frame is None  # closed
+    import gc
+
+    gc.collect()
+    assert not [w for w in recwarn if "never awaited" in str(w.message)]
+
+
+def test_run_on_server_loop_with_closed_loop_returns_none() -> None:
+    loop = asyncio.new_event_loop()
+    loop.close()
+    desktop_bridge.set_server_loop(loop)
+
+    async def work() -> int:
+        return 1
+
+    coro = work()
+    with capture_logs() as logs:
+        assert desktop_bridge.run_on_server_loop(coro) is None
+    (event,) = [e for e in logs if e["event"] == "server_loop_unavailable"]
+    assert event["reason"] == "closed"
+    assert coro.cr_frame is None
+
+
+def test_run_on_server_loop_runs_on_the_loop_thread() -> None:
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    try:
+        desktop_bridge.set_server_loop(loop)
+
+        async def work() -> int:
+            return threading.get_ident()
+
+        future = desktop_bridge.run_on_server_loop(work())
+        assert future is not None
+        assert future.result(timeout=5) == thread.ident
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=5)
+        loop.close()

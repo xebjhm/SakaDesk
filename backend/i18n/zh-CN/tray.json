@@ -1,0 +1,9 @@
+{
+  "open": "打开 SakaDesk",
+  "sync_now": "立即同步",
+  "quit": "退出",
+  "tooltip_idle": "SakaDesk",
+  "tooltip_unread": "SakaDesk — {n} 条未读",
+  "still_running_title": "SakaDesk 仍在后台运行",
+  "still_running_body": "会在系统托盘继续同步。要退出请在托盘图标上点右键。"
+}
