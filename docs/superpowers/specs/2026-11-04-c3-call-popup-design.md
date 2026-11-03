@@ -75,6 +75,7 @@ The backend `CallPopupController` (§4.4) owns the only record of the active pop
 idle ──reserve()──────────▶ reserved
 reserved ──dispatch() ok──▶ starting           (popup page received start; window hidden)
 reserved ──dispatch() refused / sync aborted──▶ idle   (fallback: the normal toast, except §4.4 exceptions)
+reserved ──30 min watchdog──▶ idle              (safety net for a leaked reservation; fallback toast)
 starting ──event ringing──▶ ringing            (window revealed)
 starting ──skipped / error / cancelled / 20 s watchdog──▶ idle   (window hidden; fallback toast unless reason already_read)
 ringing ──answered────────▶ connected          (heard delivered to the main window)
@@ -172,7 +173,7 @@ An undetectable state therefore shows the popup, as the user decided. Toasts alr
 
 ### 4.4 Controller (`CallPopupController`, in `call_popup.py`)
 
-`get_call_popup_controller()` returns a process-wide singleton. Its methods run on the server loop. A `threading.Lock` guards the state, because `reserve` is called from inside `plan_toasts`, also on the loop, and the lock costs nothing. Everything it depends on is injected for tests: `send_toasts` (default C1 `send_planned`), the bridge functions (§6.6), `get_ui_state`, `load_config`, the string loader, `sleep` and the three watchdog durations.
+`get_call_popup_controller()` returns a process-wide singleton. Its methods run on the server loop. A `threading.Lock` guards the state, because `reserve` is called from inside `plan_toasts`, also on the loop, and the lock costs nothing. Everything it depends on is injected for tests: `send_toasts` (default C1 `send_planned`), the bridge functions (§6.6), `get_ui_state`, `load_config`, the string loader, `sleep` and the four watchdog durations.
 
 ```python
 @dataclass(frozen=True)
@@ -184,7 +185,7 @@ class PendingCall:
 
 | method | behaviour |
 |---|---|
-| `reserve(plan, candidate)` | `idle` → `reserved`, returns `PendingCall`; otherwise `None`. Logs `call_popup_reserved` (`call_id`, `service`, `group_id`, `member_id`, `message_id`, `count`). |
+| `reserve(plan, candidate)` | `idle` → `reserved` (arming the reserved watchdog), returns `PendingCall`; otherwise `None`. Logs `call_popup_reserved` (`call_id`, `service`, `group_id`, `member_id`, `message_id`, `count`). |
 | `dispatch(call_id)` | Only from `reserved`. It re-reads `get_ui_state()`. If the app is now focused, the call is released: when the user is viewing that chat there is no toast, because B rings there (`result=viewing`); otherwise the plan is sent as a normal toast (`result=foreground`). Otherwise it enters `starting` (with the start watchdog) and then awaits `bridge.call_popup_start(call_id)`; the page may fetch the call before `start` returns. When `start` returns `True` and the call is still current in `starting`, the start watchdog is re-armed so its 20 s count from that return (`result=started`). `False` while still `starting` → `idle` and a fallback toast (`result=start_failed`). If the call was cancelled, watchdogged or replaced during the await, nothing more happens (`result=superseded`, no toast). Logs `call_popup_dispatch` (`call_id`, `result`). |
 | `abandon(call_id, reason)` | Only from `reserved`, used by the sync's error paths (§4.5). `reason=sync_failed` → fallback toast; `reason=cancelled` → no toast (the app is shutting down or the sync was cancelled). Logs `call_popup_abandoned` (`call_id`, `reason`, `toast`). |
 | `info(call_id)` | The active call's `CallInfo` (§4.6) when `call_id` is current and the state is `starting`/`ringing`/`connected`; else `None`. |
@@ -210,11 +211,12 @@ class PendingCall:
 Each accepted event logs `call_popup_event` (`call_id`, `call_event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
 
 **Watchdogs** (asyncio tasks, cancelled on every transition):
+- `RESERVED_WATCHDOG_S = 1800`: a safety net, not a timeout of normal operation. A reservation lives while its sync downloads media, and a sync with a big media queue can legitimately take long, hence 30 min. Every sync path hands the reservation back (`dispatch` or `abandon`), so this only fires when a future leak would otherwise leave the controller `busy` for the life of the process. It is armed in `reserve` and cancelled by `dispatch`, `abandon`, `cancel` and `shutdown`. On expiry it does **not** call the bridge (no popup exists yet): it behaves like `abandon(reason="watchdog")` and sends the original plan as a fallback toast (`call_popup_toast reason=watchdog`), subject to the notifications-off suppression. A sync that wakes up later finds the call gone (`dispatch` logs `result=not_reserved`; `abandon` is a no-op);
 - `START_WATCHDOG_S = 20`: B's `PRELOAD_TIMEOUT_MS` (10 s) plus 10 s for the page fetches. It is armed when `starting` is entered (before `call_popup_start`, so the page can fetch) and re-armed when `call_popup_start` returns `True`, so a slow start (up to `BRIDGE_START_TIMEOUT_S`, §6.6) does not use up the page's budget;
 - `RING_WATCHDOG_S = 45`: B's `RING_TIMEOUT_MS` (30 s) plus 15 s of slack. A test keeps it above B's constant (§11.1);
 - `CONNECTED_WATCHDOG_S = 900`.
 
-On expiry the controller cancels the popup (`bridge.call_popup_cancel`) and applies the row of the `error` event for that phase. It logs `call_popup_watchdog` (`call_id`, `phase`).
+On expiry (except `reserved`, see above) the controller cancels the popup (`bridge.call_popup_cancel`) and applies the row of the `error` event for that phase. It logs `call_popup_watchdog` (`call_id`, `phase`, where `phase=reserved` marks a leaked reservation).
 
 **Toasts.** Both go through C1's `send_planned([plan])`, so the notifier, the tag `"{group_id}:{member_id}"`, the avatar, the click-to-open-chat closure (`on_activated` → `desktop_bridge.open_chat(plan.target)`) and the `notify_sent` / `notify_failed` logging are C1's own.
 - **Fallback toast:** the original `PendingCall.plan`, unchanged.
@@ -237,7 +239,8 @@ On expiry the controller cancels the popup (`bridge.call_popup_cancel`) and appl
    - log `call_popup_voice_first` (`call_id`, `items`, `downloaded`).
 
    When no item matches (the file is already on disk), this step is a no-op. Either way, `track_background_task(controller.dispatch(call_id), name="call_popup_dispatch")` follows and `dispatched = True`. The sync never waits on the popup.
-3. **Aborted syncs.** In the sync's `finally`, a reserved call that was never dispatched calls `controller.abandon(call_id, reason="cancelled")` on `CancelledError`, or `reason="sync_failed"` on any other exception (including `SessionExpiredError`/`RefreshFailedError`). `abandon` sends its toast through `track_background_task`, so the `finally` never awaits.
+3. **Aborted syncs.** In the sync's `finally`, a reserved call that was never dispatched calls `controller.abandon(call_id, reason="cancelled")` on `CancelledError`, or `reason="sync_failed"` on any other exception (including `SessionExpiredError`/`RefreshFailedError`). `abandon` sends its toast through `track_background_task`, so the `finally` never awaits. The call goes through a guard that catches any `Exception` from `abandon` and logs `call_popup_abandon_failed` (`call_id`, `reason`, `error_type`), so a failing `abandon` can never mask the sync's own exception or skip the `running`/`_task` bookkeeping that follows in the `finally`.
+   `_notify_new_messages` also owns the one window where the reservation exists but the sync does not hold it yet: `reserve` runs inside `plan_toasts`, and the toast send is awaited afterwards. If that await is cancelled, `_notify_new_messages` abandons the call itself with `reason="cancelled"` (through the same guard) and re-raises `CancelledError`.
 4. **Why voice first.** pysaka writes `media_file` when the download is *queued*, and C1 plans toasts before phase 3. Without this step the popup's preload (B condition 8) would fail on every fresh voice. Downloading one file first rings within seconds, instead of after every picture and video of the sync. This is SakaDesk-side queue ordering; pysaka is untouched.
 
 ### 4.6 API (`backend/api/call_popup.py`)
@@ -568,7 +571,8 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_toast_skip` | call_id, kind (`fallback`/`missed`), reason (`notifications_disabled`) |
 | `call_popup_heard` | call_id, message_id, delivered, attempts, reason (`not_ready`/`error`/`no_host`) |
 | `call_popup_cancel` | call_id, reason (`foreground`/`disabled`/`app_exit`), phase |
-| `call_popup_watchdog` | call_id, phase |
+| `call_popup_watchdog` | call_id, phase (`reserved`/`starting`/`ringing`/`connected`) |
+| `call_popup_abandon_failed` | call_id, reason, error_type |
 | `call_popup_unavailable` | reason (`no_host`), once |
 | `call_popup_bridge_failed` | op, error_type or reason (`timeout`) |
 | `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`), error_type |
@@ -601,10 +605,10 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 | Voice file still missing | Voice-first download (§4.5). If the preload still fails within 10 s → `skipped reason=media_unavailable` → the normal toast. The voice stays unheard. |
 | Playback error after answering | B's path: `call_error playback_failed` → ended screen → `ended` → hide. The voice stays heard, as in B. |
 | Popup window failed to create, or lost | `start` returns False → fallback toast. Two creation failures → `unavailable` for the rest of the run (toasts only). |
-| Popup page never reports | The watchdogs (20 s / 45 s / 15 min) hide or cancel it and send the fallback or missed-call toast. |
+| Popup page never reports | The watchdogs (20 s / 45 s / 15 min) hide or cancel it and send the fallback or missed-call toast. A leaked reservation is released by the 30 min reserved watchdog, with the fallback toast. |
 | Heard delivery fails (main page not ready) | 3 attempts, then `call_popup_heard delivered=false`. The voice stays unheard and B rings in the app later. |
 | Quit, ✕ with close-to-tray off, or session end while the popup is open | The popup is destroyed with the main window (§6.5). `controller.shutdown()` sends no toast. The process exits. |
-| Sync fails or is cancelled after reserving | `abandon`: fallback toast on failure; nothing on cancel. |
+| Sync fails or is cancelled after reserving | `abandon`: fallback toast on failure; nothing on cancel. This includes a cancel during the toast send inside `_notify_new_messages`. |
 | Setting turned off while ringing | `cancel(reason=disabled)`, with no toast. |
 | Notifications off, popup on | The popup still rings for a qualifying voice. Every other chat is skipped as `disabled` (`notify_skip`). A missed call or a fallback (quiet state, failed popup) sends no toast and logs `call_popup_toast_skip reason=notifications_disabled`; a quiet-state refusal leaves the candidate's plan to C1's `disabled` skip. |
 | Notifications on, popup off | `popup_disabled` → toasts only. |
@@ -634,7 +638,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - every event × phase in §4.4, including stale events and `message_mismatch`;
   - with `notifications_enabled` off, the missed-call and fallback toasts (decline, timeout, skipped, start failure, dispatch-time foreground, `abandon(sync_failed)`) are not sent and each logs `call_popup_toast_skip reason=notifications_disabled`;
   - dispatch re-check (focused on that chat → nothing; focused elsewhere → toast);
-  - each watchdog;
+  - each watchdog, including `reserved` (fallback toast, no bridge call, notifications-off suppression, cancelled by `dispatch`/`abandon`/`shutdown`, a late `dispatch` is `not_reserved`);
   - `already_read` → no toast;
   - missed-call text for count 1 and > 1, with a CJK name;
   - heard retries (`not_ready` twice, then delivered; three failures);

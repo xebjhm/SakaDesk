@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 import structlog
 
 from backend.services.call_popup import PendingCall
@@ -33,6 +34,7 @@ class FakeController:
 
     def __init__(self, ok: bool = True):
         self.ok, self.reserved = ok, []
+        self.abandon = MagicMock()
 
     def reserve(self, plan, candidate):
         self.reserved.append((plan, candidate))
@@ -335,3 +337,41 @@ def test_no_voice_means_no_candidate(tmp_path: Path) -> None:
         _, result = _run(_service(tmp_path), _collector(tmp_path))
     assert result is None
     assert [e["reason"] for e in _events(logs, "call_popup_skip")] == ["no_candidate"]
+
+
+def test_cancel_during_toast_send_abandons_the_reservation(tmp_path: Path) -> None:
+    ctl = FakeController()
+    send = AsyncMock(side_effect=asyncio.CancelledError)
+    with pytest.raises(asyncio.CancelledError):
+        _run(
+            _service(tmp_path),
+            _collector(tmp_path, voice=True),
+            send=send,
+            controller=ctl,
+        )
+    assert len(ctl.reserved) == 1
+    ctl.abandon.assert_called_once_with(1, reason="cancelled")
+
+
+def test_cancel_without_a_reservation_just_propagates(tmp_path: Path) -> None:
+    ctl = FakeController()
+    send = AsyncMock(side_effect=asyncio.CancelledError)
+    with pytest.raises(asyncio.CancelledError):
+        _run(_service(tmp_path), _collector(tmp_path), send=send, controller=ctl)
+    ctl.abandon.assert_not_called()
+
+
+def test_abandon_failure_on_cancel_does_not_mask_the_cancel(tmp_path: Path) -> None:
+    ctl = FakeController()
+    ctl.abandon.side_effect = RuntimeError("loop closed")
+    send = AsyncMock(side_effect=asyncio.CancelledError)
+    with structlog.testing.capture_logs() as logs:
+        with pytest.raises(asyncio.CancelledError):
+            _run(
+                _service(tmp_path),
+                _collector(tmp_path, voice=True),
+                send=send,
+                controller=ctl,
+            )
+    failed = _events(logs, "call_popup_abandon_failed")
+    assert [e["error_type"] for e in failed] == ["RuntimeError"]

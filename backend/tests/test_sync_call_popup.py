@@ -247,3 +247,64 @@ async def test_session_expiry_before_dispatch_abandons(tmp_path: Path) -> None:
         await _run(tmp_path, mgr, ctl)
     ctl.abandon.assert_called_once_with(7, reason="sync_failed")
     ctl.dispatch.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_failure_after_dispatch_does_not_abandon(tmp_path: Path) -> None:
+    md = tmp_path / "m"
+    calls = 0
+
+    async def second_fails(_s, queue, progress_callback=None):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            raise RuntimeError("chunk failed")
+        return {md: {int(i["message_id"]): {"duration": 1} for i in queue}}
+
+    mgr, seen = _manager(
+        md, items=[(10, "voice"), (11, "picture")], process=second_fails
+    )
+    ctl, tasks = await _run(tmp_path, mgr)
+    await _close(tasks)
+    assert seen == [[10], [11]]
+    ctl.abandon.assert_not_called()
+    assert [n for _, n in tasks].count("call_popup_dispatch") == 1
+    ctl.dispatch.assert_awaited_once_with(7)
+
+
+@pytest.mark.asyncio
+async def test_abandon_failure_does_not_wedge_the_service(tmp_path: Path) -> None:
+    md = tmp_path / "m"
+
+    async def boom(*_a):
+        raise RuntimeError("x")
+
+    mgr, _ = _manager(md, items=[(10, "voice")], process=boom)
+    ctl = FakeController()
+    ctl.abandon.side_effect = RuntimeError("teardown")
+    svc = SyncService()
+    with structlog.testing.capture_logs() as logs:
+        with (
+            patch(
+                "backend.services.sync_service.get_call_popup_controller",
+                return_value=ctl,
+            ),
+            patch(
+                "backend.services.sync_service.desktop_bridge.call_popup_available",
+                return_value=True,
+            ),
+            patch(
+                "backend.services.sync_service.query_quiet_state",
+                return_value=QuietState("accepts", False, 5, 0),
+            ),
+            patch(
+                "backend.services.sync_service.get_ui_state",
+                return_value=MagicMock(focused=False),
+            ),
+        ):
+            await _run_start_sync(
+                svc, tmp_path, groups=GROUPS, members=None, mock_manager=mgr
+            )
+    failed = [e for e in logs if e["event"] == "call_popup_abandon_failed"]
+    assert [e["error_type"] for e in failed] == ["RuntimeError"]
+    assert svc.running is False and svc._task is None

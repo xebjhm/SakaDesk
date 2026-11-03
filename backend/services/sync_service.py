@@ -1332,10 +1332,9 @@ class SyncService:
             progress.error(str(e))
         finally:
             if pending_call is not None and not call_dispatched:
-                # Never awaits: abandon spawns its fallback toast as a background task.
-                get_call_popup_controller().abandon(
-                    pending_call.call_id, reason=call_abort_reason
-                )
+                # Never awaits: abandon spawns its fallback toast as a background
+                # task. A failure is logged and must not skip the bookkeeping below.
+                self._abandon_call(pending_call.call_id, call_abort_reason)
             if rate_limited.is_set():
                 logger.warning(
                     "sync_rate_limit_summary",
@@ -1425,6 +1424,13 @@ class SyncService:
                 sent=sent,
                 skipped=len(skips),
             )
+        except asyncio.CancelledError:
+            # Cancelled while the toasts were being sent: the caller never gets
+            # the reservation back, so release it here (reserve() runs inside
+            # plan_toasts, before this await), then keep cancelling.
+            if divert is not None and divert.pending is not None:
+                self._abandon_call(divert.pending.call_id, "cancelled")
+            raise
         except Exception as e:
             logger.warning(
                 "notify_failed",
@@ -1432,6 +1438,19 @@ class SyncService:
                 error_type=type(e).__name__,
             )
         return divert.pending if divert is not None else None
+
+    @staticmethod
+    def _abandon_call(call_id: int, reason: str) -> None:
+        """Release a reserved popup call; never raises (cleanup must not mask)."""
+        try:
+            get_call_popup_controller().abandon(call_id, reason=reason)
+        except Exception as e:
+            logger.warning(
+                "call_popup_abandon_failed",
+                call_id=call_id,
+                reason=reason,
+                error_type=type(e).__name__,
+            )
 
     def _mark_scanned_rooms(self, gids: list[int]) -> None:
         """Record the one-time history scan of each room in ``gids`` as done.

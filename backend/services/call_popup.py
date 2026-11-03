@@ -33,6 +33,7 @@ from backend.services.quiet_state import QuietState
 
 logger = structlog.get_logger(__name__)
 
+RESERVED_WATCHDOG_S = 1800  # a sync with a big media queue may legitimately take long
 START_WATCHDOG_S = 20  # B's PRELOAD_TIMEOUT_MS (10 s) + 10 s for the page fetches
 RING_WATCHDOG_S = 45  # B's RING_TIMEOUT_MS (30 s) + 15 s
 CONNECTED_WATCHDOG_S = 900
@@ -290,6 +291,7 @@ class CallPopupController:
         | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         heard_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        reserved_watchdog_s: float = RESERVED_WATCHDOG_S,
         start_watchdog_s: float = START_WATCHDOG_S,
         ring_watchdog_s: float = RING_WATCHDOG_S,
         connected_watchdog_s: float = CONNECTED_WATCHDOG_S,
@@ -313,6 +315,7 @@ class CallPopupController:
         self._strings_for = strings_for or _default_strings
         self._sleep, self._heard_sleep = sleep, heard_sleep
         self._durations = {
+            RESERVED: reserved_watchdog_s,
             STARTING: start_watchdog_s,
             RINGING: ring_watchdog_s,
             CONNECTED: connected_watchdog_s,
@@ -375,7 +378,10 @@ class CallPopupController:
                 return None
             pending = PendingCall(self._next_id, plan, candidate)
             self._next_id += 1
-            self._phase, self._pending = RESERVED, pending
+            self._pending = pending
+            # Safety net: a sync that never dispatches nor abandons (a leak)
+            # must not leave the controller busy for the life of the process.
+            self._enter_locked(RESERVED, pending.call_id)
         logger.info(
             "call_popup_reserved",
             call_id=pending.call_id,
@@ -629,6 +635,11 @@ class CallPopupController:
             self._firing = asyncio.current_task()
         try:
             logger.warning("call_popup_watchdog", call_id=call_id, phase=phase)
+            if phase == RESERVED:
+                # No popup exists yet: behave like abandon(reason="watchdog").
+                if pending is not None:
+                    self._spawn_toast(pending, "fallback", "watchdog")
+                return
             await self._bridge.call_popup_cancel(call_id)
             logger.info("call_popup_hide", call_id=call_id, reason="watchdog")
             if pending is not None and phase == STARTING:

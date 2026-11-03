@@ -13,6 +13,7 @@ from structlog.testing import capture_logs
 
 from backend.services.call_popup import (
     CONNECTED_WATCHDOG_S,
+    RESERVED_WATCHDOG_S,
     RING_WATCHDOG_S,
     START_WATCHDOG_S,
     CallCandidate,
@@ -234,14 +235,18 @@ async def test_start_watchdog_is_rearmed_when_start_returns():
     await env.settle()
     first = env.ctrl._watchdog
     assert first is not None and env.ctrl.phase == "starting"
-    assert env.sleeper.durations == [START_WATCHDOG_S]
+    assert env.sleeper.durations == [RESERVED_WATCHDOG_S, START_WATCHDOG_S]
     gate.set()
     with capture_logs() as logs:
         await dispatching
         await env.settle()
     second = env.ctrl._watchdog
     assert first.cancelled() and second is not None and second is not first
-    assert env.sleeper.durations == [START_WATCHDOG_S, START_WATCHDOG_S]
+    assert env.sleeper.durations == [
+        RESERVED_WATCHDOG_S,
+        START_WATCHDOG_S,
+        START_WATCHDOG_S,
+    ]
     assert [e["result"] for e in events(logs, "call_popup_dispatch")] == ["started"]
     # The preload completes within 20 s of start's return: the call rings, no watchdog.
     assert await env.ctrl.on_event(p.call_id, CallEvent("ringing"))
@@ -993,3 +998,77 @@ def test_singleton_is_process_wide_and_resettable():
     _reset_controller_for_tests()
     assert get_call_popup_controller() is not a
     _reset_controller_for_tests()
+
+
+# --- RESERVED watchdog: a leaked reservation can never wedge the controller ---
+@pytest.mark.asyncio
+async def test_reserved_watchdog_is_armed_and_falls_back():
+    env = Env()
+    p = env.ctrl.reserve(plan(), CAND)
+    await env.settle()
+    assert env.sleeper.durations == [RESERVED_WATCHDOG_S] == [1800]
+    assert env.ctrl.phase == "reserved" and env.ctrl.busy
+    with capture_logs() as logs:
+        env.sleeper.release()
+        await env.settle()
+    assert env.ctrl.phase == "idle" and not env.ctrl.busy
+    (wd,) = events(logs, "call_popup_watchdog")
+    assert (wd["call_id"], wd["phase"]) == (p.call_id, "reserved")
+    assert env.bridge.calls == []  # no popup exists yet
+    assert env.sent == [plan()]
+    assert events(logs, "call_popup_toast")[0]["reason"] == "watchdog"
+    # The sync that finally wakes up finds nothing to dispatch or abandon.
+    with capture_logs() as late:
+        await env.ctrl.dispatch(p.call_id)
+        env.ctrl.abandon(p.call_id, "cancelled")
+    assert [e["result"] for e in events(late, "call_popup_dispatch")] == [
+        "not_reserved"
+    ]
+    assert env.ctrl.phase == "idle"
+
+
+@pytest.mark.asyncio
+async def test_reserved_watchdog_respects_notifications_off():
+    env = Env(notifications=False)
+    env.ctrl.reserve(plan(), CAND)
+    await env.settle()
+    with capture_logs() as logs:
+        env.sleeper.release()
+        await env.settle()
+    assert env.ctrl.phase == "idle" and env.sent == []
+    assert [e["reason"] for e in events(logs, "call_popup_toast_skip")] == [
+        "notifications_disabled"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reserved_watchdog_is_cancelled_by_dispatch_and_abandon():
+    env = Env()
+    p = env.ctrl.reserve(plan(), CAND)
+    await env.settle()
+    first = env.ctrl._watchdog
+    await env.ctrl.dispatch(p.call_id)
+    await env.settle()
+    assert first is not None and first.cancelled()
+    await env.ctrl.shutdown()
+
+    env = Env()
+    p = env.ctrl.reserve(plan(), CAND)
+    await env.settle()
+    wd = env.ctrl._watchdog
+    env.ctrl.abandon(p.call_id, "cancelled")
+    await env.settle()
+    assert wd is not None and wd.cancelled() and env.ctrl._watchdog is None
+    assert env.sent == [] and env.ctrl.phase == "idle"
+
+
+@pytest.mark.asyncio
+async def test_shutdown_cancels_the_reserved_watchdog():
+    env = Env()
+    env.ctrl.reserve(plan(), CAND)
+    await env.settle()
+    wd = env.ctrl._watchdog
+    await env.ctrl.shutdown()
+    await asyncio.sleep(0)
+    assert wd is not None and wd.cancelled()
+    assert env.ctrl.phase == "idle" and env.sent == []
