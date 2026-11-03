@@ -21,6 +21,7 @@ from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
 )
+from backend.services.message_visibility import is_hidden_message
 from backend.services.shutdown_state import is_shutting_down
 
 logger = structlog.get_logger(__name__)
@@ -286,6 +287,8 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
                     continue
 
                 for msg in data.get("messages", []):
+                    if is_hidden_message(msg):
+                        continue
                     content = msg.get("content")
                     if content is None:
                         continue
@@ -711,6 +714,8 @@ def _index_members_process(
             continue
 
         for msg in data.get("messages", []):
+            if is_hidden_message(msg):
+                continue
             msg_id = msg.get("id")
             if msg_id is None or msg_id <= max_indexed_id or msg_id in already_indexed:
                 continue
@@ -2064,6 +2069,7 @@ class SearchService:
     def _build_full_index_sync(self) -> int:
         self._building = True
         count = 0
+        hidden_skipped = 0  # withdrawn messages are never indexed
         try:
             output_dir = get_output_dir()
             if not output_dir.exists():
@@ -2137,6 +2143,9 @@ class SearchService:
                             continue
 
                         for msg in data.get("messages", []):
+                            if is_hidden_message(msg):
+                                hidden_skipped += 1
+                                continue
                             content = msg.get("content")
                             if content is None:
                                 continue
@@ -2208,7 +2217,12 @@ class SearchService:
                 ("index_blog_count", str(blog_count)),
             )
             conn.commit()
-            logger.info("Full search index built", count=count, blog_count=blog_count)
+            logger.info(
+                "Full search index built",
+                count=count,
+                blog_count=blog_count,
+                hidden_skipped=hidden_skipped,
+            )
         finally:
             self._building = False
         return count
@@ -2371,6 +2385,7 @@ class SearchService:
 
         service_display = get_service_display_name(service)
         count = 0
+        hidden_skipped = 0  # withdrawn messages are never indexed
         batch: list[Tuple[Any, ...]] = []
 
         # Batch query: get max indexed message_id for all members at once
@@ -2416,6 +2431,9 @@ class SearchService:
                 continue
 
             for msg in data.get("messages", []):
+                if is_hidden_message(msg):
+                    hidden_skipped += 1
+                    continue
                 msg_id = msg.get("id")
                 if msg_id is None:
                     continue
@@ -2480,7 +2498,12 @@ class SearchService:
         )
         conn.commit()
 
-        logger.info("Incremental index update", service=service, new_messages=count)
+        logger.info(
+            "Incremental index update",
+            service=service,
+            new_messages=count,
+            hidden_skipped=hidden_skipped,
+        )
         return count
 
     def _index_blogs_for_service_sync(self, service: str) -> int:

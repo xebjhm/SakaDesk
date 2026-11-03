@@ -1794,3 +1794,99 @@ class TestSchemaDirectCreation:
         conn.executescript(_SCHEMA_SQL)
         conn.executescript(_SCHEMA_SQL)
         conn.close()
+
+
+# =====================================================================
+# Withdrawn (non-published) messages are never indexed
+# =====================================================================
+
+
+class TestHiddenMessagesNotIndexed:
+    """Every indexing path skips rows the message list hides (state set and
+    not "published"), so search cannot surface a withdrawn post."""
+
+    MEMBER = ({"id": 1, "name": "テストグループ"}, {"id": 100, "name": "田中美久"})
+
+    @pytest.fixture()
+    def with_hidden(self, output_dir: Path) -> Path:
+        _write_messages_json(
+            output_dir
+            / _SERVICE_DISPLAY
+            / "messages"
+            / "1 テストグループ"
+            / "100 田中美久"
+            / "messages.json",
+            [
+                {"id": 1, "content": "見えるメッセージ🎉", "timestamp": "t1"},
+                {"id": 2, "content": "公開", "timestamp": "t2", "state": "published"},
+                {
+                    "id": 3,
+                    "content": "取り消し",
+                    "timestamp": "t3",
+                    "state": "canceled",
+                },
+            ],
+        )
+        return output_dir
+
+    @staticmethod
+    def _indexed_ids(db_path: Path) -> set[int]:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            return {
+                r[0]
+                for r in conn.execute(
+                    "SELECT message_id FROM search_messages WHERE member_id = 100"
+                )
+            }
+        finally:
+            conn.close()
+
+    def test_index_members_sync_skips_hidden(
+        self, service: SearchService, with_hidden: Path, db_path: Path
+    ):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=with_hidden
+        ):
+            count = service._index_members_sync([self.MEMBER], _SERVICE_ID)
+        assert count == 2
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    def test_build_full_index_sync_skips_hidden(
+        self, service: SearchService, with_hidden: Path, db_path: Path
+    ):
+        with patch(
+            "backend.services.search_service.get_output_dir", return_value=with_hidden
+        ):
+            service._build_full_index_sync()
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    def _mock_pykakasi(self) -> MagicMock:
+        mock_module = MagicMock()
+        mock_module.kakasi.return_value.convert.side_effect = lambda text: [
+            {"orig": text, "hira": text}
+        ]
+        return mock_module
+
+    def test_build_full_index_process_skips_hidden(
+        self, with_hidden: Path, db_path: Path
+    ):
+        with patch.dict("sys.modules", {"pykakasi": self._mock_pykakasi()}):
+            _build_full_index_process(str(db_path), str(with_hidden))
+        assert self._indexed_ids(db_path) == {1, 2}
+
+    @pytest.mark.parametrize("full", [False, True])
+    def test_index_members_process_skips_hidden(
+        self, with_hidden: Path, db_path: Path, full: bool
+    ):
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        with patch.dict("sys.modules", {"pykakasi": self._mock_pykakasi()}):
+            count = _index_members_process(
+                str(db_path),
+                str(with_hidden),
+                json.dumps([list(self.MEMBER)]),
+                _SERVICE_ID,
+                *([json.dumps([[1, 100]])] if full else []),
+            )
+        assert count == 2
+        assert self._indexed_ids(db_path) == {1, 2}
