@@ -14,6 +14,7 @@ import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import i18n from '../i18n'
 import { openChatFromToast } from './openChat'
+import { markVoiceHeard } from './markVoiceHeard'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -251,6 +252,12 @@ function App() {
     useEffect(() => {
         window.__sakadeskOpenChat = openChatFromToast;
         return () => { delete window.__sakadeskOpenChat; };
+    }, []);
+
+    // Desktop popup answered a voice: the main window (sole writer) marks it heard.
+    useEffect(() => {
+        window.__sakadeskMarkVoiceHeard = markVoiceHeard;
+        return () => { delete window.__sakadeskMarkVoiceHeard; };
     }, []);
 
     // === RENDER ===

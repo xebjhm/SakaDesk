@@ -15,10 +15,12 @@ import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
+import { loadReadState, saveReadState, applyReveal } from './readStateStore';
+import type { ReadState } from './readStateStore';
+import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
-import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
@@ -37,11 +39,7 @@ export interface GroupMessagesResponse {
     messages: GroupMessage[];
 }
 
-export interface ReadState {
-    lastReadId: number;
-    readCount: number;
-    revealedIds: number[];
-}
+export type { ReadState } from './readStateStore';
 
 export interface SyncProgress {
     state: 'idle' | 'running' | 'complete' | 'error';
@@ -425,89 +423,29 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [updateUnreadNavState]);
 
     // === READ STATE ===
-    const loadReadState = (path: string): ReadState => {
-        try {
-            const saved = persisted.getConv<{ value?: string }>(`read_state_${path}`, {}).value ?? null;
-            return saved ? JSON.parse(saved) : { lastReadId: 0, readCount: 0, revealedIds: [] };
-        } catch {
-            return { lastReadId: 0, readCount: 0, revealedIds: [] };
-        }
-    };
-
-    const saveReadState = (path: string, state: ReadState) => {
-        try {
-            persisted.setConv(`read_state_${path}`, { value: JSON.stringify(state) });
-            // Increment version to trigger sidebar refresh
-            setReadStateVersion(v => v + 1);
-        } catch {
-            // Ignore localStorage errors
-        }
-        // Sync to backend for search filter support (fire-and-forget)
-        const parsed = parseReadStatePath(path);
-        if (parsed) {
-            fetch('/api/read-states', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    service: parsed.service,
-                    group_id: parsed.groupId,
-                    member_id: parsed.memberId,
-                    last_read_id: state.lastReadId,
-                    read_count: state.readCount,
-                    revealed_ids: state.revealedIds,
-                }),
-            }).catch(() => {}); // Silent fail - localStorage is still the source of truth
-        }
-    };
+    // Persist + bump the version so the sidebar re-reads its unread dots.
+    const saveAndBump = useCallback((path: string, s: ReadState) => {
+        saveReadState(path, s);
+        setReadStateVersion(v => v + 1);
+    }, []);
 
     const revealMessage = useCallback((msgId: number) => {
         setReadState(prev => {
-            if (prev.revealedIds.includes(msgId)) return prev;
-
-            // Add the new revealed ID
-            const newRevealedIds = [...prev.revealedIds, msgId];
-
-            // Consolidate: If all messages from lastReadId+1 up to some point are now revealed,
-            // advance lastReadId and remove those IDs from revealedIds.
-            const unreadMsgIds = messages
-                .map(m => m.id)
-                .filter(id => id > prev.lastReadId)
-                .sort((a, b) => a - b);
-
-            let newLastReadId = prev.lastReadId;
-
-            for (const id of unreadMsgIds) {
-                if (newRevealedIds.includes(id)) {
-                    const allPreviousRead = unreadMsgIds
-                        .filter(uid => uid <= id && uid > newLastReadId)
-                        .every(uid => newRevealedIds.includes(uid));
-
-                    if (allPreviousRead) {
-                        newLastReadId = id;
-                    }
-                }
-            }
-
-            // Remove IDs that are now covered by newLastReadId
-            const consolidatedRevealedIds = newRevealedIds.filter(id => id > newLastReadId);
-
-            const next: ReadState = {
-                lastReadId: newLastReadId,
-                revealedIds: consolidatedRevealedIds,
-                readCount: (prev.readCount || 0) + 1
-            };
-
-            if (selectedGroupDir) saveReadState(selectedGroupDir, next);
+            const next = applyReveal(prev, msgId, messages.map(m => m.id));
+            if (next !== prev && selectedGroupDir) saveAndBump(selectedGroupDir, next);
             return next;
         });
-    }, [selectedGroupDir, messages]);
+    }, [selectedGroupDir, messages, saveAndBump]);
+
+    // A heard change made through the main-window bridge (popup answered a voice).
+    useReadStateSubscription(selectedGroupDir, setReadState, () => setReadStateVersion(v => v + 1));
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;
         const next: ReadState = { lastReadId: maxMessageId, readCount: totalMessages, revealedIds: [] };
-        if (selectedGroupDir) saveReadState(selectedGroupDir, next);
+        if (selectedGroupDir) saveAndBump(selectedGroupDir, next);
         setReadState(next);
-    }, [selectedGroupDir, maxMessageId, totalMessages]);
+    }, [selectedGroupDir, maxMessageId, totalMessages, saveAndBump]);
 
     // === HELPERS ===
 
