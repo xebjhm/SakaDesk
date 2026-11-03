@@ -300,7 +300,7 @@ def test_scheduler_allowed_in_env(monkeypatch):
 
 
 def test_lifespan_skips_scheduler_under_pytest():
-    """conftest sets SAKADESK_DISABLE_AUTO_SYNC, so the lifespan does not start it."""
+    """the root conftest sets SAKADESK_DISABLE_AUTO_SYNC, so the lifespan does not start it."""
     from fastapi.testclient import TestClient
 
     from backend.main import app

@@ -80,6 +80,30 @@ async def test_launch_already_running(mock_sync_service):
 
 
 @pytest.mark.asyncio
+async def test_launch_live_registered_task_counts_as_running(mock_sync_service):
+    """A task registered by a previous launch that has not started yet (so
+    ``running`` is still False) must block a second launch."""
+    mock_sync_service._task = MagicMock()
+    mock_sync_service._task.done.return_value = False
+    with patch("asyncio.create_task") as create_task:
+        result = await launch_sync("hinatazaka46", origin="scheduler")
+    assert result == "already_running"
+    create_task.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_launch_finished_registered_task_does_not_block(mock_sync_service):
+    mock_sync_service._task = MagicMock()
+    mock_sync_service._task.done.return_value = True
+    with (
+        patch("asyncio.create_task"),
+        patch("backend.api.sync.run_sync_task", new=MagicMock()),
+    ):
+        result = await launch_sync("hinatazaka46", origin="scheduler")
+    assert result == "started"
+
+
+@pytest.mark.asyncio
 async def test_launch_shutting_down(mock_sync_service):
     shutdown_state.begin_shutdown()
     with patch("asyncio.create_task") as create_task, capture_logs() as logs:

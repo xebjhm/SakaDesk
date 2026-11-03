@@ -1,17 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch
-import os
 import sys
 from pathlib import Path
 
 # Add project root to sys.path
 sys.path.append(str(Path(__file__).parent.parent))
-
-# The app lifespan starts a background auto-sync scheduler; tests that create
-# TestClient(app) must never spawn real syncs. A test that wants the scheduler
-# removes this variable with monkeypatch.delenv (see test_auto_sync_scheduler.py).
-os.environ.setdefault("SAKADESK_DISABLE_AUTO_SYNC", "1")
 
 # MOCK WEBVIEW BEFORE IMPORTING DESKTOP/BACKEND
 # This prevents Tkinter/GTK/QT from trying to initialize

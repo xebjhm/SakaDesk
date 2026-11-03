@@ -12,7 +12,6 @@ from backend.services.background_tasks import track_background_task
 from backend.services.shutdown_state import is_shutting_down
 from backend.services.sync_launcher import launch_sync
 from backend.api.progress import progress_manager
-import asyncio  # noqa: F401  (tests patch backend.api.sync.asyncio.create_task)
 
 logger = structlog.get_logger(__name__)
 

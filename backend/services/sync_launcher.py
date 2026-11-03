@@ -59,7 +59,10 @@ def _launch(sync_api, service: str, include_inactive: bool, force_resync: bool) 
         return LAUNCH_SHUTTING_DOWN
 
     sync_service = sync_api.get_sync_service(service)
-    if sync_service.running:
+    # ``running`` only flips once the coroutine first runs; a task registered
+    # by an earlier launch that has not started yet must count as running too.
+    task = sync_service._task
+    if sync_service.running or (task is not None and not task.done()):
         return LAUNCH_ALREADY_RUNNING
 
     progress = progress_manager.get(service)
@@ -71,8 +74,7 @@ def _launch(sync_api, service: str, include_inactive: bool, force_resync: bool) 
     # real task.cancel() (SVC-C1). start_sync also captures this via
     # asyncio.current_task(); assigning here closes the schedule-delay gap so a
     # cancel arriving before the coroutine first runs still finds the task.
-    task = asyncio.create_task(
+    sync_service._task = asyncio.create_task(
         sync_api.run_sync_task(service, include_inactive, force_resync)
     )
-    sync_service._task = task
     return LAUNCH_STARTED
