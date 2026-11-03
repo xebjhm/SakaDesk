@@ -218,6 +218,83 @@ async def test_page_may_fetch_before_start_returns():
     assert seen == [CallInfo(1, "hinatazaka46", PATH, False, "34", "58", 10)]
 
 
+@pytest.mark.asyncio
+async def test_start_watchdog_is_rearmed_when_start_returns():
+    """A slow start must not eat the page's budget: the 20 s count from its return."""
+    env = Env()
+    gate = asyncio.Event()
+
+    async def slow_start(call_id):
+        await gate.wait()
+        return True
+
+    env.bridge.call_popup_start = slow_start  # type: ignore[method-assign]
+    p = env.ctrl.reserve(plan(), CAND)
+    dispatching = asyncio.ensure_future(env.ctrl.dispatch(p.call_id))
+    await env.settle()
+    first = env.ctrl._watchdog
+    assert first is not None and env.ctrl.phase == "starting"
+    assert env.sleeper.durations == [START_WATCHDOG_S]
+    gate.set()
+    with capture_logs() as logs:
+        await dispatching
+        await env.settle()
+    second = env.ctrl._watchdog
+    assert first.cancelled() and second is not None and second is not first
+    assert env.sleeper.durations == [START_WATCHDOG_S, START_WATCHDOG_S]
+    assert [e["result"] for e in events(logs, "call_popup_dispatch")] == ["started"]
+    # The preload completes within 20 s of start's return: the call rings, no watchdog.
+    assert await env.ctrl.on_event(p.call_id, CallEvent("ringing"))
+    await env.settle()
+    assert env.ctrl.phase == "ringing" and second.cancelled()
+    assert events(logs, "call_popup_watchdog") == []
+    assert env.sent == []
+    await env.ctrl.shutdown()
+
+
+@pytest.mark.parametrize("started", [True, False])
+@pytest.mark.parametrize("trigger", ["foreground", "disabled", "watchdog"])
+@pytest.mark.asyncio
+async def test_call_ended_while_start_is_awaited_is_superseded(trigger, started):
+    """foreground / cancel / watchdog during call_popup_start: no toast, idle, superseded."""
+    env = Env()
+    gate = asyncio.Event()
+
+    async def start(call_id):
+        env.bridge.calls.append(("start", call_id))
+        await gate.wait()
+        return started
+
+    env.bridge.call_popup_start = start  # type: ignore[method-assign]
+    p = env.ctrl.reserve(plan(), CAND)
+    dispatching = asyncio.ensure_future(env.ctrl.dispatch(p.call_id))
+    await env.settle()
+    assert env.ctrl.phase == "starting"
+    with capture_logs() as logs:
+        if trigger == "foreground":
+            await env.ctrl.on_foreground()
+        elif trigger == "disabled":
+            await env.ctrl.cancel("disabled")
+        else:
+            env.sleeper.release()
+            await env.settle()
+        assert env.ctrl.phase == "idle"
+        gate.set()
+        await dispatching
+        await env.settle()
+    assert env.ctrl.phase == "idle"
+    assert [e["result"] for e in events(logs, "call_popup_dispatch")] == ["superseded"]
+    assert env.bridge.calls == [("start", 1), ("cancel", 1)]
+    if trigger == "watchdog":
+        # The watchdog's own fallback is the only toast; superseded sends none more.
+        assert env.sent == [plan()]
+        assert [e["reason"] for e in events(logs, "call_popup_toast")] == ["watchdog"]
+    else:
+        assert env.sent == [] and events(logs, "call_popup_toast") == []
+        (rec,) = events(logs, "call_popup_cancel")
+        assert (rec["call_id"], rec["reason"], rec["phase"]) == (1, trigger, "starting")
+
+
 # 3
 @pytest.mark.asyncio
 async def test_dispatch_start_failure_sends_fallback_toast():
@@ -651,8 +728,11 @@ async def test_transition_cancels_the_watchdog():
     env = Env()
     cid = await env.ringing()
     await env.settle()
+    ring_watchdog = env.ctrl._watchdog
+    assert ring_watchdog is not None and not ring_watchdog.done()
     await env.ctrl.on_event(cid, CallEvent("declined"))
     await env.settle()
+    assert ring_watchdog.cancelled()
     n_calls, n_sent = len(env.bridge.calls), len(env.sent)
     with capture_logs() as logs:
         env.sleeper.release()
@@ -669,6 +749,7 @@ async def test_stale_watchdog_for_a_newer_call_does_nothing():
     await env.settle()
     old = env.ctrl._watchdog
     assert old is not None
+    old_fut = env.sleeper._futs[-1]
     # Replace the call without cancelling the old watchdog task, then let it fire.
     with env.ctrl._lock:
         env.ctrl._watchdog = None
@@ -677,7 +758,7 @@ async def test_stale_watchdog_for_a_newer_call_does_nothing():
     await env.ctrl.dispatch(2)
     await env.settle()
     with capture_logs() as logs:
-        env.sleeper._futs[0].set_result(None)
+        old_fut.set_result(None)
         await env.settle()
     assert events(logs, "call_popup_watchdog") == []
     assert env.ctrl.phase == "starting"
@@ -772,6 +853,35 @@ async def test_shutdown_while_ringing():
     assert (rec["call_id"], rec["reason"], rec["phase"]) == (cid, "app_exit", "ringing")
     await asyncio.sleep(0)
     assert watchdog.cancelled() and env.ctrl._watchdog is None
+
+
+@pytest.mark.asyncio
+async def test_shutdown_during_watchdog_cancel_sends_no_toast():
+    """A watchdog already past its sleep is cancelled by shutdown(): no toast after it."""
+    env = Env()
+    cid = await env.ringing()
+    await env.settle()
+    watchdog = env.ctrl._watchdog
+    assert watchdog is not None
+    in_cancel, gate = asyncio.Event(), asyncio.Event()
+
+    async def slow_cancel(call_id):
+        env.bridge.calls.append(("cancel", call_id))
+        in_cancel.set()
+        await gate.wait()
+
+    env.bridge.call_popup_cancel = slow_cancel  # type: ignore[method-assign]
+    with capture_logs() as logs:
+        env.sleeper.release()
+        await in_cancel.wait()
+        assert env.ctrl.phase == "idle" and env.ctrl._watchdog is None
+        await env.ctrl.shutdown()
+        gate.set()
+        await env.settle()
+    assert watchdog.cancelled() and env.ctrl._firing is None
+    assert env.sent == [] and events(logs, "call_popup_toast") == []
+    assert events(logs, "call_popup_hide") == []
+    assert [e["call_id"] for e in events(logs, "call_popup_watchdog")] == [cid]
 
 
 @pytest.mark.asyncio

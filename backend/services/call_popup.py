@@ -322,6 +322,7 @@ class CallPopupController:
         self._pending: PendingCall | None = None
         self._next_id = 1
         self._watchdog: asyncio.Task[None] | None = None
+        self._firing: asyncio.Task[None] | None = None  # a watchdog past its sleep
         self._tasks: set[asyncio.Task[Any]] = set()
 
     # --- state ---
@@ -416,16 +417,24 @@ class CallPopupController:
             logger.info("call_popup_dispatch", call_id=call_id, result="foreground")
             self._spawn_toast(pending, "fallback", "foreground")
             return
-        if await self._bridge.call_popup_start(call_id):
-            logger.info("call_popup_dispatch", call_id=call_id, result="started")
-            return
+        started = await self._bridge.call_popup_start(call_id)
         with self._lock:
-            still = self._current_id() == call_id and self._phase == STARTING
-            if still:
+            current = self._current_id() == call_id and self._phase in _ACTIVE
+            still = current and self._phase == STARTING
+            if still and started:
+                # The start call may have used most of the first budget (it can
+                # recreate a lost window): count the 20 s from its return.
+                self._enter_locked(STARTING, call_id)
+            elif still:
                 self._to_idle_locked()
-        logger.info("call_popup_dispatch", call_id=call_id, result="start_failed")
-        if still:
+        if started and current:
+            logger.info("call_popup_dispatch", call_id=call_id, result="started")
+        elif not started and still:
+            logger.info("call_popup_dispatch", call_id=call_id, result="start_failed")
             self._spawn_toast(pending, "fallback", "start_failed")
+        else:
+            # Cancelled, watchdogged or replaced while call_popup_start was awaited.
+            logger.info("call_popup_dispatch", call_id=call_id, result="superseded")
 
     def abandon(self, call_id: int, reason: str) -> None:
         """Drop a reserved call whose sync did not reach dispatch (never awaits)."""
@@ -593,6 +602,9 @@ class CallPopupController:
             phase, pending = self._phase, self._pending
             self._to_idle_locked()
             tasks = list(self._tasks)
+            firing, self._firing = self._firing, None
+        if firing is not None:
+            tasks.append(firing)
         if pending is not None:
             logger.info(
                 "call_popup_cancel",
@@ -613,13 +625,20 @@ class CallPopupController:
             pending = self._pending
             self._watchdog = None  # never cancel ourselves
             self._to_idle_locked()
-        logger.warning("call_popup_watchdog", call_id=call_id, phase=phase)
-        await self._bridge.call_popup_cancel(call_id)
-        logger.info("call_popup_hide", call_id=call_id, reason="watchdog")
-        if pending is not None and phase == STARTING:
-            self._spawn_toast(pending, "fallback", "watchdog")
-        elif pending is not None and phase == RINGING:
-            self._spawn_toast(pending, "missed", "watchdog")
+            # Past this point shutdown() cancels us instead of the (cleared) handle.
+            self._firing = asyncio.current_task()
+        try:
+            logger.warning("call_popup_watchdog", call_id=call_id, phase=phase)
+            await self._bridge.call_popup_cancel(call_id)
+            logger.info("call_popup_hide", call_id=call_id, reason="watchdog")
+            if pending is not None and phase == STARTING:
+                self._spawn_toast(pending, "fallback", "watchdog")
+            elif pending is not None and phase == RINGING:
+                self._spawn_toast(pending, "missed", "watchdog")
+        finally:
+            with self._lock:
+                if self._firing is asyncio.current_task():
+                    self._firing = None
 
     async def _send_toast(self, pending: PendingCall, kind: str, reason: str) -> None:
         call_id = pending.call_id

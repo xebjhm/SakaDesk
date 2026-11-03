@@ -185,13 +185,13 @@ class PendingCall:
 | method | behaviour |
 |---|---|
 | `reserve(plan, candidate)` | `idle` → `reserved`, returns `PendingCall`; otherwise `None`. Logs `call_popup_reserved` (`call_id`, `service`, `group_id`, `member_id`, `message_id`, `count`). |
-| `dispatch(call_id)` | Only from `reserved`. It re-reads `get_ui_state()`. If the app is now focused, the call is released: when the user is viewing that chat there is no toast, because B rings there (`result=viewing`); otherwise the plan is sent as a normal toast (`result=foreground`). Otherwise it awaits `bridge.call_popup_start(call_id)`. `True` → `starting`, with the start watchdog. `False` → `idle` and a fallback toast (`result=start_failed`). Logs `call_popup_dispatch` (`call_id`, `result`). |
+| `dispatch(call_id)` | Only from `reserved`. It re-reads `get_ui_state()`. If the app is now focused, the call is released: when the user is viewing that chat there is no toast, because B rings there (`result=viewing`); otherwise the plan is sent as a normal toast (`result=foreground`). Otherwise it enters `starting` (with the start watchdog) and then awaits `bridge.call_popup_start(call_id)`; the page may fetch the call before `start` returns. When `start` returns `True` and the call is still current in `starting`, the start watchdog is re-armed so its 20 s count from that return (`result=started`). `False` while still `starting` → `idle` and a fallback toast (`result=start_failed`). If the call was cancelled, watchdogged or replaced during the await, nothing more happens (`result=superseded`, no toast). Logs `call_popup_dispatch` (`call_id`, `result`). |
 | `abandon(call_id, reason)` | Only from `reserved`, used by the sync's error paths (§4.5). `reason=sync_failed` → fallback toast; `reason=cancelled` → no toast (the app is shutting down or the sync was cancelled). Logs `call_popup_abandoned` (`call_id`, `reason`, `toast`). |
 | `info(call_id)` | The active call's `CallInfo` (§4.6) when `call_id` is current and the state is `starting`/`ringing`/`connected`; else `None`. |
-| `on_event(call_id, event)` | Applies the table below. Returns `False` for a stale event (unknown call, wrong phase, or an `answered` whose `message_id` differs from the candidate), logged as `call_popup_event_stale` (`call_id`, `event`, `reason`). |
+| `on_event(call_id, event)` | Applies the table below. Returns `False` for a stale event (unknown call, wrong phase, or an `answered` whose `message_id` differs from the candidate), logged as `call_popup_event_stale` (`call_id`, `call_event`, `reason`). |
 | `on_foreground()` | Called when the main window reports `focused=true` (§4.6). `starting`/`ringing` → `bridge.call_popup_cancel(call_id)`, `idle`, no toast. `connected` → left alone: an answered call is not cut off. `reserved` → nothing, because `dispatch` re-checks. Logs `call_popup_cancel reason=foreground`. |
 | `cancel(reason)` | Setting turned off (`disabled`). Any active phase → popup cancelled, `idle`, no toast. |
-| `shutdown()` | From lifespan shutdown, before the scheduler stop. It cancels the watchdogs and goes to `idle` with no toast (`call_popup_cancel reason=app_exit` when a call was active). |
+| `shutdown()` | From lifespan shutdown, before the scheduler stop. It cancels the watchdogs (including one already firing, so no toast follows shutdown) and goes to `idle` with no toast (`call_popup_cancel reason=app_exit` when a call was active). |
 
 **Events from the popup** (`POST /api/call-popup/calls/{call_id}/events`, §4.6):
 
@@ -207,10 +207,10 @@ class PendingCall:
 | `error` / `cancelled` | `ringing` | hide, → `idle`, missed-call toast (`reason=error`) |
 | `error` / `cancelled` | `connected` | hide, → `idle` |
 
-Each accepted event logs `call_popup_event` (`call_id`, `event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
+Each accepted event logs `call_popup_event` (`call_id`, `call_event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
 
 **Watchdogs** (asyncio tasks, cancelled on every transition):
-- `START_WATCHDOG_S = 20`: B's `PRELOAD_TIMEOUT_MS` (10 s) plus 10 s for the page fetches;
+- `START_WATCHDOG_S = 20`: B's `PRELOAD_TIMEOUT_MS` (10 s) plus 10 s for the page fetches. It is armed when `starting` is entered (before `call_popup_start`, so the page can fetch) and re-armed when `call_popup_start` returns `True`, so a slow start (up to `BRIDGE_START_TIMEOUT_S`, §6.6) does not use up the page's budget;
 - `RING_WATCHDOG_S = 45`: B's `RING_TIMEOUT_MS` (30 s) plus 15 s of slack. A test keeps it above B's constant (§11.1);
 - `CONNECTED_WATCHDOG_S = 900`.
 
@@ -559,10 +559,10 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_skip` | service, reason (`popup_disabled`/`no_candidate`/`unavailable`/`foreground`/`busy`/`quiet`), group_id, member_id, message_id (with a candidate), quiet_state (for `quiet`) |
 | `call_popup_reserved` | call_id, service, group_id, member_id, message_id, count |
 | `call_popup_voice_first` | call_id, items, downloaded |
-| `call_popup_dispatch` | call_id, result (`started`/`start_failed`/`foreground`/`viewing`) |
+| `call_popup_dispatch` | call_id, result (`started`/`start_failed`/`superseded`/`foreground`/`viewing`) |
 | `call_popup_abandoned` | call_id, reason (`sync_failed`/`cancelled`), toast (`sent`/`skipped`) |
-| `call_popup_event` | call_id, event, phase, reason, error_type |
-| `call_popup_event_stale` | call_id, event, reason (`unknown_call`/`wrong_phase`/`message_mismatch`) |
+| `call_popup_event` | call_id, call_event, phase, reason, error_type |
+| `call_popup_event_stale` | call_id, call_event, reason (`unknown_call`/`wrong_phase`/`message_mismatch`) |
 | `call_popup_hide` | call_id, reason (the event or watchdog that ended the call) |
 | `call_popup_toast` | call_id, kind (`fallback`/`missed`), reason, sent |
 | `call_popup_toast_skip` | call_id, kind (`fallback`/`missed`), reason (`notifications_disabled`) |
