@@ -46,8 +46,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   just downloaded.** Both now take turns writing the file.
 - **One failed refresh no longer hides every unread badge** in the sidebar.
 - **An unread badge could never clear after a member withdrew a message**, and
-  withdrawn messages still counted in chat totals and showed up in search. They
-  are now left out everywhere, as in the chat itself.
+  withdrawn messages still counted in chat totals and showed up in search.
+  Badges and totals now leave them out, as the chat does, and search no longer
+  adds them; the one-time full re-read of each chat after updating also removes
+  the ones search already had.
 - **Installing an update from inside the app could just close SakaDesk and do
   nothing**: the installer often gave up because SakaDesk hadn't finished
   closing yet, so nothing was installed and the app didn't reopen. It now waits
