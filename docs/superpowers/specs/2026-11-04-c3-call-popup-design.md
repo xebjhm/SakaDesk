@@ -332,7 +332,7 @@ webview.create_window(
 
 ### 6.3 Show without stealing focus
 
-- **Reveal** (on `ringing`): `ShowWindow(hwnd, SW_SHOWNOACTIVATE=4)`, then `SetWindowPos(hwnd, HWND_TOPMOST=-1, x, y, w, h, SWP_NOACTIVATE|SWP_SHOWWINDOW)`. Neither call activates the window, so typing in another app continues uninterrupted. Clicks still reach the WebView2 content; `WS_EX_NOACTIVATE` keeps the popup from becoming the foreground window when it is clicked.
+- **Reveal** (on `ringing`), in this order: `SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER|SWP_NOACTIVATE)` (move and size while still hidden, so the first paint is at the right spot), `ShowWindow(hwnd, SW_SHOWNOACTIVATE=4)` (its `WM_SHOWWINDOW` keeps WinForms `Visible` in sync for `Form.Hide`), then `SetWindowPos(hwnd, HWND_TOPMOST=-1, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)`. A system DPI of 0 or less is a `call_popup_reveal_failed` with `error_type=bad_dpi`. None of the calls activates the window, so typing in another app continues uninterrupted. Clicks still reach the WebView2 content; `WS_EX_NOACTIVATE` keeps the popup from becoming the foreground window when it is clicked.
 - **Hide:** `window.hide()` (pywebview `Form.Hide`, which never activates anything).
 - **Cancel:** `evaluate_js("window.__sakadeskCallPopup && window.__sakadeskCallPopup.cancel(<call_id>)")`, then hide.
 - **Logging:** reveal logs `call_popup_reveal` (`call_id`, `dpi`, `width`, `height`, `visible` = `IsWindowVisible` afterwards) or `call_popup_reveal_failed` (`error_type`). Physical sizes are not personal data.
@@ -359,7 +359,7 @@ y      = work_area.bottom - h - margin
 
 - **Quit (tray).** `on_quit` becomes `_mark_quitting(); tray.stop(); popup.destroy(); window.destroy()`.
 - **Catch-all.** `window.events.closed += popup.destroy_on_main_closed`. Whatever closes the main window (Quit, ✕ with close-to-tray off, the C2 session-end guard letting a shutdown through, a crash path that reaches `closed`), the popup is destroyed too, so `instances` reaches 0 and `webview.start()` returns into the existing cleanup.
-- **Destroy.** `popup.destroy(timeout=3.0)` calls `window.destroy()` and waits for the popup's `closed` event. If it does not arrive in time, it logs `call_popup_window action=destroy_failed` and calls `System.Windows.Forms.Application.Exit()` (lazy import), so the process can never be kept alive by the popup. It logs `action=destroyed` on success.
+- **Destroy.** `popup.destroy(timeout=3.0)` runs `window.destroy()` on a daemon thread (it blocks on the GUI thread, so a hung GUI thread must not block the caller) and waits at most `timeout` for the popup's `closed` event. A second call (tray Quit plus the main window's `closed`) returns at once. If `closed` does not arrive in time, it logs `call_popup_window action=destroy_failed` and calls `System.Windows.Forms.Application.Exit()` (lazy import), so the process can never be kept alive by the popup. It logs `action=destroyed` on success.
 - **Session end.** Windows sends the session-end close to every top-level form. The popup has no `closing` handler that cancels, so it closes. The main window is handled by C2's guard.
 - **While quitting.** `popup.start()` returns `False` when `_quitting` is set, and the backend's `controller.shutdown()` (lifespan) drops any active call without a toast.
 - **The popup's own close.** It has no ✕ (frameless), never activates (so no Alt+F4) and has no taskbar button. Its `closed` firing while not quitting means the window was lost, and the next `start()` recreates it.
@@ -668,9 +668,9 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `before_show` sets `WS_EX_TOOLWINDOW` and the corner preference;
   - load timeout → `create_failed`; two failures → unavailable;
   - `start` returns False when the script returns false, or while quitting;
-  - `reveal` calls `ShowWindow(SW_SHOWNOACTIVATE)` and `SetWindowPos(HWND_TOPMOST, …, SWP_NOACTIVATE|SWP_SHOWWINDOW)` and never `window.show()`;
+  - `reveal` calls `SetWindowPos(…, SWP_NOZORDER|SWP_NOACTIVATE)`, `ShowWindow(SW_SHOWNOACTIVATE)`, then `SetWindowPos(HWND_TOPMOST, …, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)`, in that order, and never `window.show()`; a DPI of 0 fails with `bad_dpi`;
   - `cancel` runs the script then hides;
-  - `destroy` success; `destroy` timeout → `Application.Exit` fallback (injected);
+  - `destroy` success; `destroy` timeout, including a hung `window.destroy()`, → `Application.Exit` fallback (injected); a second `destroy` is a no-op;
   - a lost window is recreated by the next `start`;
   - `deliver_heard` maps `true`/`null` to `delivered`/`not_ready`.
 - **`desktop.py`:** `on_quit` destroys the popup before the main window; main `closed` destroys the popup; the popup is created after the first `loaded` only when the setting is on, and only once.

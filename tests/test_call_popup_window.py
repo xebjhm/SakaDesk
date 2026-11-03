@@ -448,9 +448,11 @@ def test_reveal_shows_no_activate_at_popup_rect():
     user32.calls.clear()
     with capture_logs() as logs:
         assert w.reveal() is True
+    # Move first (no flash at the stale spot), then show, then topmost only.
     assert user32.calls == [
+        ("SetWindowPos", 0x1234, 0, 1608, 495, 300, 533, 0x0004 | 0x0010),
         ("ShowWindow", 0x1234, 4),
-        ("SetWindowPos", 0x1234, -1, 1608, 495, 300, 533, 0x0010 | 0x0040),
+        ("SetWindowPos", 0x1234, -1, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010),
     ]
     assert win.shown == 0
     ev = [e for e in logs if e["event"] == "call_popup_reveal"][0]
@@ -461,6 +463,23 @@ def test_reveal_shows_no_activate_at_popup_rect():
         533,
         True,
     )
+
+
+@pytest.mark.parametrize("bad", [0, -96])
+def test_reveal_rejects_a_bad_dpi_without_touching_the_window(bad):
+    user32 = FakeUser32()
+    w, _, _ = make([FakeWindow()], user32=user32)
+    w._system_dpi = lambda: bad
+    w.start(6)
+    user32.calls.clear()
+    with capture_logs() as logs:
+        assert w.reveal() is False
+    assert user32.calls == []
+    ev = [e for e in logs if e["event"] == "call_popup_reveal_failed"]
+    assert [(e["error_type"], e["dpi"], e["call_id"]) for e in ev] == [
+        ("bad_dpi", bad, 6)
+    ]
+    assert not [e for e in logs if e["event"] == "call_popup_reveal"]
 
 
 def test_reveal_without_window_or_hwnd_fails():
@@ -574,7 +593,37 @@ def test_destroy_success():
     assert w.available() is False
     with capture_logs() as logs:
         w.destroy()
-    assert logs == []
+    assert [e["event"] for e in logs] == ["call_popup_window"]
+    assert logs[0]["action"] == "destroy_skipped"
+    assert logs[0]["log_level"] == "debug"
+    assert win.destroyed == 1
+
+
+def test_destroy_is_idempotent_after_a_failed_destroy():
+    win = FakeWindow(close_on_destroy=False)
+    w, _, exits = make([win])
+    w.ensure()
+    w.destroy()
+    assert exits == [1]
+    with capture_logs() as logs:
+        w.destroy()
+        w.destroy_on_main_closed()
+    assert actions(logs) == ["destroy_skipped", "destroy_skipped"]
+    assert not [e for e in logs if e.get("action") == "destroy_failed"]
+    assert exits == [1]
+    assert win.destroyed == 1
+
+
+def test_destroy_while_destroying_is_skipped():
+    win = FakeWindow(close_on_destroy=False)
+    w, _, exits = make([win])
+    w.ensure()
+    w._shut_down = False
+    w._destroying = True  # a destroy is in flight on another thread
+    with capture_logs() as logs:
+        w.destroy()
+    assert actions(logs) == ["destroy_skipped"]
+    assert win.destroyed == 0 and exits == []
 
 
 def test_destroy_timeout_falls_back_to_app_exit():
@@ -585,6 +634,47 @@ def test_destroy_timeout_falls_back_to_app_exit():
     failed = [e for e in logs if e.get("action") == "destroy_failed"]
     assert failed[0]["error_type"] == "timeout"
     assert exits == [1]
+
+
+def test_destroy_with_a_hung_gui_thread_still_falls_back_within_timeout():
+    release = threading.Event()
+    entered = threading.Event()
+
+    class Hung(FakeWindow):
+        def destroy(self):
+            self.destroyed += 1
+            entered.set()
+            release.wait(5)  # a GUI thread that never answers Invoke(Close)
+
+    win = Hung()
+    w, _, exits = make([win])
+    w.ensure()
+    try:
+        with capture_logs() as logs:
+            w.destroy()
+        assert entered.wait(1)
+        failed = [e for e in logs if e.get("action") == "destroy_failed"]
+        assert [e["error_type"] for e in failed] == ["timeout"]
+        assert exits == [1]
+        assert w._window is None
+    finally:
+        release.set()
+
+
+def test_destroy_runs_window_destroy_off_the_calling_thread():
+    seen = []
+
+    class Recording(FakeWindow):
+        def destroy(self):
+            seen.append(threading.current_thread())
+            super().destroy()
+
+    w, _, _ = make([Recording()])
+    w.ensure()
+    w.destroy()
+    assert len(seen) == 1
+    assert seen[0] is not threading.current_thread()
+    assert seen[0].daemon is True
 
 
 def test_destroy_raising_falls_back_to_app_exit():
@@ -700,6 +790,21 @@ def test_destroy_during_load_closes_the_new_window():
     assert actions(logs) == ["created", "destroyed"]
     assert win.destroyed == 1
     assert w.available() is False
+
+
+def test_ensure_does_not_reuse_a_window_that_closed_before_it_was_cached():
+    first, second = FakeWindow(), FakeWindow()
+    w, created, _ = make([first, second])
+    assert w.ensure() is True
+    # ``closed`` fired after ensure()'s check but before ``self._window`` was
+    # set, so ``_on_closed`` ignored it (the window was not cached yet).
+    first.events.closed._e.set()
+    assert w._window is first
+    with capture_logs() as logs:
+        assert w.ensure() is True
+    assert len(created) == 2
+    assert w._window is second
+    assert actions(logs) == ["lost", "created"]
 
 
 def test_start_after_window_vanished_post_ensure_fails(monkeypatch):
@@ -824,7 +929,7 @@ def test_default_seams_used_by_the_host(monkeypatch):
     )
     w.ensure()
     assert w.reveal() is True
-    assert ("SetWindowPos", 0x1234, -1, 1608, 495, 300, 533, 0x50) in user32.calls
+    assert ("SetWindowPos", 0x1234, 0, 1608, 495, 300, 533, 0x14) in user32.calls
 
 
 def test_default_system_dpi_prefers_get_dpi_for_system():

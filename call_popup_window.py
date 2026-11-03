@@ -11,12 +11,14 @@ reused for every call:
   Two failed creations in a row make the host unavailable for the process.
 - :meth:`CallPopupWindow.reveal` places it with :func:`popup_rect` (the primary
   monitor's work area, ``POPUP_WIDTH_DIP`` wide at 9:16, ``POPUP_MARGIN_DIP``
-  from the corner, in physical pixels at the system DPI) and shows it with
-  ``SW_SHOWNOACTIVATE`` / ``SWP_NOACTIVATE``. pywebview's ``window.show()`` is
+  from the corner, in physical pixels at the system DPI), moving it before it
+  is shown, then shows it with ``SW_SHOWNOACTIVATE`` / ``SWP_NOACTIVATE``.
+  pywebview's ``window.show()`` is
   never called: it activates the form and would steal focus.
-- :meth:`CallPopupWindow.destroy` closes it with the main window, falling back
-  to ``System.Windows.Forms.Application.Exit()`` so a stuck popup can never keep
-  the process alive.
+- :meth:`CallPopupWindow.destroy` closes it with the main window. The close runs
+  on a daemon thread and is awaited with a timeout, falling back to
+  ``System.Windows.Forms.Application.Exit()``, so a stuck popup (even a hung GUI
+  thread) can never keep the process alive.
 
 pywebview, ``ctypes.WinDLL``, ``ctypes.wintypes`` and pythonnet are imported
 lazily inside the default seams, and every native seam (``create_window``,
@@ -33,6 +35,7 @@ import contextlib
 import ctypes
 import json
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -59,8 +62,10 @@ GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 SW_SHOWNOACTIVATE = 4
 HWND_TOPMOST = -1
+SWP_NOSIZE = 0x0001
+SWP_NOMOVE = 0x0002
+SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
-SWP_SHOWWINDOW = 0x0040
 SPI_GETWORKAREA = 0x0030
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
 DWMWCP_ROUND = 2
@@ -304,9 +309,15 @@ class CallPopupWindow:
         with self._lock:
             if not self.available() or self._is_quitting():
                 return False
-            if self._window is not None and self._window.events.loaded.is_set():
-                logger.info("call_popup_window", action="reused")
-                return True
+            cached = self._window
+            if cached is not None:
+                if cached.events.loaded.is_set() and not cached.events.closed.is_set():
+                    logger.info("call_popup_window", action="reused")
+                    return True
+                # Closed behind our back (``closed`` fired before it was cached,
+                # or before ``_on_closed`` could clear it): never reuse it.
+                self._window = None
+                logger.info("call_popup_window", action="lost")
             window = None
             try:
                 window = self._create_window(
@@ -365,7 +376,7 @@ class CallPopupWindow:
             logger.info("call_popup_window", action="created")
         if self._shut_down:
             # destroy() ran while this window was loading: close it too.
-            self.destroy()
+            self._close_window(self._destroy_timeout)
             return False
         return True
 
@@ -403,27 +414,48 @@ class CallPopupWindow:
     def reveal(self) -> bool:
         """Place the popup bottom-right and show it without activating it.
 
-        ``ShowWindow(SW_SHOWNOACTIVATE)`` then ``SetWindowPos(HWND_TOPMOST, …,
-        SWP_NOACTIVATE | SWP_SHOWWINDOW)`` at :func:`popup_rect` of the current
-        work area and system DPI. Returns ``IsWindowVisible`` afterwards and logs
-        ``call_popup_reveal``; on any failure logs ``call_popup_reveal_failed``
-        (``error_type``) and returns False.
+        In order: ``SetWindowPos`` to :func:`popup_rect` of the current work
+        area and system DPI (``SWP_NOZORDER | SWP_NOACTIVATE``, so the first
+        paint is already at the right spot), ``ShowWindow(SW_SHOWNOACTIVATE)``
+        (its ``WM_SHOWWINDOW`` keeps WinForms ``Visible`` in sync for
+        ``Form.Hide``), then ``SetWindowPos(HWND_TOPMOST, …, SWP_NOMOVE |
+        SWP_NOSIZE | SWP_NOACTIVATE)``. Returns ``IsWindowVisible`` afterwards and
+        logs ``call_popup_reveal``; on any failure logs ``call_popup_reveal_failed``
+        (``error_type``; ``bad_dpi`` when the system DPI reads as 0 or less) and
+        returns False.
         """
         try:
             hwnd = _hwnd_of(self._window)
             if not hwnd:
                 raise LookupError("no_hwnd")
             dpi = int(self._system_dpi())
+            if dpi <= 0:
+                logger.warning(
+                    "call_popup_reveal_failed",
+                    call_id=self._call_id,
+                    error_type="bad_dpi",
+                    dpi=dpi,
+                )
+                return False
             rect = popup_rect(self._work_area(), dpi)
-            self._user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
             self._user32.SetWindowPos(
                 hwnd,
-                HWND_TOPMOST,
+                0,
                 rect.left,
                 rect.top,
                 rect.width,
                 rect.height,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            )
+            self._user32.ShowWindow(hwnd, SW_SHOWNOACTIVATE)
+            self._user32.SetWindowPos(
+                hwnd,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
             )
             visible = bool(self._user32.IsWindowVisible(hwnd))
             logger.info(
@@ -475,21 +507,50 @@ class CallPopupWindow:
     def destroy(self, timeout: float | None = None) -> None:
         """Close the popup and wait up to ``timeout`` (default ``destroy_timeout``).
 
-        Makes the host unavailable for good. Logs ``call_popup_window
-        action=destroyed`` when the popup's ``closed`` fired in time; otherwise
-        ``action=destroy_failed`` (``error_type`` ``timeout`` or the exception
-        type) and calls ``Application.Exit()`` so the popup cannot keep the
-        process alive. No window: a no-op.
+        Makes the host unavailable for good. Idempotent: a call while a destroy
+        is running or after one ran returns at once (debug ``call_popup_window
+        action=destroy_skipped``) without touching the window or the app.
+        ``window.destroy()`` runs on a daemon thread, because it blocks on the
+        GUI thread; this method never waits longer than ``timeout``. Logs
+        ``call_popup_window action=destroyed`` when the popup's ``closed`` fired
+        in time; otherwise ``action=destroy_failed`` (``error_type`` ``timeout``
+        or the exception type) and calls ``Application.Exit()`` so the popup
+        cannot keep the process alive. No window: a no-op.
         """
+        if self._destroying or self._shut_down:
+            logger.debug("call_popup_window", action="destroy_skipped")
+            return
         self._shut_down = True
+        self._close_window(self._destroy_timeout if timeout is None else timeout)
+
+    def destroy_on_main_closed(self, *_args: Any) -> None:
+        """Main window ``closed`` handler: destroy the popup with it."""
+        self.destroy()
+
+    # -- internals
+
+    def _close_window(self, wait_s: float) -> None:
+        """Close the current window within ``wait_s`` seconds, else exit the app."""
         window = self._window
         if window is None:
             return
-        wait_s = self._destroy_timeout if timeout is None else timeout
         self._destroying = True
+        errors: list[Exception] = []
+
+        def run() -> None:
+            try:
+                window.destroy()
+            except Exception as e:
+                errors.append(e)
+
+        thread = threading.Thread(target=run, name="call-popup-destroy", daemon=True)
+        deadline = time.monotonic() + wait_s
         try:
-            window.destroy()
-            if not window.events.closed.wait(wait_s):
+            thread.start()
+            thread.join(wait_s)
+            if errors:
+                raise errors[0]
+            if not window.events.closed.wait(max(0.0, deadline - time.monotonic())):
                 raise TimeoutError
         except Exception as e:
             error_type = "timeout" if isinstance(e, TimeoutError) else type(e).__name__
@@ -502,12 +563,6 @@ class CallPopupWindow:
         finally:
             if self._window is window:
                 self._window = None
-
-    def destroy_on_main_closed(self, *_args: Any) -> None:
-        """Main window ``closed`` handler: destroy the popup with it."""
-        self.destroy()
-
-    # -- internals
 
     def _exit_app(self) -> None:
         try:
