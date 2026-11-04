@@ -76,7 +76,7 @@ test.describe('timeline scroll', () => {
     const saved = page.waitForRequest((req) =>
       req.method() === 'PATCH' &&
       new URL(req.url()).searchParams.get('path') === `sakadesk_scroll_${ROOM_DIR}` &&
-      (req.postData() ?? '').includes(`"value":"${expected}"`),
+      String((req.postDataJSON() as { value?: unknown } | null)?.value) === String(expected),
     )
     await dialog.getByRole('button', { name: '15', exact: true }).click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 2000 }).toBe(expected)
@@ -104,12 +104,23 @@ test.describe('timeline scroll', () => {
   })
 
   test('Home and End jump to the first and the last message', async ({ page }) => {
+    // The app's own handler must run (one timeline_jump breadcrumb per key), not the browser's native Home/End.
+    const jumps: string[] = []
+    page.on('request', (req) => {
+      if (req.method() !== 'POST' || !req.url().includes('/api/client-log')) return
+      const body = req.postDataJSON() as { event?: string; fields?: { target?: string } } | null
+      if (body?.event === 'timeline_jump' && body.fields?.target) jumps.push(body.fields.target)
+    })
     await openBigRoom(page)
     await focusTimeline(page)
+    const before = jumps.length
     await page.keyboard.press('Home')
+    await expect.poll(() => jumps.slice(before), { timeout: 3000 }).toEqual(['top'])
     await expect.poll(() => isRowInViewport(page, 1), { timeout: 2000, intervals: [50] }).toBe(true)
     await page.keyboard.press('End')
+    await expect.poll(() => jumps.slice(before), { timeout: 3000 }).toEqual(['top', 'bottom'])
     await expect.poll(() => isRowInViewport(page, COUNT), { timeout: 2000, intervals: [50] }).toBe(true)
+    expect(jumps.slice(before)).toEqual(['top', 'bottom'])
   })
 
   test('first-unread arrow below the view brings the first unread into view', async ({ page }) => {

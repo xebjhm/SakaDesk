@@ -1,39 +1,33 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, renderHook, act } from '@testing-library/react';
-import type { Message } from '../../../types';
-import { virtuosoCapture } from '../../../__tests__/virtuosoMock';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { virtuosoCapture, resetVirtuosoCapture } from '../../../__tests__/virtuosoMock';
+import { renderList } from '../../../__tests__/messageListHelpers';
 import { useCollapseOnOutOfView } from '../hooks/useMessageVisibility';
-import { MessageList } from './MessageList';
+
+const { handleRangeChanged } = vi.hoisted(() => ({ handleRangeChanged: vi.fn() }));
 
 vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../hooks/useChatScroll', () => ({
-    useChatScroll: () => ({ initialTopMostItemIndex: undefined, handleRangeChanged: vi.fn() }),
+    useChatScroll: () => ({ initialTopMostItemIndex: undefined, handleRangeChanged }),
 }));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <span /> }));
 
-const msg = (id: number): Message =>
-    ({ id, timestamp: `2026-01-0${id}T00:00:00Z`, type: 'text', is_favorite: false, content: `m${id}` });
-const messages = [msg(1), msg(2), msg(3)];
-
-function renderList(onRangeChanged = vi.fn()) {
-    render(
-        <MessageList
-            memberId="room"
-            messages={messages}
-            getSenderInfo={() => ({ name: 'n' })}
-            isUnread={() => false}
-            onReveal={vi.fn()}
-            onLongPress={vi.fn()}
-            onRangeChanged={onRangeChanged}
-        />,
-    );
-    return onRangeChanged;
+function emitRange(range: { startIndex: number; endIndex: number }) {
+    if (!virtuosoCapture.rangeChanged) throw new Error('MessageList never passed rangeChanged to the list');
+    act(() => virtuosoCapture.rangeChanged!(range));
 }
 
+beforeEach(() => {
+    resetVirtuosoCapture();
+    handleRangeChanged.mockClear();
+});
+
 describe('MessageList rangeChanged wiring', () => {
-    it('reports the rendered range to the unread navigation', () => {
-        const onRangeChanged = renderList();
-        act(() => virtuosoCapture.rangeChanged!({ startIndex: 0, endIndex: 1 }));
+    it('reports the rendered range to scroll saving and the unread navigation', () => {
+        const onRangeChanged = vi.fn();
+        renderList({ onRangeChanged });
+        emitRange({ startIndex: 0, endIndex: 1 });
+        expect(handleRangeChanged).toHaveBeenCalledWith({ startIndex: 0, endIndex: 1 });
         expect(onRangeChanged).toHaveBeenCalledWith({ startIndex: 0, endIndex: 1 });
     });
 
@@ -45,7 +39,7 @@ describe('MessageList rangeChanged wiring', () => {
             useCollapseOnOutOfView(3, true, collapse3);
         });
         renderList();
-        act(() => virtuosoCapture.rangeChanged!({ startIndex: 0, endIndex: 1 }));
+        emitRange({ startIndex: 0, endIndex: 1 });
         expect(collapse3).toHaveBeenCalledTimes(1);
         expect(collapse1).not.toHaveBeenCalled();
     });
