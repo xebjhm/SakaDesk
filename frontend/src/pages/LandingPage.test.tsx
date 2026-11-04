@@ -24,4 +24,40 @@ describe('LandingPage (D2d)', () => {
         expect(card.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-group-accent', 'text-inverse');
         expect(screen.getByRole('button', { name: 'Get Started' })).toHaveClass('bg-group-accent');
     });
+
+    it('keeps the feature chips visible when an unselected card is hovered', () => {
+        render(<LandingPage onComplete={vi.fn()} />);
+        const card = screen.getByRole('button', { name: /日向坂46/ });
+        expect(card).toHaveClass('group', 'hover:bg-sunken');
+        const chip = screen.getAllByText('Messages')[0];
+        expect(chip).toHaveClass('bg-sunken', 'group-hover:bg-card');
+    });
+
+    it('does not repeat the group name: the logo is decorative', () => {
+        const { container } = render(<LandingPage onComplete={vi.fn()} />);
+        const logos = container.querySelectorAll('img');
+        expect(logos.length).toBeGreaterThan(0);
+        logos.forEach((img) => expect(img).toHaveAttribute('alt', ''));
+        expect(screen.queryAllByRole('img')).toHaveLength(0);
+    });
+
+    it('is disabled with nothing picked, deselects on a second click and keeps click order', async () => {
+        const onComplete = vi.fn();
+        render(<LandingPage onComplete={onComplete} />);
+        const empty = screen.getByRole('button', { name: 'Select at least one group' });
+        expect(empty).toBeDisabled();
+        await userEvent.click(empty);
+        expect(onComplete).not.toHaveBeenCalled();
+
+        const hinata = screen.getByRole('button', { name: /日向坂46/ });
+        await userEvent.click(hinata);
+        await userEvent.click(hinata);
+        expect(hinata).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('button', { name: 'Select at least one group' })).toBeDisabled();
+
+        await userEvent.click(screen.getByRole('button', { name: /Yodel/ }));
+        await userEvent.click(screen.getByRole('button', { name: /櫻坂46/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Get Started with 2 groups' }));
+        expect(onComplete).toHaveBeenCalledWith(['yodel', 'sakurazaka46']);
+    });
 });

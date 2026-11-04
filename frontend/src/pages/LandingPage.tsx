@@ -55,7 +55,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                 aria-pressed={isSelected}
                                 onClick={() => toggleService(service.id)}
                                 className={cn(
-                                    'relative flex flex-col items-start gap-3 rounded-card border-2 p-6 text-left shadow-card transition-colors duration-fast ease-standard',
+                                    'group relative flex flex-col items-start gap-3 rounded-card border-2 p-6 text-left shadow-card transition-colors duration-fast ease-standard',
                                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
                                     isSelected ? 'border-group-subtle bg-group-subtle' : 'border-transparent bg-card hover:bg-sunken',
                                 )}
@@ -71,10 +71,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                 </span>
 
                                 <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-pill bg-card shadow-pill">
+                                    {/* Decorative: the card's name already says which group it is. */}
                                     {service.logoUrl ? (
                                         <img
                                             src={service.logoUrl}
-                                            alt={service.displayName}
+                                            alt=""
                                             className="h-12 w-12 object-contain"
                                             onError={(e) => {
                                                 e.currentTarget.style.display = 'none';
@@ -97,7 +98,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                                         const feature = FEATURE_DEFINITIONS[featureId];
                                         const Icon = feature.icon;
                                         return (
-                                            <span key={featureId} className="inline-flex items-center gap-1 rounded-pill bg-sunken px-2 py-1 text-caption text-secondary">
+                                            <span key={featureId} className="inline-flex items-center gap-1 rounded-pill bg-sunken px-2 py-1 text-caption text-secondary transition-colors duration-fast ease-standard group-hover:bg-card">
                                                 <Icon className="h-3 w-3" />
                                                 {t(`features.${featureId}`)}
                                             </span>
