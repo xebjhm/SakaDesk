@@ -2,7 +2,6 @@
   "config/uiConstants.ts": 8,
   "core/common/InlineTranslation.tsx": 6,
   "core/common/TranslateButton.tsx": 16,
-  "core/layout/InlineSyncView.tsx": 4,
   "core/media/TranscribeButton.tsx": 13,
   "core/media/TranscriptPanel.tsx": 19,
   "core/media/VideoPlayer.tsx": 1,
@@ -14,7 +13,6 @@
   "shell/App.tsx": 2,
   "shell/components/LoginModal.tsx": 3,
   "shell/components/SetupWizard.tsx": 2,
-  "shell/components/SyncModal.tsx": 4,
   "shell/components/TosDialog.tsx": 2,
   "utils/backgroundSettings.ts": 1
 }
