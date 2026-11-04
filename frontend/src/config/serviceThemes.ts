@@ -1,7 +1,9 @@
 // frontend/src/config/serviceThemes.ts
 // Service Theme Engine - Visual identity for each service
 
-export type GroupId = 'hinatazaka' | 'sakurazaka' | 'nogizaka' | 'yodel' | 'default';
+import { groupTokens, type GroupId } from '../design/tokens/groups';
+
+export type { GroupId };
 
 export interface ServiceTheme {
     id: GroupId;
@@ -101,7 +103,7 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         name: 'Hinatazaka46',
         nameJp: '日向坂46',
 
-        primaryColor: '#7cc7e8',      // Sorairo (Sky Blue)
+        primaryColor: groupTokens.hinatazaka.accent,      // Sorairo (Sky Blue)
         secondaryColor: '#5dc2b5',    // Teal accent
         accentColor: '#fffacd',       // Soft sunlight yellow
 
@@ -140,8 +142,8 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         interaction: {
-            hoverGlow: 'rgba(124, 199, 232, 0.35)',
-            focusRing: '#7cc7e8',
+            hoverGlow: groupTokens.hinatazaka.glow,
+            focusRing: groupTokens.hinatazaka.ring,
             buttonGradient: 'linear-gradient(135deg, #7cc7e8 0%, #5dc2b5 100%)',
         },
 
@@ -162,20 +164,16 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         messages: {
-            headerGradient: {
-                from: '#a8c4e8',
-                via: '#a0a9d8',
-                to: '#9181c4',
-            },
-            headerTextColor: '#5d95ae',
-            headerBarGradient: 'linear-gradient(to right, #a8c4e8, #9181c4)',
-            bubbleBorder: '#7cc7e8',
+            headerGradient: { ...groupTokens.hinatazaka.title.gradient },
+            headerTextColor: groupTokens.hinatazaka.title.text,
+            headerBarGradient: groupTokens.hinatazaka.title.bar,
+            bubbleBorder: groupTokens.hinatazaka.bubbleBorder,
             voicePlayerAccent: '#6da0d4',
             scrollButtonColor: '#7cc7e8',
             unreadShadow: '0 0 12px rgba(124, 199, 232, 0.4)',
             defaultBackground: '#E2E6EB',
-            unreadBadge: '#7cc7e8',
-            sidebarGradient: ['#c8d8ec', '#dde6f0', '#f0f4f8'],
+            unreadBadge: groupTokens.hinatazaka.badge,
+            sidebarGradient: [...groupTokens.hinatazaka.canvas],
             shelterColors: {
                 picture: '#a8d0e8',   // Sky blue
                 video: '#c4a8d8',     // Lavender/purple
@@ -196,7 +194,7 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         name: 'Sakurazaka46',
         nameJp: '櫻坂46',
 
-        primaryColor: '#f7a6c9',      // Sakura Pink
+        primaryColor: groupTokens.sakurazaka.accent,      // Sakura Pink
         secondaryColor: '#FFFFFF',    // Pure White
         accentColor: '#8B9DC3',       // Cool grey-blue
 
@@ -235,8 +233,8 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         interaction: {
-            hoverGlow: 'rgba(247, 166, 201, 0.35)',
-            focusRing: '#f7a6c9',
+            hoverGlow: groupTokens.sakurazaka.glow,
+            focusRing: groupTokens.sakurazaka.ring,
             buttonGradient: 'linear-gradient(135deg, #f7a6c9 0%, #e8829e 100%)',
         },
 
@@ -257,20 +255,16 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         messages: {
-            headerGradient: {
-                from: '#fffdfe',      // Near-white
-                via: '#d8b0c8',       // Midpoint pink-purple
-                to: '#9b56a1',        // Purple (member name color)
-            },
-            headerTextColor: '#d892aa',           // Pink member name color
-            headerBarGradient: 'linear-gradient(to right, #ffffff 0%, #ffffff 5%, #fff6f7 10%, #eec8d2 25%, #e39eb1 50%, #bf78a0 75%, #95569c 100%)',  // Official 5-point gradient with pure white start
-            bubbleBorder: '#E85298',              // Pink message bubble border
+            headerGradient: { ...groupTokens.sakurazaka.title.gradient },
+            headerTextColor: groupTokens.sakurazaka.title.text,           // Pink member name color
+            headerBarGradient: groupTokens.sakurazaka.title.bar,  // Official 5-point gradient with pure white start
+            bubbleBorder: groupTokens.sakurazaka.bubbleBorder,              // Pink message bubble border
             voicePlayerAccent: '#d695ec',         // Purple/violet voice player
             scrollButtonColor: '#D4879B',         // Dusty rose scroll button
             unreadShadow: '0 0 12px rgba(232, 82, 152, 0.35)',
             defaultBackground: '#FFFFFF',         // Clean white background
-            unreadBadge: '#E85298',
-            sidebarGradient: ['#fce7f3', '#fdf2f8', '#fff5f7'],
+            unreadBadge: groupTokens.sakurazaka.badge,
+            sidebarGradient: [...groupTokens.sakurazaka.canvas],
             shelterColors: {
                 picture: '#ec9595',   // Salmon pink (from official app)
                 video: '#edc094',     // Orange/amber (from official app)
@@ -291,7 +285,7 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         name: 'Nogizaka46',
         nameJp: '乃木坂46',
 
-        primaryColor: '#7e1083',      // Noble Purple
+        primaryColor: groupTokens.nogizaka.accent,      // Noble Purple
         secondaryColor: '#9B59B6',    // Soft Purple
         accentColor: '#E8E0F0',       // Misty Lavender
 
@@ -330,8 +324,8 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         interaction: {
-            hoverGlow: 'rgba(126, 16, 131, 0.28)',
-            focusRing: '#9B59B6',
+            hoverGlow: groupTokens.nogizaka.glow,
+            focusRing: groupTokens.nogizaka.ring,
             buttonGradient: 'linear-gradient(135deg, #9B59B6 0%, #7e1083 100%)',
         },
 
@@ -352,20 +346,16 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         messages: {
-            headerGradient: {
-                from: '#d8c8e8',
-                via: '#c4a8d8',
-                to: '#9B59B6',
-            },
-            headerTextColor: '#7e1083',
-            headerBarGradient: 'linear-gradient(to right, #9B59B6, #7e1083)',
-            bubbleBorder: '#9B59B6',
+            headerGradient: { ...groupTokens.nogizaka.title.gradient },
+            headerTextColor: groupTokens.nogizaka.title.text,
+            headerBarGradient: groupTokens.nogizaka.title.bar,
+            bubbleBorder: groupTokens.nogizaka.bubbleBorder,
             voicePlayerAccent: '#9B59B6',
             scrollButtonColor: '#9B59B6',
             unreadShadow: '0 0 12px rgba(155, 89, 182, 0.35)',
             defaultBackground: '#F8F5FA',
-            unreadBadge: '#9B59B6',
-            sidebarGradient: ['#ede4f2', '#f3eef6', '#f8f5fa'],
+            unreadBadge: groupTokens.nogizaka.badge,
+            sidebarGradient: [...groupTokens.nogizaka.canvas],
             shelterColors: {
                 picture: '#c4a8d8',   // Soft purple
                 video: '#9B59B6',     // Noble purple
@@ -386,7 +376,7 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         name: 'Yodel',
         nameJp: 'ヨーデル',
 
-        primaryColor: '#5a8a6a',      // Sage Green
+        primaryColor: groupTokens.yodel.accent,      // Sage Green
         secondaryColor: '#7ab08a',    // Light Sage
         accentColor: '#d4ebe0',       // Soft Mint
 
@@ -425,8 +415,8 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         interaction: {
-            hoverGlow: 'rgba(90, 138, 106, 0.3)',
-            focusRing: '#5a8a6a',
+            hoverGlow: groupTokens.yodel.glow,
+            focusRing: groupTokens.yodel.ring,
             buttonGradient: 'linear-gradient(135deg, #7ab08a 0%, #5a8a6a 100%)',
         },
 
@@ -447,20 +437,16 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         messages: {
-            headerGradient: {
-                from: '#b8d8c8',
-                via: '#8ab89a',
-                to: '#5a8a6a',
-            },
-            headerTextColor: '#4a7a5a',
-            headerBarGradient: 'linear-gradient(to right, #b8d8c8, #5a8a6a)',
-            bubbleBorder: '#5a8a6a',
+            headerGradient: { ...groupTokens.yodel.title.gradient },
+            headerTextColor: groupTokens.yodel.title.text,
+            headerBarGradient: groupTokens.yodel.title.bar,
+            bubbleBorder: groupTokens.yodel.bubbleBorder,
             voicePlayerAccent: '#5a8a6a',
             scrollButtonColor: '#5a8a6a',
             unreadShadow: '0 0 12px rgba(90, 138, 106, 0.35)',
             defaultBackground: '#EAF0EC',
-            unreadBadge: '#5a8a6a',
-            sidebarGradient: ['#d4ebe0', '#e5f2eb', '#f0f8f4'],
+            unreadBadge: groupTokens.yodel.badge,
+            sidebarGradient: [...groupTokens.yodel.canvas],
             shelterColors: {
                 picture: '#8ab89a',
                 video: '#6a9a7a',
@@ -480,7 +466,7 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         name: 'Default',
         nameJp: '',
 
-        primaryColor: '#6B7280',
+        primaryColor: groupTokens.default.accent,
         secondaryColor: '#9CA3AF',
         accentColor: '#E5E7EB',
 
@@ -519,8 +505,8 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         interaction: {
-            hoverGlow: 'rgba(107, 114, 128, 0.25)',
-            focusRing: '#6B7280',
+            hoverGlow: groupTokens.default.glow,
+            focusRing: groupTokens.default.ring,
             buttonGradient: 'linear-gradient(135deg, #6B7280 0%, #4B5563 100%)',
         },
 
@@ -541,20 +527,16 @@ export const serviceThemes: Record<GroupId, ServiceTheme> = {
         },
 
         messages: {
-            headerGradient: {
-                from: '#a8c4e8',
-                via: '#a0a9d8',
-                to: '#9181c4',
-            },
-            headerTextColor: '#4B5563',
-            headerBarGradient: 'linear-gradient(to right, #a8c4e8, #9181c4)',
-            bubbleBorder: '#E5E7EB',
+            headerGradient: { ...groupTokens.default.title.gradient },
+            headerTextColor: groupTokens.default.title.text,
+            headerBarGradient: groupTokens.default.title.bar,
+            bubbleBorder: groupTokens.default.bubbleBorder,
             voicePlayerAccent: '#6da0d4',
             scrollButtonColor: '#6B7280',
             unreadShadow: '0 0 12px rgba(107, 114, 128, 0.25)',
             defaultBackground: '#E2E6EB',
-            unreadBadge: '#6B7280',
-            sidebarGradient: ['#e5e7eb', '#f3f4f6', '#f9fafb'],
+            unreadBadge: groupTokens.default.badge,
+            sidebarGradient: [...groupTokens.default.canvas],
             shelterColors: {
                 picture: '#a8d0e8',   // Sky blue
                 video: '#c4a8d8',     // Lavender/purple

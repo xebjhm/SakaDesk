@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { toLocalDateStr } from './dateFormatters';
+import { toLocalDateStr, formatDatePillLabel } from './dateFormatters';
 
 // SD-FE-CORE-02: bucket/match by LOCAL date, matching what message bubbles show.
 describe('toLocalDateStr', () => {
@@ -39,4 +39,35 @@ describe('toLocalDateStr', () => {
     const d = new Date(2026, 0, 3); // local Jan 3 2026
     expect(toLocalDateStr(d)).toBe('2026-01-03');
   });
+});
+
+describe('formatDatePillLabel', () => {
+    const t = (key: 'date.today' | 'date.yesterday') => (key === 'date.today' ? 'TODAY' : 'YESTERDAY');
+    const now = new Date(2026, 10, 4, 12, 0); // Wed 4 Nov 2026, local time
+
+    it('says today for any time on the same local day', () => {
+        expect(formatDatePillLabel(new Date(2026, 10, 4, 0, 5), now, 'ja', t)).toBe('TODAY');
+        expect(formatDatePillLabel(new Date(2026, 10, 4, 23, 59), now, 'ja', t)).toBe('TODAY');
+    });
+
+    it('says yesterday for the previous local day', () => {
+        expect(formatDatePillLabel(new Date(2026, 10, 3, 23, 59), now, 'ja', t)).toBe('YESTERDAY');
+    });
+
+    it('shows month, day and weekday without the year in the same year', () => {
+        expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'ja', t)).toBe('11月2日(月)');
+        expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'zh-TW', t)).toMatch(/^11月2日\s?週一$/); // ICU versions differ on the space before the weekday
+        expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'en', t)).toBe('Mon, November 2');
+    });
+
+    it('always shows the year for an earlier year', () => {
+        expect(formatDatePillLabel(new Date(2025, 10, 2), now, 'ja', t)).toBe('2025年11月2日(日)');
+        expect(formatDatePillLabel(new Date(2025, 10, 2), now, 'zh-TW', t)).toMatch(/^2025年11月2日\s?週日$/);
+    });
+
+    it('handles the year boundary', () => {
+        const newYear = new Date(2027, 0, 1, 10, 0);
+        expect(formatDatePillLabel(new Date(2026, 11, 31, 22, 0), newYear, 'ja', t)).toBe('YESTERDAY');
+        expect(formatDatePillLabel(new Date(2026, 11, 30), newYear, 'ja', t)).toBe('2026年12月30日(水)');
+    });
 });

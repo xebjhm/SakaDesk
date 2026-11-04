@@ -23,3 +23,32 @@ export function toLocalDateStr(timestamp: string | Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+export type DatePillKey = 'date.today' | 'date.yesterday';
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+/**
+ * Label for the floating date pill in timelines.
+ *
+ * Today / Yesterday come from i18n; otherwise month + day + weekday in the UI
+ * locale, with the year added whenever the date is not in `now`'s year.
+ * Compares local calendar days (timestamps stay UTC until display).
+ */
+export function formatDatePillLabel(
+  date: Date,
+  now: Date,
+  locale: string,
+  t: (key: DatePillKey) => string,
+): string {
+  if (isSameLocalDay(date, now)) return t('date.today');
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (isSameLocalDay(date, yesterday)) return t('date.yesterday');
+  const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', weekday: 'short' };
+  if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
+  return new Intl.DateTimeFormat(locale, options).format(date);
+}

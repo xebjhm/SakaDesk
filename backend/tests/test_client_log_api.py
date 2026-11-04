@@ -265,3 +265,22 @@ def test_notify_open_chat_accepts_has_target():
     assert res.status_code == 204
     (event,) = _client_events(logs)
     assert event["has_target"] is True
+
+
+@pytest.mark.parametrize(
+    ("event", "fields", "level"),
+    [
+        ("design_tokens_applied", {"theme": "sakurazaka"}, "info"),
+        ("design_tokens_fallback", {"reason": "unknown_service"}, "warning"),
+        ("avatar_fallback", {"size": "md"}, "info"),
+    ],
+)
+def test_design_system_events_are_accepted(event, fields, level):
+    with capture_logs() as logs:
+        res = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert res.status_code == 204
+    entry = _client_events(logs)[0]
+    assert entry["event"] == event
+    assert entry["log_level"] == level
+    for key, value in fields.items():
+        assert entry[key] == value
