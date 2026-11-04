@@ -52,6 +52,7 @@ export default {
                 scrim: 'var(--ds-overlay-scrim)',
                 'group-accent': 'var(--ds-group-accent)',
                 'group-badge': 'var(--ds-group-badge)',
+                'group-subtle': 'var(--ds-group-subtle)',
             },
             textColor: {
                 primary: 'var(--ds-text-primary)',
@@ -59,14 +60,19 @@ export default {
                 muted: 'var(--ds-text-muted)',
                 inverse: 'var(--ds-text-inverse)',
                 'group-title': 'var(--ds-group-title-text)',
+                'group-strong': 'var(--ds-group-strong)',
             },
             borderColor: {
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
                 'group-bubble': 'var(--ds-group-bubble-border)',
+                'group-subtle': 'var(--ds-group-subtle-border)',
             },
             ringColor: {
                 group: 'var(--ds-group-ring)',
+            },
+            textDecorationColor: {
+                group: 'var(--ds-group-link-underline)',
             },
             borderRadius: {
                 card: 'var(--ds-radius-card)',

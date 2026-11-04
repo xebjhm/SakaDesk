@@ -169,4 +169,9 @@ describe('cn with design-system classes', () => {
     it('merges token durations', () => {
         expect(cn('duration-fast', 'duration-base')).toBe('duration-base');
     });
+    it('treats the group role utilities as colours of their property', () => {
+        expect(cn('text-group-strong', 'text-primary')).toBe('text-primary');
+        expect(cn('text-body', 'text-group-strong')).toBe('text-body text-group-strong');
+        expect(cn('bg-group-subtle', 'bg-sheet')).toBe('bg-sheet');
+    });
 });

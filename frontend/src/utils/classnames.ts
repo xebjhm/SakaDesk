@@ -8,7 +8,7 @@ const twMerge = extendTailwindMerge({
     extend: {
         classGroups: {
             'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading'] }],
-            'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'group-title'] }],
+            'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'group-title', 'group-strong'] }],
             'bg-image': [{ bg: ['group-canvas', 'group-title-bar'] }],
             rounded: [{ rounded: ['card', 'sheet', 'pill'] }],
             shadow: [{ shadow: ['pill', 'card', 'sheet', 'group-glow'] }],
