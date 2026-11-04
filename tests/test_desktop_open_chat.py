@@ -78,6 +78,30 @@ def test_handler_shows_focuses_then_evaluates_js_without_restore():
     assert event["service"] == "hinatazaka46"
     assert event["is_group_chat"] is False
     assert event["delivered"] is True
+    assert event["has_target"] is False
+
+
+def test_handler_sends_the_message_id_to_jump_to():
+    window = _FakeWindow()
+    with capture_logs() as logs:
+        desktop.make_open_chat_handler(window, lambda _h: None)(TARGET, 4321)
+    payload = _payload(window.calls[1][1][0])
+    assert payload["message_id"] == 4321
+    assert isinstance(payload["message_id"], int)
+    assert {k: v for k, v in payload.items() if k != "message_id"} == {
+        "service": "hinatazaka46",
+        "path": TARGET.path,
+        "name": TARGET.name,
+        "is_group_chat": False,
+    }
+    (event,) = [e for e in logs if e["event"] == "notify_open_chat"]
+    assert event["has_target"] is True
+
+
+def test_handler_without_message_id_omits_the_key():
+    window = _FakeWindow()
+    desktop.make_open_chat_handler(window, lambda _h: None)(TARGET, None)
+    assert "message_id" not in _payload(window.calls[1][1][0])
 
 
 def test_handler_passes_the_native_window_handle():

@@ -55,6 +55,7 @@ ALLOWED_FIELDS = frozenset(
         "surface",
         "call_id",
         "changed",
+        "has_target",
     }
 )
 WARNING_EVENTS = frozenset({"call_error", "app_load_failed"})

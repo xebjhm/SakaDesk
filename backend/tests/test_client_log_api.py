@@ -251,3 +251,17 @@ def test_app_load_failed_is_accepted_as_a_warning():
         "warning",
         "load_failed",
     )
+
+
+def test_notify_open_chat_accepts_has_target():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "notify_open_chat",
+                "fields": {"service": "hinatazaka46", "has_target": True},
+            },
+        )
+    assert res.status_code == 204
+    (event,) = _client_events(logs)
+    assert event["has_target"] is True

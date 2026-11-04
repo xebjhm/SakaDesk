@@ -25,21 +25,30 @@ from backend.services.notification_planner import ChatTarget
 
 logger = structlog.get_logger(__name__)
 
-_open_chat_handler: Callable[[ChatTarget], None] | None = None
+_open_chat_handler: Callable[[ChatTarget, int | None], None] | None = None
 _open_window_handler: Callable[[], None] | None = None
 _tray_tooltip_handler: Callable[[str], None] | None = None
 _tray_tooltip_unhandled_logged = False
 _server_loop: asyncio.AbstractEventLoop | None = None
 
 
-def set_open_chat_handler(handler: Callable[[ChatTarget], None] | None) -> None:
-    """Register (or clear, with ``None``) the function that opens a chat."""
+def set_open_chat_handler(
+    handler: Callable[[ChatTarget, int | None], None] | None,
+) -> None:
+    """Register (or clear, with ``None``) the function that opens a chat.
+
+    The handler receives the target and the message id to scroll to (or
+    ``None`` to open the chat without a jump).
+    """
     global _open_chat_handler
     _open_chat_handler = handler
 
 
-def open_chat(target: ChatTarget) -> None:
-    """Ask the window to open ``target``'s chat. Never raises.
+def open_chat(target: ChatTarget, message_id: int | None = None) -> None:
+    """Ask the window to open ``target``'s chat at ``message_id``. Never raises.
+
+    ``message_id`` is the message to scroll to; ``None`` opens the chat
+    without a jump.
 
     Logs ``notify_click_unhandled`` when no handler is registered and
     ``notify_open_chat_failed`` (error type only) when the handler raises.
@@ -53,7 +62,7 @@ def open_chat(target: ChatTarget) -> None:
         )
         return
     try:
-        handler(target)
+        handler(target, message_id)
     except Exception as e:
         logger.warning(
             "notify_open_chat_failed",

@@ -320,6 +320,8 @@ def test_room_collapses_members_into_one_plan(tmp_path: Path) -> None:
     assert p.count == 5
     assert p.title == "日向坂46 ライブ"
     assert p.body == "齊藤 京子: newer\n+4 more"
+    # the toast click jumps to newest_id: the message the body previews
+    assert p.newest_id == "11"
     assert p.target == ChatTarget(
         SERVICE, "日向坂46/messages/79 日向坂46 ライブ", "日向坂46 ライブ", True
     )

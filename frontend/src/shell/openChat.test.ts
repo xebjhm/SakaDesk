@@ -11,6 +11,7 @@ describe('openChat', () => {
       activeService: 'hinatazaka46',
       selectedConversations: {},
       conversationNavCounter: 0,
+      targetMessageId: null,
     })
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({ ok: true, status: 204 })))
   })
@@ -50,7 +51,73 @@ describe('openChat', () => {
     const fetchMock = vi.mocked(fetch)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string)
-    expect(body).toEqual({ event: 'notify_open_chat', fields: { service: 'hinatazaka46' } })
+    expect(body).toEqual({
+      event: 'notify_open_chat',
+      fields: { service: 'hinatazaka46', has_target: false },
+    })
+    expect(useAppStore.getState().conversationNavCounter).toBe(1)
+    expect(useAppStore.getState().targetMessageId).toBeNull()
+  })
+
+  it('sets the target message before navigating', () => {
+    const order: string[] = []
+    const unsubscribe = useAppStore.subscribe((s, prev) => {
+      if (s.targetMessageId !== prev.targetMessageId) order.push(`target:${s.targetMessageId}`)
+      if (s.selectedConversations !== prev.selectedConversations) order.push('select')
+      if (s.activeService !== prev.activeService) order.push('service')
+      if (s.conversationNavCounter !== prev.conversationNavCounter) order.push('nav')
+    })
+    try {
+      openChat({ service: 'hinatazaka46', path: PATH, name: 'Member', is_group_chat: false, message_id: 4321 })
+      openChat({ service: 'sakurazaka46', path: PATH, name: 'Room', is_group_chat: true, message_id: 77 })
+    } finally {
+      unsubscribe()
+    }
+    expect(order[0]).toBe('target:4321')
+    expect(order.indexOf('target:4321')).toBeLessThan(order.indexOf('nav'))
+    expect(order.indexOf('target:77')).toBeLessThan(order.indexOf('service'))
+    expect(useAppStore.getState().targetMessageId).toBe(77)
+  })
+
+  it('openChatFromToast jumps to the toast message and logs has_target', () => {
+    openChatFromToast({
+      service: 'hinatazaka46', path: PATH, name: 'Member', is_group_chat: false, message_id: 4321,
+    })
+    const s = useAppStore.getState()
+    expect(s.targetMessageId).toBe(4321)
+    expect(s.conversationNavCounter).toBe(1)
+    const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
+    expect(body).toEqual({
+      event: 'notify_open_chat',
+      fields: { service: 'hinatazaka46', has_target: true },
+    })
+  })
+
+  it.each([0, -1, 1.5, '12', null, Number.NaN, Number.MAX_SAFE_INTEGER + 2])(
+    'ignores malformed message_id %s but still opens the chat',
+    (bad) => {
+      vi.spyOn(console, 'debug').mockImplementation(() => {})
+      useAppStore.setState({ targetMessageId: 5 })
+      openChatFromToast({
+        service: 'hinatazaka46', path: PATH, name: 'Member', is_group_chat: false,
+        message_id: bad as never,
+      })
+      const s = useAppStore.getState()
+      expect(s.selectedConversations['hinatazaka46']).toMatchObject({ path: PATH })
+      expect(s.conversationNavCounter).toBe(1)
+      expect(s.targetMessageId).toBe(5)
+      const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]!.body as string)
+      expect(body).toEqual({
+        event: 'notify_open_chat',
+        fields: { service: 'hinatazaka46', has_target: false, reason: 'bad_message_id' },
+      })
+    },
+  )
+
+  it('leaves a target set by the caller alone when no message_id is given (search)', () => {
+    useAppStore.getState().setTargetMessageId(99)
+    openChat({ service: 'hinatazaka46', path: PATH, name: 'Member', is_group_chat: false })
+    expect(useAppStore.getState().targetMessageId).toBe(99)
     expect(useAppStore.getState().conversationNavCounter).toBe(1)
   })
 
