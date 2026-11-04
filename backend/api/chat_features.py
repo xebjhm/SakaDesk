@@ -32,7 +32,14 @@ from backend.services.service_utils import (
     get_service_enum,
     validate_service,
 )
-from backend.services.archive_urls import media_url, parse_iso
+from backend.services.archive_urls import (
+    MISSING,
+    ArchiveReadError,
+    archive_file_ok,
+    media_url,
+    parse_iso,
+    read_archive_json,
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -69,7 +76,7 @@ class MessageDatesResponse(BaseModel):
 
 
 # pysaka (>= 0.4.5) writes letter images as letters/<id>.<ext>; nothing else is served.
-LETTER_IMAGE_FILE = re.compile(r"^letters/[0-9]+\.[A-Za-z0-9]{1,5}$")
+LETTER_IMAGE_FILE = re.compile(r"letters/[0-9]+\.[A-Za-z0-9]{1,5}")
 
 
 class LocalLetter(BaseModel):
@@ -92,27 +99,28 @@ def _positive_int(value: object) -> Optional[int]:
 
 
 def _read_local_letters(
-    member_dir: Path, service: str, member_parts: list[str]
-) -> tuple[str, list[LocalLetter], int]:
+    output_dir: Path, member_dir: Path, service: str, member_parts: list[str]
+) -> tuple[str, list[LocalLetter], int, int]:
     """Read ``<member_dir>/letters.json``.
 
-    Returns ``(outcome, letters, skipped)``: outcome is ``missing`` (no file),
-    ``invalid`` (unreadable or not ``{"letters": [...]}``), ``empty`` or
+    Returns ``(outcome, letters, skipped, bad_images)``: outcome is ``missing``
+    (no file), ``invalid`` (unreadable, oversized, outside the output directory
+    or not ``{"letters": [...]}``), ``empty`` or
     ``found``. Entries without an integer id or a parseable ``created_at`` are
     skipped and counted. ``image_url`` is set only for a canonical
-    ``letters/<id>.<ext>`` file that exists. Letters come back oldest first.
+    ``letters/<id>.<ext>`` file that exists inside the output directory; images
+    that fail the containment or filesystem check are counted in ``bad_images``. Letters come back oldest first.
     """
-    letters_file = member_dir / "letters.json"
-    if not letters_file.is_file():
-        return "missing", [], 0
     try:
-        with open(letters_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError):
-        return "invalid", [], 0
+        data = read_archive_json(output_dir, member_dir / "letters.json")
+    except ArchiveReadError:
+        return "invalid", [], 0, 0
+    if data is MISSING:
+        return "missing", [], 0, 0
     raw = data.get("letters") if isinstance(data, dict) else None
     if not isinstance(raw, list):
-        return "invalid", [], 0
+        return "invalid", [], 0, 0
+    bad_images = 0
     dated: list[tuple[datetime, LocalLetter]] = []
     skipped = 0
     for entry in raw:
@@ -132,12 +140,14 @@ def _read_local_letters(
             continue
         image_file = entry.get("image_file")
         image_url = None
-        if (
-            isinstance(image_file, str)
-            and LETTER_IMAGE_FILE.match(image_file)
-            and (member_dir / image_file).is_file()
-        ):
-            image_url = media_url(service, [*member_parts, *image_file.split("/")])
+        if isinstance(image_file, str) and LETTER_IMAGE_FILE.fullmatch(image_file):
+            try:
+                if archive_file_ok(output_dir, member_dir / image_file):
+                    image_url = media_url(
+                        service, [*member_parts, *image_file.split("/")]
+                    )
+            except ArchiveReadError:
+                bad_images += 1
         text = entry.get("text")
         dated.append(
             (
@@ -154,7 +164,7 @@ def _read_local_letters(
         )
     dated.sort(key=lambda pair: pair[0])
     letters = [letter for _, letter in dated]
-    return ("found" if letters else "empty"), letters, skipped
+    return ("found" if letters else "empty"), letters, skipped, bad_images
 
 
 def _local_date(timestamp: str) -> Optional[str]:
@@ -321,7 +331,13 @@ async def get_letters_local(service: str, path: str):
         logger.warning("letters_local", outcome="bad_service")
         raise HTTPException(status_code=400, detail="Invalid service")
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, path)
+    try:
+        member_dir = validate_path_within_dir(output_dir, path)
+    except HTTPException as e:
+        logger.warning(
+            "letters_local", outcome="rejected", service=service, status=e.status_code
+        )
+        raise
     try:
         parts = list(member_dir.relative_to(output_dir.resolve()).parts)
     except ValueError:
@@ -329,8 +345,8 @@ async def get_letters_local(service: str, path: str):
     if not parts or parts[0] != display_name:
         logger.warning("letters_local", outcome="wrong_service", service=service)
         raise HTTPException(status_code=400, detail="Path is not in this service")
-    outcome, letters, skipped = await asyncio.to_thread(
-        _read_local_letters, member_dir, service, parts[1:]
+    outcome, letters, skipped, bad_images = await asyncio.to_thread(
+        _read_local_letters, output_dir, member_dir, service, parts[1:]
     )
     log = logger.warning if outcome == "invalid" else logger.info
     log(
@@ -339,6 +355,7 @@ async def get_letters_local(service: str, path: str):
         service=service,
         count=len(letters),
         skipped=skipped,
+        bad_images=bad_images,
     )
     return LocalLettersResponse(letters=letters)
 

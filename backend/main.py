@@ -53,8 +53,8 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
 from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 from backend.api import (  # noqa: E402
-    account,
     auth,
+    account,
     content,
     sync,
     settings,

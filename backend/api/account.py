@@ -8,7 +8,7 @@ logged. Avatars are served through the media route instead.
 """
 
 import asyncio
-import json
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
@@ -17,7 +17,15 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from pysaka.utils import sanitize_name
 
-from backend.services.archive_urls import media_url, parse_iso
+from backend.services.archive_urls import (
+    MISSING,
+    ArchiveReadError,
+    archive_file_ok,
+    media_url,
+    parse_iso,
+    read_archive_json,
+    resolve_within,
+)
 from backend.services.service_utils import get_service_display_name
 
 router = APIRouter(prefix="/api/account", tags=["account"])
@@ -36,15 +44,6 @@ class AccountProfileResponse(BaseModel):
     avatars: List[AccountAvatar]
 
 
-def _read_json(path: Path) -> tuple[bool, object]:
-    """``(ok, data)``; ok is False when the file cannot be read or parsed."""
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return True, json.load(f)
-    except (OSError, ValueError):
-        return False, None
-
-
 def _canonical_avatar_file(file: str) -> bool:
     """True for exactly ``thumbnail/<sanitized name>``, the only shape pysaka writes."""
     prefix = AVATAR_KIND + "/"
@@ -55,34 +54,41 @@ def _canonical_avatar_file(file: str) -> bool:
 
 
 def _read_profile(
-    account_dir: Path, service: str
+    output_dir: Path, account_dir: Path, service: str
 ) -> tuple[str, Optional[str], list[AccountAvatar], int]:
     """Returns ``(outcome, name, avatars oldest first, skipped)``.
 
     outcome: ``missing`` (neither file), ``invalid`` (a file exists but cannot
-    be parsed; whatever the other file holds is still returned), ``found`` or
-    ``empty``. Index entries of another kind are ignored; thumbnail entries with
-    a non-canonical or missing file or an unparseable ``first_seen`` are skipped.
+    be read or parsed, is oversized, or resolves outside the output directory;
+    whatever the other file holds is still returned), ``found`` or ``empty``.
+    Index entries of another kind are ignored; thumbnail entries with a
+    non-canonical, missing or unsafe file or an unparseable ``first_seen`` are
+    skipped.
     """
     profile_file = account_dir / "profile.json"
     index_file = account_dir / "profile_images" / "index.json"
-    has_profile, has_index = profile_file.is_file(), index_file.is_file()
-    if not has_profile and not has_index:
-        return "missing", None, [], 0
     invalid = False
     name: Optional[str] = None
-    if has_profile:
-        ok, data = _read_json(profile_file)
-        if not ok or not isinstance(data, dict):
+    try:
+        profile = read_archive_json(output_dir, profile_file)
+    except ArchiveReadError:
+        profile, invalid = MISSING, True
+    try:
+        index = read_archive_json(output_dir, index_file)
+    except ArchiveReadError:
+        index, invalid = MISSING, True
+    if profile is MISSING and index is MISSING and not invalid:
+        return "missing", None, [], 0
+    if profile is not MISSING:
+        if not isinstance(profile, dict):
             invalid = True
         else:
-            raw_name = data.get("name")
+            raw_name = profile.get("name")
             name = raw_name if isinstance(raw_name, str) and raw_name else None
-    dated = []
+    dated: list[tuple[datetime, AccountAvatar]] = []
     skipped = 0
-    if has_index:
-        ok, index = _read_json(index_file)
-        images = index.get("images") if ok and isinstance(index, dict) else None
+    if index is not MISSING:
+        images = index.get("images") if isinstance(index, dict) else None
         if not isinstance(images, list):
             invalid = True
             images = []
@@ -99,8 +105,16 @@ def _read_profile(
                 or not _canonical_avatar_file(file)
                 or not isinstance(first_seen, str)
                 or seen is None
-                or not (account_dir / "profile_images" / file).is_file()
             ):
+                skipped += 1
+                continue
+            try:
+                present = archive_file_ok(
+                    output_dir, account_dir / "profile_images" / file
+                )
+            except ArchiveReadError:
+                present = False
+            if not present:
                 skipped += 1
                 continue
             url = media_url(service, ["account", "profile_images", *file.split("/")])
@@ -130,10 +144,14 @@ async def get_account_profile(service: str):
     except ValueError:
         logger.warning("account_profile", outcome="bad_service")
         raise HTTPException(status_code=400, detail="Invalid service")
-    account_dir = get_output_dir() / display_name / "account"
-    outcome, name, avatars, skipped = await asyncio.to_thread(
-        _read_profile, account_dir, service
-    )
+    output_dir = get_output_dir()
+    try:
+        account_dir = resolve_within(output_dir, output_dir / display_name / "account")
+        outcome, name, avatars, skipped = await asyncio.to_thread(
+            _read_profile, output_dir, account_dir, service
+        )
+    except ArchiveReadError:
+        outcome, name, avatars, skipped = "invalid", None, [], 0
     log = logger.warning if outcome == "invalid" else logger.info
     log(
         "account_profile",

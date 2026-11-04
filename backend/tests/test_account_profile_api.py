@@ -162,3 +162,90 @@ def test_unknown_service_is_rejected(root):
     with capture_logs() as logs:
         assert _get(service="nope").status_code == 400
     assert _events(logs)[0]["outcome"] == "bad_service"
+
+
+# --- fix wave 1: hardening ---------------------------------------------------
+
+DEEP = "[" * 200000 + "]" * 200000
+
+
+def _symlink(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unsupported")
+
+
+@pytest.mark.parametrize("which", ["profile", "index"])
+@pytest.mark.parametrize("kind", ["deep", "big", "wrong_type"])
+def test_hostile_files_are_invalid_not_500(root, which, kind):
+    good_profile = {"version": 1, "name": NAME}
+    good_index = {"version": 1, "images": []}
+    payloads = {
+        "deep": DEEP,
+        "big": json.dumps(good_index) + " " * 50,
+        "wrong_type": '"str"',
+    }
+    profile = payloads[kind] if which == "profile" else good_profile
+    index = payloads[kind] if which == "index" else good_index
+    limit = 10**6 if kind != "big" else 40
+    with patch("backend.services.archive_urls.MAX_JSON_BYTES", limit):
+        if kind == "big":
+            profile = json.dumps(profile) if which != "profile" else profile
+            index = json.dumps(index) if which != "index" else index
+            if which == "index":
+                profile = good_profile
+        _account(root, profile=profile, index=index)
+        with capture_logs() as logs:
+            res = _get()
+    assert res.status_code == 200
+    [event] = _events(logs)
+    assert event["outcome"] == "invalid" and event["log_level"] == "warning"
+    assert NAME not in str(logs)
+
+
+def test_symlinked_account_dir_outside_output_is_invalid(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside")
+    (outside / "profile.json").write_text(json.dumps({"name": NAME}), encoding="utf-8")
+    (root / "日向坂46").mkdir()
+    _symlink(root / "日向坂46" / "account", outside)
+    with capture_logs() as logs:
+        res = _get()
+    assert res.status_code == 200 and res.json() == {"name": None, "avatars": []}
+    assert _events(logs)[0]["outcome"] == "invalid"
+    assert "outside" not in str(logs)
+
+
+def test_symlinked_profile_file_outside_output_is_invalid(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "p.json"
+    outside.write_text(json.dumps({"name": NAME}), encoding="utf-8")
+    account = _account(root)
+    _symlink(account / "profile.json", outside)
+    body = _get().json()
+    assert body["name"] is None
+
+
+def test_symlinked_avatar_outside_output_is_skipped(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "a.jpg"
+    outside.write_bytes(b"secret")
+    account = _account(
+        root,
+        index={
+            "version": 1,
+            "images": [_image("thumbnail/a.jpg", "2025-01-01T00:00:00Z")],
+        },
+    )
+    _symlink(account / "profile_images" / "thumbnail" / "a.jpg", outside)
+    with capture_logs() as logs:
+        body = _get().json()
+    assert body["avatars"] == []
+    assert _events(logs)[0]["skipped"] == 1
+
+
+def test_permission_error_is_invalid_not_500(root):
+    _account(root, profile={"version": 1, "name": NAME})
+    with patch.object(Path, "is_file", side_effect=PermissionError("denied")):
+        with capture_logs() as logs:
+            res = _get()
+    assert res.status_code == 200
+    assert _events(logs)[0]["outcome"] == "invalid"

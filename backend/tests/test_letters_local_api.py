@@ -199,3 +199,148 @@ def test_unknown_service_is_rejected(root):
     with capture_logs() as logs:
         assert _get(service="nope").status_code == 400
     assert _events(logs)[0]["outcome"] == "bad_service"
+
+
+# --- fix wave 1: hardening ---------------------------------------------------
+
+DEEP = "[" * 200000 + "]" * 200000
+
+
+def _no_paths_logged(logs: list[dict]) -> None:
+    text = str(logs)
+    for needle in ("高井", "中川", "日向坂46", "secret", "outside", "etc", "/"):
+        assert needle not in text, needle
+
+
+@pytest.mark.parametrize("path", ["../../etc", "日向坂46/../../outside", "/etc"])
+def test_traversal_is_403_with_a_path_free_breadcrumb(root, path):
+    with capture_logs() as logs:
+        res = _get(path=path)
+    assert res.status_code == 403
+    [event] = _events(logs)
+    assert event["outcome"] == "rejected" and event["status"] == 403
+    assert event["log_level"] == "warning" and event["service"] == "hinatazaka46"
+    _no_paths_logged(logs)
+
+
+def test_nul_in_path_is_400_with_a_breadcrumb(root):
+    with capture_logs() as logs:
+        res = _get(path="日向坂46/a\x00b")
+    assert res.status_code == 400
+    [event] = _events(logs)
+    assert event["outcome"] == "rejected" and event["status"] == 400
+    _no_paths_logged(logs)
+
+
+def test_traversal_log_in_content_is_path_free(root):
+    with capture_logs() as logs:
+        _get(path="../../etc")
+    assert any(e.get("event") == "path_traversal_blocked" for e in logs)
+    _no_paths_logged(logs)
+
+
+def test_media_route_debug_log_has_no_path(root):
+    member_dir = _write(
+        root, {"version": 1, "letters": [_letter(1, "2025-10-31T16:19:35Z")]}
+    )
+    (member_dir / "letters" / "1.jpg").write_bytes(b"x")
+    url = _get().json()["letters"][0]["image_url"]
+    with capture_logs() as logs:
+        assert client.get(url).status_code == 200
+    _no_paths_logged(logs)
+
+
+@pytest.mark.parametrize("kind", ["deep", "big", "wrong_type"])
+def test_hostile_letters_file_is_invalid_not_500(root, kind):
+    member_dir = _member_dir(root)
+    target = member_dir / "letters.json"
+    if kind == "deep":
+        target.write_text(DEEP, encoding="utf-8")
+    elif kind == "big":
+        with patch("backend.services.archive_urls.MAX_JSON_BYTES", 10):
+            target.write_text(json.dumps({"letters": []}) + " " * 20, encoding="utf-8")
+            with capture_logs() as logs:
+                res = _get()
+            assert res.status_code == 200 and res.json() == {"letters": []}
+            assert _events(logs)[0]["outcome"] == "invalid"
+        return
+    else:
+        target.write_text('"just a string"', encoding="utf-8")
+    with capture_logs() as logs:
+        res = _get()
+    assert res.status_code == 200 and res.json() == {"letters": []}
+    assert _events(logs)[0]["outcome"] == "invalid"
+
+
+def test_trailing_newline_image_file_gets_no_url(root):
+    member_dir = _write(
+        root,
+        {
+            "version": 1,
+            "letters": [
+                _letter(1, "2025-10-31T16:19:35Z", image_file="letters/1.jpg\n")
+            ],
+        },
+    )
+    (member_dir / "letters" / "1.jpg").write_bytes(b"jpg")
+    assert _get().json()["letters"][0]["image_url"] is None
+
+
+def _symlink(link: Path, target: Path) -> None:
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unsupported")
+
+
+def test_symlinked_letters_file_outside_output_is_invalid(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "letters.json"
+    outside.write_text(
+        json.dumps({"letters": [_letter(1, "2025-10-31T16:19:35Z")]}), encoding="utf-8"
+    )
+    member_dir = _member_dir(root)
+    _symlink(member_dir / "letters.json", outside)
+    with capture_logs() as logs:
+        res = _get()
+    assert res.status_code == 200 and res.json() == {"letters": []}
+    assert _events(logs)[0]["outcome"] == "invalid"
+    _no_paths_logged(logs)
+
+
+def test_symlinked_image_outside_output_gets_no_url(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "x.jpg"
+    outside.write_bytes(b"secret")
+    member_dir = _write(
+        root, {"version": 1, "letters": [_letter(1, "2025-10-31T16:19:35Z")]}
+    )
+    _symlink(member_dir / "letters" / "1.jpg", outside)
+    with capture_logs() as logs:
+        letters = _get().json()["letters"]
+    assert letters[0]["image_url"] is None
+    assert _events(logs)[0]["bad_images"] == 1
+
+
+def test_symlinked_member_dir_escaping_the_output_is_403(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside")
+    (root / "日向坂46").mkdir()
+    _symlink(root / "日向坂46" / "evil", outside)
+    with capture_logs() as logs:
+        assert _get(path="日向坂46/evil").status_code == 403
+    assert _events(logs)[0]["outcome"] == "rejected"
+
+
+def test_symlinked_member_dir_into_another_service_is_400(root):
+    _write(root, {"version": 1, "letters": []}, member=SAKURA_MEMBER)
+    (root / "日向坂46").mkdir()
+    _symlink(root / "日向坂46" / "link", root / SAKURA_MEMBER)
+    assert _get(path="日向坂46/link").status_code == 400
+
+
+def test_permission_error_is_invalid_not_500(root):
+    _write(root, {"version": 1, "letters": []})
+    with patch.object(Path, "is_file", side_effect=PermissionError("denied")):
+        with capture_logs() as logs:
+            res = _get()
+    assert res.status_code == 200 and res.json() == {"letters": []}
+    assert _events(logs)[0]["outcome"] == "invalid"
+    _no_paths_logged(logs)
