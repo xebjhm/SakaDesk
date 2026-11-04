@@ -53,7 +53,7 @@ Spec: `docs/superpowers/specs/2026-11-04-d2a-chat-frame-design.md`, part "D2a �
 | Modify `frontend/src/core/layout/{Layout,ServiceRail,FeatureRail,ContentArea}.tsx`; create `FadeOnChange.tsx` (+ tests) | The D-4/D-5 frame |
 | Modify `frontend/src/config/features.ts`, `frontend/src/shell/components/LoginModal.tsx` | Feature labels from i18n |
 | Modify `frontend/src/features/messages/components/MemberList.tsx` (+ test) | Member sidebar |
-| Create `frontend/src/features/messages/hooks/useMemberStreak.ts` (+ test) | One streak fetch shared by the header and the profile popup |
+| Create `frontend/src/features/messages/hooks/useMemberStreak.ts` (+ test) | Streak from a session cache (one request per room per local day), shared by the header and the profile popup |
 | Modify `frontend/src/features/messages/components/{MessageBubble,MemberProfilePopup}.tsx` (+ tests) | Runs, token bubbles, popup reads the shared streak |
 | Create `frontend/src/features/messages/hooks/useRoomLetters.ts`, `components/LetterRow.tsx` (+ tests) | Letters in chat |
 | Modify `frontend/src/core/modals/SentLettersModal.tsx` (+ test) | Overview grid from the local archive, jumps to the letter |
@@ -2981,7 +2981,7 @@ uv run git commit -m "feat(chat): group the timeline by day with sticky date pil
   - `GET /api/chat/letters_local?service=<id>&path=<member dir relative to output dir>` → `{"letters": [{"id": int, "text": str, "created_at": str, "image_url": str | null, "width": int | null, "height": int | null}]}`, oldest first. 400 for an unknown service or a path outside that service's folder; 403 for traversal (from `validate_path_within_dir`); missing/invalid file → `{"letters": []}`.
   - `GET /api/account/profile?service=<id>` → `{"name": str | null, "avatars": [{"url": str, "first_seen": str}]}`, thumbnails only, oldest `first_seen` first; `url` is a media-route URL, never the signed one.
   - structlog events `letters_local` (`outcome` ∈ found/empty/missing/invalid/wrong_service/bad_service, `service`, `count`, `skipped`) and `account_profile` (`outcome` ∈ found/empty/missing/invalid/bad_service, `service`, `avatars`, `skipped`, `has_name`); invalid/rejected at warning.
-  - Client-log events `letters_load` (`outcome` ∈ ok/error/timeout/skipped_group, `count`), `account_profile_load` (`outcome` ∈ ok/error), `letter_avatar` (`count`, `history`, `fallback`); new field keys `count`, `history`, `fallback`.
+  - Client-log events `letters_load` (`outcome` ∈ ok/error/timeout/skipped_group, `count`), `account_profile_load` (`outcome` ∈ ok/error), `letter_avatar` (`count`, `history`, `fallback`), `streak_load` (`outcome` ∈ ok/error; used by Task 10); new field keys `count`, `history`, `fallback`.
   - `archive_urls.media_url(service, parts) -> str`, `archive_urls.parse_iso(value) -> datetime | None`.
 
 - [ ] **Step 1: Write the failing letters tests**
@@ -3664,6 +3664,7 @@ Append to `backend/tests/test_client_log_api.py`:
         ("letters_load", {"outcome": "skipped_group"}),
         ("account_profile_load", {"outcome": "error"}),
         ("letter_avatar", {"count": 3, "history": 2, "fallback": 1}),
+        ("streak_load", {"outcome": "ok"}),
     ],
 )
 def test_letter_breadcrumbs_are_accepted(event, fields):
@@ -3681,6 +3682,7 @@ In `backend/api/client_log.py`, add to `ClientEvent` after `"timeline_jump",`:
     "letters_load",
     "account_profile_load",
     "letter_avatar",
+    "streak_load",
 ```
 
 and to `ALLOWED_FIELDS` after `"path",`:
@@ -3691,7 +3693,7 @@ and to `ALLOWED_FIELDS` after `"path",`:
         "fallback",
 ```
 
-In `frontend/src/utils/clientLog.ts`, extend the unions: `| 'timeline_jump'` becomes `| 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar';` and `| 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path';` becomes `| 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback';`.
+In `frontend/src/utils/clientLog.ts`, extend the unions: `| 'timeline_jump'` becomes `| 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load';` and `| 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path';` becomes `| 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback';`.
 
 - [ ] **Step 6: Run the backend checks**
 
@@ -4608,8 +4610,8 @@ uv run git commit -m "feat(sidebar): restyle the member grid with avatars, badge
 - Modify: `frontend/e2e/fixtures/bigRoom.ts`; create `frontend/e2e/chat-frame.spec.ts`
 
 **Interfaces:**
-- Consumes: `TimelineItem.runStart` (Task 3); `FadeOnChange` (Task 8).
-- Produces: tokens `radius.tail = '4px'` (utility `rounded-tl-tail`) and `bg-group-title` (the official title gradient from `--ds-group-title-from/via/to`); `useMemberStreak(groupId?: string, service?: string) → { streak: StreakState; retry: () => void }` with `type StreakState = { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; days: number }`; `MemberProfilePopup` props `streak?: StreakState; onRetryStreak?: () => void` (replaces its own fetch and the `groupId` prop); `MessageBubble` prop `runStart?: boolean` (default true); i18n key `messageList.openConversations`.
+- Consumes: `TimelineItem.runStart` (Task 3); `FadeOnChange` (Task 8); the `streak_load` client-log event (Task 7).
+- Produces: tokens `radius.tail = '4px'` (utility `rounded-tl-tail`) and `bg-group-title` (the official title gradient from `--ds-group-title-from/via/to`); `useMemberStreak(groupId?: string, service?: string, now?: () => Date) → { streak: StreakState; retry: () => void }` backed by a module-level session cache keyed `streakCacheKey(service, groupId, now) = "<service>|<groupId>|<toLocalDateStr(now)>"` (at most one request per room per local day; concurrent callers share one in-flight promise; failures are not cached and log `streak_load` `{outcome: 'error'}`, successes `{outcome: 'ok'}`), plus `resetStreakCache()` for tests, with `type StreakState = { status: 'idle' } | { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; days: number }`; `MemberProfilePopup` props `streak?: StreakState; onRetryStreak?: () => void` (replaces its own fetch and the `groupId` prop); `MessageBubble` prop `runStart?: boolean` (default true); i18n key `messageList.openConversations`.
 
 - [ ] **Step 1: Add the two tokens**
 
@@ -4681,40 +4683,102 @@ Expected: PASS (tokens, tailwind var check, DesignPage).
 `frontend/src/features/messages/hooks/useMemberStreak.test.ts`:
 
 ```ts
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
-import { useMemberStreak } from './useMemberStreak';
+import { useMemberStreak, resetStreakCache, streakCacheKey } from './useMemberStreak';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../../utils/clientLog';
+
+/** Serves /api/chat/streak/:id (days = id * 2) and counts the requests. */
+function serveStreak(opts: { fail?: () => boolean; wait?: number } = {}) {
+    const calls = { count: 0 };
+    server.use(http.get('/api/chat/streak/:id', async ({ params }) => {
+        calls.count += 1;
+        if (opts.wait) await delay(opts.wait);
+        if (opts.fail?.()) return HttpResponse.json({ detail: 'Not authenticated' }, { status: 401 });
+        return HttpResponse.json({ days: Number(params.id) * 2, is_active: true });
+    }));
+    return calls;
+}
+
+beforeEach(() => {
+    resetStreakCache();
+    vi.mocked(clientLog).mockClear();
+});
 
 describe('useMemberStreak', () => {
     it('is idle without a group id and makes no request', () => {
+        const calls = serveStreak();
         const { result } = renderHook(() => useMemberStreak(undefined, 'hinatazaka46'));
         expect(result.current.streak).toEqual({ status: 'idle' });
+        expect(calls.count).toBe(0);
     });
 
-    it('loads the streak once per room', async () => {
-        let calls = 0;
-        server.use(http.get('/api/chat/streak/:id', ({ params }) => {
-            calls += 1;
-            return HttpResponse.json({ days: Number(params.id) * 2, is_active: true });
-        }));
-        const { result, rerender } = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
-        await waitFor(() => expect(result.current.streak).toEqual({ status: 'ready', days: 128 }));
-        rerender();
-        expect(calls).toBe(1);
+    it('keys the cache by service, group and local day', () => {
+        expect(streakCacheKey('hinatazaka46', '64', new Date(2026, 10, 4, 23, 59))).toBe('hinatazaka46|64|2026-11-04');
+        expect(streakCacheKey('hinatazaka46', '64', new Date(2026, 10, 5, 0, 1))).toBe('hinatazaka46|64|2026-11-05');
     });
 
-    it('reports the server detail and retries on demand', async () => {
+    it('fetches once across repeated opens of the same room on the same day', async () => {
+        const calls = serveStreak();
+        const first = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        await waitFor(() => expect(first.result.current.streak).toEqual({ status: 'ready', days: 128 }));
+        first.unmount();
+        // Another room in between, then back: the cached value is used at once.
+        const other = renderHook(({ id }) => useMemberStreak(id, 'hinatazaka46'), { initialProps: { id: '5' } });
+        await waitFor(() => expect(other.result.current.streak).toEqual({ status: 'ready', days: 10 }));
+        other.rerender({ id: '64' });
+        expect(other.result.current.streak).toEqual({ status: 'ready', days: 128 });
+        const again = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        expect(again.result.current.streak).toEqual({ status: 'ready', days: 128 });
+        expect(calls.count).toBe(2); // room 64 once, room 5 once
+    });
+
+    it('fetches again once the local date has changed', async () => {
+        const calls = serveStreak();
+        let now = new Date(2026, 10, 4, 23, 50);
+        const first = renderHook(() => useMemberStreak('64', 'hinatazaka46', () => now));
+        await waitFor(() => expect(first.result.current.streak.status).toBe('ready'));
+        first.unmount();
+        now = new Date(2026, 10, 5, 0, 10);
+        const next = renderHook(() => useMemberStreak('64', 'hinatazaka46', () => now));
+        await waitFor(() => expect(next.result.current.streak.status).toBe('ready'));
+        expect(calls.count).toBe(2);
+    });
+
+    it('shares one in-flight request between concurrent users of the same room', async () => {
+        const calls = serveStreak({ wait: 30 });
+        const header = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        const popup = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        await waitFor(() => expect(header.result.current.streak).toEqual({ status: 'ready', days: 128 }));
+        await waitFor(() => expect(popup.result.current.streak).toEqual({ status: 'ready', days: 128 }));
+        expect(calls.count).toBe(1);
+        expect(vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'streak_load')).toEqual([
+            ['streak_load', { outcome: 'ok' }],
+        ]);
+    });
+
+    it('does not cache a failure: it logs, and the next open (or retry) fetches again', async () => {
         let fail = true;
-        server.use(http.get('/api/chat/streak/:id', () => (fail
-            ? HttpResponse.json({ detail: 'Not authenticated' }, { status: 401 })
-            : HttpResponse.json({ days: 3, is_active: true }))));
-        const { result } = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
-        await waitFor(() => expect(result.current.streak).toEqual({ status: 'error', message: 'Not authenticated' }));
+        const calls = serveStreak({ fail: () => fail });
+        const first = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        await waitFor(() => expect(first.result.current.streak).toEqual({ status: 'error', message: 'Not authenticated' }));
+        expect(clientLog).toHaveBeenCalledWith('streak_load', { outcome: 'error' });
+        first.unmount();
         fail = false;
-        act(() => result.current.retry());
-        await waitFor(() => expect(result.current.streak).toEqual({ status: 'ready', days: 3 }));
+        const again = renderHook(() => useMemberStreak('64', 'hinatazaka46'));
+        await waitFor(() => expect(again.result.current.streak).toEqual({ status: 'ready', days: 128 }));
+        expect(calls.count).toBe(2);
+        fail = true;
+        resetStreakCache();
+        act(() => again.result.current.retry());
+        await waitFor(() => expect(again.result.current.streak.status).toBe('error'));
+        fail = false;
+        act(() => again.result.current.retry());
+        await waitFor(() => expect(again.result.current.streak).toEqual({ status: 'ready', days: 128 }));
     });
 
     it('ignores a late answer for the previous room', async () => {
@@ -4773,6 +4837,8 @@ Expected: FAIL.
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { parseErrorDetail } from '../../../utils/httpError';
+import { clientLog } from '../../../utils/clientLog';
+import { toLocalDateStr } from '../../../utils/dateFormatters';
 
 export type StreakState =
     | { status: 'idle' }
@@ -4781,12 +4847,65 @@ export type StreakState =
     | { status: 'ready'; days: number };
 
 /**
- * The subscription streak of the open room (GET /api/chat/streak/{groupId}), fetched once per
- * room and shared by the chat header and the profile popup (no second copy). The request is
- * aborted on a room or service change, so a late answer never lands on another member
- * (SD-FE-GAP-B-01 / SD-CONTRACT-04).
+ * App-session cache of the official subscription streak: at most one request per room per
+ * local day. Successful answers only; a failure is never cached. In-flight requests are
+ * shared, so the header and the profile popup (or a quick re-open) never ask twice.
  */
-export function useMemberStreak(groupId: string | undefined, service: string | undefined) {
+const streakCache = new Map<string, number>();
+const inFlight = new Map<string, Promise<number>>();
+
+/** Cache key: service, group id and the local day (toLocalDateStr) of `now`. */
+export function streakCacheKey(service: string, groupId: string, now: Date): string {
+    return `${service}|${groupId}|${toLocalDateStr(now)}`;
+}
+
+/** Test seam: forget every cached and in-flight streak. */
+export function resetStreakCache(): void {
+    streakCache.clear();
+    inFlight.clear();
+}
+
+/** One shared request per key; caches the days on success and logs one `streak_load` breadcrumb per request. */
+function loadStreak(key: string, service: string, groupId: string, fallbackError: string): Promise<number> {
+    const running = inFlight.get(key);
+    if (running) return running;
+    const request = (async () => {
+        try {
+            const url = `/api/chat/streak/${encodeURIComponent(groupId)}?service=${encodeURIComponent(service)}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(parseErrorDetail(body, fallbackError));
+            }
+            const data = await res.json() as { days?: number };
+            const days = data.days ?? 0;
+            streakCache.set(key, days);
+            clientLog('streak_load', { outcome: 'ok' });
+            return days;
+        } catch (err: unknown) {
+            clientLog('streak_load', { outcome: 'error' });
+            throw err instanceof Error ? err : new Error(fallbackError);
+        } finally {
+            inFlight.delete(key);
+        }
+    })();
+    inFlight.set(key, request);
+    return request;
+}
+
+/**
+ * The subscription streak of the open room (GET /api/chat/streak/{groupId}), shared by the
+ * chat header and the profile popup. Served from the session cache when this room was already
+ * fetched today (local date), otherwise fetched once (concurrent callers share the request).
+ * A late answer for a room the user has left is ignored (SD-FE-GAP-B-01). On failure the state
+ * is 'error' (the header omits the day count; the popup offers `retry`, which fetches again).
+ * `now` is a test seam for the clock.
+ */
+export function useMemberStreak(
+    groupId: string | undefined,
+    service: string | undefined,
+    now: () => Date = () => new Date(),
+) {
     const { t } = useTranslation();
     const [streak, setStreak] = useState<StreakState>({ status: 'idle' });
     const [attempt, setAttempt] = useState(0);
@@ -4802,24 +4921,23 @@ export function useMemberStreak(groupId: string | undefined, service: string | u
             setStreak({ status: 'error', message: t('memberProfile.noService') });
             return;
         }
-        const controller = new AbortController();
+        const key = streakCacheKey(service, groupId, now());
+        const cached = streakCache.get(key);
+        if (cached !== undefined) {
+            setStreak({ status: 'ready', days: cached });
+            return;
+        }
+        let cancelled = false;
         setStreak({ status: 'loading' });
-        (async () => {
-            try {
-                const url = `/api/chat/streak/${encodeURIComponent(groupId)}?service=${encodeURIComponent(service)}`;
-                const res = await fetch(url, { signal: controller.signal });
-                if (!res.ok) {
-                    const body = await res.json().catch(() => ({}));
-                    throw new Error(parseErrorDetail(body, t('memberProfile.fetchFailed')));
-                }
-                const data = await res.json() as { days?: number };
-                if (!controller.signal.aborted) setStreak({ status: 'ready', days: data.days ?? 0 });
-            } catch (err: unknown) {
-                if (controller.signal.aborted) return;
+        loadStreak(key, service, groupId, t('memberProfile.fetchFailed'))
+            .then((days) => { if (!cancelled) setStreak({ status: 'ready', days }); })
+            .catch((err: unknown) => {
+                if (cancelled) return;
                 setStreak({ status: 'error', message: err instanceof Error ? err.message : t('memberProfile.fetchFailed') });
-            }
-        })();
-        return () => controller.abort();
+            });
+        return () => { cancelled = true; };
+        // The clock is read when the effect runs (room open / retry); it is not a dependency.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [groupId, service, attempt, t]);
 
     return { streak, retry };
@@ -4832,7 +4950,7 @@ In `frontend/src/features/messages/components/MemberProfilePopup.tsx`:
 - In `MemberProfilePopupProps` replace `groupId?: string;` with:
 
 ```ts
-    /** The room's streak, fetched once by MessagesFeature (useMemberStreak). */
+    /** The room's streak from MessagesFeature's useMemberStreak (session cache, once per room per day). */
     streak?: StreakState;
     onRetryStreak?: () => void;
 ```
@@ -5185,7 +5303,7 @@ import { useMemberStreak } from './hooks/useMemberStreak';
     const headerMember = Object.values(membersMap)[0];
     const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
     const isLightHeader = theme.messages.headerStyle === 'light';
-    // One streak fetch per room, shared by the header and the profile popup.
+    // Streak from the session cache (one official request per room per local day), shared by the header and the profile popup.
     const groupId = selectedGroupDir?.split('/')[2]?.split(' ')[0];
     const { streak, retry: retryStreak } = useMemberStreak(groupId, activeService ?? undefined);
 ```
@@ -6281,7 +6399,7 @@ with
 Edit `docs/superpowers/specs/2026-11-04-d2a-chat-frame-design.md`, part "D2a — the redesign", so it describes what was built:
 - Section 1: state that the canvas block holds the feature rail and each feature's own sidebar; `ContentArea` wraps blogs, the placeholders and the initial-sync view in a `ContentSheet` (8 px from the frame), while `MessagesFeature` puts its member sidebar on the canvas and its chat on a `ContentSheet`. The fade is `FadeOnChange` (no remount; none with reduced motion).
 - Section 2: widths 320 / 376 / 432 px at window widths < 1600 / ≥ 1600 / ≥ 1920 px, `auto-fill` cells of at least 72 px; section headings are pill-styled sticky `h2` headings (a `Pill` is a button, so the heading uses the pill tokens instead).
-- Section 3: the header uses `bg-group-title` (new utility over the official title gradient) or Sakurazaka's white header + `bg-group-title-bar`; the streak comes from `useMemberStreak`, fetched once per room and passed to `MemberProfilePopup`; the run's time is shown as `HH:mm` (the date is in the date pill); the first bubble's corner is the new `rounded-tl-tail` token (4 px); the calendar is owned by `MessagesFeature` and opened by the ⋯ menu and the date pills.
+- Section 3: the header uses `bg-group-title` (new utility over the official title gradient) or Sakurazaka's white header + `bg-group-title-bar`; the streak comes from `useMemberStreak`: a module-level session cache keyed by service, group id and local date, so the official API is asked at most once per room per local day (shared in-flight request; failures not cached, `streak_load` breadcrumb, header omits the count), and the same value is passed to `MemberProfilePopup`; the run's time is shown as `HH:mm` (the date is in the date pill); the first bubble's corner is the new `rounded-tl-tail` token (4 px); the calendar is owned by `MessagesFeature` and opened by the ⋯ menu and the date pills.
 - Section 4: replace the `Timeline` interface with the built one (adds `groupStarts`, `groupIndexOfDate`, `groupOfIndex`, `indexOfRowKey`, `rowKeyAt`, `messageIdNear`; `RowKey`; `RUN_GAP_MS`). Record the probe results (`e2e/probe/grouped-virtuoso.spec.ts`): ranges are item indices, the range start may be a row hidden behind the sticky header, `scrollToIndex({index, align:'start'})` and a numeric `initialTopMostItemIndex` land the row right below the sticky header, `{groupIndex}` lands the group's first row below its own header, `offset` shifts by `-offset`. State that `measureLanding` measures `start` from the sticky header's bottom (`stickyHeaderBottom`) and that `useChatScroll` resolves the top visible row one frame after `rangeChanged` (`topVisibleRowIndex`), saving on room switch, unmount and pagehide. `useTimelineJump` takes `timeline` and calls `onLanded(rowKey)`; `useLandingHighlight` returns `highlightedRowKey`.
 - Section 5: the exact response shapes and outcomes from Task 7 (`letters_local` outcomes found/empty/missing/invalid/wrong_service/bad_service; `account_profile` outcomes found/empty/missing/invalid/bad_service), the client-log events `letters_load`, `account_profile_load`, `letter_avatar`, the 240 px default letter height, the chat rendering only after the room's letters are known or `LETTERS_WAIT_MS` (3 s) passed (no row shift; `letters_load` outcome `timeout`), the overview reading the timeline's letter list (no second fetch), and that `GET /api/chat/letters/{group_id}` is no longer used by the UI (E clean-up list).
 
