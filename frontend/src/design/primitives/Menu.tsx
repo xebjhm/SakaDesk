@@ -2,16 +2,9 @@ import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../utils/classnames';
 import { Z_INDEX } from '../../constants/zIndex';
+import { clampToViewport } from './menuPosition';
 
 const ITEMS = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
-
-/** Top-left of a box placed at (x, y), kept `pad` px inside the viewport. */
-export function clampToViewport(x: number, y: number, size: { width: number; height: number }, pad = 8) {
-    return {
-        left: Math.max(pad, Math.min(x, window.innerWidth - size.width - pad)),
-        top: Math.max(pad, Math.min(y, window.innerHeight - size.height - pad)),
-    };
-}
 
 export interface MenuProps {
     'aria-label': string;
@@ -68,8 +61,9 @@ export const Menu: React.FC<MenuProps> = ({
     // it goes back to the trigger before the browser drops it to the body.
     useLayoutEffect(() => {
         const menu = ref.current;
+        const returnTo = returnFocusRef;
         return () => {
-            if (menu && menu.contains(document.activeElement)) returnFocusRef?.current?.focus({ preventScroll: true });
+            if (menu && menu.contains(document.activeElement)) returnTo?.current?.focus({ preventScroll: true });
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount only
     }, []);

@@ -9,6 +9,7 @@ export {
 } from './Button';
 export { RailItem, type RailItemProps } from './RailItem';
 export { Modal, type ModalProps } from './Modal';
-export { Menu, MenuItem, MenuLabel, MenuSeparator, clampToViewport, type MenuProps, type MenuItemProps } from './Menu';
+export { Menu, MenuItem, MenuLabel, MenuSeparator, type MenuProps, type MenuItemProps } from './Menu';
 export { Switch, type SwitchProps } from './Switch';
 export { Input, Select, FIELD_CLASS } from './Field';
+export { clampToViewport } from './menuPosition';
