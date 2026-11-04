@@ -1,8 +1,15 @@
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../utils/classnames';
 import { Z_INDEX } from '../../constants/zIndex';
 import { clampToViewport } from './menuPosition';
+
+// Re-exported for callers; it lives in menuPosition.ts so this file exports components only.
+// eslint-disable-next-line react-refresh/only-export-components
+export { clampToViewport };
+
+/** Open menus, oldest first: only the last one answers Escape. */
+const openMenus: symbol[] = [];
 
 const ITEMS = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
@@ -32,9 +39,13 @@ export const Menu: React.FC<MenuProps> = ({
     const ref = useRef<HTMLDivElement>(null);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
+    // Real size, measured after mount; the estimate is only the first guess.
+    const [measured, setMeasured] = useState<{ width: number; height: number } | null>(null);
 
     useEffect(() => {
         const menu = ref.current;
+        const me = Symbol('menu');
+        openMenus.push(me);
         menu?.focus({ preventScroll: true });
         const onDown = (e: MouseEvent) => {
             const target = e.target as Node;
@@ -44,13 +55,16 @@ export const Menu: React.FC<MenuProps> = ({
         };
         // Capture phase: a menu inside a dialog closes before the dialog sees Escape.
         const onKey = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape' || e.defaultPrevented) return;
+            if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+            if (openMenus[openMenus.length - 1] !== me) return;
             e.preventDefault();
             onCloseRef.current();
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey, true);
         return () => {
+            const at = openMenus.indexOf(me);
+            if (at >= 0) openMenus.splice(at, 1);
             document.removeEventListener('mousedown', onDown);
             document.removeEventListener('keydown', onKey, true);
         };
@@ -68,6 +82,14 @@ export const Menu: React.FC<MenuProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/unmount only
     }, []);
 
+    useLayoutEffect(() => {
+        if (!point) return;
+        const rect = ref.current?.getBoundingClientRect();
+        if (rect && rect.width > 0 && rect.height > 0) {
+            setMeasured((m) => (m && m.width === rect.width && m.height === rect.height ? m : { width: rect.width, height: rect.height }));
+        }
+    }, [point]);
+
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Tab') { e.preventDefault(); onCloseRef.current(); return; } // focus goes back to the trigger; the next Tab moves on from there
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
@@ -84,7 +106,7 @@ export const Menu: React.FC<MenuProps> = ({
     };
 
     const position: React.CSSProperties = point
-        ? { position: 'fixed', ...clampToViewport(point.x, point.y, estimatedSize), zIndex: Z_INDEX.POPOVER }
+        ? { position: 'fixed', ...clampToViewport(point.x, point.y, measured ?? estimatedSize), zIndex: Z_INDEX.POPOVER }
         : { zIndex: layer === 'popover' ? Z_INDEX.POPOVER : Z_INDEX.DROPDOWN };
 
     const menu = (

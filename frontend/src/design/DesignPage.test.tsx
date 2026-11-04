@@ -87,4 +87,23 @@ describe('DesignPage language', () => {
         render(<DesignPage />);
         expect(screen.getByRole('heading', { name: 'Design system' })).toBeInTheDocument();
     });
+
+    it('keeps the menu demo behind its trigger: no focus grab, Escape still closes the Modal demo', async () => {
+        render(<DesignPage />);
+        expect(screen.queryByRole('menu')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'Open modal' }));
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('opens the menu demo from its trigger and returns focus on Escape', async () => {
+        render(<DesignPage />);
+        const trigger = screen.getByRole('button', { name: 'Open menu' });
+        await userEvent.click(trigger);
+        expect(screen.getByRole('menu')).toHaveFocus();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(trigger).toHaveFocus();
+    });
 });

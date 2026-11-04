@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../utils/classnames';
 
-export interface SwitchProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange' | 'aria-label' | 'children' | 'role'> {
+export interface SwitchProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'onChange' | 'onClick' | 'aria-label' | 'children' | 'role'> {
     checked: boolean;
     onCheckedChange: (next: boolean) => void;
     /** Required: a switch has no visible text of its own. */
@@ -12,6 +12,7 @@ export interface SwitchProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
 export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
     ({ checked, onCheckedChange, className, type = 'button', ...rest }, ref) => (
         <button
+            {...rest}
             ref={ref}
             type={type}
             role="switch"
@@ -19,12 +20,11 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
             onClick={() => onCheckedChange(!checked)}
             className={cn(
                 'relative inline-flex h-6 w-11 shrink-0 rounded-pill transition-colors duration-fast ease-standard',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-group focus-visible:ring-offset-surface',
                 'disabled:pointer-events-none disabled:opacity-50',
                 checked ? 'bg-group-accent' : 'bg-control-off',
                 className,
             )}
-            {...rest}
         >
             <span
                 aria-hidden="true"

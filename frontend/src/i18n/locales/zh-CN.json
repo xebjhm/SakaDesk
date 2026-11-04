@@ -652,7 +652,8 @@
     "selectSample": "选择框示例",
     "menu": "菜单",
     "menuItem": "菜单项",
-    "menuSelected": "已选项"
+    "menuSelected": "已选项",
+    "menuOpen": "打开菜单"
   },
   "letters": {
     "openImage": "打开信件",

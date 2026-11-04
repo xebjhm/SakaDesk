@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './Menu';
@@ -7,6 +7,12 @@ import { clampToViewport } from './menuPosition';
 import { Z_INDEX } from '../../constants/zIndex';
 import { Modal } from './Modal';
 import { resetDialogStack } from '../dialog/dialogStack';
+
+const realSize = { w: window.innerWidth, h: window.innerHeight };
+afterEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: realSize.w });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: realSize.h });
+});
 
 describe('Menu', () => {
     it('is a labelled menu of menuitems and takes focus', () => {
@@ -87,8 +93,57 @@ describe('Menu', () => {
         expect(onClose).not.toHaveBeenCalled();
         fireEvent.mouseDown(document.body);
         expect(onClose).toHaveBeenCalledTimes(1);
-        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
+        const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+        act(() => { screen.getByRole('menu').dispatchEvent(tab); });
+        expect(tab.defaultPrevented).toBe(true);
         expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('a mouse-down inside the menu does not close it', () => {
+        const onClose = vi.fn();
+        render(<Menu aria-label="m" onClose={onClose}><MenuItem>一</MenuItem></Menu>);
+        fireEvent.mouseDown(screen.getByRole('menuitem', { name: '一' }));
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('ignores an Escape that was already claimed, or typed in an IME', () => {
+        const onClose = vi.fn();
+        render(<Menu aria-label="m" onClose={onClose}><MenuItem>一</MenuItem></Menu>);
+        const claimed = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        claimed.preventDefault();
+        act(() => { document.body.dispatchEvent(claimed); });
+        act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, isComposing: true })); });
+        act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, keyCode: 229 })); });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('with two menus open one Escape closes only the top-most', () => {
+        const outer = vi.fn();
+        const inner = vi.fn();
+        render(
+            <>
+                <Menu aria-label="a" onClose={outer}><MenuItem>一</MenuItem></Menu>
+                <Menu aria-label="b" onClose={inner}><MenuItem>二</MenuItem></Menu>
+            </>,
+        );
+        act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+        expect(inner).toHaveBeenCalledTimes(1);
+        expect(outer).not.toHaveBeenCalled();
+    });
+
+    it('re-clamps a point menu to its measured size', () => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, value: 300 });
+        Object.defineProperty(window, 'innerHeight', { configurable: true, value: 200 });
+        const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 100, height: 100 } as DOMRect);
+        render(<Menu aria-label="m" onClose={vi.fn()} point={{ x: 290, y: 190 }} estimatedSize={{ width: 200, height: 48 }}><MenuItem>一</MenuItem></Menu>);
+        spy.mockRestore();
+        const menu = screen.getByRole('menu');
+        expect(menu.style.left).toBe('192px');
+        expect(menu.style.top).toBe('92px');
+    });
+
+    it('still exports clampToViewport', async () => {
+        expect((await import('./Menu')).clampToViewport).toBe(clampToViewport);
     });
 
     it('a point menu is portaled, fixed, clamped and above dialogs', () => {

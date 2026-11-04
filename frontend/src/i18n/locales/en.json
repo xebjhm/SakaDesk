@@ -652,7 +652,8 @@
     "selectSample": "Sample select",
     "menu": "Menu",
     "menuItem": "Menu item",
-    "menuSelected": "Selected item"
+    "menuSelected": "Selected item",
+    "menuOpen": "Open menu"
   },
   "letters": {
     "openImage": "Open letter",

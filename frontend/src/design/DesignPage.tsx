@@ -3,7 +3,7 @@
  * primitive state for the selected group. Never shipped: main.tsx loads it
  * only behind `import.meta.env.DEV`.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { BookOpen, ChevronDown, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
 import { SUPPORTED_LANGUAGES, useTranslation, type SupportedLanguage } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
@@ -66,6 +66,8 @@ export const DesignPage: React.FC = () => {
     const [landingKey, setLandingKey] = useState(0);
     const [modalOpen, setModalOpen] = useState(false);
     const [switchOn, setSwitchOn] = useState(true);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuTrigger = useRef<HTMLButtonElement>(null);
 
     useEffect(() => applyGroupTokens(group), [group]);
 
@@ -282,12 +284,23 @@ export const DesignPage: React.FC = () => {
 
                     <h3 className="text-title text-secondary">{t('designPage.menu')}</h3>
                     <div className="relative h-40">
-                        <Menu aria-label={t('designPage.menu')} onClose={() => {}} className="absolute left-0 top-0 w-48">
-                            <MenuItem icon={<Settings />}>{t('designPage.menuItem')}</MenuItem>
-                            <MenuItem radio selected>{t('designPage.menuSelected')}</MenuItem>
-                            <MenuSeparator />
-                            <MenuItem destructive>{t('designPage.danger')}</MenuItem>
-                        </Menu>
+                        <Button ref={menuTrigger} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
+                            {t('designPage.menuOpen')}
+                        </Button>
+                        {menuOpen && (
+                            <Menu
+                                aria-label={t('designPage.menu')}
+                                onClose={() => setMenuOpen(false)}
+                                returnFocusRef={menuTrigger}
+                                ignoreRefs={[menuTrigger]}
+                                className="absolute left-0 top-12 w-48"
+                            >
+                                <MenuItem icon={<Settings />}>{t('designPage.menuItem')}</MenuItem>
+                                <MenuItem radio selected>{t('designPage.menuSelected')}</MenuItem>
+                                <MenuSeparator />
+                                <MenuItem destructive>{t('designPage.danger')}</MenuItem>
+                            </Menu>
+                        )}
                     </div>
 
                     <h3 className="text-title text-secondary">{t('designPage.rail')}</h3>

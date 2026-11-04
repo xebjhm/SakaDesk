@@ -102,6 +102,9 @@ export default {
                 'group-logo': 'var(--ds-group-logo)',
                 surface: 'var(--ds-surface-sheet)',
             },
+            ringOffsetColor: {
+                surface: 'var(--ds-surface-sheet)',
+            },
             textDecorationColor: {
                 group: 'var(--ds-group-link-underline)',
                 viewer: 'var(--ds-viewer-underline)',

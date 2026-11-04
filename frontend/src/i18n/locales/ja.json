@@ -652,7 +652,8 @@
     "selectSample": "選択肢の例",
     "menu": "メニュー",
     "menuItem": "メニュー項目",
-    "menuSelected": "選択中の項目"
+    "menuSelected": "選択中の項目",
+    "menuOpen": "メニューを開く"
   },
   "letters": {
     "openImage": "レターを開く",
