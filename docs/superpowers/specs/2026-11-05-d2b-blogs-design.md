@@ -1,7 +1,7 @@
 # D2b — Blog screens (recent feed, reader, timeline rail)
 
 Date: 2026-11-05
-Status: designed by the agent in autonomous mode within the user's settled D2b rules; the user reviews D2a–D2d together on one Windows build at the end. Every call the agent made is marked "agent" in the Decisions table.
+Status: designed by the agent in autonomous mode within the user's settled D2b rules, then amended by the controller (keep the ambient orbs, the penlight wash and the serif; fix three bugs found while reading). The user reviews D2a–D2d together on one Windows build at the end. Every call is marked in the Decisions table.
 Branch: `feat/d2b-blogs` → `dev`, cut from `dev` after D2a merged (PR #13)
 
 ## Context
@@ -41,10 +41,11 @@ Guard counts are from `frontend/src/design/guard-baseline.json` at the start of 
 | 1 | Keep the structure: the recent feed and the reader on the sheet; a member is picked with the existing member-select dialog, which opens the member timeline dialog. No new sidebar and no new features. | user |
 | 2 | Tidy the reader's reading width, leading and paragraph rhythm with the type scale and spacing tokens. | user |
 | 3 | Photo and video viewers (incl. the blog photo gallery) stay dark full-screen. All dialogs and viewers are D2c, so D2b does **not** restyle `MemberSelectModal`, `MemberTimelineModal`, `BlogPhotoGalleryModal` or `MediaViewerModal`. | user |
-| 4 | Official-app look stays verbatim through the official layer; group colour only in the allowed places. The blog screens have no official-app element of their own (the official layer they show is the canvas around the sheet), so the sheet is fully neutral. | user / agent |
-| 5 | The sheet is neutral: the ambient orbs (`DynamicBackground`) leave the feed and the member penlight wash leaves the reader. Group colour appears only through roles: member names and links `text-group-strong`, link underline `decoration-group`, the rail's current dot `bg-group-accent` + `shadow-group-glow`, the member-name button's hover `bg-group-subtle`, focus rings `ring-group`. Easy to bring back as a token wash if the user wants it at acceptance. | agent |
+| 4 | Official-app look stays verbatim through the official layer; group colour only in the allowed places. The blog screens have no official-app element of their own (the official layer they show is the canvas around the sheet). | user / agent |
+| 5 | **Keep the feed's ambient group-colour orbs.** D1.5 tokenised them as the `ambient` role (`groupRoles().ambient.orb1/2/3`). `DynamicBackground` is kept and rebuilt on tokens: the colours come from new `--ds-group-ambient-{1,2,3}` variables (`bg-group-ambient-1/2/3`), the per-group size and opacity move from `serviceThemes.ts` to `design/tokens/ambient.ts`, the drift animations become Tailwind keyframes. `DESIGN_SYSTEM.md` lists the orbs as an allowed group-colour place (decided). Elsewhere group colour appears only through roles: member names and links `text-group-strong`, link underline `decoration-group`, the rail's current dot `bg-group-accent` + `shadow-group-glow`, the member-name button's hover `bg-group-subtle`, focus rings `ring-group`. | controller decision: keep existing character |
+| 5a | **Keep the reader's member penlight wash.** It is member data, not group colour. `memberWashStyle()` sets `--ds-member-wash-1/2` inline from the member's penlight colours; the `bg-member-wash` utility mixes them at the `memberWash.alpha` token (10 %, today's `1a` alpha) into the two corner gradients. Defaults are `transparent` (mascot, unknown member: no wash). `DESIGN_SYSTEM.md` records member penlight colours as a data-driven exception. | controller decision: keep existing character |
 | 6 | The feed and reader headers are neutral text on the sheet (`text-heading text-primary`), not the official title gradient: the official blog pages have no title bar to copy. | agent |
-| 7 | All blog text uses the app's sans font. The serif titles and the Google Fonts `@import` (a network request from an offline-first app) go. | agent |
+| 7 | **Keep the serif.** It becomes the type token `font-reading` (`--ds-font-family-reading`: `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif`) and applies where serif is used today (feed title, card titles, post title, rail tooltip title) and to the post body. Noto Serif JP keeps loading from Google Fonts (allowed; Noto Sans JP already loads there), now from the `<link>` in `index.html` instead of an `@import` inside the feed. | controller decision: keep existing character |
 | 8 | Blog cards are level-2 `Card`s with the caption **inside the card, below the photo** (date, title, member), replacing the glass label that hung over the card's corner. The 2×2 "hero" cards at positions 0, 5 and 11 and the column breakpoints stay. | agent |
 | 9 | All / Favorite becomes two neutral `Pill`s (the heart no longer turns pink). Select member is a `Button variant="secondary"`. The blog screens use no primary button. | agent |
 | 10 | Reader text uses a new type step `text-reading` (16 / 28 px) for long-form Japanese text; the article is at most `max-w-2xl` (672 px, about 42 CJK characters per line) with `px-8`; paragraphs are 16 px apart. | agent |
@@ -57,8 +58,9 @@ Guard counts are from `frontend/src/design/guard-baseline.json` at the start of 
 | 17 | Blog dates follow the app language through one helper, `formatBlogDate` (card: short, rail: medium, reader: long, 24-hour), replacing fixed en-US / ja-JP formats. | agent |
 | 18 | Feed ↔ reader and post → post fade in through `FadeOnChange` (`duration-base`, none with reduced motion). The scroll to the first search match is instant with reduced motion. | agent |
 | 19 | A `blog_load` breadcrumb covers every blog load path (target, outcome, count), replacing `console.error`, `console.debug` and silent catches. | agent |
-| 20 | `DynamicBackground` is deleted (no other user). `ServiceTheme.ambient`, `ServiceTheme.blog` and `useBlogTheme` stay until the D2c dialogs stop reading them (E list). | agent |
+| 20 | `ServiceTheme.blog` and `useBlogTheme` stay until the D2c dialogs stop reading them (E list). `ServiceTheme.ambient` now reads `ambientLayout` from the tokens. | agent |
 | 21 | Behaviour is locked by tests on the unchanged code before any restyle: open a recent post, older/newer + arrow keys, rail click, back, member timeline → post → back to the timeline, member name → timeline, search → blog with highlights. | agent |
+| 22 | **Fix three bugs found while reading**, each test-first: the feed's Retry refetches the recent posts (it set the same view, so nothing ran); the reader's Retry reloads the post (it returned to the feed); ← / → are ignored when the event was already handled (`defaultPrevented`, e.g. the photo viewer) or its target is an `input`, `textarea`, `select`, a content-editable element, or inside a dialog (`[role="dialog"]`, `dialog`, `[aria-modal="true"]`). | controller decision |
 
 ## Design per screen
 
@@ -73,20 +75,21 @@ Levels: canvas (level 0, around the sheet, unchanged) → sheet (level 1, `Conte
 
 ### Recent feed (`RecentPostsFeed`)
 
-- `<section aria-labelledby="blogs-feed-title" className="flex h-full min-h-0 flex-col">`. The inline `<style>` and `DynamicBackground` go.
+- `<section aria-labelledby="blogs-feed-title" className="relative flex h-full min-h-0 flex-col">`. The inline `<style>` goes; `<DynamicBackground />` (no props any more) stays as the first child, and the header and the scroll area are `relative` so they sit above it.
+- **Ambient orbs** (`core/common/DynamicBackground.tsx`, rebuilt): `aria-hidden` layer `pointer-events-none absolute inset-0 z-0 overflow-hidden`; three orbs `absolute rounded-pill blur-[100px] motion-reduce:animate-none` at today's places (`-left-[12%] -top-[18%]`, `-right-[15%] top-[18%]`, `-bottom-[22%] left-[28%]`), coloured by `bg-group-ambient-1/2/3`, sized and faded by `var(--ds-group-ambient-N-size)` / `var(--ds-group-ambient-N-opacity)` (max 850 / 750 / 650 px), animated by `animate-orb-drift-1` (28 s), `animate-orb-drift-2` (34 s, delay −8 s), `animate-orb-breathe` (22 s, delay −15 s), keyframes copied verbatim; plus today's film-noise layer (`opacity-[0.018] mix-blend-multiply`, inline SVG). The per-group near-white base (`legacyNeutral.surfaceBackground`) gives way to the sheet.
 - **Header** `flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5`, no border, no glass:
-  - `h2#blogs-feed-title` `text-heading font-semibold text-primary` (Latest Blogs).
+  - `h2#blogs-feed-title` `font-reading text-heading font-semibold text-primary` (Latest Blogs).
   - While syncing: `span role="status"` `flex items-center gap-1 text-caption text-muted` with a `RefreshCw h-3 w-3 animate-spin motion-reduce:animate-none` and `blogs.checkingUpdates`.
   - Right: a `div role="group" aria-label={t('blogs.postsFrom')}` `flex items-center gap-1` with `Pill selected` All and `Pill selected` Favorite (`Heart h-3 w-3`, filled, current text colour); then `Button size="sm" variant="secondary"` with `Users h-4 w-4` and `blogs.selectMember`.
-- **Grid** (scroll area `min-h-0 flex-1 overflow-y-auto overflow-x-hidden`): `grid auto-rows-fr grid-flow-dense grid-cols-2 gap-4 p-6 min-[641px]:grid-cols-3 min-[641px]:gap-5 min-[901px]:grid-cols-4 min-[1201px]:grid-cols-5 min-[1201px]:gap-6` (the same window breakpoints as today). Hero items `col-span-2 row-span-2`.
+- **Grid** (scroll area `relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden`): `grid auto-rows-fr grid-flow-dense grid-cols-2 gap-4 p-6 min-[641px]:grid-cols-3 min-[641px]:gap-5 min-[901px]:grid-cols-4 min-[1201px]:grid-cols-5 min-[1201px]:gap-6` (the same window breakpoints as today). Hero items `col-span-2 row-span-2`.
 - **Card reveal**: each grid item `animate-reveal motion-reduce:animate-none` with the existing delays (known posts `index × 50 ms`, posts new since the last visit a random 0–400 ms).
-- **States** through `BlogStatus`: loading (`blogs.loadingPosts`), error (`AlertCircle`, `blogs.feedLoadFailed`, Retry), first sync (`fill`, `blogs.syncingBlogs` + `blogs.firstSyncHint`), empty (`Heart` or `Newspaper`, the existing favourite / all texts and hints).
+- **States** through `BlogStatus`: loading (`blogs.loadingPosts`), error (`AlertCircle`, `blogs.feedLoadFailed`, Retry — which now refetches), first sync (`fill`, `blogs.syncingBlogs` + `blogs.firstSyncHint`), empty (`Heart` or `Newspaper`, the existing favourite / all texts and hints).
 
 ### Blog card (`BlogCard`)
 
 - The `<button type="button">` is itself the level-2 card (the `Card` primitive's classes; a `div` may not sit inside a `button`): `group flex aspect-[3/4] w-full flex-col overflow-hidden rounded-card bg-card text-left shadow-card transition-transform duration-base ease-standard hover:-translate-y-1 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group`. Its parts are `span`s:
   - Photo area `relative block min-h-0 flex-1 overflow-hidden bg-sunken` (the placeholder is the sunken surface). The `<img alt="">` (decorative: the caption names the post) is `absolute inset-0 h-full w-full object-cover object-top transition duration-base ease-standard group-hover:scale-105 motion-reduce:transform-none`, `opacity-0` until loaded, then `opacity-100`. The load/error reset on a new thumbnail (SD-FE-GAP-B-10) stays.
-  - Caption `flex shrink-0 flex-col gap-1`, `p-4` (hero) or `p-3` (normal): date `text-caption text-muted` (`formatBlogDate` short), title `line-clamp-2 font-semibold text-primary` (`text-title` hero, `text-small` normal), member `truncate text-caption font-semibold text-group-strong`. Caption parts are `span`s (a heading inside a button is invalid).
+  - Caption `flex shrink-0 flex-col gap-1`, `p-4` (hero) or `p-3` (normal): date `text-caption text-muted` (`formatBlogDate` short), title `line-clamp-2 font-reading font-semibold text-primary` (`text-title` hero, `text-small` normal), member `truncate text-caption font-semibold text-group-strong`. Caption parts are `span`s (a heading inside a button is invalid).
 - The glow aura, vignette, glass label and `useBlogTheme` go; `isHovered` state is replaced by CSS hover.
 
 ### Reader (`BlogReader`)
@@ -94,9 +97,10 @@ Levels: canvas (level 0, around the sheet, unchanged) → sheet (level 1, `Conte
 Layout:
 
 ```
-div  flex h-full min-h-0 flex-col
-├─ breadcrumb   flex shrink-0 items-center gap-1 px-4 pb-2 pt-3 text-small
-├─ body         flex min-h-0 flex-1
+div  relative flex h-full min-h-0 flex-col
+├─ wash         pointer-events-none absolute inset-0 bg-member-wash (style = memberWashStyle)
+├─ breadcrumb   relative flex shrink-0 items-center gap-1 px-4 pb-2 pt-3 text-small
+├─ body         relative flex min-h-0 flex-1
 │  ├─ column    relative min-w-0 flex-1
 │  │  ├─ scroll h-full overflow-y-auto → status or article
 │  │  └─ BlogNavFooter (absolute, floats over the bottom of the column)
@@ -106,13 +110,13 @@ div  flex h-full min-h-0 flex-col
 
 - **Breadcrumb**: `IconButton size="sm"` (ghost, `ChevronLeft`, `aria-label={t('blogs.back')}`); the member name as a `button` `rounded-pill px-2 py-1 font-semibold text-group-strong transition-colors duration-fast ease-standard hover:bg-group-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group`; `/` `text-muted` (`aria-hidden`); the post title `min-w-0 truncate px-1 text-secondary`. No border and no glass.
 - **Article** `mx-auto w-full max-w-2xl px-8 pb-24 pt-6` (`pb-24` keeps the last line clear of the floating older/newer pills):
-  - `header` `mb-8 flex flex-col gap-2`: `h1` `text-heading font-semibold text-primary`; meta row `flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted` with the member-name button (`rounded-pill font-semibold text-group-strong decoration-group underline-offset-4 hover:underline` + focus ring), `·` (`aria-hidden`), `<time dateTime={iso}>` in `formatBlogDate` long, and the translate button (`ml-auto`) with `accentColor={color.text.secondary}` from the tokens.
+  - `header` `mb-8 flex flex-col gap-2`: `h1` `font-reading text-heading font-semibold text-primary`; meta row `flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted` with the member-name button (`rounded-pill font-semibold text-group-strong decoration-group underline-offset-4 hover:underline` + focus ring), `·` (`aria-hidden`), `<time dateTime={iso}>` in `formatBlogDate` long, and the translate button (`ml-auto`) with `accentColor={color.text.secondary}` from the tokens.
   - Body `div` with `BLOG_PROSE` (below).
 - **Reader typography** (`features/blogs/components/blogProse.ts`, Tailwind arbitrary variants on the sanitized HTML; every value is a token):
 
 | Element | Classes |
 |---|---|
-| container | `break-words text-reading text-primary` (16 px / 28 px) |
+| container | `break-words font-reading text-reading text-primary` (serif, 16 px / 28 px) |
 | `p` | `mb-4`, last `mb-0` |
 | `h1`–`h4` | `mt-8 mb-3 text-title font-semibold` |
 | `ul` / `ol` | `mb-4 pl-6`, `list-disc` / `list-decimal` |
@@ -123,8 +127,9 @@ div  flex h-full min-h-0 flex-col
 
   Posts written with `<br>` runs keep their own blank lines; the 28 px leading carries the rhythm.
 - **Inline translations** (`useInlineBlogTranslations`): the injected line uses classes instead of `style.cssText`: `blog-translation-inline inline-block border-l-2 border-strong pl-3 text-body italic text-secondary`.
-- **States**: loading `BlogStatus` (`blogs.loadingPost`); error `BlogStatus` (`AlertCircle`, `blogs.postLoadFailed`, Retry).
-- The member penlight wash, the inline `<style>` and `useBlogTheme` go; `getMemberPenlightHex` / `getMemberByName` / `getMemberByBlogId` are no longer imported by the reader.
+- **Penlight wash**: `features/blogs/memberWash.ts` `memberWashStyle(member, groupId)` returns `{ '--ds-member-wash-1': c1, '--ds-member-wash-2': c2 }` from `getMemberPenlightHex` (same member lookup as today: name, name without spaces, blog id), or `undefined` for the mascot (id `000` / ポカ) and unknown members. The `bg-member-wash` utility draws today's two gradients (`ellipse 80% 50% at 0% 0%` and `ellipse 60% 40% at 100% 100%`, each fading out at 50 %) with `color-mix(in srgb, var(--ds-member-wash-N) var(--ds-member-wash-alpha), transparent)`.
+- **States**: loading `BlogStatus` (`blogs.loadingPost`); error `BlogStatus` (`AlertCircle`, `blogs.postLoadFailed`, Retry — which now reloads the post instead of returning to the feed).
+- The inline `<style>`, the penlight-coloured spinner and retry, and `useBlogTheme` go.
 
 ### Timeline rail (`TimelineRail`)
 
@@ -133,7 +138,7 @@ div  flex h-full min-h-0 flex-col
 - Year markers: `absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-base ease-standard`, year `whitespace-nowrap text-caption font-medium text-muted`, tick `ml-2 w-1.5 border-t border-strong`.
 - Current post: `absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-group-accent shadow-group-glow transition-[top] duration-base ease-standard`.
 - Hover ring: `pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2 border-strong transition-opacity duration-base ease-standard`, `opacity-60` (`opacity-90` while zoomed).
-- Tooltip: `Card` `pointer-events-none absolute right-full z-50 mr-4 min-w-[180px] max-w-[240px] -translate-y-1/2 overflow-hidden` (top clamped as today); thumbnail `aspect-[3/4] w-full bg-sunken bg-cover bg-center`; text block `flex flex-col gap-1 p-3`: title `line-clamp-2 text-small font-semibold text-primary`, row `flex items-center justify-between gap-2 text-caption tabular-nums text-muted` with `formatBlogDate` medium and `#n`.
+- Tooltip: `Card` `pointer-events-none absolute right-full z-50 mr-4 min-w-[180px] max-w-[240px] -translate-y-1/2 overflow-hidden` (top clamped as today); thumbnail `aspect-[3/4] w-full bg-sunken bg-cover bg-center`; text block `flex flex-col gap-1 p-3`: title `line-clamp-2 font-reading text-small font-semibold text-primary`, row `flex items-center justify-between gap-2 text-caption tabular-nums text-muted` with `formatBlogDate` medium and `#n`.
 - Position label `absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-caption font-medium tabular-nums text-muted` (`n/total`).
 - The fisheye mapping, dwell zoom (800 ms, ±10 posts), click selection and year-label collision rule are unchanged; motion moves from 300 ms to `duration-base` (200 ms).
 
@@ -142,6 +147,7 @@ div  flex h-full min-h-0 flex-col
 - `<nav aria-label={t('blogs.postNavigation')}>` `pointer-events-none absolute inset-x-6 bottom-4 z-10 flex items-center justify-between gap-4`.
 - Each side is a `button` `pointer-events-auto group flex max-w-[45%] items-center gap-2 rounded-pill bg-pill py-2 shadow-pill transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group` (`pl-3 pr-4 text-left` older, `pl-4 pr-3 text-right` newer). Chevron `h-4 w-4 shrink-0 text-muted group-hover:text-primary`. An `sr-only` prefix `blogs.olderPost` / `blogs.newerPost` + ": ". Title `block max-w-[160px] truncate text-small font-semibold text-primary` (still cut at 18 characters), date `block text-caption text-muted` (`formatBlogDate` short). A missing side is an empty `span`.
 - Unchanged: Older = ← = the next-older post (higher index), Newer = → ; hidden when neither exists; the window-level arrow-key listener.
+- Fixed: the listener ignores a key that was already handled (`defaultPrevented`: the photo viewer handles its own arrows) or whose target is an `input`, `textarea`, `select`, a content-editable element, or inside `[role="dialog"]`, `dialog` or `[aria-modal="true"]` (`ignoresPostKeys(target)`).
 
 ### BlogStatus (new, feature-local)
 
@@ -163,7 +169,8 @@ interface BlogStatusProps {
 
 - Content fades in for `duration-base` on feed ↔ reader and on every post change (`FadeOnChange`, no remount); `ContentArea` already fades on feature and service changes.
 - Cards reveal with `animate-reveal` (opacity 0 → 1, 8 px rise, 200 ms, `ease-standard`); hover lift `-translate-y-1` and photo zoom `scale-105` in `duration-base`.
-- `prefers-reduced-motion`: no fade (`FadeOnChange`), no reveal, no hover lift or zoom (`motion-reduce:`), and the scroll to the first search match uses `behavior: 'auto'`.
+- The ambient orbs drift slowly (22–34 s loops, today's keyframes): a documented exception to the 150–200 ms rule, like `duration-glide`.
+- `prefers-reduced-motion`: no fade (`FadeOnChange`), no reveal, no orb drift, no hover lift or zoom (`motion-reduce:`), and the scroll to the first search match uses `behavior: 'auto'`.
 
 ### Accessibility
 
@@ -196,8 +203,13 @@ An invalid date gives `''`; an unknown locale falls back to the runtime default.
 | `color.mark.reading` | `#DBEAFE` | `bg-mark-reading` | search match by reading |
 | `color.mark.underline` | `#60A5FA` | `border-mark-underline` | dashed underline of a match by reading |
 | keyframes `reveal` | opacity 0 → 1, `translateY(8px)` → 0 | `animate-reveal` | cards appearing in a feed (`duration-base`, `ease-standard`) |
+| `fontFamily.reading` | `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif` | `font-reading` | blog titles and post bodies |
+| `--ds-group-ambient-{1,2,3}` | `groupRoles(id).ambient.orbN` (D1.5) | `bg-group-ambient-1/2/3` | the feed's ambient orbs |
+| `ambientLayout[id].orbN` (`design/tokens/ambient.ts`) | today's per-group `size` / `opacity` / `position`, moved from `serviceThemes.ts` | `--ds-group-ambient-N-size`, `--ds-group-ambient-N-opacity` | orb size and opacity |
+| keyframes `orb-drift-1`, `orb-drift-2`, `orb-breathe` | today's keyframes, verbatim | `animate-orb-drift-1` (28 s), `animate-orb-drift-2` (34 s), `animate-orb-breathe` (22 s) | the orbs' slow drift |
+| `memberWash.alpha` (`design/tokens/member.ts`) | `10%`; `--ds-member-wash-1/2` default `transparent` | `bg-member-wash` | the reader's penlight wash |
 
-Each one goes into `design/tokens`, `design/cssVars.ts`, `tailwind.config.js`, `utils/classnames.ts` (font size, animation), `DesignPage.tsx` (the type list; the mark colours show up in the neutral swatches) and `DESIGN_SYSTEM.md`.
+Each one goes into `design/tokens`, `design/cssVars.ts`, `tailwind.config.js`, `utils/classnames.ts` (font size, font family, background images, animations), `DesignPage.tsx` (the type list, the ambient swatches; the mark colours show up in the neutral swatches) and `DESIGN_SYSTEM.md`.
 
 ## Error handling and logging
 
@@ -216,6 +228,7 @@ Each one goes into `design/tokens`, `design/cssVars.ts`, `tailwind.config.js`, `
 
   No titles, names, ids, URLs or error text are logged. `console.error` and `console.debug` leave `BlogsFeature`.
 - Errors show a translated sentence (`blogs.feedLoadFailed`, `blogs.postLoadFailed`) instead of `Failed to fetch …: 500`.
+- Retry works: `BlogsFeature` splits `handleRetry` into a feed retry (bumps a `recentReloadKey` that the recent-posts effect depends on) and a reader retry (`content: null` on a fresh reader state, which re-runs the content effect for the same post).
 
 ## Testing
 
@@ -238,7 +251,7 @@ Test seams added first, with no visible change: `data-testid="timeline-rail"` on
 
 ### New unit tests
 
-`formatBlogDate`; the new tokens (`staticTokenVars` writes them, the type-scale keys); `BlogStatus` (roles, retry); `logBlogLoad` and the `blog_load` whitelist (pytest); the injected translation line has no inline style; `i18n/d2b.test.ts` (every new key in every locale); `features/blogs/blogScreens.style.test.ts` (the restyled files contain no named palette classes, no colour through inline styles and no `useBlogTheme` / `serviceThemes`).
+`formatBlogDate`; the new tokens (`staticTokenVars` / `groupTokenVars` write them, the type-scale keys, `ambientLayout` matches the old theme values); `DynamicBackground` (token classes, no inline colour, reduced motion); `memberWashStyle` (mascot, unknown, known member); the three bug fixes, test-first (feed Retry refetches, reader Retry reloads the post, ← / → ignored in inputs, dialogs and already-handled events); `BlogStatus` (roles, retry); `logBlogLoad` and the `blog_load` whitelist (pytest); the injected translation line has no inline style; `i18n/d2b.test.ts` (every new key in every locale); `features/blogs/blogScreens.style.test.ts` (the restyled files contain no named palette classes, no colour through inline styles and no `useBlogTheme` / `serviceThemes`).
 
 ### Screenshots
 
@@ -256,16 +269,15 @@ Frontend unit tests, `tsc`, lint, `npm run build`, the blog e2e locks, the zero-
 ## Implementation order
 
 1. Locks: test seams, the blog fixture, e2e + vitest locks, zero-pixel re-capture, before shots.
-2. Tokens, `formatBlogDate`, i18n keys.
-3. `blog_load` breadcrumb, `BlogStatus`, `BlogsFeature` (neutral root, fade, breadcrumbs), the style ratchet test.
-4. Feed and cards; delete `DynamicBackground`.
-5. Reader layout, typography, search marks, inline translations.
-6. Timeline rail and older/newer pills.
+2. Tokens (reading type and serif, marks, reveal, ambient orbs, penlight wash), `formatBlogDate`, i18n keys.
+3. `blog_load` breadcrumb, `BlogStatus`, `BlogsFeature` (neutral root, fade, breadcrumbs, both Retry fixes), the style ratchet test.
+4. Feed, cards and the token-based ambient orbs.
+5. Reader layout, typography, penlight wash, search marks, inline translations.
+6. Timeline rail and older/newer pills (arrow-key fix).
 7. Final checks, after shots, `CHANGELOG.md`, E list, spec zero drift.
 
 ## Out of scope
 
 - The blog dialogs (`MemberSelectModal`, `MemberTimelineModal`, `BlogPhotoGalleryModal`) and the photo/video viewers (`MediaViewerModal`, `PhotoPlayer`): D2c. Notes for D2c: `MemberSelectModal` hard-codes a pink `#ff69b4` favourite and the mascot's CDN thumbnail URL; both dialogs read `useBlogTheme`; the search dialog's `.search-snippet mark` styles should move to the new mark tokens; the blog e2e locks select the dialogs by text and role and may need new selectors after D2c.
 - `TranslateButton` / `InlineTranslation` (shared with the chat; `core/common`).
-- Behaviour bugs seen while reading the code go to the E list, not D2b: the feed's Retry does not refetch (it sets the same view), the reader's Retry returns to the feed, and the window-level ← / → listener also fires while another control has focus.
 - New blog features (a member sidebar, search inside blogs, keyboard rail), dark mode, the entry screens (D2d).
