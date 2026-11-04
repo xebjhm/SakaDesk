@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { DiagnosticsModal } from './DiagnosticsModal';
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../utils/clientLog';
 
 vi.mock('../../shell/hooks/useAuth', () => ({
     useAuth: () => ({
@@ -29,5 +32,20 @@ describe('DiagnosticsModal', () => {
         expect(await screen.findByText('Developer Diagnostics')).toBeInTheDocument();
         expect(await screen.findByText(/2026 - INFO - ok/)).toBeInTheDocument();
         expect(vi.mocked(fetch)).toHaveBeenCalledWith('/api/diagnostics');
+    });
+
+    it('logs the load as ok', async () => {
+        vi.mocked(clientLog).mockClear();
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await screen.findByText(/2026 - INFO - ok/);
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'diagnostics', outcome: 'ok' });
+    });
+
+    it('logs a failed load as an error, without the error text', async () => {
+        vi.mocked(clientLog).mockClear();
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('C:\\Users\\secret')));
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'diagnostics', outcome: 'error' }));
+        expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toContain('secret');
     });
 });
