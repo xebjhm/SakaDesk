@@ -113,8 +113,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the latest posts, or the post you were reading, instead of leaving an empty
   page or sending you back to the list.
 - **The arrow keys no longer switch blog posts by accident.** Left and right
-  now leave the post alone while you type in a text field or use a dialog or
-  the photo viewer.
+  now leave the post alone while you type in a text field, use a blog dialog
+  or the photo viewer.
 
 ## [0.3.4] - 2026-11-03
 

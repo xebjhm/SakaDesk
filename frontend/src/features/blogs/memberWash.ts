@@ -11,8 +11,8 @@ function safeHex(value: unknown): string {
 
 /**
  * CSS variables for the reader's penlight wash (docs/design/DESIGN_SYSTEM.md, the
- * "Member penlight colours" paragraph under "Where group colour may appear"): the member's two penlight colours, which the `bg-member-wash` utility
- * mixes in. undefined (no wash) for the mascot ポカ and for members without member data.
+ * "Member penlight colours" paragraph under "Where group colour may appear"): the
+ * member's two penlight colours, which the `bg-member-wash` utility mixes in. undefined (no wash) for the mascot ポカ and for members without member data.
  * A colour that is not a #rrggbb hex becomes `transparent`.
  * The lookup is the pre-D2b one: name, name without spaces, then blog id.
  */

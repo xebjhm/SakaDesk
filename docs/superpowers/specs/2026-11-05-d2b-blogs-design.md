@@ -221,7 +221,7 @@ Each one goes into `design/tokens`, `design/cssVars.ts`, `tailwind.config.js`, `
 |---|---|---|
 | `recent` | recent posts for the feed | `ok` (count = posts), `error` |
 | `sync` | background metadata sync + refetch | `ok` (count = posts after the refetch), `error`, `cancelled` (service or view changed) |
-| `content` | post content for the reader | `ok`, `cache_hit`, `error`, `cancelled` (another post or service meanwhile) |
+| `content` | post content for the reader | `ok`, `cache_hit`, `error`, `cancelled` (another post or service meanwhile), `in_flight` (the same post is already loading) |
 | `search_open` | a post opened from search | `ok`, `error` |
 | `members` | member list (pre-fetch and dialog) | `ok` (count), `error` |
 | `member_posts` | the member timeline dialog's list | `ok` (count), `error` |
@@ -287,5 +287,5 @@ Frontend unit tests, `tsc`, lint, `npm run build`, the blog e2e locks, the zero-
 
 - **Spinner stop.** In the reader's content effect an `applied` flag is set once a fetch's content is applied (applying it re-runs the effect, whose cleanup marks the fetch cancelled); `setLoading(false)` then runs when `!cancelled || applied`, so the spinner cannot stay on.
 - **Breadcrumbs.** `content` also logs `in_flight` when a load is skipped because the same post is already being fetched; a `sync` that fails after the view changed logs `cancelled`, not `error`.
-- **Penlight wash.** The wash is checked in `components/BlogReader.test.tsx` with a real member from member data: the wash element has `--ds-member-wash-1/2` set to that member's penlight hex. The fixture members in the d2b-screens shots are not in member data, so the wash is not visible there.
+- **Penlight wash.** The wash is checked twice: `components/BlogReader.test.tsx` (mocked member data) proves the wiring to `--ds-member-wash-1/2` on the wash element, and `memberWashReal.test.ts` (unmocked) uses a real member from `data/members/hinatazaka.json` and expects that member's real penlight hex. The fixture members in the d2b-screens shots are not in member data, so the wash is not visible there.
 - **Accepted for the D2 review.** Sakurazaka's feed title in its official colour has 2.44:1 contrast on white. It was the same before D2b.

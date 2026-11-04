@@ -24,7 +24,7 @@ Items found during D2a that were left on purpose. Pick them up in E (or D2c wher
 - **Back label on the timeline path.** "Back to latest blogs" in `frontend/src/features/blogs/components/BlogReader.tsx` is misleading when the reader was opened from a member timeline.
 - **Fonts are not pinned in the shots.** `frontend/e2e/d2b-screens.spec.ts` and `frontend/e2e/visual-zero-pixel.spec.ts` depend on the Google Fonts load; pin or stub the fonts.
 - **`formatBlogDate` tests.** Add zh-CN, yue, midnight and the ICU "at" separator cases to `frontend/src/utils/dateFormatters.test.ts`.
-- **`d2b.test` only checks truthy.** Tighten the assertions in the D2b token test under `frontend/src/design/`.
+- **`d2b.test` only checks truthy.** Tighten the assertions in `frontend/src/i18n/d2b.test.ts` (line 27).
 - **A to B to A in-flight spinner.** Going A, B, A quickly in `frontend/src/features/blogs/BlogsFeature.tsx` can leave the spinner running while the in-flight guard skips the second load of A.
 - **`nav_list` skip breadcrumbs.** `frontend/src/features/blogs/BlogsFeature.tsx` skips the member-list load silently in some paths; log them through `logBlogLoad`.
 - **Breadcrumb test coverage.** `frontend/src/features/blogs/BlogsFeature.test.tsx` covers recent, sync and search_open only; add `content`, `nav_list` and `member_posts`.
@@ -32,6 +32,7 @@ Items found during D2a that were left on purpose. Pick them up in E (or D2c wher
 - **Breadcrumb as `<nav>`.** The reader's breadcrumb in `frontend/src/features/blogs/components/BlogReader.tsx` should be a `<nav>` with `aria-current` on the current item.
 - **More `memberWash` cases.** Extend `frontend/src/features/blogs/memberWash.test.ts` (name without spaces, blog-id lookup, malformed hex).
 - **Post HTML `class` is allowed.** DOMPurify `ALLOWED_ATTR` in `frontend/src/features/blogs/components/BlogReader.tsx` keeps `class`, so a post can pick up app utilities; remove it (hardening).
-- **e2e ring locator.** The `.border-2` locator for the avatar ring in `frontend/e2e/blogs.spec.ts` follows a class, not a role; use a test id.
+- **e2e ring locator.** The `.border-2` locator for the rail hover ring in `frontend/e2e/d2b-screens.spec.ts:46` follows a class, not a role; use a test id.
 - **Hard-coded colon in the screen-reader prefix.** `frontend/src/features/blogs/components/BlogNavFooter.tsx` renders `{prefix}:`; move the separator into the i18n string.
 - **Rail tooltip covers the year label.** The card tooltip in `frontend/src/features/blogs/components/TimelineRail.tsx` hides the year label beside it.
+- **D2c: app-level dialogs.** App-level dialogs (Settings, Add service, About, Report, Diagnostics, Sync, Confirm, ToS) lack `role="dialog"`/`aria-modal`/focus management; once they move to the Modal primitive, `frontend/src/features/blogs/components/arrowKeys.ts` covers them.
