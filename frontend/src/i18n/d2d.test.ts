@@ -8,7 +8,7 @@ import yue from './locales/yue.json';
 const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 
 /** Every string D2d adds. */
-const D2D_KEYS = ['common.debug', 'sync.progress'] as const;
+const D2D_KEYS = ['common.debug', 'sync.progress', 'sync.stepDone', 'sync.stepCurrent', 'sync.stepPending'] as const;
 
 type Tree = Record<string, Record<string, unknown>>;
 

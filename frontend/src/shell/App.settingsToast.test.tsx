@@ -20,6 +20,12 @@ describe('App settings error toast', () => {
       return fallback
     })
     useAppStore.setState({ selectedServices: ['hinatazaka46'], activeService: 'hinatazaka46' })
+    server.use(
+      http.get('*/api/app-state/prefs', () => HttpResponse.json({})),
+      http.patch('*/api/app-state/prefs', () => HttpResponse.json({ ok: true })),
+      http.get('*/api/app-state/migrate', () => HttpResponse.json({ migrated: true })),
+      http.get('*/api/app-state/conversation-all', () => HttpResponse.json({})),
+    )
   })
 
   it('renders above the open Settings dialog', async () => {
@@ -65,6 +71,24 @@ describe('App settings error toast', () => {
     }
     await user.click(within(toast).getByRole('button', { name: i18n.t('common.close') }))
     expect(screen.queryByTestId('settings-error-toast')).toBeNull()
+  })
+
+  it('Debug opens the diagnostics dialog', async () => {
+    server.use(
+      http.post('/api/settings', () => new HttpResponse(null, { status: 500 })),
+      http.get('/api/diagnostics', () => new HttpResponse(null, { status: 503 })),
+    )
+    const user = userEvent.setup()
+    render(<AuthProvider><App /></AuthProvider>)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
+    await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
+    const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
+    await user.click(within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') }))
+
+    const toast = await screen.findByTestId('settings-error-toast')
+    await user.click(within(toast).getByRole('button', { name: i18n.t('common.debug') }))
+    expect(await screen.findByRole('dialog', { name: 'Developer Diagnostics' })).toBeInTheDocument()
   })
 
   it('shows no toast when a failed save is followed by a successful one', async () => {

@@ -92,7 +92,8 @@ The neutral tokens D2c added (`design/tokens/color.ts`):
   `text-status-warning` (all ≥ 4.5:1 on white, pinned by `d2cTokens.test.ts`), and the
   danger fill is `bg-status-danger` (the `danger` Button). `danger` is 4.8:1 on white only:
   it falls under 4.5:1 on `bg-sunken`, so never put danger text on a sunken surface.
-  `bg-status-attention` is only the rail's disconnected badge. `bg-status-success` (D2d) marks a finished step (the sync phase steps).
+  `bg-status-attention` is only the rail's disconnected badge.
+  `bg-status-success` (added in D2d) marks a finished step: the sync phase steps.
 - **`overlay.toast`:** toasts use `bg-toast` (with `text-viewer`).
 - **`viewer.*`:** the dark photo/video viewer: `bg-viewer-scrim` (its backdrop),
   `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`, `text-viewer-muted`
