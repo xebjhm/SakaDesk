@@ -29,8 +29,8 @@ Group colour comes from `groupTokens` and follows the active service
 automatically through CSS variables. A primitive never takes a group id.
 
 1. **Title gradient:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`
-2. **Selection ring and glow:** `Avatar selected`, `shadow-group-glow`. Keyboard
-   focus ring: `Pill`, `Button`, `IconButton` and `RailItem` use
+2. **Selection glow:** `Avatar selected` draws a white ring plus the group-colour
+   glow (`shadow-group-glow`); `ring-group` is the keyboard focus ring: `Pill`, `Button`, `IconButton` and `RailItem` use
    `focus-visible:ring-2 focus-visible:ring-group`.
 3. **Bubble border:** `border-group-bubble`
 4. **Badge:** `Badge`, `bg-group-badge`
@@ -49,7 +49,7 @@ Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
 | Scale | Utilities | Values |
 |---|---|---|
 | Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` | 11/16, 13/20, 14/22, 16/24, 20/28 px |
-| Radius | `rounded-card` `rounded-sheet` `rounded-pill` (and `rounded-none`) | 14px, 20px, full |
+| Radius | `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 14px, 20px, full |
 | Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
 | Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
 | Motion | `duration-fast` `duration-base` `ease-standard` | 150ms, 200ms, `cubic-bezier(0.2, 0, 0, 1)` |
@@ -94,7 +94,7 @@ are composed from these in the feature folder. They are not primitives.
 1. Edit the right file in `frontend/src/design/tokens/`.
 2. Expose it in `frontend/src/design/cssVars.ts`, and in `tailwind.config.js`
    if it needs a utility (and in `utils/classnames.ts` if the utility uses a
-   `text-`, `rounded-`, `shadow-`, `duration-` or `ease-` prefix).
+   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or `ease-` prefix).
 3. Show it on `DesignPage.tsx`.
 4. Document it here.
 5. Changing a pre-D1 value changes pixels on existing screens. Update
@@ -107,6 +107,8 @@ are composed from these in the feature folder. They are not primitives.
 hex colours, `rgb()`/`hsl()`, and arbitrary radius / shadow / text / spacing
 values. Width, height and position arbitrary values are allowed. Comments are
 ignored, but string contents are still scanned (hex colours live in strings).
+Named palette classes (e.g. `bg-gray-100`, `bg-black/40`) are not caught by the
+guard but are still forbidden by the rules above.
 Token files (`design/tokens/`), `config/colors/`, `config/serviceThemes.ts`,
 tests and `.d.ts` files are not scanned. The test compares the counts with
 `guard-baseline.json`:

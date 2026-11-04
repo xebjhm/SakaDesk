@@ -1,8 +1,8 @@
 /**
  * CSS Variable Generation and Application
  *
- * Generates CSS custom properties from theme colors and applies them to the document.
- * This enables runtime theme switching without JavaScript re-renders.
+ * Generates the legacy `--color-*` CSS custom property map from theme colors;
+ * `design/applyTokens.ts` writes it to the document. This enables runtime theme switching without JavaScript re-renders.
  */
 
 import { type GroupId } from './palette';

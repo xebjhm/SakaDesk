@@ -25,5 +25,7 @@ New or changed UI must use the design-system tokens and primitives in
 `frontend/src/design/`. Read `docs/design/DESIGN_SYSTEM.md` before touching UI:
 it defines the four levels, the only places group colour may appear, and the
 Do/Don't list. Never hard-code colours or arbitrary radius / shadow / text /
-spacing values — `frontend/src/design/guard.test.ts` fails the build on new
-ones. Preview tokens and primitives at `?view=design` on the dev server.
+spacing values. `frontend/src/design/guard.test.ts` fails the build on new hex /
+`rgb()` / `hsl()` literals and arbitrary radius / shadow / text / spacing values;
+named palette classes (e.g. `bg-gray-100`, `bg-black/40`) are not caught by the
+guard but are still forbidden. Preview tokens and primitives at `?view=design` on the dev server.

@@ -16,8 +16,7 @@ applyStaticTokens()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
-// One route per entry point, each loaded on demand so the popup never evaluates App's module
-// graph (and the main window never loads the popup's).
+// One route per entry point, each loaded on demand.
 // Dev-only style page. `import.meta.env.DEV` is the literal `false` in production
 // builds, so this whole branch — including the chunk import — is dropped.
 if (import.meta.env.DEV && isDesignView(window.location.search)) {
@@ -29,6 +28,8 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
         )
     }).catch(() => clientLog('app_load_failed', { error_type: 'design_page' }))
 } else if (isCallPopupView(window.location.search)) {
+    // Loaded on demand so the popup never evaluates App's module graph (and the main window
+    // never loads the popup's).
     // The host evaluates `window.__sakadeskCallPopup.start(...)` right after the page's `loaded`
     // event, which can precede the chunk below: publish the (queueing) global synchronously.
     installCallPopupBridge()
