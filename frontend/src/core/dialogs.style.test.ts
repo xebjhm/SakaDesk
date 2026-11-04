@@ -31,12 +31,18 @@ const FILES = [
     '../features/messages/components/MemberProfilePopup.tsx',
     '../features/messages/components/ProfileImagePills.tsx',
     'common/SettingsMenu.tsx',
+    '../features/search/SearchModal.tsx',
+    '../features/search/components/SearchInput.tsx',
+    '../features/search/components/SearchFilterBar.tsx',
+    '../features/search/components/SearchResultItem.tsx',
+    '../features/search/components/SearchResultList.tsx',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;
 const COLOUR_STYLE = /\b(?:color|background|backgroundColor|borderColor|boxShadow)\s*:/g;
 /** Files whose inline colour is user or member data (decision 26: the background presets and preview). */
-const DATA_COLOUR = new Set(['modals/BackgroundModal.tsx']);
+/** SearchFilterBar: `color` is the group logo colour carried by a filter chip (data, drawn through groupMarkerStyle). */
+const DATA_COLOUR = new Set(['modals/BackgroundModal.tsx', '../features/search/components/SearchFilterBar.tsx']);
 
 describe.each(FILES)('%s', (file) => {
     const source = readFileSync(path.resolve(__dirname, file), 'utf-8');

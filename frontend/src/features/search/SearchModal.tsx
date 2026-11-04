@@ -8,7 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { Search, Loader2, Database } from 'lucide-react';
-import { Portal } from '../../core/common/Portal';
+import { Button, Modal } from '../../design/primitives';
+import { DialogStatus } from '../../core/common/DialogStatus';
+import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { openChat } from '../../shell/openChat';
@@ -39,7 +41,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [isComposing, setIsComposing] = useState(false);
   const [totalCount, setTotalCount] = useState(0);
@@ -64,7 +66,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const resetState = useCallback(() => {
     setQuery('');
     setResults([]);
-    setError(null);
+    setError(false);
     setSelectedIndex(-1);
     setIsLoading(false);
     setIsLoadingMore(false);
@@ -92,17 +94,6 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   }, [resetState]);
 
   useImperativeHandle(ref, () => ({ open, close, isOpen }), [open, close, isOpen]);
-
-  // ─── Focus input when modal opens ──────────────────────────────────────────
-  useEffect(() => {
-    if (isOpen) {
-      // Small delay to allow portal to mount
-      const timer = setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [isOpen]);
 
   // ─── Check search index status when modal opens ──────────────────────────
   useEffect(() => {
@@ -191,7 +182,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   useEffect(() => {
     if (!query.trim() || isComposing) {
       setResults([]);
-      setError(null);
+      setError(false);
       setIsLoading(false);
       setTotalCount(0);
       setHasMore(false);
@@ -199,7 +190,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     }
 
     setIsLoading(true);
-    setError(null);
+    setError(false);
 
     const timer = setTimeout(async () => {
       try {
@@ -216,11 +207,13 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         // still render whatever partial results the backend returned.
         setIsIndexBuilding(!!data.is_building);
         setResults(data.results);
+        logDialogLoad('search', 'ok', data.results.length);
         setTotalCount(data.total_count);
         setHasMore(data.has_more);
         setSelectedIndex(data.results.length > 0 ? 0 : -1);
       } catch (_err) {
-        setError(t('search.errorSearchFailed'));
+        setError(true);
+        logDialogLoad('search', 'error');
         setResults([]);
         setSelectedIndex(-1);
         setTotalCount(0);
@@ -231,7 +224,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [query, isComposing, t, buildFilterParams, searchGeneration]);
+  }, [query, isComposing, buildFilterParams, searchGeneration]);
 
   // ─── Load more handler ──────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
@@ -389,166 +382,100 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   );
 
   // ─── Render ────────────────────────────────────────────────────────────────
-  if (!isOpen) return null;
-
   return (
-    <Portal>
-      {/* Overlay container */}
-      <div
-        className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] p-4"
-        onClick={close}
-        onKeyDown={handleKeyDown}
-      >
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/40" />
+    <Modal
+      isOpen={isOpen}
+      onClose={close}
+      layout="bare"
+      placement="top"
+      aria-label={t('search.title')}
+      initialFocusRef={inputRef}
+      onKeyDown={handleKeyDown}
+      logId="search"
+      className="max-h-[60vh] max-w-xl overflow-visible"
+    >
+      <SearchInput
+        value={query}
+        onChange={setQuery}
+        isLoading={isLoading}
+        inputRef={inputRef}
+        onCompositionStart={() => setIsComposing(true)}
+        onCompositionEnd={() => setIsComposing(false)}
+        onFilterToggle={() => setFiltersExpanded(!filtersExpanded)}
+        filtersActive={filtersExpanded || selectedFilters.length > 0}
+        contentType={contentType}
+      />
 
-        {/* Modal panel */}
-        <div
-          className="relative bg-white rounded-xl w-full max-w-xl shadow-2xl flex flex-col max-h-[60vh]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Search input */}
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            isLoading={isLoading}
-            inputRef={inputRef}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
-            onFilterToggle={() => setFiltersExpanded(!filtersExpanded)}
-            filtersActive={filtersExpanded || selectedFilters.length > 0}
-            contentType={contentType}
+      {blogBackupEnabled && blogSyncInProgress && (
+        <p role="status" className="flex items-center gap-2 bg-sunken px-4 py-2 text-caption text-secondary">
+          <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          {t('search.blogBackupInProgress')}
+        </p>
+      )}
+
+      {filtersExpanded && (
+        <SearchFilterBar
+          selectedFilters={selectedFilters}
+          onFiltersChange={setSelectedFilters}
+          exactOnly={exactOnly}
+          onExactOnlyChange={setExactOnly}
+          includeUnread={includeUnread}
+          onIncludeUnreadChange={setIncludeUnread}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          contentType={contentType}
+          onContentTypeChange={setContentType}
+          blogBackupEnabled={blogBackupEnabled}
+          onOpenBlogSettings={onOpenSettings ? () => { close(); onOpenSettings(); } : undefined}
+          refetchKey={searchGeneration}
+        />
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-b-sheet">
+        {isIndexBuilding && (
+          <p role="status" className="flex items-center gap-2 bg-sunken px-4 py-2 text-caption text-secondary">
+            <Database aria-hidden="true" className="h-4 w-4 shrink-0" />
+            {t('search.buildingHint')}
+          </p>
+        )}
+        {isLoading && results.length === 0 && <DialogStatus kind="loading" className="py-8" />}
+        {error && <DialogStatus kind="error" title={t('search.searchFailed')} className="py-8" />}
+        {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
+          <DialogStatus kind="empty" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />
+        )}
+        {results.length > 0 && (
+          <SearchResultList
+            results={results}
+            selectedIndex={selectedIndex}
+            onSelect={handleNavigate}
+            onMouseEnterItem={setSelectedIndex}
+            listRef={listRef}
+            userNicknames={userNicknames}
           />
-
-          {/* Blog backup notice — always visible when backup is running */}
-          {blogBackupEnabled && blogSyncInProgress && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-xs text-amber-700">
-              <span>{t('search.blogBackupInProgress')}</span>
+        )}
+        {hasMore && results.length > 0 && (
+          <Button variant="ghost" size="sm" className="mx-auto my-1" onClick={handleLoadMore} disabled={isLoadingMore}>
+            {isLoadingMore && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
+            {t('search.loadMore')}
+          </Button>
+        )}
+        {results.length > 0 && (
+          <div className="flex flex-col gap-1 bg-sunken px-4 py-2 text-caption text-muted">
+            <div className="flex justify-between">
+              <span>
+                {totalCount > results.length
+                  ? t('search.resultCountPartial', { shown: results.length, total: totalCount })
+                  : blogCount > 0
+                    ? t('search.resultCountWithBlogs', { count: results.length, blogCount })
+                    : t('search.resultCount', { count: results.length })}
+              </span>
+              <span>{t('search.pressEnterToSelect')}</span>
             </div>
-          )}
-
-          {/* Filter bar (collapsible) — outside overflow wrapper so dropdowns can overflow */}
-          {filtersExpanded && (
-            <SearchFilterBar
-              selectedFilters={selectedFilters}
-              onFiltersChange={setSelectedFilters}
-              exactOnly={exactOnly}
-              onExactOnlyChange={setExactOnly}
-              includeUnread={includeUnread}
-              onIncludeUnreadChange={setIncludeUnread}
-              dateRange={dateRange}
-              onDateRangeChange={setDateRange}
-              contentType={contentType}
-              onContentTypeChange={setContentType}
-              blogBackupEnabled={blogBackupEnabled}
-              onOpenBlogSettings={onOpenSettings ? () => { close(); onOpenSettings(); } : undefined}
-              refetchKey={searchGeneration}
-            />
-          )}
-
-          {/* Content zone — overflow-hidden clips children to bottom rounded corners
-              while keeping filter dropdowns above free to overflow the modal */}
-          <div className="flex flex-col flex-1 min-h-0 overflow-hidden rounded-b-xl">
-
-          {/* Index building banner */}
-          {isIndexBuilding && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-xs text-amber-700">
-              <Database className="w-3.5 h-3.5 shrink-0" />
-              <span>{t('search.buildingHint')}</span>
-            </div>
-          )}
-
-          {/* Loading state (only when no results yet) */}
-          {isLoading && results.length === 0 && (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 text-gray-400 animate-spin" />
-            </div>
-          )}
-
-          {/* Error state */}
-          {error && (
-            <div className="flex items-center justify-center py-12 px-4">
-              <p className="text-sm text-red-500">{error}</p>
-            </div>
-          )}
-
-          {/* Empty state (hide while index is building — results will come after build) */}
-          {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 px-4">
-              <Search className="w-10 h-10 text-gray-300 mb-3" />
-              <p className="text-sm font-medium text-gray-500">
-                {t('search.noResults')}
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                {t('search.noResultsHint')}
-              </p>
-            </div>
-          )}
-
-          {/* Results list */}
-          {results.length > 0 && (
-            <SearchResultList
-              results={results}
-              selectedIndex={selectedIndex}
-              onSelect={handleNavigate}
-              onMouseEnterItem={setSelectedIndex}
-              listRef={listRef}
-              userNicknames={userNicknames}
-            />
-          )}
-
-          {/* Load more button */}
-          {hasMore && results.length > 0 && (
-            <button
-              className="w-full py-2 text-xs text-blue-500 hover:text-blue-700 hover:bg-blue-50 border-t border-gray-100 transition-colors disabled:opacity-50"
-              onClick={handleLoadMore}
-              disabled={isLoadingMore}
-            >
-              {isLoadingMore ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
-              ) : null}
-              {t('search.loadMore')}
-            </button>
-          )}
-
-          {/* Footer */}
-          {results.length > 0 && (
-            <div className="px-4 py-2 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 flex flex-col gap-1">
-              <div className="flex justify-between">
-                <span>
-                  {totalCount > results.length
-                    ? t('search.resultCountPartial', { shown: results.length, total: totalCount })
-                    : blogCount > 0
-                      ? t('search.resultCountWithBlogs', { count: results.length, blogCount })
-                      : t('search.resultCount', { count: results.length })}
-                </span>
-                <span>{t('search.pressEnterToSelect')}</span>
-              </div>
-              {blogCount > 0 && (
-                <span className="text-gray-300 text-[10px]">
-                  {t('search.blogCacheHint')}
-                </span>
-              )}
-            </div>
-          )}
-          </div>{/* end content zone */}
-        </div>
+            {blogCount > 0 && <span>{t('search.blogCacheHint')}</span>}
+          </div>
+        )}
       </div>
-
-      {/* Global styles for search snippet <mark> highlighting */}
-      <style>{`
-        .search-snippet mark {
-          background-color: rgb(254 240 138);
-          color: inherit;
-          border-radius: 2px;
-          padding: 0 2px;
-        }
-        .search-snippet mark.reading {
-          background-color: rgb(219 234 254);
-          border-bottom: 1.5px dashed rgb(96 165 250);
-        }
-      `}</style>
-    </Portal>
+    </Modal>
   );
 });
 
