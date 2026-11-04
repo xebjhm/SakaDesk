@@ -230,8 +230,9 @@ export function useTimelineJump({
             if (leadIn === 'cancelled') return finish('cancelled', resolved.index, 0);
             if (leadIn === 'still') {
                 if (!(await glide(scroller, dir * lead))) return finish('cancelled', resolved.index, 0);
-                // Virtuoso may have moved the lead-in (rows measured taller or shorter) before the
-                // glide started, so the glide can end short with the row still unrendered.
+                // While the lead-in settled, Virtuoso may have re-anchored it (rows above measured
+                // taller or shorter), so the planned distance was stale and the glide can end short
+                // with the row still unrendered.
                 if (aim() === null) {
                     path = 'far_snap';
                     if (!snap()) return finish('gave_up', resolved.index, 0);
