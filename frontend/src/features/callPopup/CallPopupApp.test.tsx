@@ -114,6 +114,7 @@ describe('CallPopupApp', () => {
         fireEvent.ended(screen.getByTestId('call-audio'));
         await act(async () => { await vi.advanceTimersByTimeAsync(ENDED_HOLD_MS + 50); });
         await waitFor(() => expect(events()).toContain('ended'));
+        expect(posts.find(p => p.body.event === 'ended')!.body.reason).toBe('played');
     });
 
     it('decline posts declined', async () => {

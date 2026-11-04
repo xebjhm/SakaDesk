@@ -570,7 +570,7 @@ class CallPopupController:
             elif phase == STARTING:
                 self._spawn_toast(pending, "fallback", kind)
             elif phase == RINGING:
-                self._spawn_toast(pending, "missed", "error")
+                self._spawn_toast(pending, "missed", kind)
         return True
 
     # --- lifecycle ---
@@ -595,7 +595,13 @@ class CallPopupController:
             logger.debug("call_popup_foreground_kept", call_id=pending.call_id)
 
     async def cancel(self, reason: str) -> None:
-        """Cancel the call (no toast), e.g. when the popup setting is turned off."""
+        """Cancel the call, e.g. when the popup setting is turned off.
+
+        An active popup is cancelled with no toast. A call still ``reserved``
+        has had its C1 plan diverted and no popup yet: it gets that plan as a
+        fallback toast (``reason``), so turning off only the popup never
+        drops the chat's notification.
+        """
         with self._lock:
             phase, pending = self._phase, self._pending
             if pending is not None:
@@ -607,6 +613,8 @@ class CallPopupController:
         logger.info(
             "call_popup_cancel", call_id=pending.call_id, reason=reason, phase=phase
         )
+        if phase == RESERVED:
+            self._spawn_toast(pending, "fallback", reason)
 
     async def shutdown(self) -> None:
         """App exit: drop the call and stop spawned work. No toast, no bridge call."""

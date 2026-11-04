@@ -639,6 +639,70 @@ def test_reveal_and_cancel_are_serialized():
     assert win.hidden == 1  # the hide landed after the show
 
 
+# ---------------------------------------------------------------- lost window
+
+
+def test_lost_window_during_a_call_is_reported():
+    reported: list[int] = []
+    win = FakeWindow()
+    w, _, _ = make([win], report_lost=reported.append)
+    w.start(3)
+    with capture_logs() as logs:
+        win.events.closed.set()
+    assert reported == [3]
+    (ev,) = [e for e in logs if e["event"] == "call_popup_window"]
+    assert (ev["action"], ev["call_id"]) == ("lost", 3)
+
+
+@pytest.mark.parametrize("end", ["none", "hide", "cancel"])
+def test_lost_window_without_a_live_call_is_not_reported(end):
+    reported: list[int] = []
+    win = FakeWindow()
+    w, _, _ = make([win], report_lost=reported.append)
+    if end == "none":
+        w.ensure()
+    else:
+        w.start(3)
+        getattr(w, end)(3)
+    with capture_logs() as logs:
+        win.events.closed.set()
+    assert reported == []
+    assert actions(logs) == ["lost"]
+
+
+def test_a_failing_lost_report_is_logged_and_swallowed():
+    def boom(_cid):
+        raise RuntimeError("no loop")
+
+    win = FakeWindow()
+    w, _, _ = make([win], report_lost=boom)
+    w.start(4)
+    with capture_logs() as logs:
+        win.events.closed.set()
+    (ev,) = [e for e in logs if e["event"] == "call_popup_lost_report_failed"]
+    assert (ev["call_id"], ev["error_type"]) == (4, "RuntimeError")
+
+
+def test_default_lost_report_sends_window_lost_error_to_the_controller(monkeypatch):
+    import asyncio
+
+    from backend.services import call_popup, desktop_bridge
+
+    scheduled = []
+    monkeypatch.setattr(desktop_bridge, "run_on_server_loop", scheduled.append)
+    call_popup._reset_controller_for_tests()
+    try:
+        cpw._default_report_lost(5)
+        (coro,) = scheduled
+        with capture_logs() as logs:
+            # No call 5 in a fresh controller: the event is reported as stale.
+            assert asyncio.run(coro) is False
+    finally:
+        call_popup._reset_controller_for_tests()
+    (ev,) = [e for e in logs if e["event"] == "call_popup_event_stale"]
+    assert (ev["call_id"], ev["call_event"]) == (5, "error")
+
+
 # ---------------------------------------------------------------- deliver_heard
 
 

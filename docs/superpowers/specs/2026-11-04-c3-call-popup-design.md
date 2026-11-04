@@ -83,7 +83,9 @@ ringing ──declined / timeout / error / cancelled / 45 s watchdog──▶ id
 ringing ──main window focused──▶ idle          (popup cancelled; no toast; B rings in the app)
 connected ──ended / error──▶ idle              (window hidden; no toast)
 connected ──15 min watchdog──▶ idle            (popup cancelled; no toast)
-any ──setting off / app exit──▶ idle           (popup cancelled; no toast)
+reserved ──setting off──▶ idle                 (no popup yet; fallback toast)
+starting / ringing / connected ──setting off──▶ idle   (popup cancelled; no toast)
+any ──app exit──▶ idle                         (popup cancelled; no toast)
 ```
 
 ---
@@ -191,7 +193,7 @@ class PendingCall:
 | `info(call_id)` | The active call's `CallInfo` (§4.6) when `call_id` is current and the state is `starting`/`ringing`/`connected`; else `None`. |
 | `on_event(call_id, event)` | Applies the table below. Returns `False` for a stale event (unknown call, wrong phase, or an `answered` whose `message_id` differs from the candidate), logged as `call_popup_event_stale` (`call_id`, `call_event`, `reason`). |
 | `on_foreground()` | Called when the main window reports `focused=true` (§4.6). `starting`/`ringing` → `bridge.call_popup_cancel(call_id)`, `idle`, no toast. `connected` → left alone: an answered call is not cut off (debug `call_popup_foreground_kept`). `reserved` → nothing, because `dispatch` re-checks. Logs `call_popup_cancel reason=foreground`. |
-| `cancel(reason)` | Setting turned off (`disabled`). Any active phase → popup cancelled, `idle`, no toast. |
+| `cancel(reason)` | Setting turned off (`disabled`). Any active phase → popup cancelled, `idle`, no toast. `reserved` → `idle` and the diverted plan goes out as a fallback toast (`call_popup_toast kind=fallback reason=disabled`, subject to the notifications-off suppression): no popup exists yet, and the user turned off only the popup, so the chat keeps its notification. The sync's later `dispatch` logs `result=not_reserved`. Logs `call_popup_cancel` (`call_id`, `reason`, `phase`). |
 | `shutdown()` | From lifespan shutdown, before the scheduler stop. It cancels the watchdogs (including one already firing, so no toast follows shutdown) and goes to `idle` with no toast (`call_popup_cancel reason=app_exit` when a call was active). |
 
 **Events from the popup** (`POST /api/call-popup/calls/{call_id}/events`, §4.6):
@@ -203,10 +205,12 @@ class PendingCall:
 | `answered` (`message_id`) | `ringing` | → `connected`; `deliver_heard` (below) as a background task; connected watchdog |
 | `declined` | `ringing` | hide, → `idle`, missed-call toast (`reason=declined`) |
 | `timeout` | `ringing` | hide, → `idle`, missed-call toast (`reason=timeout`) |
-| `ended` | `connected` | hide, → `idle` |
-| `error` (`error_type`) / `cancelled` | `starting` | hide, → `idle`, fallback toast |
-| `error` / `cancelled` | `ringing` | hide, → `idle`, missed-call toast (`reason=error`) |
+| `ended` (`reason` `played`/`hung_up`) | `connected` | hide, → `idle`; the reason (how the call ended) is logged in `call_popup_event` |
+| `error` (`error_type`) / `cancelled` | `starting` | hide, → `idle`, fallback toast (`reason` = the event) |
+| `error` / `cancelled` | `ringing` | hide, → `idle`, missed-call toast (`reason` = the event: `error` or `cancelled`) |
 | `error` / `cancelled` | `connected` | hide, → `idle` |
+
+The host reports a popup window lost during a call (§6.5) as `error` with `error_type=window_lost`, so the call ends at once with the row above for its phase instead of waiting for its watchdog.
 
 `reason` is a code from the known set (B's skip reasons `disabled`, `group_chat`, `no_voice`, `already_read`, `no_photo`, `dismissed_this_visit`, `call_active`, plus `superseded`, `media_unavailable`, `popup_active`, `played`, `hung_up`); any other well-formed value reaches the controller as `other`, so only a fixed vocabulary is logged (§4.6). Each accepted event logs `call_popup_event` (`call_id`, `call_event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
 
@@ -365,7 +369,7 @@ y      = work_area.bottom - h - margin
 - **Destroy.** `popup.destroy(timeout=3.0)` runs `window.destroy()` on a daemon thread (it blocks on the GUI thread, so a hung GUI thread must not block the caller) and waits at most `timeout` for the popup's `closed` event. Destroy is idempotent: a second call (tray Quit plus the main window's `closed`) returns at once (debug `action=destroy_skipped`). The host is unavailable afterwards, and a window that finished loading after `destroy` ran is closed too. If `closed` does not arrive in time, it logs `call_popup_window action=destroy_failed` and calls `System.Windows.Forms.Application.Exit()` (lazy import), so the process can never be kept alive by the popup. It logs `action=destroyed` on success.
 - **Session end.** Windows sends the session-end close to every top-level form. The popup has no `closing` handler that cancels, so it closes. The main window is handled by C2's guard.
 - **While quitting.** `popup.start()` returns `False` when `_quitting` is set, and the backend's `controller.shutdown()` (lifespan) drops any active call without a toast.
-- **The popup's own close.** It has no ✕ (frameless), never activates (so no Alt+F4) and has no taskbar button. Its `closed` firing while not quitting means the window was lost, and the next `start()` recreates it.
+- **The popup's own close.** It has no ✕ (frameless), never activates (so no Alt+F4) and has no taskbar button. Its `closed` firing while not quitting means the window was lost, and the next `start()` recreates it. When a call still holds the window (started, not yet hidden or cancelled), the host logs `call_popup_window action=lost call_id=…` and reports it through its injectable `report_lost` seam, whose default schedules `controller.on_event(call_id, CallEvent("error", error_type="window_lost"))` on the server loop (`run_on_server_loop`). The call then ends now (fallback toast when starting, missed-call toast when ringing) rather than after its watchdog (45 s ringing, 900 s connected, every new voice `busy` meanwhile). A failing report logs `call_popup_lost_report_failed` (`call_id`, `error_type`). The handler reads the call id without the host lock, so a host call blocked on that window cannot stall pywebview's event thread.
 
 ### 6.6 Bridge (`backend/services/desktop_bridge.py`)
 
@@ -452,7 +456,7 @@ It never calls `persisted.setPref`, `setConv`, `setConvBeacon` or `flushNow`, an
 - `logContext = parseReadStatePath(path)`;
 - the new optional `surface: 'popup'` and `onOutcome` arguments (§7.3).
 
-`onOutcome` maps to the event endpoint: `skipped` → `skipped` (with `reason`), `ringing` → `ringing`, `declined` → `declined`, `timeout` → `timeout`, `ended` → `ended`, `cancelled` → `cancelled`. Posting is fire-and-forget: a failure is logged as `call_popup_error error_type=event_post_failed`, and the backend watchdog recovers.
+`onOutcome` maps to the event endpoint: `skipped` → `skipped` (with `reason`), `ringing` → `ringing`, `declined` → `declined`, `timeout` → `timeout`, `ended` → `ended` (with `reason` `played`/`hung_up` when the hook gave one), `cancelled` → `cancelled`. Posting is fire-and-forget: a failure is logged as `call_popup_error error_type=event_post_failed`, and the backend watchdog recovers.
 
 **Render.** While the hook's phase is not `idle`:
 
@@ -482,11 +486,13 @@ All of these are optional. B's existing call sites and tests are unchanged.
   export type CallOutcome =
     | { kind: 'skipped'; reason: CallSkipReason | 'superseded' | 'media_unavailable' }
     | { kind: 'ringing' } | { kind: 'declined' } | { kind: 'timeout' }
-    | { kind: 'ended' }         // when the ended hold finishes (where scrollToMessage is called)
+    // When the ended hold finishes (where scrollToMessage is called). `reason` is how the call
+    // ended (`call_end`'s reason); absent after a playback error, which logs `call_error`.
+    | { kind: 'ended'; reason?: 'played' | 'hung_up' }
     | { kind: 'cancelled' };    // visit cleanup or setting off while ringing/connected
   ```
 
-  It fires at the exact points where the hook already logs. `skipped` fires even when the `call_skip` log is deduped.
+  It fires at the exact points where the hook already logs. `finish(reason)` hands its reason to the ended hold, which reports it with `ended`. `skipped` fires even when the `call_skip` log is deduped.
 - **`isCallElsewhere?: (messageId: number) => Promise<boolean>`.** It is checked after a successful preload, just before `startRinging`. When it returns true, the hook logs `call_skip` with the new reason `popup_active` and does not ring. A rejection or a synchronous throw counts as false and is logged as `call_error` with `error_type=popup_check_failed`. `MessagesFeature` passes a function calling `GET /api/call-popup/active` (`isCallPopupActive`) with `parseReadStatePath(selectedGroupDir)` and the id; that call has a 3 s timeout (`POPUP_CHECK_TIMEOUT_MS`), and a non-2xx answer, network error, timeout or malformed body also logs `popup_check_failed` and returns false, so when the main window cannot tell, it rings. This stops the main window (visible but unfocused, with that chat selected, refetching after the sync) from ringing the same voice as the popup. It reads the controller, the single owner of the active call, instead of a pushed copy. The popup itself does not pass it.
 - **`CallSkipReason`** gains `popup_active`. It is produced only by this hook path; `decideCall` is unchanged.
 
@@ -587,7 +593,8 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_abandon_failed` | call_id, reason, error_type |
 | `call_popup_unavailable` | reason (`no_host`, once; `host_timeouts`, once, with timeouts) |
 | `call_popup_bridge_failed` | op, error_type or reason (`timeout`) |
-| `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`/`start_refused`/`preload_skipped`; debug `destroy_skipped`), error_type, reason |
+| `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`/`start_refused`/`preload_skipped`; debug `destroy_skipped`), error_type, reason, call_id (`lost` during a call, `start_refused`) |
+| `call_popup_lost_report_failed` | call_id, error_type |
 | `call_popup_foreground_failed` | error_type |
 | `call_popup_app_exit_failed` | error_type (the `Application.Exit` fallback itself raised) |
 | `call_popup_corner_skipped` (debug) | hresult or error_type (no DWM rounded corners, e.g. Windows 10) |
@@ -622,7 +629,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 | B's rules say no in the popup (no photo, already read, …) | `skipped` → the window never shows. `already_read` → no toast; any other reason → the normal toast. |
 | Voice file still missing | Voice-first download (§4.5). If the preload still fails within 10 s → `skipped reason=media_unavailable` → the normal toast. The voice stays unheard. |
 | Playback error after answering | B's path: `call_error playback_failed` → ended screen → `ended` → hide. The voice stays heard, as in B. |
-| Popup window failed to create, or lost | `start` returns False → fallback toast. Two creation failures → `unavailable` for the rest of the run (toasts only). |
+| Popup window failed to create, or lost | `start` returns False → fallback toast. Two creation failures → `unavailable` for the rest of the run (toasts only). Lost during a call → reported as `error window_lost`: fallback toast when starting, missed-call toast when ringing, no toast when connected. |
 | Popup page never reports | The watchdogs (20 s / 45 s / 15 min) hide or cancel it and send the fallback or missed-call toast. A leaked reservation is released by the 30 min reserved watchdog, with the fallback toast. |
 | Heard delivery fails (main page not ready) | 3 attempts, then `call_popup_heard delivered=false`. The voice stays unheard and B rings in the app later. |
 | Quit, ✕ with close-to-tray off, or session end while the popup is open | The popup is destroyed with the main window (§6.5). `controller.shutdown()` sends no toast. The process exits. |
@@ -660,7 +667,8 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `already_read` → no toast;
   - missed-call text for count 1 and > 1, with a CJK name;
   - heard retries (`not_ready` twice, then delivered; three failures);
-  - `on_foreground` per phase; `cancel`; `shutdown`; `abandon` for both reasons;
+  - `on_foreground` per phase; `cancel` (in `reserved`: fallback toast `reason=disabled`, suppressed with notifications off); `shutdown`; `abandon` for both reasons;
+  - `error window_lost` per phase (fallback / missed / none);
   - a call ended during the reveal await (foreground, `cancel(disabled)`, declined) is hidden again (`reason=superseded`); an answer during it keeps the popup.
 - **Watchdog vs B:** a test parses `RING_TIMEOUT_MS` and `PRELOAD_TIMEOUT_MS` from the frontend sources and asserts `RING_WATCHDOG_S*1000 > RING_TIMEOUT_MS` and `START_WATCHDOG_S*1000 > PRELOAD_TIMEOUT_MS`.
 - **Sync** (fake manager):
@@ -674,6 +682,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - event 204/409/422 (unknown event, bad code, float, a string with a space or CJK);
   - `active` true/false;
   - `ui-state` focused calls `on_foreground` as a background task: the 204 does not wait for a slow cancel, and a raising one logs `call_popup_foreground_failed`;
+  - an `ended` event keeps its `played`/`hung_up` reason.
 - **Settings:** `call_popup_enabled` defaults to on and round-trips; on → `call_popup_ensure`; off → `cancel(disabled)`.
 - **Client-log:** the new events and fields are accepted (including `app_load_failed` as a warning and every `call_popup_heard_ignored` reason), and the old rules still reject.
 - **i18n:** the `call_popup` section exists in all five locales.
@@ -692,13 +701,14 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - call scope and ordering: a reveal after a hide or cancel of the same call, or for a call that was never started, touches no window; a cancel before `start` returns refuses that start (`reason=ended`); a late hide or cancel for an older call leaves the newer one; a cancel issued during a reveal's Win32 calls waits for it, then hides;
   - `destroy` success; `destroy` timeout, including a hung `window.destroy()`, → `Application.Exit` fallback (injected); a second `destroy` is a no-op;
   - a lost window is recreated by the next `start`;
+  - a window lost during a call is reported (`report_lost(call_id)`), not after a hide or cancel or with no call; a failing report is logged; the default report schedules `on_event(call_id, error window_lost)`;
   - `deliver_heard` maps `true`/`null` to `delivered`/`not_ready`.
 - **`desktop.py`:** `on_quit` destroys the popup before the main window; main `closed` destroys the popup; the popup is created after the first `loaded` only when the setting is on, and only once.
 
 ### 11.3 Frontend (vitest)
 
 - **`useIncomingCall`:**
-  - `onOutcome` fires for every kind, including a deduped skip;
+  - `onOutcome` fires for every kind, including a deduped skip; `ended` carries `played` or `hung_up`, and no reason after a playback error;
   - `surface` is added to every log;
   - `isCallElsewhere` true → `call_skip popup_active` and no ring; a rejection → rings;
   - every existing B test passes unchanged.
@@ -709,7 +719,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 - **`markVoiceHeard`:** valid → applied, `changed` true then false; malformed → ignored and logged; returns `true` in both cases. Before the conversation cache loaded, or after its load failed → `null`, `not_ready` logged, no `setConv` and no PUT, the row untouched; after a later successful load → applied. `persisted.conversationsReady()` is true only after a successful load.
 - **`CallPopupApp` / `PopupCall`** (mocked fetch and `Audio`, fake timers):
   - `start` → fetches → `ringing` posted;
-  - answer → `answered` posted with the message id, then `ended` after the hold;
+  - answer → `answered` posted with the message id, then `ended` (`reason=played`) after the hold;
   - decline / 30 s timeout posted;
   - a B skip (`no_photo`) posts `skipped`;
   - fetch failures post `error`;

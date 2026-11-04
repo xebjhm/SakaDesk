@@ -83,6 +83,16 @@ def test_post_skipped_event_with_reason(fake):
     assert fake.events == [(1, CallEvent("skipped", "no_photo", None, None))]
 
 
+@pytest.mark.parametrize("reason", ["played", "hung_up"])
+def test_post_ended_event_keeps_how_the_call_ended(fake, reason):
+    res = client.post(
+        "/api/call-popup/calls/1/events",
+        json={"event": "ended", "reason": reason},
+    )
+    assert res.status_code == 204
+    assert fake.events == [(1, CallEvent("ended", reason, None, None))]
+
+
 def test_post_error_event_with_error_type(fake):
     res = client.post(
         "/api/call-popup/calls/1/events",

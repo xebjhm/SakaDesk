@@ -37,6 +37,7 @@ export const PopupCall: React.FC<PopupCallProps> = ({
     const scrollToMessage = useCallback(() => {}, []);
     const onOutcome = useCallback((o: CallOutcome) => {
         if (o.kind === 'skipped') post('skipped', { reason: o.reason });
+        else if (o.kind === 'ended' && o.reason) post('ended', { reason: o.reason });
         else post(o.kind);
     }, [post]);
 

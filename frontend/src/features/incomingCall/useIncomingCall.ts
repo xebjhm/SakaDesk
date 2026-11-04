@@ -26,7 +26,9 @@ export interface CallLogContext {
 export type CallOutcome =
     | { kind: 'skipped'; reason: CallSkipReason | 'superseded' | 'media_unavailable' }
     | { kind: 'ringing' } | { kind: 'declined' } | { kind: 'timeout' }
-    | { kind: 'ended' }         // when the ended hold finishes (where scrollToMessage is called)
+    // When the ended hold finishes (where scrollToMessage is called). `reason` is how the call
+    // ended (`call_end`'s reason); absent after a playback error, which logs `call_error`.
+    | { kind: 'ended'; reason?: 'played' | 'hung_up' }
     | { kind: 'cancelled' };    // visit cleanup or setting off while ringing/connected
 
 export interface UseIncomingCallArgs {
@@ -157,7 +159,7 @@ export function useIncomingCall(
         enter('idle');
     }, [clearTimer, enter]);
 
-    const toEnded = useCallback(() => {
+    const toEnded = useCallback((reason?: 'played' | 'hung_up') => {
         clearTimer();
         enter('ended');
         timerRef.current = setTimeout(() => {
@@ -165,7 +167,7 @@ export function useIncomingCall(
             const id = callRef.current?.message.id;
             toIdle();
             if (id !== undefined) argsRef.current.scrollToMessage(id);
-            outcome({ kind: 'ended' });
+            outcome(reason ? { kind: 'ended', reason } : { kind: 'ended' });
         }, ENDED_HOLD_MS);
     }, [clearTimer, enter, toIdle, outcome]);
 
@@ -341,7 +343,7 @@ export function useIncomingCall(
         const active = callRef.current;
         if (phaseRef.current !== 'connected' || !active) return;
         log('call_end', { message_id: active.message.id, reason, talk_ms: Date.now() - talkStartedAtRef.current });
-        toEnded();
+        toEnded(reason);
     }, [toEnded, log]);
 
     const hangUp = useCallback(() => finish('hung_up'), [finish]);

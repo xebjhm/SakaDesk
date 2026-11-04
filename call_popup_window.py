@@ -26,7 +26,9 @@ reused for every call:
 pywebview, ``ctypes.WinDLL``, ``ctypes.wintypes`` and pythonnet are imported
 lazily inside the default seams, and every native seam (``create_window``,
 ``user32``, ``dwmapi``, ``work_area``, ``system_dpi``, ``app_exit``) is
-injectable, so Linux CI imports this module without any of them.
+injectable, so Linux CI imports this module without any of them. So is
+``report_lost``, which tells the backend controller that the window of an
+active call was lost.
 
 Logs carry call ids, codes, the DPI and physical pixel sizes only: never the
 page URL, a conversation path, a name or message text.
@@ -220,6 +222,22 @@ def _default_system_dpi(user32: Any) -> int:
         user32.ReleaseDC(None, hdc)
 
 
+def _default_report_lost(call_id: int) -> None:
+    """Tell the backend controller the popup window of ``call_id`` was lost.
+
+    Schedules ``on_event(call_id, CallEvent("error", error_type="window_lost"))``
+    on the server loop, so the call ends now instead of at its watchdog.
+    """
+    from backend.services import desktop_bridge
+    from backend.services.call_popup import CallEvent, get_call_popup_controller
+
+    desktop_bridge.run_on_server_loop(
+        get_call_popup_controller().on_event(
+            call_id, CallEvent("error", error_type="window_lost")
+        )
+    )
+
+
 def _default_app_exit() -> None:
     import clr  # type: ignore[import-not-found]
 
@@ -253,6 +271,7 @@ class CallPopupWindow:
         work_area: Callable[[], Rect] | None = None,
         system_dpi: Callable[[], int] | None = None,
         app_exit: Callable[[], None] | None = None,
+        report_lost: Callable[[int], None] | None = None,
         load_timeout: float = POPUP_LOAD_TIMEOUT_S,
         destroy_timeout: float = DESTROY_TIMEOUT_S,
     ) -> None:
@@ -265,6 +284,7 @@ class CallPopupWindow:
         self._work_area = work_area or (lambda: _default_work_area(self._user32))
         self._system_dpi = system_dpi or (lambda: _default_system_dpi(self._user32))
         self._app_exit = app_exit or _default_app_exit
+        self._report_lost = report_lost or _default_report_lost
         self._load_timeout = load_timeout
         self._destroy_timeout = destroy_timeout
         self._lock = threading.Lock()
@@ -661,8 +681,28 @@ class CallPopupWindow:
             logger.debug("call_popup_corner_skipped", error_type=type(e).__name__)
 
     def _on_closed(self, window: Any) -> None:
-        """The popup's ``closed``: a close not caused by us or a quit is ``lost``."""
+        """The popup's ``closed``: a close not caused by us or a quit is ``lost``.
+
+        When a call holds the window, it is reported through ``report_lost``
+        (the controller treats it as an ``error`` with ``error_type``
+        ``window_lost``). A failing report logs ``call_popup_lost_report_failed``
+        (``error_type``). Runs on a pywebview event thread; never raises.
+        """
         if window is not self._window or self._destroying or self._is_quitting():
             return
         self._window = None
-        logger.info("call_popup_window", action="lost")
+        # A plain read, not under _op_lock: a host call may be blocked on this
+        # very window and must not stall the event thread.
+        call_id = self._call_id
+        if call_id is None:
+            logger.info("call_popup_window", action="lost")
+            return
+        logger.info("call_popup_window", action="lost", call_id=call_id)
+        try:
+            self._report_lost(call_id)
+        except Exception as e:
+            logger.warning(
+                "call_popup_lost_report_failed",
+                call_id=call_id,
+                error_type=type(e).__name__,
+            )

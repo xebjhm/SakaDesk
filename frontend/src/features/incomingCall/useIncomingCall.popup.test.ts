@@ -79,6 +79,23 @@ describe('useIncomingCall onOutcome', () => {
         expect(onOutcome.mock.calls.map(c => c[0].kind)).toEqual(['ringing']);
         act(() => { vi.advanceTimersByTime(1); });
         expect(onOutcome.mock.calls.map(c => c[0].kind)).toEqual(['ringing', 'ended']);
+        expect(onOutcome).toHaveBeenLastCalledWith({ kind: 'ended', reason: 'played' });
+    });
+
+    it('reports ended with reason hung_up after a hang-up', async () => {
+        const { result, onOutcome } = await ringing();
+        act(() => result.current.answer());
+        act(() => result.current.hangUp());
+        act(() => { vi.advanceTimersByTime(ENDED_HOLD_MS); });
+        expect(onOutcome).toHaveBeenLastCalledWith({ kind: 'ended', reason: 'hung_up' });
+    });
+
+    it('reports ended without a reason after a playback error', async () => {
+        const { result, onOutcome } = await ringing();
+        act(() => result.current.answer());
+        act(() => result.current.onPlaybackError());
+        act(() => { vi.advanceTimersByTime(ENDED_HOLD_MS); });
+        expect(onOutcome).toHaveBeenLastCalledWith({ kind: 'ended' });
     });
 
     it('reports cancelled on unmount while ringing', async () => {

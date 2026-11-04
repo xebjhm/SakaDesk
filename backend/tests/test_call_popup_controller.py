@@ -410,6 +410,8 @@ async def test_info_and_is_active_for_follow_the_phase():
         (CallEvent("declined"), "ringing", "idle", True, "missed"),
         (CallEvent("timeout"), "ringing", "idle", True, "missed"),
         (CallEvent("ended"), "connected", "idle", True, None),
+        (CallEvent("ended", reason="played"), "connected", "idle", True, None),
+        (CallEvent("ended", reason="hung_up"), "connected", "idle", True, None),
         (CallEvent("error", error_type="X"), "starting", "idle", True, "fallback"),
         (CallEvent("cancelled"), "starting", "idle", True, "fallback"),
         (CallEvent("error"), "ringing", "idle", True, "missed"),
@@ -452,9 +454,7 @@ async def test_event_phase_matrix(event, before, after, hide, toast):
         )
     else:
         assert len(env.sent) == 1 and env.sent[0].title == "Missed call: 金村 美玖"
-        assert events(logs, "call_popup_toast")[0]["reason"] == (
-            "error" if event.kind in ("error", "cancelled") else event.kind
-        )
+        assert events(logs, "call_popup_toast")[0]["reason"] == event.kind
     await env.ctrl.shutdown()
 
 
@@ -565,6 +565,28 @@ async def test_answer_during_reveal_keeps_the_popup():
     assert ("hide", cid) not in env.bridge.calls
     assert events(logs, "call_popup_hide") == []
     await env.ctrl.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("phase", "toast"),
+    [("starting", "fallback"), ("ringing", "missed"), ("connected", None)],
+)
+@pytest.mark.asyncio
+async def test_lost_window_ends_the_call_now(phase, toast):
+    env = Env()
+    cid = await env.to_phase(phase)
+    env.bridge.calls.clear()
+    env.sent.clear()
+    with capture_logs() as logs:
+        assert await env.ctrl.on_event(
+            cid, CallEvent("error", error_type="window_lost")
+        )
+        await env.settle()
+    assert env.ctrl.phase == "idle" and env.bridge.calls == [("hide", cid)]
+    (rec,) = events(logs, "call_popup_event")
+    assert rec["error_type"] == "window_lost"
+    kinds = [e["kind"] for e in events(logs, "call_popup_toast")]
+    assert kinds == ([] if toast is None else [toast])
 
 
 # 11
@@ -875,10 +897,36 @@ async def test_cancel_disabled(phase):
     with capture_logs() as logs:
         await env.ctrl.cancel("disabled")
         await env.settle()
-    assert env.ctrl.phase == "idle" and env.sent == []
+    assert env.ctrl.phase == "idle"
     assert env.bridge.calls == ([] if phase == "reserved" else [("cancel", cid)])
     (rec,) = events(logs, "call_popup_cancel")
     assert (rec["call_id"], rec["reason"], rec["phase"]) == (cid, "disabled", phase)
+    if phase == "reserved":
+        # The plan was diverted and no popup exists: the chat still gets its toast.
+        assert env.sent == [plan()]
+        (toast,) = events(logs, "call_popup_toast")
+        assert (toast["kind"], toast["reason"], toast["sent"]) == (
+            "fallback",
+            "disabled",
+            True,
+        )
+        with capture_logs() as logs:
+            await env.ctrl.dispatch(cid)  # the sync arrives later
+        assert events(logs, "call_popup_dispatch")[0]["result"] == "not_reserved"
+    else:
+        assert env.sent == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_disabled_while_reserved_respects_notifications_off():
+    env = Env(notifications=False)
+    env.ctrl.reserve(plan(), CAND)
+    with capture_logs() as logs:
+        await env.ctrl.cancel("disabled")
+        await env.settle()
+    assert env.sent == []
+    (skip,) = events(logs, "call_popup_toast_skip")
+    assert (skip["kind"], skip["reason"]) == ("fallback", "notifications_disabled")
 
 
 @pytest.mark.asyncio
