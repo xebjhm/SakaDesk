@@ -92,6 +92,14 @@ for (const service of SERVICES) {
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0)
 
+    await railMenu(page, 'Settings')
+    for (const [tab, name] of [['AI', 'ai'], ['Updates', 'updates']] as const) {
+      await page.getByRole('navigation').getByRole('button', { name: tab, exact: true }).click()
+      await shot(page, `${service}-settings-${name}`)
+    }
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0)
+
     await railMenu(page, 'About')
     await shot(page, `${service}-about`)
     await page.keyboard.press('Escape')
