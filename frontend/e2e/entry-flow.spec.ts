@@ -97,7 +97,8 @@ test('a newly added group shows the inline sync view while its first sync runs',
   // The already-added group syncs at start-up; each group starts exactly once.
   await expect.poll(() => state.syncStarts).toEqual(['hinatazaka46', 'sakurazaka46'])
   state.progress.sakurazaka46 = COMPLETE
-  await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toHaveCount(0, { timeout: 10000 })
+  await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toHaveCount(0, { timeout: 10000 })  // No late extra start once the first sync completes.
+  expect(state.syncStarts).toEqual(['hinatazaka46', 'sakurazaka46'])
 })
 
 test('a short window scrolls the terms; Accept stays on screen (D2d)', async ({ page }) => {
