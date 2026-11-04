@@ -186,11 +186,11 @@ class PendingCall:
 | method | behaviour |
 |---|---|
 | `reserve(plan, candidate)` | `idle` → `reserved` (arming the reserved watchdog), returns `PendingCall`; otherwise `None`. Logs `call_popup_reserved` (`call_id`, `service`, `group_id`, `member_id`, `message_id`, `count`). |
-| `dispatch(call_id)` | Only from `reserved`. It re-reads `get_ui_state()`. If the app is now focused, the call is released: when the user is viewing that chat there is no toast, because B rings there (`result=viewing`); otherwise the plan is sent as a normal toast (`result=foreground`). Otherwise it enters `starting` (with the start watchdog) and then awaits `bridge.call_popup_start(call_id)`; the page may fetch the call before `start` returns. When `start` returns `True` and the call is still current in `starting`, the start watchdog is re-armed so its 20 s count from that return (`result=started`). `False` while still `starting` → `idle` and a fallback toast (`result=start_failed`). If the call was cancelled, watchdogged or replaced during the await, nothing more happens (`result=superseded`, no toast). Logs `call_popup_dispatch` (`call_id`, `result`). |
-| `abandon(call_id, reason)` | Only from `reserved`, used by the sync's error paths (§4.5). `reason=sync_failed` → fallback toast; `reason=cancelled` → no toast (the app is shutting down or the sync was cancelled). Logs `call_popup_abandoned` (`call_id`, `reason`, `toast`). |
+| `dispatch(call_id)` | Only from `reserved`. It re-reads `get_ui_state()`. If the app is now focused, the call is released: when the user is viewing that chat there is no toast, because B rings there (`result=viewing`); otherwise the plan is sent as a normal toast (`result=foreground`). Otherwise it enters `starting` (with the start watchdog) and then awaits `bridge.call_popup_start(call_id)`; the page may fetch the call before `start` returns. When `start` returns `True` and the call is still current in `starting`, the start watchdog is re-armed so its 20 s count from that return (`result=started`). `False` while still `starting` → `idle` and a fallback toast (`result=start_failed`). If the call was cancelled, watchdogged or replaced during the await, nothing more happens (`result=superseded`, no toast). A call that is no longer reserved when `dispatch` runs (watchdog, cancel, shutdown) logs `result=not_reserved` and does nothing. Logs `call_popup_dispatch` (`call_id`, `result`). |
+| `abandon(call_id, reason)` | Only from `reserved`, used by the sync's error paths (§4.5). `reason=sync_failed` → fallback toast; `reason=cancelled` → no toast (the app is shutting down or the sync was cancelled). A call that is no longer reserved is a no-op (`toast=skipped`). Logs `call_popup_abandoned` (`call_id`, `reason`, `toast`). |
 | `info(call_id)` | The active call's `CallInfo` (§4.6) when `call_id` is current and the state is `starting`/`ringing`/`connected`; else `None`. |
 | `on_event(call_id, event)` | Applies the table below. Returns `False` for a stale event (unknown call, wrong phase, or an `answered` whose `message_id` differs from the candidate), logged as `call_popup_event_stale` (`call_id`, `call_event`, `reason`). |
-| `on_foreground()` | Called when the main window reports `focused=true` (§4.6). `starting`/`ringing` → `bridge.call_popup_cancel(call_id)`, `idle`, no toast. `connected` → left alone: an answered call is not cut off. `reserved` → nothing, because `dispatch` re-checks. Logs `call_popup_cancel reason=foreground`. |
+| `on_foreground()` | Called when the main window reports `focused=true` (§4.6). `starting`/`ringing` → `bridge.call_popup_cancel(call_id)`, `idle`, no toast. `connected` → left alone: an answered call is not cut off (debug `call_popup_foreground_kept`). `reserved` → nothing, because `dispatch` re-checks. Logs `call_popup_cancel reason=foreground`. |
 | `cancel(reason)` | Setting turned off (`disabled`). Any active phase → popup cancelled, `idle`, no toast. |
 | `shutdown()` | From lifespan shutdown, before the scheduler stop. It cancels the watchdogs (including one already firing, so no toast follows shutdown) and goes to `idle` with no toast (`call_popup_cancel reason=app_exit` when a call was active). |
 
@@ -198,7 +198,7 @@ class PendingCall:
 
 | event (fields) | valid in | effect |
 |---|---|---|
-| `ringing` | `starting` | `bridge.call_popup_reveal()`, → `ringing`, ring watchdog |
+| `ringing` | `starting` | → `ringing` (ring watchdog), then `bridge.call_popup_reveal()`. A failed reveal, while the call is still `ringing`, cancels the popup (`call_popup_cancel`), → `idle`, logs `call_popup_hide reason=reveal_failed` and sends the fallback toast (`reason=reveal_failed`) |
 | `skipped` (`reason`) | `starting` | → `idle`, window stays hidden. `reason=already_read` → no toast (the voice was heard meanwhile); any other reason → fallback toast |
 | `answered` (`message_id`) | `ringing` | → `connected`; `deliver_heard` (below) as a background task; connected watchdog |
 | `declined` | `ringing` | hide, → `idle`, missed-call toast (`reason=declined`) |
@@ -208,7 +208,7 @@ class PendingCall:
 | `error` / `cancelled` | `ringing` | hide, → `idle`, missed-call toast (`reason=error`) |
 | `error` / `cancelled` | `connected` | hide, → `idle` |
 
-Each accepted event logs `call_popup_event` (`call_id`, `call_event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
+`reason` is a code from the known set (B's skip reasons `disabled`, `group_chat`, `no_voice`, `already_read`, `no_photo`, `dismissed_this_visit`, `call_active`, plus `superseded`, `media_unavailable`, `popup_active`, `played`, `hung_up`); any other well-formed value reaches the controller as `other`, so only a fixed vocabulary is logged (§4.6). Each accepted event logs `call_popup_event` (`call_id`, `call_event`, `phase` before, plus `reason` / `error_type` when given). Each hide logs `call_popup_hide` (`call_id`, `reason`).
 
 **Watchdogs** (asyncio tasks, cancelled on every transition):
 - `RESERVED_WATCHDOG_S = 1800`: a safety net, not a timeout of normal operation. A reservation lives while its sync downloads media, and a sync with a big media queue can legitimately take long, hence 30 min. Every sync path hands the reservation back (`dispatch` or `abandon`), so this only fires when a future leak would otherwise leave the controller `busy` for the life of the process. It is armed in `reserve` and cancelled by `dispatch`, `abandon`, `cancel` and `shutdown`. On expiry it does **not** call the bridge (no popup exists yet): it behaves like `abandon(reason="watchdog")` and sends the original plan as a fallback toast (`call_popup_toast reason=watchdog`), subject to the notifications-off suppression. A sync that wakes up later finds the call gone (`dispatch` logs `result=not_reserved`; `abandon` is a no-op);
@@ -245,7 +245,7 @@ On expiry (except `reserved`, see above) the controller cancels the popup (`brid
 
 ### 4.6 API (`backend/api/call_popup.py`)
 
-All ids follow C1's ui-state rules (`^[0-9]{1,12}$` strings, or `StrictInt` for `call_id`/`message_id`), and codes follow `^[a-z0-9_]{1,40}$`. A violation returns 422 and logs nothing.
+All ids follow C1's ui-state rules (`^[0-9]{1,12}$` strings, or `StrictInt` for `call_id`/`message_id`), and codes (`reason`, `error_type`) follow `^[a-z0-9_]{1,40}$`. A violation returns 422 and logs nothing. A well-formed `reason` outside the known set of §4.4 is passed on as `other`.
 
 - **`GET /api/call-popup/calls/{call_id}`** → `200 {call_id, service, path, is_group_chat, group_id, member_id, message_id}` from `controller.info`, else `404`. `path` is `plan.target.path`, the frontend's chat path. It is returned to the popup page and never logged.
 - **`POST /api/call-popup/calls/{call_id}/events`**, body `{event: "ringing"|"skipped"|"answered"|"declined"|"timeout"|"ended"|"cancelled"|"error", reason?: code, error_type?: code, message_id?: int}` → `204`, or `409` when `on_event` returns `False`.
@@ -324,10 +324,10 @@ webview.create_window(
 )
 ```
 
-- **`before_show`** (the form and its HWND exist; the window is still hidden):
+- **Styles** (the form and its HWND exist; the window is still hidden). pywebview 5.3.2 creates the form synchronously after `start`, so they are applied right after `create_window` returns; `before_show` is only the fallback when no HWND exists yet:
   - add `WS_EX_TOOLWINDOW` (`0x80`) to `GWL_EXSTYLE` with `SetWindowLongW`, so the popup has no taskbar button and is not in Alt+Tab. Use the style bit, not `Form.ShowInTaskbar`, which recreates the handle under the WebView2 control;
   - set `DWMWA_WINDOW_CORNER_PREFERENCE` (33) to `DWMWCP_ROUND` (2), giving Windows 11 rounded corners; on Windows 10 the call fails and is ignored (debug log).
-- **`ensure()`** waits up to `POPUP_LOAD_TIMEOUT_S = 15` for `loaded`. It logs `call_popup_window` with `action=created|reused|create_failed` and `error_type`.
+- **`ensure()`** waits up to `POPUP_LOAD_TIMEOUT_S = 15` on `events.loaded.wait`. A cached window is reused only when it is loaded and not closed; otherwise it is dropped (`action=lost`) and recreated. A creation that fails (`error_type` = `load_timeout`, `closed` or the exception type) destroys the half-made window. It logs `call_popup_window` with `action=created|reused|create_failed` and `error_type`. `start()` refuses while quitting or unavailable (`action=start_refused`, `reason=quitting|unavailable`).
 - **Two failed creations in a row** set `available = False` for the rest of the process (`action=disabled_after_failures`), so every later call goes straight to a toast instead of waiting 15 s each time.
 
 ### 6.3 Show without stealing focus
@@ -359,7 +359,7 @@ y      = work_area.bottom - h - margin
 
 - **Quit (tray).** `on_quit` becomes `_mark_quitting(); tray.stop(); popup.destroy(); window.destroy()`.
 - **Catch-all.** `window.events.closed += popup.destroy_on_main_closed`. Whatever closes the main window (Quit, ✕ with close-to-tray off, the C2 session-end guard letting a shutdown through, a crash path that reaches `closed`), the popup is destroyed too, so `instances` reaches 0 and `webview.start()` returns into the existing cleanup.
-- **Destroy.** `popup.destroy(timeout=3.0)` runs `window.destroy()` on a daemon thread (it blocks on the GUI thread, so a hung GUI thread must not block the caller) and waits at most `timeout` for the popup's `closed` event. A second call (tray Quit plus the main window's `closed`) returns at once. If `closed` does not arrive in time, it logs `call_popup_window action=destroy_failed` and calls `System.Windows.Forms.Application.Exit()` (lazy import), so the process can never be kept alive by the popup. It logs `action=destroyed` on success.
+- **Destroy.** `popup.destroy(timeout=3.0)` runs `window.destroy()` on a daemon thread (it blocks on the GUI thread, so a hung GUI thread must not block the caller) and waits at most `timeout` for the popup's `closed` event. Destroy is idempotent: a second call (tray Quit plus the main window's `closed`) returns at once (debug `action=destroy_skipped`). The host is unavailable afterwards, and a window that finished loading after `destroy` ran is closed too. If `closed` does not arrive in time, it logs `call_popup_window action=destroy_failed` and calls `System.Windows.Forms.Application.Exit()` (lazy import), so the process can never be kept alive by the popup. It logs `action=destroyed` on success.
 - **Session end.** Windows sends the session-end close to every top-level form. The popup has no `closing` handler that cancels, so it closes. The main window is handled by C2's guard.
 - **While quitting.** `popup.start()` returns `False` when `_quitting` is set, and the backend's `controller.shutdown()` (lifespan) drops any active call without a toast.
 - **The popup's own close.** It has no ✕ (frameless), never activates (so no Alt+F4) and has no taskbar button. Its `closed` firing while not quitting means the window was lost, and the next `start()` recreates it.
@@ -403,6 +403,7 @@ def call_popup_ensure() -> None                                     # fire-and-f
 ### 7.1 Route
 
 - `shell/main.tsx` checks `isCallPopupView(location.search)` (`view=call-popup`, in `shell/callPopupRoute.ts`, unit-tested).
+- Each route is loaded with a dynamic `import()`, so the popup never evaluates `App`'s module graph and the main window never loads the popup's. Before the import resolves, the popup route calls `installCallPopupBridge()` synchronously (§7.2); a failed import logs `call_popup_error error_type=load_failed`.
 - When it matches, it renders `<CallPopupApp />` from `features/callPopup/` inside `ErrorBoundary`, **without** `AuthProvider` or `App`. The popup therefore never runs:
   - the startup sync or `useBackendSyncWatcher`;
   - the ui-state reporter;
@@ -416,20 +417,21 @@ def call_popup_ensure() -> None                                     # fire-and-f
 
 **Store rule (binding).** The popup **reads** the primary stores directly and **writes none of them**:
 - prefs: `persisted.hydratePrefs()`, read-only (voice volume, language);
-- read state: `GET /api/app-state/conversation?key=read_state_<path>`, the same row the main window and the C2 tooltip use;
+- read state: `GET /api/app-state/conversation?path=read_state_<path>` (`persisted.getConversation`), the same row the main window and the C2 tooltip use, parsed by `parseReadState` (§7.4);
 - settings: `GET /api/settings`.
 
 It never calls `persisted.setPref`, `setConv`, `setConvBeacon` or `flushNow`, and never `PUT /api/read-states`. "Heard" is written only by the main window (§7.4). A test spies on all of these to enforce it.
 
 **`CallPopupApp`.**
-1. **On mount:** set the document background to `#0D0F14`, then install `window.__sakadeskCallPopup = { start(callId), cancel(callId) }`. Remove it on unmount.
+1. **Bridge (`callPopupBridge.ts`).** `window.__sakadeskCallPopup = { start(callId), cancel(callId) }` is installed synchronously, at module load and again from `main.tsx` before the dynamic import resolves, because the host evaluates `start` right after the page's `loaded` event, which can precede React's mount. A `start` that arrives with no handler attached is queued (the newest wins) and replayed when `CallPopupApp` attaches; a `cancel` for the queued id drops it. A start that had not loaded when the handler detaches (StrictMode remount) is queued again. The global stays installed for the life of the page.
+   On mount `CallPopupApp` adds the `sd-call-popup-doc` class to `<html>` (the dark background), attaches the handler, and removes both on unmount.
 2. **`start(callId)`:**
    - log `client_log('call_popup_start', {call_id})`;
    - `GET /api/call-popup/calls/{id}` (404 → `call_popup_error error_type=info_not_found`, nothing posted: the backend has already moved on);
    - re-hydrate prefs, then apply the language with `applyStartupLanguage()` (extracted from `App.tsx`'s post-hydrate step into `shell/language.ts` and used by both: persisted `language`, else `/api/settings` `language`, else the browser default);
    - fetch the settings, `GET /api/content/messages_by_path?path=<path>&limit=0` and the read-state row, in parallel.
 
-   Any failure posts `error` with `error_type` = `info_failed|settings_failed|messages_failed|read_state_failed` and logs `call_popup_error`. On success it renders `<PopupCall key={callId} …/>`; the key makes every call a fresh hook instance, with no dismissed set or dedupe carried over.
+   Any failure posts `error` with `error_type` = `info_failed|start_failed|settings_failed|messages_failed|read_state_failed` and logs `call_popup_error` (`start_failed`: the prefs or language step threw). The page rings **exactly** `info.message_id`: voices other than that one are dropped from the messages handed to B's hook, and when B's own candidate (`pickCandidate`) is a different voice the page logs `call_popup_error error_type=message_mismatch` (a newer voice that arrived since gets its own call). Without this, an `answered` for another id would be rejected as stale and the heard mark never delivered. On success it renders `<PopupCall key={callId} …/>` inside `CallPopupBoundary`; the key makes every call a fresh hook instance, with no dismissed set or dedupe carried over. If a descendant throws while rendering, the boundary renders nothing and the page posts `error` with `error_type=render_failed` (logged as `call_popup_error`).
 3. **`cancel(callId)`** (from the backend): unmount the matching `PopupCall`, and mark the call cancelled-by-host so its outcomes are **not** posted back.
 
 **`PopupCall`.** It calls B's `useIncomingCall` exactly as `MessagesFeature` does, with:
@@ -441,6 +443,7 @@ It never calls `persisted.setPref`, `setConv`, `setConvBeacon` or `flushNow`, an
 - `freshFetch = {seq: 1, dir: path}`, set once after the fetches;
 - `revealMessage = id => postEvent('answered', {message_id: id})`: the popup's heard path goes to the main window through the backend (§7.4);
 - `scrollToMessage = () => {}`;
+- `preload = fetchPreload` (`features/callPopup/fetchPreload.ts`), not B's `Audio` preload: the popup page loads while its window is hidden, and WebView2 keeps media suspended in a hidden page (`visibilityState` is `hidden`), so an `Audio` element never reaches `canplay` and B's preload always timed out there. `fetchPreload` confirms the file with a one-byte ranged GET (`Range: bytes=0-0`) that must return 2xx with an `audio/*` content type, within B's `PRELOAD_TIMEOUT_MS`; anything else rejects as `media_unavailable`. Playback itself starts after the reveal, when the page is visible;
 - `logContext = parseReadStatePath(path)`;
 - the new optional `surface: 'popup'` and `onOutcome` arguments (§7.3).
 
@@ -479,7 +482,7 @@ All of these are optional. B's existing call sites and tests are unchanged.
   ```
 
   It fires at the exact points where the hook already logs. `skipped` fires even when the `call_skip` log is deduped.
-- **`isCallElsewhere?: (messageId: number) => Promise<boolean>`.** It is checked after a successful preload, just before `startRinging`. When it returns true, the hook logs `call_skip` with the new reason `popup_active` and does not ring. A rejection counts as false. `MessagesFeature` passes a function calling `GET /api/call-popup/active` with `parseReadStatePath(selectedGroupDir)` and the id. This stops the main window (visible but unfocused, with that chat selected, refetching after the sync) from ringing the same voice as the popup. It reads the controller, the single owner of the active call, instead of a pushed copy. The popup itself does not pass it.
+- **`isCallElsewhere?: (messageId: number) => Promise<boolean>`.** It is checked after a successful preload, just before `startRinging`. When it returns true, the hook logs `call_skip` with the new reason `popup_active` and does not ring. A rejection or a synchronous throw counts as false and is logged as `call_error` with `error_type=popup_check_failed`. `MessagesFeature` passes a function calling `GET /api/call-popup/active` (`isCallPopupActive`) with `parseReadStatePath(selectedGroupDir)` and the id; that call has a 3 s timeout (`POPUP_CHECK_TIMEOUT_MS`), and a non-2xx answer, network error, timeout or malformed body also logs `popup_check_failed` and returns false, so when the main window cannot tell, it rings. This stops the main window (visible but unfocused, with that chat selected, refetching after the sync) from ringing the same voice as the popup. It reads the controller, the single owner of the active call, instead of a pushed copy. The popup itself does not pass it.
 - **`CallSkipReason`** gains `popup_active`. It is produced only by this hook path; `decideCall` is unchanged.
 
 ### 7.4 Read state: one store, one writer (`features/messages/readStateStore.ts`)
@@ -487,16 +490,19 @@ All of these are optional. B's existing call sites and tests are unchanged.
 **The primary store** for heard/unheard is the app-state conversation row `read_state_<chat path>` (SQLite `conversation_state`, value `{"value": "<JSON {lastReadId, readCount, revealedIds}>"}`). The main window reads it through `persisted.getConv` (its cache of that table) and writes it through `persisted.setConv`, which PATCHes the row immediately. C2's tray tooltip and the sidebar read the same row. "Heard" is the existing unread rule: `id > lastReadId && !revealedIds.includes(id)`. There is no separate heard flag.
 
 **Refactor.** Move the read-state code out of `MessagesFeature` unchanged:
-- `parseReadState(row)`: today's `loadReadState` parsing, with the same fallbacks;
+- `parseReadState(row)`: today's `loadReadState` parsing, with the same fallbacks. A row that parses to `null`, a non-object, or an object missing a numeric `lastReadId` or an array `revealedIds` is repaired field by field (missing parts become `0` / `[]`), so `isUnreadIn` and `applyReveal` never throw on it;
 - `loadReadState(path)` and `saveReadState(path, state)`: `setConv` plus the fire-and-forget `PUT /api/read-states` search copy;
 - `applyReveal(prev, msgId, messageIds)`: today's `revealMessage` consolidation, made pure;
 - `isUnreadIn(state)`: returns `(id) => boolean`.
 
-Add `revealInStore(path, msgId)`. It loads the state, and if the id is already heard (`!isUnreadIn(state)(msgId)`) it returns `false`. Otherwise it saves `applyReveal(prev, msgId, [])`: the id goes into `revealedIds`, and consolidation happens the next time the chat is open, as today. It then notifies the subscribers and returns `true`. `subscribeReadState(listener)` lets `MessagesFeature` refresh its `readState` when the selected chat's row changed outside it, and bump `readStateVersion` (sidebar refresh) for any change. `MessagesFeature` keeps calling `applyReveal` and `saveReadState` for its own reveals, so behaviour is byte-identical.
+Add `revealInStore(path, msgId)`. It loads the state, and if the id is already heard (`!isUnreadIn(state)(msgId)`) it returns `false`. Otherwise it saves `applyReveal(prev, msgId, [])`: the id goes into `revealedIds`, and consolidation happens the next time the chat is open, as today. It then notifies the subscribers and returns `true`. `subscribeReadState(listener)` (used through `useReadStateSubscription`) lets `MessagesFeature` refresh when the selected chat's row changed outside it, and bump `readStateVersion` (sidebar refresh) for any change. The subscriber does not overwrite its in-memory state: it merges the stored row into it with `mergeReadState` (max `lastReadId`, union of revealed ids, so an in-flight in-chat reveal is never lost) and, when the merge holds more than the stored row, writes it back through the same `saveReadState` path. `MessagesFeature` keeps calling `applyReveal` and `saveReadState` for its own reveals, so behaviour is byte-identical.
 
 **The main-window heard bridge** (`shell/markVoiceHeard.ts`). `App.tsx` installs `window.__sakadeskMarkVoiceHeard = markVoiceHeard` next to `__sakadeskOpenChat`, and removes it on unmount. `markVoiceHeard({service, path, message_id})`:
-- validates the shape (and that `parseReadStatePath(path)` parses). A malformed payload logs `call_popup_heard_ignored reason=malformed` and returns `true`, so the backend does not retry a payload that can never apply;
-- otherwise calls `revealInStore(path, message_id)`, logs `call_popup_heard_applied` (`service`, `group_id`, `member_id`, `message_id`, `changed`) and returns `true`.
+- validates the shape (and that `parseReadStatePath(path)` parses). A malformed payload (bad shape, `service` not matching the path, a non-positive or non-integer id) logs `call_popup_heard_ignored reason=malformed` and returns `true`, so the backend does not retry a payload that can never apply;
+- otherwise calls `revealInStore(path, message_id)`, logs `call_popup_heard_applied` (`service`, `group_id`, `member_id`, `message_id`, `changed`) and returns `true`;
+- an exception while applying logs `call_popup_heard_ignored reason=error` (no error text, which could carry a path) and returns `true` as well.
+
+The bridge therefore **always returns `true`**: the host maps `true` to `delivered` (final), `null` (bridge not installed yet) to `not_ready`, and a thrown JS error to `error`, and retries only the last two. A request that can never succeed on retry must not be retried; the voice then stays unheard and B rings it in the app later.
 
 The popup never writes read state. The main window, the only writer, applies the reveal through the same code path it uses for any heard voice, so its cache, the backend row, the search copy, the sidebar badge and the C2 tooltip all agree, and B's next decision sees the voice as heard.
 
@@ -562,11 +568,11 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_skip` | service, reason (`popup_disabled`/`no_candidate`/`unavailable`/`foreground`/`busy`/`quiet`), group_id, member_id, message_id (with a candidate), quiet_state (for `quiet`) |
 | `call_popup_reserved` | call_id, service, group_id, member_id, message_id, count |
 | `call_popup_voice_first` | call_id, items, downloaded |
-| `call_popup_dispatch` | call_id, result (`started`/`start_failed`/`superseded`/`foreground`/`viewing`) |
+| `call_popup_dispatch` | call_id, result (`started`/`start_failed`/`superseded`/`foreground`/`viewing`/`not_reserved`) |
 | `call_popup_abandoned` | call_id, reason (`sync_failed`/`cancelled`), toast (`sent`/`skipped`) |
 | `call_popup_event` | call_id, call_event, phase, reason, error_type |
 | `call_popup_event_stale` | call_id, call_event, reason (`unknown_call`/`wrong_phase`/`message_mismatch`) |
-| `call_popup_hide` | call_id, reason (the event or watchdog that ended the call) |
+| `call_popup_hide` | call_id, reason (the event or watchdog that ended the call, or `reveal_failed`) |
 | `call_popup_toast` | call_id, kind (`fallback`/`missed`), reason, sent |
 | `call_popup_toast_skip` | call_id, kind (`fallback`/`missed`), reason (`notifications_disabled`) |
 | `call_popup_heard` | call_id, message_id, delivered, attempts, reason (`not_ready`/`error`/`no_host`) |
@@ -575,18 +581,21 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_abandon_failed` | call_id, reason, error_type |
 | `call_popup_unavailable` | reason (`no_host`), once |
 | `call_popup_bridge_failed` | op, error_type or reason (`timeout`) |
-| `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`), error_type |
-| `call_popup_reveal` / `call_popup_reveal_failed` | call_id, dpi, width, height, visible / error_type |
+| `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`/`start_refused`/`preload_skipped`; debug `destroy_skipped`), error_type, reason |
+| `call_popup_app_exit_failed` | error_type (the `Application.Exit` fallback itself raised) |
+| `call_popup_corner_skipped` (debug) | hresult or error_type (no DWM rounded corners, e.g. Windows 10) |
+| `call_popup_foreground_kept` (debug) | call_id (an answered call is not cut off by the main window gaining focus) |
+| `call_popup_reveal` / `call_popup_reveal_failed` | call_id, dpi, width, height, visible / call_id, error_type (`bad_dpi` also dpi) |
 | `quiet_state` (debug) / `quiet_state_failed` | quns, focus_assist, result / api (`quns`/`wnf`), error_type |
 
 C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the toasts themselves.
 
 ### 9.2 Frontend (`POST /api/client-log`)
 
-- **B's events** (`call_ring`, `call_skip`, `call_answer`, `call_decline`, `call_timeout`, `call_end`, `call_cancel`, `call_error`) are reused. From the popup they carry `surface=popup`. `call_skip` gains the reason `popup_active` (main window).
+- **B's events** (`call_ring`, `call_skip`, `call_answer`, `call_decline`, `call_timeout`, `call_end`, `call_cancel`, `call_error`) are reused. From the popup they carry `surface=popup`. `call_skip` gains the reason `popup_active` (main window). A failed `/active` check logs `call_error` with `error_type=popup_check_failed`.
 - **New events:**
   - `call_popup_start` (call_id);
-  - `call_popup_error` (call_id, error_type);
+  - `call_popup_error` (call_id, error_type: `info_failed`, `info_not_found`, `start_failed`, `settings_failed`, `messages_failed`, `read_state_failed`, `message_mismatch`, `render_failed`, `event_post_failed`, `load_failed`);
   - `call_popup_heard_applied` (service, group_id, member_id, message_id, changed);
   - `call_popup_heard_ignored` (reason).
 - **Whitelist:** add these events to `ClientEvent` and the fields `surface`, `call_id` and `changed` to `ALLOWED_FIELDS`. The value rules are unchanged.
@@ -664,7 +673,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 
 - **`popup_rect`:** at 96/120/144/192 DPI, with a bottom, top, left and right work area offset. The 9:16 shape holds after rounding.
 - **`CallPopupWindow`:**
-  - `ensure` creates once with exactly the §6.2 arguments (title not "SakaDesk", `focus=False`, `hidden=True`, `frameless=True`, `on_top=True`, `easy_drag=False`, `resizable=False`);
+  - `ensure` creates once with exactly the §6.2 arguments (reuse only when loaded and not closed) (title not "SakaDesk", `focus=False`, `hidden=True`, `frameless=True`, `on_top=True`, `easy_drag=False`, `resizable=False`);
   - `before_show` sets `WS_EX_TOOLWINDOW` and the corner preference;
   - load timeout → `create_failed`; two failures → unavailable;
   - `start` returns False when the script returns false, or while quitting;
@@ -699,6 +708,8 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - the ringtone starts and stops with ringing;
   - **no `persisted.setPref` / `setConv` / `setConvBeacon` / `flushNow` and no `PUT /api/read-states` call ever happens**;
   - non-ASCII names render.
+- **`fetchPreload`:** resolves on a 2xx `audio/*` ranged GET; rejects `media_unavailable` on a non-2xx, a non-audio type, a network error or the timeout, and `aborted` on abort.
+- **Bridge:** an early `start` is queued and replayed on attach; `cancel` drops it.
 - **Route:** `isCallPopupView`. **Language:** `applyStartupLanguage` precedence, shared by `App` and the popup.
 - **Settings:** the toggle and Reset. **i18n:** the new keys are present in all five locales.
 
@@ -722,13 +733,20 @@ Build and launch as in the C1/C2 specs:
 11. **Notifications off, popup on.** A new 1:1 voice still rings. Decline it: no missed-call toast. Other chats get no toast. `debug.log` has `notify_skip reason=disabled` and `call_popup_toast_skip`.
 12. **Logs.** `debug.log` has a breadcrumb for every step, with no names, text or paths.
 
+**Results (Windows, frozen build on a copy of the data, 57678fa).**
+- **Placement and focus.** Popup 525 × 933 px at (3294, 1122) at 168 DPI (300 × 533 CSS px), tool window and top-most; the foreground window was unchanged by the reveal.
+- **Timeout.** Ring, then the 30 s timeout, then hide and the missed-call toast.
+- **Answer.** Answer, playback to the end, heard delivered to the main window (`changed=True`), then hide. Playback starts after the reveal (`fetchPreload`, §7.2).
+- **Quit.** A Restart Manager close with the popup present destroys it and the process exits.
+- Other checklist steps (5 to 11, including the Windows 11 Do not disturb `quiet_state` codes) have no recorded result yet.
+
 ---
 
 ## 12. Risks
 
 - **Focus at creation.** pywebview's hidden-create path calls `Form.Show()` and `webview.Focus()` once. Creating the popup at SakaDesk start keeps this away from calls, but an autostart at sign-in could still flicker focus once. Manual step 2 checks the steady state, and `debug.log` records `call_popup_window action=created`.
 - **Native show vs WinForms state.** The reveal uses `ShowWindow(SW_SHOWNOACTIVATE)` behind WinForms' back. WinForms tracks visibility through `WM_SHOWWINDOW`, so the WebView2 control should become visible with it. If the card renders blank on reveal, the fallback is to set the WebView2 controller visible explicitly (`window.native.browser.webview.Visible = True`) inside the same `Invoke`. `call_popup_reveal visible=` and manual step 1 detect this.
-- **Hidden-page throttling.** While hidden, the popup page's timers may be throttled. Everything before the reveal is event-driven (fetch, `canplay`). The 30 s ring timer starts when ringing begins, and that same moment triggers the reveal, so the timer runs while the page is visible. Throttling can only lengthen the hidden preload timeout slightly.
+- **Hidden page.** WebView2 keeps media suspended while the page is hidden (`visibilityState` is `hidden`), so the popup cannot preload an `Audio` element (found on Windows at 57678fa); it uses `fetchPreload` (§7.2) and plays after the reveal. Timers in the hidden page may be throttled; everything before the reveal is event-driven (fetch). The 30 s ring timer starts when ringing begins, and that same moment triggers the reveal, so the timer runs while the page is visible. Throttling can only lengthen the hidden preload timeout slightly.
 - **Focus Assist detection uses an undocumented WNF state.** If a Windows build changes it, the read fails or reads 0, and the popup shows. That is the user's rule for an undetectable state. The raw values are logged.
 - **System-DPI awareness.** The process is system-DPI aware (pywebview), so on a primary monitor whose DPI differs from the system DPI Windows bitmap-scales the popup (slightly soft) without misplacing it.
 - **Two WebView2 renderers.** The idle popup costs one extra renderer process for the app's lifetime while the setting is on.
