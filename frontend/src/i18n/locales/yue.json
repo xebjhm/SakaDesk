@@ -446,7 +446,8 @@
       "photos": "{{count}} 張相",
       "videos": "{{count}} 條片",
       "voice": "{{count}} 個錄音"
-    }
+    },
+    "typeTabs": "媒體類型"
   },
   "sentLetters": {
     "title": "寄咗嘅信",
@@ -586,7 +587,8 @@
     "phoneImageHint": "來電時顯示嘅相",
     "viewImages": "睇圖片",
     "current": "而家",
-    "versions": "{{count}} 個版本"
+    "versions": "{{count}} 個版本",
+    "kinds": "圖片類型"
   },
   "date": {
     "today": "今日",

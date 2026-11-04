@@ -446,7 +446,8 @@
       "photos": "{{count}} photos",
       "videos": "{{count}} videos",
       "voice": "{{count}} voice messages"
-    }
+    },
+    "typeTabs": "Media type"
   },
   "sentLetters": {
     "title": "Sent Letters",
@@ -586,7 +587,8 @@
     "phoneImageHint": "Photo shown when the member calls",
     "viewImages": "View images",
     "current": "Now",
-    "versions": "{{count}} versions"
+    "versions": "{{count}} versions",
+    "kinds": "Image type"
   },
   "date": {
     "today": "Today",

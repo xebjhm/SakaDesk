@@ -123,7 +123,9 @@ test.describe('reveal all', () => {
     await expect(page.getByTestId('unread-shelter')).toHaveCount(0)
   })
 
-  test.fixme('Escape in the media calendar closes only the calendar (D2c)', async ({ page }) => {
+  test('Escape closes only the top-most of calendar, viewer and gallery (D2c)', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-11-04T12:00:00+09:00'))
+    await pinBigRoom(page, { messages: { current: buildBigRoom() } })
     await openBigRoom(page)
     await openChatMenuItem(page, 'Media')
     const gallery = page.getByRole('dialog', { name: 'Media' })
@@ -133,5 +135,14 @@ test.describe('reveal all', () => {
     await page.keyboard.press('Escape')
     await expect(calendar).toHaveCount(0)
     await expect(gallery).toBeVisible()
+
+    await gallery.locator('button:has(img)').first().click()
+    const viewer = page.getByRole('dialog', { name: 'Media viewer' })
+    await expect(viewer).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(viewer).toHaveCount(0)
+    await expect(gallery).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(gallery).toHaveCount(0)
   })
 })

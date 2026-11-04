@@ -114,6 +114,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         0:00
       </div>
       <button
+        aria-expanded="false"
+        aria-haspopup="menu"
+        aria-label="More options"
         class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
         type="button"
       >
@@ -201,6 +204,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </p>
     </div>
     <button
+      aria-expanded="false"
+      aria-haspopup="menu"
+      aria-label="More options"
       class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
       type="button"
     >
@@ -456,6 +462,9 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </p>
     </div>
     <button
+      aria-expanded="false"
+      aria-haspopup="menu"
+      aria-label="More options"
       class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
       type="button"
     >

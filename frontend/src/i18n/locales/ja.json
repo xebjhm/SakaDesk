@@ -446,7 +446,8 @@
       "photos": "写真 {{count}}枚",
       "videos": "動画 {{count}}本",
       "voice": "ボイス {{count}}件"
-    }
+    },
+    "typeTabs": "メディアの種類"
   },
   "sentLetters": {
     "title": "送信したレター",
@@ -586,7 +587,8 @@
     "phoneImageHint": "着信時に表示される写真",
     "viewImages": "画像を見る",
     "current": "現在",
-    "versions": "{{count}} 件"
+    "versions": "{{count}} 件",
+    "kinds": "画像の種類"
   },
   "date": {
     "today": "今日",

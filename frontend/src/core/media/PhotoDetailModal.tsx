@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
-import { Z_CLASS } from '../../constants/zIndex';
+import { Modal, IconButton, Button } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
@@ -48,7 +48,7 @@ interface MediaViewerModalProps {
  * Keyboard controls:
  * - Left/Right: Navigate to previous/next media
  * - Up/Down: Zoom in/out (photos) or volume up/down (video/voice)
- * - Escape: Close
+ * - Escape: Close (handled by the dialog layer, which respects fullscreen)
  */
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     mediaItems,
@@ -59,7 +59,6 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const modalRef = useRef<HTMLDivElement>(null);
 
     const [zoom, setZoom] = useState(1);
 
@@ -77,25 +76,13 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         setZoom(1);
     }, [currentIndex]);
 
-    // Focus modal for keyboard capture
-    useEffect(() => {
-        modalRef.current?.focus();
-    }, [currentIndex]);
-
     const handleDownload = useCallback(() => {
         if (!item) return;
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         switch (e.key) {
-            case 'Escape':
-                // When in fullscreen, Escape exits fullscreen (browser handles it).
-                // Don't also close the modal — the user wants to stay in the viewer.
-                if (document.fullscreenElement) break;
-                e.preventDefault();
-                onClose();
-                break;
             case 'ArrowLeft':
                 e.preventDefault();
                 if (hasPrev) onNavigate(currentIndex - 1);
@@ -117,34 +104,27 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 }
                 break;
         }
-    }, [onClose, hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
+    }, [hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
 
     if (!item) return null;
+    const lifted = item.sourceLabel && item.onSourceJump ? 'bottom-14' : 'bottom-6';
 
     return (
-        <div
-            ref={modalRef}
-            tabIndex={-1}
-            className={cn("fixed inset-0 bg-black/90 flex items-center justify-center outline-none", Z_CLASS.MODAL_DETAIL)}
-            onClick={onClose}
+        <Modal
+            isOpen
+            onClose={onClose}
+            tone="viewer"
+            layout="bare"
+            aria-label={t('common.mediaViewer')}
+            logId="media_viewer"
             onKeyDown={handleKeyDown}
         >
-            {/* Close button */}
-            <button className="absolute top-4 right-4 text-white/70 hover:text-white z-10" onClick={onClose}>
-                <X className="w-6 h-6" />
-            </button>
+            <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
 
-            {headerSlot && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10" onClick={e => e.stopPropagation()}>
-                    {headerSlot}
-                </div>
-            )}
+            {headerSlot && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2">{headerSlot}</div>}
 
-            {/* Media content */}
-            <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-                {item.type === 'picture' && (
-                    <PhotoPlayer variant="fullscreen" src={item.src} alt="Media" zoom={zoom} />
-                )}
+            <div className="relative flex max-h-[90vh] max-w-[90vw] items-center justify-center">
+                {item.type === 'picture' && <PhotoPlayer variant="fullscreen" src={item.src} alt={t('common.mediaViewer')} zoom={zoom} />}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
                         <VideoPlayer
@@ -161,7 +141,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                     </div>
                 )}
                 {item.type === 'voice' && (
-                    <div className="w-96 flex flex-col gap-3">
+                    <div className="flex w-96 flex-col gap-3">
                         <VoicePlayer
                             src={item.src}
                             variant="fullscreen"
@@ -178,52 +158,38 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 )}
             </div>
 
-            {/* Download button (photos only — video and voice have their own controls) */}
             {goldenFingerActive && item.type === 'picture' && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-                    className={cn(
-                        "absolute right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors",
-                        item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
-                    )}
-                >
-                    <Download className="w-4 h-4" />
+                <Button variant="overlay" size="sm" className={cn('absolute right-6', lifted)} onClick={handleDownload}>
+                    <Download className="h-4 w-4" />
                     {t('common.download')}
-                </button>
+                </Button>
             )}
 
-            {/* Navigation counter */}
             {mediaItems.length > 1 && (
-                <div className={cn(
-                    "absolute left-6 text-white/60 text-sm",
-                    item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
-                )}>
+                <div className={cn('absolute left-6 text-small tabular-nums text-viewer-muted', lifted)}>
                     {currentIndex + 1} / {mediaItems.length}
                 </div>
             )}
 
-            {/* Source label: a jump link when it has a target, plain text otherwise */}
             {item.sourceLabel && item.onSourceJump && (
                 <button
-                    onClick={(e) => { e.stopPropagation(); item.onSourceJump!(); }}
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 hover:text-white text-sm max-w-[60vw] truncate transition-colors underline underline-offset-2 decoration-white/30 hover:decoration-white/60"
+                    type="button"
+                    onClick={item.onSourceJump}
+                    className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate rounded-pill px-2 text-small text-viewer-muted underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
                 >
                     {item.sourceLabel}
                 </button>
             )}
             {item.sourceLabel && !item.onSourceJump && (
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 text-sm max-w-[60vw] truncate">
-                    {item.sourceLabel}
-                </div>
+                <div className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate text-small text-viewer-muted">{item.sourceLabel}</div>
             )}
 
-            {/* Clipboard toast */}
             {toastMessage && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-20">
+                <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
                     {toastMessage}
                 </div>
             )}
-        </div>
+        </Modal>
     );
 };
 

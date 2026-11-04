@@ -446,7 +446,8 @@
       "photos": "{{count}} 張照片",
       "videos": "{{count}} 部影片",
       "voice": "{{count}} 則語音"
-    }
+    },
+    "typeTabs": "媒體類型"
   },
   "sentLetters": {
     "title": "已傳送的信件",
@@ -586,7 +587,8 @@
     "phoneImageHint": "來電時顯示的照片",
     "viewImages": "查看圖片",
     "current": "目前",
-    "versions": "{{count}} 個版本"
+    "versions": "{{count}} 個版本",
+    "kinds": "圖片類型"
   },
   "date": {
     "today": "今天",

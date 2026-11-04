@@ -12,6 +12,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
@@ -142,7 +143,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [showMenu, setShowMenu] = useState(false);
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     const menuButtonRef = useRef<HTMLButtonElement>(null);
-    const menuPortalRef = useRef<HTMLDivElement>(null);
 
     const { volume, setVolume, isMuted, toggleMute, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
 
@@ -314,34 +314,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (videoRef.current) videoRef.current.playbackRate = rate;
         setShowMenu(false);
     }, []);
-
-    // Close menu on click outside or Escape
-    useEffect(() => {
-        if (!showMenu) return;
-
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as Node;
-            if (
-                menuButtonRef.current && !menuButtonRef.current.contains(target) &&
-                menuPortalRef.current && !menuPortalRef.current.contains(target)
-            ) {
-                setShowMenu(false);
-            }
-        };
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape') return;
-            // Claim the key so the incoming-call overlay doesn't also decline.
-            e.preventDefault();
-            setShowMenu(false);
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEsc);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('keydown', handleEsc);
-        };
-    }, [showMenu]);
 
     // Viewer-mode keyboard shortcuts (window-level, no focus required)
     useEffect(() => {
@@ -548,6 +520,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         onClick={handleMenuToggle}
                         className="text-white/60 hover:text-white p-1 transition-colors"
                         type="button"
+                        aria-label={t('common.moreOptions')}
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
                     >
                         <MoreVertical className="w-4 h-4" />
                     </button>
@@ -580,54 +555,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
 
             {showMenu && createPortal(
-                <div
-                    ref={menuPortalRef}
+                <Menu
+                    aria-label={t('common.moreOptions')}
+                    onClose={() => setShowMenu(false)}
+                    layer="popover"
                     style={menuStyle}
-                    className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                    ignoreRefs={[menuButtonRef]}
+                    returnFocusRef={menuButtonRef}
+                    className="w-max whitespace-nowrap"
                 >
-                    {/* Loop toggle */}
-                    <button
-                        onClick={() => { setLoop(l => !l); setShowMenu(false); }}
-                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                        type="button"
-                    >
-                        <Repeat className={cn("w-4 h-4", loop && "text-blue-500")} />
+                    <MenuItem icon={<Repeat className="h-4 w-4" />} selected={loop} onClick={() => { setLoop((l) => !l); setShowMenu(false); }}>
                         {t('videoPlayer.loop')}
-                        {loop && <span className="ml-auto text-xs text-blue-500">{t('common.on')}</span>}
-                    </button>
-
-                    <div className="border-t border-gray-200 my-1" />
-
-                    {/* Playback speed */}
-                    <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                    {[0.5, 1, 1.5, 2].map(rate => (
-                        <button
-                            key={rate}
-                            onClick={() => handleMenuPlaybackRate(rate)}
-                            className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
-                            style={{ color: playbackRate === rate ? '#3b82f6' : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
-                            type="button"
-                        >
+                        {loop && <span className="ml-auto text-caption">{t('common.on')}</span>}
+                    </MenuItem>
+                    <MenuSeparator />
+                    <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                    {[0.5, 1, 1.5, 2].map((rate) => (
+                        <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handleMenuPlaybackRate(rate)}>
                             {rate}x
-                        </button>
+                        </MenuItem>
                     ))}
-
-                    {/* Download (golden finger only) */}
                     {goldenFingerActive && (
                         <>
-                            <div className="border-t border-gray-200 my-1" />
-                            <button
-                                onClick={handleMenuDownload}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                type="button"
-                            >
-                                <Download className="w-4 h-4" />
-                                {t('common.download')}
-                            </button>
+                            <MenuSeparator />
+                            <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleMenuDownload}>{t('common.download')}</MenuItem>
                         </>
                     )}
-                </div>,
-                isFullscreen && containerRef.current ? containerRef.current : document.body
+                </Menu>,
+                isFullscreen && containerRef.current ? containerRef.current : document.body,
             )}
         </div>
     );
