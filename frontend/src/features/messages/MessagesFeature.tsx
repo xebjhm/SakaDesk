@@ -178,7 +178,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Scroll ref
     const virtuosoRef = useRef<VirtuosoHandle>(null);
-    const visibleRangeRef = useRef<{ startIndex: number; endIndex: number }>({ startIndex: 0, endIndex: 0 });
+    const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
     // Virtuoso's scroll element, which the timeline jump glides.
     const chatScrollerRef = useRef<HTMLElement | null>(null);
     const setChatScroller = useCallback((el: HTMLElement | Window | null) => {
@@ -438,6 +438,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         cancelHighlight();
         setHighlightedMessageId(null);
     }, [selectedGroupDir, cancelHighlight]);
+    // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
+    useEffect(() => {
+        visibleRangeRef.current = null;
+    }, [selectedGroupDir]);
 
     const jumpTo = useTimelineJump({
         virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
@@ -446,7 +450,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     });
 
     const updateUnreadNavState = useCallback((range?: { startIndex: number; endIndex: number }) => {
-        const currentRange = range || visibleRangeRef.current;
+        const currentRange = range || visibleRangeRef.current || { startIndex: 0, endIndex: 0 };
         if (range) visibleRangeRef.current = range;
 
         const firstUnreadIndex = messages.findIndex(m => isUnread(m.id));

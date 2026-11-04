@@ -24,6 +24,12 @@ export const GLIDE_LEAD = 0.8;
  * back to the lead-in point. Its value mirrors the library's internal window.
  */
 export const VIRTUOSO_RETRY_MS = 150;
+/**
+ * Stillness required before a far jump starts gliding: one 16 ms frame past Virtuoso's
+ * internal retry window (VIRTUOSO_RETRY_MS), so a retry that lands right at the window's
+ * edge is still seen as movement.
+ */
+export const STILLNESS_MS = VIRTUOSO_RETRY_MS + 16;
 /** Targets estimated within this many viewport heights glide from where the list is, without a lead-in. */
 export const CLOSE_VIEWPORTS = 2;
 /**
@@ -53,6 +59,10 @@ export function estimateTravel(
     return -((range.startIndex - index) * row + at * (viewport - row));
 }
 
+/** Which branch of the jump ran; logged as the `path` breadcrumb field. */
+export type JumpPath =
+    | 'instant' | 'onscreen' | 'onscreen_snap' | 'close' | 'close_snap' | 'far' | 'far_unsettled' | 'none';
+
 export interface JumpDeps {
     nextFrame: () => Promise<void>;
     measure: (messageId: number, align: JumpAlign) => number | null;
@@ -79,8 +89,12 @@ export interface UseTimelineJumpArgs {
     resetKey?: unknown;
     /** The list's scroll element; without it (or with reduced motion) jumps are instant. */
     getScroller?: () => HTMLElement | null;
-    /** The rendered row range, to tell on-screen targets from far ones and the direction of travel. */
-    visibleRange?: () => { startIndex: number; endIndex: number };
+    /**
+     * The rendered row range, to tell on-screen targets from far ones and the direction of
+     * travel. Omitted, or returning null/undefined (unknown, e.g. right after a room switch),
+     * the jump is instant.
+     */
+    visibleRange?: () => { startIndex: number; endIndex: number } | null | undefined;
     /** Test seam: frame scheduler, DOM measurement, clock and reduced-motion preference. */
     deps?: Partial<JumpDeps>;
 }
@@ -92,9 +106,15 @@ export interface UseTimelineJumpArgs {
  * - a close one (estimateTravel within CLOSE_VIEWPORTS) glides from where the list is;
  * - a far one is first reached with an instant scrollToIndex that lands GLIDE_LEAD
  *   viewports short of it in the direction of travel; once Virtuoso has stopped
- *   re-scrolling that lead-in (VIRTUOSO_RETRY_MS still, at most MAX_WAIT_FRAMES) it
+ *   re-scrolling that lead-in (STILLNESS_MS still, at most MAX_WAIT_FRAMES) it
  *   glides the rest of the way, or scrolls instantly if heights never settle.
- * Without a scroller, or with prefers-reduced-motion, one instant scrollToIndex.
+ * If an on-screen target cannot be measured, or a close glide ends without the row
+ * rendered, the jump snaps there with an instant scrollToIndex instead. A far lead-in
+ * shrinks, possibly to zero (no glide at all), near the list's bottom edge, because
+ * Virtuoso clamps the offset to the scroll range; the jump still lands. Wheel or touch
+ * input during a glide is overridden: the glide keeps writing scrollTop until it ends.
+ * Without a scroller, with prefers-reduced-motion, or with an unknown visible range
+ * (no `visibleRange`, or it returns null), one instant scrollToIndex.
  * Then wait for the target row to render, measure it and correct up to
  * MAX_CORRECTIONS times with instant scrolls (Virtuoso estimates heights it has not
  * measured, so a far jump can land a little off). Each correction re-resolves the
@@ -109,7 +129,8 @@ export interface UseTimelineJumpArgs {
  * MAX_WAIT_FRAMES + SETTLE_FRAMES frames each: corrections and cycles whose row
  * vanished after settling (while still in `messages`) are counted separately, each
  * at most MAX_CORRECTIONS, plus the final cycle. It then ends 'gave_up'. Every jump
- * logs exactly one `timeline_jump` breadcrumb with no message text or names.
+ * logs exactly one `timeline_jump` breadcrumb (including which `path` ran) with no
+ * message text or names.
  */
 export function useTimelineJump({
     virtuosoRef, messages, isUnread, onLanded, resetKey, getScroller, visibleRange, deps,
@@ -129,12 +150,15 @@ export function useTimelineJump({
         const started = now();
         const resolved = resolveJump(latest.current.messages, target, latest.current.isUnread);
 
+        // Which branch ran, for the breadcrumb; 'none' until a scroll has been chosen.
+        let path: JumpPath = 'none';
         const finish = (outcome: JumpOutcome, index: number, corrections: number): JumpOutcome => {
             clientLog('timeline_jump', {
                 target: jumpTargetCode(target),
                 index,
                 corrections,
                 outcome,
+                path,
                 jump_ms: Math.round(now() - started),
             });
             return outcome;
@@ -145,7 +169,7 @@ export function useTimelineJump({
         if (!first) return finish('gave_up', resolved.index, 0);
 
         const scroller = latest.current.getScroller?.() ?? null;
-        const range = latest.current.visibleRange?.();
+        const range = latest.current.visibleRange?.() ?? null;
         const isCancelled = () => token !== tokenRef.current;
         // The glide homes in on the target row as soon as it is rendered and measurable.
         const aim = () => measure(resolved.messageId, resolved.align);
@@ -159,31 +183,41 @@ export function useTimelineJump({
         };
         const travel = scroller && range ? estimateTravel(resolved.index, resolved.align, range, scroller.clientHeight) : null;
 
-        if (scroller === null || reducedMotion()) {
+        if (scroller === null || travel === null || reducedMotion()) {
+            path = 'instant';
             first.scrollToIndex({ index: resolved.index, align: resolved.align, behavior: 'auto' });
         } else if (travel === 0) {
             // Already on screen: glide straight to the aligned position.
+            path = 'onscreen';
             const error = measure(resolved.messageId, resolved.align);
-            if (error === null) first.scrollToIndex({ index: resolved.index, align: resolved.align, behavior: 'auto' });
-            else if (!(await glide(scroller, error))) return finish('cancelled', resolved.index, 0);
-        } else if (travel !== null && Math.abs(travel) <= CLOSE_VIEWPORTS * scroller.clientHeight) {
+            if (error === null) {
+                path = 'onscreen_snap';
+                first.scrollToIndex({ index: resolved.index, align: resolved.align, behavior: 'auto' });
+            } else if (!(await glide(scroller, error))) return finish('cancelled', resolved.index, 0);
+        } else if (Math.abs(travel) <= CLOSE_VIEWPORTS * scroller.clientHeight) {
             // Close: glide from here toward the estimate; a lead-in could land on the wrong side.
+            path = 'close';
             if (!(await glide(scroller, travel * CLOSE_PLAN_FACTOR))) return finish('cancelled', resolved.index, 0);
-            if (aim() === null && !snap()) return finish('gave_up', resolved.index, 0);
+            if (aim() === null) {
+                path = 'close_snap';
+                if (!snap()) return finish('gave_up', resolved.index, 0);
+            }
         } else {
             // Far: land GLIDE_LEAD viewports short of the target in the direction of travel, then glide in.
-            const dir = travel !== null ? Math.sign(travel) : 1;
+            path = 'far';
+            const dir = Math.sign(travel);
             const lead = Math.round(scroller.clientHeight * GLIDE_LEAD);
             first.scrollToIndex({ index: resolved.index, align: resolved.align, behavior: 'auto', offset: -dir * lead });
             // Virtuoso re-scrolls to the lead-in while row heights change: wait until it is
             // still, or the glide would be snapped back.
-            const leadIn = await waitUntilStill(scroller, VIRTUOSO_RETRY_MS, SETTLE_FRAMES, MAX_WAIT_FRAMES, isCancelled, { nextFrame, now });
+            const leadIn = await waitUntilStill(scroller, STILLNESS_MS, SETTLE_FRAMES, MAX_WAIT_FRAMES, isCancelled, { nextFrame, now });
             if (leadIn === 'cancelled') return finish('cancelled', resolved.index, 0);
             if (leadIn === 'still') {
                 if (!(await glide(scroller, dir * lead))) return finish('cancelled', resolved.index, 0);
-            } else if (!snap()) {
-                // Heights never settled and the list is gone.
-                return finish('gave_up', resolved.index, 0);
+            } else {
+                path = 'far_unsettled';
+                // Heights never settled: scroll exactly; the list may be gone.
+                if (!snap()) return finish('gave_up', resolved.index, 0);
             }
         }
         if (!resolved.verify) return finish('landed', resolved.index, 0);

@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { toLocalDateStr } from '../../../utils/dateFormatters';
-import { useTimelineJump, estimateTravel, MAX_CORRECTIONS, GLIDE_LEAD, VIRTUOSO_RETRY_MS } from './useTimelineJump';
+import { useTimelineJump, estimateTravel, MAX_CORRECTIONS, GLIDE_LEAD, STILLNESS_MS } from './useTimelineJump';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
@@ -22,7 +22,7 @@ interface SetupOpts {
      * frame. With `targetTop` the list is simulated: scrollToIndex moves the scroller to
      * targetTop + offset, and the target measures (targetTop - scrollTop) while it is on screen.
      */
-    glide?: { scroller: FakeScroller; range?: { startIndex: number; endIndex: number }; reduced?: boolean; targetTop?: number };
+    glide?: { scroller: FakeScroller; range?: { startIndex: number; endIndex: number } | null; reduced?: boolean; targetTop?: number };
     /** Initial message list (default: the three-message `messages`). */
     list?: readonly Message[];
 }
@@ -55,13 +55,19 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
         onLanded,
         resetKey,
         getScroller: glide ? () => glide.scroller as HTMLElement : undefined,
-        visibleRange: glide?.range ? () => glide.range! : undefined,
+        visibleRange: glide && glide.range !== undefined ? () => glide.range : undefined,
         deps: { nextFrame, measure, now: glide ? () => frames * 16 : () => 0, reducedMotion: () => glide?.reduced ?? false },
     }), { initialProps: { list: opts.list ?? (messages as readonly Message[]), resetKey: 'a' as unknown } });
     return { jumpTo: hook.result.current, scrollToIndex, onLanded, measure, ...hook };
 }
 
 beforeEach(() => vi.mocked(clientLog).mockClear());
+
+/** The `path` field of the single timeline_jump breadcrumb. */
+function pathLogged(): unknown {
+    expect(clientLog).toHaveBeenCalledTimes(1);
+    return (vi.mocked(clientLog).mock.calls[0][1] as { path?: string }).path;
+}
 
 describe('useTimelineJump', () => {
     it('jumps instantly, verifies, highlights and logs a landing', async () => {
@@ -71,7 +77,7 @@ describe('useTimelineJump', () => {
         expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'auto' });
         expect(onLanded).toHaveBeenCalledWith(2);
         expect(clientLog).toHaveBeenCalledWith('timeline_jump',
-            { target: 'message', index: 1, corrections: 0, outcome: 'landed', jump_ms: 0 });
+            { target: 'message', index: 1, corrections: 0, outcome: 'landed', path: 'instant', jump_ms: 0 });
     });
 
     it('waits for the row to render before measuring', async () => {
@@ -104,7 +110,7 @@ describe('useTimelineJump', () => {
         const { jumpTo, scrollToIndex } = setup([0]);
         await expect(jumpTo({ kind: 'message', id: 99 })).resolves.toBe('not_found');
         expect(scrollToIndex).not.toHaveBeenCalled();
-        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ outcome: 'not_found', index: -1 }));
+        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ outcome: 'not_found', index: -1, path: 'none' }));
     });
 
     it('first unread is centred and not highlighted', async () => {
@@ -270,6 +276,7 @@ describe('useTimelineJump glide', () => {
         expect(tops[0]).toBe(20000 - LEAD);
         expect(scroller.scrollTop).toBe(20000);
         expect(s.onLanded).toHaveBeenCalledWith(151);
+        expect(pathLogged()).toBe('far');
     });
 
     it('far upward: lands a lead short below the target, then glides up into place', async () => {
@@ -319,6 +326,7 @@ describe('useTimelineJump glide', () => {
         for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeLessThanOrEqual(tops[i - 1]);
         expect(scroller.scrollTop).toBe(4850);
         expect(s.onLanded).toHaveBeenCalledWith(51);
+        expect(pathLogged()).toBe('close');
     });
 
     it('close upward: rows taller than the visible ones still glide all the way, without a snap', async () => {
@@ -348,6 +356,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
         expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 50, align: 'start', behavior: 'auto' });
         expect(scroller.scrollTop).toBe(2000);
+        expect(pathLogged()).toBe('close_snap');
     });
 
     it('near: glides straight to the target by the measured error, without scrollToIndex', async () => {
@@ -357,6 +366,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).not.toHaveBeenCalled();
         expect(scroller.scrollTop).toBe(5120);
         expect(s.onLanded).toHaveBeenCalledWith(2);
+        expect(pathLogged()).toBe('onscreen');
     });
 
     it('near bottom: glides down to the last row instead of leading in from above', async () => {
@@ -373,6 +383,7 @@ describe('useTimelineJump glide', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'auto' });
         expect(scroller.scrollTop).toBe(5000);
+        expect(pathLogged()).toBe('onscreen_snap');
     });
 
     it('reduced motion keeps the instant path', async () => {
@@ -383,6 +394,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex.mock.calls[0][0]).toEqual({ index: 150, align: 'start', behavior: 'auto' });
         expect(s.scrollToIndex.mock.calls[0][0]).not.toHaveProperty('offset');
         expect(scroller.scrollTop).toBe(20000);
+        expect(pathLogged()).toBe('instant');
     });
 
     it('a jump cancelled mid-glide ends cancelled and stops moving', async () => {
@@ -438,7 +450,7 @@ describe('useTimelineJump glide', () => {
         });
         await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
         // The last change was seen on frame 3 (48 ms); the glide may start writing only after the window.
-        expect((firstMove - 1) * 16 - 48).toBeGreaterThanOrEqual(VIRTUOSO_RETRY_MS);
+        expect((firstMove - 1) * 16 - 48).toBeGreaterThanOrEqual(STILLNESS_MS);
         expect(scroller.scrollTop).toBe(20000);
     });
 
@@ -453,6 +465,50 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).toHaveBeenCalledTimes(2);
         expect(s.scrollToIndex).toHaveBeenNthCalledWith(2, { index: 150, align: 'start', behavior: 'auto' });
         expect(scroller.scrollTop).toBe(20000);
+        expect(pathLogged()).toBe('far_unsettled');
+    });
+
+    it('an unknown visible range (null) jumps instantly, without a lead-in', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, range: null, targetTop: 20000 } });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex.mock.calls[0][0]).toEqual({ index: 150, align: 'start', behavior: 'auto' });
+        expect(s.scrollToIndex.mock.calls[0][0]).not.toHaveProperty('offset');
+        expect(pathLogged()).toBe('instant');
+    });
+
+    it('without a visibleRange argument the jump is instant too', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, targetTop: 20000 } });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex.mock.calls[0][0]).not.toHaveProperty('offset');
+        expect(pathLogged()).toBe('instant');
+    });
+
+    it('far jump at the bottom edge: the clamped lead-in is shorter, yet the jump still lands', async () => {
+        // Virtuoso clamps the offset scroll to the scroll range: only 100 px lie below the target.
+        const scroller = { scrollTop: 5000, scrollHeight: 20700, clientHeight: 600 };
+        const maxTop = scroller.scrollHeight - scroller.clientHeight;
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: maxTop } });
+        s.scrollToIndex.mockImplementation((loc: { offset?: number }) => {
+            scroller.scrollTop = Math.min(maxTop, maxTop + (loc.offset ?? 0));
+        });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(scroller.scrollTop).toBe(maxTop);
+        expect(pathLogged()).toBe('far');
+        expect(clientLog).toHaveBeenCalledTimes(1);
+    });
+
+    it('far jump already at the scroll limit: no glide is needed and it still lands', async () => {
+        const scroller = { scrollTop: 5000, scrollHeight: 20600, clientHeight: 600 };
+        const maxTop = 20000;
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: maxTop } });
+        s.scrollToIndex.mockImplementation(() => { scroller.scrollTop = maxTop; }); // offset clamped to zero
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(scroller.scrollTop).toBe(maxTop);
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
     });
 });
 

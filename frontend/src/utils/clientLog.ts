@@ -18,7 +18,7 @@ export type ClientLogFieldKey =
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
     | 'surface' | 'call_id' | 'changed' | 'has_target'
     | 'theme' | 'size'
-    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms';
+    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

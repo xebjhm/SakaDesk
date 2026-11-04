@@ -67,6 +67,7 @@ ALLOWED_FIELDS = frozenset(
         "corrections",
         "outcome",
         "jump_ms",
+        "path",
     }
 )
 WARNING_EVENTS = frozenset({"call_error", "app_load_failed", "design_tokens_fallback"})
