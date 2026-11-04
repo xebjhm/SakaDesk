@@ -60,7 +60,8 @@ frontend/src/design/
     space.ts      documents the 4 px scale (Tailwind default spacing)
     motion.ts     fast / base durations + standard easing
     index.ts
-  applyTokens.ts  writes every token to :root as CSS variables
+  cssVars.ts      pure maps: token -> CSS variable name/value
+  applyTokens.ts  applyStaticTokens() / applyGroupTokens(groupId) write them to :root
   primitives/     Canvas, Sheet, Card, Pill, Badge, Avatar, DatePill,
                   Button, IconButton, RailItem, Modal (+ index.ts)
   DesignPage.tsx  dev-only living style page
@@ -74,9 +75,9 @@ frontend/src/design/
 
 | Role | Tokens | Value / source |
 |---|---|---|
-| Surfaces | `surface.canvas`, `surface.sheet`, `surface.card`, `surface.pill`, `surface.sunken` | from the existing `NEUTRAL_COLORS` / `UI_TOKENS` |
+| Surfaces | `surface.sheet`, `surface.card`, `surface.pill`, `surface.elevated`, `surface.sunken` | from the existing `NEUTRAL_COLORS` / `UI_TOKENS` (level 0 is the group `canvas` gradient, so there is no neutral canvas token) |
 | Text | `text.primary`, `text.secondary`, `text.muted`, `text.inverse` | from the existing values |
-| Border | `border.subtle` | from the existing values |
+| Border | `border.subtle`, `border.strong` | from the existing values |
 | Feedback | `feedback.success`, `feedback.warning`, `feedback.error` | from the existing values |
 
 Values are copied from the current `NEUTRAL_COLORS` / `UI_TOKENS` / `FEEDBACK_COLORS` so nothing shifts.
@@ -109,11 +110,10 @@ The motion values are exported both as CSS variables and as numbers for framer-m
 ### Single source of truth
 
 - The TypeScript token modules are the only definitions.
-- `applyTokens(groupId)`:
-  - It writes every token as a CSS variable (`--ds-*`) on `document.documentElement`.
-  - It also keeps writing the existing `--color-*` variables with identical values, so current Tailwind classes keep working.
-  - `shell/main.tsx` calls it synchronously before the first render, so there is no flash.
-  - It replaces `applyThemeToDocument`. The old export becomes a thin alias until D2 removes its callers.
+- Two functions write the variables on `document.documentElement`:
+  - `applyStaticTokens()` writes the group-independent `--ds-*` variables (surfaces, text, border, feedback, radius, shadow, type, motion). `shell/main.tsx` calls it synchronously before the first render of every entry point, so there is no flash. No existing code reads `--ds-*`, so this changes no pixels.
+  - `applyGroupTokens(groupId)` writes the `--ds-group-*` variables **and** the existing `--color-*` variables with identical values, so current Tailwind classes keep working. `App.tsx` calls it exactly where it called `applyThemeToDocument` (when the active service changes); nothing new is applied before a service is active, matching today.
+  - `applyThemeToDocument` and `clearThemeFromDocument` are removed (`App.tsx` was the only caller).
 - `tailwind.config.js` maps new utilities to the variables only:
   - `bg-canvas`, `bg-sheet`, `bg-card`, `bg-pill`
   - `text-primary`, `text-secondary`, `text-muted`
@@ -122,7 +122,7 @@ The motion values are exported both as CSS variables and as numbers for framer-m
   - `text-caption`, `text-small`, `text-body`, `text-title`, `text-heading`
   - `duration-fast`, `duration-base`, `ease-standard`
   - Group utilities `bg-group-accent`, `ring-group`, `border-group-bubble`, `bg-group-badge`
-- `serviceThemes.ts` keeps its public interface. Its group-brand fields (the nine listed above) are read from `groups.ts`. Every other field (`shelterColors`, `modals.*`, `blog.*`, `ambient`, …) stays as-is until D2 deletes the consumers. `config/colors/*` re-exports from `design/tokens` for the same reason.
+- `serviceThemes.ts` keeps its public interface. Its group-brand fields (the nine listed above) are read from `groups.ts`. Every other field (`shelterColors`, `modals.*`, `blog.*`, `ambient`, …) stays as-is until D2 deletes the consumers. `config/colors/palette.ts` and `semantic.ts` derive their values from `design/tokens/color.ts` for the same reason; their unused `dark` and extra grey entries are dropped.
 
 ### Primitives
 
@@ -138,8 +138,8 @@ Rules for all primitives:
 | `Canvas` | 0 | Group gradient background; no radius or shadow. |
 | `Sheet` | 1 | `rounded-sheet shadow-sheet bg-sheet`; the content area. |
 | `Card` | 2 | `rounded-card shadow-card bg-card`; photos and info cards. D2 builds message bubbles from it. |
-| `Pill` | 3 | Fully rounded, faint shadow; `selected` state. Used for tabs, filters and chips. |
-| `Badge` | 3 | Props: `count`. Renders nothing at 0, shows `99+` above 99, uses the group badge colour, and gets an i18n `aria-label`. |
+| `Pill` | 3 | A fully rounded `button` with a faint shadow and a `selected` state (`aria-pressed`). Selected is neutral (sunken surface, bold text), never group-coloured. Used for tabs and filters. |
+| `Badge` | 3 | Props: `count`. Renders nothing at 0, shows `99+` above 99, uses the group badge colour, and gets an `aria-label` from the i18n key `common.unreadCount`. |
 | `Avatar` | — | Sizes `sm`/`md`/`lg`/`xl`. `selected` adds a white ring and the group glow. On image error it shows the name's first character. |
 | `DatePill` | 3 | Props: `date`, optional `sticky`. The label comes from `formatDatePillLabel`. |
 | `Button` | 3 | Variants `primary` (group accent, at most one per screen), `secondary` and `ghost`; sizes `sm`/`md`. |
@@ -151,7 +151,7 @@ These are deliberately **not** in D1: message bubble, member grid cell and chat 
 
 ### Date label
 
-`formatDatePillLabel(date: Date, now: Date, locale: string): string` is a pure function in `utils/dateFormatters.ts`:
+`formatDatePillLabel(date: Date, now: Date, locale: string, t: (key: 'date.today' | 'date.yesterday') => string): string` is a pure function in `utils/dateFormatters.ts`. The caller passes i18next's `t`, which keeps the function free of i18n state:
 
 1. Same local day as `now` → i18n key `date.today`.
 2. Previous local day → i18n key `date.yesterday`.
@@ -162,9 +162,9 @@ The formatting uses `Intl.DateTimeFormat(locale, …)` and follows the UI langua
 
 ### `/design` page
 
-- `?view=design` selects the page, mirroring `isCallPopupView`. The check sits behind `import.meta.env.DEV` and the page is imported with a dynamic `import()`, so production builds tree-shake it out entirely. In production the parameter is ignored and the normal app loads.
+- `?view=design` selects the page, mirroring `isCallPopupView`. `main.tsx` checks `import.meta.env.DEV && isDesignView(search)`. Vite replaces `import.meta.env.DEV` with `false` in production, so the whole branch, including the dynamic `import()` of the page, is dead code and is dropped from the bundle. In production the parameter is ignored and the normal app loads.
 - The page shows, in order:
-  1. A group switcher (all five groups, applied live through `applyTokens`).
+  1. A group switcher (all five groups, applied live through `applyGroupTokens`).
   2. Colour swatches with token names and their white-text contrast ratio. This is where the Hinatazaka badge's 1.9:1 is visible.
   3. Radius, shadow, type and motion samples.
   4. Every primitive in every state.
@@ -187,13 +187,13 @@ The formatting uses `Intl.DateTimeFormat(locale, …)` and follows the UI langua
 
 `design/guard.test.ts` runs in the normal vitest suite and CI.
 
-**What it scans:** `src/**/*.{ts,tsx}`, excluding `src/design/tokens/**`, `src/config/serviceThemes.ts`, `src/config/colors/**` and test files.
+**What it scans:** `src/**/*.{ts,tsx}`, excluding `src/design/tokens/**`, `src/design/guard.ts`, `src/config/serviceThemes.ts`, `src/config/colors/**`, `.d.ts` files and test files. Comments are stripped before counting, so `#123` in a comment is not a colour.
 
 **What counts as a violation:**
 
 - hex colour literals (`#rgb`, `#rrggbb`, `#rrggbbaa`)
 - `rgb(` / `rgba(` / `hsl(` literals
-- Tailwind arbitrary values for radius, shadow, font size and spacing: `rounded-[`, `shadow-[`, `text-[<n>px]`, and `p|m|gap|space|w|h…-[<n>px]`
+- Tailwind arbitrary values for radius, shadow, text and spacing: `rounded-[`, `shadow-[`, `text-[`, and padding / margin / gap / space (`p-[`, `mt-[`, `-mx-[`, `gap-x-[`, `space-y-[` …). Width, height and position (`w-[`, `h-[`, `top-[` …) are **not** guarded: fixed layout sizes are legitimate.
 
 **How the ratchet works:** `guard-baseline.json` maps each file path to its current violation count.
 
@@ -208,13 +208,13 @@ The counts can only go down, so D2 locks in every screen it converts.
 
 ### Logging
 
-Breadcrumbs go through the existing `clientLog`. The whitelist lives in both the frontend `ClientLogEvent` type and the backend `api/client_log.py`, and both gain the new events.
+Breadcrumbs go through the existing `clientLog`. The whitelist lives in both the frontend `ClientLogEvent` type and the backend `api/client_log.py`, and both gain the three new events plus two new field keys, `theme` and `size`.
 
 | Event | Level | Fields | When |
 |---|---|---|---|
-| `design_tokens_applied` | info | `group_id` | `applyTokens` succeeded |
-| `design_tokens_fallback` | warning | `reason=unknown_group` | an unknown group id falls back to `default`. The raw id is **not** logged because it is client text. |
-| `avatar_fallback` | info | `surface=<size>` | an avatar image failed and the initial was shown |
+| `design_tokens_applied` | info | `theme=<group id>` | `applyGroupTokens` wrote the group variables |
+| `design_tokens_fallback` | warning | `reason=unknown_service` | `serviceIdToGroupId` got an unknown service id and fell back to `hinatazaka` (today's behaviour, kept for zero pixels). The raw id is **not** logged because it is client text. |
+| `avatar_fallback` | info | `size=<sm/md/lg/xl>` | an avatar image failed and the initial was shown |
 
 No text, names, URLs or paths are logged.
 
@@ -226,8 +226,9 @@ Unit tests run with vitest (frontend) and pytest (backend).
   - Every `GroupId` defines every group token.
   - Each group token **equals** the legacy value it was copied from. This is the automated zero-pixel guarantee.
   - The legacy values come from a frozen fixture, `legacy-theme-values.json`, captured from `dev` before the refactor. Comparing against `serviceThemes` itself would be circular, because it now reads from `groups.ts`.
-  - `applyTokens` writes every `--ds-*` variable and every legacy `--color-*` variable.
-  - An unknown group falls back to `default` and logs `design_tokens_fallback`.
+  - `applyStaticTokens` writes every static `--ds-*` variable; `applyGroupTokens` writes every `--ds-group-*` variable and every legacy `--color-*` variable.
+  - An unknown service id falls back to `hinatazaka` and logs `design_tokens_fallback`; a known one logs nothing.
+  - Every `var(--ds-*)` referenced in `tailwind.config.js` is a variable the apply functions actually write.
 - **Primitives.**
   - `Badge`: 0, 1, 99, 100 → `99+`, and the aria-label.
   - `Avatar`: the ring when selected, and the fallback on image error (which logs).
@@ -235,11 +236,11 @@ Unit tests run with vitest (frontend) and pytest (backend).
   - `Modal`: Escape and backdrop close.
   - `DatePill`: the sticky class.
   - `Pill`, `Button` and `RailItem`: their states.
-- **`formatDatePillLabel`.** Today, yesterday, same year, a previous year, and the year boundary (1 Jan vs 31 Dec), for `ja`, `zh-TW` and `en`. Time is frozen with `vi.setSystemTime`.
+- **`formatDatePillLabel`.** Today, yesterday, same year, a previous year, and the year boundary (1 Jan vs 31 Dec), for `ja`, `zh-TW` and `en`. `now` is passed explicitly; the `DatePill` component test freezes time with `vi.setSystemTime`.
 - **`/design`.** A smoke render, switching through all five groups. Also a test that `?view=design` is ignored when not in DEV.
 - **Guard.** Fixture-based tests for each ratchet rule, plus the real scan.
 - **Backend.** `client_log` accepts the three new events and still rejects unknown ones.
-- **Zero-pixel check.** Take Playwright headless screenshots of the main screens (member list, chat, blog, a modal, the call screen) on `dev` before the change and on the branch after it, and diff them pixel by pixel. Then the user checks visually once in the Windows dev build.
+- **Zero-pixel check.** Playwright headless screenshots of the screens the backend test mode can show (home with the member list, a member chat, a group chat) are captured before any code change and compared pixel by pixel after it. The blog, modals and the call screen are not reachable in test mode, so they are covered only by the token-equality tests and the user's one-time visual check in the Windows dev build.
 - **Full suites stay green:** frontend vitest, `tsc`, eslint; backend pytest, ruff, mypy.
 
 ## Out of scope (D2 / D3 / later)
