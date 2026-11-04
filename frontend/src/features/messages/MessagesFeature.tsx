@@ -17,7 +17,6 @@ import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, IconButton } from '../../design/primitives';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
-import { useMemberStreak, streakGroupId } from './hooks/useMemberStreak';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
@@ -37,7 +36,7 @@ import { useLandingHighlight } from './hooks/useLandingHighlight';
 import { buildTimeline } from './timeline/buildTimeline';
 import { firstUnreadIndex } from './timeline/jumpTarget';
 import { applyNickname } from './utils/nickname';
-import { useRoomLetters } from './hooks/useRoomLetters';
+import { useRoomExtras } from './hooks/useRoomExtras';
 import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
 import { clientLog } from '../../utils/clientLog';
@@ -431,23 +430,27 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // One timeline for the list, the jumps, the restore and the unread arrows.
     const userNickname = messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined;
     const displayMessages = useMemo(() => applyNickname(messages, userNickname), [messages, userNickname]);
-    // Sent letters (local archive) and the account profile; group chats have none.
-    const roomLetters = useRoomLetters(activeService, selectedGroupDir, isGroupChat, syncVersion);
-    const timeline = useMemo(() => buildTimeline(displayMessages, roomLetters.letters), [displayMessages, roomLetters.letters]);
+    // Sent letters (local archive), the account profile and the member streak, asked only for a
+    // room whose path is in the active service's folder (never the stale pair of a group switch).
+    // Group chats have no letters and no streak. The streak (one official request per room per
+    // local day) is shared by the header and the profile popup.
+    const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
+    const { streak, retryStreak } = roomExtras;
+    const timeline = useMemo(() => buildTimeline(displayMessages, roomExtras.letters), [displayMessages, roomExtras.letters]);
     const letterAvatar = useMemo(
-        () => letterAvatars(roomLetters.letters, roomLetters.profile?.avatars ?? []),
-        [roomLetters.letters, roomLetters.profile],
+        () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
+        [roomExtras.letters, roomExtras.profile],
     );
     // Breadcrumb: how each letter's avatar was chosen (history vs earliest-known fallback).
     useEffect(() => {
-        if (!roomLetters.profile || roomLetters.letters.length === 0) return;
+        if (!roomExtras.profile || roomExtras.letters.length === 0) return;
         clientLog('letter_avatar', {
-            count: roomLetters.letters.length,
+            count: roomExtras.letters.length,
             history: letterAvatar.history,
             fallback: letterAvatar.fallback,
         });
-    }, [letterAvatar, roomLetters.profile, roomLetters.letters.length]);
-    const letterUserName = roomLetters.profile?.name || userNickname || t('letters.you');
+    }, [letterAvatar, roomExtras.profile, roomExtras.letters.length]);
+    const letterUserName = roomExtras.profile?.name || userNickname || t('letters.you');
     const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
     const renderLetter = useCallback((letter: Letter) => (
         <LetterRow
@@ -551,9 +554,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const headerMember = Object.values(membersMap)[0];
     const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
     const isLightHeader = theme.messages.headerStyle === 'light';
-    // Streak from the session cache (one official request per room per local day), shared by the header and the profile popup.
-    // It is a 1:1 subscription: a group chat (or a path without a numeric id) makes no request.
-    const { streak, retry: retryStreak } = useMemberStreak(streakGroupId(selectedGroupDir, isGroupChat), activeService ?? undefined);
 
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
@@ -766,7 +766,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             messages={messages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
-                            letters={roomLetters.letters}
+                            letters={roomExtras.letters}
                             onJumpToLetter={jumpToLetter}
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
@@ -817,7 +817,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-feedback-error">Error: {error}</div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomLetters.ready && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && (
                         <MessageList
                             memberId={selectedGroupDir}
                             timeline={timeline}

@@ -1,4 +1,4 @@
-import { getServiceIdFromDisplayName } from '../../data/services';
+import { getServiceIdFromDisplayName, SERVICES_BY_ID } from '../../data/services';
 
 export interface ReadStatePath {
     service: string;
@@ -25,4 +25,14 @@ export function parseReadStatePath(path: string): ReadStatePath | null {
         return { service: serviceId, groupId: parseInt(groupMatch[2], 10), memberId: 0 };
     }
     return null;
+}
+
+/**
+ * Service id of a room path, from its service folder (the first segment): the service's
+ * display name (the archive's folder, as in parseReadStatePath) or its id, case-insensitive,
+ * like the backend's get_service_identifier; undefined for any other folder.
+ */
+export function serviceOfPath(path: string): string | undefined {
+    const folder = path.split('/')[0];
+    return getServiceIdFromDisplayName(folder) ?? SERVICES_BY_ID[folder.toLowerCase()]?.id;
 }
