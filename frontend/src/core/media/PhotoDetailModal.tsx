@@ -99,15 +99,16 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 e.preventDefault();
                 if (hasNext) onNavigate(currentIndex + 1);
                 break;
+            // ↑ / ↓ zoom a photo; for video and voice they stay unclaimed: the player owns volume.
             case 'ArrowUp':
-                e.preventDefault();
                 if (item?.type === 'picture') {
+                    e.preventDefault();
                     setZoom(z => Math.min(z + 0.25, 4));
                 }
                 break;
             case 'ArrowDown':
-                e.preventDefault();
                 if (item?.type === 'picture') {
+                    e.preventDefault();
                     setZoom(z => Math.max(z - 0.25, 1));
                 }
                 break;

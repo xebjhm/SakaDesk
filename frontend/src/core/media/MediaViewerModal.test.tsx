@@ -63,4 +63,21 @@ describe('MediaViewerModal', () => {
             useAppStore.setState({ goldenFingerActive: false });
         }
     });
+
+    it.each([
+        ['video', '/v.mp4'],
+        ['voice', '/v.m4a'],
+    ] as const)('↑ / ↓ change the %s volume (the frame leaves them to the player)', (type, src) => {
+        window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+        window.HTMLMediaElement.prototype.pause = vi.fn();
+        window.HTMLMediaElement.prototype.load = vi.fn();
+        const media: MediaViewerItem[] = [{ src, type, timestamp: '2026-11-01T00:00:00Z' }];
+        const { container } = render(<MediaViewerModal mediaItems={media} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        const slider = () => container.ownerDocument.querySelector<HTMLInputElement>('input[type="range"][step="0.01"]')!;
+        const before = Number(slider().value);
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowUp' });
+        expect(Number(slider().value)).toBeCloseTo(before + 0.05);
+        fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
+        expect(Number(slider().value)).toBeCloseTo(before);
+    });
 });
