@@ -1,0 +1,108 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from '../../../i18n';
+import { parseErrorDetail } from '../../../utils/httpError';
+import { clientLog } from '../../../utils/clientLog';
+import { toLocalDateStr } from '../../../utils/dateFormatters';
+
+export type StreakState =
+    | { status: 'idle' }
+    | { status: 'loading' }
+    | { status: 'error'; message: string }
+    | { status: 'ready'; days: number };
+
+/**
+ * App-session cache of the official subscription streak: at most one request per room per
+ * local day. Successful answers only; a failure is never cached. In-flight requests are
+ * shared, so the header and the profile popup (or a quick re-open) never ask twice.
+ */
+const streakCache = new Map<string, number>();
+const inFlight = new Map<string, Promise<number>>();
+
+/** Cache key: service, group id and the local day (toLocalDateStr) of `now`. */
+export function streakCacheKey(service: string, groupId: string, now: Date): string {
+    return `${service}|${groupId}|${toLocalDateStr(now)}`;
+}
+
+/** Test seam: forget every cached and in-flight streak. */
+export function resetStreakCache(): void {
+    streakCache.clear();
+    inFlight.clear();
+}
+
+/** One shared request per key; caches the days on success and logs one `streak_load` breadcrumb per request. */
+function loadStreak(key: string, service: string, groupId: string, fallbackError: string): Promise<number> {
+    const running = inFlight.get(key);
+    if (running) return running;
+    const request = (async () => {
+        try {
+            const url = `/api/chat/streak/${encodeURIComponent(groupId)}?service=${encodeURIComponent(service)}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+                const body = await res.json().catch(() => ({}));
+                throw new Error(parseErrorDetail(body, fallbackError));
+            }
+            const data = await res.json() as { days?: number };
+            const days = data.days ?? 0;
+            streakCache.set(key, days);
+            clientLog('streak_load', { outcome: 'ok' });
+            return days;
+        } catch (err: unknown) {
+            clientLog('streak_load', { outcome: 'error' });
+            throw err instanceof Error ? err : new Error(fallbackError);
+        } finally {
+            inFlight.delete(key);
+        }
+    })();
+    inFlight.set(key, request);
+    return request;
+}
+
+/**
+ * The subscription streak of the open room (GET /api/chat/streak/{groupId}), shared by the
+ * chat header and the profile popup. Served from the session cache when this room was already
+ * fetched today (local date), otherwise fetched once (concurrent callers share the request).
+ * A late answer for a room the user has left is ignored (SD-FE-GAP-B-01). On failure the state
+ * is 'error' (the header omits the day count; the popup offers `retry`, which fetches again).
+ * `now` is a test seam for the clock.
+ */
+export function useMemberStreak(
+    groupId: string | undefined,
+    service: string | undefined,
+    now: () => Date = () => new Date(),
+) {
+    const { t } = useTranslation();
+    const [streak, setStreak] = useState<StreakState>({ status: 'idle' });
+    const [attempt, setAttempt] = useState(0);
+    const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+    useEffect(() => {
+        if (!groupId) {
+            setStreak({ status: 'idle' });
+            return;
+        }
+        // `service` is a required backend query param; without it the request would 422.
+        if (!service) {
+            setStreak({ status: 'error', message: t('memberProfile.noService') });
+            return;
+        }
+        const key = streakCacheKey(service, groupId, now());
+        const cached = streakCache.get(key);
+        if (cached !== undefined) {
+            setStreak({ status: 'ready', days: cached });
+            return;
+        }
+        let cancelled = false;
+        setStreak({ status: 'loading' });
+        loadStreak(key, service, groupId, t('memberProfile.fetchFailed'))
+            .then((days) => { if (!cancelled) setStreak({ status: 'ready', days }); })
+            .catch((err: unknown) => {
+                if (cancelled) return;
+                setStreak({ status: 'error', message: err instanceof Error ? err.message : t('memberProfile.fetchFailed') });
+            });
+        return () => { cancelled = true; };
+        // The clock is read when the effect runs (room open / retry); it is not a dependency.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [groupId, service, attempt, t]);
+
+    return { streak, retry };
+}
