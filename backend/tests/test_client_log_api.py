@@ -356,3 +356,21 @@ def test_letter_breadcrumbs_are_accepted(event, fields):
     [entry] = _client_events(logs)
     assert entry["event"] == event
     assert {key: entry[key] for key in fields} == fields
+
+
+def test_blog_load_breadcrumb_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "blog_load",
+                "fields": {"target": "content", "outcome": "cache_hit", "count": 3},
+            },
+        )
+    assert res.status_code == 204
+    event = _client_events(logs)[0]
+    assert event["event"] == "blog_load"
+    assert event["log_level"] == "info"
+    assert event["target"] == "content"
+    assert event["outcome"] == "cache_hit"
+    assert event["count"] == 3
