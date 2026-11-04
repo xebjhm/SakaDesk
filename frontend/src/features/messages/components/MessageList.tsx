@@ -116,17 +116,17 @@ export const MessageList: React.FC<ChatListProps> = ({
         handleRangeChanged,
     } = useChatScroll(memberId, processedMessages);
 
-    // Search navigation: find target index for initialTopMostItemIndex (cross-room)
-    // and scrollToIndex (same-room). Both place the target at the top.
+    // Search navigation: the target's index seeds initialTopMostItemIndex on a fresh
+    // mount, which places it at the top.
     const targetIndex = useMemo(() => {
         if (targetMessageId == null) return undefined;
         const idx = processedMessages.findIndex(m => m.id === targetMessageId);
         return idx !== -1 ? idx : undefined;
     }, [targetMessageId, processedMessages]);
 
-    // Fresh mounts already start at the target (initialTopMostItemIndex); the shared
-    // jump (onJumpToMessage) then verifies the landing and highlights it. Same-room
-    // targets jump here too, since Virtuoso is already mounted.
+    // Fresh mounts already start at the target (initialTopMostItemIndex) and same-room
+    // targets arrive on a mounted list; both call onJumpToMessage, the shared jump that
+    // scrolls, verifies the landing and highlights it.
     useEffect(() => {
         if (targetIndex == null || targetMessageId == null) return;
         onJumpToMessage?.(targetMessageId);
