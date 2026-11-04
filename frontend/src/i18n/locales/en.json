@@ -39,7 +39,10 @@
     "moreOptions": "More options",
     "removeService": "Remove Service",
     "on": "ON",
-    "unreadCount": "{{count}} unread"
+    "unreadCount": "{{count}} unread",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "mediaViewer": "Media viewer"
   },
   "settings": {
     "title": "Settings",

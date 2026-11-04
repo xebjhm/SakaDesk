@@ -39,7 +39,10 @@
     "moreOptions": "更多選項",
     "removeService": "移除服務",
     "on": "開",
-    "unreadCount": "{{count}} 則未讀"
+    "unreadCount": "{{count}} 則未讀",
+    "retry": "重試",
+    "confirm": "確認",
+    "mediaViewer": "媒體檢視器"
   },
   "settings": {
     "title": "設定",

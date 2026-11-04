@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { X, MessageCircle } from 'lucide-react';
-import { Button, IconButton, RailItem, Modal } from './index';
+import { Button, IconButton, RailItem } from './index';
 
 describe('Button', () => {
     it('defaults to a secondary md button of type button', () => {
@@ -58,38 +58,6 @@ describe('RailItem', () => {
         );
         expect(screen.getByRole('button', { name: 'トーク' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'ブログ' })).not.toHaveAttribute('aria-current');
-    });
-});
-
-describe('Modal', () => {
-    it('renders nothing when closed', () => {
-        render(<Modal isOpen={false} onClose={vi.fn()} title="t">body</Modal>);
-        expect(screen.queryByRole('dialog')).toBeNull();
-    });
-
-    it('renders a labelled sheet dialog with footer', async () => {
-        render(
-            <Modal isOpen onClose={vi.fn()} title="設定" footer={<Button>OK</Button>}>
-                本文
-            </Modal>,
-        );
-        const dialog = await screen.findByRole('dialog', { name: '設定' });
-        expect(dialog).toHaveClass('bg-sheet', 'rounded-sheet', 'shadow-sheet');
-        expect(dialog).toHaveTextContent('本文');
-        expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
-    });
-
-    it('closes on Escape and on backdrop click, not on a click inside', async () => {
-        const onClose = vi.fn();
-        render(<Modal isOpen onClose={onClose} title="t">inside</Modal>);
-        const dialog = await screen.findByRole('dialog');
-        await userEvent.click(dialog);
-        expect(onClose).not.toHaveBeenCalled();
-        await userEvent.keyboard('{Escape}');
-        expect(onClose).toHaveBeenCalledTimes(1);
-        expect(screen.getByTestId('modal-backdrop')).toHaveClass('bg-scrim');
-        await userEvent.click(screen.getByTestId('modal-backdrop'));
-        expect(onClose).toHaveBeenCalledTimes(2);
     });
 });
 

@@ -5,6 +5,8 @@ import { useModalClose } from '../../core/common/useModalClose';
 import type { MemberInfo, Message } from '../../types';
 import { useIncomingCall } from './useIncomingCall';
 import { CallOverlay } from './CallOverlay';
+import { Modal } from '../../design/primitives/Modal';
+import { resetDialogStack } from '../../design/dialog/dialogStack';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
@@ -35,6 +37,11 @@ function ModalHarness() {
     const [open, setOpen] = useState(true);
     useModalClose(open, () => setOpen(false));
     return open ? <div data-testid="modal" /> : null;
+}
+
+function DialogHarness() {
+    const [open, setOpen] = useState(true);
+    return <Modal isOpen={open} onClose={() => setOpen(false)} title="設定">x</Modal>;
 }
 
 const settle = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -68,6 +75,22 @@ describe('incoming call wiring', () => {
         expect(screen.getByTestId('call-overlay')).toBeInTheDocument();
         // the next Esc, with nothing else open, declines
         fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(screen.queryByTestId('call-overlay')).toBeNull();
+    });
+
+    it('Esc closes an open design-system Modal and does not also decline the call', async () => {
+        resetDialogStack();
+        render(<><Harness /><DialogHarness /></>);
+        await settle();
+        const dialog = screen.getByRole('dialog', { name: '設定' });
+        expect(dialog).toHaveFocus();
+        // dispatched on the page (as when focus left the dialog): only the dialog layer's claim
+        // keeps the overlay from declining too
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: '設定' })).toBeNull();
+        expect(screen.getByTestId('call-overlay')).toBeInTheDocument();
+        // the next Esc, with nothing else open, declines
+        fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
         expect(screen.queryByTestId('call-overlay')).toBeNull();
     });
 

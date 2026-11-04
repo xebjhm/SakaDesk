@@ -39,7 +39,10 @@
     "moreOptions": "その他のオプション",
     "removeService": "サービスを削除",
     "on": "ON",
-    "unreadCount": "未読 {{count}} 件"
+    "unreadCount": "未読 {{count}} 件",
+    "retry": "再試行",
+    "confirm": "確認",
+    "mediaViewer": "メディアビューア"
   },
   "settings": {
     "title": "設定",

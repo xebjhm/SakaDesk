@@ -12,7 +12,7 @@ export type ClientLogEvent =
     | 'app_load_failed'
     | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback'
     | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load'
-    | 'blog_load';
+    | 'blog_load' | 'dialog' | 'dialog_load';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
