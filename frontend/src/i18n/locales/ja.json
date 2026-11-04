@@ -42,7 +42,8 @@
     "unreadCount": "未読 {{count}} 件",
     "retry": "再試行",
     "confirm": "確認",
-    "mediaViewer": "メディアビューア"
+    "mediaViewer": "メディアビューア",
+    "debug": "デバッグ"
   },
   "settings": {
     "title": "設定",
@@ -229,7 +230,8 @@
     "unknownError": "不明なエラー",
     "sessionExpired": "認証セッションが期限切れです。サービスを引き続きご利用いただくには、再度ログインしてください。",
     "refreshFailed": "認証に予期せず失敗しました。再度ログインしてください。問題が続く場合は、不具合報告をお願いします。",
-    "cancelled": "同期をキャンセルしました"
+    "cancelled": "同期をキャンセルしました",
+    "progress": "同期の進行状況"
   },
   "about": {
     "title": "アプリについて",

@@ -15,6 +15,8 @@ export const color = {
         elevated: '#FAFAFA',
         /** Recessed neutral, e.g. avatar placeholder, selected pill. */
         sunken: '#F3F4F6',
+        /** The window base behind the app (root, boot screen); matches pywebview's background_color and index.css. */
+        window: '#F0F2F5',
     },
     text: {
         primary: '#1f2937',

@@ -42,7 +42,8 @@
     "unreadCount": "{{count}} unread",
     "retry": "Retry",
     "confirm": "Confirm",
-    "mediaViewer": "Media viewer"
+    "mediaViewer": "Media viewer",
+    "debug": "Debug"
   },
   "settings": {
     "title": "Settings",
@@ -229,7 +230,8 @@
     "unknownError": "Unknown error",
     "sessionExpired": "Authentication session has expired. Please log in again to continue using the service.",
     "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.",
-    "cancelled": "Sync cancelled"
+    "cancelled": "Sync cancelled",
+    "progress": "Sync progress"
   },
   "about": {
     "title": "About",

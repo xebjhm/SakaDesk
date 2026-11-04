@@ -42,7 +42,8 @@
     "unreadCount": "{{count}} 則未讀",
     "retry": "再試",
     "confirm": "確認",
-    "mediaViewer": "媒體檢視器"
+    "mediaViewer": "媒體檢視器",
+    "debug": "除錯"
   },
   "settings": {
     "title": "設定",
@@ -229,7 +230,8 @@
     "unknownError": "唔知咩錯誤",
     "sessionExpired": "認證過咗期。請重新登入繼續使用服務。",
     "refreshFailed": "認證失敗咗。請重新登入繼續使用服務。如果問題持續，請報告。",
-    "cancelled": "已經取消同步"
+    "cancelled": "已經取消同步",
+    "progress": "同步進度"
   },
   "about": {
     "title": "關於",

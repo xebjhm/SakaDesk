@@ -9,6 +9,7 @@ import { useAppStore } from '../store/appStore'
 import type { FeatureId } from '../store/appStore'
 import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
+import type { GroupId } from '../design/tokens'
 import { Z_INDEX } from '../constants/zIndex'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
@@ -44,14 +45,6 @@ function App() {
         isServiceDisconnected,
         checkAuth,
     } = useAuth();
-
-    // Apply group design tokens (and legacy theme variables) when activeService changes
-    useEffect(() => {
-        if (activeService) {
-            const groupId = serviceIdToGroupId(activeService);
-            applyGroupTokens(groupId);
-        }
-    }, [activeService]);
 
     // Settings hook
     const {
@@ -186,6 +179,16 @@ function App() {
     const [tosAccepted, setTosAccepted] = useState(() => {
         return persisted.getPref('tos_accepted_at', null) !== null;
     });
+
+    // Group design tokens (and the legacy theme variables): the active group's once ToS is
+    // accepted and a group is chosen, the neutral `default` group before that (the ToS and
+    // landing screens), so their group roles are defined and never a removed group's.
+    const tokenGroup: GroupId = tosAccepted && selectedServices.length > 0 && activeService
+        ? serviceIdToGroupId(activeService)
+        : 'default';
+    useEffect(() => {
+        applyGroupTokens(tokenGroup);
+    }, [tokenGroup]);
 
     // Backend-backed prefs hydration — loads the app-state prefs cache before
     // the gated UI renders. Swallows fetch errors internally (see persisted.ts),

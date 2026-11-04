@@ -42,7 +42,8 @@
     "unreadCount": "{{count}} 条未读",
     "retry": "重试",
     "confirm": "确认",
-    "mediaViewer": "媒体查看器"
+    "mediaViewer": "媒体查看器",
+    "debug": "调试"
   },
   "settings": {
     "title": "设置",
@@ -229,7 +230,8 @@
     "unknownError": "未知错误",
     "sessionExpired": "认证会话已过期。请重新登录以继续使用服务。",
     "refreshFailed": "认证意外失败。请重新登录以继续使用服务。如果问题持续，请报告此问题。",
-    "cancelled": "已取消同步"
+    "cancelled": "已取消同步",
+    "progress": "同步进度"
   },
   "about": {
     "title": "关于",

@@ -57,6 +57,14 @@ and a primitive never takes a group id.
   with the thin `bg-group-title-bar` under it (Sakurazaka's `light` header). It is an allowed
   official-layer use, like the chat header itself.
 - **Cross-group markers (decided in D2c):** see [Cross-group markers](#cross-group-markers).
+- **Group scope (decided in D2d):** a surface that belongs to one specific service other than the
+  active one (that service's login dialog, its sync during the first-launch sync, its inline sync
+  view) sets that group's variables on itself with `groupScopeStyle(groupId)`
+  (`design/groupScope.ts`); every `*-group-*` utility inside then follows that group. It is the only
+  way to show a particular group's colours, and it is never used in lists that mix groups.
+- **Neutral before a group is chosen (decided in D2d):** until ToS is accepted and a group is
+  selected, `App` applies the `default` group's tokens, so the ToS and landing screens use neutral
+  greys through the same roles.
 
 **Exception:** at most **one** `primary` or `danger` Button per screen, and **one per
 dialog** (each dialog counts on its own). `primary` uses `bg-group-accent` (the action
@@ -84,7 +92,7 @@ The neutral tokens D2c added (`design/tokens/color.ts`):
   `text-status-warning` (all ≥ 4.5:1 on white, pinned by `d2cTokens.test.ts`), and the
   danger fill is `bg-status-danger` (the `danger` Button). `danger` is 4.8:1 on white only:
   it falls under 4.5:1 on `bg-sunken`, so never put danger text on a sunken surface.
-  `bg-status-attention` is only the rail's disconnected badge.
+  `bg-status-attention` is only the rail's disconnected badge. `bg-status-success` (D2d) marks a finished step (the sync phase steps).
 - **`overlay.toast`:** toasts use `bg-toast` (with `text-viewer`).
 - **`viewer.*`:** the dark photo/video viewer: `bg-viewer-scrim` (its backdrop),
   `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`, `text-viewer-muted`
@@ -97,6 +105,9 @@ The neutral tokens D2c added (`design/tokens/color.ts`):
   and `ring-offset-surface` (`ringOffsetColor.surface`) is the gap colour of a selection ring
   with an offset (the background presets). All three are `--ds-surface-sheet`. There is no
   `bg-surface`: use `bg-sheet`.
+- **`surface.window` (D2d):** `bg-window` (`#F0F2F5`) is the window base behind the app (the root
+  and the boot screen). It matches pywebview's `background_color` and the `body` colour in
+  `index.css`, which stays a literal because it paints before the tokens load.
 
 ## Colour system
 
@@ -115,7 +126,7 @@ one of two layers:
 
 | Role | Step | Used for | Utility |
 |---|---|---|---|
-| `action` | 600 | badge, primary button, play / scroll buttons | `bg-group-accent`, `bg-group-badge` |
+| `action` | 600 | badge, primary button, play / scroll buttons, progress fill | `bg-group-accent`, `bg-group-badge` |
 | `strong` | 700 | member names, links, selected text | `text-group-strong` |
 | `subtle` | 50 | selected / hover background | `bg-group-subtle` |
 | `highlight` | 100 | landed-row highlight | `animate-landing` |
