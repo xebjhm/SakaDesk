@@ -33,6 +33,8 @@ interface ChatListProps {
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
     /** Ref to expose Virtuoso handle for external scroll control */
     virtuosoRef?: React.RefObject<VirtuosoHandle>;
+    /** Receives Virtuoso's scroll element (the timeline jump glides it) */
+    scrollerRef?: (el: HTMLElement | Window | null) => void;
     /** User's nickname for %%% placeholder replacement */
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
@@ -66,6 +68,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     onLongPress,
     onRangeChanged,
     virtuosoRef: externalRef,
+    scrollerRef,
     userNickname,
     onToggleFavorite,
     onAvatarClick,
@@ -160,6 +163,7 @@ export const MessageList: React.FC<ChatListProps> = ({
         <Virtuoso
             key={virtuosoKey}
             ref={virtuosoRef}
+            scrollerRef={scrollerRef}
             style={{ height: '100%' }}
             data={processedMessages}
             initialTopMostItemIndex={initialTopMostItemIndex}

@@ -179,6 +179,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Scroll ref
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const visibleRangeRef = useRef<{ startIndex: number; endIndex: number }>({ startIndex: 0, endIndex: 0 });
+    // Virtuoso's scroll element, which the timeline jump glides.
+    const chatScrollerRef = useRef<HTMLElement | null>(null);
+    const setChatScroller = useCallback((el: HTMLElement | Window | null) => {
+        chatScrollerRef.current = el instanceof HTMLElement ? el : null;
+    }, []);
 
     // Nav button state
     const [hasUnreadAbove, setHasUnreadAbove] = useState(false);
@@ -434,7 +439,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setHighlightedMessageId(null);
     }, [selectedGroupDir, cancelHighlight]);
 
-    const jumpTo = useTimelineJump({ virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir });
+    const jumpTo = useTimelineJump({
+        virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
+        getScroller: () => chatScrollerRef.current,
+        visibleRange: () => visibleRangeRef.current,
+    });
 
     const updateUnreadNavState = useCallback((range?: { startIndex: number; endIndex: number }) => {
         const currentRange = range || visibleRangeRef.current;
@@ -790,6 +799,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onLongPress={() => setShowRevealConfirm(true)}
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
+                            scrollerRef={setChatScroller}
                             userNickname={
                                 messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined
                             }

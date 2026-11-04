@@ -31,11 +31,11 @@ The incoming-call screen (B) already uses the new glass style and is not touched
 | 5 | A letter in chat shows the **full letter image** (option A, as in the official app), right-aligned, with **no "sent letter" tag**. |
 | 6 | The member sidebar **does not collapse**. Only the content fades in when the member or feature changes. |
 | 7 | Timeline: a pure `buildTimeline` model plus **`GroupedVirtuoso`** for the sticky date headers. The library is used instead of a hand-built floating pill. |
-| 8 | Calendar jumps are **instant**. All jumps go through one `jumpTo` helper. It ships first as its own PR (**D2a-0**). |
+| 8 | Calendar jumps never scroll through history: far jumps land just short of the target and glide in (instant with reduced motion). All jumps go through one `jumpTo` helper. It ships first as its own PR (**D2a-0**). |
 | 9 | A run of consecutive messages = same sender, same local day, ≤ 5 minutes between neighbours, and no letter in between. |
 | 10 | A letter shows **the user's avatar at the time it was sent** (from the account avatar history), falling back to the earliest known avatar. |
 
-## D2a-0 — instant, reliable jumps
+## D2a-0 — fast, reliable jumps that glide into place
 
 ### Problem
 
@@ -61,16 +61,23 @@ function useTimelineJump(args: {
   isUnread: (id: number) => boolean;
   onLanded?: (messageId: number) => void;   // drives the highlight
   resetKey?: unknown;                       // a change cancels in-flight jumps (room switch)
-  deps?: Partial<{ nextFrame; measure; now }>;   // test seam
+  getScroller?: () => HTMLElement | null;   // Virtuoso's scroll element; without it jumps are instant
+  visibleRange?: () => { startIndex: number; endIndex: number };   // rendered rows
+  deps?: Partial<{ nextFrame; measure; now; reducedMotion }>;   // test seam
 }): (target: JumpTarget) => Promise<JumpOutcome>;   // jumpTo
 ```
 
 The flow of a jump:
 
 1. Resolve the target to a message row with a pure function (`resolveJump`). If there is none, the outcome is `not_found`.
-2. Call `scrollToIndex({ index, align, behavior: 'auto' })`. Message and date targets align `start` unless the message target asks for `center`; first-unread aligns `center`; bottom aligns `end`. Top and bottom land exactly and are not verified.
-3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too (at most 2 × 2 + 1 wait cycles in total). The outcome is `landed` or `gave_up`. A jump is `cancelled` by a newer jump, an unmount, a room switch (the hook takes a `resetKey`; `MessagesFeature` passes the selected room), or when the target message has left the list while its row cannot be measured. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
-4. **Landing highlight.** For message and date jumps, the landed row gets `bg-group-subtle` for 1 s, faded with `duration-base`. It adds no new colour. First-unread, top and bottom jumps are not highlighted.
+2. **Move there.** Message and date targets align `start` unless the message target asks for `center`; first-unread aligns `center`; bottom aligns `end`. Never `behavior: 'smooth'`: the glide is the hook's own rAF animation on `scrollTop` (`timeline/glide.ts`), `motion.duration.glide` (400 ms) along `motion.easing.standard`. It homes in on the target row as soon as that row renders, and absorbs scroll changes Virtuoso makes meanwhile (height compensation) over the remaining frames.
+   - **No scroller, or `prefers-reduced-motion`:** one instant `scrollToIndex({ index, align, behavior: 'auto' })`.
+   - **On screen** (inside the visible range): glide straight by the measured distance; no `scrollToIndex`. If the row cannot be measured, scroll instantly instead.
+   - **Close** (estimated within 2 viewports, from the visible rows' average height): glide from where the list is toward twice the estimate, homing in on the row once it renders; if it still is not rendered at the end, scroll instantly. A lead-in here could land on the wrong side of the target.
+   - **Far:** an instant `scrollToIndex` with `offset` lands 0.8 viewport short of the target in the direction of travel (Virtuoso adds a positive offset to the scroll position, so a downward jump uses a negative one). Virtuoso re-issues that scroll each time row heights change until they have been still for 150 ms, so the hook waits until `scrollTop` and the total height have been still that long (at most 60 frames; if they never settle, it scrolls instantly to the target), then glides the last 0.8 viewport.
+   - Top and bottom take the same paths and are not verified afterwards.
+3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues an instant `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too (at most 2 × 2 + 1 wait cycles in total). The outcome is `landed` or `gave_up`. A jump is `cancelled` (also mid-glide) by a newer jump, an unmount, a room switch (the hook takes a `resetKey`; `MessagesFeature` passes the selected room), or when the target message has left the list while its row cannot be measured. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
+4. **Landing highlight.** For message and date jumps, the landed row breathes once (`animate-landing`: the group highlight fades in and out over `motion.duration.landing`, 1.4 s). It adds no new colour. First-unread, top and bottom jumps are not highlighted.
 5. **Breadcrumb log** `timeline_jump` for every jump, with `target`, `index`, `corrections`, `outcome` and `jump_ms`. No message text and no names.
 
 Media with known `width` / `height` reserves its box before the image loads, so landing positions do not drift. Pictures and videos already carry those fields.

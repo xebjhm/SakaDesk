@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { toLocalDateStr } from '../../../utils/dateFormatters';
-import { useTimelineJump, MAX_CORRECTIONS } from './useTimelineJump';
+import { useTimelineJump, estimateTravel, MAX_CORRECTIONS, GLIDE_LEAD, VIRTUOSO_RETRY_MS } from './useTimelineJump';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
@@ -17,14 +17,35 @@ interface SetupOpts {
     /** Called with the 1-based count of nextFrame calls, before it resolves. */
     onFrame?: (n: number) => void;
     ref?: { current: VirtuosoHandle | null };
+    /**
+     * Animated path: a fake scroller, the visible range, and a clock that advances 16 ms per
+     * frame. With `targetTop` the list is simulated: scrollToIndex moves the scroller to
+     * targetTop + offset, and the target measures (targetTop - scrollTop) while it is on screen.
+     */
+    glide?: { scroller: FakeScroller; range?: { startIndex: number; endIndex: number }; reduced?: boolean; targetTop?: number };
+    /** Initial message list (default: the three-message `messages`). */
+    list?: readonly Message[];
 }
 
+interface FakeScroller { scrollTop: number; scrollHeight: number; clientHeight: number }
+const fakeScroller = (scrollTop = 5000): FakeScroller => ({ scrollTop, scrollHeight: 100000, clientHeight: 600 });
+const LEAD = Math.round(600 * GLIDE_LEAD);
+
 function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
-    const scrollToIndex = vi.fn();
+    const glide = opts.glide;
+    const scrollToIndex = vi.fn((loc: { behavior?: string; offset?: number }) => {
+        if (glide?.targetTop !== undefined) glide.scroller.scrollTop = glide.targetTop + (loc.offset ?? 0);
+    });
     const ref = opts.ref ?? { current: { scrollToIndex } as unknown as VirtuosoHandle };
     const onLanded = vi.fn();
     const queue = [...measures];
-    const measure = vi.fn(() => (queue.length > 1 ? queue.shift()! : queue[0]));
+    const measure = vi.fn((): number | null => {
+        if (glide?.targetTop !== undefined) {
+            const d = glide.targetTop - glide.scroller.scrollTop;
+            return d > -50 && d < glide.scroller.clientHeight ? d : null;
+        }
+        return queue.length > 1 ? queue.shift()! : queue[0];
+    });
     let frames = 0;
     const nextFrame = () => { frames += 1; opts.onFrame?.(frames); return Promise.resolve(); };
     const hook = renderHook(({ list, resetKey }: { list: readonly Message[]; resetKey?: unknown }) => useTimelineJump({
@@ -33,8 +54,10 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
         isUnread: opts.unread ?? (() => false),
         onLanded,
         resetKey,
-        deps: { nextFrame, measure, now: () => 0 },
-    }), { initialProps: { list: messages as readonly Message[], resetKey: 'a' as unknown } });
+        getScroller: glide ? () => glide.scroller as HTMLElement : undefined,
+        visibleRange: glide?.range ? () => glide.range! : undefined,
+        deps: { nextFrame, measure, now: glide ? () => frames * 16 : () => 0, reducedMotion: () => glide?.reduced ?? false },
+    }), { initialProps: { list: opts.list ?? (messages as readonly Message[]), resetKey: 'a' as unknown } });
     return { jumpTo: hook.result.current, scrollToIndex, onLanded, measure, ...hook };
 }
 
@@ -228,5 +251,226 @@ describe('useTimelineJump', () => {
         rerender = s.rerender;
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
         expect(s.onLanded).not.toHaveBeenCalled();
+    });
+});
+
+describe('useTimelineJump glide', () => {
+    // 200 rows; ten of them (60 px each on a 600 px viewport) are on screen.
+    const many = Array.from({ length: 200 }, (_, i) => msg(i + 1, new Date(Date.UTC(2024, 0, 1) + i * 3_600_000).toISOString()));
+    const below = { startIndex: 0, endIndex: 9 }; // far above row 150 (id 151)
+    const above = { startIndex: 150, endIndex: 159 }; // far below row 0 (id 1)
+
+    it('far downward: lands a lead short above the target, then glides down into place', async () => {
+        const scroller = fakeScroller();
+        const tops: number[] = [];
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: 20000 }, onFrame: () => tops.push(scroller.scrollTop) });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 150, align: 'start', behavior: 'auto', offset: -LEAD });
+        expect(tops[0]).toBe(20000 - LEAD);
+        expect(scroller.scrollTop).toBe(20000);
+        expect(s.onLanded).toHaveBeenCalledWith(151);
+    });
+
+    it('far upward: lands a lead short below the target, then glides up into place', async () => {
+        const scroller = fakeScroller();
+        const tops: number[] = [];
+        const s = setup([], { list: many, glide: { scroller, range: above, targetTop: 1000 }, onFrame: () => tops.push(scroller.scrollTop) });
+        await expect(s.jumpTo({ kind: 'message', id: 1 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 0, align: 'start', behavior: 'auto', offset: LEAD });
+        expect(tops[0]).toBe(1000 + LEAD);
+        expect(scroller.scrollTop).toBe(1000);
+    });
+
+    it('upward: still lands when Virtuoso compensates for taller rows mid-glide', async () => {
+        // Rows between the viewport and the target measure 95 px taller than estimated, so
+        // Virtuoso pushes scrollTop down by 95 while the target is still off screen.
+        const scroller = fakeScroller();
+        let pushed = false;
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: above, targetTop: 1000 },
+            onFrame: () => { if (!pushed && scroller.scrollTop < 1000 + LEAD - 100) { pushed = true; scroller.scrollTop += 95; } },
+        });
+        await expect(s.jumpTo({ kind: 'message', id: 1 })).resolves.toBe('landed');
+        expect(pushed).toBe(true);
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1); // no correction needed
+        expect(scroller.scrollTop).toBe(1000);
+    });
+
+    it('downward: follows the target when it moves mid-glide, without a correction', async () => {
+        // A picture above the target finishes loading mid-glide and pushes it 60 px down.
+        const scroller = fakeScroller();
+        const g = { scroller, range: below, targetTop: 20000 };
+        const s = setup([], { list: many, glide: g, onFrame: () => { if (scroller.scrollTop > 20000 - LEAD / 2) g.targetTop = 20060; } });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(scroller.scrollTop).toBe(20060);
+    });
+
+    it('close upward: glides from here, homing in once the row renders, with no lead-in the wrong way', async () => {
+        // The target is two rows above the visible ones, 150 px above the viewport top.
+        const scroller = fakeScroller();
+        const tops: number[] = [];
+        const s = setup([], { list: many, glide: { scroller, range: { startIndex: 52, endIndex: 61 }, targetTop: 4850 }, onFrame: () => tops.push(scroller.scrollTop) });
+        await expect(s.jumpTo({ kind: 'message', id: 51 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).not.toHaveBeenCalled();
+        for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeLessThanOrEqual(tops[i - 1]);
+        expect(scroller.scrollTop).toBe(4850);
+        expect(s.onLanded).toHaveBeenCalledWith(51);
+    });
+
+    it('close upward: rows taller than the visible ones still glide all the way, without a snap', async () => {
+        // Estimated 120 px, really 210 px (a long message in between).
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, range: { startIndex: 52, endIndex: 61 }, targetTop: 4790 } });
+        await expect(s.jumpTo({ kind: 'message', id: 51 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).not.toHaveBeenCalled();
+        expect(scroller.scrollTop).toBe(4790);
+    });
+
+    it('close downward: glides from here toward a row just below the viewport', async () => {
+        const scroller = fakeScroller();
+        const tops: number[] = [];
+        const s = setup([], { list: many, glide: { scroller, range: { startIndex: 40, endIndex: 49 }, targetTop: 5660 }, onFrame: () => tops.push(scroller.scrollTop) });
+        await expect(s.jumpTo({ kind: 'message', id: 52 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).not.toHaveBeenCalled();
+        for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeGreaterThanOrEqual(tops[i - 1]);
+        expect(scroller.scrollTop).toBe(5660);
+    });
+
+    it('close but still not rendered after the glide: finishes with an exact instant scroll', async () => {
+        // Rows were much taller than the visible ones suggested: the estimate falls short.
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, range: { startIndex: 52, endIndex: 61 }, targetTop: 2000 } });
+        await expect(s.jumpTo({ kind: 'message', id: 51 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 50, align: 'start', behavior: 'auto' });
+        expect(scroller.scrollTop).toBe(2000);
+    });
+
+    it('near: glides straight to the target by the measured error, without scrollToIndex', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { glide: { scroller, range: { startIndex: 0, endIndex: 2 }, targetTop: 5120 } });
+        await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).not.toHaveBeenCalled();
+        expect(scroller.scrollTop).toBe(5120);
+        expect(s.onLanded).toHaveBeenCalledWith(2);
+    });
+
+    it('near bottom: glides down to the last row instead of leading in from above', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { glide: { scroller, range: { startIndex: 0, endIndex: 2 }, targetTop: 5090 } });
+        await expect(s.jumpTo({ kind: 'bottom' })).resolves.toBe('landed');
+        expect(s.scrollToIndex).not.toHaveBeenCalled();
+        expect(scroller.scrollTop).toBe(5090);
+    });
+
+    it('near but not rendered yet: falls back to an instant scroll', async () => {
+        const scroller = fakeScroller();
+        const s = setup([null, 0], { glide: { scroller, range: { startIndex: 0, endIndex: 2 } } });
+        await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'auto' });
+        expect(scroller.scrollTop).toBe(5000);
+    });
+
+    it('reduced motion keeps the instant path', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, range: below, reduced: true, targetTop: 20000 } });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+        expect(s.scrollToIndex.mock.calls[0][0]).toEqual({ index: 150, align: 'start', behavior: 'auto' });
+        expect(s.scrollToIndex.mock.calls[0][0]).not.toHaveProperty('offset');
+        expect(scroller.scrollTop).toBe(20000);
+    });
+
+    it('a jump cancelled mid-glide ends cancelled and stops moving', async () => {
+        const scroller = fakeScroller();
+        let rerender: ReturnType<typeof setup>['rerender'] = () => {};
+        let at = 0;
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: below, targetTop: 20000 },
+            onFrame: () => {
+                if (at === 0 && scroller.scrollTop > 20000 - LEAD) { at = scroller.scrollTop; rerender({ list: many, resetKey: 'b' }); }
+            },
+        });
+        rerender = s.rerender;
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('cancelled');
+        expect(at).toBeGreaterThan(20000 - LEAD);
+        expect(scroller.scrollTop).toBe(at);
+        expect(s.onLanded).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledTimes(1);
+        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ outcome: 'cancelled' }));
+    });
+
+    it('logs exactly one breadcrumb per animated jump', async () => {
+        const s = setup([], { list: many, glide: { scroller: fakeScroller(), range: below, targetTop: 20000 } });
+        await s.jumpTo({ kind: 'message', id: 151 });
+        expect(clientLog).toHaveBeenCalledTimes(1);
+        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ outcome: 'landed', corrections: 0 }));
+    });
+
+    it('every scrollToIndex call on the animated path uses behavior auto', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], { list: many, glide: { scroller, range: { startIndex: 90, endIndex: 99 }, targetTop: 20000 }, unread: id => id >= 2 });
+        await s.jumpTo({ kind: 'message', id: 151 });
+        await s.jumpTo({ kind: 'top' });
+        await s.jumpTo({ kind: 'bottom' });
+        await s.jumpTo({ kind: 'firstUnread' });
+        expect(s.scrollToIndex.mock.calls.length).toBeGreaterThanOrEqual(3);
+        for (const [arg] of s.scrollToIndex.mock.calls) expect(arg.behavior).toBe('auto');
+    });
+
+    it('waits until Virtuoso has stopped re-scrolling the lead-in before gliding', async () => {
+        // Rows measured after the lead-in change scrollHeight on frames 1-3 (Virtuoso re-issues
+        // its scrollToIndex then); a glide started meanwhile would be snapped back.
+        const scroller = fakeScroller();
+        let firstMove = 0;
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: below, targetTop: 20000 },
+            onFrame: n => {
+                if (n <= 3) scroller.scrollHeight += 25;
+                if (!firstMove && scroller.scrollTop !== 20000 - LEAD) firstMove = n;
+            },
+        });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        // The last change was seen on frame 3 (48 ms); the glide may start writing only after the window.
+        expect((firstMove - 1) * 16 - 48).toBeGreaterThanOrEqual(VIRTUOSO_RETRY_MS);
+        expect(scroller.scrollTop).toBe(20000);
+    });
+
+    it('falls back to an exact instant scroll when the lead-in never settles', async () => {
+        const scroller = fakeScroller();
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: below, targetTop: 20000 },
+            onFrame: () => { scroller.scrollHeight += 1; },
+        });
+        await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(2);
+        expect(s.scrollToIndex).toHaveBeenNthCalledWith(2, { index: 150, align: 'start', behavior: 'auto' });
+        expect(scroller.scrollTop).toBe(20000);
+    });
+});
+
+describe('estimateTravel', () => {
+    // Ten visible rows on a 600 px viewport: 60 px each.
+    const range = { startIndex: 40, endIndex: 49 };
+    it('is 0 for a row on screen', () => {
+        expect(estimateTravel(45, 'start', range, 600)).toBe(0);
+    });
+    it('downward: start puts the row at the top, end at the bottom', () => {
+        expect(estimateTravel(50, 'start', range, 600)).toBe(600);
+        expect(estimateTravel(52, 'start', range, 600)).toBe(720);
+        expect(estimateTravel(50, 'end', range, 600)).toBe(60);
+        expect(estimateTravel(50, 'center', range, 600)).toBe(330);
+    });
+    it('upward: negative, start at the top, end at the bottom', () => {
+        expect(estimateTravel(39, 'start', range, 600)).toBe(-60);
+        expect(estimateTravel(39, 'end', range, 600)).toBe(-600);
+        expect(estimateTravel(39, 'center', range, 600)).toBe(-330);
     });
 });
