@@ -1,17 +1,17 @@
 import { useCallback } from 'react';
 import type React from 'react';
-import type { VirtuosoHandle } from 'react-virtuoso';
+import type { JumpTarget } from '../timeline/jumpTarget';
 
 const SCROLL_KEYS = new Set(['Home', 'End', 'PageUp', 'PageDown']);
 
 /**
  * Keyboard handler for the message timeline: Home/End jump to the first/last
- * message. While an incoming call covers the timeline (`callActive`) the list is
- * hidden, so Home/End/PageUp/PageDown are swallowed and nothing scrolls.
+ * message through the shared timeline jump. While an incoming call covers the
+ * timeline (`callActive`) the list is hidden, so Home/End/PageUp/PageDown are
+ * swallowed and nothing scrolls.
  */
 export function useTimelineKeyNav(
-    virtuosoRef: React.RefObject<VirtuosoHandle | null>,
-    messageCount: number,
+    jumpTo: (target: JumpTarget) => unknown,
     callActive: boolean,
 ) {
     return useCallback((e: React.KeyboardEvent) => {
@@ -22,11 +22,11 @@ export function useTimelineKeyNav(
         if (e.key === 'Home') {
             e.preventDefault();
             e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: 0, behavior: 'auto' });
+            void jumpTo({ kind: 'top' });
         } else if (e.key === 'End') {
             e.preventDefault();
             e.stopPropagation();
-            virtuosoRef.current?.scrollToIndex({ index: messageCount - 1, behavior: 'auto' });
+            void jumpTo({ kind: 'bottom' });
         }
-    }, [virtuosoRef, messageCount, callActive]);
+    }, [jumpTo, callActive]);
 }
