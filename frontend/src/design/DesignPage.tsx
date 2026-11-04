@@ -24,7 +24,7 @@ const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
 };
 const TYPE_CLASS: Record<TypeStep, string> = {
-    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading',
+    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', reading: 'text-reading',
 };
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -86,6 +86,9 @@ export const DesignPage: React.FC = () => {
         ['title.text', groupTokenVars(group)['--ds-group-title-text']],
         ['title.bar', groupTokenVars(group)['--ds-group-title-bar']],
         ['canvas', groupTokenVars(group)['--ds-group-canvas']],
+        ['ambient.orb1', groupTokenVars(group)['--ds-group-ambient-1']],
+        ['ambient.orb2', groupTokenVars(group)['--ds-group-ambient-2']],
+        ['ambient.orb3', groupTokenVars(group)['--ds-group-ambient-3']],
     ] as const;
 
     return (

@@ -42,4 +42,11 @@ describe('useInlineBlogTranslations', () => {
         const { container } = render(<Harness translations={[]} enabled />);
         expect(injected(container)).toHaveLength(0);
     });
+
+    it('styles the translation line with token classes, not an inline style', () => {
+        const { container } = render(<Harness translations={['Sunny today 🌸', 'Thank you']} enabled />);
+        const span = container.querySelector('span.blog-translation-inline')!;
+        expect(span.getAttribute('style')).toBeNull();
+        expect(span).toHaveClass('text-secondary', 'border-strong', 'italic');
+    });
 });

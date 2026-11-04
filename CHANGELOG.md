@@ -70,6 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   time**, and the member count no longer runs past its total.
 - **When the server is busy, a chat is retried on the next sync** instead of
   looking empty or missing messages until then.
+- **Blogs match the new look.** The latest-posts grid, the reader and the
+  timeline beside it now use the same design as the chats, keeping each
+  group's soft background colours and each member's colours in the reader.
+  Posts read at a comfortable width with more space between lines, dates
+  follow your app language, and the older and newer posts float at the bottom.
 
 ### Fixed
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
@@ -104,6 +109,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them with their photos and videos. It goes slowly so the server doesn't refuse
   it, so it can take a while; if the server still asks it to slow down, the
   remaining chats are read on the next sync.
+- **Retry on the blog screens works.** After a failed load, Retry now reloads
+  the latest posts, or the post you were reading, instead of leaving an empty
+  page or sending you back to the list.
+- **The arrow keys no longer switch blog posts by accident.** Left and right
+  now leave the post alone while you type in a text field, use a blog dialog
+  or the photo viewer.
 
 ## [0.3.4] - 2026-11-03
 

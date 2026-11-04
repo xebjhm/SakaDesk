@@ -1,7 +1,12 @@
 // frontend/src/features/blogs/components/TimelineRail.tsx
+// Pointer shortcut through a member's posts: top = newest, bottom = oldest, with a fisheye
+// zoom after a dwell. Keyboard users have ← / → and the older/newer pills.
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import type { BlogMeta } from '../../../types';
-import { useBlogTheme } from '../hooks';
+import { Card } from '../../../design/primitives';
+import { cn } from '../../../utils/classnames';
+import { formatBlogDate } from '../../../utils/dateFormatters';
+import { useTranslation } from '../../../i18n';
 
 interface TimelineRailProps {
     blogs: BlogMeta[];
@@ -22,16 +27,17 @@ const ZOOM_CONFIG = {
     dwellTolerance: 10,
     magnifiedWindow: 50,
     magnification: 5,
-    transitionMs: 300,
 };
+
+/** Space above the newest and below the oldest post, in px. */
+const RAIL_PADDING = 30;
 
 export const TimelineRail: React.FC<TimelineRailProps> = ({
     blogs,
     currentIndex,
     onSelect,
 }) => {
-    const theme = useBlogTheme();
-    const themeColor = theme.timelineIndicator;
+    const { i18n } = useTranslation();
     const railRef = useRef<HTMLDivElement>(null);
     const [hoverInfo, setHoverInfo] = useState<{
         y: number;
@@ -68,12 +74,6 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
 
         return groups;
     }, [blogs]);
-
-    // Get month label for a blog
-    const getMonthLabel = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
-    };
 
     // Fisheye mapping: index → normalized position (0-1)
     const indexToNormalizedPosition = useCallback((index: number): number => {
@@ -170,10 +170,9 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
         if (!railRef.current || blogs.length === 0) return;
         const rect = railRef.current.getBoundingClientRect();
         const y = e.clientY - rect.top;
-        const padding = 30;
-        const usableHeight = rect.height - padding * 2;
+        const usableHeight = rect.height - RAIL_PADDING * 2;
 
-        const normalizedY = Math.max(0, Math.min(1, (y - padding) / usableHeight));
+        const normalizedY = Math.max(0, Math.min(1, (y - RAIL_PADDING) / usableHeight));
         const index = normalizedPositionToIndex(normalizedY);
         const clampedIndex = Math.max(0, Math.min(blogs.length - 1, index));
 
@@ -222,53 +221,32 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
 
     if (blogs.length === 0) return null;
 
-    const padding = 30;
     const getYFromIndex = (index: number, ref: HTMLDivElement | null) => {
-        if (!ref) return padding;
-        const usableHeight = ref.clientHeight - padding * 2;
+        if (!ref) return RAIL_PADDING;
+        const usableHeight = ref.clientHeight - RAIL_PADDING * 2;
         const normalizedPos = indexToNormalizedPosition(index);
-        return padding + normalizedPos * usableHeight;
+        return RAIL_PADDING + normalizedPos * usableHeight;
     };
+
+    const hovered = hoverInfo ? blogs[hoverInfo.index] : undefined;
 
     return (
         <div
             ref={railRef}
-            className="absolute right-0 top-1/2 -translate-y-1/2 w-14 flex flex-col items-center cursor-pointer select-none"
-            style={{ height: '70%', minHeight: '300px' }}
+            data-testid="timeline-rail"
+            aria-hidden="true"
+            className="absolute inset-x-0 top-1/2 flex h-[70%] min-h-[300px] -translate-y-1/2 cursor-pointer select-none flex-col items-center"
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}
         >
-            {/* Background track - subtle, minimal */}
+            {/* Track */}
             <div
-                className="absolute left-1/2 -translate-x-1/2 rounded-full"
-                style={{
-                    top: padding,
-                    bottom: padding,
-                    width: isZoomed ? '3px' : '2px',
-                    backgroundColor: '#e5e7eb',
-                    transition: `width ${ZOOM_CONFIG.transitionMs}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-                }}
+                className="absolute left-1/2 -translate-x-1/2 border-l-2 border-subtle"
+                style={{ top: RAIL_PADDING, bottom: RAIL_PADDING }}
             />
 
-            {/* Soft gradient overlay when zoomed - like light through a lens */}
-            {isZoomed && zoomCenter !== null && (
-                <div
-                    className="absolute left-1/2 -translate-x-1/2 pointer-events-none"
-                    style={{
-                        top: padding,
-                        bottom: padding,
-                        width: '20px',
-                        background: `radial-gradient(ellipse 100% 30% at 50% ${
-                            ((zoomCenter / Math.max(blogs.length - 1, 1)) * 100)
-                        }%, ${themeColor}15 0%, transparent 70%)`,
-                        opacity: 1,
-                        transition: `opacity ${ZOOM_CONFIG.transitionMs}ms ease-out`,
-                    }}
-                />
-            )}
-
-            {/* Year markers */}
+            {/* Year markers (a label is skipped when it would overlap the previous one) */}
             {yearGroups.map((group, idx) => {
                 const position = getYFromIndex(group.startIndex, railRef.current);
                 const prevGroup = yearGroups[idx - 1];
@@ -281,127 +259,61 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 return (
                     <div
                         key={group.year}
-                        className="absolute flex items-center"
-                        style={{
-                            top: position,
-                            right: '100%',
-                            marginRight: '8px',
-                            transform: 'translateY(-50%)',
-                            transition: `top ${ZOOM_CONFIG.transitionMs}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-                        }}
+                        className="absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-base ease-standard motion-reduce:transition-none"
+                        style={{ top: position }}
                     >
-                        <span
-                            className="text-xs font-medium whitespace-nowrap"
-                            style={{
-                                color: '#9ca3af',
-                                letterSpacing: '0.02em',
-                            }}
-                        >
-                            {group.year}
-                        </span>
-                        <div
-                            className="ml-1.5"
-                            style={{
-                                width: '6px',
-                                height: '1px',
-                                backgroundColor: '#d1d5db',
-                            }}
-                        />
+                        <span className="whitespace-nowrap text-caption font-medium text-muted">{group.year}</span>
+                        <div className="ml-2 w-1.5 border-t border-strong" />
                     </div>
                 );
             })}
 
-            {/* Current position indicator - elegant dot with soft glow */}
+            {/* Current post */}
             <div
-                className="absolute left-1/2 rounded-full"
-                style={{
-                    top: getYFromIndex(currentIndex, railRef.current),
-                    width: '10px',
-                    height: '10px',
-                    transform: 'translate(-50%, -50%)',
-                    backgroundColor: themeColor,
-                    boxShadow: `0 0 12px ${themeColor}60, 0 0 4px ${themeColor}40`,
-                    transition: `top ${ZOOM_CONFIG.transitionMs}ms cubic-bezier(0.4, 0, 0.2, 1)`,
-                }}
+                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-group-accent shadow-group-glow transition-[top] duration-base ease-standard motion-reduce:transition-none"
+                style={{ top: getYFromIndex(currentIndex, railRef.current) }}
             />
 
-            {/* Hover indicator and tooltip */}
-            {hoverInfo && blogs[hoverInfo.index] && (
+            {/* Hover ring and card */}
+            {hoverInfo && hovered && (
                 <>
-                    {/* Hover dot - delicate ring instead of solid dot */}
                     <div
-                        className="absolute left-1/2 rounded-full pointer-events-none"
-                        style={{
-                            top: hoverInfo.y,
-                            width: '14px',
-                            height: '14px',
-                            transform: 'translate(-50%, -50%)',
-                            border: `2px solid ${isZoomed ? themeColor : '#9ca3af'}`,
-                            backgroundColor: 'transparent',
-                            opacity: isZoomed ? 0.9 : 0.6,
-                            transition: `border-color ${ZOOM_CONFIG.transitionMs}ms ease, opacity ${ZOOM_CONFIG.transitionMs}ms ease`,
-                        }}
+                        className={cn(
+                            'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2 border-strong',
+                            'transition-opacity duration-base ease-standard motion-reduce:transition-none',
+                            isZoomed ? 'opacity-90' : 'opacity-60',
+                        )}
+                        style={{ top: hoverInfo.y }}
                     />
 
-                    {/* Tooltip card */}
-                    <div
-                        className="absolute right-full mr-4 bg-white rounded-xl pointer-events-none z-50 overflow-hidden"
+                    <Card
+                        className="pointer-events-none absolute right-full z-50 mr-4 min-w-[180px] max-w-[240px] -translate-y-1/2 overflow-hidden"
                         style={{
                             top: Math.min(
                                 Math.max(hoverInfo.y, 180),
                                 (railRef.current?.clientHeight || 400) - 180
                             ),
-                            transform: 'translateY(-50%)',
-                            minWidth: '180px',
-                            maxWidth: '240px',
-                            boxShadow: `
-                                0 4px 24px -4px ${themeColor}25,
-                                0 8px 32px -8px rgba(0, 0, 0, 0.12),
-                                0 0 0 1px rgba(0, 0, 0, 0.03)
-                            `,
                         }}
                     >
-                        {/* Thumbnail */}
-                        {blogs[hoverInfo.index].thumbnail && (
+                        {hovered.thumbnail && (
                             <div
-                                className="w-full bg-cover bg-center"
-                                style={{
-                                    aspectRatio: '3/4',
-                                    backgroundImage: `url(${blogs[hoverInfo.index].thumbnail})`,
-                                }}
+                                className="aspect-[3/4] w-full bg-sunken bg-cover bg-center"
+                                style={{ backgroundImage: `url(${hovered.thumbnail})` }}
                             />
                         )}
-                        <div className="px-3 py-2.5">
-                            <div
-                                className="text-sm font-medium text-gray-800 line-clamp-2 leading-snug"
-                                style={{ fontFamily: '"Noto Serif JP", serif' }}
-                            >
-                                {blogs[hoverInfo.index].title}
-                            </div>
-                            <div className="flex items-center justify-between mt-1.5">
-                                <span className="text-xs text-gray-400">
-                                    {getMonthLabel(blogs[hoverInfo.index].published_at)} {new Date(blogs[hoverInfo.index].published_at).getDate()}, {new Date(blogs[hoverInfo.index].published_at).getFullYear()}
-                                </span>
-                                <span
-                                    className="text-xs tabular-nums"
-                                    style={{ color: '#d1d5db' }}
-                                >
-                                    #{blogs.length - hoverInfo.index}
-                                </span>
+                        <div className="flex flex-col gap-1 p-3">
+                            <div className="line-clamp-2 font-reading text-small font-semibold text-primary">{hovered.title}</div>
+                            <div className="flex items-center justify-between gap-2 text-caption tabular-nums text-muted">
+                                <span>{formatBlogDate(new Date(hovered.published_at), i18n.language, 'medium')}</span>
+                                <span>#{blogs.length - hoverInfo.index}</span>
                             </div>
                         </div>
-                    </div>
+                    </Card>
                 </>
             )}
 
-            {/* Position indicator at bottom - refined typography */}
-            <div
-                className="absolute bottom-0.5 left-1/2 -translate-x-1/2 text-xs font-medium whitespace-nowrap tabular-nums"
-                style={{
-                    color: '#9ca3af',
-                    letterSpacing: '0.01em',
-                }}
-            >
+            {/* Position, counted from the oldest post */}
+            <div className="absolute bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap text-caption font-medium tabular-nums text-muted">
                 {blogs.length - currentIndex}/{blogs.length}
             </div>
         </div>

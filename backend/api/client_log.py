@@ -47,6 +47,7 @@ ClientEvent = Literal[
     "account_profile_load",
     "letter_avatar",
     "streak_load",
+    "blog_load",
 ]
 
 ALLOWED_FIELDS = frozenset(

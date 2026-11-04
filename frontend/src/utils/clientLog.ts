@@ -11,7 +11,8 @@ export type ClientLogEvent =
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'
     | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback'
-    | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load';
+    | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load'
+    | 'blog_load';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

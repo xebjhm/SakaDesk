@@ -42,14 +42,30 @@ and a primitive never takes a group id.
   has a selection ring: a 2 px white gap plus a 2 px ring in the group logo colour
   (`ring-2 ring-offset-2 ring-group-logo`, from `--ds-group-logo`) and the group glow.
   It is the only place the logo colour is used as a ring.
+- **Ambient orbs (decided in D2b):** the blog feed's slow-drifting background orbs,
+  `bg-group-ambient-1/2/3` (the D1.5 `ambient` role, `groupRoles(id).ambient`), with the
+  per-group size and opacity from `design/tokens/ambient.ts` (`--ds-group-ambient-N-size`,
+  `--ds-group-ambient-N-opacity`). Only `DynamicBackground` draws them, only behind the
+  recent-posts feed. Their 22–34 s drift (`animate-orb-drift-1/2`, `animate-orb-breathe`) is
+  the one exception to the 150–200 ms motion rule besides `duration-glide`; it stops with
+  reduced motion.
 
 **Exception:** at most **one** `Button variant="primary"` per screen. It
 uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
 "answer", a dialog's "save".
 
+**Member penlight colours (data-driven exception).** The blog reader's corner wash uses the
+current member's two penlight colours from member data (`getMemberPenlightHex`), never a
+literal. `memberWashStyle()` (`features/blogs/memberWash.ts`) sets `--ds-member-wash-1/2` on
+the wash element, and the `bg-member-wash` utility mixes them at `--ds-member-wash-alpha`
+(`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for the mascot or an
+unknown member). No other element uses member colours (until D2c: `MemberSelectModal`).
+
 The level-0 background (`Canvas`, `bg-group-canvas`) is the official sidebar
 gradient. Everything else is neutral: `bg-sheet/card/pill/elevated/sunken`,
-`bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`.
+`bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`. Search
+matches inside text use the neutral mark tokens `bg-mark-exact`, `bg-mark-reading` and
+`border-mark-underline` (`color.mark`).
 Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
 `bg-black/NN`: the token carries its own alpha.
 
@@ -94,15 +110,16 @@ if components need it). Never add a new hex to a component or to
 
 | Scale | Utilities | Values |
 |---|---|---|
-| Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` | 11/16, 13/20, 14/22, 16/24, 20/28 px |
+| Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` `text-reading` | 11/16, 13/20, 14/22, 16/24, 20/28 px; `text-reading` 16/28 px is for long-form reading (blog posts) only |
+| Font | `font-sans` (default) `font-reading` | Noto Sans JP; Noto Serif JP for blog titles only (`fontFamily.reading`); post bodies stay in the sans. Both load from Google Fonts in `index.html` |
 | Radius | `rounded-tail` `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 4px (only the first bubble's top-left corner, as `rounded-tl-tail`), 14px, 20px, full |
 | Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
 | Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
-| Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, `cubic-bezier(0.2, 0, 0, 1)` |
+| Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `animate-reveal` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, 200ms, `cubic-bezier(0.2, 0, 0, 1)` |
 
 `duration-glide` (400 ms) is only for scroll glides and `animate-landing`
 (1400 ms, `--ds-group-highlight` fading in and out) only for the landed-row
-highlight. Every other animation stays at 150-200 ms. `bezierEasing` in
+highlight. Every other animation stays at 150-200 ms. `animate-reveal` (fade in with an 8 px rise, `duration-base`) is for cards appearing in a feed; pair it with `motion-reduce:animate-none`. The ambient orbs' drift is the documented exception (see Where group colour may appear). `bezierEasing` in
 `design/tokens/motion.ts` evaluates the standard curve in JS.
 
 framer-motion reads numbers from `design/tokens/motion.ts`:
@@ -145,7 +162,8 @@ are composed from these in the feature folder. They are not primitives.
 1. Edit the right file in `frontend/src/design/tokens/`.
 2. Expose it in `frontend/src/design/cssVars.ts`, and in `tailwind.config.js`
    if it needs a utility (and in `utils/classnames.ts` if the utility uses a
-   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or `ease-` prefix).
+   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or
+   `ease-` prefix).
 3. Show it on `DesignPage.tsx`.
 4. Document it here.
 5. Changing a pre-D1 value changes pixels on existing screens. Update

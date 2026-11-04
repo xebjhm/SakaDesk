@@ -7,14 +7,15 @@ import { extendTailwindMerge } from "tailwind-merge"
 const twMerge = extendTailwindMerge({
     extend: {
         classGroups: {
-            'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading'] }],
+            'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'reading'] }],
+            'font-family': [{ font: ['reading'] }],
             'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'group-title', 'group-strong'] }],
-            'bg-image': [{ bg: ['group-canvas', 'group-title', 'group-title-bar'] }],
+            'bg-image': [{ bg: ['group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash'] }],
             rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
             'rounded-tl': [{ 'rounded-tl': ['tail'] }],
             shadow: [{ shadow: ['pill', 'card', 'sheet', 'group-glow'] }],
             duration: [{ duration: ['fast', 'base', 'glide'] }],
-            animate: [{ animate: ['landing'] }],
+            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe'] }],
             ease: [{ ease: ['standard'] }],
         },
     },

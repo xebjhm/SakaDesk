@@ -1,0 +1,32 @@
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { BlogStatus } from './BlogStatus';
+
+describe('BlogStatus', () => {
+    it('announces loading as a status with a spinner and no button', () => {
+        const { container } = render(<BlogStatus kind="loading" title="Loading posts..." />);
+        expect(screen.getByRole('status')).toHaveTextContent('Loading posts...');
+        expect(container.querySelector('.animate-spin')).not.toBeNull();
+        expect(container.querySelector('.animate-spin')).toHaveClass('motion-reduce:animate-none');
+        expect(screen.queryByRole('button')).toBeNull();
+    });
+
+    it('shows an error as an alert with its icon and a working retry', () => {
+        const onRetry = vi.fn();
+        render(
+            <BlogStatus kind="error" title="Blog posts could not be loaded" icon={<svg data-testid="icon" />}
+                onRetry={onRetry} retryLabel="Retry" />,
+        );
+        expect(screen.getByRole('alert')).toHaveTextContent('Blog posts could not be loaded');
+        expect(screen.getByTestId('icon')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(onRetry).toHaveBeenCalledTimes(1);
+    });
+
+    it('fills the area for the first sync and shows the hint', () => {
+        render(<BlogStatus kind="loading" fill title="Syncing blogs..." hint="This may take a moment" />);
+        const status = screen.getByRole('status');
+        expect(status).toHaveClass('h-full', 'min-h-96');
+        expect(status).toHaveTextContent('This may take a moment');
+    });
+});

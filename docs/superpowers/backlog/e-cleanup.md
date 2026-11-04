@@ -15,3 +15,24 @@ Items found during D2a that were left on purpose. Pick them up in E (or D2c wher
 - **D2c: `IconButton` accent variant.** Give the unread arrows a real accent variant on `IconButton` instead of class overrides.
 - **D2c: rail disconnected badge.** `frontend/src/core/layout/ServiceRail.tsx` uses `bg-orange-500` for the disconnected badge; use a status token.
 - **D2c: calendar chevron labels.** Add aria-labels to the calendar chevrons, then drop the `button.p-2` selector in `frontend/e2e/timeline-scroll.spec.ts`.
+- **Legacy blog theme.** After D2c restyles the blog dialogs, remove `useBlogTheme`, `ServiceTheme.blog` and `ServiceTheme.ambient` from `frontend/src/config/serviceThemes.ts`. Keep `groupRoles().ambient` and `design/tokens/ambient.ts`: `DynamicBackground` reads them through `--ds-group-ambient-*`.
+- **`TranslateButton` palette.** `frontend/src/core/common/TranslateButton.tsx` builds its colours from hex + alpha; move it to tokens (shared with the chat).
+- **D2c: blog dialogs.** Restyle `MemberSelectModal` (hard-coded pink `#ff69b4` favourite, the mascot's CDN thumbnail URL; it also uses member penlight colours), `MemberTimelineModal` and `BlogPhotoGalleryModal`; `frontend/e2e/blogs.spec.ts` selects these dialogs by role and text and may need new selectors.
+- **D2c: search marks.** Move the search dialog's `.search-snippet mark` styles (`frontend/src/features/search/SearchModal.tsx`) to the `bg-mark-exact` / `bg-mark-reading` / `border-mark-underline` tokens.
+- **D2c: `MemberTimelineModal` dialog semantics.** Add `role="dialog"`, `aria-modal` and focus management in `frontend/src/features/blogs/components/MemberTimelineModal.tsx`; D2b only guards the arrow keys through `keysEnabled`.
+- **Rail: fast move then click selects nothing.** Moving fast and clicking at once in `frontend/src/features/blogs/components/TimelineRail.tsx` selects no post.
+- **Back label on the timeline path.** "Back to latest blogs" in `frontend/src/features/blogs/components/BlogReader.tsx` is misleading when the reader was opened from a member timeline.
+- **Fonts are not pinned in the shots.** `frontend/e2e/d2b-screens.spec.ts` and `frontend/e2e/visual-zero-pixel.spec.ts` depend on the Google Fonts load; pin or stub the fonts.
+- **`formatBlogDate` tests.** Add zh-CN, yue, midnight and the ICU "at" separator cases to `frontend/src/utils/dateFormatters.test.ts`.
+- **`d2b.test` only checks truthy.** Tighten the assertions in `frontend/src/i18n/d2b.test.ts` (line 27).
+- **A to B to A in-flight spinner.** Going A, B, A quickly in `frontend/src/features/blogs/BlogsFeature.tsx` can leave the spinner running while the in-flight guard skips the second load of A.
+- **`nav_list` skip breadcrumbs.** `frontend/src/features/blogs/BlogsFeature.tsx` skips the member-list load silently in some paths; log them through `logBlogLoad`.
+- **Breadcrumb test coverage.** `frontend/src/features/blogs/BlogsFeature.test.tsx` covers recent, sync and search_open only; add `content`, `nav_list` and `member_posts`.
+- **`Math.random` animation delays.** `frontend/src/features/blogs/components/RecentPostsFeed.tsx` picks new-post reveal delays on every render; compute them once per post.
+- **Breadcrumb as `<nav>`.** The reader's breadcrumb in `frontend/src/features/blogs/components/BlogReader.tsx` should be a `<nav>` with `aria-current` on the current item.
+- **More `memberWash` cases.** Extend `frontend/src/features/blogs/memberWash.test.ts` (name without spaces, blog-id lookup, malformed hex).
+- **Post HTML `class` is allowed.** DOMPurify `ALLOWED_ATTR` in `frontend/src/features/blogs/components/BlogReader.tsx` keeps `class`, so a post can pick up app utilities; remove it (hardening).
+- **e2e ring locator.** The `.border-2` locator for the rail hover ring in `frontend/e2e/d2b-screens.spec.ts:46` follows a class, not a role; use a test id.
+- **Hard-coded colon in the screen-reader prefix.** `frontend/src/features/blogs/components/BlogNavFooter.tsx` renders `{prefix}:`; move the separator into the i18n string.
+- **Rail tooltip covers the year label.** The card tooltip in `frontend/src/features/blogs/components/TimelineRail.tsx` hides the year label beside it.
+- **D2c: app-level dialogs.** App-level dialogs (Settings, Add service, About, Report, Diagnostics, Sync, Confirm, ToS) lack `role="dialog"`/`aria-modal`/focus management; once they move to the Modal primitive, `frontend/src/features/blogs/components/arrowKeys.ts` covers them.
