@@ -645,7 +645,14 @@
     "roleStep": "Step",
     "danger": "Danger",
     "accent": "Accent",
-    "overlay": "Overlay"
+    "overlay": "Overlay",
+    "forms": "Form controls",
+    "switchSample": "Sample switch",
+    "inputSample": "Sample input",
+    "selectSample": "Sample select",
+    "menu": "Menu",
+    "menuItem": "Menu item",
+    "menuSelected": "Selected item"
   },
   "letters": {
     "openImage": "Open letter",

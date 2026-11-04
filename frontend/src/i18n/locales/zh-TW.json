@@ -645,7 +645,14 @@
     "roleStep": "色階",
     "danger": "危險",
     "accent": "強調",
-    "overlay": "浮層"
+    "overlay": "浮層",
+    "forms": "表單控制項",
+    "switchSample": "開關範例",
+    "inputSample": "輸入框範例",
+    "selectSample": "選擇框範例",
+    "menu": "選單",
+    "menuItem": "選單項目",
+    "menuSelected": "已選項目"
   },
   "letters": {
     "openImage": "開啟信件",

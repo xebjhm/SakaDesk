@@ -645,7 +645,14 @@
     "roleStep": "段階",
     "danger": "危険",
     "accent": "アクセント",
-    "overlay": "オーバーレイ"
+    "overlay": "オーバーレイ",
+    "forms": "フォーム",
+    "switchSample": "スイッチの例",
+    "inputSample": "入力欄の例",
+    "selectSample": "選択肢の例",
+    "menu": "メニュー",
+    "menuItem": "メニュー項目",
+    "menuSelected": "選択中の項目"
   },
   "letters": {
     "openImage": "レターを開く",
