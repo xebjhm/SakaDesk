@@ -1355,3 +1355,149 @@ uv run git push -u origin fix/timeline-jump
 ```
 
 The PR title is `fix(chat): make calendar and message jumps instant`, targeting `dev`. Its body has `## Why`, `## What`, `## Testing`, `## Changelog` per `docs/DOC_FORMATS.md`, and ends with `🤖 Generated with [Claude Code](https://claude.com/claude-code)`.
+
+---
+
+## Follow-up (user feedback after the Windows check): jump motion
+
+The user tested the build: every jump works, but instant jumps and the 1 s flat highlight feel stiff. A clickable demo was shown (`.superpowers/brainstorm/1469786-1793799645/content/jump-motion.html`) and the user chose **A + ①**:
+
+- **A — lead-in + glide.** A far jump first lands instantly ~0.8 viewport before the target, in the direction of travel, then glides the last stretch over 400 ms. When the target is already within the visible range, it glides straight there. Every kind of jump does this, including top/bottom.
+- **① — breathing highlight.** The landed row fades in over ~0.2 s, holds, then fades out over ~0.9 s: 1400 ms total, with a peak at group scale step 100.
+- With `prefers-reduced-motion: reduce`: no glide (instant, as now), but the highlight stays.
+
+Easing is the single design-system curve `cubic-bezier(0.2, 0, 0, 1)`. New motion values are tokens; no arbitrary values.
+
+### Task 7: Motion tokens, highlight role and the landing animation
+
+**Files:**
+- Modify: `frontend/src/design/tokens/motion.ts` (+ its test if one exists)
+- Modify: `frontend/src/design/tokens/roles.ts` (+ test)
+- Modify: `frontend/src/design/cssVars.ts`
+- Modify: `frontend/tailwind.config.js`
+- Modify: `frontend/src/utils/classnames.ts` only if `animate-` utilities need registering for tailwind-merge (check how `duration-`/`ease-` are registered)
+- Modify: `frontend/src/design/DesignPage.tsx` (+ locale keys in all 5 locales if a new label is added)
+- Modify: `docs/design/DESIGN_SYSTEM.md`
+- Modify: `frontend/src/features/messages/components/MessageList.tsx`, `MessageList.jump.test.tsx`
+- Modify: `frontend/src/features/messages/MessagesFeature.tsx`
+- Modify: `frontend/e2e/timeline-scroll.spec.ts`: the two highlight assertions only
+
+**Interfaces produced:**
+- `motion.duration` becomes `{ fast: 150, base: 200, glide: 400, landing: 1400 }`. CSS vars `--ds-duration-glide` and `--ds-duration-landing` are written wherever the existing duration vars are written.
+- `bezierEasing(points: readonly [number, number, number, number]): (x: number) => number` is exported from `design/tokens/motion.ts`. It is a pure cubic-bezier evaluator: 0 → 0, 1 → 1, monotonic, and `bezierEasing(motion.easing.standard)(0.5) > 0.5` (it decelerates).
+- New role `highlight` = scale step 100 in `GroupRoles`, exposed as CSS var `--ds-group-highlight`.
+- Tailwind keyframes `landing`: 0% transparent, 15% `var(--ds-group-highlight)`, 40% `var(--ds-group-highlight)`, 100% transparent, all on `background-color`. The animation `animate-landing` is `landing var(--ds-duration-landing) var(--ds-ease-standard) both`.
+- `MessageList` row wrapper: `cn('px-4 py-1 rounded-card', highlightedMessageId === msg.id && 'animate-landing')`. Remove `transition-colors duration-base ease-standard` and `bg-group-subtle` from the row.
+- `MessagesFeature`: `JUMP_HIGHLIGHT_MS` becomes `motion.duration.landing`. `flashLanded(id)` must restart the animation when the same row lands twice in a row: set `null`, then set `id` on the next animation frame, and cancel that frame on unmount or room switch.
+
+**Steps (TDD):**
+1. Tests first:
+   - `bezierEasing`: endpoints, monotonic over 0…1 in 0.05 steps, and standard(0.5) > 0.5.
+   - `motion.duration` values.
+   - `groupRoles(id).highlight === groupTokens[id].scale[100]` for every group.
+   - The cssVars test asserts `--ds-group-highlight` and the two duration vars.
+   - `MessageList.jump.test.tsx` asserts `animate-landing` (not `bg-group-subtle`) on the highlighted row only.
+2. Implement. Follow DESIGN_SYSTEM.md "Adding or changing a token":
+   - Add a "Motion" note that `duration-glide` (400 ms) is only for scroll glides and `animate-landing` (1400 ms) only for the landed-row highlight. Every other animation stays at 150–200 ms.
+   - Add `highlight` to the Colour system table (step 100, "landed-row highlight", `animate-landing`).
+   - Show both on the style page: a swatch for `highlight`, and a "Replay" button that re-adds `animate-landing` to a sample row.
+3. e2e: change the two `toHaveClass(/bg-group-subtle/)` assertions to `toHaveClass(/animate-landing/)`. Nothing else in the spec changes.
+4. Run in `frontend/`: `npx vitest run`, `npx tsc --noEmit`, `npm run lint` (≤ 19 warnings), `npm run build`, then `npx playwright test e2e/timeline-scroll.spec.ts e2e/visual-zero-pixel.spec.ts --reporter=line`. Expected: all green, 9 passed. Zero-pixel must still pass; the rows lose only a transition, which has no pixel effect.
+5. Commit: `feat(design): add glide and landing motion tokens` (or split it into a design-tokens commit and a chat commit).
+
+### Task 8: Lead-in + glide in `useTimelineJump`
+
+**Files:**
+- Create: `frontend/src/features/messages/timeline/glide.ts`, `glide.test.ts`
+- Modify: `frontend/src/features/messages/hooks/useTimelineJump.ts`, `useTimelineJump.test.ts`
+- Modify: `frontend/src/features/messages/components/MessageList.tsx`: new prop `scrollerRef?: (el: HTMLElement | Window | null) => void`, passed to `<Virtuoso scrollerRef>`
+- Modify: `frontend/src/features/messages/MessagesFeature.tsx`: keep `chatScrollerRef` and pass `getScroller` and `visibleRange: () => visibleRangeRef.current` to the hook
+- Modify: `docs/superpowers/specs/2026-11-04-d2a-chat-frame-design.md` (D2a-0 section) and `CHANGELOG.md` (the existing entry: "lands instantly … flashes" → glides in and gently highlights; end-user words, ≤ 3 sentences)
+
+**`glide.ts` (pure, injectable):**
+
+```ts
+export interface GlideDeps { nextFrame: () => Promise<void>; now: () => number }
+export type Scroller = Pick<HTMLElement, 'scrollTop' | 'scrollHeight' | 'clientHeight'>;
+
+/**
+ * Scroll `scroller` by `delta` px over `durationMs` along `easing`. The total is clamped
+ * to the scroll range once, up front. Each frame adds only the increment since the
+ * previous frame, so adjustments Virtuoso makes meanwhile (height compensation for rows
+ * above) are kept, not overwritten. Resolves false as soon as `isCancelled()` is true.
+ */
+export async function glideScroll(
+    scroller: Scroller, delta: number, durationMs: number,
+    easing: (t: number) => number, isCancelled: () => boolean, deps: GlideDeps,
+): Promise<boolean> {
+    const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const total = Math.min(max, Math.max(0, scroller.scrollTop + delta)) - scroller.scrollTop;
+    if (total === 0 || durationMs <= 0) { scroller.scrollTop += total; return !isCancelled(); }
+    const t0 = deps.now();
+    let applied = 0;
+    for (;;) {
+        await deps.nextFrame();
+        if (isCancelled()) return false;
+        const p = Math.min(1, (deps.now() - t0) / durationMs);
+        const want = total * easing(p);
+        scroller.scrollTop += want - applied;
+        applied = want;
+        if (p >= 1) return true;
+    }
+}
+```
+
+Tests:
+- Glides the full delta and ends exactly at `start + delta`.
+- Clamps at 0 and at max.
+- Preserves an external `scrollTop` change made mid-glide (simulate Virtuoso compensation: add 30 px between frames; the final position is start + delta + 30).
+- Returns false and stops moving when cancelled mid-way.
+- A zero delta resolves without frames.
+
+**Hook changes** (`UseTimelineJumpArgs` gains optional `getScroller?: () => HTMLElement | null` and `visibleRange?: () => { startIndex: number; endIndex: number }`; `JumpDeps` gains `reducedMotion: () => boolean`, default `window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false`; new exported constant `GLIDE_LEAD = 0.8`, the fraction of the viewport height):
+
+Replace the single initial `scrollToIndex(...)` with:
+
+```ts
+const scroller = getScroller?.() ?? null;   // read from latest args, like messages
+const animate = scroller !== null && !reducedMotion();
+const range = visibleRange?.();
+const near = !!range && resolved.index >= range.startIndex && resolved.index <= range.endIndex;
+const isCancelled = () => token !== tokenRef.current;
+const ease = bezierEasing(motion.easing.standard);
+if (animate && near && resolved.verify) {
+    // Already on screen: glide straight to the aligned position.
+    const err = measure(resolved.messageId, resolved.align);
+    if (err === null) handle.scrollToIndex({ index, align, behavior: 'auto' });
+    else if (!(await glideScroll(scroller, err, motion.duration.glide, ease, isCancelled, { nextFrame, now })))
+        return finish('cancelled', index, 0);
+} else if (animate) {
+    // Far: land GLIDE_LEAD viewports short of the target in the direction of travel, then glide in.
+    const dir = range ? (Math.sign(resolved.index - range.startIndex) || 1) : 1;
+    const lead = Math.round(scroller.clientHeight * GLIDE_LEAD);
+    handle.scrollToIndex({ index, align, behavior: 'auto', offset: -dir * lead });
+    for (let f = 0; f < SETTLE_FRAMES; f++) { await nextFrame(); if (isCancelled()) return finish('cancelled', index, 0); }
+    if (!(await glideScroll(scroller, dir * lead, motion.duration.glide, ease, isCancelled, { nextFrame, now })))
+        return finish('cancelled', index, 0);
+} else {
+    handle.scrollToIndex({ index, align, behavior: 'auto' });
+}
+if (!resolved.verify) return finish('landed', index, 0);
+// …the existing verify/correct loop, unchanged. Corrections stay instant (they are small).
+```
+
+Hook tests to add (existing tests pass no `getScroller`, so they keep the instant path and must stay green unchanged):
+- Far downward: `scrollToIndex` is called with `offset: -lead`, and the fake scroller ends `+lead`.
+- Far upward: `offset: +lead`, and it ends `-lead`.
+- Near: no initial `scrollToIndex`, and the glide moves by the measured error.
+- `reducedMotion: () => true`: instant path, no offset.
+- Cancelled mid-glide: `'cancelled'`.
+- Every `scrollToIndex` call uses `behavior: 'auto'`.
+
+Use a fake scroller `{ scrollTop, scrollHeight: 100000, clientHeight: 600 }` and `now` advancing 16 ms per `nextFrame`.
+
+**Wiring:** `MessageList` passes `scrollerRef` through to Virtuoso. `MessagesFeature` stores the element in `chatScrollerRef` (store it only if it is an `HTMLElement`) and passes `getScroller: () => chatScrollerRef.current` and `visibleRange: () => visibleRangeRef.current`. The hook reads both through `latest`, so no new deps are needed on `jumpTo`.
+
+**Checks:** the same full set as Task 7. The e2e date jump must still finish in < 1 s: lead-in + 400 ms glide + verify. Then rebuild the Windows exe on the copy (controller) for the user's feel check.
+
+**Commit:** `feat(chat): glide timeline jumps into place`.
