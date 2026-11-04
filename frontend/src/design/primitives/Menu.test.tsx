@@ -131,6 +131,26 @@ describe('Menu', () => {
         expect(outer).not.toHaveBeenCalled();
     });
 
+    it('with stacked menus a second Escape closes the outer one once the inner has gone', () => {
+        const outer = vi.fn();
+        const Harness = () => {
+            const [innerOpen, setInnerOpen] = useState(true);
+            return (
+                <>
+                    <Menu aria-label="a" onClose={outer}><MenuItem>一</MenuItem></Menu>
+                    {innerOpen && <Menu aria-label="b" onClose={() => setInnerOpen(false)}><MenuItem>二</MenuItem></Menu>}
+                </>
+            );
+        };
+        render(<Harness />);
+        const escape = () => act(() => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+        escape();
+        expect(screen.queryByRole('menu', { name: 'b' })).toBeNull();
+        expect(outer).not.toHaveBeenCalled();
+        escape();
+        expect(outer).toHaveBeenCalledTimes(1);
+    });
+
     it('re-clamps a point menu to its measured size', () => {
         Object.defineProperty(window, 'innerWidth', { configurable: true, value: 300 });
         Object.defineProperty(window, 'innerHeight', { configurable: true, value: 200 });
@@ -140,10 +160,6 @@ describe('Menu', () => {
         const menu = screen.getByRole('menu');
         expect(menu.style.left).toBe('192px');
         expect(menu.style.top).toBe('92px');
-    });
-
-    it('still exports clampToViewport', async () => {
-        expect((await import('./Menu')).clampToViewport).toBe(clampToViewport);
     });
 
     it('a point menu is portaled, fixed, clamped and above dialogs', () => {

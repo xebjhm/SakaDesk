@@ -3,13 +3,7 @@ import { createPortal } from 'react-dom';
 import { cn } from '../../utils/classnames';
 import { Z_INDEX } from '../../constants/zIndex';
 import { clampToViewport } from './menuPosition';
-
-// Re-exported for callers; it lives in menuPosition.ts so this file exports components only.
-// eslint-disable-next-line react-refresh/only-export-components
-export { clampToViewport };
-
-/** Open menus, oldest first: only the last one answers Escape. */
-const openMenus: symbol[] = [];
+import { isTopMenu, popMenu, pushMenu } from './menuStack';
 
 const ITEMS = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
@@ -44,8 +38,7 @@ export const Menu: React.FC<MenuProps> = ({
 
     useEffect(() => {
         const menu = ref.current;
-        const me = Symbol('menu');
-        openMenus.push(me);
+        const me = pushMenu();
         menu?.focus({ preventScroll: true });
         const onDown = (e: MouseEvent) => {
             const target = e.target as Node;
@@ -56,15 +49,14 @@ export const Menu: React.FC<MenuProps> = ({
         // Capture phase: a menu inside a dialog closes before the dialog sees Escape.
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
-            if (openMenus[openMenus.length - 1] !== me) return;
+            if (!isTopMenu(me)) return;
             e.preventDefault();
             onCloseRef.current();
         };
         document.addEventListener('mousedown', onDown);
         document.addEventListener('keydown', onKey, true);
         return () => {
-            const at = openMenus.indexOf(me);
-            if (at >= 0) openMenus.splice(at, 1);
+            popMenu(me);
             document.removeEventListener('mousedown', onDown);
             document.removeEventListener('keydown', onKey, true);
         };

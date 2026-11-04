@@ -2,6 +2,8 @@ import '@testing-library/jest-dom'
 import { cleanup } from '@testing-library/react'
 import { afterEach, afterAll, beforeAll, vi } from 'vitest'
 import { server } from './mocks/server'
+import { resetDialogStack } from '../design/dialog/dialogStack'
+import { resetMenuStack } from '../design/primitives/menuStack'
 
 // Start MSW server before all tests
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
@@ -10,6 +12,9 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => {
   cleanup()
   server.resetHandlers()
+  // A test that ends with a dialog or menu still registered must not leak it into the next one.
+  resetDialogStack()
+  resetMenuStack()
 })
 
 // Clean up after all tests
