@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { toLocalDateStr, formatDatePillLabel } from './dateFormatters';
+import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr, toValidDate } from './dateFormatters';
 
 // SD-FE-CORE-02: bucket/match by LOCAL date, matching what message bubbles show.
 describe('toLocalDateStr', () => {
@@ -70,4 +70,32 @@ describe('formatDatePillLabel', () => {
         expect(formatDatePillLabel(new Date(2026, 11, 31, 22, 0), newYear, 'ja', t)).toBe('YESTERDAY');
         expect(formatDatePillLabel(new Date(2026, 11, 30), newYear, 'ja', t)).toBe('2026年12月30日(水)');
     });
+});
+
+describe('fromLocalDateStr', () => {
+  it('turns a local YYYY-MM-DD back into local midnight of that day', () => {
+    const d = fromLocalDateStr('2022-01-15')!;
+    expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([2022, 0, 15, 0]);
+    expect(toLocalDateStr(d)).toBe('2022-01-15');
+  });
+
+  it('rejects anything else', () => {
+    expect(fromLocalDateStr('')).toBeNull();
+    expect(fromLocalDateStr('2022-1-15')).toBeNull();
+    expect(fromLocalDateStr('2022-01-15T00:00:00Z')).toBeNull();
+  });
+});
+
+describe('toValidDate', () => {
+  it('parses a valid timestamp and passes a valid Date through', () => {
+    expect(toValidDate('2025-10-31T16:19:35Z')?.toISOString()).toBe('2025-10-31T16:19:35.000Z');
+    const d = new Date(2026, 0, 1);
+    expect(toValidDate(d)).toBe(d);
+  });
+
+  it('is null for anything unparseable, so formatting never throws', () => {
+    expect(toValidDate('not a date')).toBeNull();
+    expect(toValidDate('')).toBeNull();
+    expect(toValidDate(new Date(NaN))).toBeNull();
+  });
 });

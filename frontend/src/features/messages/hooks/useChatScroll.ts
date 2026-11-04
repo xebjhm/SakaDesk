@@ -1,173 +1,153 @@
 import { useRef, useCallback, useMemo, useEffect } from 'react';
 import type { ListRange } from 'react-virtuoso';
-import type { Message } from '../../../types';
 import { persisted } from '../../../core/persistence/persisted';
+import type { Timeline } from '../timeline/buildTimeline';
 
 const STORAGE_KEY_PREFIX = 'sakadesk_scroll_';
 const DEBOUNCE_MS = 500;
 
-interface UseChatScrollResult {
-  /** Index to pass to Virtuoso's initialTopMostItemIndex */
+export interface UseChatScrollResult {
+  /** Item index to pass to Virtuoso's initialTopMostItemIndex */
   initialTopMostItemIndex: number;
   /** Callback for Virtuoso's rangeChanged prop */
   handleRangeChanged: (range: ListRange) => void;
-  /** Call this immediately before room switch to save position */
+  /** Save the current position now (e.g. right before a room switch) */
   savePositionImmediate: () => void;
 }
 
 /**
- * Hook for ID-based scroll position save/restore with react-virtuoso.
+ * ID-based scroll save/restore for the chat timeline.
  *
- * - Saves the top-most visible message ID to persisted app-state (debounced)
- * - Restores position by finding the saved ID's index in the messages array
- * - Falls back to bottom of list for new rooms or if saved ID not found
+ * - Saves the top-most visible MESSAGE id to persisted app-state, 500 ms after the list
+ *   stops moving. A letter on top saves the nearest message above it (below it at the very top).
+ * - Which row is "top-most visible" is resolved one animation frame after `rangeChanged`, so
+ *   the DOM matches the range: `topVisibleIndex(range)` skips rows hidden behind the sticky date
+ *   header; without it the range start is used. A range is only resolved for the room that
+ *   reported it.
+ * - Restores by looking the saved id up in the timeline; a new room or an unknown id opens at the bottom.
+ * - The last resolved position is also written on a room switch, on unmount, and (through the
+ *   keepalive beacon) on pagehide / hidden.
  */
 export function useChatScroll(
   memberId: string | number,
-  messages: Message[]
+  timeline: Timeline,
+  topVisibleIndex?: (range: ListRange) => number,
 ): UseChatScrollResult {
   const storageKey = `${STORAGE_KEY_PREFIX}${memberId}`;
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedIdRef = useRef<number | null>(null);
-  const currentTopIndexRef = useRef<number>(0);
+  const keyRef = useRef(storageKey);
+  // Updated during render: after a room switch commits, this already holds the new room.
+  const latest = useRef({ storageKey, timeline, topVisibleIndex });
+  latest.current = { storageKey, timeline, topVisibleIndex };
+  /** The last reported range and the room it was reported for. */
+  const pendingRangeRef = useRef<{ range: ListRange; key: string } | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const topIdRef = useRef<number | null>(null);
+  const lastSavedRef = useRef<{ key: string; id: number } | null>(null);
 
-  // Track current state in refs for cleanup access
-  // These refs always hold the "current" room's data for saving on switch
-  const currentStorageKeyRef = useRef(storageKey);
-  const currentMessagesRef = useRef(messages);
-
-  // Update refs when props change
-  useEffect(() => {
-    currentStorageKeyRef.current = storageKey;
-    currentMessagesRef.current = messages;
-  }, [storageKey, messages]);
-
-  // Save position for a specific room (uses refs to get current state)
-  const saveToStorage = useCallback((key: string, msgs: Message[], topIndex: number) => {
-    if (!msgs || msgs.length === 0) return;
-    const message = msgs[topIndex];
-    if (!message) return;
-    persisted.setConv(key, { value: String(message.id) });
+  const write = useCallback((key: string, beacon = false) => {
+    const id = topIdRef.current;
+    if (id === null) return;
+    const last = lastSavedRef.current;
+    if (last && last.key === key && last.id === id) return;
+    if (beacon) persisted.setConvBeacon(key, { value: String(id) });
+    else persisted.setConv(key, { value: String(id) });
+    lastSavedRef.current = { key, id };
   }, []);
 
-  // Save PREVIOUS room's position when memberId changes
-  const prevMemberIdRef = useRef(memberId);
-  const prevStorageKeyRef = useRef(storageKey);
-  const prevMessagesRef = useRef(messages);
-  const prevTopIndexRef = useRef(0);
+  /**
+   * Turn the last reported range into the top visible message id (needs THIS room's DOM).
+   * Between the new room's render and the passive room-switch effect, the rendered room
+   * (`latest`) and the room writes go to (`keyRef`) differ. A range is only resolved when it
+   * was reported for both: an old room's range resolved on the new timeline, or a new room's
+   * range resolved early (pagehide flush, a lagging frame), would otherwise save a new-room
+   * id under the old room's key.
+   */
+  const resolvePending = useCallback(() => {
+    const pending = pendingRangeRef.current;
+    pendingRangeRef.current = null;
+    if (!pending) return;
+    const { storageKey: currentKey, timeline: current, topVisibleIndex: resolve } = latest.current;
+    if (pending.key !== currentKey || pending.key !== keyRef.current) return;
+    const { range } = pending;
+    const id = current.messageIdNear(resolve ? resolve(range) : range.startIndex);
+    if (id !== null) topIdRef.current = id;
+  }, []);
 
-  useEffect(() => {
-    if (prevMemberIdRef.current !== memberId) {
-      // memberId changed - save the PREVIOUS room's position
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      saveToStorage(prevStorageKeyRef.current, prevMessagesRef.current, prevTopIndexRef.current);
-
-      // Update prev refs to current
-      prevMemberIdRef.current = memberId;
+  const cancelScheduled = useCallback(() => {
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
     }
-    // Always update these for next switch
-    prevStorageKeyRef.current = storageKey;
-    prevMessagesRef.current = messages;
-  }, [memberId, storageKey, messages, saveToStorage]);
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
-  // Calculate initial position (runs once per memberId/messages change)
+  // Room switch: save the previous room's last resolved top message. Its pending range is
+  // dropped: the DOM and the timeline already belong to the new room.
+  useEffect(() => {
+    if (keyRef.current === storageKey) return;
+    cancelScheduled();
+    pendingRangeRef.current = null;
+    write(keyRef.current);
+    keyRef.current = storageKey;
+    topIdRef.current = null;
+  }, [storageKey, cancelScheduled, write]);
+
   const initialTopMostItemIndex = useMemo(() => {
-    if (!messages || messages.length === 0) return 0;
-
+    const last = timeline.items.length - 1;
+    if (last < 0) return 0;
     const savedId = persisted.getConv<{ value?: string }>(storageKey, {}).value ?? null;
-    if (!savedId) return messages.length - 1; // New room -> bottom
+    if (!savedId) return last; // New room -> bottom
+    const index = timeline.indexOfMessage(Number(savedId));
+    return index !== -1 ? index : last; // Not found -> bottom
+  }, [storageKey, timeline]);
 
-    const parsedId = Number(savedId);
-    const index = messages.findIndex(m => m.id === parsedId);
-    return index !== -1 ? index : messages.length - 1; // Not found -> bottom
-  }, [storageKey, messages]);
-
-  // Save position (debounced)
-  const savePosition = useCallback((topIndex: number) => {
-    if (!messages || messages.length === 0) return;
-
-    const message = messages[topIndex];
-    if (!message) return;
-
-    // Skip if same ID already saved
-    if (lastSavedIdRef.current === message.id) return;
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    debounceTimerRef.current = setTimeout(() => {
-      persisted.setConv(storageKey, { value: String(message.id) });
-      lastSavedIdRef.current = message.id;
-    }, DEBOUNCE_MS);
-  }, [messages, storageKey]);
-
-  // Immediate save (for unmount/room switch)
-  const savePositionImmediate = useCallback(() => {
-    if (!messages || messages.length === 0) return;
-
-    const message = messages[currentTopIndexRef.current];
-    if (!message) return;
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-      debounceTimerRef.current = null;
-    }
-
-    persisted.setConv(storageKey, { value: String(message.id) });
-    lastSavedIdRef.current = message.id;
-  }, [messages, storageKey]);
-
-  // Handler for Virtuoso's rangeChanged
   const handleRangeChanged = useCallback((range: ListRange) => {
-    currentTopIndexRef.current = range.startIndex;
-    prevTopIndexRef.current = range.startIndex; // Keep prev in sync for room switch
-    savePosition(range.startIndex);
-  }, [savePosition]);
+    pendingRangeRef.current = { range, key: latest.current.storageKey };
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      resolvePending();
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        write(keyRef.current);
+      }, DEBOUNCE_MS);
+    });
+  }, [resolvePending, write]);
 
-  // Cleanup debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, []);
+  const savePositionImmediate = useCallback(() => {
+    cancelScheduled();
+    resolvePending();
+    write(keyRef.current);
+  }, [cancelScheduled, resolvePending, write]);
 
-  // SD-FE-STATE-03: flush a pending scroll-position save when the window is
-  // hidden/closed. The 500ms debounce means a scroll-then-close loses the last
-  // position; on pagehide/hidden we persist the current top index immediately
-  // via setConvBeacon, whose keepalive request survives the JS context teardown
-  // on close (plain setConv's PATCH is abandoned).
+  // Unmount: keep the last resolved position (the DOM is gone, so a pending range is dropped).
+  useEffect(() => () => {
+    cancelScheduled();
+    pendingRangeRef.current = null;
+    write(keyRef.current);
+  }, [cancelScheduled, write]);
+
+  // SD-FE-STATE-03: flush on pagehide/hidden through setConvBeacon, whose keepalive request
+  // survives the JS context teardown on close (plain setConv's PATCH is abandoned).
   useEffect(() => {
-    const flushScroll = () => {
-      const msgs = currentMessagesRef.current;
-      if (!msgs || msgs.length === 0) return;
-      const message = msgs[currentTopIndexRef.current];
-      if (!message) return;
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-      if (lastSavedIdRef.current === message.id) return;
-      persisted.setConvBeacon(currentStorageKeyRef.current, { value: String(message.id) });
-      lastSavedIdRef.current = message.id;
+    const flush = () => {
+      cancelScheduled();
+      resolvePending();
+      write(keyRef.current, true);
     };
-    const onVisibility = () => { if (document.visibilityState === 'hidden') flushScroll(); };
-    window.addEventListener('pagehide', flushScroll);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      window.removeEventListener('pagehide', flushScroll);
+      window.removeEventListener('pagehide', flush);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [cancelScheduled, resolvePending, write]);
 
-  return {
-    initialTopMostItemIndex,
-    handleRangeChanged,
-    savePositionImmediate,
-  };
+  return { initialTopMostItemIndex, handleRangeChanged, savePositionImmediate };
 }

@@ -9,8 +9,9 @@ const twMerge = extendTailwindMerge({
         classGroups: {
             'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading'] }],
             'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'group-title', 'group-strong'] }],
-            'bg-image': [{ bg: ['group-canvas', 'group-title-bar'] }],
-            rounded: [{ rounded: ['card', 'sheet', 'pill'] }],
+            'bg-image': [{ bg: ['group-canvas', 'group-title', 'group-title-bar'] }],
+            rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
+            'rounded-tl': [{ 'rounded-tl': ['tail'] }],
             shadow: [{ shadow: ['pill', 'card', 'sheet', 'group-glow'] }],
             duration: [{ duration: ['fast', 'base', 'glide'] }],
             animate: [{ animate: ['landing'] }],

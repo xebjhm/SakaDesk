@@ -141,10 +141,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             : isDisconnected
                                 ? t('login.sessionExpiredDesc', {
                                     service: service?.displayName ?? serviceId,
-                                    feature: feature?.label ?? featureId
+                                    feature: feature ? t(feature.labelKey) : featureId
                                 })
                                 : t('login.premiumFeatureDesc', {
-                                    feature: feature?.label ?? featureId,
+                                    feature: feature ? t(feature.labelKey) : featureId,
                                     service: service?.name ?? serviceId
                                 })
                         }

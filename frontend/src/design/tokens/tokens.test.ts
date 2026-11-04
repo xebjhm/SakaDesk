@@ -107,7 +107,7 @@ describe('neutral colour tokens', () => {
 
 describe('scales', () => {
     it('radius, shadow, type, motion and spacing are unchanged', () => {
-        expect(radius).toEqual({ none: '0px', card: '14px', sheet: '20px', pill: '9999px' });
+        expect(radius).toEqual({ none: '0px', tail: '4px', card: '14px', sheet: '20px', pill: '9999px' });
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
         expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading']);
         expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });

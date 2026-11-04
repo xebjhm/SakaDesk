@@ -33,12 +33,15 @@ It is read via `groupTokens[id].official` or `groupRoles(id)` and follows the
 active service automatically through CSS variables. It is never hard-coded,
 and a primitive never takes a group id.
 
-- **Official layer:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`,
-  the canvas and the shelters.
+- **Official layer:** `bg-group-title` (the title gradient), `bg-group-title-bar`,
+  `text-group-title`, `--ds-group-title-*`, the canvas and the shelters.
 - **Roles:** the Colour system table; for example `Avatar selected` draws a white
   ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
   focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
-  (`focus-visible:ring-2 focus-visible:ring-group`).
+  (`focus-visible:ring-2 focus-visible:ring-group`). The group rail's selected logo
+  has a selection ring: a 2 px white gap plus a 2 px ring in the group logo colour
+  (`ring-2 ring-offset-2 ring-group-logo`, from `--ds-group-logo`) and the group glow.
+  It is the only place the logo colour is used as a ring.
 
 **Exception:** at most **one** `Button variant="primary"` per screen. It
 uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
@@ -76,6 +79,7 @@ one of two layers:
 | `ring` | 600 | keyboard focus ring | `ring-group` |
 | `bubbleBorder` | logo (Nogizaka 600) | message bubble border | `border-group-bubble` |
 | `glow` | logo at alpha | selection glow | `shadow-group-glow` |
+| `ring-group-logo` | logo | group rail selection ring (with a white gap) | `ring-group-logo` |
 
 Contrast floors are enforced by tests: `action` with white text ≥ 3:1 and
 `strong` on white ≥ 4.5:1. Sakurazaka is the one stylistic exception: a white
@@ -91,7 +95,7 @@ if components need it). Never add a new hex to a component or to
 | Scale | Utilities | Values |
 |---|---|---|
 | Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` | 11/16, 13/20, 14/22, 16/24, 20/28 px |
-| Radius | `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 14px, 20px, full |
+| Radius | `rounded-tail` `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 4px (only the first bubble's top-left corner, as `rounded-tl-tail`), 14px, 20px, full |
 | Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
 | Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
 | Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, `cubic-bezier(0.2, 0, 0, 1)` |

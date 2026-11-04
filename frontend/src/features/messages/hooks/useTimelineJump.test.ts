@@ -3,6 +3,8 @@ import { renderHook } from '@testing-library/react';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { toLocalDateStr } from '../../../utils/dateFormatters';
+import { buildTimeline } from '../timeline/buildTimeline';
+import type { Letter } from '../letters';
 import { useTimelineJump, estimateTravel, MAX_CORRECTIONS, GLIDE_LEAD, STILLNESS_MS } from './useTimelineJump';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -25,6 +27,8 @@ interface SetupOpts {
     glide?: { scroller: FakeScroller; range?: { startIndex: number; endIndex: number } | null; reduced?: boolean; targetTop?: number };
     /** Initial message list (default: the three-message `messages`). */
     list?: readonly Message[];
+    /** Letters merged into the timeline (default: none). */
+    letters?: readonly Letter[];
 }
 
 interface FakeScroller { scrollTop: number; scrollHeight: number; clientHeight: number }
@@ -53,7 +57,7 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
     const nextFrame = () => { frames += 1; opts.onFrame?.(frames); return Promise.resolve(); };
     const hook = renderHook(({ list, resetKey }: { list: readonly Message[]; resetKey?: unknown }) => useTimelineJump({
         virtuosoRef: ref,
-        messages: list,
+        timeline: buildTimeline(list, opts.letters ?? []),
         isUnread: opts.unread ?? (() => false),
         onLanded,
         resetKey,
@@ -78,7 +82,7 @@ describe('useTimelineJump', () => {
         await expect(jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(scrollToIndex).toHaveBeenCalledTimes(1);
         expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'auto' });
-        expect(onLanded).toHaveBeenCalledWith(2);
+        expect(onLanded).toHaveBeenCalledWith('msg-2');
         expect(clientLog).toHaveBeenCalledWith('timeline_jump',
             { target: 'message', index: 1, corrections: 0, outcome: 'landed', path: 'instant', jump_ms: 0 });
     });
@@ -151,8 +155,8 @@ describe('useTimelineJump', () => {
     it('a date jump to an existing day lands and highlights', async () => {
         const { jumpTo, scrollToIndex, onLanded } = setup([0]);
         await expect(jumpTo({ kind: 'date', date: toLocalDateStr(messages[2].timestamp) })).resolves.toBe('landed');
-        expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: 'start', behavior: 'auto' });
-        expect(onLanded).toHaveBeenCalledWith(3);
+        expect(scrollToIndex).toHaveBeenCalledWith({ groupIndex: 2, align: 'start', behavior: 'auto' });
+        expect(onLanded).toHaveBeenCalledWith('msg-3');
     });
 
     it('a date jump to a missing day is not_found', async () => {
@@ -261,6 +265,22 @@ describe('useTimelineJump', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
         expect(s.onLanded).not.toHaveBeenCalled();
     });
+
+    it('jumps to a letter by its row key, never to a message with the same id', async () => {
+        const letters: Letter[] = [{ id: 2, text: '', created_at: '2024-03-15T02:00:00Z', image_url: null, width: null, height: null }];
+        const { jumpTo, scrollToIndex, onLanded } = setup([0], { letters });
+        // Rows: msg-1, msg-2, letter-2, msg-3
+        await expect(jumpTo({ kind: 'letter', id: 2 })).resolves.toBe('landed');
+        expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: 'start', behavior: 'auto' });
+        expect(onLanded).toHaveBeenCalledWith('letter-2');
+        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ target: 'letter', outcome: 'landed' }));
+    });
+
+    it('measures by row key', async () => {
+        const { jumpTo, measure } = setup([0]);
+        await jumpTo({ kind: 'message', id: 3 });
+        expect(measure).toHaveBeenCalledWith('msg-3', 'start');
+    });
 });
 
 describe('useTimelineJump glide', () => {
@@ -268,6 +288,15 @@ describe('useTimelineJump glide', () => {
     const many = Array.from({ length: 200 }, (_, i) => msg(i + 1, new Date(Date.UTC(2024, 0, 1) + i * 3_600_000).toISOString()));
     const below = { startIndex: 0, endIndex: 9 }; // far above row 150 (id 151)
     const above = { startIndex: 150, endIndex: 159 }; // far below row 0 (id 1)
+
+    it('a far date jump leads in to the day\'s group with an offset', async () => {
+        const scroller = fakeScroller();
+        const date = toLocalDateStr(many[150].timestamp);
+        const group = buildTimeline(many, []).groupIndexOfDate(date);
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: 20000 } });
+        await expect(s.jumpTo({ kind: 'date', date })).resolves.toBe('landed');
+        expect(s.scrollToIndex.mock.calls[0][0]).toEqual({ groupIndex: group, align: 'start', behavior: 'auto', offset: -LEAD });
+    });
 
     it('far downward: lands a lead short above the target, then glides down into place', async () => {
         const scroller = fakeScroller();
@@ -278,7 +307,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 150, align: 'start', behavior: 'auto', offset: -LEAD });
         expect(tops[0]).toBe(20000 - LEAD);
         expect(scroller.scrollTop).toBe(20000);
-        expect(s.onLanded).toHaveBeenCalledWith(151);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-151');
         expect(pathLogged()).toBe('far');
     });
 
@@ -309,6 +338,25 @@ describe('useTimelineJump glide', () => {
         expect(scroller.scrollTop).toBe(1000);
     });
 
+    it('far, but the target never rendered during the glide: finishes with an exact instant scroll', async () => {
+        // Measured in the browser (grouped list, Home from the bottom): right after the lead-in,
+        // rows above the viewport measure taller and Virtuoso pushes scrollTop down by 170 px
+        // before the glide starts, so the planned glide ends short with the target unrendered.
+        const scroller = fakeScroller();
+        let pushed = false;
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: above, targetTop: 1000 },
+            onFrame: () => { if (!pushed && scroller.scrollTop === 1000 + LEAD) { pushed = true; scroller.scrollTop += 170; } },
+        });
+        await expect(s.jumpTo({ kind: 'top' })).resolves.toBe('landed');
+        expect(pushed).toBe(true);
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(2);
+        expect(s.scrollToIndex).toHaveBeenLastCalledWith({ index: 0, align: 'start', behavior: 'auto' });
+        expect(scroller.scrollTop).toBe(1000);
+        expect(pathLogged()).toBe('far_snap');
+    });
+
     it('downward: follows the target when it moves mid-glide, without a correction', async () => {
         // A picture above the target finishes loading mid-glide and pushes it 60 px down.
         const scroller = fakeScroller();
@@ -328,7 +376,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).not.toHaveBeenCalled();
         for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeLessThanOrEqual(tops[i - 1]);
         expect(scroller.scrollTop).toBe(4850);
-        expect(s.onLanded).toHaveBeenCalledWith(51);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-51');
         expect(pathLogged()).toBe('close');
     });
 
@@ -368,7 +416,7 @@ describe('useTimelineJump glide', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(s.scrollToIndex).not.toHaveBeenCalled();
         expect(scroller.scrollTop).toBe(5120);
-        expect(s.onLanded).toHaveBeenCalledWith(2);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-2');
         expect(pathLogged()).toBe('onscreen');
     });
 

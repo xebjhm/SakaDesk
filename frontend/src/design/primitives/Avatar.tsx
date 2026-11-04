@@ -18,10 +18,12 @@ export interface AvatarProps {
     size?: AvatarSize;
     /** Selected member: white ring + group-colour glow. */
     selected?: boolean;
+    /** Hidden from assistive tech (empty alt) when a visible label with the name follows. */
+    decorative?: boolean;
     className?: string;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected = false, className }) => {
+export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected = false, decorative = false, className }) => {
     const [failed, setFailed] = useState(false);
     useEffect(() => setFailed(false), [src]);
 
@@ -42,7 +44,7 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected
             {showImage ? (
                 <img
                     src={src}
-                    alt={name}
+                    alt={decorative ? '' : name}
                     draggable={false}
                     className="h-full w-full object-cover"
                     onError={() => {
@@ -51,7 +53,9 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected
                     }}
                 />
             ) : (
-                <span role="img" aria-label={name}>{initial}</span>
+                decorative
+                    ? <span aria-hidden="true">{initial}</span>
+                    : <span role="img" aria-label={name}>{initial}</span>
             )}
         </span>
     );

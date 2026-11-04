@@ -54,6 +54,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 from backend.api import (  # noqa: E402
     auth,
+    account,
     content,
     sync,
     settings,
@@ -410,6 +411,7 @@ app.include_router(version.router)
 app.include_router(notifications.router)
 app.include_router(favorites.router)
 app.include_router(chat_features.router)
+app.include_router(account.router)
 app.include_router(client_log.router)
 app.include_router(ui_state.router)
 app.include_router(call_popup.router)

@@ -18,7 +18,7 @@ import {
 
 // Full class names so Tailwind's scanner generates them.
 const RADIUS_CLASS: Record<RadiusStep, string> = {
-    none: 'rounded-none', card: 'rounded-card', sheet: 'rounded-sheet', pill: 'rounded-pill',
+    none: 'rounded-none', tail: 'rounded-tail', card: 'rounded-card', sheet: 'rounded-sheet', pill: 'rounded-pill',
 };
 const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
@@ -82,6 +82,7 @@ export const DesignPage: React.FC = () => {
         ['logo', r.logo], ['action (600)', r.action], ['strong (700)', r.strong], ['subtle (50)', r.subtle],
         ['subtleBorder (200)', r.subtleBorder], ['highlight (100)', r.highlight], ['linkUnderline (300)', r.linkUnderline],
         ['bubbleBorder', r.bubbleBorder], ['glow', r.glow],
+        ['title.gradient', `linear-gradient(to right, ${groupTokenVars(group)['--ds-group-title-from']}, ${groupTokenVars(group)['--ds-group-title-via']}, ${groupTokenVars(group)['--ds-group-title-to']})`],
         ['title.text', groupTokenVars(group)['--ds-group-title-text']],
         ['title.bar', groupTokenVars(group)['--ds-group-title-bar']],
         ['canvas', groupTokenVars(group)['--ds-group-canvas']],
@@ -155,6 +156,13 @@ export const DesignPage: React.FC = () => {
                             ))}
                         </div>
                     </Card>
+                    <h3 className="text-title text-secondary">{t('designPage.railLogo')}</h3>
+                    <div className="flex items-center gap-4 p-2">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-pill bg-card ring-2 ring-group-logo ring-offset-2 shadow-group-glow">
+                            <span className="text-small font-semibold text-group-strong">{(serviceThemes[group].name || group).slice(0, 1)}</span>
+                        </div>
+                        <span className="text-small text-muted">ring-group-logo</span>
+                    </div>
                 </Section>
 
                 <Section title={t('designPage.radius')}>

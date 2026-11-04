@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from '../../../design/tokens/motion';
+import type { RowKey } from '../timeline/buildTimeline';
 
 /**
- * The landed-row highlight: `flash(id)` sets `highlightedMessageId` on the next animation
+ * The landed-row highlight: `flash(rowKey)` sets `highlightedRowKey` on the next animation
  * frame and clears it after `motion.duration.landing`. Clearing first and re-setting on the
  * next frame restarts the CSS animation when the same row lands twice in a row. A change of
  * `resetKey` (the selected room) or an unmount cancels the pending frame and timer; a
- * `resetKey` change also clears the highlight.
+ * `resetKey` change also clears the highlight. Rows are keyed `msg-<id>` / `letter-<id>`.
  */
 export function useLandingHighlight(resetKey: unknown) {
-    const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+    const [highlightedRowKey, setHighlightedRowKey] = useState<RowKey | null>(null);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const frameRef = useRef<number | null>(null);
     const cancel = useCallback(() => {
@@ -18,19 +19,19 @@ export function useLandingHighlight(resetKey: unknown) {
         timerRef.current = null;
         frameRef.current = null;
     }, []);
-    const flash = useCallback((id: number) => {
+    const flash = useCallback((rowKey: RowKey) => {
         cancel();
-        setHighlightedMessageId(null);
+        setHighlightedRowKey(null);
         frameRef.current = requestAnimationFrame(() => {
             frameRef.current = null;
-            setHighlightedMessageId(id);
-            timerRef.current = setTimeout(() => setHighlightedMessageId(null), motion.duration.landing);
+            setHighlightedRowKey(rowKey);
+            timerRef.current = setTimeout(() => setHighlightedRowKey(null), motion.duration.landing);
         });
     }, [cancel]);
     useEffect(() => cancel, [cancel]);
     useEffect(() => {
         cancel();
-        setHighlightedMessageId(null);
+        setHighlightedRowKey(null);
     }, [resetKey, cancel]);
-    return { highlightedMessageId, flash };
+    return { highlightedRowKey, flash };
 }

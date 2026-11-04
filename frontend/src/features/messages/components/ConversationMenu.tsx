@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
 import { cn } from '../../../utils/classnames';
 import type { Message, BackgroundSettings } from '../../../types';
+import type { Letter } from '../letters';
+import type { LettersStatus } from '../hooks/useRoomExtras';
 import { SentLettersModal } from '../../../core/modals/SentLettersModal';
 import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
-import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
@@ -20,12 +21,18 @@ interface ChatHeaderMenuProps {
     messages: Message[];
     memberName: string;
     memberAvatar?: string;
-    groupId?: string;
     activeService?: string; // Service ID for API calls
-    onSelectDate?: (date: string) => void;
+    /** Opens the date-search calendar (owned by MessagesFeature; the date pills open it too). */
+    onOpenCalendar: () => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
     /** Icon color for header (used in light header style) */
     iconColor?: string;
+    /** The room's sent letters (the timeline's list), for the overview. */
+    letters: readonly Letter[];
+    /** Whether the letters are loading, loaded or unavailable (the overview says so). */
+    lettersStatus: LettersStatus;
+    /** Jumps the chat to a letter chosen in the overview. */
+    onJumpToLetter: (id: number) => void;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -36,9 +43,11 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     messages,
     memberName,
     memberAvatar,
-    groupId,
+    letters,
+    lettersStatus,
+    onJumpToLetter,
     activeService,
-    onSelectDate,
+    onOpenCalendar,
     onBackgroundChange,
     iconColor,
 }) => {
@@ -67,6 +76,10 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
 
     const handleMenuItemClick = (modalType: ModalType) => {
         setShowMenu(false);
+        if (modalType === 'calendar') {
+            onOpenCalendar();
+            return;
+        }
         setActiveModal(modalType);
     };
 
@@ -124,10 +137,9 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <SentLettersModal
                 isOpen={activeModal === 'letters'}
                 onClose={() => setActiveModal(null)}
-                conversationPath={conversationPath}
-                memberName={memberName}
-                groupId={groupId}
-                activeService={activeService}
+                letters={letters}
+                status={lettersStatus}
+                onSelectLetter={onJumpToLetter}
             />
 
             <MediaGalleryModal
@@ -139,16 +151,6 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 serviceId={activeService}
                 memberPath={conversationPath}
                 onSourceJump={handleJumpToMessage}
-            />
-
-            <CalendarModal
-                isOpen={activeModal === 'calendar'}
-                onClose={() => setActiveModal(null)}
-                conversationPath={conversationPath}
-                onSelectDate={(date) => {
-                    onSelectDate?.(date);
-                    setActiveModal(null);
-                }}
             />
 
             <BackgroundModal

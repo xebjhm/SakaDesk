@@ -30,8 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subscription, which the app never downloaded before. These recovered
   messages also show up in search.
 - **Your sent letters are now kept in your archive**, even after a
-  subscription ends. They are only saved for now; showing them in the chat
-  will come later.
+  subscription ends, and they appear in the chat where you sent them, with
+  the avatar you had at the time. Sent Letters in the chat menu shows them
+  all; click one to jump to it.
+- **Dates stay at the top of the chat while you scroll.** Each day starts
+  with a date label (Today, Yesterday, or the date); click it to open the
+  calendar and jump to another day.
 - **Your own nickname and avatar for each group are now archived.** Only those
   two are kept; other profile details are not stored.
 - **Incoming calls for new voice messages.** Opening a member's chat whose
@@ -44,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **A cleaner main window.** The group list on the left is now neutral, the
+  feature list shows names under its icons and shares the group's background
+  with the member list, and chats and blogs sit on one rounded page. The
+  member list widens on large windows to show four or five members per row.
+- **Chats are easier to read.** Messages sent in a row show the name, photo
+  and time only once (hover a message to see its time), and the chat title
+  shows the member's photo and how many days you have been subscribed.
 - **One consistent colour design per group.** Badges, buttons, member
   names, links, dialogs and the voice player now follow each group's logo
   colours, so every group looks equally clear. The official title bars,

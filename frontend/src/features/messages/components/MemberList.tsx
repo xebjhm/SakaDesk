@@ -1,10 +1,10 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '../../../utils/classnames';
 import { Users, RefreshCw } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
 import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
-import { useMessagesTheme } from '../hooks/useMessagesTheme';
+import { Avatar, Badge, IconButton } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
@@ -52,6 +52,13 @@ function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<stri
     return t('time.daysAgo', { count: days });
 }
 
+/** Sticky section heading (online / offline / graduated), styled as a small pill. */
+const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+    <div className="sticky top-0 z-20 flex justify-center py-2">
+        <h2 className="rounded-pill bg-pill px-3 py-1 text-caption font-semibold text-secondary shadow-pill">{children}</h2>
+    </div>
+);
+
 export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
@@ -75,10 +82,6 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 if (requestId === imagesRequestId.current) console.error('Failed to load profile images:', err);
             });
     };
-
-    // Get theme colors for current service
-    const theme = useMessagesTheme();
-    const sidebarGradient = useMemo(() => theme.messages.sidebarGradient, [theme.messages.sidebarGradient]);
 
     const loadGroups = () => {
         const url = activeService
@@ -224,76 +227,57 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     const graduatedGroups = sortGroups(filteredGroups.filter(g => g.is_graduated && !g.is_group_chat));
 
     const renderGroupGrid = (groupList: GroupInfo[], isGraduated = false) => (
-        <div className="grid grid-cols-3 gap-x-2 gap-y-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-x-2 gap-y-4">
             {groupList.map(group => {
                 const info = getGroupDisplayInfo(group);
                 const isSelected = selectedGroupDir === info.path;
                 const unreadCount = unreadCounts[info.path] || 0;
-                const showUnread = unreadCount > 0; // Always show if unread, even if selected
 
                 return (
                     <button
                         key={group.id}
+                        type="button"
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
                         onContextMenu={info.isGroupChat ? undefined : (e) => {
                             e.preventDefault();
                             setMenu({ x: e.clientX, y: e.clientY, path: info.path });
                         }}
-                        className="flex flex-col items-center py-1 relative group"
+                        className="group relative flex flex-col items-center gap-1 rounded-card py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
                         title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
-                        {/* Avatar Container */}
-                        <div className={cn(
-                            "w-16 h-16 rounded-full flex items-center justify-center mb-1.5 bg-white transition-all relative overflow-hidden",
-                            // Selection Ring
-                            isSelected ? "ring-2 ring-offset-2" : "ring-1 ring-gray-100/50",
-                        )}
-                            style={{
-                                ...(isSelected ? { '--tw-ring-color': theme.modals.accentColor } as React.CSSProperties : {}),
-                                ...(isGraduated
-                                    ? { filter: 'sepia(0.3) saturate(0.6) contrast(0.9)' }
-                                    : !info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : {}),
-                            }}
+                        {/* Hover: the avatar lifts slightly. Graduated / inactive members keep their muted look. */}
+                        <span
+                            className="transition-transform duration-fast ease-standard group-hover:scale-105"
+                            style={isGraduated
+                                ? { filter: 'sepia(0.3) saturate(0.6) contrast(0.9)' }
+                                : !info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : undefined}
                         >
                             {info.isGroupChat && !info.avatar ? (
-                                <Users className="w-6 h-6 text-gray-500" />
-                            ) : info.avatar ? (
-                                <img
-                                    src={info.avatar}
-                                    alt={info.displayName}
-                                    className="w-full h-full object-cover"
-                                    onError={(e) => {
-                                        (e.target as HTMLImageElement).style.display = 'none';
-                                    }}
-                                />
+                                <span className={cn(
+                                    'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
+                                    'transition-shadow duration-fast ease-standard',
+                                    isSelected ? 'ring-2 ring-white shadow-group-glow' : 'group-hover:shadow-card',
+                                )}>
+                                    <Users className="h-6 w-6" />
+                                </span>
                             ) : (
-                                <span className="text-lg text-gray-600 font-medium">
-                                    {info.shortName}
-                                </span>
+                                <Avatar
+                                    src={info.avatar ?? undefined}
+                                    name={info.displayName}
+                                    decorative
+                                    size="lg"
+                                    selected={isSelected}
+                                    className={cn('h-16 w-16', !isSelected && 'group-hover:shadow-card')}
+                                />
                             )}
-                        </div>
+                        </span>
 
-                        {/* Unread Indicator (Large Circle with Count) */}
-                        {showUnread && (
-                            <div
-                                className="absolute top-0 right-1 min-w-[20px] h-[20px] border border-white rounded-full z-10 shadow-sm flex items-center justify-center px-1"
-                                style={{ backgroundColor: theme.unreadBadge }}
-                            >
-                                <span className="text-[10px] font-bold text-white">
-                                    {unreadCount > 99 ? '99+' : unreadCount}
-                                </span>
-                            </div>
-                        )}
+                        <Badge count={unreadCount} className="absolute right-1 top-0 z-10" />
 
-                        {/* Removed Group Member Count Badge */}
-
-                        <span
-                            className={cn(
-                                "text-[11px] text-center leading-tight max-w-[70px] line-clamp-2 transition-colors",
-                                isSelected ? "font-medium" : "text-gray-600 group-hover:text-gray-800"
-                            )}
-                            style={isSelected ? { color: theme.modals.accentColor } : undefined}
-                        >
+                        <span className={cn(
+                            'line-clamp-2 max-w-full text-center text-caption transition-colors duration-fast ease-standard',
+                            isSelected ? 'font-semibold text-group-strong' : 'text-secondary group-hover:text-primary',
+                        )}>
                             {info.displayName}
                         </span>
                     </button>
@@ -303,100 +287,75 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     );
 
     return (
-        <div
-            className="w-80 h-full flex flex-col"
-            style={{
-                background: `linear-gradient(to bottom, ${sidebarGradient[0]}, ${sidebarGradient[1]}, ${sidebarGradient[2]})`,
-            }}
-        >
-            {/* Header */}
-            <div className="px-4 py-3 flex items-center justify-center relative">
-                <h1 className="text-base font-bold text-gray-700">{t('memberList.title')}</h1>
-                <div className="absolute right-4 flex gap-2 items-center">
-                    {isSyncing && (
-                        <RefreshCw className="w-4 h-4 animate-spin" style={{ color: theme.primaryColor }} />
-                    )}
+        <div className="relative flex h-full w-80 flex-col min-[1600px]:w-[376px] min-[1920px]:w-[432px]">
+            {/* Title row */}
+            <div className="relative flex items-center justify-center px-4 py-3">
+                <h1 className="text-title font-semibold text-primary">{t('memberList.title')}</h1>
+                <div className="absolute right-4 flex items-center gap-2">
+                    {isSyncing && <RefreshCw className="h-4 w-4 animate-spin text-secondary" />}
                 </div>
             </div>
 
-            {/* Group Grid */}
-            <div className="flex-1 overflow-y-auto px-2 pb-4 scrollbar-thin scrollbar-thumb-gray-300">
+            {/* Group grid; bottom padding keeps the last row clear of the floating sync pill */}
+            <div className="flex-1 overflow-y-auto px-2 pb-16">
                 {loading ? (
-                    <div className="p-6 text-center text-gray-500 text-sm flex flex-col items-center gap-2">
-                        <RefreshCw className="w-5 h-5 animate-spin" style={{ color: theme.primaryColor }} />
+                    <div className="flex flex-col items-center gap-2 p-6 text-center text-small text-secondary">
+                        <RefreshCw className="h-5 w-5 animate-spin" />
                         <span>{t('memberList.loadingConversations')}</span>
                     </div>
                 ) : groups.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500 text-sm">
+                    <div className="p-6 text-center text-small text-secondary">
                         {t('memberList.noConversations')}
                     </div>
                 ) : null}
 
-                {/* Online Section */}
                 {onlineGroups.length > 0 && (
                     <>
-                        <div
-                            className="px-2 py-2 sticky top-0 z-10"
-                            style={{ background: `linear-gradient(to bottom, ${sidebarGradient[0]}, transparent)` }}
-                        >
-                            <h2 className="text-sm text-gray-600 text-center font-medium opacity-80">{t('memberList.online')}</h2>
-                        </div>
+                        <SectionHeading>{t('memberList.online')}</SectionHeading>
                         {renderGroupGrid(onlineGroups)}
                     </>
                 )}
 
-                {/* Offline Section */}
                 {offlineGroups.length > 0 && (
-                    <>
-                        <div
-                            className="px-2 py-2 mt-4 sticky top-0 z-10"
-                            style={{ background: `linear-gradient(to bottom, ${sidebarGradient[1]}, transparent)` }}
-                        >
-                            <h2 className="text-sm text-gray-500 text-center font-medium opacity-80">{t('memberList.offline')}</h2>
-                        </div>
+                    <div className="mt-4">
+                        <SectionHeading>{t('memberList.offline')}</SectionHeading>
                         {renderGroupGrid(offlineGroups)}
-                    </>
+                    </div>
                 )}
 
                 {/* Graduated Section - only shown when members have local backup */}
                 {graduatedGroups.length > 0 && (
-                    <>
-                        <div
-                            className="px-2 py-2 mt-4 sticky top-0 z-10"
-                            style={{ background: `linear-gradient(to bottom, ${sidebarGradient[2]}, transparent)` }}
-                        >
-                            <h2 className="text-sm text-gray-400 text-center font-medium opacity-80">
-                                {t('memberList.graduated')}
-                            </h2>
-                        </div>
+                    <div className="mt-4">
+                        <SectionHeading>{t('memberList.graduated')}</SectionHeading>
                         {renderGroupGrid(graduatedGroups, true)}
-                    </>
+                    </div>
                 )}
             </div>
 
-            {/* Footer */}
-            <div className="p-3 bg-white/40 backdrop-blur-sm shrink-0 border-t border-white/20">
-                <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+            {/* Floating sync pill */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                <div className="pointer-events-auto inline-flex items-center gap-1 rounded-pill bg-pill py-1 pl-3 pr-1 text-caption text-secondary shadow-pill">
                     {isSyncing ? (
-                        <span className="flex items-center gap-1 font-medium" style={{ color: theme.primaryColor }}>
-                            <RefreshCw className="w-3 h-3 animate-spin" />
+                        <span className="flex items-center gap-1 py-1 pr-2 font-semibold">
+                            <RefreshCw className="h-3 w-3 animate-spin" />
                             {t('sync.syncing')}
                         </span>
                     ) : (
                         <>
-                            <span>
+                            <span className={onSyncNow ? undefined : 'pr-2'}>
                                 {activeService && lastSyncMap[activeService]
                                     ? t('sync.lastSynced', { time: formatRelativeTime(lastSyncMap[activeService], t) })
                                     : t('sync.notSynced')}
                             </span>
                             {onSyncNow && (
-                                <button
-                                    onClick={onSyncNow}
-                                    className="p-1 rounded hover:bg-white/50 transition-colors"
+                                <IconButton
+                                    size="sm"
+                                    className="h-6 w-6"
+                                    aria-label={t('sync.syncNow')}
                                     title={t('sync.syncNow')}
-                                >
-                                    <RefreshCw className="w-3 h-3" />
-                                </button>
+                                    icon={<RefreshCw className="h-3 w-3" />}
+                                    onClick={onSyncNow}
+                                />
                             )}
                         </>
                     )}

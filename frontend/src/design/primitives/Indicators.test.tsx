@@ -51,6 +51,15 @@ describe('Avatar', () => {
         expect(clientLog).not.toHaveBeenCalled();
     });
 
+    it('is hidden from assistive tech when decorative (a visible label follows)', () => {
+        const { container, rerender } = render(<Avatar src="/a.jpg" name="小坂菜緒" decorative />);
+        expect(screen.queryByRole('img', { name: '小坂菜緒' })).toBeNull();
+        expect(container.querySelector('img')).toHaveAttribute('alt', '');
+        rerender(<Avatar name="小坂菜緒" decorative />);
+        expect(screen.queryByRole('img')).toBeNull();
+        expect(screen.getByText('小')).toHaveAttribute('aria-hidden', 'true');
+    });
+
     it('adds the white ring and group glow when selected', () => {
         const { container } = render(<Avatar name="A" selected />);
         expect(container.firstChild).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');
@@ -75,5 +84,16 @@ describe('DatePill', () => {
         const { container } = render(<DatePill date={new Date(2025, 0, 1)} sticky />);
         expect(container.firstChild).toHaveClass('sticky', 'top-0');
         expect(screen.getByText(/2025/)).toBeInTheDocument();
+    });
+
+    it('becomes a button with a tooltip when it has an action', async () => {
+        const onClick = vi.fn();
+        render(<DatePill date={new Date(2026, 10, 4, 9, 0)} onClick={onClick} actionLabel="Jump to a date" />);
+        const button = screen.getByRole('button', { name: 'Today' });
+        expect(button).toHaveAttribute('title', 'Jump to a date');
+        expect(button).toHaveClass('rounded-pill', 'focus-visible:ring-group');
+        expect(screen.getByText('Today').tagName).toBe('TIME');
+        fireEvent.click(button);
+        expect(onClick).toHaveBeenCalledOnce();
     });
 });

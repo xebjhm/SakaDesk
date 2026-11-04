@@ -19,6 +19,7 @@ import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
 import { FALLBACK_ACTION_COLOR } from '../../../design/tokens';
+import { Avatar } from '../../../design/primitives';
 
 interface ShelterColors {
     picture: string;
@@ -30,7 +31,6 @@ interface ShelterColors {
 type ShelterStyle = 'classic' | 'light';
 
 interface MessageBubbleTheme {
-    bubbleBorder: string;
     voicePlayerAccent: string;
     favoriteColor?: string;
     linkColor?: string;
@@ -55,6 +55,8 @@ interface MessageBubbleProps {
     memberPath?: string;
     /** User's nickname for %%% placeholder replacement in translations */
     userNickname?: string;
+    /** First message of a run (same sender, same day, ≤ 5 min apart): shows avatar, name and time. */
+    runStart?: boolean;
 }
 
 const SHELTER_ICONS = {
@@ -165,10 +167,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     service,
     memberPath,
     userNickname,
+    runStart = true,
 }) => {
     const { t } = useTranslation();
     const date = new Date(message.timestamp);
-    const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    // Card radius; the first bubble of a run keeps a small top-left corner.
+    const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -279,14 +284,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
         // 'light' = white background with colored border and icon (Sakurazaka)
         const isLightStyle = shelterStyle === 'light';
-        const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
         const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
         const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
 
         return (
             <div
-                className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-                style={{ backgroundColor: bgColor, border: borderStyle }}
+                className={cn('absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors', bubbleCorners, isLightStyle && 'bg-card')}
+                style={{ backgroundColor: isLightStyle ? undefined : themeColor, border: borderStyle }}
                 onClick={(e) => {
                     e.stopPropagation();
                     onReveal?.();
@@ -301,9 +305,29 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         );
     };
 
+    const favoriteStar = message.is_favorite && (
+        <Star
+            className="w-3.5 h-3.5 shrink-0"
+            style={{ color: theme?.favoriteColor || FALLBACK_ACTION_COLOR, fill: theme?.favoriteColor || FALLBACK_ACTION_COLOR }}
+        />
+    );
+    const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
+        <div className={cn(
+            'transition-opacity duration-fast ease-standard',
+            translationState === 'loading' || translationState === 'error' ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100',
+        )}>
+            <TranslateButton
+                state={translationState}
+                onClick={triggerTranslation}
+                error={translationError}
+                accentColor={service ? getServiceTheme(service).primaryColor : undefined}
+            />
+        </div>
+    );
+
     return (
         <div
-            className="flex gap-3 mb-6 relative"
+            className={cn('group/row relative flex gap-3', runStart ? 'pt-3' : 'pt-1')}
             onContextMenu={handleContextMenu}
             onTouchStart={handleTouchStartFavorite}
             onTouchEnd={handleTouchEndFavorite}
@@ -320,60 +344,39 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 />
             )}
 
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onAvatarClick?.();
-                    }}
-                    // Only a clickable avatar (it opens a profile card) looks
-                    // clickable; the room author (member 0) gets no handler.
-                    className={`w-10 h-10 rounded-full bg-gray-200 overflow-hidden ${
-                        onAvatarClick
-                            ? 'hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer'
-                            : 'cursor-default'
-                    }`}
-                >
-                    {member_avatar ? (
-                        <img
-                            src={member_avatar}
-                            alt={member_name}
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                            {member_name.substring(0, 2)}
-                        </div>
-                    )}
-                </button>
+            {/* Avatar column: the avatar shows once, at the top of a run */}
+            <div className="w-10 shrink-0">
+                {runStart && (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onAvatarClick?.();
+                        }}
+                        // Only a clickable avatar (it opens a profile card) looks
+                        // clickable; the room author (member 0) gets no handler.
+                        className={cn(
+                            'block rounded-pill',
+                            onAvatarClick
+                                ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:shadow-card'
+                                : 'cursor-default',
+                        )}
+                    >
+                        <Avatar src={member_avatar} name={member_name} size="md" />
+                    </button>
+                )}
             </div>
 
-            <div className="flex flex-col max-w-[80%] group/bubble">
-                {/* Metadata row — name, time, favorite star, translate button (right-aligned) */}
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm text-gray-700 font-medium">{member_name}</span>
-                    <span className="text-xs text-gray-400">{dateStr}</span>
-                    {message.is_favorite && (
-                        <Star
-                            className="w-3.5 h-3.5"
-                            style={{ color: theme?.favoriteColor || '#3b82f6', fill: theme?.favoriteColor || '#3b82f6' }}
-                        />
-                    )}
-                    {translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
-                        <div className={cn(
-                            "ml-auto transition-opacity",
-                            translationState === 'loading' || translationState === 'error' ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100"
-                        )}>
-                            <TranslateButton
-                                state={translationState}
-                                onClick={triggerTranslation}
-                                error={translationError}
-                                accentColor={service ? getServiceTheme(service).primaryColor : undefined}
-                            />
-                        </div>
-                    )}
-                </div>
+            <div className="flex min-w-0 max-w-[80%] flex-col">
+                {/* Name, time, favorite star and translate button: once per run */}
+                {runStart && (
+                    <div className="mb-1 flex items-center gap-2">
+                        <span className="text-small font-semibold text-group-strong">{member_name}</span>
+                        <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
+                        {favoriteStar}
+                        {translateButton && <div className="ml-auto">{translateButton}</div>}
+                    </div>
+                )}
 
                 {/* Bubble Container */}
                 <div className="relative">
@@ -381,13 +384,11 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                     <div
                         className={cn(
-                            "bg-white rounded-2xl shadow-sm border transition-all duration-300",
-                            message.type === 'voice' ? "p-0 overflow-visible" : "p-3 overflow-hidden",
-                            isUnread && "opacity-0 pointer-events-none" // Hide content but keep layout
+                            'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
+                            bubbleCorners,
+                            message.type === 'voice' ? 'overflow-visible p-0' : 'overflow-hidden p-3',
+                            isUnread && 'pointer-events-none opacity-0', // Hide content but keep layout
                         )}
-                        style={{
-                            borderColor: theme?.bubbleBorder || '#E5E7EB',
-                        }}
                     >
 
                         {/* Picture */}
@@ -432,8 +433,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Text */}
                         {message.content && (
                             <div className={cn(
-                                "text-gray-900 whitespace-pre-wrap leading-relaxed text-[15px]",
-                                message.type === 'voice' && "p-3 pt-2"
+                                'whitespace-pre-wrap text-body text-primary',
+                                message.type === 'voice' && 'p-3 pt-2',
                             )}>
                                 <LinkifiedText text={message.content} linkColor={theme?.linkColor} />
                             </div>
@@ -452,7 +453,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Fallback for missing content */}
                         {!message.content && !mediaUrl && (
-                            <div className="text-gray-400 italic text-sm">
+                            <div className="text-small italic text-muted">
                                 {t('messageList.noContent')}
                             </div>
                         )}
@@ -494,6 +495,20 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     </div>
                 )}
             </div>
+
+            {/* Later bubbles of a run: star, translate button and the time (on hover) beside the bubble */}
+            {!runStart && (
+                <div className="flex shrink-0 flex-col items-start justify-end gap-1 pb-1">
+                    {favoriteStar}
+                    {translateButton}
+                    <time
+                        className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
+                        dateTime={message.timestamp}
+                    >
+                        {time}
+                    </time>
+                </div>
+            )}
         </div>
     );
 };

@@ -79,7 +79,7 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     try:
         common = os.path.commonpath([str(base_resolved), str(target_path)])
         if common != str(base_resolved):
-            logger.warning(f"Path traversal attempt: {user_path} -> {target_path}")
+            logger.warning("path_traversal_blocked")
             raise HTTPException(status_code=403, detail="Access denied")
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -878,7 +878,7 @@ async def get_media(file_path: str):
     The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
     """
     safe_path = _resolve_media_path(file_path)
-    logger.debug(f"Media request: {file_path} -> {safe_path}, exists=True")
+    logger.debug("media_request", exists=True)
     return FileResponse(safe_path)
 
 

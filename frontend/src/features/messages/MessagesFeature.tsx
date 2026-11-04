@@ -6,13 +6,18 @@ import { MessageList } from './components/MessageList';
 import { ConversationMenu } from './components/ConversationMenu';
 import { MemberProfilePopup } from './components/MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
-import { VirtuosoHandle } from 'react-virtuoso';
+import type { GroupedVirtuosoHandle } from 'react-virtuoso';
+import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
+import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
-import { useTranslation } from '../../i18n';
+import { useTranslation, Trans } from '../../i18n';
+import { Avatar, IconButton } from '../../design/primitives';
+import { FadeOnChange } from '../../core/layout/FadeOnChange';
+import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
@@ -28,6 +33,13 @@ import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 import { useTimelineJump } from './hooks/useTimelineJump';
 import { useLandingHighlight } from './hooks/useLandingHighlight';
+import { buildTimeline } from './timeline/buildTimeline';
+import { firstUnreadIndex } from './timeline/jumpTarget';
+import { applyNickname } from './utils/nickname';
+import { useRoomExtras } from './hooks/useRoomExtras';
+import { useLetterBreadcrumbs } from './hooks/useLetterBreadcrumbs';
+import { LetterRow } from './components/LetterRow';
+import { letterAvatars, type Letter } from './letters';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -168,6 +180,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Media viewer modal state
     const [mediaViewerIndex, setMediaViewerIndex] = useState<number | null>(null);
+    // Date-search calendar: opened from the ⋯ menu and from the sticky date pills.
+    const [calendarOpen, setCalendarOpen] = useState(false);
+    const openCalendar = useCallback(() => setCalendarOpen(true), []);
 
     // Compute unread count from messages and readState (single source of truth)
     const displayUnreadCount = useMemo(() => {
@@ -175,7 +190,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [messages, readState.lastReadId, readState.revealedIds]);
 
     // Scroll ref
-    const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const virtuosoRef = useRef<GroupedVirtuosoHandle>(null);
+    // Rows the user sees, as MessageList reports them (none hidden behind the sticky date header).
     const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
     // Virtuoso's scroll element, which the timeline jump glides.
     const chatScrollerRef = useRef<HTMLElement | null>(null);
@@ -411,14 +427,41 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
     }, [readState.lastReadId, readState.revealedIds]);
 
-    const { highlightedMessageId, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
-    // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
+    // One timeline for the list, the jumps, the restore and the unread arrows.
+    const userNickname = messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined;
+    const displayMessages = useMemo(() => applyNickname(messages, userNickname), [messages, userNickname]);
+    // Sent letters (local archive), the account profile and the member streak, asked only for a
+    // room whose path is in the active service's folder (never the stale pair of a group switch).
+    // Group chats have no letters and no streak. The streak (one official request per room per
+    // local day) is shared by the header and the profile popup.
+    const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
+    const { streak, retryStreak } = roomExtras;
+    const timeline = useMemo(() => buildTimeline(displayMessages, roomExtras.letters), [displayMessages, roomExtras.letters]);
+    const letterAvatar = useMemo(
+        () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
+        [roomExtras.letters, roomExtras.profile],
+    );
+    // Breadcrumbs, once per room visit: how each letter's avatar was chosen, and dropped letters.
+    useLetterBreadcrumbs(roomExtras.lettersRoomKey, letterAvatar, roomExtras.profile !== null, timeline.droppedLetters);
+    const letterUserName = roomExtras.profile?.name || userNickname || t('letters.you');
+    const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
+    const renderLetter = useCallback((letter: Letter) => (
+        <LetterRow
+            letter={letter}
+            avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
+            userName={letterUserName}
+            onOpenImage={setLetterViewer}
+        />
+    ), [letterAvatar, letterUserName]);
+
+    const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
+    // The old room's visible range says nothing about the new one: unknown until MessageList reports it.
     useEffect(() => {
         visibleRangeRef.current = null;
     }, [selectedGroupDir]);
 
     const jumpTo = useTimelineJump({
-        virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
+        virtuosoRef, timeline, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
         getScroller: () => chatScrollerRef.current,
         visibleRange: () => visibleRangeRef.current,
     });
@@ -427,17 +470,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         const currentRange = range || visibleRangeRef.current || { startIndex: 0, endIndex: 0 };
         if (range) visibleRangeRef.current = range;
 
-        const firstUnreadIndex = messages.findIndex(m => isUnread(m.id));
+        const firstUnread = firstUnreadIndex(timeline, isUnread);
         let above = false;
         let below = false;
 
-        if (firstUnreadIndex !== -1) {
-            if (firstUnreadIndex < currentRange.startIndex) above = true;
-            else if (firstUnreadIndex > currentRange.endIndex) below = true;
+        if (firstUnread !== -1) {
+            if (firstUnread < currentRange.startIndex) above = true;
+            else if (firstUnread > currentRange.endIndex) below = true;
         }
         setHasUnreadAbove(above);
         setHasUnreadBelow(below);
-    }, [messages, isUnread]);
+    }, [timeline, isUnread]);
 
     useEffect(() => {
         updateUnreadNavState();
@@ -500,6 +543,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     };
 
+    // The 1:1 room's member: header avatar, the ⋯ menu and the profile popup.
+    const headerMember = Object.values(membersMap)[0];
+    const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
+    const isLightHeader = theme.messages.headerStyle === 'light';
+
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
         return {
@@ -528,6 +576,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     const jumpToTargetMessage = useCallback((id: number) => {
         void jumpTo({ kind: 'message', id, align: 'start' });
+    }, [jumpTo]);
+
+    const jumpToLetter = useCallback((id: number) => {
+        void jumpTo({ kind: 'letter', id });
     }, [jumpTo]);
 
     // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
@@ -634,12 +686,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     return (
         <div className="flex h-full w-full overflow-hidden">
-            {/* Sidebar */}
-            <div className={`
-                fixed inset-y-0 left-0 z-30 w-80 transform transition-transform duration-300 ease-in-out
-                md:relative md:translate-x-0 bg-white
-                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-            `}>
+            {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
+            <div className={cn(
+                'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
+                'max-md:bg-group-canvas md:relative md:translate-x-0',
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            )}>
                 <MemberList
                     onSelectGroup={handleSelectGroup}
                     selectedGroupDir={selectedGroupDir}
@@ -652,58 +704,53 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 z-20 bg-black/50 md:hidden"
+                    className="fixed inset-0 z-20 bg-scrim md:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col h-full relative min-w-0">
-                {/* Header */}
+            <ContentSheet className="relative">
+                {/* Header: the official title layer (gradient, or Sakurazaka's white header + thin bar) */}
                 <header
                     className={cn(
-                        "h-16 flex items-center px-4 z-20 shrink-0",
-                        theme.messages.headerStyle !== 'light' && "shadow-sm"
+                        'z-20 flex h-16 shrink-0 items-center gap-3 px-4',
+                        isLightHeader ? 'bg-sheet text-group-title' : 'bg-group-title text-inverse',
                     )}
-                    style={{
-                        background: theme.messages.headerStyle === 'light'
-                            ? '#FFFFFF'
-                            : `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
-                    }}
                 >
-                    <button
-                        className="md:hidden mr-3"
-                        style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
+                    <IconButton
+                        className="text-current md:hidden"
+                        aria-label={t('messageList.openConversations')}
+                        icon={<Menu />}
                         onClick={() => setIsSidebarOpen(true)}
-                    >
-                        <Menu />
-                    </button>
-                    <div className="flex-1" style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}>
-                        <h2 className="text-lg font-bold">{selectedName || t('messageList.selectConversation')}</h2>
-                        {isGroupChat && <span className="text-xs opacity-80">{t('messageList.groupChat')}</span>}
+                    />
+                    {selectedGroupDir && !isGroupChat && (
+                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-white" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                        <h2 className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
+                        {isGroupChat ? (
+                            <p className="text-caption">{t('messageList.groupChat')}</p>
+                        ) : streak.status === 'ready' && streak.days > 0 ? (
+                            <p className="text-caption">
+                                <Trans
+                                    i18nKey="memberProfile.subscribedDays"
+                                    values={{ days: streak.days }}
+                                    components={{ num: <span className="font-semibold" /> }}
+                                />
+                            </p>
+                        ) : null}
                     </div>
                     {displayUnreadCount > 0 && (
-                        <span
-                            className="text-xs px-2 py-1 rounded-full"
-                            style={{
-                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}20` : 'rgba(255,255,255,0.2)',
-                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white',
-                            }}
-                        >
+                        <ChatHeaderPill light={isLightHeader} className="font-semibold">
                             {t('messageList.unread', { count: displayUnreadCount })}
-                        </span>
+                        </ChatHeaderPill>
                     )}
                     {syncProgress.state === 'running' && (
-                        <div
-                            className="flex items-center ml-4 text-xs px-3 py-1 rounded-full"
-                            style={{
-                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}15` : 'rgba(0,0,0,0.2)',
-                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.9)',
-                            }}
-                        >
-                            <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                        <ChatHeaderPill light={isLightHeader}>
+                            <Loader2 className="h-3 w-3 animate-spin" />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
-                        </div>
+                        </ChatHeaderPill>
                     )}
                     {selectedGroupDir && (
                         <ConversationMenu
@@ -711,24 +758,21 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             isGroupChat={isGroupChat}
                             messages={messages}
                             memberName={selectedName || ''}
-                            memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
-                            groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                            memberAvatar={headerAvatar}
+                            letters={roomExtras.letters}
+                            lettersStatus={roomExtras.lettersStatus}
+                            onJumpToLetter={jumpToLetter}
                             activeService={activeService || undefined}
-                            onSelectDate={scrollToDate}
+                            onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
-                            iconColor={theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : undefined}
+                            iconColor={isLightHeader ? theme.messages.headerTextColor : undefined}
                         />
                     )}
                 </header>
 
-                {/* Gradient Bar below header (only for light style) */}
-                {theme.messages.headerStyle === 'light' && (
-                    <div
-                        className="h-1 shrink-0"
-                        style={{ background: theme.messages.headerBarGradient }}
-                    />
-                )}
+                {isLightHeader && <div className="h-1 shrink-0 bg-group-title-bar" />}
 
+                <FadeOnChange changeKey={selectedGroupDir} className="flex min-h-0 flex-1 flex-col">
                 {/* Virtualized Timeline */}
                 <div
                     className="flex-1 overflow-hidden relative isolate"
@@ -752,25 +796,28 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         }}
                     />
                     {!selectedGroupDir && (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                        <div className="absolute inset-0 flex items-center justify-center text-muted">
                             <div className="text-center">
-                                <p className="text-lg mb-2">{t('messageList.welcomeTitle')}</p>
-                                <p className="text-sm">{t('messageList.welcomeSubtitle')}</p>
+                                <p className="mb-2 text-title">{t('messageList.welcomeTitle')}</p>
+                                <p className="text-small">{t('messageList.welcomeSubtitle')}</p>
                             </div>
                         </div>
                     )}
 
                     {loading && messages.length === 0 && (
-                        <div className="p-10 text-center text-gray-500">{t('messageList.loadingMessages')}</div>
+                        <div className="p-10 text-center text-secondary">{t('messageList.loadingMessages')}</div>
                     )}
                     {error && (
-                        <div className="p-10 text-center text-red-500">Error: {error}</div>
+                        <div className="p-10 text-center text-feedback-error">
+                            <p className="font-semibold">{t('common.error')}</p>
+                            <p>{error}</p>
+                        </div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && (
                         <MessageList
                             memberId={selectedGroupDir}
-                            messages={messages}
+                            timeline={timeline}
                             getSenderInfo={getSenderInfo}
                             isUnread={isUnread}
                             onReveal={revealMessage}
@@ -778,9 +825,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
                             scrollerRef={setChatScroller}
-                            userNickname={
-                                messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined
-                            }
+                            userNickname={userNickname}
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
                             onMediaClick={handleMediaClick}
@@ -788,8 +833,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
                             onJumpToMessage={jumpToTargetMessage}
-                            highlightedMessageId={highlightedMessageId}
+                            highlightedRowKey={highlightedRowKey}
                             getMemberPath={getMemberPath}
+                            onOpenCalendar={openCalendar}
+                            renderLetter={renderLetter}
                         />
                     )}
                     <CallOverlay
@@ -800,33 +847,30 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />
                 </div>
+                </FadeOnChange>
 
                 {/* Navigation Buttons */}
-                {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
+                {/* Up arrow: bottom-right, when the oldest unread is ABOVE the view */}
                 {selectedGroupDir && hasUnreadAbove && !callActive && (
-                    <div className="absolute right-4 bottom-4 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
-                            style={{ backgroundColor: theme.modals.accentColor }}
-                            title={t('messageList.jumpToOldestUnread')}
-                        >
-                            <ChevronUp className="w-5 h-5" />
-                        </button>
-                    </div>
+                    <IconButton
+                        variant="secondary"
+                        className="absolute bottom-4 right-4 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        aria-label={t('messageList.jumpToOldestUnread')}
+                        title={t('messageList.jumpToOldestUnread')}
+                        icon={<ChevronUp className="h-5 w-5" />}
+                        onClick={scrollToFirstUnread}
+                    />
                 )}
-                {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
+                {/* Down arrow: top-right below the header, when the oldest unread is BELOW the view */}
                 {selectedGroupDir && hasUnreadBelow && !callActive && (
-                    <div className="absolute right-4 top-20 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
-                            style={{ backgroundColor: theme.modals.accentColor }}
-                            title={t('messageList.jumpToOldestUnread')}
-                        >
-                            <ChevronDown className="w-5 h-5" />
-                        </button>
-                    </div>
+                    <IconButton
+                        variant="secondary"
+                        className="absolute right-4 top-20 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        aria-label={t('messageList.jumpToOldestUnread')}
+                        title={t('messageList.jumpToOldestUnread')}
+                        icon={<ChevronDown className="h-5 w-5" />}
+                        onClick={scrollToFirstUnread}
+                    />
                 )}
 
                 {/* Reveal All Confirmation Modal */}
@@ -858,15 +902,28 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     </div>
                 )}
-            </div>
+            </ContentSheet>
+
+            {selectedGroupDir && (
+                <CalendarModal
+                    isOpen={calendarOpen}
+                    onClose={() => setCalendarOpen(false)}
+                    conversationPath={selectedGroupDir}
+                    onSelectDate={(date) => {
+                        setCalendarOpen(false);
+                        scrollToDate(date);
+                    }}
+                />
+            )}
 
             {/* Member Profile Popup */}
             <MemberProfilePopup
                 isOpen={showMemberProfile}
                 onClose={() => setShowMemberProfile(false)}
                 memberName={selectedName || ''}
-                memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
-                groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
+                memberAvatar={headerAvatar}
+                streak={streak}
+                onRetryStreak={retryStreak}
                 activeService={activeService || undefined}
                 memberPath={isGroupChat ? undefined : selectedGroupDir}
             />
@@ -878,6 +935,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     currentIndex={mediaViewerIndex}
                     onClose={() => setMediaViewerIndex(null)}
                     onNavigate={setMediaViewerIndex}
+                />
+            )}
+            {/* Letter image viewer */}
+            {letterViewer?.image_url && (
+                <MediaViewerModal
+                    mediaItems={[{ src: letterViewer.image_url, type: 'picture', timestamp: letterViewer.created_at }]}
+                    currentIndex={0}
+                    onClose={() => setLetterViewer(null)}
+                    onNavigate={() => {}}
                 />
             )}
         </div>

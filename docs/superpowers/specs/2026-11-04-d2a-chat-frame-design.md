@@ -43,7 +43,7 @@ Choosing a 2022 date in the calendar while viewing 2026 scrolls for a long time.
 
 ### Design
 
-New hook `frontend/src/features/messages/hooks/useTimelineJump.ts`:
+New hook `frontend/src/features/messages/hooks/useTimelineJump.ts`. (The API sketch below is the D2a-0 version, superseded by section 4 (Timeline model, row keys): the hook takes the `Timeline` and calls `onLanded(rowKey)`.)
 
 ```ts
 type JumpTarget =
@@ -74,11 +74,11 @@ The flow of a jump:
    - **No scroller, or `prefers-reduced-motion`:** one instant `scrollToIndex({ index, align, behavior: 'auto' })`.
    - **On screen** (inside the visible range): glide straight by the measured distance; no `scrollToIndex`. If the row cannot be measured, scroll instantly instead.
    - **Close** (estimated within 2 viewports, from the visible rows' average height): glide from where the list is toward twice the estimate, homing in on the row once it renders; if it still is not rendered at the end, scroll instantly. A lead-in here could land on the wrong side of the target.
-   - **Far:** an instant `scrollToIndex` with `offset` lands 0.8 viewport short of the target in the direction of travel (Virtuoso adds a positive offset to the scroll position, so a downward jump uses a negative one). Virtuoso re-issues that scroll each time row heights change until they have been still for 150 ms, so the hook waits until `scrollTop` and the total height have been still that long (at most 60 frames; if they never settle, it scrolls instantly to the target), then glides the last 0.8 viewport. It waits one frame (16 ms) longer than Virtuoso's window (`STILLNESS_MS` = 166 ms). Near the bottom of the list Virtuoso clamps the offset, so the lead-in shrinks, possibly to zero (no glide); the jump still lands. Wheel or touch input during a glide is overridden until the glide ends.
+   - **Far:** an instant `scrollToIndex` with `offset` lands 0.8 viewport short of the target in the direction of travel (Virtuoso adds a positive offset to the scroll position, so a downward jump uses a negative one). Virtuoso re-issues that scroll each time row heights change until they have been still for 150 ms, so the hook waits until `scrollTop` and the total height have been still that long (at most 60 frames; if they never settle, it scrolls instantly to the target), then glides the last 0.8 viewport, homing in on the row once it renders; if it still is not rendered at the end, it scrolls instantly. That happens when the planned distance is stale: while the lead-in settles, before it goes still, Virtuoso can re-anchor it as rows above measure taller (measured: +170 px at about 73 ms), so the 0.8-viewport glide ends short. It waits one frame (16 ms) longer than Virtuoso's window (`STILLNESS_MS` = 166 ms). Near the bottom of the list Virtuoso clamps the offset, so the lead-in shrinks, possibly to zero (no glide); the jump still lands. Wheel or touch input during a glide is overridden until the glide ends.
    - Top and bottom take the same paths and are not verified afterwards.
 3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues an instant `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too (at most 2 × 2 + 1 wait cycles in total). The outcome is `landed` or `gave_up`. A jump is `cancelled` (also mid-glide) by a newer jump, an unmount, a room switch (the hook takes a `resetKey`; `MessagesFeature` passes the selected room), or when the target message has left the list while its row cannot be measured. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
 4. **Landing highlight.** For message and date jumps, the landed row breathes once (`animate-landing`: the group highlight fades in and out over `motion.duration.landing`, 1.4 s). It adds no new colour. First-unread, top and bottom jumps are not highlighted.
-5. **Breadcrumb log** `timeline_jump` for every jump, with `target`, `index`, `corrections`, `outcome`, `path` and `jump_ms`. `path` records the branch that ran: `instant` (no scroller, reduced motion, or unknown visible range), `onscreen`, `onscreen_snap` (on screen but not measurable, so instant), `close`, `close_snap` (close glide ended without the row rendered, so instant), `far`, `far_unsettled` (the lead-in never went still, so instant), or `none` (not found, or no list handle, before any scroll). No message text and no names.
+5. **Breadcrumb log** `timeline_jump` for every jump, with `target`, `index`, `corrections`, `outcome`, `path` and `jump_ms`. `path` records the branch that ran: `instant` (no scroller, reduced motion, or unknown visible range), `onscreen`, `onscreen_snap` (on screen but not measurable, so instant), `close`, `close_snap` (close glide ended without the row rendered, so instant), `far`, `far_snap` (far glide ended without the row rendered, so instant), `far_unsettled` (the lead-in never went still, so instant), or `none` (not found, or no list handle, before any scroll). No message text and no names.
 
 Media with known `width` / `height` reserves its box before the image loads, so landing positions do not drift. Pictures and videos already carry those fields.
 
@@ -111,26 +111,26 @@ Frontend unit tests, `tsc`, lint and the new e2e spec all pass. On Windows, a te
 
 ### 1. Frame (D-4 + D-5)
 
-- **Group rail** (`ServiceRail`): neutral light background token. The right border line goes, and so does the grey divider (spacing separates instead). Logos are round; the selected group gets a white ring plus `shadow-group-glow`, replacing the blue bars above and below. Add-service, search and settings stay pinned at the bottom. The green and blue hover colours of add/search go (they break the "group colour in four places" rule); hover is neutral.
-- **Feature rail + member sidebar** share one level-0 `Canvas` block (`bg-group-canvas`, official gradient), rounded on the left, so they read as one piece. Feature entries use the `RailItem` primitive (icon above label). The selected entry is a white card. Labels come from i18n keys, replacing `label` / `labelJa` in `config/features.ts`. "⋯ more" and hiding features in settings are not built (YAGNI: there are at most 2 features).
-- **Content**: `ContentArea` renders inside a `Sheet` (rounded right side, `rounded-sheet`, `shadow-sheet`) with an 8 px gap to the frame. Blogs land on the same sheet automatically; their inside is D2b. The hard-coded "News / Fan Club / AI — Coming soon" placeholders are moved to i18n.
-- **Motion**: content fades in for `duration-base` on feature or service change.
+- **Group rail** (`ServiceRail`): neutral light background token. The right border line goes, and so does the grey divider (spacing separates instead). Logos are round. The selected logo shows a white gap, then a ring in the group's LOGO colour (`ring-2 ring-offset-2 ring-group-logo`) and `shadow-group-glow`, replacing the blue bars above and below. Add-service, search and settings stay pinned at the bottom. The green and blue hover colours of add/search go (they break the "group colour in four places" rule); hover is neutral.
+- **Canvas block**: the feature rail and each feature's own sidebar share one level-0 `Canvas` block (`bg-group-canvas`, official gradient), rounded on the left, so they read as one piece. Feature entries use the `RailItem` primitive (icon above label). The selected entry is a white card. Labels come from i18n keys, replacing `label` / `labelJa` in `config/features.ts`. "⋯ more" and hiding features in settings are not built (YAGNI: there are at most 2 features).
+- **Content**: `ContentArea` wraps blogs, the placeholders and the initial-sync view in a `ContentSheet` (`rounded-sheet`, `shadow-sheet`, 8 px from the frame). `MessagesFeature` puts its member sidebar on the canvas and its chat on a `ContentSheet`. Blogs' insides are D2b. The hard-coded "News / Fan Club / AI — Coming soon" placeholders are moved to i18n.
+- **Motion**: content fades in for `duration-base` on feature or service change through `FadeOnChange` (no remount; no fade with reduced motion).
 
 ### 2. Member sidebar (`MemberList`)
 
-- Width grows with the window: 320 px by default, up to about 432 px on wide windows. The grid uses `auto-fill`, so it shows 3 columns by default, 4 at a window width ≥ 1600 px and 5 at ≥ 1920 px. Drag-to-resize is not built.
+- Width grows with the window: 320 px below 1600 px window width, 376 px at ≥ 1600 px and 432 px at ≥ 1920 px. The grid uses `auto-fill` cells of at least 72 px, so it shows 3 columns by default, 4 at ≥ 1600 px and 5 at ≥ 1920 px. Drag-to-resize is not built.
 - Cells use `Avatar` (`selected` = white ring + group glow) and `Badge` (action colour, `99+` cap). On hover the avatar lifts slightly (scale + `shadow-card`, `duration-fast`). Graduated members keep their greyscale and tooltip.
-- The section headings (online / offline / graduated) stay sticky and become small `Pill`s.
+- The section headings (online / offline / graduated) stay sticky and are pill-styled `h2` headings (a `Pill` is a button, so the heading uses the pill tokens instead).
 - The bottom sync status becomes a floating pill ("Last synced 3 min ago ⟳"), and the border line above it goes.
 - Unchanged: the right-click menu, ordering, the title row and the sync spinner.
 
 ### 3. Chat
 
-- **Header**: the official title gradient (Sakurazaka: white header + thin bar) stays verbatim. The member avatar (white border) is added on the left. Under the name, the header shows "Subscribed for N days" (`memberProfile.subscribedDays`, from the same streak source the profile popup uses; one fetch, no second copy). Group chats keep the "group chat" subtitle. The unread and sync indicators become token-based `Pill`s. The ⋯ menu is unchanged.
-- **Runs**: avatar, name and time show once, at the top of a run (decision 9). Later bubbles in the run show their time on hover. The first bubble keeps the small top-left corner; the others are fully rounded.
-- **Date headers**: `GroupedVirtuoso` with one group per local day. Each group header is a `DatePill` (D1 format: today / yesterday / same year "11月2日（日）" / other years with the year). Headers stick and push each other. **Clicking a date pill opens the calendar.** Choosing a day calls `jumpTo({kind:'date'})`.
+- **Header**: the official title layer stays verbatim: `bg-group-title` (a new utility over the official title gradient), or for Sakurazaka a white header with the thin `bg-group-title-bar`. The member avatar (white border) is added on the left. Under the name, the header shows "Subscribed for N days" (`memberProfile.subscribedDays`) from `useMemberStreak`: a module-level session cache keyed by service, group id and local date, so the official API is asked at most once per room per local day (concurrent callers share one in-flight request; failures are not cached and the header then omits the count). Group chats make no request. Breadcrumbs `streak_load` (`ok`, `error`, `cache_hit`, `skipped_group`, `skipped_no_id`). The same value goes to `MemberProfilePopup`. Group chats keep the "group chat" subtitle. The header pills (unread, sync) are `ChatHeaderPill`, with a sunken bordered variant on light (white) headers. The ⋯ menu is unchanged.
+- **Runs**: avatar, name and time show once, at the top of a run (decision 9), the time as `HH:mm` (the date is in the date pill). Later bubbles in the run show their time on hover. The first bubble's top-left corner is the new `rounded-tl-tail` token (4 px); the others are fully rounded.
+- **Date headers**: `GroupedVirtuoso` with one group per local day. Each group header is a `DatePill` (D1 format: today / yesterday / same year "11月2日（日）" / other years with the year). Headers stick and push each other. The sticky date band is click-through: only the pill itself is clickable. **Clicking a date pill opens the calendar**, which `MessagesFeature` owns (opened by the ⋯ menu and the date pills). Choosing a day calls `jumpTo({kind:'date'})`.
 - **Bubbles**: same look (white, group bubble border). Radius and shadow come from tokens. The user's chat background (colour / image / opacity) still applies to the timeline area.
-- Content fades in on member switch. The unread arrow buttons become `IconButton`s using the action colour.
+- Content fades in on member switch. The unread arrow buttons become `IconButton`s using the action colour (D2c replaces the accent variant).
 - The inline "reveal all" confirm dialog stays as it is until D2c.
 
 ### 4. Timeline model
@@ -138,6 +138,9 @@ Frontend unit tests, `tsc`, lint and the new e2e spec all pass. On Windows, a te
 `frontend/src/features/messages/timeline/buildTimeline.ts` is pure, with no React:
 
 ```ts
+type RowKey = `msg-${number}` | `letter-${number}`;   // DOM id, measure and highlight key
+const RUN_GAP_MS = 5 * 60 * 1000;                      // same sender, same local day, at most this far apart
+
 type TimelineItem =
   | { kind: 'message'; message: Message; runStart: boolean }
   | { kind: 'letter'; letter: Letter; runStart: true };
@@ -146,26 +149,41 @@ interface Timeline {
   items: TimelineItem[];          // chronological, letters merged by created_at
   groupCounts: number[];          // items per local day, for GroupedVirtuoso
   groupDates: string[];           // local YYYY-MM-DD per group
+  groupStarts: number[];          // index of each group's first row
   indexOfMessage: (id: number) => number;
   indexOfLetter: (id: number) => number;
-  indexOfDate: (date: string) => number;   // first item of that day, or -1
+  indexOfDate: (date: string) => number;        // first item of that day, or -1
+  groupIndexOfDate: (date: string) => number;
+  groupOfIndex: (index: number) => number;
+  indexOfRowKey: (key: RowKey) => number;
+  rowKeyAt: (index: number) => RowKey | null;
+  messageIdNear: (index: number) => number | null;   // nearest message at/above, else below
+  droppedLetters: number;         // letters with an unparseable created_at (the caller logs the count)
 }
 ```
 
 - Letters and messages are merged by timestamp. Ties go to the message first.
 - Days are bucketed with `toLocalDateStr`, the same function the calendar and backend use (SD-FE-CORE-02).
 - Every index-based caller (`useChatScroll`, unread navigation, `jumpTo`, the visibility registry, key navigation) asks the model for an index by **id**. None of them indexes `messages[]` directly any more. `useChatScroll` keeps saving the top **message** id. If the top item is a letter, it saves the nearest message above it.
-- Unread logic ignores letters: they are never unread, are not counted, and are skipped by the unread arrows and "reveal all". Key navigation does step through them.
-- **First step of the plan:** a test establishes whether `GroupedVirtuoso`'s `rangeChanged` reports item indices with or without group headers. The model's index helpers are written to match that result.
+- Unread logic ignores letters: they are never unread, are not counted, and are skipped by the unread arrows and "reveal all". Key navigation is Home/End only (first/last row); the top or bottom row may be a letter.
+- **Probe results** (`e2e/probe/grouped-virtuoso.spec.ts`, react-virtuoso 4.18.1): `rangeChanged` ranges are item indices (headers excluded) and the range start may be a row hidden behind the sticky header. `scrollToIndex({index, align:'start'})` and a numeric `initialTopMostItemIndex` land the row right below the sticky header; `{groupIndex}` lands the group's first row below its own header; `offset` shifts the landing by `-offset` px. The model's index helpers match these results.
+- **Built on the probe:** `measureLanding` measures `start` from the sticky header's bottom (`stickyHeaderBottom`). `useChatScroll` resolves the top visible row one frame after `rangeChanged` (`topVisibleRowIndex`) and saves it on room switch, unmount and `pagehide`. `useTimelineJump` takes `timeline` and calls `onLanded(rowKey)`; `useLandingHighlight` returns `highlightedRowKey`.
+- **Constraints from the D2a-0 final review** (the jump hook was built for a message-only list):
+  - **One index source.** `useTimelineJump` and `resolveJump` take the `Timeline` model, or an `indexOf(target)` resolver built from it, instead of `messages`. The correction pass re-resolves through the same model. No caller computes an index from `messages[]`.
+  - **Row keys, not message ids.** Message ids and letter ids can collide. Rows are keyed `msg-<id>` and `letter-<id>`, and so are the DOM ids, `measureLanding`, the highlight state (`useLandingHighlight` keyed by row key) and `JumpTarget`. A new `{ kind: 'letter'; id }` target serves the overview.
+  - **The sticky header offsets the landing.** With a sticky `DatePill` group header covering the top of the viewport, `align: 'start'` must land **below** the header. The plan probes where `scrollToIndex` puts a row under a sticky group, and then `landingError` measures against the header's bottom edge (or an equivalent offset), so that jumps do not make spurious corrections and give up. The e2e helper `topVisibleMessageId` must ignore rows hidden behind the header.
+  - **Date jumps target the group.** In grouped mode a date jump scrolls to the day's group header (`groupIndex`), so the date pill itself lands at the top.
+  - The e2e restore test replaces `waitForTimeout(800)` with waiting for the scroll-save request.
 
 ### 5. Letters in chat
 
-- **Backend** (`backend/api/chat_features.py` or a new `backend/api/account.py`), both reading local files only:
-  - `GET /api/chat/letters_local?service=…&path=<member dir>` returns `{letters: [{id, text, created_at, image_url, width, height}]}` from `letters.json`. A missing file gives an empty list. An invalid file gives an empty list and a warning log.
-  - `GET /api/account/profile?service=…` returns `{name, avatars: [{url, first_seen}]}` from `account/profile.json` and `account/profile_images/index.json` (thumbnails only).
-  - Images are served through the existing media route. Every branch (found / empty / missing / invalid) logs a structured breadcrumb without letter text or nickname. Paths are validated to stay inside the output directory.
-- **Chat**: letters render right-aligned with the user's avatar and name, plus the send time. The letter image is 180 px wide, and its height is reserved from width/height. Clicking opens the existing image viewer. The avatar is the newest one whose `first_seen` ≤ the letter's `created_at`; if none qualifies, the earliest known one. If the image file is missing, a text card shows the letter text. Group chats do not fetch letters.
-- **Overview** (`SentLettersModal`): it reads `letters_local` instead of the live API and shows a grid of letter thumbnails, newest first, with dates. Clicking one closes the dialog and calls `jumpTo` for that letter (with the highlight). The live endpoint `GET /api/chat/letters/{group_id}` is kept; if nothing else uses it, its removal goes on the E clean-up list.
+- **Backend**, both reading local files only (`backend/api/chat_features.py` and `backend/api/account.py`):
+  - `GET /api/chat/letters_local?service=…&path=<member dir>` returns `{letters: [{id, text, created_at, image_url, width, height}]}` (`image_url`, `width`, `height` optional) from `letters.json`. Outcomes (one `letters_local` breadcrumb with counts, never letter text): `found`, `empty`, `missing` (no file: empty list), `invalid` (empty list, warning), `wrong_service` and `bad_service` (warnings). A rejected path is logged as `rejected`.
+  - `GET /api/account/profile?service=…` returns `{name, avatars: [{url, first_seen}]}` (thumbnails only, oldest first) from `account/profile.json` and `account/profile_images/index.json`. The signed URL in the index is never returned or logged. Outcomes (`account_profile` breadcrumb): `found`, `empty`, `missing`, `invalid`, `bad_service`.
+  - Images are served through the existing media route. Paths are validated to stay inside the output directory.
+- **Chat**: letters render right-aligned with the user's avatar and name, plus the send time. The letter image is 180 px wide, and its height is reserved from width/height (240 px when unknown). Clicking opens the image viewer. The avatar is the newest one whose `first_seen` ≤ the letter's `created_at`; if none qualifies, the earliest known one (breadcrumb `letter_avatar`: history / fallback). If the image file is missing, a text card shows the letter text. Group chats do not fetch letters.
+- **No row shift**: `useRoomExtras` gates letters, streak and profile by `serviceOfPath(path) === activeService`. The chat renders only after the room's letters are known or `LETTERS_WAIT_MS` (3 s) has passed (`letters_load` outcome `timeout`); a late response is cached for the next visit and not applied to the mounted list. Client breadcrumbs: `letters_load`, `account_profile_load`, `letter_avatar`.
+- **Overview** (`SentLettersModal`): it reads the timeline's letter list (no second fetch) and shows a grid of letter thumbnails, newest first, with dates. Clicking one closes the dialog and calls `jumpTo({kind:'letter'})` (with the highlight). The live endpoint `GET /api/chat/letters/{group_id}` is no longer used by the UI; it goes on the E clean-up list (`docs/superpowers/backlog/e-cleanup.md`).
 
 ### Implementation order (D2a)
 

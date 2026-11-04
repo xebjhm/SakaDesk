@@ -29,7 +29,6 @@
     "error": "错误",
     "loading": "加载中...",
     "done": "完成",
-    "refresh": "刷新",
     "browse": "浏览",
     "download": "下载",
     "dismiss": "忽略",
@@ -306,7 +305,9 @@
     "revealAllDescription": "这将把所有 {{count}} 条未读消息标记为已读。",
     "confirm": "确认",
     "noContent": "(无内容)",
-    "attachment": "附件"
+    "attachment": "附件",
+    "openCalendar": "跳转到日期",
+    "openConversations": "显示对话列表"
   },
   "calendar": {
     "title": "日期搜索",
@@ -357,6 +358,12 @@
     "imageTooLarge": "图片过大。请选择 2MB 以下的图片。",
     "selectImageFile": "请选择图片文件。"
   },
+  "contentArea": {
+    "comingSoon": "即将推出"
+  },
+  "featureRail": {
+    "label": "功能"
+  },
   "features": {
     "messages": "消息",
     "blogs": "Blog",
@@ -374,6 +381,7 @@
     "selectService": "选择服务以开始使用"
   },
   "serviceRail": {
+    "label": "群组",
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
     "addService": "添加服务"
   },
@@ -438,10 +446,9 @@
     "noLetters": "尚未发送过信件",
     "noTextContent": "无文字内容",
     "noContent": "无内容",
-    "tapToClose": "点击任意位置关闭",
-    "noGroupId": "没有可用的群组 ID",
-    "noService": "没有活动的服务",
-    "fetchFailed": "加载信件失败"
+    "loading": "正在加载信件…",
+    "unavailable": "暂时无法显示信件",
+    "letterSent": "{{date}} 发送的信件"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -619,8 +626,14 @@
     "search": "搜索",
     "scale": "色阶",
     "logoStep": "logo 原色",
+    "railLogo": "选中的分组 logo（侧栏）",
     "roles": "用途",
     "roleName": "用途",
     "roleStep": "色阶"
+  },
+  "letters": {
+    "openImage": "打开信件",
+    "you": "你",
+    "openImageAt": "打开 {{date}} 发送的信件"
   }
 }

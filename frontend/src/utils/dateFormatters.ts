@@ -16,12 +16,21 @@
  * throwing or matching everything).
  */
 export function toLocalDateStr(timestamp: string | Date): string {
-  const d = timestamp instanceof Date ? timestamp : new Date(timestamp);
-  if (Number.isNaN(d.getTime())) return '';
+  const d = toValidDate(timestamp);
+  if (!d) return '';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * The Date of a timestamp (ISO string or Date), or null when it cannot be parsed, so a
+ * caller can skip it instead of formatting an Invalid Date (Intl throws a RangeError).
+ */
+export function toValidDate(timestamp: string | Date): Date | null {
+  const d = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export type DatePillKey = 'date.today' | 'date.yesterday';
@@ -51,4 +60,10 @@ export function formatDatePillLabel(
   const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', weekday: 'short' };
   if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
   return new Intl.DateTimeFormat(locale, options).format(date);
+}
+
+/** Local midnight of a "YYYY-MM-DD" from toLocalDateStr; null for anything else. */
+export function fromLocalDateStr(date: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }

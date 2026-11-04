@@ -38,6 +38,7 @@ export default {
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
                 // Design system (docs/design/DESIGN_SYSTEM.md)
                 'group-canvas': 'var(--ds-group-canvas)',
+                'group-title': 'linear-gradient(to right, var(--ds-group-title-from), var(--ds-group-title-via), var(--ds-group-title-to))',
                 'group-title-bar': 'var(--ds-group-title-bar)',
             },
             // ---- Design system tokens (frontend/src/design/tokens) ----
@@ -70,11 +71,13 @@ export default {
             },
             ringColor: {
                 group: 'var(--ds-group-ring)',
+                'group-logo': 'var(--ds-group-logo)',
             },
             textDecorationColor: {
                 group: 'var(--ds-group-link-underline)',
             },
             borderRadius: {
+                tail: 'var(--ds-radius-tail)',
                 card: 'var(--ds-radius-card)',
                 sheet: 'var(--ds-radius-sheet)',
                 pill: 'var(--ds-radius-pill)',

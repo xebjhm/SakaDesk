@@ -1,11 +1,17 @@
 import React, { useRef, useCallback, useMemo, useEffect } from 'react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+import { GroupedVirtuoso, type GroupedVirtuosoHandle, type GroupedVirtuosoProps, type ListRange, type TopItemListProps } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
+import { useTranslation } from '../../../i18n';
+import { DatePill } from '../../../design/primitives';
+import { fromLocalDateStr } from '../../../utils/dateFormatters';
+import { rowKeyOf, type RowKey, type Timeline, type TimelineItem } from '../timeline/buildTimeline';
+import { topVisibleRowIndex } from '../timeline/landing';
+import type { Letter } from '../letters';
 
 /**
  * Avatar click handler for a message. Member 0 is the room itself (messages
@@ -19,8 +25,8 @@ export const avatarClickFor = (msg: Message, onAvatarClick?: () => void) =>
 interface ChatListProps {
     /** Unique identifier for the current room/member */
     memberId: string;
-    /** Full array of messages to display (Load All strategy) */
-    messages: Message[];
+    /** The room's timeline (nickname already applied, letters merged): the only index source */
+    timeline: Timeline;
     /** Function to get sender info for a message */
     getSenderInfo: (msg: Message) => { name: string; avatar?: string };
     /** Function to check if a message is unread */
@@ -29,13 +35,13 @@ interface ChatListProps {
     onReveal: (msgId: number) => void;
     /** Callback for long-press on unread message */
     onLongPress: () => void;
-    /** Callback when visible range changes (for unread navigation) */
+    /** The rows the user sees (none hidden behind the sticky date header), one frame after each range change */
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
-    /** Ref to expose Virtuoso handle for external scroll control */
-    virtuosoRef?: React.RefObject<VirtuosoHandle>;
+    /** Ref to expose the list handle for external scroll control */
+    virtuosoRef?: React.RefObject<GroupedVirtuosoHandle>;
     /** Receives Virtuoso's scroll element (the timeline jump glides it) */
     scrollerRef?: (el: HTMLElement | Window | null) => void;
-    /** User's nickname for %%% placeholder replacement */
+    /** User's nickname (for translations of %%% messages) */
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
@@ -43,25 +49,49 @@ interface ChatListProps {
     onAvatarClick?: () => void;
     /** Active service ID for media URL construction */
     service?: string;
-    /** Target message ID to scroll to on mount (from search navigation) */
+    /** Target message ID to jump to (from search navigation) */
     targetMessageId?: number | null;
     /** Callback to clear targetMessageId after it's consumed */
     onTargetMessageConsumed?: () => void;
     /** Jump to a message through the shared timeline jump (same-room and fresh-mount targets) */
     onJumpToMessage?: (id: number) => void;
-    /** Message row to flash after a jump landed on it */
-    highlightedMessageId?: number | null;
+    /** Row to flash after a jump landed on it */
+    highlightedRowKey?: RowKey | null;
     /** Callback when a media item is clicked (for media viewer modal) */
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     /** Function to resolve the member directory path for a message (for transcription) */
     getMemberPath?: (msg: Message) => string | undefined;
+    /** Renders the content of a sent-letter row */
+    renderLetter?: (letter: Letter) => React.ReactNode;
+    /** Opens the date-search calendar (clicking a date pill) */
+    onOpenCalendar?: () => void;
 }
+
+/** Sticky day header of the timeline: a DatePill that opens the calendar. */
+const TimelineDateHeader: React.FC<{ date: string; onOpenCalendar?: () => void }> = ({ date, onOpenCalendar }) => {
+    const { t } = useTranslation();
+    const day = fromLocalDateStr(date);
+    // A message without a valid timestamp lands in an undated group: keep a 1 px header.
+    if (!day) return <div className="h-px" />;
+    return <DatePill date={day} onClick={onOpenCalendar} actionLabel={t('messageList.openCalendar')} />;
+};
+
+/**
+ * The sticky band GroupedVirtuoso keeps the current day's header in: full width over the rows,
+ * transparent around the pill. Click-through, so rows behind it (media, the reveal shelter, the
+ * favourite star) stay clickable; the pill sets pointer-events back to auto.
+ */
+const StickyHeaderBand: React.FC<TopItemListProps> = ({ style, children }) => (
+    <div style={style} className="pointer-events-none">{children}</div>
+);
+
+const LIST_COMPONENTS: GroupedVirtuosoProps<unknown, unknown>['components'] = { TopItemList: StickyHeaderBand };
 
 const DEFAULT_ITEM_HEIGHT = 80;
 
 export const MessageList: React.FC<ChatListProps> = ({
     memberId,
-    messages,
+    timeline,
     getSenderInfo,
     isUnread,
     onReveal,
@@ -76,56 +106,47 @@ export const MessageList: React.FC<ChatListProps> = ({
     targetMessageId,
     onTargetMessageConsumed,
     onJumpToMessage,
-    highlightedMessageId,
+    highlightedRowKey,
     onMediaClick,
     getMemberPath,
+    renderLetter,
+    onOpenCalendar,
 }) => {
+    const { t } = useTranslation();
     const virtuosoKey = `virtuoso-${memberId}`;
-    const internalRef = useRef<VirtuosoHandle>(null);
+    const internalRef = useRef<GroupedVirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
+    const scrollerElRef = useRef<HTMLElement | null>(null);
+    const setScroller = useCallback((el: HTMLElement | Window | null) => {
+        scrollerElRef.current = el instanceof HTMLElement ? el : null;
+        scrollerRef?.(el);
+    }, [scrollerRef]);
 
     // Get theme colors for message bubbles
     const theme = useMessagesTheme();
     const bubbleTheme = useMemo(() => ({
-        bubbleBorder: theme.bubbleBorder,
         voicePlayerAccent: theme.voicePlayerAccent,
         favoriteColor: theme.favoriteColor,
         linkColor: theme.linkColor,
         shelterColors: theme.shelterColors,
         shelterStyle: theme.shelterStyle,
-    }), [theme.bubbleBorder, theme.voicePlayerAccent, theme.favoriteColor, theme.linkColor, theme.shelterColors, theme.shelterStyle]);
+    }), [theme.voicePlayerAccent, theme.favoriteColor, theme.linkColor, theme.shelterColors, theme.shelterStyle]);
 
-    // Pre-process messages: replace %%% with nickname at data level
-    // This ensures Virtuoso sees different data when nickname changes
-    const processedMessages = useMemo(() => {
-        if (!userNickname) return messages;
-        // Match both ASCII %%% (U+0025) and fullwidth ％％％ (U+FF05)
-        const placeholderRegex = /%%%|％％％/g;
-        return messages.map(msg => {
-            if (msg.content && placeholderRegex.test(msg.content)) {
-                // Reset lastIndex since we're reusing the regex
-                placeholderRegex.lastIndex = 0;
-                return {
-                    ...msg,
-                    content: msg.content.replace(placeholderRegex, userNickname)
-                };
-            }
-            return msg;
-        });
-    }, [messages, userNickname]);
+    // The first row the user can see; rows hidden behind a sticky date header do not count.
+    const topVisibleIndex = useCallback((range: ListRange) =>
+        topVisibleRowIndex(scrollerElRef.current, range, (i) => timeline.rowKeyAt(i)), [timeline]);
 
     const {
         initialTopMostItemIndex: savedScrollIndex,
         handleRangeChanged,
-    } = useChatScroll(memberId, processedMessages);
+    } = useChatScroll(memberId, timeline, topVisibleIndex);
 
-    // Search navigation: the target's index seeds initialTopMostItemIndex on a fresh
-    // mount, which places it at the top.
+    // Search navigation: the target's index seeds initialTopMostItemIndex on a fresh mount.
     const targetIndex = useMemo(() => {
         if (targetMessageId == null) return undefined;
-        const idx = processedMessages.findIndex(m => m.id === targetMessageId);
+        const idx = timeline.indexOfMessage(targetMessageId);
         return idx !== -1 ? idx : undefined;
-    }, [targetMessageId, processedMessages]);
+    }, [targetMessageId, timeline]);
 
     // Fresh mounts already start at the target (initialTopMostItemIndex) and same-room
     // targets arrive on a mounted list; both call onJumpToMessage, the shared jump that
@@ -136,70 +157,99 @@ export const MessageList: React.FC<ChatListProps> = ({
         onTargetMessageConsumed?.();
     }, [targetIndex, targetMessageId, onJumpToMessage, onTargetMessageConsumed]);
 
-    // Cross-room: on fresh mount, initialTopMostItemIndex places target at top.
-    // Falls back to savedScrollIndex when no search navigation is active.
     const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
 
-    // Combined range change handler — also notifies auto-collapse registry.
-    const onRangeChange = useCallback((range: { startIndex: number; endIndex: number }) => {
-        handleRangeChanged(range);
-        onRangeChanged?.(range);
+    // What the user sees: Virtuoso's range minus rows hidden behind the sticky date header. Like
+    // the scroll save, it is resolved one frame after rangeChanged (so the DOM matches the range),
+    // once per frame, and only for the room that reported it.
+    const latest = useRef({ memberId, timeline, onRangeChanged, topVisibleIndex });
+    latest.current = { memberId, timeline, onRangeChanged, topVisibleIndex };
+    const pendingRangeRef = useRef<{ range: ListRange; memberId: string } | null>(null);
+    const frameRef = useRef<number | null>(null);
+    useEffect(() => () => {
+        if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    }, []);
+
+    /** Unread navigation and the panel auto-collapse registry (message rows only; letters have no panels). */
+    const resolveVisibleRange = useCallback(() => {
+        frameRef.current = null;
+        const pending = pendingRangeRef.current;
+        pendingRangeRef.current = null;
+        const { memberId: room, timeline: current, onRangeChanged: report, topVisibleIndex: topOf } = latest.current;
+        if (!pending || pending.memberId !== room) return;
+        const visible = { startIndex: topOf(pending.range), endIndex: pending.range.endIndex };
+        report?.(visible);
         const visibleIds = new Set<number>();
-        for (let i = range.startIndex; i <= range.endIndex && i < processedMessages.length; i++) {
-            visibleIds.add(processedMessages[i].id);
+        for (let i = visible.startIndex; i <= visible.endIndex && i < current.items.length; i++) {
+            const item = current.items[i];
+            if (item.kind === 'message') visibleIds.add(item.message.id);
         }
         notifyVisibleMessages(visibleIds);
-    }, [handleRangeChanged, onRangeChanged, processedMessages]);
+    }, []);
 
-    if (!processedMessages || processedMessages.length === 0) {
+    // Range change: restore position (resolved inside useChatScroll), then what the user sees.
+    const onRangeChange = useCallback((range: ListRange) => {
+        handleRangeChanged(range);
+        pendingRangeRef.current = { range, memberId: latest.current.memberId };
+        if (frameRef.current === null) frameRef.current = requestAnimationFrame(resolveVisibleRange);
+    }, [handleRangeChanged, resolveVisibleRange]);
+
+    const renderItem = (item: TimelineItem) => {
+        const rowKey = rowKeyOf(item);
+        const rowClass = cn('rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
+        if (item.kind === 'letter') {
+            return <div className={rowClass} id={rowKey}>{renderLetter?.(item.letter)}</div>;
+        }
+        const msg = item.message;
+        const senderInfo = getSenderInfo(msg);
         return (
-            <div className="flex-1 flex items-center justify-center text-gray-400">
-                <p>No messages</p>
+            <div className={rowClass} id={rowKey}>
+                <MessageBubble
+                    message={msg}
+                    member_name={senderInfo.name}
+                    member_avatar={senderInfo.avatar}
+                    isUnread={isUnread(msg.id)}
+                    onReveal={() => onReveal(msg.id)}
+                    onLongPress={onLongPress}
+                    onToggleFavorite={onToggleFavorite}
+                    onAvatarClick={avatarClickFor(msg, onAvatarClick)}
+                    onMediaClick={onMediaClick}
+                    theme={bubbleTheme}
+                    service={service}
+                    memberPath={getMemberPath?.(msg)}
+                    userNickname={userNickname}
+                    runStart={item.runStart}
+                />
+            </div>
+        );
+    };
+
+    if (timeline.items.length === 0) {
+        return (
+            <div className="flex flex-1 items-center justify-center text-muted">
+                <p>{t('messageList.noMessages')}</p>
             </div>
         );
     }
 
+    // One group per local day; GroupedVirtuoso keeps the current day's header stuck on top and
+    // lets the next one push it away. Indices passed around are item indices (probe fact 3).
     return (
-        <Virtuoso
+        <GroupedVirtuoso
             key={virtuosoKey}
             ref={virtuosoRef}
-            scrollerRef={scrollerRef}
+            scrollerRef={setScroller}
             style={{ height: '100%' }}
-            data={processedMessages}
+            groupCounts={timeline.groupCounts}
+            components={LIST_COMPONENTS}
+            groupContent={(groupIndex) => (
+                <TimelineDateHeader date={timeline.groupDates[groupIndex]} onOpenCalendar={onOpenCalendar} />
+            )}
             initialTopMostItemIndex={initialTopMostItemIndex}
             defaultItemHeight={DEFAULT_ITEM_HEIGHT}
             followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
             rangeChanged={onRangeChange}
-            itemContent={(_index, msg) => {
-                const senderInfo = getSenderInfo(msg);
-                const isMsgUnread = isUnread(msg.id);
-
-                return (
-                    <div
-                        className={cn(
-                            'px-4 py-1 rounded-card',
-                            highlightedMessageId === msg.id && 'animate-landing',
-                        )}
-                        id={`msg-${msg.id}`}
-                    >
-                        <MessageBubble
-                            message={msg}
-                            member_name={senderInfo.name}
-                            member_avatar={senderInfo.avatar}
-                            isUnread={isMsgUnread}
-                            onReveal={() => onReveal(msg.id)}
-                            onLongPress={onLongPress}
-                            onToggleFavorite={onToggleFavorite}
-                            onAvatarClick={avatarClickFor(msg, onAvatarClick)}
-                            onMediaClick={onMediaClick}
-                            theme={bubbleTheme}
-                            service={service}
-                            memberPath={getMemberPath?.(msg)}
-                            userNickname={userNickname}
-                        />
-                    </div>
-                );
-            }}
+            itemContent={(index) => renderItem(timeline.items[index])}
         />
     );
 };

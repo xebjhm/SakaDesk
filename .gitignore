@@ -118,3 +118,6 @@ test-results/
 
 # Local-only pixel baselines (e2e/visual-zero-pixel.spec.ts)
 frontend/e2e/*.spec.ts-snapshots/
+
+# D2a before/after screenshots (e2e/d2a-screens.spec.ts)
+frontend/e2e-shots/
