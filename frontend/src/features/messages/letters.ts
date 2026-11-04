@@ -72,16 +72,21 @@ export function pickLetterAvatar(
     return { url: null, source: 'none' };
 }
 
-/** pickLetterAvatar for every letter, plus how many came from the history vs the fallback (for the breadcrumb). */
+/**
+ * pickLetterAvatar for every letter the timeline shows, plus how many there are (`count`) and
+ * how many came from the history vs the fallback (for the breadcrumb). Letters with an
+ * unparseable created_at never render (buildTimeline drops them), so they are skipped.
+ */
 export function letterAvatars(letters: readonly Letter[], avatars: readonly AccountAvatar[]) {
     const byId = new Map<number, string | null>();
     let history = 0;
     let fallback = 0;
     for (const letter of letters) {
+        if (Number.isNaN(Date.parse(letter.created_at))) continue;
         const pick = pickLetterAvatar(avatars, letter.created_at);
         byId.set(letter.id, pick.url);
         if (pick.source === 'history') history += 1;
         else if (pick.source === 'fallback') fallback += 1;
     }
-    return { byId, history, fallback };
+    return { byId, count: byId.size, history, fallback };
 }

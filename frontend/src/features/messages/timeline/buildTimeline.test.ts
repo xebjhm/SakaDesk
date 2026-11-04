@@ -91,9 +91,33 @@ describe('buildTimeline', () => {
         expect(t.messageIdNear(3)).toBe(2);
     });
 
-    it('drops letters whose created_at cannot be parsed', () => {
-        const t = buildTimeline([msg(1, at(1, 9, 0))], [letter(5, 'not a date')]);
-        expect(keys(t)).toEqual(['msg-1']);
+    it('drops letters whose created_at cannot be parsed, and counts them', () => {
+        const t = buildTimeline([msg(1, at(1, 9, 0))], [letter(5, 'not a date'), letter(6, ''), letter(7, at(1, 10, 0))]);
+        expect(keys(t)).toEqual(['msg-1', 'letter-7']);
+        expect(t.droppedLetters).toBe(2);
+        expect(buildTimeline([msg(1, at(1, 9, 0))], [letter(7, at(1, 10, 0))]).droppedLetters).toBe(0);
+    });
+
+    it('messageIdNear is null when the timeline holds only letters', () => {
+        const t = buildTimeline([], [letter(5, at(1, 8, 0)), letter(6, at(2, 8, 0))]);
+        expect(t.messageIdNear(0)).toBeNull();
+        expect(t.messageIdNear(1)).toBeNull();
+    });
+
+    it('messageIdNear clamps an out-of-range index', () => {
+        const t = buildTimeline([msg(1, at(1, 9, 0)), msg(2, at(1, 11, 0))], [letter(5, at(1, 8, 0))]);
+        // letter-5, msg-1, msg-2
+        expect(t.messageIdNear(99)).toBe(2);
+        expect(t.messageIdNear(-5)).toBe(1);
+    });
+
+    it('a letter on a different day than its neighbours starts that day', () => {
+        const t = buildTimeline([msg(1, at(1, 23, 58)), msg(2, at(2, 9, 0))], [letter(5, at(2, 0, 1))]);
+        expect(keys(t)).toEqual(['msg-1', 'letter-5', 'msg-2']);
+        expect(t.groupDates).toEqual([toLocalDateStr(at(1, 23, 58)), toLocalDateStr(at(2, 0, 1))]);
+        expect(t.groupCounts).toEqual([1, 2]);
+        expect(t.groupStarts).toEqual([0, 1]);
+        expect(t.groupOfIndex(1)).toBe(1);
     });
 
     it('handles CJK and emoji content without touching it', () => {

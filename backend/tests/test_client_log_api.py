@@ -341,10 +341,18 @@ def test_timeline_jump_rejects_text_in_its_fields():
         ("account_profile_load", {"outcome": "error"}),
         ("letter_avatar", {"count": 3, "history": 2, "fallback": 1}),
         ("streak_load", {"outcome": "ok"}),
+        ("letters_load", {"outcome": "timeout"}),
+        ("letters_load", {"outcome": "late", "count": 2}),
+        ("letters_load", {"outcome": "dropped", "count": 1}),
+        ("streak_load", {"outcome": "cache_hit"}),
+        ("streak_load", {"outcome": "skipped_group"}),
+        ("streak_load", {"outcome": "skipped_no_id"}),
     ],
 )
 def test_letter_breadcrumbs_are_accepted(event, fields):
     with capture_logs() as logs:
         res = client.post("/api/client-log", json={"event": event, "fields": fields})
     assert res.status_code == 204
-    assert _client_events(logs)[0]["event"] == event
+    [entry] = _client_events(logs)
+    assert entry["event"] == event
+    assert {key: entry[key] for key in fields} == fields

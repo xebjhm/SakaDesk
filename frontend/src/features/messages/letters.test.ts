@@ -35,6 +35,13 @@ describe('letterAvatars', () => {
         expect(out.byId.get(2)).toBe('/b.jpg');
         expect([out.history, out.fallback]).toEqual([1, 1]);
     });
+
+    it('skips letters that never render (unparseable created_at): no avatar, not counted', () => {
+        const out = letterAvatars([letter(1, 'not a date'), letter(2, '2025-07-01T00:00:00Z')], avatars);
+        expect(out.byId.has(1)).toBe(false);
+        expect(out.count).toBe(1);
+        expect([out.history, out.fallback]).toEqual([1, 0]);
+    });
 });
 
 describe('letterImageHeight', () => {

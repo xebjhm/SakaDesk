@@ -37,9 +37,9 @@ import { buildTimeline } from './timeline/buildTimeline';
 import { firstUnreadIndex } from './timeline/jumpTarget';
 import { applyNickname } from './utils/nickname';
 import { useRoomExtras } from './hooks/useRoomExtras';
+import { useLetterBreadcrumbs } from './hooks/useLetterBreadcrumbs';
 import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
-import { clientLog } from '../../utils/clientLog';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -441,15 +441,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
         [roomExtras.letters, roomExtras.profile],
     );
-    // Breadcrumb: how each letter's avatar was chosen (history vs earliest-known fallback).
-    useEffect(() => {
-        if (!roomExtras.profile || roomExtras.letters.length === 0) return;
-        clientLog('letter_avatar', {
-            count: roomExtras.letters.length,
-            history: letterAvatar.history,
-            fallback: letterAvatar.fallback,
-        });
-    }, [letterAvatar, roomExtras.profile, roomExtras.letters.length]);
+    // Breadcrumbs, once per room visit: how each letter's avatar was chosen, and dropped letters.
+    useLetterBreadcrumbs(roomExtras.lettersRoomKey, letterAvatar, roomExtras.profile !== null, timeline.droppedLetters);
     const letterUserName = roomExtras.profile?.name || userNickname || t('letters.you');
     const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
     const renderLetter = useCallback((letter: Letter) => (

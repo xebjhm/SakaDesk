@@ -36,6 +36,8 @@ export interface Timeline {
     rowKeyAt: (index: number) => RowKey | null;
     /** Id of the nearest message at or above `index`, else the nearest below; null without messages. */
     messageIdNear: (index: number) => number | null;
+    /** Letters left out because their created_at cannot be parsed (the caller logs the count). */
+    droppedLetters: number;
 }
 
 export const messageRowKey = (id: number): RowKey => `msg-${id}`;
@@ -105,6 +107,7 @@ export function buildTimeline(messages: readonly Message[], letters: readonly Le
 
     return {
         items,
+        droppedLetters: letters.length - dated.length,
         groupCounts,
         groupDates,
         groupStarts,
