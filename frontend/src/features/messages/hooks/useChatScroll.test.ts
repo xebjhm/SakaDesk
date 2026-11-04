@@ -88,6 +88,14 @@ describe('useChatScroll', () => {
     act(() => result.current.handleRangeChanged({ startIndex: 0, endIndex: 3 }))
     act(() => { result.current.savePositionImmediate() })
     expect(persisted.setConv).toHaveBeenCalledTimes(1) // still 101: never written twice
+    // From another row and back: the top letter resolves to the message below it, 101 again.
+    act(() => result.current.handleRangeChanged({ startIndex: 3, endIndex: 3 }))
+    act(() => { result.current.savePositionImmediate() })
+    expect(persisted.setConv).toHaveBeenLastCalledWith('sakadesk_scroll_room-1', { value: '102' })
+    act(() => result.current.handleRangeChanged({ startIndex: 0, endIndex: 3 }))
+    act(() => { result.current.savePositionImmediate() })
+    expect(persisted.setConv).toHaveBeenLastCalledWith('sakadesk_scroll_room-1', { value: '101' })
+    expect(persisted.setConv).toHaveBeenCalledTimes(3)
 
     // At the very top the letter has no message above it: the one below is saved.
     const top = renderHook(() => useChatScroll('room-2', timeline))
