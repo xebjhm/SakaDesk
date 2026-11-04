@@ -102,5 +102,15 @@ describe('useMessageTranslation', () => {
         await clearTranslationCache();
 
         expect(clearSpy).toHaveBeenCalledOnce();
+        clearSpy.mockRestore();
+    });
+
+    it('clearTranslationCache rejects when the backend refuses or is unreachable', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }));
+        await expect(clearTranslationCache()).rejects.toThrow();
+        vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
+        await expect(clearTranslationCache()).rejects.toThrow();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+        await expect(clearTranslationCache()).resolves.toBeUndefined();
     });
 });

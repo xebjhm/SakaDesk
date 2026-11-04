@@ -47,8 +47,11 @@ export const getTranslations = (keys: string[]) =>
   fetch(`${BASE}/translations?keys=${keys.map(encodeURIComponent).join(',')}`).then(j<Record<string, string>>);
 export const patchTranslations = (items: Record<string, string>) =>
   fetch(`${BASE}/translations`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) }).then(() => undefined);
+// Rejects when the backend refuses (non-2xx) or is unreachable, so callers can report it.
 export const clearTranslations = () =>
-  fetch(`${BASE}/translations/clear`, { method: 'POST' }).then(() => undefined);
+  fetch(`${BASE}/translations/clear`, { method: 'POST' }).then((r) => {
+    if (!r.ok) throw new Error(`clear translations failed: ${r.status}`);
+  });
 export const getMigrated = () => fetch(`${BASE}/migrate`).then(j<{ migrated: boolean }>);
 export const postMigrate = (dump: unknown) =>
   fetch(`${BASE}/migrate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dump) }).then(() => undefined);

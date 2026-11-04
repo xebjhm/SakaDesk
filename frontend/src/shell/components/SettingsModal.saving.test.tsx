@@ -321,8 +321,9 @@ describe('AI tab', () => {
     type Outcome = 'ok' | 'refused' | 'reject';
 
     /** Fake translation API: config, models, configure and clear-api-key, each ok / refused / rejected. */
-    function mockAi({ config = 'ok', models = 'ok', configure = 'ok', clear = 'ok', hasKey = true, provider = 'gemini' as string | null }: {
-        config?: Outcome; models?: Outcome; configure?: Outcome; clear?: Outcome; hasKey?: boolean; provider?: string | null;
+    function mockAi({ config = 'ok', models = 'ok', configure = 'ok', clear = 'ok', cacheClear = 'ok', test = { ok: true } as Record<string, unknown> | 'reject', hasKey = true, provider = 'gemini' as string | null }: {
+        config?: Outcome; models?: Outcome; configure?: Outcome; clear?: Outcome; cacheClear?: Outcome;
+        test?: Record<string, unknown> | 'reject'; hasKey?: boolean; provider?: string | null;
     } = {}) {
         const reply = (outcome: Outcome, body: unknown) => {
             if (outcome === 'reject') throw new Error(`offline ${KEY}`);
@@ -335,6 +336,11 @@ describe('AI tab', () => {
             if (url === '/api/translation/models') return reply(models, { gemini: [{ id: 'm1', label: 'Model 1' }, { id: 'm2', label: 'Model 2' }] });
             if (url === '/api/translation/configure') return reply(configure, { ok: true });
             if (url === '/api/translation/clear-api-key') return reply(clear, { ok: true });
+            if (url === '/api/app-state/translations/clear') return reply(cacheClear, {});
+            if (url === '/api/translation/test-connection') {
+                if (test === 'reject') throw new Error(`offline ${KEY}`);
+                return { ok: true, json: async () => test };
+            }
             return { ok: false, json: async () => ({}) };
         });
     }
@@ -444,6 +450,43 @@ describe('AI tab', () => {
         expect(screen.getByRole('button', { name: 'Clear API key' })).toBeInTheDocument();
     });
 
+    it('clear translation cache says cleared and logs ok', async () => {
+        useAppStore.setState({ translationEnabled: true });
+        mockAi();
+        renderModal();
+        await openAi();
+        fireEvent.click(screen.getByRole('button', { name: 'Clear Translation Cache' }));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.cacheClearedMsg')));
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_cache_clear', outcome: 'ok' });
+    });
+
+    it.each([['refused'], ['reject']] as const)('a %s cache clear says it failed and logs an error', async (outcome) => {
+        useAppStore.setState({ translationEnabled: true });
+        mockAi({ cacheClear: outcome });
+        renderModal();
+        await openAi();
+        fireEvent.click(screen.getByRole('button', { name: 'Clear Translation Cache' }));
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_cache_clear', outcome: 'error' }));
+        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.cacheClearFailed'));
+        expect(screen.queryByText(i18n.t('translation.settings.cacheClearedMsg'))).toBeNull();
+    });
+
+    it.each([
+        [{ ok: true }, 'testSuccess', { outcome: 'ok' }],
+        [{ ok: false, code: 'auth', detail: 'bad key' }, 'testErrorAuth', { outcome: 'error', reason: 'auth' }],
+        [{ ok: false, code: 'unreachable' }, 'testErrorUnreachable', { outcome: 'error', reason: 'unreachable' }],
+        [{ ok: false, code: 'no_key' }, 'testErrorNoKey', { outcome: 'error', reason: 'no_key' }],
+        [{ ok: false, code: 'something new', detail: 'x' }, 'testFailed', { outcome: 'error', reason: 'failed' }],
+        ['reject', 'testErrorUnreachable', { outcome: 'error', reason: 'unreachable' }],
+    ] as const)('test connection %j shows %s and logs only a code', async (test, messageKey, fields) => {
+        mockAi({ test: test as Record<string, unknown> | 'reject' });
+        renderModal();
+        await openAi();
+        fireEvent.click(screen.getByRole('button', { name: 'Test Connection' }));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n.t(`translation.settings.${messageKey}`)));
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_test', ...fields });
+    });
+
     it('never logs the API key or its masked form', async () => {
         mockAi({ configure: 'refused', clear: 'reject' });
         renderModal();
@@ -457,11 +500,10 @@ describe('AI tab', () => {
         fireEvent.click(within(await screen.findByRole('dialog', { name: 'Clear API key' })).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'error' }));
 
+        // clientLog is mocked, so its calls are exactly what would be posted to /api/client-log.
         const logged = JSON.stringify(vi.mocked(clientLog).mock.calls);
-        const clientLogBodies = JSON.stringify(fetchMock.mock.calls.filter(([url]) => url === '/api/client-log'));
         for (const secret of [KEY, MASKED, 'SECRET']) {
             expect(logged).not.toContain(secret);
-            expect(clientLogBodies).not.toContain(secret);
         }
     });
 });

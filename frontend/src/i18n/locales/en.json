@@ -568,6 +568,7 @@
       "clearApiKey": "Clear API key",
       "clearApiKeyConfirm": "Remove the saved API key from this device?",
       "cacheClearedMsg": "Translation cache cleared",
+      "cacheClearFailed": "Couldn't clear the translation cache. Try again.",
       "savedSecurely": "Saved securely in credential manager",
       "saveFailed": "Couldn't save the AI settings. Try again.",
       "clearApiKeyFailed": "Couldn't remove the API key. Try again.",

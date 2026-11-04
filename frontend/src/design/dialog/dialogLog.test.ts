@@ -18,4 +18,9 @@ describe('dialog breadcrumbs', () => {
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'calendar', outcome: 'ok', count: 3 });
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'diagnostics', outcome: 'error' });
     });
+
+    it('log a load failure with a reason code', () => {
+        logDialogLoad('settings_ai_test', 'error', undefined, 'auth');
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_test', outcome: 'error', reason: 'auth' });
+    });
 });

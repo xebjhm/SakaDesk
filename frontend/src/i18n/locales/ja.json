@@ -568,6 +568,7 @@
       "clearApiKey": "APIキーを削除",
       "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
       "cacheClearedMsg": "翻訳キャッシュをクリアしました",
+      "cacheClearFailed": "翻訳キャッシュをクリアできませんでした。もう一度お試しください。",
       "savedSecurely": "認証情報マネージャーに安全に保存されました",
       "saveFailed": "AI設定を保存できませんでした。もう一度お試しください。",
       "clearApiKeyFailed": "APIキーを削除できませんでした。もう一度お試しください。",

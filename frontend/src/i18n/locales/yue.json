@@ -568,6 +568,7 @@
       "clearApiKey": "清除 API key",
       "clearApiKeyConfirm": "要喺呢部機度移除已儲存嘅 API key？",
       "cacheClearedMsg": "翻譯緩存已清除",
+      "cacheClearFailed": "清除唔到翻譯緩存，請再試。",
       "savedSecurely": "已安全咁存喺憑證管理員度",
       "saveFailed": "儲存唔到 AI 設定，請再試。",
       "clearApiKeyFailed": "清除唔到 API key，請再試。",

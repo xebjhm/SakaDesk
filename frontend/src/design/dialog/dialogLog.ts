@@ -12,9 +12,12 @@ export type DialogLoadSurface =
     | 'calendar' | 'diagnostics' | 'blog_gallery' | 'profile_images' | 'search'
     | 'settings_blog_cache' | 'settings_blog_backup' | 'settings_update_check' | 'settings_blog_clean'
     | 'settings_blog_stats' | 'settings_ai_config' | 'settings_ai_models' | 'settings_ai_key_clear' | 'settings_ai_save'
+    | 'settings_ai_cache_clear' | 'settings_ai_test'
     | 'report_issue';
 
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled';
+/** Code for why a load failed (the AI connection test's backend codes). Never message text. */
+export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */
@@ -23,6 +26,11 @@ export function logDialog(surface: DialogLogId, phase: 'open' | 'close', reason?
 }
 
 /** One `dialog_load` breadcrumb. Never pass names, ids, paths, queries or error text. */
-export function logDialogLoad(surface: DialogLoadSurface, outcome: DialogLoadOutcome, count?: number): void {
-    clientLog('dialog_load', count === undefined ? { surface, outcome } : { surface, outcome, count });
+export function logDialogLoad(surface: DialogLoadSurface, outcome: DialogLoadOutcome, count?: number, reason?: DialogLoadReason): void {
+    clientLog('dialog_load', {
+        surface,
+        outcome,
+        ...(count === undefined ? {} : { count }),
+        ...(reason === undefined ? {} : { reason }),
+    });
 }

@@ -568,6 +568,7 @@
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
+      "cacheClearFailed": "无法清除翻译缓存，请重试。",
       "savedSecurely": "已安全保存在凭据管理器中",
       "saveFailed": "无法保存 AI 设置，请重试。",
       "clearApiKeyFailed": "无法清除 API 密钥，请重试。",

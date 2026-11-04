@@ -3,7 +3,7 @@ import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucid
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { Modal, Button, Switch, Input, Select } from '../../design/primitives';
-import { logDialogLoad, type DialogLoadSurface } from '../../design/dialog/dialogLog';
+import { logDialogLoad, type DialogLoadSurface, type DialogLoadReason } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SettingRow } from './SettingRow';
@@ -702,19 +702,23 @@ function AiTab() {
             });
             const data = await res.json();
             if (data.ok) {
+                logDialogLoad('settings_ai_test', 'ok');
                 setTestResult(t('translation.settings.testSuccess'));
             } else {
                 // Map the backend's reason code to a localized message instead of
-                // showing its English `detail`.
-                const byCode: Record<string, string> = {
-                    auth: 'translation.settings.testErrorAuth',
-                    unreachable: 'translation.settings.testErrorUnreachable',
-                    no_key: 'translation.settings.testErrorNoKey',
+                // showing its English `detail`; the breadcrumb carries only the code.
+                const byCode: Record<string, { key: string; reason: DialogLoadReason }> = {
+                    auth: { key: 'translation.settings.testErrorAuth', reason: 'auth' },
+                    unreachable: { key: 'translation.settings.testErrorUnreachable', reason: 'unreachable' },
+                    no_key: { key: 'translation.settings.testErrorNoKey', reason: 'no_key' },
                 };
-                const key = (data.code && byCode[data.code]) || 'translation.settings.testFailed';
+                const known = typeof data.code === 'string' && Object.prototype.hasOwnProperty.call(byCode, data.code) ? byCode[data.code] : null;
+                const { key, reason } = known ?? { key: 'translation.settings.testFailed', reason: 'failed' as const };
+                logDialogLoad('settings_ai_test', 'error', undefined, reason);
                 setTestResult(t(key));
             }
         } catch {
+            logDialogLoad('settings_ai_test', 'error', undefined, 'unreachable');
             setTestResult(t('translation.settings.testErrorUnreachable'));
         } finally {
             setTesting(false);
@@ -722,7 +726,14 @@ function AiTab() {
     };
 
     const handleClearCache = async () => {
-        await clearTranslationCache();
+        try {
+            await clearTranslationCache();
+        } catch {
+            logDialogLoad('settings_ai_cache_clear', 'error');
+            setTestResult(t('translation.settings.cacheClearFailed'));
+            return;
+        }
+        logDialogLoad('settings_ai_cache_clear', 'ok');
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 
