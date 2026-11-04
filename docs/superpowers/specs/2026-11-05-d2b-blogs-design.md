@@ -45,7 +45,7 @@ Guard counts are from `frontend/src/design/guard-baseline.json` at the start of 
 | 5 | **Keep the feed's ambient group-colour orbs.** D1.5 tokenised them as the `ambient` role (`groupRoles().ambient.orb1/2/3`). `DynamicBackground` is kept and rebuilt on tokens: the colours come from new `--ds-group-ambient-{1,2,3}` variables (`bg-group-ambient-1/2/3`), the per-group size and opacity move from `serviceThemes.ts` to `design/tokens/ambient.ts`, the drift animations become Tailwind keyframes. `DESIGN_SYSTEM.md` lists the orbs as an allowed group-colour place (decided). Elsewhere group colour appears only through roles: member names and links `text-group-strong`, link underline `decoration-group`, the rail's current dot `bg-group-accent` + `shadow-group-glow`, the member-name button's hover `bg-group-subtle`, focus rings `ring-group`. | controller decision: keep existing character |
 | 5a | **Keep the reader's member penlight wash.** It is member data, not group colour. `memberWashStyle()` sets `--ds-member-wash-1/2` inline from the member's penlight colours; the `bg-member-wash` utility mixes them at the `memberWash.alpha` token (10 %, today's `1a` alpha) into the two corner gradients. Defaults are `transparent` (mascot, unknown member: no wash). `DESIGN_SYSTEM.md` records member penlight colours as a data-driven exception. | controller decision: keep existing character |
 | 6 | The feed and reader headers are neutral text on the sheet (`text-heading text-primary`), not the official title gradient: the official blog pages have no title bar to copy. | agent |
-| 7 | **Keep the serif.** It becomes the type token `font-reading` (`--ds-font-family-reading`: `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif`) and applies where serif is used today (feed title, card titles, post title, rail tooltip title) and to the post body. Noto Serif JP keeps loading from Google Fonts (allowed; Noto Sans JP already loads there), now from the `<link>` in `index.html` instead of an `@import` inside the feed. | controller decision: keep existing character |
+| 7 | **Keep the serif.** It becomes the type token `font-reading` (`--ds-font-family-reading`: `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif`) and applies exactly where serif is used today: titles only (feed title, card titles, post title, rail tooltip title). The post body stays in the app font. Noto Serif JP keeps loading from Google Fonts (allowed; Noto Sans JP already loads there), now from the `<link>` in `index.html` instead of an `@import` inside the feed. | controller decision: keep existing character |
 | 8 | Blog cards are level-2 `Card`s with the caption **inside the card, below the photo** (date, title, member), replacing the glass label that hung over the card's corner. The 2×2 "hero" cards at positions 0, 5 and 11 and the column breakpoints stay. | agent |
 | 9 | All / Favorite becomes two neutral `Pill`s (the heart no longer turns pink). Select member is a `Button variant="secondary"`. The blog screens use no primary button. | agent |
 | 10 | Reader text uses a new type step `text-reading` (16 / 28 px) for long-form Japanese text; the article is at most `max-w-2xl` (672 px, about 42 CJK characters per line) with `px-8`; paragraphs are 16 px apart. | agent |
@@ -116,7 +116,7 @@ div  relative flex h-full min-h-0 flex-col
 
 | Element | Classes |
 |---|---|
-| container | `break-words font-reading text-reading text-primary` (serif, 16 px / 28 px) |
+| container | `break-words text-reading text-primary` (app font, 16 px / 28 px) |
 | `p` | `mb-4`, last `mb-0` |
 | `h1`–`h4` | `mt-8 mb-3 text-title font-semibold` |
 | `ul` / `ol` | `mb-4 pl-6`, `list-disc` / `list-decimal` |
@@ -203,7 +203,7 @@ An invalid date gives `''`; an unknown locale falls back to the runtime default.
 | `color.mark.reading` | `#DBEAFE` | `bg-mark-reading` | search match by reading |
 | `color.mark.underline` | `#60A5FA` | `border-mark-underline` | dashed underline of a match by reading |
 | keyframes `reveal` | opacity 0 → 1, `translateY(8px)` → 0 | `animate-reveal` | cards appearing in a feed (`duration-base`, `ease-standard`) |
-| `fontFamily.reading` | `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif` | `font-reading` | blog titles and post bodies |
+| `fontFamily.reading` | `"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif` | `font-reading` | blog titles only (feed, cards, post, rail tooltip) |
 | `--ds-group-ambient-{1,2,3}` | `groupRoles(id).ambient.orbN` (D1.5) | `bg-group-ambient-1/2/3` | the feed's ambient orbs |
 | `ambientLayout[id].orbN` (`design/tokens/ambient.ts`) | today's per-group `size` / `opacity` / `position`, moved from `serviceThemes.ts` | `--ds-group-ambient-N-size`, `--ds-group-ambient-N-opacity` | orb size and opacity |
 | keyframes `orb-drift-1`, `orb-drift-2`, `orb-breathe` | today's keyframes, verbatim | `animate-orb-drift-1` (28 s), `animate-orb-drift-2` (34 s), `animate-orb-breathe` (22 s) | the orbs' slow drift |
