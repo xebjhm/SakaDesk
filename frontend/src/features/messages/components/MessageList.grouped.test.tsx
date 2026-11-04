@@ -6,7 +6,7 @@ import { buildTimeline } from '../timeline/buildTimeline';
 
 vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../hooks/useChatScroll', () => ({
-    useChatScroll: () => ({ initialTopMostItemIndex: undefined, handleRangeChanged: vi.fn() }),
+    useChatScroll: () => ({ initialTopMostItemIndex: 0, handleRangeChanged: vi.fn() }),
 }));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <span /> }));
 
@@ -31,5 +31,26 @@ describe('MessageList date headers', () => {
         expect(dates).toEqual(timeline.groupDates);
         fireEvent.click(screen.getAllByRole('button')[0]);
         expect(onOpenCalendar).toHaveBeenCalledOnce();
+    });
+
+    it('gives a message without a valid timestamp an undated group with a 1 px header and no pill', () => {
+        const timeline = buildTimeline([msg(1, 'not a date'), msg(2, '2025-01-01T03:00:00Z')], []);
+        expect(timeline.groupDates).toContain('');
+        const { container } = render(
+            <MessageList
+                memberId="room"
+                timeline={timeline}
+                getSenderInfo={() => ({ name: 'n' })}
+                isUnread={() => false}
+                onReveal={vi.fn()}
+                onLongPress={vi.fn()}
+                onOpenCalendar={vi.fn()}
+            />,
+        );
+        const dates = Array.from(container.querySelectorAll('time')).map((el) => el.getAttribute('datetime'));
+        expect(dates).toEqual(['2025-01-01']);
+        expect(screen.getAllByRole('button')).toHaveLength(1);
+        expect(container.querySelectorAll('.h-px')).toHaveLength(1);
+        expect(container.querySelector('#msg-1')).not.toBeNull();
     });
 });

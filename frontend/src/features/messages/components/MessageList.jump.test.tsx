@@ -3,7 +3,7 @@ import { renderList } from '../../../__tests__/messageListHelpers';
 
 vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../hooks/useChatScroll', () => ({
-    useChatScroll: () => ({ initialTopMostItemIndex: undefined, handleRangeChanged: vi.fn() }),
+    useChatScroll: () => ({ initialTopMostItemIndex: 0, handleRangeChanged: vi.fn() }),
 }));
 vi.mock('./MessageBubble', () => ({ MessageBubble: () => <span /> }));
 
