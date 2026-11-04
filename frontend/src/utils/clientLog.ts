@@ -9,12 +9,14 @@ export type ClientLogEvent =
     | 'notify_open_chat' | 'backend_sync_followed' | 'backend_sync_skipped'
     | 'call_popup_start' | 'call_popup_error'
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
-    | 'app_load_failed';
+    | 'app_load_failed'
+    | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
-    | 'surface' | 'call_id' | 'changed' | 'has_target';
+    | 'surface' | 'call_id' | 'changed' | 'has_target'
+    | 'theme' | 'size';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

@@ -39,6 +39,9 @@ ClientEvent = Literal[
     "notify_open_chat",
     "backend_sync_followed",
     "backend_sync_skipped",
+    "design_tokens_applied",
+    "design_tokens_fallback",
+    "avatar_fallback",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -56,9 +59,11 @@ ALLOWED_FIELDS = frozenset(
         "call_id",
         "changed",
         "has_target",
+        "theme",
+        "size",
     }
 )
-WARNING_EVENTS = frozenset({"call_error", "app_load_failed"})
+WARNING_EVENTS = frozenset({"call_error", "app_load_failed", "design_tokens_fallback"})
 
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]

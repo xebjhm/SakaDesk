@@ -7,7 +7,8 @@ import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
 import type { FeatureId } from '../store/appStore'
-import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
+import { serviceIdToGroupId } from '../config/colors'
+import { applyGroupTokens } from '../design/applyTokens'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
@@ -43,11 +44,11 @@ function App() {
         checkAuth,
     } = useAuth();
 
-    // Apply theme CSS variables when activeService changes
+    // Apply group design tokens (and legacy theme variables) when activeService changes
     useEffect(() => {
         if (activeService) {
             const groupId = serviceIdToGroupId(activeService);
-            applyThemeToDocument(groupId);
+            applyGroupTokens(groupId);
         }
     }, [activeService]);
 

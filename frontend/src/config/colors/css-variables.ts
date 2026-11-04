@@ -8,6 +8,7 @@
 import { type GroupId } from './palette';
 import { serviceThemes } from '../serviceThemes';
 import { getSemanticColors, UI_TOKENS } from './semantic';
+import { clientLog } from '../../utils/clientLog';
 
 /**
  * Map service IDs to GroupIds.
@@ -22,10 +23,14 @@ const SERVICE_TO_GROUP: Record<string, GroupId> = {
 
 /**
  * Convert a service ID to a GroupId.
- * Returns 'hinatazaka' as default if no mapping found.
+ * Unknown IDs fall back to 'hinatazaka' (pre-D1 behaviour, kept so nothing
+ * shifts) and leave a breadcrumb; the raw ID is client text and is not logged.
  */
 export function serviceIdToGroupId(serviceId: string): GroupId {
-    return SERVICE_TO_GROUP[serviceId] ?? 'hinatazaka';
+    const groupId = SERVICE_TO_GROUP[serviceId];
+    if (groupId) return groupId;
+    clientLog('design_tokens_fallback', { reason: 'unknown_service' });
+    return 'hinatazaka';
 }
 
 /**
@@ -84,28 +89,4 @@ export function generateThemeCSSVariables(groupId: GroupId): Record<string, stri
         [CSS_VAR_NAMES.warning]: UI_TOKENS.feedback.warning,
         [CSS_VAR_NAMES.error]: UI_TOKENS.feedback.error,
     };
-}
-
-/**
- * Apply theme CSS variables to the document root.
- * Call this when the active service/group changes.
- */
-export function applyThemeToDocument(groupId: GroupId): void {
-    const variables = generateThemeCSSVariables(groupId);
-    const root = document.documentElement;
-
-    for (const [name, value] of Object.entries(variables)) {
-        root.style.setProperty(name, value);
-    }
-}
-
-/**
- * Remove theme CSS variables from the document root.
- */
-export function clearThemeFromDocument(): void {
-    const root = document.documentElement;
-
-    for (const name of Object.values(CSS_VAR_NAMES)) {
-        root.style.removeProperty(name);
-    }
 }

@@ -8,6 +8,10 @@ import '../i18n'
 import { clientLog } from '../utils/clientLog'
 import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
+import { applyStaticTokens } from '../design/applyTokens'
+
+// Design tokens must exist before the first paint of any entry point.
+applyStaticTokens()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
