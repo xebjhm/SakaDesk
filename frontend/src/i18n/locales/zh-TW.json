@@ -313,6 +313,7 @@
     "openConversations": "顯示對話列表"
   },
   "calendar": {
+    "loadFailed": "無法載入日期",
     "prevMonth": "上個月",
     "nextMonth": "下個月",
     "title": "日期搜尋",

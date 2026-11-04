@@ -122,4 +122,16 @@ test.describe('reveal all', () => {
     await expect(page.getByRole('heading', { name: 'Reveal All Messages?' })).toHaveCount(0)
     await expect(page.getByTestId('unread-shelter')).toHaveCount(0)
   })
+
+  test.fixme('Escape in the media calendar closes only the calendar (D2c)', async ({ page }) => {
+    await openBigRoom(page)
+    await openChatMenuItem(page, 'Media')
+    const gallery = page.getByRole('dialog', { name: 'Media' })
+    await gallery.getByRole('button', { name: 'Jump to Date' }).click()
+    const calendar = page.getByRole('dialog', { name: 'Jump to Date' })
+    await expect(calendar).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(calendar).toHaveCount(0)
+    await expect(gallery).toBeVisible()
+  })
 })

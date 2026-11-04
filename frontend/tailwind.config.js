@@ -101,6 +101,7 @@ export default {
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
                 surface: 'var(--ds-surface-sheet)',
+                strong: 'var(--ds-border-strong)',
             },
             ringOffsetColor: {
                 surface: 'var(--ds-surface-sheet)',

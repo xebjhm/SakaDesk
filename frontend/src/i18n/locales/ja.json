@@ -313,6 +313,7 @@
     "openConversations": "トーク一覧を表示"
   },
   "calendar": {
+    "loadFailed": "日付を読み込めませんでした",
     "prevMonth": "前の月",
     "nextMonth": "次の月",
     "title": "日付検索",

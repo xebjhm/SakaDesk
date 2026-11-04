@@ -203,7 +203,7 @@ describe('CalendarModal component', () => {
       )
 
       await waitFor(() => {
-        expect(screen.getByText(/API Error|Failed/i)).toBeInTheDocument()
+        expect(screen.getByText('Could not load the dates')).toBeInTheDocument()
       })
     })
 
@@ -444,8 +444,7 @@ describe('CalendarModal component', () => {
       const day15Button = day15Span.closest('button')
 
       // The button with messages should have the indicator dot element inside it
-      // (indicator dot uses inline backgroundColor style from theme)
-      const indicatorDot = day15Button?.querySelector('.w-1\\.5.h-1\\.5.rounded-full')
+      const indicatorDot = day15Button?.querySelector('span[aria-hidden="true"]')
       expect(indicatorDot).toBeInTheDocument()
     })
   })

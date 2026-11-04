@@ -83,7 +83,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onCl
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={t('sentLetters.title')} className="max-w-2xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={t('sentLetters.title')} closeLabel={t('common.close')} logId="sent_letters" className="max-w-2xl">
             {body}
         </Modal>
     );

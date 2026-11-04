@@ -6,6 +6,7 @@
 import { GROUP_IDS, groupTokens, type GroupId } from '../design/tokens/groups';
 import { groupRoles } from '../design/tokens/roles';
 import { ambientLayout } from '../design/tokens/ambient';
+import { serviceGroupId } from './serviceGroup';
 
 export type { GroupId };
 
@@ -152,24 +153,7 @@ export const serviceThemes = Object.fromEntries(
 
 // Map service IDs to service themes
 export function getServiceTheme(serviceId: string | null): ServiceTheme {
-    if (!serviceId) return serviceThemes.default;
-
-    const serviceLower = serviceId.toLowerCase();
-
-    if (serviceLower.includes('hinata') || serviceLower.includes('hinatazaka')) {
-        return serviceThemes.hinatazaka;
-    }
-    if (serviceLower.includes('sakura') || serviceLower.includes('sakurazaka')) {
-        return serviceThemes.sakurazaka;
-    }
-    if (serviceLower.includes('nogi') || serviceLower.includes('nogizaka')) {
-        return serviceThemes.nogizaka;
-    }
-    if (serviceLower.includes('yodel')) {
-        return serviceThemes.yodel;
-    }
-
-    return serviceThemes.default;
+    return serviceThemes[serviceGroupId(serviceId)];
 }
 
 /** Default shelter colors for fallback (matches default/hinatazaka theme) */

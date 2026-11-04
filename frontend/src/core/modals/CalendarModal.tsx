@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn, MONTH_NAMES } from '../../utils/classnames';
-import { BaseModal, ModalLoadingState, ModalErrorState } from '../common';
+import { IconButton, Button, Modal } from '../../design/primitives';
+import { DialogStatus } from '../common/DialogStatus';
+import { logDialogLoad } from '../../design/dialog/dialogLog';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
-import { useAppStore } from '../../store/appStore';
-import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 import { toLocalDateStr } from '../../utils/dateFormatters';
 
@@ -72,10 +72,6 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
 
     const { t } = useTranslation();
 
-    // Get per-service theme colors
-    const activeService = useAppStore((state) => state.activeService);
-    const theme = getServiceTheme(activeService);
-
     // Use translated title as default
     const modalTitle = title || t('calendar.title');
 
@@ -125,8 +121,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             }
             const data = await res.json();
             setApiDates(data.dates || []);
-        } catch (err: any) {
-            setError(err.message || 'Failed to load dates');
+            logDialogLoad('calendar', 'ok', (data.dates || []).length);
+        } catch {
+            setError('load_failed');
+            logDialogLoad('calendar', 'error');
         } finally {
             setLoading(false);
         }
@@ -229,136 +227,74 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     };
 
     return (
-        <BaseModal
+        <Modal
             isOpen={isOpen}
             onClose={onClose}
             title={modalTitle}
-            icon={Calendar}
-            maxWidth="max-w-md"
+            closeLabel={t('common.close')}
+            logId="calendar"
+            className="max-w-md"
+            bodyClassName="px-6 pb-4"
             footer={
-                <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 text-center text-sm text-gray-500">
-                    {activeDates.length > 0 ? (
-                        <span>{t('calendar.availableOnDays', { count: activeDates.length })}</span>
-                    ) : (
-                        <span>{t('calendar.tapToJump')}</span>
-                    )}
-                </div>
+                <p className="w-full text-center text-small text-muted">
+                    {activeDates.length > 0
+                        ? t('calendar.availableOnDays', { count: activeDates.length })
+                        : t('calendar.tapToJump')}
+                </p>
             }
         >
-            {/* Month Navigation */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                <button
-                    onClick={goToPrevMonth}
-                    aria-label={t('calendar.prevMonth')}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                    <ChevronLeft className="w-5 h-5 text-gray-600" />
-                </button>
+            <div className="flex items-center justify-between pb-2">
+                <IconButton size="sm" aria-label={t('calendar.prevMonth')} icon={<ChevronLeft />} onClick={goToPrevMonth} />
                 <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-gray-800">
+                    <span className="text-title font-semibold text-primary">
                         {MONTH_NAMES[currentDate.getMonth()]} {currentDate.getFullYear()}
                     </span>
-                    <button
-                        onClick={goToToday}
-                        className="text-xs px-2 py-1 rounded transition-colors"
-                        style={{
-                            color: theme.modals.accentColor,
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = theme.modals.accentColorLight;
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent';
-                        }}
-                    >
-                        {t('calendar.today')}
-                    </button>
+                    <Button variant="ghost" size="sm" onClick={goToToday}>{t('calendar.today')}</Button>
                 </div>
-                <button
-                    onClick={goToNextMonth}
-                    aria-label={t('calendar.nextMonth')}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                    <ChevronRight className="w-5 h-5 text-gray-600" />
-                </button>
+                <IconButton size="sm" aria-label={t('calendar.nextMonth')} icon={<ChevronRight />} onClick={goToNextMonth} />
             </div>
 
-            {/* Calendar Grid */}
-            <div className="p-4">
-                {loading ? (
-                    <ModalLoadingState />
-                ) : error ? (
-                    <ModalErrorState error={error} onRetry={fetchDates} />
-                ) : (
-                    <>
-                        {/* Weekday headers */}
-                        <div className="grid grid-cols-7 mb-2">
-                            {WEEKDAY_KEYS.map((dayKey, i) => (
-                                <div
-                                    key={dayKey}
+            {loading ? (
+                <DialogStatus kind="loading" />
+            ) : error ? (
+                <DialogStatus kind="error" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
+            ) : (
+                <>
+                    <div className="mb-2 grid grid-cols-7">
+                        {WEEKDAY_KEYS.map((dayKey, i) => (
+                            <div key={dayKey} className={cn('py-2 text-center text-caption font-semibold', i === 0 ? 'text-sunday' : 'text-muted')}>
+                                {t(`calendar.weekdays.${dayKey}`)}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="grid grid-cols-7 gap-1">
+                        {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
+                            const hasMessages = datesWithMessages.has(dateStr);
+                            const today = isToday(dateStr);
+                            return (
+                                <button
+                                    key={index}
+                                    type="button"
+                                    onClick={() => handleDateClick(dateStr, date)}
+                                    disabled={!hasMessages}
+                                    title={hasMessages ? `${getMessageCount(dateStr)} items` : undefined}
                                     className={cn(
-                                        "text-center text-xs font-medium py-2",
-                                        i === 0 ? "text-red-500" : i === 6 ? "text-gray-600" : "text-gray-500"
+                                        'relative flex aspect-square flex-col items-center justify-center rounded-pill text-small',
+                                        'transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                                        !isCurrentMonth && 'opacity-30',
+                                        hasMessages ? 'cursor-pointer text-primary hover:bg-group-subtle' : 'text-muted',
+                                        isCurrentMonth && date.getDay() === 0 && 'text-sunday',
+                                        today && 'bg-sunken font-semibold',
                                     )}
                                 >
-                                    {t(`calendar.weekdays.${dayKey}`)}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Days grid */}
-                        <div className="grid grid-cols-7 gap-1">
-                            {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
-                                const hasMessages = datesWithMessages.has(dateStr);
-                                const dayOfWeek = date.getDay();
-                                const today = isToday(dateStr);
-
-                                return (
-                                    <button
-                                        key={index}
-                                        onClick={() => handleDateClick(dateStr, date)}
-                                        disabled={!hasMessages}
-                                        title={hasMessages ? `${getMessageCount(dateStr)} items` : undefined}
-                                        className={cn(
-                                            "aspect-square flex flex-col items-center justify-center rounded-lg text-sm transition-all relative",
-                                            !isCurrentMonth && "opacity-30",
-                                            isCurrentMonth && !hasMessages && "text-gray-400",
-                                            hasMessages && "text-gray-900 cursor-pointer",
-                                            dayOfWeek === 0 && isCurrentMonth && "text-red-500",
-                                            dayOfWeek === 6 && isCurrentMonth && !today && "text-gray-600",
-                                        )}
-                                        style={{
-                                            ...(today && {
-                                                boxShadow: `0 0 0 2px ${theme.modals.accentColor}`,
-                                                borderRadius: '0.5rem',
-                                            }),
-                                        }}
-                                        onMouseEnter={(e) => {
-                                            if (hasMessages) {
-                                                e.currentTarget.style.backgroundColor = theme.modals.accentColorLight;
-                                            }
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            e.currentTarget.style.backgroundColor = 'transparent';
-                                        }}
-                                    >
-                                        <span className="font-medium">{date.getDate()}</span>
-                                        {/* Message indicator dot */}
-                                        {hasMessages && (
-                                            <div className="absolute bottom-1 flex items-center justify-center">
-                                                <div
-                                                    className="w-1.5 h-1.5 rounded-full"
-                                                    style={{ backgroundColor: theme.modals.accentColor }}
-                                                />
-                                            </div>
-                                        )}
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </>
-                )}
-            </div>
-        </BaseModal>
+                                    <span>{date.getDate()}</span>
+                                    {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1 w-1 rounded-pill bg-group-accent" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
+        </Modal>
     );
 };

@@ -313,6 +313,7 @@
     "openConversations": "Show conversations"
   },
   "calendar": {
+    "loadFailed": "Could not load the dates",
     "prevMonth": "Previous month",
     "nextMonth": "Next month",
     "title": "Date Search",
