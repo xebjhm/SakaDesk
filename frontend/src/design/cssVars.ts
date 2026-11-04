@@ -9,6 +9,7 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.surface)) vars[`--ds-surface-${name}`] = value;
     for (const [name, value] of Object.entries(color.text)) vars[`--ds-text-${name}`] = value;
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
+    for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
     for (const [name, value] of Object.entries(color.feedback)) vars[`--ds-feedback-${name}`] = value;
     for (const [name, value] of Object.entries(radius)) vars[`--ds-radius-${name}`] = value;
     for (const [name, value] of Object.entries(shadow)) vars[`--ds-shadow-${name}`] = value;

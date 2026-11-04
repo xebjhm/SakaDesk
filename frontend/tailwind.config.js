@@ -49,6 +49,7 @@ export default {
                 pill: 'var(--ds-surface-pill)',
                 elevated: 'var(--ds-surface-elevated)',
                 sunken: 'var(--ds-surface-sunken)',
+                scrim: 'var(--ds-overlay-scrim)',
                 'group-accent': 'var(--ds-group-accent)',
                 'group-badge': 'var(--ds-group-badge)',
             },

@@ -26,6 +26,10 @@ export const color = {
         subtle: '#e5e7eb',
         strong: '#d1d5db',
     },
+    overlay: {
+        /** Dimmed backdrop behind modals. Carries its own alpha (token colours cannot take Tailwind opacity modifiers). */
+        scrim: 'rgba(0, 0, 0, 0.4)',
+    },
     feedback: {
         success: '#10B981',
         warning: '#F59E0B',

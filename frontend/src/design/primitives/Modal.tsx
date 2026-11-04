@@ -21,7 +21,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
         <Portal>
             <div
                 data-testid="modal-backdrop"
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
                 onClick={handleBackdropClick}
             >
                 <div

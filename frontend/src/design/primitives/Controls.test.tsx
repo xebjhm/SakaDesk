@@ -17,10 +17,12 @@ describe('Button', () => {
             <>
                 <Button variant="primary">answer</Button>
                 <Button variant="ghost">cancel</Button>
+                <Button variant="secondary">later</Button>
             </>,
         );
         expect(screen.getByRole('button', { name: 'answer' })).toHaveClass('bg-group-accent', 'text-inverse');
         expect(screen.getByRole('button', { name: 'cancel' }).className).not.toMatch(/group-accent/);
+        expect(screen.getByRole('button', { name: 'later' }).className).not.toMatch(/group-accent/);
     });
 
     it('does not fire when disabled', async () => {
@@ -85,6 +87,7 @@ describe('Modal', () => {
         expect(onClose).not.toHaveBeenCalled();
         await userEvent.keyboard('{Escape}');
         expect(onClose).toHaveBeenCalledTimes(1);
+        expect(screen.getByTestId('modal-backdrop')).toHaveClass('bg-scrim');
         await userEvent.click(screen.getByTestId('modal-backdrop'));
         expect(onClose).toHaveBeenCalledTimes(2);
     });

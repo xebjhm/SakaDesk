@@ -20,7 +20,8 @@ describe('cssVars', () => {
         expect(vars['--ds-duration-base']).toBe('200ms');
         expect(vars['--ds-ease-standard']).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(Object.keys(vars).every((k) => k.startsWith('--ds-'))).toBe(true);
-        expect(Object.keys(vars)).toHaveLength(5 + 4 + 2 + 3 + 4 + 4 + 10 + 2 + 1);
+        expect(vars['--ds-overlay-scrim']).toBe('rgba(0, 0, 0, 0.4)');
+        expect(Object.keys(vars)).toHaveLength(5 + 4 + 2 + 1 + 3 + 4 + 4 + 10 + 2 + 1);
     });
 
     it.each(GROUP_IDS)('maps every %s group token', (id) => {
