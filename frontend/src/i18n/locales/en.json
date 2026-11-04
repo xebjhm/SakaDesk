@@ -114,6 +114,7 @@
     "aiProvider": "AI Provider",
     "resetDefaults": "Reset to defaults",
     "resetConfirm": "Reset settings to defaults? Your data folder, saved API key, and language are kept.",
+    "saveFailed": "Couldn't save this setting. Try again.",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",

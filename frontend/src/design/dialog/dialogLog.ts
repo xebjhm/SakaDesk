@@ -12,12 +12,18 @@ export type DialogLoadSurface =
     | 'calendar' | 'diagnostics' | 'blog_gallery' | 'profile_images' | 'search'
     | 'settings_blog_cache' | 'settings_blog_backup' | 'settings_update_check' | 'settings_blog_clean'
     | 'settings_blog_stats' | 'settings_ai_config' | 'settings_ai_models' | 'settings_ai_key_clear' | 'settings_ai_save'
-    | 'settings_ai_cache_clear' | 'settings_ai_test'
-    | 'report_issue';
+    | 'settings_ai_cache_clear' | 'settings_ai_test' | 'settings_app_save'
+    | 'report_issue'
+    | 'search_status' | 'search_backup_status' | 'search_more'
+    | 'background_upload';
 
-export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled';
-/** Code for why a load failed (the AI connection test's backend codes). Never message text. */
-export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed';
+/** `skipped`: nothing to do (no images, a rejected file); `cancelled`: aborted or superseded. */
+export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skipped';
+/**
+ * Code for why a load failed or was skipped (the AI connection test's backend codes, the
+ * background upload's rejections, an empty result). Never message text.
+ */
+export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */

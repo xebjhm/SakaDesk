@@ -280,6 +280,39 @@ describe('sync tab saving', () => {
     });
 });
 
+describe('app settings save failures', () => {
+    it('a refused save shows the failure inline on its row and logs settings_app_save error', async () => {
+        const onSaveSettings = vi.fn().mockResolvedValue(false);
+        renderModal(base, { onSaveSettings });
+        const row = screen.getByRole('switch', { name: i18n.t('settings.closeToTray') }).closest('section')!;
+        await act(async () => { fireEvent.click(within(row as HTMLElement).getByRole('switch')); });
+        expect(within(row as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'error' });
+        // Only the failed row shows it.
+        expect(screen.getAllByText(i18n.t('settings.saveFailed'))).toHaveLength(1);
+    });
+
+    it('a later successful save on the row clears the failure and logs ok', async () => {
+        const onSaveSettings = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
+        renderModal(base, { onSaveSettings });
+        const row = screen.getByRole('switch', { name: i18n.t('settings.autostart') }).closest('section') as HTMLElement;
+        await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
+        expect(within(row).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
+        expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull();
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'ok' });
+    });
+
+    it('a refused sync mode save shows the failure under the sync mode row', async () => {
+        const onSaveSettings = vi.fn().mockResolvedValue(false);
+        renderModal(base, { onSaveSettings });
+        openTab('Sync');
+        await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /^Off/ })); });
+        const group = screen.getByRole('radiogroup');
+        expect(within(group.closest('section') as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+    });
+});
+
 describe('updates tab', () => {
     it('auto-download switch saves', () => {
         const { onSaveSettings } = renderModal();

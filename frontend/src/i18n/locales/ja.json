@@ -114,6 +114,7 @@
     "aiProvider": "AIプロバイダー",
     "resetDefaults": "デフォルトに戻す",
     "resetConfirm": "設定をデフォルトに戻しますか？データフォルダ・保存済みのAPIキー・言語は保持されます。",
+    "saveFailed": "この設定を保存できませんでした。もう一度お試しください。",
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",

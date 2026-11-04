@@ -25,6 +25,10 @@ interface SettingsModalProps {
 
 type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
+/** A settings row that saves app settings (the failure shows on that row). */
+type SaveRow = 'outputDir' | 'incomingCall' | 'callPopup' | 'closeToTray' | 'autostart' | 'notifications'
+    | 'notificationsHideContent' | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
+
 /** The in-app confirm on screen: reset, delete backup (two steps), deep re-sync. */
 type ConfirmKind = 'reset' | 'clean' | 'clean2' | 'deep' | null;
 
@@ -92,6 +96,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             setBlogTogglePending(null);
         }
     }, [appSettings.blogs_full_backup, blogTogglePending]);
+
+    // The row whose last save failed: it shows the failure inline (the App toast says it too).
+    const [failedRow, setFailedRow] = useState<SaveRow | null>(null);
+    const save = async (row: SaveRow, updates: Partial<AppSettings>): Promise<boolean> => {
+        const ok = await onSaveSettings(updates);
+        logDialogLoad('settings_app_save', ok ? 'ok' : 'error');
+        setFailedRow(prev => (ok ? (prev === row ? null : prev) : row));
+        return ok;
+    };
+    const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -214,7 +228,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     // Restore behavioural preferences to defaults. Non-destructive: keeps the
     // data folder, the saved API key, and the chosen language. Runs after the in-app confirm.
     const handleResetDefaults = async () => {
-        await onSaveSettings({
+        await save('reset', {
             auto_sync_enabled: true,
             adaptive_sync_enabled: true,
             sync_interval_minutes: 15,
@@ -280,7 +294,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </Select>
                     </SettingRow>
 
-                    <SettingRow label={t('settings.outputFolder')}>
+                    <SettingRow label={t('settings.outputFolder')} error={rowError('outputDir')}>
                         <div className="flex gap-2">
                             <Input
                                 aria-label={t('settings.outputFolder')}
@@ -288,7 +302,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 onChange={(e) => setOutputDirInput(e.target.value)}
                                 className="flex-1"
                             />
-                            <Button variant="primary" onClick={() => onSaveSettings({ output_dir: outputDirInput })}>
+                            <Button variant="primary" onClick={() => save('outputDir', { output_dir: outputDirInput })}>
                                 {t('common.save')}
                             </Button>
                         </div>
@@ -296,41 +310,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <SettingRow
                         label={t('settings.incomingCall')}
+                        error={rowError('incomingCall')}
                         description={t('settings.incomingCallDesc')}
-                        control={<Switch checked={incomingCallEnabled} onCheckedChange={(v) => onSaveSettings({ incoming_call_enabled: v })} aria-label={t('settings.incomingCall')} />}
+                        control={<Switch checked={incomingCallEnabled} onCheckedChange={(v) => save('incomingCall', { incoming_call_enabled: v })} aria-label={t('settings.incomingCall')} />}
                     />
 
                     <SettingRow
                         label={t('settings.callPopup')}
+                        error={rowError('callPopup')}
                         description={t('settings.callPopupDesc')}
-                        control={<Switch checked={callPopupEnabled} onCheckedChange={(v) => onSaveSettings({ call_popup_enabled: v })} aria-label={t('settings.callPopup')} />}
+                        control={<Switch checked={callPopupEnabled} onCheckedChange={(v) => save('callPopup', { call_popup_enabled: v })} aria-label={t('settings.callPopup')} />}
                     />
 
                     <SettingRow
                         label={t('settings.closeToTray')}
+                        error={rowError('closeToTray')}
                         description={t('settings.closeToTrayDesc')}
-                        control={<Switch checked={closeToTray} onCheckedChange={(v) => onSaveSettings({ close_to_tray: v })} aria-label={t('settings.closeToTray')} />}
+                        control={<Switch checked={closeToTray} onCheckedChange={(v) => save('closeToTray', { close_to_tray: v })} aria-label={t('settings.closeToTray')} />}
                     />
 
                     <SettingRow
                         label={t('settings.autostart')}
+                        error={rowError('autostart')}
                         description={t('settings.autostartDesc')}
-                        control={<Switch checked={autostart} onCheckedChange={(v) => onSaveSettings({ autostart: v })} aria-label={t('settings.autostart')} />}
+                        control={<Switch checked={autostart} onCheckedChange={(v) => save('autostart', { autostart: v })} aria-label={t('settings.autostart')} />}
                     />
 
                     <SettingRow
                         label={t('settings.notifications')}
+                        error={rowError('notifications')}
                         description={t('settings.notificationsDesc')}
-                        control={<Switch checked={notificationsEnabled} onCheckedChange={(v) => onSaveSettings({ notifications_enabled: v })} aria-label={t('settings.notifications')} />}
+                        control={<Switch checked={notificationsEnabled} onCheckedChange={(v) => save('notifications', { notifications_enabled: v })} aria-label={t('settings.notifications')} />}
                     />
 
                     <SettingRow
                         label={t('settings.notificationsHideContent')}
+                        error={rowError('notificationsHideContent')}
                         description={t('settings.notificationsHideContentDesc')}
                         control={
                             <Switch
                                 checked={notificationsHideContent}
-                                onCheckedChange={(v) => onSaveSettings({ notifications_hide_content: v })}
+                                onCheckedChange={(v) => save('notificationsHideContent', { notifications_hide_content: v })}
                                 disabled={!notificationsEnabled}
                                 aria-disabled={!notificationsEnabled}
                                 aria-label={t('settings.notificationsHideContent')}
@@ -342,6 +362,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {activeTab === 'sync' && (<>
                     <SettingRow
                         label={t('settings.syncMode')}
+                        error={rowError('syncMode')}
                         labelId={syncModeLabelId}
                         description={
                             syncMode === 'off'
@@ -357,7 +378,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     type="radio"
                                     name="syncMode"
                                     checked={syncMode === 'off'}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: false, adaptive_sync_enabled: false })}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: false, adaptive_sync_enabled: false })}
                                     className="h-4 w-4 accent-group"
                                 />
                                 <div>
@@ -371,7 +392,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     type="radio"
                                     name="syncMode"
                                     checked={syncMode === 'fixed'}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: true, adaptive_sync_enabled: false })}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: false })}
                                     className="h-4 w-4 accent-group"
                                 />
                                 <div>
@@ -385,7 +406,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <Select
                                         aria-label={t('settings.syncEvery')}
                                         value={appSettings.sync_interval_minutes}
-                                        onChange={(e) => onSaveSettings({ sync_interval_minutes: parseInt(e.target.value) })}
+                                        onChange={(e) => save('syncMode', { sync_interval_minutes: parseInt(e.target.value) })}
                                         className="w-auto"
                                     >
                                         <option value={1}>{t('time.minute', { count: 1 })}</option>
@@ -402,7 +423,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     type="radio"
                                     name="syncMode"
                                     checked={syncMode === 'smart'}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: true, adaptive_sync_enabled: true })}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: true })}
                                     className="h-4 w-4 accent-group"
                                 />
                                 <div>
@@ -425,11 +446,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 </span>
                             )}
                         </>}
+                        error={rowError('blogFullBackup')}
                         description={blogBackupEnabled ? t('settings.blogFullBackupOnDesc') : t('settings.blogFullBackupOffDesc')}
                         control={
                             <Switch
                                 checked={!!blogBackupEnabled}
-                                onCheckedChange={(v) => { setBlogTogglePending(v); onSaveSettings({ blogs_full_backup: v }); }}
+                                onCheckedChange={(v) => { setBlogTogglePending(v); save('blogFullBackup', { blogs_full_backup: v }); }}
                                 aria-label={t('settings.blogFullBackup')}
                             />
                         }
@@ -488,8 +510,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <SettingRow
                         label={t('settings.syncReadToPhone')}
+                        error={rowError('syncReadToPhone')}
                         description={t('settings.syncReadToPhoneDesc')}
-                        control={<Switch checked={syncReadToPhone} onCheckedChange={(v) => onSaveSettings({ sync_read_to_phone: v })} aria-label={t('settings.syncReadToPhone')} />}
+                        control={<Switch checked={syncReadToPhone} onCheckedChange={(v) => save('syncReadToPhone', { sync_read_to_phone: v })} aria-label={t('settings.syncReadToPhone')} />}
                     />
                 </>)}
 
@@ -498,7 +521,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {activeTab === 'updates' && (
                     <UpdatesSection
                         autoDownload={appSettings.auto_download_updates ?? false}
-                        onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
+                        onToggleAutoDownload={(val) => save('autoDownload', { auto_download_updates: val })}
+                        saveError={rowError('autoDownload')}
                     />
                 )}
             </div>
@@ -530,9 +554,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 };
 
 
-function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
+function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
     autoDownload: boolean;
     onToggleAutoDownload: (val: boolean) => void;
+    /** Inline failure of the last auto-download save. */
+    saveError?: string;
 }) {
     const { t } = useTranslation();
     const [checking, setChecking] = useState(false);
@@ -570,6 +596,7 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
             label={t('settings.autoDownloadUpdates')}
             description={t('settings.autoDownloadUpdatesDesc')}
             control={<Switch checked={autoDownload} onCheckedChange={onToggleAutoDownload} aria-label={t('settings.autoDownloadUpdates')} />}
+            error={saveError}
         >
             <div className="mt-2 flex items-center gap-3">
                 <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>

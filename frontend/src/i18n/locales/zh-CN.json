@@ -114,6 +114,7 @@
     "aiProvider": "AI 服务商",
     "resetDefaults": "重置为默认值",
     "resetConfirm": "要将设置重置为默认值吗？数据文件夹、已保存的 API 密钥与语言会保留。",
+    "saveFailed": "无法保存此设置，请重试。",
     "transcriptionCpuDesc": "适用所有电脑，速度较慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",

@@ -114,6 +114,7 @@
     "aiProvider": "AI 服務商",
     "resetDefaults": "重設為預設值",
     "resetConfirm": "要將設定重設為預設值嗎？資料夾、已儲存的 API 金鑰與語言會保留。",
+    "saveFailed": "無法儲存此設定，請再試一次。",
     "transcriptionCpuDesc": "適用所有電腦，速度較慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "測試 GPU 中...",
