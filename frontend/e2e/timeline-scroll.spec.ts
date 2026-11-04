@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   buildBigRoom, firstIdOnDate, isRowInViewport, pinBigRoom, topVisibleMessageId,
-  COUNT, TZ, type FixtureMessage,
+  COUNT, ROOM_DIR, TZ, type FixtureMessage,
 } from './fixtures/bigRoom'
 
 // Locks the chat timeline's scroll behaviour in a real browser. D2a (GroupedVirtuoso,
@@ -25,6 +25,11 @@ async function openCalendarAt(page: Page, monthLabel: string) {
     await prev.click()
   }
   throw new Error(`calendar never reached ${monthLabel}`)
+}
+
+/** Focus the timeline without clicking a bubble (a click on an unread shelter would reveal it). */
+async function focusTimeline(page: Page) {
+  await page.locator('[data-virtuoso-scroller]').click({ position: { x: 4, y: 4 } })
 }
 
 test.describe('timeline scroll', () => {
@@ -66,10 +71,16 @@ test.describe('timeline scroll', () => {
   test('re-opening the room restores the last top message', async ({ page }) => {
     await openBigRoom(page)
     const dialog = await openCalendarAt(page, 'March 2024')
-    await dialog.getByRole('button', { name: '15', exact: true }).click()
     const expected = firstIdOnDate(messages.current, '2024-03-15')
+    // useChatScroll saves the top message 500 ms after the list stops moving.
+    const saved = page.waitForRequest((req) =>
+      req.method() === 'PATCH' &&
+      new URL(req.url()).searchParams.get('path') === `sakadesk_scroll_${ROOM_DIR}` &&
+      (req.postData() ?? '').includes(`"value":"${expected}"`),
+    )
+    await dialog.getByRole('button', { name: '15', exact: true }).click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 2000 }).toBe(expected)
-    await page.waitForTimeout(800) // useChatScroll debounces saves by 500 ms
+    await saved
     await page.getByText('Other Room', { exact: true }).click()
     await expect(page.getByText('Other room message')).toBeVisible()
     await page.getByText('Big Room', { exact: true }).click()
@@ -89,6 +100,28 @@ test.describe('timeline scroll', () => {
     await pinBigRoom(page, { messages, lastReadId: 2500 })
     await openBigRoom(page)
     await page.getByTitle('Jump to oldest unread').click()
+    await expect.poll(() => isRowInViewport(page, 2501), { timeout: 1000, intervals: [50] }).toBe(true)
+  })
+
+  test('Home and End jump to the first and the last message', async ({ page }) => {
+    await openBigRoom(page)
+    await focusTimeline(page)
+    await page.keyboard.press('Home')
+    await expect.poll(() => isRowInViewport(page, 1), { timeout: 2000, intervals: [50] }).toBe(true)
+    await page.keyboard.press('End')
+    await expect.poll(() => isRowInViewport(page, COUNT), { timeout: 2000, intervals: [50] }).toBe(true)
+  })
+
+  test('first-unread arrow below the view brings the first unread into view', async ({ page }) => {
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+    await pinBigRoom(page, { messages, lastReadId: 2500 })
+    await openBigRoom(page)
+    await focusTimeline(page)
+    await page.keyboard.press('Home')
+    await expect.poll(() => isRowInViewport(page, 1), { timeout: 2000, intervals: [50] }).toBe(true)
+    const arrow = page.getByTitle('Jump to oldest unread')
+    await expect(arrow).toHaveCount(1)
+    await arrow.click()
     await expect.poll(() => isRowInViewport(page, 2501), { timeout: 1000, intervals: [50] }).toBe(true)
   })
 })

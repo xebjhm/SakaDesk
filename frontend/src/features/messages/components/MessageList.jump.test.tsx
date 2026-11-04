@@ -3,13 +3,7 @@ import { render } from '@testing-library/react';
 import type { Message } from '../../../types';
 import { MessageList } from './MessageList';
 
-// jsdom has no layout, so the real Virtuoso renders no rows; render every row instead.
-vi.mock('react-virtuoso', () => ({
-    Virtuoso: ({ data, itemContent }: {
-        data: Message[];
-        itemContent: (index: number, msg: Message) => React.ReactNode;
-    }) => <div>{data.map((m, i) => <div key={m.id}>{itemContent(i, m)}</div>)}</div>,
-}));
+vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../hooks/useChatScroll', () => ({
     useChatScroll: () => ({ initialTopMostItemIndex: undefined, handleRangeChanged: vi.fn() }),
 }));
