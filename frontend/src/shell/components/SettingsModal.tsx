@@ -57,6 +57,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
     // A loaded settings object without the field means the default: on.
     const incomingCallEnabled = appSettings.incoming_call_enabled ?? true;
+    const notificationsEnabled = appSettings.notifications_enabled ?? true;
+    const notificationsHideContent = appSettings.notifications_hide_content ?? false;
     // Clear pending state once appSettings catches up
     React.useEffect(() => {
         if (blogTogglePending !== null && appSettings.blogs_full_backup === blogTogglePending) {
@@ -168,6 +170,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             blogs_full_backup: false,
             auto_download_updates: false,
             incoming_call_enabled: true,
+            notifications_enabled: true,
+            notifications_hide_content: false,
         });
         setTranscriptionEnabled(true);
         setTranslationEnabled(false);
@@ -269,6 +273,58 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
                             {t('settings.incomingCallDesc')}
+                        </p>
+                    </div>
+
+                    {/* Notifications (default on) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.notifications')}
+                            </label>
+                            <button
+                                role="switch"
+                                aria-checked={notificationsEnabled}
+                                aria-label={t('settings.notifications')}
+                                onClick={() => onSaveSettings({ notifications_enabled: !notificationsEnabled })}
+                                className={`relative w-12 h-6 rounded-full transition-colors ${
+                                    notificationsEnabled ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    notificationsEnabled ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.notificationsDesc')}
+                        </p>
+                    </div>
+
+                    {/* Hide message content in notifications (default off) */}
+                    <div>
+                        <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium text-gray-700">
+                                {t('settings.notificationsHideContent')}
+                            </label>
+                            <button
+                                role="switch"
+                                aria-checked={notificationsHideContent}
+                                aria-disabled={!notificationsEnabled}
+                                disabled={!notificationsEnabled}
+                                aria-label={t('settings.notificationsHideContent')}
+                                onClick={() => onSaveSettings({ notifications_hide_content: !notificationsHideContent })}
+                                className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    notificationsHideContent ? 'bg-blue-400' : 'bg-gray-300'
+                                }`}
+                            >
+                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                    notificationsHideContent ? 'translate-x-7' : 'translate-x-1'
+                                }`} />
+                            </button>
+                        </div>
+                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
+                            {t('settings.notificationsHideContentDesc')}
                         </p>
                     </div>
                     </>)}

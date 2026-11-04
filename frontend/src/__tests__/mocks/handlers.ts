@@ -185,4 +185,9 @@ export const handlers = [
       upgrade_supported: false,
     })
   }),
+
+  // Focused-chat reporting (fire-and-forget)
+  http.post('/api/ui-state', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
 ]

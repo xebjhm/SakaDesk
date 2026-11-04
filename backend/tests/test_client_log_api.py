@@ -104,3 +104,31 @@ def test_invalid_body_is_rejected_and_not_logged(body):
         res = client.post("/api/client-log", json=body)
     assert res.status_code == 422
     assert _client_events(logs) == []
+
+
+def test_notify_open_chat_event_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "notify_open_chat", "fields": {"service": "hinatazaka46"}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert len(events) == 1
+    assert events[0]["event"] == "notify_open_chat"
+    assert events[0]["log_level"] == "info"
+    assert events[0]["service"] == "hinatazaka46"
+
+
+def test_notify_open_chat_accepts_has_target():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "notify_open_chat",
+                "fields": {"service": "hinatazaka46", "has_target": True},
+            },
+        )
+    assert res.status_code == 204
+    (event,) = _client_events(logs)
+    assert event["has_target"] is True

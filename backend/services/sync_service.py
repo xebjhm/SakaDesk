@@ -26,7 +26,12 @@ from backend.services.platform import (
     is_test_mode,
     get_default_output_dir,
 )
-from backend.services.notification_service import notify_sync_complete_async
+from backend.services.new_message_collector import NewMessageCollector
+from backend.services.notification_planner import find_avatar, plan_toasts
+from backend.services.notification_service import send_planned
+from backend.services.chat_kind import is_member_dir
+from backend.services.i18n import get_strings, resolve_ui_language
+from backend.services.ui_state import get_ui_state
 from backend.services.service_utils import (
     get_service_enum,
     get_service_display_name,
@@ -51,6 +56,15 @@ DEFAULT_INITIAL_MESSAGE_LIMIT = 0
 # in five); 20 a minute (100 in five) is what incremental syncs have always run
 # at without a 429. Incremental-only syncs are not paced.
 SCAN_TIMELINE_INTERVAL = 3.0
+
+
+def _count_member_dirs(group_dir: Path) -> int:
+    """Number of member folders in a group folder (``chat_kind.is_member_dir``,
+    the same rule as the content API); 0 when the folder cannot be listed."""
+    try:
+        return sum(1 for d in group_dir.iterdir() if is_member_dir(d))
+    except OSError:
+        return 0
 
 
 def _compute_group_since_ts(missing_timestamps: list) -> Optional[str]:
@@ -571,13 +585,18 @@ class SyncService:
                         scanned = False
                     if not scanned:
                         scan_gids.add(gid)
-                # (group_id, member_id) -> messages reported as new, for members
-                # whose sync_member count is mostly recovered history: every
-                # author of a room scanned in this sync (only rows newer than
-                # the cursor before this sync are new) and extra authors with
-                # no cursor before it (none new). Members not in it report
-                # their sync_member count. These members are indexed fully.
+                # (group_id, member_id) -> rows of recovered history: every
+                # author of a room scanned in this sync, and extra authors with
+                # no cursor before it. Log diagnostics only (recovered_members /
+                # recovered_rows_excluded); reported new-message totals come
+                # from the collector below, to which scan calls contribute 0.
                 reported_new: dict[tuple[int, int], int] = {}
+                # Messages that were genuinely new on disk this run, fed by
+                # pysaka's on_new_messages callback (incremental calls only).
+                # It is the sole source of the new-message totals, and after
+                # phase 2 _notify_new_messages plans and sends this run's
+                # toasts from its entries().
+                collector = NewMessageCollector(self._service)
 
                 def note_rate_limited(gid: int, err: RateLimitedError) -> None:
                     # Trip the per-sync breaker; logged once per sync.
@@ -819,12 +838,14 @@ class SyncService:
                                 task["member"],
                                 media_queue,
                                 prefetched_messages=member_prefetched,
+                                on_new_messages=collector.on_new_messages,
                             )
                         # A scanned room's counts and a first-seen extra author's
-                        # counts are recovered history: searchable (full scan) but
-                        # not reported as new. In a scanned room only the
-                        # author's rows newer than its cursor are new (none
-                        # without a cursor), never more than sync_member wrote.
+                        # counts are recovered history: searchable (full scan)
+                        # but never reported as new. `new` below is a log
+                        # diagnostic only: the author's rows newer than its
+                        # cursor, capped by what sync_member wrote (0 without
+                        # a cursor); it does not feed the reported totals.
                         if scan or (is_extra and member_ts is None):
                             new = (
                                 min(
@@ -907,7 +928,7 @@ class SyncService:
                             extra_members=len(extra_members),
                             elapsed=f"{time.monotonic() - g_t0:.1f}s",
                             complete=complete,
-                            new_msgs=scan_new,
+                            rows_newer_than_cursor=scan_new,
                         )
 
                     group_new = sum(c for _, c in group_results)
@@ -979,33 +1000,38 @@ class SyncService:
                         f"first error (group {first_gid}): {first_err}"
                     )
 
+                # New-message totals come from the collector (messages that
+                # were not on disk before), never from sync_member's return
+                # value, which also counts re-fetched overlap.
+                collected_counts = collector.counts()
+                total_new_messages = sum(collected_counts.values())
+                members_with_new = sum(1 for c in collected_counts.values() if c > 0)
+                collector.log_summary()
+
                 logger.info(
                     "phase2_complete",
+                    new_messages=total_new_messages,
+                    members_with_new=members_with_new,
                     elapsed=f"{time.monotonic() - phase2_t0:.1f}s",
                     groups=len(tasks_by_group),
                     failed_groups=len(group_errors),
                     deferred_groups=len(deferred_gids),
                     total_members=total_members,
-                    # Recovered history (scanned rooms, first-seen extra
-                    # authors): indexed for search, not reported as new.
+                    # Diagnostics, not reported counts: recovered history
+                    # (scanned rooms, first-seen extra authors) is indexed for
+                    # search and never reported as new.
                     recovered_members=len(reported_new),
-                    excluded_new_messages=sum(
+                    recovered_rows_excluded=sum(
                         c - reported_new[k]
                         for t, c in results
                         if (k := (t["group"]["id"], t["member"]["id"])) in reported_new
                     ),
                 )
 
-                # Update Metadata from results and track new message counts
-                total_new_messages = 0
-                members_with_new = 0
+                # Update Metadata from results (the cursor moves whenever
+                # sync_member processed rows, new or not).
                 for task, count in results:
                     if count > 0:
-                        key_t = (task["group"]["id"], task["member"]["id"])
-                        new = reported_new.get(key_t, count)
-                        if new > 0:
-                            total_new_messages += new
-                            members_with_new += 1
                         key = f"{task['group']['id']}_{task['member']['id']}"
                         last_id = self.manager.get_last_id(
                             task["group"]["id"], task["member"]["id"]
@@ -1018,14 +1044,10 @@ class SyncService:
                                 metadata["groups"][key]["last_message_id"] = last_id
                                 metadata["groups"][key]["last_sync_ts"] = last_ts
 
-                # Send notification for new messages (after Phase 2, before media download)
+                # One toast per member / room with new messages (after Phase 2,
+                # before media download). Never fails the sync.
                 if total_new_messages > 0:
-                    # SD-BE-SVC-18: use the async wrapper so plyer's blocking
-                    # Win32 notify runs off the event loop (it otherwise stalls
-                    # the loop mid-sync, exactly while the UI polls /progress).
-                    await notify_sync_complete_async(
-                        total_new_messages, members_with_new
-                    )
+                    await self._notify_new_messages(collector, app_settings)
 
                 # Update search index in background (non-fatal, must not block
                 # sync). Covers members with new messages AND members whose
@@ -1237,6 +1259,62 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    async def _notify_new_messages(
+        self, collector: NewMessageCollector, app_settings: dict[str, Any]
+    ) -> None:
+        """Plan and send one toast per member/room from this run's collector.
+
+        Logs ids, counts and error types only. Any failure is logged as
+        ``notify_failed`` and swallowed: a notification problem must never
+        fail the sync.
+        """
+        try:
+            chats = collector.entries()
+            if not chats:
+                return
+            group_dirs = {c.group_id: c.member_dir.parent for c in chats}
+            language = await asyncio.to_thread(resolve_ui_language, app_settings)
+            plans, skips = plan_toasts(
+                chats,
+                service=self._service,
+                service_display=get_service_display_name(self._service),
+                output_service_dir=self.service_data_dir,
+                ui_state=get_ui_state(),
+                enabled=bool(app_settings.get("notifications_enabled", True)),
+                hide_content=bool(
+                    app_settings.get("notifications_hide_content", False)
+                ),
+                strings=get_strings("notifications", language),
+                avatar_for=find_avatar,
+                # C3 hook: gets each built ToastPlan (newest_type/newest_id) and
+                # returns True to divert it (e.g. voice to the call popup).
+                divert=lambda _p: False,
+                member_count_for=lambda gid: _count_member_dirs(group_dirs[gid]),
+            )
+            for skip in skips:
+                logger.info(
+                    "notify_skip",
+                    service=self._service,
+                    reason=skip.reason,
+                    group_id=skip.group_id,
+                    member_id=skip.member_id,
+                    count=skip.count,
+                )
+            sent = await send_planned(plans) if plans else 0
+            logger.info(
+                "notify_summary",
+                service=self._service,
+                planned=len(plans),
+                sent=sent,
+                skipped=len(skips),
+            )
+        except Exception as e:
+            logger.warning(
+                "notify_failed",
+                service=self._service,
+                error_type=type(e).__name__,
+            )
 
     def _mark_scanned_rooms(self, gids: list[int]) -> None:
         """Record the one-time history scan of each room in ``gids`` as done.

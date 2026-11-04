@@ -91,6 +91,9 @@ class SettingsResponse(BaseModel):
         None  # Per-service nicknames for %%% placeholder replacement
     )
     notifications_enabled: bool = True  # Desktop notifications for new messages
+    notifications_hide_content: bool = (
+        False  # Toasts show a generic body instead of the message preview
+    )
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
     auto_download_updates: bool = False  # Auto-download new versions in background
@@ -112,6 +115,7 @@ class SettingsUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = Field(default=None, ge=1)
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
+    notifications_hide_content: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None
     auto_download_updates: Optional[bool] = None
     sync_read_to_phone: Optional[bool] = None
@@ -150,6 +154,7 @@ async def get_settings():
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
@@ -175,6 +180,8 @@ async def update_settings(update: SettingsUpdate):
         if update.notifications_enabled is not None:
             config["notifications_enabled"] = update.notifications_enabled
             set_notifications_enabled(update.notifications_enabled)
+        if update.notifications_hide_content is not None:
+            config["notifications_hide_content"] = update.notifications_hide_content
         if update.blogs_full_backup is not None:
             config["blogs_full_backup"] = update.blogs_full_backup
         if update.auto_download_updates is not None:
@@ -195,6 +202,7 @@ async def update_settings(update: SettingsUpdate):
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],

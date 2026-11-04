@@ -245,6 +245,20 @@ class TestUpdateSettings:
         # Called once during _apply inside update_settings
         mock_notify.assert_called_with(False)
 
+    def test_hide_content_defaults_false_and_round_trips(self):
+        """notifications_hide_content: absent -> False; POST persists and echoes it."""
+        cfg = _default_config()
+        with _patch_store(load_return=cfg):
+            assert (
+                client.get("/api/settings").json()["notifications_hide_content"]
+                is False
+            )
+            response = client.post(
+                "/api/settings", json={"notifications_hide_content": True}
+            )
+        assert response.status_code == 200
+        assert response.json()["notifications_hide_content"] is True
+
     def test_update_blogs_full_backup(self):
         """Toggle blogs_full_backup."""
         cfg = _default_config(blogs_full_backup=False)

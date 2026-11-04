@@ -1,0 +1,10 @@
+{
+  "sent_photo": "傳送了照片",
+  "sent_video": "傳送了影片",
+  "sent_voice": "傳送了語音",
+  "sent_message": "傳送了訊息",
+  "hidden_body": "傳了新訊息",
+  "more": "另外 {n} 則",
+  "test_title": "SakaDesk",
+  "test_body": "通知運作正常"
+}

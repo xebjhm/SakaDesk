@@ -90,7 +90,7 @@ async def test_first_sync_writes_full_history_to_disk(tmp_path):
         patch("backend.services.sync_service.aiohttp.ClientSession") as mock_sess_cls,
         patch("backend.services.sync_service.progress_manager") as mock_pm,
         patch(
-            "backend.services.sync_service.notify_sync_complete_async",
+            "backend.services.sync_service.send_planned",
             new_callable=AsyncMock,
         ),
     ):

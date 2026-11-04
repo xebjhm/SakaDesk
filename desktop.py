@@ -8,6 +8,7 @@ webview.settings["ALLOW_DOWNLOADS"] = True
 import threading  # noqa: E402
 import uvicorn  # noqa: E402
 import os  # noqa: E402
+import sys  # noqa: E402
 import socket  # noqa: E402
 import traceback  # noqa: E402
 import time  # noqa: E402
@@ -15,12 +16,18 @@ import json  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
+from dataclasses import asdict  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
+from backend.services import desktop_bridge  # noqa: E402
+from backend.services.app_identity import (  # noqa: E402
+    ensure_start_menu_shortcut,
+    set_process_aumid,
+)
 from backend.services.service_utils import atomic_write_json  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
@@ -52,7 +59,8 @@ INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
 # Win32 error / message constants used by the single-instance guard.
 _ERROR_ALREADY_EXISTS = 183
-_SW_RESTORE = 9
+_SW_RESTORE = 9  # un-minimize (also un-maximizes a maximized window)
+_SW_SHOW = 5  # show in its current size state
 
 
 def _acquire_instance_mutex() -> bool:
@@ -93,23 +101,162 @@ def _acquire_instance_mutex() -> bool:
         return True
 
 
+def _native_hwnd(window) -> int | None:
+    """The pywebview window's own HWND (WinForms ``window.native.Handle``), or None.
+
+    Never raises: any failure (no native form yet, a cross-thread access
+    error) returns None so the caller falls back to finding the window by
+    title, and is logged as ``window_native_handle_unavailable`` (error type
+    only). A missing handle (``None``) is not an error and is not logged.
+    """
+    try:
+        handle = window.native.Handle
+        if handle is None:
+            return None
+        to_int = getattr(handle, "ToInt64", None)  # pythonnet IntPtr
+        return int(to_int()) if to_int is not None else int(handle)
+    except Exception as e:
+        logger.warning("window_native_handle_unavailable", error_type=type(e).__name__)
+        return None
+
+
+def _configure_user32(user32) -> None:
+    """Declare the HWND/BOOL signatures of the user32 calls ``_focus_window`` makes.
+
+    Without them ctypes passes the handle as a 32-bit int and returns an int,
+    which truncates 64-bit handles. Windows only (``wintypes`` is not used
+    elsewhere); ``FindWindowW`` is left at its defaults.
+    """
+    from ctypes import wintypes
+
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
+
+
+def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
+    """Bring the SakaDesk window to the foreground (best-effort, never raises).
+
+    Uses ``hwnd`` when given, else ``FindWindowW(None, "SakaDesk")`` (pywebview's
+    window title). A minimized window is restored (``SW_RESTORE``); any other
+    window is only shown (``SW_SHOW``) so a maximized window stays maximized.
+    ``user32`` is injectable for tests; without it this is a no-op off Windows.
+    Logs ``window_focus`` (``minimized``, ``source``, ``foreground`` = the
+    ``SetForegroundWindow`` result), ``window_focus_skipped`` or
+    ``window_focus_failed`` (error type only).
+    """
+    if user32 is None and platform.system() != "Windows":
+        return
+    try:
+        if user32 is None:
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            _configure_user32(user32)
+        source = "native"
+        if not hwnd:
+            source = "find_window"
+            hwnd = user32.FindWindowW(None, "SakaDesk")
+        if not hwnd:
+            logger.info("window_focus_skipped", reason="no_window")
+            return
+        minimized = bool(user32.IsIconic(hwnd))
+        user32.ShowWindow(hwnd, _SW_RESTORE if minimized else _SW_SHOW)
+        foreground = bool(user32.SetForegroundWindow(hwnd))
+        logger.debug(
+            "window_focus", minimized=minimized, source=source, foreground=foreground
+        )
+    except Exception as e:
+        logger.warning("window_focus_failed", error_type=type(e).__name__)
+
+
 def _focus_existing_window() -> None:
     """Bring the already-running SakaDesk window to the foreground (best-effort).
 
     Called when the single-instance guard (SD-AUX-01) detects a second launch,
     so a re-click of the taskbar/desktop icon focuses the live window instead of
-    silently doing nothing. Matches pywebview's window title ("SakaDesk").
+    silently doing nothing. Finds the window by pywebview's title ("SakaDesk").
     """
-    if platform.system() != "Windows":
-        return
+    _focus_window(None)
+
+
+def make_open_chat_handler(window, focus_fn):
+    """Build the toast-click handler that brings ``window`` forward on a chat.
+
+    The handler runs on a WinRT thread. It shows the window (never
+    ``window.restore()``, which would un-maximize it), calls
+    ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
+    frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
+    target's fields plus ``message_id`` (an int, the message to scroll to)
+    when one is given. The script returns whether that function existed: it
+    logs ``notify_open_chat`` (service, is_group_chat, has_target,
+    ``delivered=True``) or ``notify_open_chat_failed`` with
+    ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
+    It never raises. Names and paths are never logged.
+    """
+
+    def handler(target, message_id: int | None = None) -> None:
+        try:
+            window.show()
+            focus_fn(_native_hwnd(window))
+            fields = asdict(target)
+            if message_id is not None:
+                fields["message_id"] = message_id
+            payload = json.dumps(fields, ensure_ascii=False)
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
+                + payload
+                + "), true) : false"
+            )
+            if delivered is True:
+                logger.info(
+                    "notify_open_chat",
+                    service=target.service,
+                    is_group_chat=target.is_group_chat,
+                    has_target=message_id is not None,
+                    delivered=True,
+                )
+            else:
+                logger.warning(
+                    "notify_open_chat_failed",
+                    service=target.service,
+                    reason="not_ready",
+                )
+        except Exception as e:
+            logger.warning(
+                "notify_open_chat_failed",
+                service=getattr(target, "service", None),
+                error_type=type(e).__name__,
+            )
+
+    return handler
+
+
+def _register_app_identity() -> None:
+    """Register the Start Menu shortcut + AUMID so Windows shows toast banners.
+
+    Frozen builds set the process AUMID and ensure the per-user Start Menu
+    shortcut; dev runs only log ``skipped_dev``. Never raises or blocks startup.
+    """
     try:
-        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        hwnd = user32.FindWindowW(None, "SakaDesk")
-        if hwnd:
-            user32.ShowWindow(hwnd, _SW_RESTORE)  # un-minimize if needed
-            user32.SetForegroundWindow(hwnd)
-    except Exception:
-        logger.debug("Failed to focus existing window", exc_info=True)
+        frozen = bool(getattr(sys, "frozen", False))
+        if frozen:
+            set_process_aumid()
+            programs_dir = (
+                Path(os.environ["APPDATA"])
+                / "Microsoft"
+                / "Windows"
+                / "Start Menu"
+                / "Programs"
+            )
+        else:
+            programs_dir = Path()
+        ensure_start_menu_shortcut(
+            frozen=frozen, exe=Path(sys.executable), programs_dir=programs_dir
+        )
+    except Exception as e:
+        logger.warning("app_identity", action="failed", error_type=type(e).__name__)
 
 
 def _kill_children(children: list) -> None:
@@ -389,6 +536,9 @@ def main() -> None:
                 f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s"
             )
 
+        # Start Menu shortcut + AUMID so toast banners show (frozen only).
+        _register_app_identity()
+
         # Load saved window geometry
         geom = _load_window_geometry()
         logger.info("Window geometry loaded", geom=geom)
@@ -427,6 +577,11 @@ def main() -> None:
             _save_window_geometry(geom)
 
         window.events.closing += on_closing
+
+        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
+        desktop_bridge.set_open_chat_handler(
+            make_open_chat_handler(window, _focus_window)
+        )
 
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)

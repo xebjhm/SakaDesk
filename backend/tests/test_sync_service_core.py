@@ -1034,7 +1034,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1135,7 +1135,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1187,7 +1187,12 @@ class TestSyncPhaseProgression:
         mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=999)
-        mock_manager.sync_member = AsyncMock(return_value=5)  # 5 new messages
+
+        async def _sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 5)  # 5 new messages
+            return 5
+
+        mock_manager.sync_member = AsyncMock(side_effect=_sync_member)
         mock_manager.client = mock_client
         mock_manager.process_media_queue = AsyncMock(return_value={})
 
@@ -1246,7 +1251,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -1265,8 +1270,10 @@ class TestSyncPhaseProgression:
             saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
         )
         assert saved_metadata.get("last_sync") is not None
-        # Notification was sent (SD-BE-SVC-18: awaited async wrapper, off-loop).
-        mock_notify.assert_awaited_once_with(5, 1)
+        # One toast plan was sent for the member's 5 new messages.
+        mock_notify.assert_awaited_once()
+        (plans,) = mock_notify.await_args.args
+        assert [p.count for p in plans] == [5]
 
     @pytest.mark.asyncio
     async def test_server_unread_count_captured_in_metadata(self, tmp_path):
@@ -1364,7 +1371,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1494,6 +1501,26 @@ class TestSyncOlderMessages:
 # ---------------------------------------------------------------------------
 
 
+def _report_new(callback, group, member, count, member_dir=Path("m")):
+    """Fire pysaka's on_new_messages callback like an incremental sync_member
+    that wrote ``count`` messages not on disk before."""
+    callback(
+        {
+            "group_id": group["id"],
+            "group_name": group.get("name", ""),
+            "member_id": member["id"],
+            "member_name": member.get("name", ""),
+            "member_dir": member_dir,
+            "phone_image": None,
+            "initial_sync": False,
+        },
+        [
+            {"id": i, "timestamp": f"2026-01-01T00:00:{i:02d}Z", "type": "text"}
+            for i in range(count)
+        ],
+    )
+
+
 async def _run_start_sync(
     svc,
     tmp_path,
@@ -1561,7 +1588,7 @@ async def _run_start_sync(
         patch("backend.services.sync_service.SyncManager", return_value=mock_manager),
         patch("backend.services.sync_service.progress_manager") as mock_pm,
         patch(
-            "backend.services.sync_service.notify_sync_complete_async",
+            "backend.services.sync_service.send_planned",
             notify_mock if notify_mock is not None else AsyncMock(),
         ),
     ):
@@ -1970,11 +1997,16 @@ class TestInitialLimitAndIncludeInactive:
     async def test_synced_and_backfilled_member_indexed_once_notifies_synced_only(
         self, tmp_path
     ):
+        async def sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 3)
+            return 3
+
         search_svc, notify = await self._run_backfill_index_scenario(
-            tmp_path, synced=3, backfilled=2
+            tmp_path, synced=3, backfilled=2, sync_member=sync_member
         )
 
-        notify.assert_awaited_once_with(3, 1)
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [3]
         search_svc.index_members.assert_awaited_once()
         indexed = search_svc.index_members.await_args.args[0]
         assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
@@ -2027,6 +2059,48 @@ class TestInitialLimitAndIncludeInactive:
 
         notify.assert_not_awaited()
         search_svc.index_members.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_overlap_only_sync_reports_zero_new_messages(self, tmp_path):
+        """Regression (overcount): sync_member returns 40 re-fetched overlap
+        rows but never fires on_new_messages, so nothing is new on disk."""
+        from structlog.testing import capture_logs
+
+        async def sync_member(_session, _group, _member, *_a, **_kw):
+            return 40
+
+        with capture_logs() as logs:
+            search_svc, notify = await self._run_backfill_index_scenario(
+                tmp_path, synced=40, backfilled=0, sync_member=sync_member
+            )
+
+        notify.assert_not_awaited()
+        done = [e for e in logs if e["event"] == "sync_complete"]
+        assert done[0]["new_messages"] == 0
+        assert done[0]["members_with_new"] == 0
+        # The member still counts as changed (index / cursor bookkeeping).
+        search_svc.index_members.assert_awaited_once()
+        summary = [e for e in logs if e["event"] == "notify_collected"]
+        assert summary[0]["messages"] == 0
+
+    @pytest.mark.asyncio
+    async def test_reports_exactly_the_callback_reported_new_rows(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        async def sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 2)
+            return 40
+
+        with capture_logs() as logs:
+            _search_svc, notify = await self._run_backfill_index_scenario(
+                tmp_path, synced=40, backfilled=0, sync_member=sync_member
+            )
+
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [2]
+        done = [e for e in logs if e["event"] == "sync_complete"]
+        assert done[0]["new_messages"] == 2
+        assert done[0]["members_with_new"] == 1
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -2695,7 +2769,7 @@ class TestGroupFailureAggregation:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):

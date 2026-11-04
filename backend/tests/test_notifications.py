@@ -1,101 +1,12 @@
-"""Tests for notification service and API."""
+"""Notification API endpoints (the service itself: test_notification_service.py)."""
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
-from services.notification_service import (
-    is_plyer_available,
-    send_notification,
-    notify_new_messages,
-    notify_sync_complete,
-    set_notifications_enabled,
-    get_notifications_enabled,
-    get_notification_status,
-)
-
-
-class TestNotificationService:
-    """Tests for notification service functions."""
-
-    def setup_method(self):
-        """Reset notification state before each test."""
-        set_notifications_enabled(True)
-
-    def test_is_plyer_available(self):
-        """Test checking if plyer is available."""
-        # Should return True since plyer is installed
-        result = is_plyer_available()
-        assert isinstance(result, bool)
-
-    def test_is_plyer_available_not_installed(self):
-        """Test is_plyer_available when plyer not installed."""
-        with patch.dict("sys.modules", {"plyer": None}):
-            # Can't easily test this without unloading plyer
-            pass
-
-    def test_set_notifications_enabled(self):
-        """Test enabling/disabling notifications."""
-        set_notifications_enabled(False)
-        assert get_notifications_enabled() is False
-
-        set_notifications_enabled(True)
-        assert get_notifications_enabled() is True
-
-    def test_get_notification_status(self):
-        """Test getting notification status."""
-        set_notifications_enabled(True)
-        status = get_notification_status()
-
-        assert "enabled" in status
-        assert "plyer_available" in status
-        assert "last_error" in status
-        assert status["enabled"] is True
-        assert isinstance(status["plyer_available"], bool)
-
-    def test_send_notification_disabled(self):
-        """Test that notifications don't send when disabled."""
-        set_notifications_enabled(False)
-        result = send_notification("Test", "Message")
-        assert result is False
-
-    def test_send_notification_with_mock(self):
-        """Test sending notification with mocked plyer."""
-        set_notifications_enabled(True)
-
-        # Patch the import within the function
-        mock_notification = MagicMock()
-        mock_notification.notify = MagicMock()
-
-        with patch.dict(
-            "sys.modules", {"plyer": MagicMock(notification=mock_notification)}
-        ):
-            result = send_notification("Test", "Message")
-            # Should succeed with mock
-            assert result is True
-            mock_notification.notify.assert_called_once()
-
-    def test_notify_new_messages_zero_count(self):
-        """Test notify_new_messages with zero messages."""
-        result = notify_new_messages("Test Member", 0)
-        assert result is False
-
-    def test_notify_new_messages_negative_count(self):
-        """Test notify_new_messages with negative count."""
-        result = notify_new_messages("Test Member", -1)
-        assert result is False
-
-    def test_notify_sync_complete_zero(self):
-        """Test notify_sync_complete with no new messages."""
-        result = notify_sync_complete(0, 0)
-        assert result is False
-
-    def test_notify_sync_complete_negative(self):
-        """Test notify_sync_complete with negative count."""
-        result = notify_sync_complete(-1, 1)
-        assert result is False
+from backend.main import app
+from backend.services import notification_service as ns
 
 
 class TestNotificationAPI:
@@ -112,8 +23,9 @@ class TestNotificationAPI:
 
         data = response.json()
         assert "enabled" in data
-        assert "plyer_available" in data
-        assert "last_error" in data
+        assert set(data) == {"enabled", "available", "backend", "last_error", "aumid"}
+        assert data["aumid"] == "SakaDesk"
+        assert isinstance(data["available"], bool)
 
     def test_update_notification_settings_enable(self, client):
         """Test enabling notifications via PUT."""
@@ -132,11 +44,67 @@ class TestNotificationAPI:
         response = client.put("/api/notifications", json={})
         assert response.status_code == 422  # Missing required field
 
-    def test_test_notification_endpoint(self, client):
-        """Test POST /api/notifications/test."""
-        response = client.post("/api/notifications/test")
-        assert response.status_code == 200
+    @pytest.mark.parametrize(
+        ("language", "body"),
+        [
+            ("en", "Notifications are working"),
+            ("ja", "通知は正常に動作しています"),
+            ("zh-TW", "通知運作正常"),
+            (None, "Notifications are working"),
+        ],
+    )
+    def test_test_notification_endpoint_uses_i18n_strings(self, client, language, body):
+        """POST /api/notifications/test sends the localized test strings."""
+        shown = []
 
+        class Fake:
+            def show(self, plan):
+                shown.append(plan)
+                return True
+
+            def status(self):
+                return {}
+
+        async def fake_config():
+            return {"language": language}
+
+        with (
+            patch.object(ns, "get_notifier", lambda: Fake()),
+            patch("backend.api.notifications.load_config", fake_config),
+            patch("backend.services.app_state.get_prefs", lambda: {}),
+        ):
+            response = client.post("/api/notifications/test")
+        assert response.status_code == 200
         data = response.json()
-        assert "success" in data
-        assert "message" in data
+        assert data == {"success": True, "title": "SakaDesk", "body": body}
+        assert [(p.title, p.body) for p in shown] == [("SakaDesk", body)]
+
+    def test_test_notification_uses_the_language_chosen_in_settings(self, client):
+        """The Settings choice (app_state prefs) beats settings.json."""
+
+        class Fake:
+            def show(self, plan):
+                return True
+
+            def status(self):
+                return {}
+
+        async def fake_config():
+            return {"language": "en"}
+
+        with (
+            patch.object(ns, "get_notifier", lambda: Fake()),
+            patch("backend.api.notifications.load_config", fake_config),
+            patch("backend.services.app_state.get_prefs", lambda: {"language": "ja"}),
+        ):
+            response = client.post("/api/notifications/test")
+        assert response.json()["body"] == "通知は正常に動作しています"
+
+    def test_test_notification_endpoint_reports_unavailable(self, client):
+        """Off Windows the Null notifier cannot show it: success is False."""
+        ns._reset_notifier_for_tests()
+        with patch.object(ns, "_is_windows", lambda: False):
+            response = client.post("/api/notifications/test")
+        ns._reset_notifier_for_tests()
+        assert response.status_code == 200
+        assert response.json()["success"] is False

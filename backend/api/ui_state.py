@@ -1,0 +1,51 @@
+"""Foreground / current-chat reporting.
+
+The webview POSTs the chat it is showing and whether the window is focused, so
+toasts can skip the chat being viewed. Only code-like values are accepted
+(ids and the service code), so names, text or paths can never reach the log.
+"""
+
+from typing import Annotated, Optional
+
+import structlog
+from fastapi import APIRouter, Response
+from pydantic import BaseModel, StrictBool, StringConstraints
+
+from backend.services.notification_planner import UiState
+from backend.services.ui_state import set_ui_state
+
+router = APIRouter(prefix="/api/ui-state", tags=["ui-state"])
+logger = structlog.get_logger(__name__)
+
+ServiceCode = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
+IdStr = Annotated[str, StringConstraints(pattern=r"^[0-9]{1,12}$")]
+
+
+class UiStateRequest(BaseModel):
+    """``member_id`` is ``"0"`` for a room."""
+
+    service: Optional[ServiceCode]
+    group_id: Optional[IdStr]
+    member_id: Optional[IdStr]
+    focused: StrictBool
+
+
+@router.post("", status_code=204)
+async def post_ui_state(body: UiStateRequest) -> Response:
+    """Store the reported UI state for the notification planner."""
+    set_ui_state(
+        UiState(
+            service=body.service,
+            group_id=body.group_id,
+            member_id=body.member_id,
+            focused=body.focused,
+        )
+    )
+    logger.debug(
+        "ui_state",
+        service=body.service,
+        group_id=body.group_id,
+        member_id=body.member_id,
+        focused=body.focused,
+    )
+    return Response(status_code=204)

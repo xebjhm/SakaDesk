@@ -88,8 +88,8 @@ Source: "..\..\dist\SakaDesk\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreve
 Source: "..\..\dist\SakaDesk\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; AppUserModelID: "SakaDesk"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; AppUserModelID: "SakaDesk"
 
 [InstallDelete]
 ; An upgrade only adds/replaces files; it never removes ones an older version

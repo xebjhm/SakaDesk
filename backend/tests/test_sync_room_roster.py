@@ -1,6 +1,7 @@
 """Room roster + one-time history scan in SyncService (spec §4, §7)."""
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -49,9 +50,32 @@ def _manager(*, scanned: bool, complete: bool = True, extra=EXTRA, sync_counts=N
     )
     m.get_last_id = MagicMock(return_value=None)
     counts = sync_counts or {79: 1, 22: 50, 0: 3}
-    m.sync_member = AsyncMock(
-        side_effect=lambda s, g, member, q, **kw: counts.get(member["id"], 0)
-    )
+
+    def _sync_member(s, g, member, q, **kw):
+        n = counts.get(member["id"], 0)
+        cb = kw.get("on_new_messages")
+        if cb is not None and n > 0:
+            # Like pysaka: fired for incremental calls only (never with
+            # ignore_cursor), flagged initial_sync when the member had no
+            # messages.json yet (modelled by "no cursor").
+            cb(
+                {
+                    "group_id": g["id"],
+                    "group_name": g["name"],
+                    "member_id": member["id"],
+                    "member_name": member["name"],
+                    "member_dir": Path("m"),
+                    "phone_image": None,
+                    "initial_sync": m.get_last_ts(g["id"], member["id"]) is None,
+                },
+                [
+                    {"id": i, "timestamp": "2026-10-02T00:00:00Z", "type": "text"}
+                    for i in range(n)
+                ],
+            )
+        return n
+
+    m.sync_member = AsyncMock(side_effect=_sync_member)
     m.process_media_queue = AsyncMock(return_value={})
     m.backfill_past_messages = AsyncMock(return_value=0)
     m.sync_letters = AsyncMock(return_value=0)
@@ -184,7 +208,8 @@ async def test_scans_run_one_room_at_a_time(tmp_path):
 
 async def test_scanned_room_extra_totals_follow_cursor(tmp_path):
     """In an already-scanned room, an extra author with a cursor reports new
-    messages; one seen for the first time (no cursor) is recovered history."""
+    messages; one seen for the first time (no cursor: pysaka flags the call
+    initial_sync) is recovered history."""
     notify = AsyncMock()
     extras = [{"id": 22, "name": "潮 紗理菜"}, {"id": 0, "name": "日向坂46"}]
     m = _manager(scanned=True, extra=extras)
@@ -202,7 +227,9 @@ async def test_scanned_room_extra_totals_follow_cursor(tmp_path):
     assert [c.args[2]["id"] for c in m.sync_member.await_args_list] == [79, 22, 0]
     assert all("ignore_cursor" not in c.kwargs for c in m.sync_member.await_args_list)
     # 79 (1) + 22 (50) are new; 0 (3, no prior cursor) is recovered.
-    notify.assert_awaited_once_with(51, 2)
+    notify.assert_awaited_once()
+    (plans,) = notify.await_args.args
+    assert [p.count for p in plans] == [51]  # one room toast
     m.mark_history_scanned.assert_not_called()
 
 
@@ -370,7 +397,7 @@ async def test_scan_breadcrumbs_logged(tmp_path):
     assert not _events(logs, "room_history_scan_incomplete")
     (phase2,) = _events(logs, "phase2_complete")
     assert phase2["recovered_members"] == 3
-    assert phase2["excluded_new_messages"] == 54  # 1 + 50 + 3
+    assert phase2["recovered_rows_excluded"] == 54  # 1 + 50 + 3
     # Breadcrumbs carry ids/counts only, never message text.
     assert "Message 1" not in repr(logs)
 
@@ -607,11 +634,11 @@ def _scan_rows_with_new():
     ]
 
 
-async def test_scanning_room_reports_messages_newer_than_cursor(tmp_path):
-    """The upgrade sync scans every room; a post newer than an author's
-    cursor is genuinely new and must still be notified and counted. Rows at
-    or before the cursor, and every row of an author with no cursor, are
-    recovered history."""
+async def test_scanning_room_reports_no_new_messages(tmp_path):
+    """The upgrade sync scans every room with ignore_cursor, for which pysaka
+    never fires on_new_messages, so the collector (the only source of the
+    totals) sees nothing: a scanned room reports 0 new, even a post newer
+    than an author's cursor. The scan bookkeeping is unchanged."""
     notify = AsyncMock()
     m = _manager(scanned=False, sync_counts={79: 2, 22: 2, 0: 2})
     m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
@@ -630,31 +657,15 @@ async def test_scanning_room_reports_messages_newer_than_cursor(tmp_path):
             mock_manager=m,
             notify_mock=notify,
         )
-    notify.assert_awaited_once_with(1, 1)  # only 79's post of 2026-10-02
+    notify.assert_not_awaited()
+    assert all(c.kwargs.get("ignore_cursor") for c in m.sync_member.await_args_list)
+    assert all("on_new_messages" not in c.kwargs for c in m.sync_member.await_args_list)
     (phase2,) = _events(logs, "phase2_complete")
+    assert phase2["new_messages"] == 0
     assert phase2["recovered_members"] == 3
-    assert phase2["excluded_new_messages"] == 5  # 6 written - 1 new
+    assert phase2["recovered_rows_excluded"] == 5  # 6 written - 1 newer than cursor
     (finished,) = _events(logs, "room_history_scan_finished")
-    assert finished["new_msgs"] == 1
-
-
-async def test_scanning_room_extra_with_cursor_reports_new(tmp_path):
-    notify = AsyncMock()
-    m = _manager(scanned=False, sync_counts={79: 2, 22: 2, 0: 2})
-    m.client.get_messages = AsyncMock(return_value=_scan_rows_with_new())
-    m.get_last_ts = MagicMock(
-        side_effect=lambda gid, mid: None if mid == 0 else "2026-10-01T00:00:00Z"
-    )
-    await _run_start_sync(
-        SyncService(),
-        tmp_path,
-        groups=[GROUP],
-        members=API_MEMBERS,
-        mock_manager=m,
-        notify_mock=notify,
-    )
-    # 79: one row after its cursor; 22: one; member 0 has no cursor -> 0.
-    notify.assert_awaited_once_with(2, 2)
+    assert finished["rows_newer_than_cursor"] == 1
 
 
 async def test_scanning_room_new_count_capped_by_written(tmp_path):

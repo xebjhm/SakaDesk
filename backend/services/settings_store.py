@@ -30,6 +30,7 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "adaptive_sync_enabled": True,
     "is_configured": False,
     "notifications_enabled": True,
+    "notifications_hide_content": False,  # Toasts show a generic body instead of the message preview
     "blogs_full_backup": False,
     "auto_download_updates": False,
     "sync_read_to_phone": False,  # Opt-in: opening a chat in SakaDesk clears its unread on the official app

@@ -151,6 +151,9 @@ class TestSettingsDefaults:
         assert "incoming_call_enabled" in _SETTINGS_DEFAULTS
         assert _SETTINGS_DEFAULTS["incoming_call_enabled"] is True
 
+    def test_has_notifications_hide_content(self):
+        assert _SETTINGS_DEFAULTS["notifications_hide_content"] is False
+
 
 # ── Async API (load_config, save_config, update_config) ─────────────
 

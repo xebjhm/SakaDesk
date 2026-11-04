@@ -31,6 +31,7 @@ ClientEvent = Literal[
     "call_end",
     "call_cancel",
     "call_error",
+    "notify_open_chat",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -44,6 +45,7 @@ ALLOWED_FIELDS = frozenset(
         "ring_ms",
         "talk_ms",
         "error_type",
+        "has_target",
     }
 )
 WARNING_EVENTS = frozenset({"call_error"})

@@ -11,7 +11,7 @@ import { Search, Loader2, Database } from 'lucide-react';
 import { Portal } from '../../core/common/Portal';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
-import { formatName } from '../../utils';
+import { openChat } from '../../shell/openChat';
 import { getServiceDisplayName } from '../../data/services';
 import { SearchInput } from './components/SearchInput';
 import { SearchFilterBar } from './components/SearchFilterBar';
@@ -262,8 +262,6 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       const {
         setActiveService,
         setActiveFeature,
-        setSelectedConversation,
-        triggerConversationNavigation,
         setTargetMessageId,
         setTargetBlog,
         activeService,
@@ -318,19 +316,15 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         ? `${serviceDisplay}/messages/${result.group_id} ${result.group_name}`
         : `${serviceDisplay}/messages/${result.group_id} ${result.group_name}/${result.member_id} ${result.member_name}`;
 
-      setSelectedConversation(result.service, {
-        path,
-        name: isGroupChat ? formatName(result.group_name) : formatName(result.member_name),
-        isGroupChat,
-      });
-      setActiveFeature(result.service, 'messages');
+      // targetMessageId must be set before openChat switches service / triggers
+      // navigation, so the destination view sees it on mount.
       setTargetMessageId(result.message_id);
-
-      if (activeService !== result.service) {
-        setActiveService(result.service);
-      } else {
-        triggerConversationNavigation();
-      }
+      openChat({
+        service: result.service,
+        path,
+        name: isGroupChat ? result.group_name : result.member_name,
+        is_group_chat: isGroupChat,
+      });
 
       close();
     },

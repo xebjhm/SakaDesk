@@ -1,167 +1,410 @@
-"""
-Desktop Notification Service for SakaDesk.
+"""Native desktop toasts for SakaDesk.
 
-Provides cross-platform desktop notifications using plyer.
-Notifications are triggered when new messages arrive during sync.
+The planner (:mod:`backend.services.notification_planner`) decides what to
+show; this module delivers it. On Windows a toast is sent through
+``windows_toasts`` under the ``SakaDesk`` AUMID. A click fires the toast's
+in-process ``on_activated`` callback, whose closure holds the plan, and opens
+that chat via :mod:`backend.services.desktop_bridge`, scrolled to the message
+the toast previews (``newest_id``). No launch action is set: in windows-toasts
+it turns the click into a protocol activation. Everywhere else (or when
+``windows_toasts`` cannot be imported) a :class:`NullNotifier` is used.
+
+Logs carry ids, counts, codes and error types only: never titles, bodies,
+names, paths or URLs.
 """
+
+from __future__ import annotations
 
 import asyncio
+import sys
+import threading
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Protocol
+
 import structlog
-from typing import Optional
+
+from backend.services import desktop_bridge
+from backend.services.app_identity import AUMID
+from backend.services.i18n import get_strings
+from backend.services.notification_planner import ChatTarget, ToastPlan
 
 logger = structlog.get_logger(__name__)
 
-# Track notification state
+_BACKEND_WINDOWS = "windows_toasts"
+_BACKEND_NONE = "none"
+_LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fire
+_SHOW_TIMEOUT_S = 10  # seconds one show may take before it counts as failed
+
 _notifications_enabled = True
-_last_notification_error: Optional[str] = None
+
+# Toast shows run on one dedicated worker thread, so a hung WinRT call can
+# only ever block this thread, never the default executor other code uses.
+_toast_executor: ThreadPoolExecutor | None = None
+_show_running = False  # a show is on (or queued for) the worker thread
+_show_state_lock = threading.Lock()
 
 
-def is_plyer_available() -> bool:
-    """Check if plyer notification is available on this system."""
-    import importlib.util
+class Notifier(Protocol):
+    """Shows one planned toast and reports its own health."""
 
-    return importlib.util.find_spec("plyer.notification") is not None
+    def show(self, plan: ToastPlan) -> bool: ...
+
+    def status(self) -> dict: ...
 
 
-def send_notification(
-    title: str,
-    message: str,
-    app_name: str = "SakaDesk",
-    timeout: int = 10,
-) -> bool:
+# ------------------------------------------------------------------- notifiers
+
+
+def _click_message_id(newest_id: str) -> tuple[int | None, str | None]:
+    """The message a click jumps to: ``(id, None)`` or ``(None, reason)``.
+
+    ``newest_id`` is an ASCII decimal id above zero; anything else yields no
+    jump, with ``reason`` ``no_id`` (empty) or ``bad_id`` (not such an id).
     """
-    Send a desktop notification.
+    if not newest_id:
+        return None, "no_id"
+    if newest_id.isascii() and newest_id.isdigit() and int(newest_id) > 0:
+        return int(newest_id), None
+    return None, "bad_id"
 
-    Args:
-        title: Notification title
-        message: Notification body text
-        app_name: Application name shown in notification
-        timeout: How long notification stays visible (seconds)
 
-    Returns:
-        True if notification was sent successfully, False otherwise
+class NullNotifier:
+    """Used where toasts are unavailable. ``show`` returns ``False``.
+
+    :func:`get_notifier` logs ``notify_unavailable`` (with the reason) once,
+    when it builds this notifier; ``show`` itself does not log.
     """
-    global _last_notification_error
 
-    if not _notifications_enabled:
+    def __init__(self, reason: str) -> None:
+        self._reason = reason
+
+    def show(self, plan: ToastPlan) -> bool:
         return False
 
-    try:
-        from plyer import notification
+    def status(self) -> dict:
+        return {
+            "available": False,
+            "backend": _BACKEND_NONE,
+            "last_error": self._reason,
+            "aumid": AUMID,
+        }
 
-        notification.notify(
-            title=title,
-            message=message,
-            app_name=app_name,
-            timeout=timeout,
-        )
-        _last_notification_error = None
+
+class WindowsToastNotifier:
+    """Sends toasts through ``windows_toasts`` (imported lazily).
+
+    Raises ``ImportError`` (or another exception from the toaster) from
+    ``__init__``; :func:`get_notifier` turns that into a :class:`NullNotifier`.
+    """
+
+    def __init__(self) -> None:
+        import windows_toasts as wt  # lazy: Windows-only dependency
+
+        self._wt = wt
+        self._toaster = wt.InteractableWindowsToaster(AUMID, notifierAUMID=AUMID)
+        self._last_error: str | None = None
+        self._live: deque[Any] = deque(maxlen=_LIVE_TOASTS)
+
+    def show(self, plan: ToastPlan) -> bool:
+        """Show the toast; raises on failure (callers log ``notify_failed``)."""
+        wt = self._wt
+        try:
+            # Never set launch_action: windows-toasts then makes the click a
+            # protocol activation (Windows opens it as a URI) instead of
+            # firing on_activated in this process.
+            toast = wt.Toast(text_fields=[plan.title, plan.body])
+            if plan.group_id and plan.member_id:
+                # Ids only (<= 64 chars): a newer toast for the same chat
+                # replaces the older one in the Action Center.
+                toast.tag = f"{plan.group_id}:{plan.member_id}"
+                toast.group = plan.target.service
+            if plan.avatar is not None:
+                self._add_avatar(toast, plan)
+            toast.on_activated = lambda _args, p=plan: self._on_click(p)
+            toast.on_failed = lambda args, p=plan: self._on_failed(p, args)
+            self._live.append(toast)
+            self._toaster.show_toast(toast)
+        except Exception as e:
+            self._last_error = type(e).__name__
+            raise
+        self._last_error = None
         return True
 
-    except ImportError:
-        _last_notification_error = "plyer not installed"
-        logger.warning("plyer not installed - notifications disabled")
-        return False
+    def status(self) -> dict:
+        return {
+            "available": True,
+            "backend": _BACKEND_WINDOWS,
+            "last_error": self._last_error,
+            "aumid": AUMID,
+        }
 
+    def _add_avatar(self, toast: Any, plan: ToastPlan) -> None:
+        wt = self._wt
+        try:
+            toast.AddImage(
+                wt.ToastDisplayImage(
+                    wt.ToastImage(plan.avatar),
+                    position=wt.ToastImagePosition.AppLogo,
+                )
+            )
+        except Exception as e:
+            # A missing or unreadable avatar must not cost the user the toast.
+            logger.warning(
+                "notify_failed",
+                stage="avatar",
+                service=plan.target.service,
+                group_id=plan.group_id,
+                member_id=plan.member_id,
+                error_type=type(e).__name__,
+            )
+
+    def _on_click(self, plan: ToastPlan) -> None:
+        """WinRT-thread ``on_activated`` callback for ``plan``'s toast. Never raises."""
+        try:
+            if not plan.target.service or not plan.target.path:
+                # The test toast has no chat behind it.
+                logger.info("notify_click_unhandled", reason="no_target")
+                return
+            # The chat opens at the message the toast previews; without a
+            # usable id it still opens, just without the jump.
+            message_id, no_target = _click_message_id(plan.newest_id)
+            fields: dict[str, Any] = {"has_target": message_id is not None}
+            if no_target is not None:
+                fields["target_reason"] = no_target
+            logger.info(
+                "notify_clicked",
+                service=plan.target.service,
+                group_id=plan.group_id,
+                member_id=plan.member_id,
+                **fields,
+            )
+            desktop_bridge.open_chat(plan.target, message_id)
+        except Exception as e:
+            logger.warning("notify_open_chat_failed", error_type=type(e).__name__)
+
+    def _on_failed(self, plan: ToastPlan, event_args: Any) -> None:
+        """WinRT-thread callback. Never raises."""
+        self._last_error = "ToastFailed"
+        try:
+            logger.warning(
+                "notify_failed",
+                service=plan.target.service,
+                group_id=plan.group_id,
+                member_id=plan.member_id,
+                error_type="ToastFailed",
+                error_code=getattr(event_args, "error_code", None),
+            )
+        except Exception:  # pragma: no cover - logging must not break WinRT
+            pass
+
+
+# ------------------------------------------------------------------- singleton
+
+_notifier: Notifier | None = None
+_notifier_lock = threading.Lock()
+
+
+def _is_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def _build_notifier() -> Notifier:
+    """Build the notifier; log ``notify_unavailable`` with the reason when it is null."""
+    if not _is_windows():
+        logger.warning("notify_unavailable", reason="not_windows")
+        return NullNotifier("not_windows")
+    try:
+        return WindowsToastNotifier()
+    except ImportError as e:
+        logger.warning(
+            "notify_unavailable",
+            reason="import_error",
+            error_type=type(e).__name__,
+            module=e.name,
+        )
+        return NullNotifier("import_error")
     except Exception as e:
-        _last_notification_error = str(e)
-        logger.warning(f"Failed to send notification: {e}")
-        return False
+        logger.warning(
+            "notify_unavailable", reason="init_error", error_type=type(e).__name__
+        )
+        return NullNotifier("init_error")
 
 
-def notify_new_messages(member_name: str, count: int) -> bool:
+def get_notifier() -> Notifier:
+    """The process-wide notifier (Windows toasts, else a :class:`NullNotifier`).
+
+    Built once per process, so ``notify_unavailable`` is logged at most once.
     """
-    Send notification for new messages from a member.
+    global _notifier
+    with _notifier_lock:
+        if _notifier is None:
+            _notifier = _build_notifier()
+        return _notifier
 
-    Args:
-        member_name: Name of the member who sent messages
-        count: Number of new messages
 
-    Returns:
-        True if notification was sent
+def _reset_notifier_for_tests() -> None:
+    global _notifier
+    with _notifier_lock:
+        _notifier = None
+
+
+# -------------------------------------------------------------------- delivery
+
+
+def _fail_fields(plan: ToastPlan) -> dict[str, Any]:
+    return {
+        "service": plan.target.service,
+        "group_id": plan.group_id,
+        "member_id": plan.member_id,
+    }
+
+
+def _get_toast_executor() -> ThreadPoolExecutor:
+    """The single-worker toast executor (created on first use)."""
+    global _toast_executor
+    with _show_state_lock:
+        if _toast_executor is None:
+            _toast_executor = ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="toast"
+            )
+        return _toast_executor
+
+
+def _claim_show_slot() -> bool:
+    """Mark a show as running; False when a previous show is still running."""
+    global _show_running
+    with _show_state_lock:
+        if _show_running:
+            return False
+        _show_running = True
+        return True
+
+
+def _release_show_slot() -> None:
+    global _show_running
+    with _show_state_lock:
+        _show_running = False
+
+
+def _reset_toast_executor_for_tests() -> None:
+    """Drop the executor and busy flag (does not wait for a stuck worker)."""
+    global _toast_executor, _show_running
+    with _show_state_lock:
+        executor, _toast_executor = _toast_executor, None
+        _show_running = False
+    if executor is not None:
+        executor.shutdown(wait=False)
+
+
+async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
+    """Show ``plan`` on the toast worker thread; log the outcome. Never raises.
+
+    A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
+    ``notify_failed`` (``error_type=TimeoutError``); its worker thread is left
+    to finish on its own. While such a show is still running, further shows
+    are not queued behind it: they are skipped with ``notify_skip
+    reason=busy`` (ids and ``count`` only).
     """
-    if count <= 0:
+    if not _claim_show_slot():
+        logger.info(
+            "notify_skip", reason="busy", **_fail_fields(plan), count=plan.count
+        )
         return False
-
-    if count == 1:
-        message = f"New message from {member_name}"
-    else:
-        message = f"{count} new messages from {member_name}"
-
-    return send_notification(
-        title="SakaDesk",
-        message=message,
-        timeout=5,
+    try:
+        # submit + done-callback (not run_in_executor) so the slot is also
+        # freed if the job is cancelled before the worker ever starts it.
+        job = _get_toast_executor().submit(notifier.show, plan)
+    except Exception as e:  # e.g. the executor was shut down
+        _release_show_slot()
+        logger.warning(
+            "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
+        )
+        return False
+    job.add_done_callback(lambda _f: _release_show_slot())
+    try:
+        shown = await asyncio.wait_for(
+            asyncio.wrap_future(job), timeout=_SHOW_TIMEOUT_S
+        )
+    except TimeoutError:
+        logger.warning("notify_failed", **_fail_fields(plan), error_type="TimeoutError")
+        return False
+    except Exception as e:
+        logger.warning(
+            "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
+        )
+        return False
+    if not shown:
+        logger.warning("notify_failed", **_fail_fields(plan), reason="not_shown")
+        return False
+    logger.info(
+        "notify_sent",
+        **_fail_fields(plan),
+        count=plan.count,
+        newest_type=plan.newest_type,
     )
+    return True
 
 
-def notify_sync_complete(total_new: int, member_count: int) -> bool:
+async def send_planned(plans: list[ToastPlan]) -> int:
+    """Show every plan (off the event loop) and return how many were shown.
+
+    Skips everything when notifications are disabled (the planner already
+    skips in that case, so this is a second guard; ``notify_skip
+    reason=disabled``) or when the notifier is unavailable (``notify_skip
+    reason=unavailable`` with ``backend_reason``; the notifier already logged
+    ``notify_unavailable`` once, when it was built). Each show is bounded by
+    ``_SHOW_TIMEOUT_S``, and while a timed-out show is still stuck the rest
+    are skipped (``notify_skip reason=busy``). The notifier is resolved on a worker thread: its
+    first use imports ``windows_toasts``/WinRT and builds the toaster.
     """
-    Send notification when sync completes with new messages.
+    if not plans:
+        return 0
+    if not _notifications_enabled:
+        logger.info("notify_skip", reason="disabled", count=len(plans))
+        return 0
+    notifier = await asyncio.to_thread(get_notifier)
+    status = notifier.status()
+    if not status.get("available", True):
+        logger.info(
+            "notify_skip",
+            reason="unavailable",
+            backend_reason=status.get("last_error"),
+            count=len(plans),
+        )
+        return 0
+    sent = 0
+    for plan in plans:
+        if await _show_one(notifier, plan):
+            sent += 1
+    return sent
 
-    Args:
-        total_new: Total number of new messages
-        member_count: Number of members with new messages
 
-    Returns:
-        True if notification was sent
-    """
-    if total_new <= 0:
-        return False
-
-    if member_count == 1:
-        message = f"{total_new} new message{'s' if total_new > 1 else ''}"
-    else:
-        message = f"{total_new} new messages from {member_count} members"
-
-    return send_notification(
-        title="Sync Complete",
-        message=message,
-        timeout=5,
+async def send_test(lang: str | None) -> bool:
+    """Show a test toast in ``lang``. Ignores the enabled flag (user-initiated)."""
+    strings = get_strings("notifications", lang)
+    plan = ToastPlan(
+        target=ChatTarget(service="", path="", name="", is_group_chat=False),
+        group_id="",
+        member_id="",
+        title=strings["test_title"],
+        body=strings["test_body"],
+        avatar=None,
+        count=1,
+        newest_type="text",
+        newest_id="",
     )
+    return await _show_one(await asyncio.to_thread(get_notifier), plan)
 
 
-# ---------------------------------------------------------------------------
-# SD-BE-SVC-18: async off-loop wrappers.
-#
-# plyer's Windows backend makes blocking Win32 calls (and pays a first-use
-# import cost), so calling notify(...) directly inside the async sync loop
-# stalls the event loop right while the UI polls /progress. Async callers must
-# use these wrappers, which run the blocking send in a worker thread. The
-# zero-count short-circuits happen BEFORE the thread hop so a no-op notification
-# never spawns a thread.
-# ---------------------------------------------------------------------------
-
-
-async def send_notification_async(
-    title: str,
-    message: str,
-    app_name: str = "SakaDesk",
-    timeout: int = 10,
-) -> bool:
-    """Async wrapper for :func:`send_notification` (runs off the event loop)."""
-    return await asyncio.to_thread(send_notification, title, message, app_name, timeout)
-
-
-async def notify_new_messages_async(member_name: str, count: int) -> bool:
-    """Async wrapper for :func:`notify_new_messages` (runs off the event loop)."""
-    if count <= 0:
-        return False
-    return await asyncio.to_thread(notify_new_messages, member_name, count)
-
-
-async def notify_sync_complete_async(total_new: int, member_count: int) -> bool:
-    """Async wrapper for :func:`notify_sync_complete` (runs off the event loop)."""
-    if total_new <= 0:
-        return False
-    return await asyncio.to_thread(notify_sync_complete, total_new, member_count)
+# ---------------------------------------------------------------------- state
 
 
 def set_notifications_enabled(enabled: bool) -> None:
     """Enable or disable notifications."""
     global _notifications_enabled
     _notifications_enabled = enabled
-    logger.info(f"Notifications {'enabled' if enabled else 'disabled'}")
+    logger.info("notifications_enabled_changed", enabled=enabled)
 
 
 def get_notifications_enabled() -> bool:
@@ -170,9 +413,5 @@ def get_notifications_enabled() -> bool:
 
 
 def get_notification_status() -> dict:
-    """Get notification system status for diagnostics."""
-    return {
-        "enabled": _notifications_enabled,
-        "plyer_available": is_plyer_available(),
-        "last_error": _last_notification_error,
-    }
+    """Diagnostics: the enabled flag plus the notifier's own status."""
+    return {"enabled": _notifications_enabled, **get_notifier().status()}

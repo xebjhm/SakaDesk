@@ -65,6 +65,7 @@ from backend.api import (  # noqa: E402
     favorites,
     chat_features,
     client_log,
+    ui_state,
     blogs,
     search,
     read_states,
@@ -367,6 +368,7 @@ app.include_router(notifications.router)
 app.include_router(favorites.router)
 app.include_router(chat_features.router)
 app.include_router(client_log.router)
+app.include_router(ui_state.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])

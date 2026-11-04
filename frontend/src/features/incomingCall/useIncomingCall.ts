@@ -11,7 +11,7 @@ export type CallPhase = 'idle' | 'ringing' | 'connected' | 'ended';
 export const RING_TIMEOUT_MS = 30_000;
 export const ENDED_HOLD_MS = 800;
 
-/** Same shape as MessagesFeature's parseReadStatePath result. */
+/** Same shape as readStatePath.ts ReadStatePath. */
 export interface CallLogContext {
     service: string;
     groupId: number;

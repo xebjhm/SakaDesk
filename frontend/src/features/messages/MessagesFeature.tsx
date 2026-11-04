@@ -13,7 +13,9 @@ import { cn } from '../../utils/classnames';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
-import { getServiceDisplayName, getServiceIdFromDisplayName } from '../../data/services';
+import { getServiceDisplayName } from '../../data/services';
+import { parseReadStatePath } from './readStatePath';
+import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { persisted } from '../../core/persistence/persisted';
@@ -70,6 +72,7 @@ export interface AppSettings {
     is_configured: boolean;
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
+    notifications_hide_content?: boolean;  // toasts show a generic body instead of the message preview (default off)
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
@@ -78,27 +81,6 @@ export interface AppSettings {
     translation_model?: string | null;
     translation_api_key?: string | null;
     translation_target_language?: string | null;
-}
-
-// Parse path into API params. Handles both:
-//   Individual: "日向坂46/messages/34 金村 美玖/58 金村 美玖" → memberId=58
-//   Group chat: "日向坂46/messages/43 日向坂46"               → memberId=0
-function parseReadStatePath(path: string): { service: string; groupId: number; memberId: number } | null {
-    // Try individual path first (has member subdirectory)
-    const individualMatch = path.match(/^(.+?)\/messages\/(\d+)\s.*?\/(\d+)\s/);
-    if (individualMatch) {
-        const serviceId = getServiceIdFromDisplayName(individualMatch[1]);
-        if (!serviceId) return null;
-        return { service: serviceId, groupId: parseInt(individualMatch[2], 10), memberId: parseInt(individualMatch[3], 10) };
-    }
-    // Group chat path (no member subdirectory)
-    const groupMatch = path.match(/^(.+?)\/messages\/(\d+)\s/);
-    if (groupMatch) {
-        const serviceId = getServiceIdFromDisplayName(groupMatch[1]);
-        if (!serviceId) return null;
-        return { service: serviceId, groupId: parseInt(groupMatch[2], 10), memberId: 0 };
-    }
-    return null;
 }
 
 const MAX_CACHED_CHATS = 20;
@@ -596,6 +578,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         scrollToMessage,
         logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
     });
+    useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';
 
     // Keyboard navigation using Virtuoso (inert while a call covers the timeline)
