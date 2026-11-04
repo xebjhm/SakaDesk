@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Z_INDEX } from '../../constants/zIndex';
 import {
     dialogAbove, dialogZIndex, isLayerFrame, isTopDialog, nextDialogOrder, popDialog, pushDialog, subscribeDialogStack, type DialogEntry,
@@ -91,8 +91,11 @@ export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocus
         // eslint-disable-next-line react-hooks/exhaustive-deps -- one entry per open; order/dismissible/logId are read at open time
     }, [isOpen]);
 
-    // Escape and Tab for the top-most dialog (bubble phase: handlers inside the dialog run first).
-    useEffect(() => {
+    // Escape and Tab for the top-most dialog (document, bubble phase: React handlers inside the
+    // dialog run first).
+    // A layout effect, like the push and focus above, so there is no moment where this dialog is
+    // top-most but not yet listening.
+    useLayoutEffect(() => {
         if (!isOpen) return;
         const onKey = (e: KeyboardEvent) => {
             const entry = entryRef.current;

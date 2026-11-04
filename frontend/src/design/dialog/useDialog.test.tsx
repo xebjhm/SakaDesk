@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -53,5 +53,19 @@ describe('useDialog', () => {
         render(<Probe />);
         expect(openDialogCount()).toBe(0);
         expect(screen.getByText(String(Z_INDEX.DIALOG))).toBeInTheDocument();
+    });
+
+    it('listens for Escape as soon as it is on the stack (layout phase, before passive effects)', () => {
+        const onClose = vi.fn();
+        // A later sibling's layout effect runs after the dialog's push and focus but before any
+        // passive effect: an Escape here must already reach the top-most dialog.
+        const EarlyEscape = () => {
+            useLayoutEffect(() => {
+                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            }, []);
+            return null;
+        };
+        render(<><HookDialog isOpen onClose={onClose} /><EarlyEscape /></>);
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 });
