@@ -101,11 +101,11 @@ Guard counts are from `frontend/src/design/guard-baseline.json` at the start of 
 | 22 | **Diagnostics** is a hidden developer panel: its English labels stay (they are read next to English logs and are not user-facing); it gets the standard dialog, neutral info cards, status-coloured icons, and a light log view (`bg-sunken font-mono text-caption`, ERROR lines `text-status-danger`, WARNING `text-status-warning`) instead of the dark console. | agent |
 | 23 | **Report issue**: category choices are level-2 cards with `aria-pressed`; selected `bg-group-subtle border-group-subtle` (the subtle-selection role); fields are `Input`; Create issue is the primary Button. | agent |
 | 24 | **About** keeps its character: the red heart (`text-heart`, `#F87171` verbatim) and the golden-finger easter egg animations, moved from the inline `<style>` to Tailwind keyframes (`animate-heart-float` 800 ms, `animate-heartbeat` 1.2 s) as documented exceptions to the motion rule, off with reduced motion. | agent |
-| 25 | **Calendar**: Sundays stay red (`text-calendar-sunday`, `#EF4444` verbatim: Japanese calendar convention); day cells are `rounded-pill` circles, hover `bg-group-subtle`, the message dot `bg-group-accent` (badge role), today `bg-sunken font-semibold`; chevrons are ghost `IconButton`s named `calendar.prevMonth` / `calendar.nextMonth`. | agent |
+| 25 | **Calendar**: Sundays stay red (`text-sunday`, `#EF4444` verbatim: Japanese calendar convention); day cells are `rounded-pill` circles, hover `bg-group-subtle`, the message dot `bg-group-accent` (badge role), today `bg-sunken font-semibold`; chevrons are ghost `IconButton`s named `calendar.prevMonth` / `calendar.nextMonth`. | agent |
 | 26 | **Background**: Upload is a secondary Button; the preset swatches keep the user's chosen colours as data (inline background, as the chat background itself), selected `ring-2 ring-offset-2 ring-strong`; the opacity slider uses `accent-group`; Reset is ghost, Done is primary. | agent |
 | 27 | **Favorites**: one level-2 `Card` per favourite on the sheet (no dividers), `Avatar`, star `text-group-strong` filled (selected-text role, also in the message context menu); the no-op ⋯ button is removed; the detail view moves from `DetailModal` to `Modal tone="viewer"` with its current content. | agent |
 | 28 | **Breadcrumbs**: `Modal` takes an optional `logId` and logs `dialog` (`surface`, `phase` open/close, `reason` escape/backdrop/button/app). Dialog data loads log `dialog_load` (`surface`, `outcome`, `count`). Never names, ids, paths or text. | agent |
-| 29 | **Zero-pixel**: the Messages main screens (home, member chat, group chat) must stay pixel-identical. Two triggers on them are restyled on purpose and are **masked** in `visual-zero-pixel.spec.ts`: the rail's settings button and the chat header's ⋯ button. The masks are added in Task 1 and the baselines re-captured on the unchanged code; the spec must then pass unchanged at the end. Everything else that D2c touches on those screens is value-identical (`ring-surface` = the white ring, `IconButton variant="accent"` = today's unread-arrow classes). | agent |
+| 29 | **Zero-pixel**: the Messages main screens (home, member chat, group chat) must stay pixel-identical. Two triggers on them are restyled on purpose and are **masked** in `visual-zero-pixel.spec.ts`: the rail's settings button and the chat header's ⋯ button. The masks are added in Task 2 and the baselines re-captured on the unchanged code; the spec must then pass unchanged at the end. Everything else that D2c touches on those screens is value-identical (`ring-surface` = the white ring, `IconButton variant="accent"` = today's unread-arrow classes). | agent |
 | 30 | **Search** is a top-placed dialog (`placement="top"`, `aria-label` `search.title`): input row on the sheet, filter bar on `bg-sunken`, chips as `Pill`s with the group marker, dropdowns on `Menu`, the selected result `bg-group-subtle`, matches via the mark tokens (`[&_mark]:bg-mark-exact`, reading `bg-mark-reading` + dashed `border-mark-underline`), banners neutral with an icon. Its keyboard model (↑ / ↓ / Tab / Enter / Escape) is unchanged. | agent |
 | 31 | **Layering** has one source, `constants/zIndex.ts`: `DROPDOWN` 50 (menus anchored inside the frame), `DIALOG` 100 + `DIALOG_STEP` 10 per stacked dialog, `POPOVER` 1000 (portaled menus above any dialog), `TOAST` 1100. `z-[60]`, `z-[100]`, `z-[110]`, `z-[9999]` go. | agent |
 | 32 | **Legacy theme removal**: `useBlogTheme` and `ServiceTheme.blog`, `.ambient`, `.modals`, `.interaction`, `.surface`, `.text`, `.vibe` are removed, with `groupTokens[*].legacyNeutral` and `groupRoles().buttonGradient` once nothing reads them. Remaining `modals.*` readers outside D2c's restyle (`InlineSyncView`, `PopupCall`, the `CallOverlay` accent and `useMessagesTheme`'s favourite/link colour) switch to `groupRoles(id).action` / `.subtle`, the identical values (no pixel changes). `messages.*` and the three brand colours stay (chat, `LoginModal`, legacy CSS variables). `serviceThemes.ts` must stay free of colour literals. | agent |
@@ -143,7 +143,8 @@ useDialog({ isOpen, onClose, dismissible, initialFocusRef, frameRef }): {
 ```
 
 - On open: push, remember `document.activeElement`, focus `initialFocusRef` or the frame (after paint).
-- `document` `keydown` (bubble phase): only if this entry is top-most. Escape → see decision 8. Tab → collect the frame's tabbable elements (`a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])`, visible) and wrap first ↔ last; if focus is outside the frame, move it to the first (or the frame when there is none). A `focusin` outside the top-most frame pulls focus back to the frame.
+- `document` `keydown` (bubble phase): only if this entry is top-most. Escape → see decision 8. Tab → collect the frame's tabbable elements (`a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])`) and wrap first ↔ last; if focus is outside the frame (and not inside an open `role="menu"`, which handles Tab itself), move it to the first (or the frame when there is none). There is no `focusin` guard: portaled menus (the player menus) must be able to take focus outside the frame.
+- `Menu` listens for Escape on `document` in the **capture** phase and claims it, so a menu inside a dialog closes before the dialog sees the key.
 - On close / unmount: pop, restore focus to the remembered element if it is still in the document.
 
 ### `Modal` primitive (upgraded, `design/primitives/Modal.tsx`)
@@ -167,12 +168,13 @@ export interface ModalProps {
   className?: string;               // frame (width, height)
   bodyClassName?: string;           // standard body (padding)
   logId?: DialogLogId;              // breadcrumb surface
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>; // the viewer's own keys
 }
 ```
 
-Rendering (inside `Portal`):
+Rendering (`createPortal` into `document.body` directly; the `Portal` component mounts one render late, so the frame ref would still be empty when the open effect runs):
 
-- Backdrop `div` `data-testid="modal-backdrop"`, `fixed inset-0 flex justify-center p-4`, `items-center` (center) or `items-start pt-[15vh]` (top), `bg-scrim` (sheet) or `bg-viewer-scrim` (viewer), `style={{ zIndex }}`. A click on the backdrop itself closes when dismissible (`reason: 'backdrop'`).
+- Backdrop `div` `data-testid="modal-backdrop"`, `fixed inset-0 flex justify-center p-4`, `items-center` (center) or `items-start` with an inline `paddingTop: 15vh` (top; arbitrary padding classes are guarded), `bg-scrim` (sheet) or `bg-viewer-scrim` (viewer), `style={{ zIndex }}`. A click on the backdrop itself closes when dismissible (`reason: 'backdrop'`).
 - Frame `role="dialog" aria-modal="true"`, `aria-labelledby` (title id or `labelledBy`) or `aria-label`, `tabIndex={-1}`, `outline-none`.
   - sheet: `flex max-h-full w-full max-w-lg flex-col overflow-hidden bg-sheet rounded-sheet shadow-sheet animate-reveal motion-reduce:animate-none` + `className`.
   - viewer: `relative flex h-full w-full items-center justify-center` + `className` (children own the layout; the viewer scrim is the background).
@@ -200,10 +202,10 @@ All dialogs: `Modal` (sheet, standard layout, `closeLabel={t('common.close')}`, 
 
 | Dialog | Frame | Target |
 |---|---|---|
-| Calendar | `max-w-md` | decision 25; month row `flex items-center justify-between px-6 pb-2`; grid `grid grid-cols-7 gap-1`; weekday labels `text-caption text-muted` (Sunday `text-calendar-sunday`); footer hint `text-small text-muted`; `dialog_load` surface `calendar` (API mode) |
+| Calendar | `max-w-md` | decision 25; month row `flex items-center justify-between px-6 pb-2`; grid `grid grid-cols-7 gap-1`; weekday labels `text-caption text-muted` (Sunday `text-sunday`); footer hint `text-small text-muted`; `dialog_load` surface `calendar` (API mode) |
 | Background | `max-w-md` | decision 26; preview `h-32 rounded-card shadow-card` (inline user colour/image as today); labels `text-small font-semibold text-secondary`; hints `text-caption text-muted`; inline error `text-small text-status-danger role="alert"` |
 | Favorites | `max-w-3xl h-[80vh]`, body `bg-sunken` edge to edge | decision 27; card `Card p-4 flex flex-col gap-3`; header row `Avatar size="md"`, name `text-body font-semibold`, star + time `text-small text-muted`; text `whitespace-pre-wrap text-body`; photos/videos `rounded-card overflow-hidden shadow-card`; play disc `bg-viewer-control`; footer count `text-small text-muted` |
-| Media gallery | `max-w-2xl h-[80vh]`, body edge to edge | tabs: `role="tablist"` (`aria-label` `media.typeTabs`), each tab `flex-1 py-3 text-muted`, selected `text-group-strong` with a 4 px `bg-group-accent rounded-pill` indicator; month headers `sticky bg-sheet px-4 py-3 text-small font-semibold text-secondary`; grid `grid grid-cols-4 gap-1 px-1` (gap 2 → 4 px); muted / duration badges `bg-toast text-viewer rounded-pill`; voice rows on the sheet with `bg-group-subtle` for the playing row; decision 34; footer count + Jump to date ghost Button; detail = viewer chrome |
+| Media gallery | `max-w-4xl h-[80vh]` (as today), body edge to edge | tabs: `role="tablist"` (`aria-label` `media.typeTabs`), each tab `flex-1 py-3 text-muted`, selected `text-group-strong` with a 4 px `bg-group-accent rounded-pill` indicator; month headers `sticky bg-sheet px-4 py-3 text-small font-semibold text-secondary`; grid `grid grid-cols-4 gap-1 px-1` (gap 2 → 4 px); muted / duration badges `bg-toast text-viewer rounded-pill`; voice rows on the sheet with `bg-group-subtle` for the playing row; decision 34; footer count + Jump to date ghost Button; detail = viewer chrome |
 | Blog photo gallery | `max-w-4xl h-[80vh]`, body edge to edge | as the media gallery grid; loading `DialogStatus`; footer like the media gallery; `dialog_load` surface `blog_gallery` (`ok` with count, `partial` when some posts failed, `error` when all failed) |
 | Member select | dynamic `max-width` (inline px, as today) | decision 17; generation label `text-caption font-semibold text-muted` + spacing (the `h-px` line goes); avatar `h-20 w-20 rounded-pill bg-sunken overflow-hidden` with today's crop; name `text-small text-secondary group-hover:text-primary`; heart disc `absolute bottom-0 right-0 rounded-pill bg-pill p-1 shadow-pill`; states `DialogStatus` |
 | Member timeline | `max-w-3xl` | decision 18; month card header `w-full flex items-center justify-between px-4 py-3`, chevron disc `h-6 w-6 rounded-pill bg-sunken`, count `Pill`-like `rounded-pill bg-sunken px-3 py-1 text-small text-secondary`; row `flex gap-4 rounded-card p-3 hover:bg-group-subtle`; thumb `h-[75px] w-[100px] rounded-card bg-sunken shadow-card` |
@@ -231,7 +233,8 @@ All dialogs: `Modal` (sheet, standard layout, `closeLabel={t('common.close')}`, 
 | Rail service right-click (`ServiceRail`) | point | Remove service is `destructive` (`text-status-danger`) |
 | Settings menu (`SettingsMenu`) | anchored `bottom-0 left-full ml-2 w-48` | trigger becomes `IconButton variant="secondary" className="h-11 w-11"` like its two siblings, `aria-haspopup="menu"`, `aria-expanded` (masked in the zero-pixel shots); a separator before About |
 | Player menus (`VideoPlayer`, `VoicePlayer` ×2) | point (their computed position) | speed items `menuitemradio`, selected `font-semibold text-group-strong`; Download item; Loop item `selected` when on |
-| Search content type / date / member dropdowns | anchored | member dropdown items carry the group marker dot |
+| Search content type / date dropdowns | anchored | selected preset `selected` (radio) |
+| Search member autocomplete | anchored, **not** a `Menu` | a `listbox` with the menu look (`rounded-card bg-card p-1 shadow-card`, `option` rows `rounded-pill hover:bg-sunken`): focus must stay in the text field while typing; rows carry the group marker dot |
 
 ## Tokens added
 
@@ -242,8 +245,8 @@ All dialogs: `Modal` (sheet, standard layout, `closeLabel={t('common.close')}`, 
 | `color.status.success` | `#15803D` | `text-status-success` | OK states (diagnostics, copied, API key saved) |
 | `color.status.warning` | `#B45309` | `text-status-warning` | warning text and icons |
 | `color.status.attention` | `#F97316` | `bg-status-attention` | the rail's disconnected badge (today's value) |
-| `color.calendar.sunday` | `#EF4444` | `text-calendar-sunday` | Sundays in the calendar (today's value) |
-| `color.heart` | `#F87171` | `text-heart` | About's heart (today's value) |
+| `color.decor.sunday` | `#EF4444` | `text-sunday` | Sundays in the calendar (today's value) |
+| `color.decor.heart` | `#F87171` | `text-heart` | About's heart (today's value) |
 | `color.overlay.toast` | `rgba(0, 0, 0, 0.8)` | `bg-toast` | toasts in viewers and About |
 | `color.viewer.scrim` | `rgba(0, 0, 0, 0.9)` | `bg-viewer-scrim` | viewer backdrop |
 | `color.viewer.stage` | `#000000` | `bg-viewer-stage` | the box behind a video |
@@ -257,7 +260,7 @@ All dialogs: `Modal` (sheet, standard layout, `closeLabel={t('common.close')}`, 
 
 Primitive changes: `Button` variants `danger` (`bg-status-danger text-inverse shadow-pill hover:brightness-105`) and `overlay` (`bg-viewer-control text-viewer hover:bg-viewer-control-hover`); `IconButton` variants `accent` (`bg-group-accent text-inverse shadow-card hover:brightness-105`, the unread arrows) and `overlay`; new `Switch`, `Input`, `Select`, `Menu`; `Avatar selected` uses `ring-surface`. Each token goes through `design/tokens` → `design/cssVars.ts` → `tailwind.config.js` → `utils/classnames.ts` (for `text-`, `bg-` image, `shadow-`, `animate-` groups) → `DesignPage.tsx` → `DESIGN_SYSTEM.md`.
 
-`DESIGN_SYSTEM.md` gains: the dialog layer (`Modal` props, stack, Escape and focus rules, `tone="viewer"`), the menu and form primitives, the status / viewer / calendar / heart tokens, "form control on state" (decision 12) and "cross-group markers" (decision 16) as allowed group-colour places, the two easter-egg animations as motion exceptions, and the removal of "(until D2c: `MemberSelectModal`)" from the member-colour paragraph.
+`DESIGN_SYSTEM.md` gains: the dialog layer (`Modal` props, stack, Escape and focus rules, `tone="viewer"`), the menu and form primitives, the status / viewer / decor tokens, "form control on state" (decision 12) and "cross-group markers" (decision 16) as allowed group-colour places, the two easter-egg animations as motion exceptions, and the removal of "(until D2c: `MemberSelectModal`)" from the member-colour paragraph.
 
 ## Accessibility
 
@@ -268,7 +271,7 @@ Primitive changes: `Button` variants `danger` (`bg-status-danger text-inverse sh
 
 ## i18n
 
-New keys in all 5 locales (`en`, `ja`, `zh-CN`, `zh-TW`, `yue`): `common.retry`, `common.mediaViewer`, `calendar.prevMonth`, `calendar.nextMonth`, `search.title`, `settings.sections`, `media.typeTabs`, `about.madeWithLove`, `blogs.addFavorite`, `blogs.removeFavorite` (with `{{name}}`), `profileImages.kinds`. Hard-coded strings that go: `Close modal`, `heart`, `Preview`, `Media type tabs`, the Japanese favourite labels, `ModalErrorState`'s `Retry`, the settings close button's literal `X`. Diagnostics keeps its English labels (decision 22).
+New keys in all 5 locales (`en`, `ja`, `zh-CN`, `zh-TW`, `yue`): `common.retry`, `common.confirm`, `common.mediaViewer`, `calendar.prevMonth`, `calendar.nextMonth`, `calendar.loadFailed`, `search.title`, `search.filters`, `search.searchFailed`, `settings.sections`, `media.typeTabs`, `about.madeWithLove`, `blogs.addFavorite`, `blogs.removeFavorite` (with `{{name}}`), `profileImages.kinds`. Hard-coded strings that go: `Close modal`, `heart`, `Preview`, `Media type tabs`, the Japanese favourite labels, `ModalErrorState`'s `Retry`, the settings close button's literal `X`. Diagnostics keeps its English labels (decision 22).
 
 ## Breadcrumbs
 
@@ -285,7 +288,7 @@ New whitelisted client events (backend `backend/api/client_log.py`, type in `uti
 
 ### Behaviour locks (before any restyle, must pass on the unchanged code)
 
-Test seam added first, with no visible change: `aria-label` on the calendar chevrons (`calendar.prevMonth` / `nextMonth`). The reveal-all long press holds the mouse on the newest unread bubble (`#msg-<id>`), so it needs no seam.
+Test seams added first, with no visible change: `aria-label` on the calendar chevrons (`calendar.prevMonth` / `nextMonth`) and `data-testid="unread-shelter"` on a message's unread cover (the reveal-all long press holds the mouse on it). Locks use roles, headings and visible text that exist both before and after D2c (a menu item is found by its text, a dialog before D2c by its heading). Two intended changes cannot be locked on the old code, so their stricter assertions are added in the task that makes them: Escape on a stacked dialog leaves the dialog below open (Tasks 6, 9).
 
 - **e2e** `frontend/e2e/dialogs-chat.spec.ts` on `pinBigRoom` (+ favourite route):
   1. ⋯ → Date Search opens the calendar; Escape closes it; a day jump lands (the existing timeline-scroll tests already lock the landing; this one locks open/close).
@@ -299,8 +302,8 @@ Test seam added first, with no visible change: `aria-label` on the calendar chev
   1. Rail settings → Settings; Sync tab shows the sync mode; the incoming-call switch POSTs `incoming_call_enabled: false`; Escape closes.
   2. Rail settings → About; Escape closes. Rail settings → Report issue opens; Cancel closes.
   3. Rail + → Add service lists the other groups; Escape closes.
-  4. Ctrl+K → Search; a message result (pinned `/api/search`) + Enter opens the Big Room at that message.
-  5. Blogs: Select member → member → timeline → Photos → blog photo gallery opens; Escape closes it (the timeline stays); ← / → on the open timeline do not switch the post behind it.
+  4. Ctrl+K → Search; typing shows a pinned `/api/search` result; Escape closes. (Enter → open the chat at the message is locked by the existing `SearchModal.test.tsx`.)
+  5. Blogs: Select member → member → timeline → Photo Album → the blog photo gallery opens; Escape closes it; ← / → on the open timeline do not switch the post behind it.
 - **vitest**: `ConfirmDialog` (confirm, cancel, labels), `SettingsMenu` (items call their actions), `ServiceRail` context menu (remove), `MessageContextMenu` (toggle + close), `MemberSelectModal` (select, favourite toggle), `MemberTimelineModal` (month toggle, select), `BackgroundModal` (preset persists), `ReportIssueModal` (submit needs a category), `DiagnosticsModal` (loads, copy), `arrowKeys` (ignored while an `aria-modal` element exists).
 
 ### New unit tests
@@ -313,7 +316,7 @@ Test seam added first, with no visible change: `aria-label` on the calendar chev
 
 ### Zero-pixel and guard
 
-- `e2e/visual-zero-pixel.spec.ts` gains masks for the rail's settings trigger and the chat header's ⋯ trigger (decision 29), is re-captured with `--update-snapshots` on the unchanged code in Task 1, and must pass unchanged at the end. Never update its snapshots after Task 1.
+- `e2e/visual-zero-pixel.spec.ts` gains masks for the rail's settings trigger and the chat header's ⋯ trigger (decision 29), is re-captured with `--update-snapshots` on the unchanged code in Task 2, and must pass unchanged at the end. Never update its snapshots after Task 2.
 - The guard only goes down. `BaseModal.tsx` is deleted; `AddServiceModal.tsx`, `BackgroundModal.tsx`, `MediaGalleryModal.tsx`, `MemberSelectModal.tsx`, `MemberTimelineModal.tsx`, `MessageContextMenu.tsx`, `ProfileImagePills.tsx`, `SearchModal.tsx` and `ConfirmDialog.tsx` reach 0 and leave `guard-baseline.json`; `VideoPlayer.tsx` and `VoicePlayer.tsx` drop by their menu literals. `LoginModal`, `SyncModal`, `SetupWizard`, `TosDialog` keep their counts for D2d. New files start at 0.
 
 ### Verification
