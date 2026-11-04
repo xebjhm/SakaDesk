@@ -407,6 +407,7 @@
     "searchFailed": "Search failed. Try again.",
     "title": "Search",
     "filters": "Filters",
+    "removeFilter": "Remove filter: {{name}}",
     "building": "Building search index...",
     "exactMatchOnly": "Exact match only",
     "includeUnread": "Include unread",

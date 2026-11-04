@@ -407,6 +407,7 @@
     "searchFailed": "搜尋失敗，請再試一次。",
     "title": "搜尋",
     "filters": "篩選",
+    "removeFilter": "移除篩選：{{name}}",
     "building": "正在建立搜尋索引...",
     "exactMatchOnly": "僅完全相符",
     "includeUnread": "包含未讀",

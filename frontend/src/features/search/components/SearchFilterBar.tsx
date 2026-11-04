@@ -3,6 +3,7 @@ import { X, ChevronDown, AlertTriangle } from 'lucide-react';
 import { Button, Menu, MenuItem } from '../../../design/primitives';
 import { Z_INDEX } from '../../../constants/zIndex';
 import { groupMarkerStyle } from '../groupMarker';
+import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { useTranslation } from '../../../i18n';
 import { getServicePrimaryColor, getServiceDisplayName, sortByServiceOrder } from '../../../data/services';
 import { useAppStore } from '../../../store/appStore';
@@ -72,9 +73,12 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     fetch('/api/search/members')
       .then(r => r.json())
       .then((data: MembersResponse) => {
-        if (!cancelled) setMembersData(data);
+        if (cancelled) { logDialogLoad('search_members', 'cancelled'); return; }
+        setMembersData(data);
+        logDialogLoad('search_members', 'ok');
       })
-      .catch(() => {});
+      // The member autocomplete stays empty; services and the other filters still work.
+      .catch(() => logDialogLoad('search_members', 'error'));
     return () => { cancelled = true; };
   }, [refetchKey]);
 
@@ -174,7 +178,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           <span key={`${chip.type}-${chip.id}`} className="inline-flex items-center gap-1 rounded-pill bg-pill px-2 py-1 text-caption font-semibold text-primary shadow-pill">
             <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(chip.color)} />
             {chip.label}
-            <button type="button" onClick={() => handleRemoveChip(chip.id)} aria-label={t('common.close')} className="rounded-pill text-muted transition-colors duration-fast ease-standard hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group">
+            <button type="button" onClick={() => handleRemoveChip(chip.id)} aria-label={t('search.removeFilter', { name: chip.label })} className="rounded-pill text-muted transition-colors duration-fast ease-standard hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group">
               <X className="h-3 w-3" />
             </button>
           </span>

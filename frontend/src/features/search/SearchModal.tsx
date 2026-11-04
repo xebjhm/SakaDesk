@@ -103,19 +103,23 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       fetch('/api/search/status')
         .then(res => res.json())
         .then(data => {
-          if (cancelled) return;
+          if (cancelled) { logDialogLoad('search_status', 'cancelled'); return; }
           const building = data.is_building ?? false;
           setIsIndexBuilding(building);
           if (building) {
             wasBuilding.current = true;
             setTimeout(checkStatus, 3000);
-          } else if (wasBuilding.current) {
+            return;
+          }
+          logDialogLoad('search_status', 'ok');
+          if (wasBuilding.current) {
             // Build just finished — re-trigger search
             wasBuilding.current = false;
             setSearchGeneration(g => g + 1);
           }
         })
-        .catch(() => {});
+        // The banner keeps its last state; the poll stops until the dialog reopens.
+        .catch(() => logDialogLoad('search_status', 'error'));
     };
     checkStatus();
     return () => { cancelled = true; };
@@ -132,12 +136,13 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       fetch('/api/blogs/backup/status')
         .then(res => res.json())
         .then(data => {
-          if (cancelled) return;
+          if (cancelled) { logDialogLoad('search_backup_status', 'cancelled'); return; }
           const anyRunning = Object.keys(data.running ?? {}).length > 0;
           setBlogSyncInProgress(anyRunning);
           if (anyRunning) setTimeout(checkBackup, 5000);
+          else logDialogLoad('search_backup_status', 'ok');
         })
-        .catch(() => {});
+        .catch(() => logDialogLoad('search_backup_status', 'error'));
     };
     checkBackup();
     return () => { cancelled = true; };
@@ -228,7 +233,10 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
   // ─── Load more handler ──────────────────────────────────────────────────────
   const handleLoadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore || !query.trim()) return;
+    if (isLoadingMore || !hasMore || !query.trim()) {
+      logDialogLoad('search_more', 'skipped');
+      return;
+    }
     setIsLoadingMore(true);
     try {
       const filterParams = buildFilterParams();
@@ -239,8 +247,10 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       setResults((prev) => [...prev, ...data.results]);
       setHasMore(data.has_more);
       setTotalCount(data.total_count);
+      logDialogLoad('search_more', 'ok', data.results.length);
     } catch (_err) {
-      // Silently fail — user can try again
+      // The button stays, so the user can try again.
+      logDialogLoad('search_more', 'error');
     } finally {
       setIsLoadingMore(false);
     }
@@ -327,6 +337,9 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   // ─── Keyboard handler ─────────────────────────────────────────────────────
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Enter and Escape confirm or cancel an IME candidate first: leave them to the IME.
+      const composing = e.nativeEvent.isComposing || e.keyCode === 229;
+      if (composing && (e.key === 'Enter' || e.key === 'Escape')) return;
       switch (e.key) {
         case 'ArrowDown': {
           e.preventDefault();

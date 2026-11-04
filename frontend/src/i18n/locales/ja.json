@@ -407,6 +407,7 @@
     "searchFailed": "検索できませんでした。もう一度お試しください。",
     "title": "検索",
     "filters": "絞り込み",
+    "removeFilter": "フィルターを外す：{{name}}",
     "building": "検索インデックスを構築中...",
     "exactMatchOnly": "完全一致のみ",
     "includeUnread": "未読も含む",

@@ -407,6 +407,7 @@
     "searchFailed": "搜索失败，请重试。",
     "title": "搜索",
     "filters": "筛选",
+    "removeFilter": "移除筛选：{{name}}",
     "building": "正在构建搜索索引...",
     "exactMatchOnly": "仅完全相符",
     "includeUnread": "包含未读",
