@@ -1,6 +1,5 @@
 {
   "config/uiConstants.ts": 8,
-  "core/common/BaseModal.tsx": 6,
   "core/common/InlineTranslation.tsx": 6,
   "core/common/TranslateButton.tsx": 16,
   "core/layout/InlineSyncView.tsx": 4,
@@ -9,8 +8,6 @@
   "core/media/VideoPlayer.tsx": 1,
   "core/media/VoicePlayer.tsx": 6,
   "data/memberData.ts": 2,
-  "features/blogs/components/MemberSelectModal.tsx": 11,
-  "features/blogs/components/MemberTimelineModal.tsx": 17,
   "features/messages/components/MessageBubble.tsx": 2,
   "features/messages/components/MessageContextMenu.tsx": 1,
   "features/messages/components/ProfileImagePills.tsx": 2,

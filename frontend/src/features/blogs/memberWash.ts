@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { BlogMember } from '../../types';
+import { isMascot } from './mascot';
 import { getMemberByBlogId, getMemberByName, getMemberPenlightHex, type GroupId } from '../../data/memberData';
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -17,7 +18,7 @@ function safeHex(value: unknown): string {
  * The lookup is the pre-D2b one: name, name without spaces, then blog id.
  */
 export function memberWashStyle(member: BlogMember, groupId: GroupId): CSSProperties | undefined {
-    if (member.id === '000' || member.name === 'ポカ') return undefined;
+    if (isMascot(member)) return undefined;
     const data =
         getMemberByName(member.name, groupId) ??
         getMemberByName(member.name.replace(/\s+/g, ''), groupId) ??

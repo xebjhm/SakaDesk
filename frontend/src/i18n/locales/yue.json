@@ -489,7 +489,9 @@
     "loadingPost": "載入緊文章...",
     "olderPost": "上一篇",
     "newerPost": "下一篇",
-    "postNavigation": "文章導覽"
+    "postNavigation": "文章導覽",
+    "addFavorite": "將{{name}}加入收藏",
+    "removeFavorite": "將{{name}}移出收藏"
   },
   "voicePlayer": {
     "speed": "播放速度",

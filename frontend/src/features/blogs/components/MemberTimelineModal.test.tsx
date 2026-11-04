@@ -45,4 +45,11 @@ describe('MemberTimelineModal', () => {
         fireEvent.keyDown(document.body, { key: 'Escape' });
         expect(p.onClose).toHaveBeenCalled();
     });
+
+    it('is a dialog named by the member, months are disclosure buttons', () => {
+        renderModal();
+        expect(screen.getByRole('dialog', { name: /春野/ })).toBeInTheDocument();
+        const open = screen.getAllByRole('button', { expanded: true });
+        expect(open.length).toBeGreaterThan(0);
+    });
 });

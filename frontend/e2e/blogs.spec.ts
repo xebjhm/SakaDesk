@@ -67,8 +67,8 @@ test('back returns from the reader to the recent feed', async ({ page }) => {
 test('a post chosen in the member timeline opens, and back returns to that timeline', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Select Member' }).click()
-  // Member cells are div[role=button]; the feed cards are <button> elements.
-  await page.locator('div[role="button"]', { hasText: '春野' }).click()
+  // Member cells are buttons inside the Select Member dialog; the feed cards are buttons too.
+  await page.getByRole('dialog', { name: 'Select Member' }).getByRole('button', { name: /^春野/ }).click()
   const timelineHeading = page.getByRole('heading', { level: 2, name: /春野/ })
   await expect(timelineHeading).toBeVisible()
   await page.getByRole('button', { name: /春の日記 39/ }).click()

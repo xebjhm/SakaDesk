@@ -489,7 +489,9 @@
     "loadingPost": "記事を読み込み中...",
     "olderPost": "前の記事",
     "newerPost": "次の記事",
-    "postNavigation": "記事ナビゲーション"
+    "postNavigation": "記事ナビゲーション",
+    "addFavorite": "{{name}}をお気に入りに追加",
+    "removeFavorite": "{{name}}をお気に入りから削除"
   },
   "voicePlayer": {
     "speed": "再生速度",

@@ -22,6 +22,9 @@ const FILES = [
     'media/LazyVideo.tsx',
     'media/PhotoPlayer.tsx',
     '../features/messages/components/ProfileImageViewer.tsx',
+    '../features/blogs/components/MemberSelectModal.tsx',
+    '../features/blogs/components/MemberTimelineModal.tsx',
+    '../features/blogs/components/BlogPhotoGalleryModal.tsx',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;
@@ -47,6 +50,6 @@ describe.each(FILES)('%s', (file) => {
 
     it('uses no native confirm/alert, z-index classes or old modal shells', () => {
         // z-10 / z-20 stay allowed for stacking inside a frame (sticky headers, viewer chrome).
-        expect(source).not.toMatch(/window\.confirm|\balert\(|z-\[|\bz-(?:40|50)\b|BaseModal(?!Props)|(?<![A-Za-z])DetailModal|useModalClose|ModalStates|Modal(?:Loading|Error|Empty)State/);
+        expect(source).not.toMatch(/window\.confirm|\balert\(|z-\[|\bz-(?:40|50)\b|BaseModal(?!Props)|(?<!Photo)DetailModal|useModalClose|ModalStates|Modal(?:Loading|Error|Empty)State/);
     });
 });

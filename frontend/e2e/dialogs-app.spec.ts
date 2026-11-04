@@ -141,4 +141,16 @@ test.describe('blog dialogs', () => {
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { level: 1, name: '春の日記 41 🌸' })).toBeVisible()
   })
+
+  test('Escape in the photo album leaves the member timeline open (D2c)', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Select Member' }).click()
+    await page.getByRole('dialog', { name: 'Select Member' }).getByRole('button', { name: /^春野/ }).click()
+    const timeline = page.getByRole('dialog', { name: /春野/ })
+    await timeline.getByRole('button', { name: 'Photo Album' }).click()
+    await expect(page.getByRole('dialog', { name: 'Photo Album' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: 'Photo Album' })).toHaveCount(0)
+    await expect(timeline).toBeVisible()
+  })
 })

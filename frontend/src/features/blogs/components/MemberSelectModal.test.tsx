@@ -47,4 +47,11 @@ describe('MemberSelectModal', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         expect(p.onRetry).toHaveBeenCalled();
     });
+
+    it('is a titled dialog; members are buttons; the heart is named', () => {
+        renderModal();
+        expect(screen.getByRole('dialog', { name: 'Select Member' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^春野 ひなた$/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add 春野 ひなた to favorites' })).toHaveAttribute('aria-pressed', 'false');
+    });
 });

@@ -489,7 +489,9 @@
     "loadingPost": "Loading post...",
     "olderPost": "Older post",
     "newerPost": "Newer post",
-    "postNavigation": "Post navigation"
+    "postNavigation": "Post navigation",
+    "addFavorite": "Add {{name}} to favorites",
+    "removeFavorite": "Remove {{name}} from favorites"
   },
   "voicePlayer": {
     "speed": "Speed",
