@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { GROUP_IDS, ambientLayout, color, fontFamily, groupRoles, memberWash, typeScale } from './tokens';
 import { groupTokenVars, staticTokenVars } from './cssVars';
 import { cn } from '../utils/classnames';
-import { getServiceTheme } from '../config/serviceThemes';
 
 describe('D2b tokens', () => {
     it('add a reading text step and the search-mark colours', () => {
@@ -40,12 +39,9 @@ describe('D2b tokens', () => {
         expect(vars['--ds-group-ambient-3-opacity']).toBe(String(ambientLayout[id].orb3.opacity));
     });
 
-    it('keeps the pre-D2b orb layout, which the legacy theme now reads', () => {
+    it('keeps the pre-D2b orb layout', () => {
         expect(ambientLayout.hinatazaka.orb1).toEqual({ position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.5 });
         expect(ambientLayout.sakurazaka.orb3).toEqual({ position: 'bottom: -20%; right: 20%;', size: '45vw', opacity: 0.35 });
-        expect(getServiceTheme('nogizaka46').ambient.orb2).toEqual({
-            color: groupRoles('nogizaka').ambient.orb2, position: 'top: 25%; right: -18%;', size: '58vw', opacity: 0.45,
-        });
     });
 
     it('default the member wash to transparent at the alpha token', () => {

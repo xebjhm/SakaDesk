@@ -16,6 +16,7 @@ import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, Button, IconButton, Modal } from '../../design/primitives';
+import { groupRoles } from '../../design/tokens';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
@@ -841,7 +842,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     <CallOverlay
                         call={incomingCall}
                         // The accent is the group action colour (step 600); light-style services (櫻坂) get a white answer button.
-                        accentColor={theme.modals.accentColor}
+                        accentColor={groupRoles(theme.id).action}
                         answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download, Loader2, Image as ImageIcon, Video, Mic } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Modal } from '../../design/primitives';
 import { formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
 import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel, getSyncDetail } from '../../utils/syncFormatters';
@@ -27,8 +28,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
         : null;
 
     return (
-        <div className="fixed inset-0 bg-gradient-to-br from-slate-900/90 to-slate-800/90 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+        <Modal isOpen onClose={onClose ?? (() => {})} layout="bare" labelledBy="sync-title" dismissible={false} logId="sync" className="max-w-lg">
                 {/* Header - Chat Room Style */}
                 <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
                     {/* Multi-service counter (shown during sequential sync) */}
@@ -54,7 +54,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                             <Download className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                            <h3 className="text-lg font-bold text-white">
+                            <h3 id="sync-title" className="text-lg font-bold text-white">
                                 {syncProgress.phase === 'complete'
                                     ? t('sync.complete')
                                     : t('sync.phase', { number: syncProgress.phase_number || 1, name: getPhaseName() })
@@ -240,7 +240,6 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                         </div>
                     )}
                 </div>
-            </div>
-        </div>
+            </Modal>
     );
 };

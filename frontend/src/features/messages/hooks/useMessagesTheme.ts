@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import type { ServiceTheme } from '../../../config/serviceThemes';
+import { groupRoles } from '../../../design/tokens';
 
 export interface ShelterColors {
     picture: string;
@@ -51,8 +52,8 @@ export function useMessagesTheme(): MessagesTheme {
             scrollButtonColor: theme.messages.scrollButtonColor,
             unreadShadow: theme.messages.unreadShadow,
             unreadBadge: theme.messages.unreadBadge,
-            favoriteColor: theme.modals.accentColor,
-            linkColor: theme.modals.accentColor,
+            favoriteColor: groupRoles(theme.id).action,
+            linkColor: groupRoles(theme.id).action,
             shelterColors: theme.messages.shelterColors,
             shelterStyle: theme.messages.shelterStyle,
             headerStyle: theme.messages.headerStyle,

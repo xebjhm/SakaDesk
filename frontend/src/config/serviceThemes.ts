@@ -1,21 +1,12 @@
 // frontend/src/config/serviceThemes.ts
-// Legacy per-feature view of the design tokens. Every colour comes from
-// design/tokens (the official layer or groupRoles); this file only adds
-// non-colour metadata. New code should read design/tokens directly.
+// Legacy per-feature view kept for the chat, the login dialog and the legacy
+// CSS variables (`messages` and the brand colours). New code reads design/tokens.
 
 import { GROUP_IDS, groupTokens, type GroupId } from '../design/tokens/groups';
 import { groupRoles } from '../design/tokens/roles';
-import { ambientLayout } from '../design/tokens/ambient';
 import { serviceGroupId } from './serviceGroup';
 
 export type { GroupId };
-
-interface AmbientOrb {
-    color: string;
-    position: string;
-    size: string;
-    opacity: number;
-}
 
 export interface ServiceTheme {
     id: GroupId;
@@ -26,35 +17,6 @@ export interface ServiceTheme {
     primaryColor: string;     // logo colour
     secondaryColor: string;   // action (step 600)
     accentColor: string;      // subtle (step 50)
-
-    // Ambient background orbs
-    ambient: { orb1: AmbientOrb; orb2: AmbientOrb; orb3: AmbientOrb };
-
-    surface: { background: string };
-    text: { secondary: string; muted: string };
-
-    interaction: {
-        hoverGlow: string;
-        buttonGradient: string;
-    };
-
-    // Visual vibe keywords
-    vibe: string[];
-
-    blog: {
-        memberNameColor: string;
-        linkColor: string;
-        linkUnderlineColor: string;
-        headerTitleColor: string;
-        timelineIndicator: string;
-    };
-
-    // Modal accent colors (Date Search, Favorites, Media, Background, Sent Letters)
-    modals: {
-        accentColor: string;        // action — buttons, selected states
-        accentColorLight: string;   // subtle — backgrounds, hover
-        accentColorMuted: string;   // subtleBorder — borders
-    };
 
     messages: {
         headerGradient: { from: string; via: string; to: string };
@@ -75,29 +37,23 @@ export interface ServiceTheme {
 interface ThemeMeta {
     name: string;
     nameJp: string;
-    vibe: string[];
 }
 
 const THEME_META: Record<GroupId, ThemeMeta> = {
     hinatazaka: {
         name: 'Hinatazaka46', nameJp: '日向坂46',
-        vibe: ['airy', 'bright', 'komorebi', 'summer sky', 'gentle warmth'],
     },
     sakurazaka: {
         name: 'Sakurazaka46', nameJp: '櫻坂46',
-        vibe: ['artistic', 'ephemeral', 'clean canvas', 'cherry blossom', 'cool elegance'],
     },
     nogizaka: {
         name: 'Nogizaka46', nameJp: '乃木坂46',
-        vibe: ['sophisticated', 'french', 'mature', 'noble', 'elegant'],
     },
     yodel: {
         name: 'Yodel', nameJp: 'ヨーデル',
-        vibe: ['fresh', 'natural', 'independent', 'meadow', 'serene'],
     },
     default: {
         name: 'Default', nameJp: '',
-        vibe: ['neutral', 'minimal', 'professional'],
     },
 };
 
@@ -113,23 +69,6 @@ function buildTheme(id: GroupId): ServiceTheme {
         primaryColor: r.logo,
         secondaryColor: r.action,
         accentColor: r.subtle,
-        ambient: {
-            orb1: { color: r.ambient.orb1, ...ambientLayout[id].orb1 },
-            orb2: { color: r.ambient.orb2, ...ambientLayout[id].orb2 },
-            orb3: { color: r.ambient.orb3, ...ambientLayout[id].orb3 },
-        },
-        surface: { background: g.legacyNeutral.surfaceBackground },
-        text: { secondary: g.legacyNeutral.textSecondary, muted: g.legacyNeutral.textMuted },
-        interaction: { hoverGlow: r.glow, buttonGradient: r.buttonGradient },
-        vibe: [...meta.vibe],
-        blog: {
-            memberNameColor: r.strong,
-            linkColor: r.strong,
-            linkUnderlineColor: r.linkUnderline,
-            headerTitleColor: r.strong,
-            timelineIndicator: r.strong,
-        },
-        modals: { accentColor: r.action, accentColorLight: r.subtle, accentColorMuted: r.subtleBorder },
         messages: {
             headerGradient: { ...o.title.gradient },
             headerTextColor: o.title.text,

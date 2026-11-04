@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../../i18n';
 import { getServiceTheme } from '../../config/serviceThemes';
+import { groupRoles } from '../../design/tokens';
 import { getServiceDisplayName } from '../../data/services';
 import { formatName } from '../../utils';
 import type { MemberInfo, Message } from '../../types';
@@ -78,7 +79,7 @@ export const PopupCall: React.FC<PopupCallProps> = ({
     const theme = getServiceTheme(info.service);
     const light = theme.messages.headerStyle === 'light';
     // The accent is the group action colour (step 600): readable on the white answer button of light groups.
-    const accent = theme.modals.accentColor;
+    const accent = groupRoles(theme.id).action;
 
     // One always-mounted live region, as in CallOverlay. No Esc/Enter handler:
     // the window never receives keyboard focus.

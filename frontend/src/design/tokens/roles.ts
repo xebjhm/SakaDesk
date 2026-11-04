@@ -25,7 +25,6 @@ export interface GroupRoles {
     /** Step 600: keyboard focus ring. */
     ring: string;
     unreadShadow: string;
-    buttonGradient: string;
     ambient: { orb1: string; orb2: string; orb3: string };
 }
 
@@ -51,7 +50,6 @@ export function groupRoles(id: GroupId): GroupRoles {
         glow: g.glow,
         ring: s[600],
         unreadShadow: `0 0 12px ${hexToRgba(g.logo, 0.4)}`,
-        buttonGradient: `linear-gradient(135deg, ${g.logo} 0%, ${s[600]} 100%)`,
         ambient: {
             orb1: `radial-gradient(circle, ${s[200]} 0%, ${s[100]} 30%, transparent 70%)`,
             orb2: `radial-gradient(circle, ${orb2Core} 0%, ${s[50]} 40%, transparent 70%)`,
