@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { landingError, measureLanding, LANDING_TOLERANCE_PX } from './landing';
+import { landingError, measureLanding, stickyHeaderBottom, topVisibleRowIndex, LANDING_TOLERANCE_PX } from './landing';
 
 const view = { top: 100, bottom: 700 };
 const free = { atTop: false, atBottom: false };
@@ -34,29 +34,55 @@ describe('landingError', () => {
     });
 });
 
-describe('measureLanding', () => {
+describe('DOM measurement', () => {
     afterEach(() => { document.body.innerHTML = ''; });
 
-    function mount(rowTop: number) {
-        document.body.innerHTML =
-            '<div data-virtuoso-scroller="true" id="s"><div id="msg-42"></div></div>';
+    /** A scroller (top 100) with rows `msg-1..3` at the given tops (50 px tall) and an optional sticky header. */
+    function mount(rowTops: number[], headerBottom?: number) {
+        const header = headerBottom === undefined ? '' : '<div data-testid="virtuoso-top-item-list" id="h"></div>';
+        const rows = rowTops.map((_, i) => `<div id="msg-${i + 1}"></div>`).join('');
+        document.body.innerHTML = `<div data-virtuoso-scroller="true" id="s">${header}${rows}</div>`;
         const s = document.getElementById('s')!;
-        const r = document.getElementById('msg-42')!;
         s.getBoundingClientRect = () => ({ top: 100, bottom: 700 } as DOMRect);
-        r.getBoundingClientRect = () => ({ top: rowTop, bottom: rowTop + 50 } as DOMRect);
         Object.defineProperties(s, {
             scrollTop: { value: 500, configurable: true },
             clientHeight: { value: 600, configurable: true },
             scrollHeight: { value: 5000, configurable: true },
         });
+        if (headerBottom !== undefined) {
+            document.getElementById('h')!.getBoundingClientRect = () => ({ top: 100, bottom: headerBottom, height: headerBottom - 100 } as DOMRect);
+        }
+        rowTops.forEach((top, i) => {
+            document.getElementById(`msg-${i + 1}`)!.getBoundingClientRect = () => ({ top, bottom: top + 50 } as DOMRect);
+        });
+        return s;
     }
 
-    it('returns null when the row is not rendered', () => {
-        expect(measureLanding(42, 'start')).toBeNull();
+    it('measureLanding returns null when the row is not rendered', () => {
+        expect(measureLanding('msg-42', 'start')).toBeNull();
     });
 
-    it('measures the rendered row against its scroller', () => {
-        mount(112);
-        expect(measureLanding(42, 'start')).toBe(12);
+    it('measureLanding measures the rendered row against its scroller', () => {
+        mount([112]);
+        expect(measureLanding('msg-1', 'start')).toBe(12);
+    });
+
+    it('start lands below the sticky header; center ignores it', () => {
+        mount([152], 140);
+        expect(stickyHeaderBottom(document.getElementById('s')!)).toBe(140);
+        expect(measureLanding('msg-1', 'start')).toBe(12);
+        expect(measureLanding('msg-1', 'center')).toBe(152 + 25 - 400);
+    });
+
+    it('topVisibleRowIndex skips rows hidden behind the sticky header', () => {
+        const s = mount([90, 140, 190], 140);
+        const keyAt = (i: number) => (i < 3 ? (`msg-${i + 1}` as const) : null);
+        expect(topVisibleRowIndex(s, { startIndex: 0, endIndex: 2 }, keyAt)).toBe(1);
+    });
+
+    it('topVisibleRowIndex falls back to the range start', () => {
+        expect(topVisibleRowIndex(null, { startIndex: 4, endIndex: 9 }, () => null)).toBe(4);
+        const s = mount([]);
+        expect(topVisibleRowIndex(s, { startIndex: 2, endIndex: 3 }, () => 'msg-9')).toBe(2);
     });
 });

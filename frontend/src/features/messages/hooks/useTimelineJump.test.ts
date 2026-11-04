@@ -3,6 +3,8 @@ import { renderHook } from '@testing-library/react';
 import type { VirtuosoHandle } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { toLocalDateStr } from '../../../utils/dateFormatters';
+import { buildTimeline } from '../timeline/buildTimeline';
+import type { Letter } from '../letters';
 import { useTimelineJump, estimateTravel, MAX_CORRECTIONS, GLIDE_LEAD, STILLNESS_MS } from './useTimelineJump';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -25,6 +27,8 @@ interface SetupOpts {
     glide?: { scroller: FakeScroller; range?: { startIndex: number; endIndex: number } | null; reduced?: boolean; targetTop?: number };
     /** Initial message list (default: the three-message `messages`). */
     list?: readonly Message[];
+    /** Letters merged into the timeline (default: none). */
+    letters?: readonly Letter[];
 }
 
 interface FakeScroller { scrollTop: number; scrollHeight: number; clientHeight: number }
@@ -53,7 +57,7 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
     const nextFrame = () => { frames += 1; opts.onFrame?.(frames); return Promise.resolve(); };
     const hook = renderHook(({ list, resetKey }: { list: readonly Message[]; resetKey?: unknown }) => useTimelineJump({
         virtuosoRef: ref,
-        messages: list,
+        timeline: buildTimeline(list, opts.letters ?? []),
         isUnread: opts.unread ?? (() => false),
         onLanded,
         resetKey,
@@ -78,7 +82,7 @@ describe('useTimelineJump', () => {
         await expect(jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(scrollToIndex).toHaveBeenCalledTimes(1);
         expect(scrollToIndex).toHaveBeenCalledWith({ index: 1, align: 'start', behavior: 'auto' });
-        expect(onLanded).toHaveBeenCalledWith(2);
+        expect(onLanded).toHaveBeenCalledWith('msg-2');
         expect(clientLog).toHaveBeenCalledWith('timeline_jump',
             { target: 'message', index: 1, corrections: 0, outcome: 'landed', path: 'instant', jump_ms: 0 });
     });
@@ -152,7 +156,7 @@ describe('useTimelineJump', () => {
         const { jumpTo, scrollToIndex, onLanded } = setup([0]);
         await expect(jumpTo({ kind: 'date', date: toLocalDateStr(messages[2].timestamp) })).resolves.toBe('landed');
         expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: 'start', behavior: 'auto' });
-        expect(onLanded).toHaveBeenCalledWith(3);
+        expect(onLanded).toHaveBeenCalledWith('msg-3');
     });
 
     it('a date jump to a missing day is not_found', async () => {
@@ -261,6 +265,22 @@ describe('useTimelineJump', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
         expect(s.onLanded).not.toHaveBeenCalled();
     });
+
+    it('jumps to a letter by its row key, never to a message with the same id', async () => {
+        const letters: Letter[] = [{ id: 2, text: '', created_at: '2024-03-15T02:00:00Z', image_url: null, width: null, height: null }];
+        const { jumpTo, scrollToIndex, onLanded } = setup([0], { letters });
+        // Rows: msg-1, msg-2, letter-2, msg-3
+        await expect(jumpTo({ kind: 'letter', id: 2 })).resolves.toBe('landed');
+        expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: 'start', behavior: 'auto' });
+        expect(onLanded).toHaveBeenCalledWith('letter-2');
+        expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ target: 'letter', outcome: 'landed' }));
+    });
+
+    it('measures by row key', async () => {
+        const { jumpTo, measure } = setup([0]);
+        await jumpTo({ kind: 'message', id: 3 });
+        expect(measure).toHaveBeenCalledWith('msg-3', 'start');
+    });
 });
 
 describe('useTimelineJump glide', () => {
@@ -278,7 +298,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).toHaveBeenCalledWith({ index: 150, align: 'start', behavior: 'auto', offset: -LEAD });
         expect(tops[0]).toBe(20000 - LEAD);
         expect(scroller.scrollTop).toBe(20000);
-        expect(s.onLanded).toHaveBeenCalledWith(151);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-151');
         expect(pathLogged()).toBe('far');
     });
 
@@ -328,7 +348,7 @@ describe('useTimelineJump glide', () => {
         expect(s.scrollToIndex).not.toHaveBeenCalled();
         for (let i = 1; i < tops.length; i++) expect(tops[i]).toBeLessThanOrEqual(tops[i - 1]);
         expect(scroller.scrollTop).toBe(4850);
-        expect(s.onLanded).toHaveBeenCalledWith(51);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-51');
         expect(pathLogged()).toBe('close');
     });
 
@@ -368,7 +388,7 @@ describe('useTimelineJump glide', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(s.scrollToIndex).not.toHaveBeenCalled();
         expect(scroller.scrollTop).toBe(5120);
-        expect(s.onLanded).toHaveBeenCalledWith(2);
+        expect(s.onLanded).toHaveBeenCalledWith('msg-2');
         expect(pathLogged()).toBe('onscreen');
     });
 

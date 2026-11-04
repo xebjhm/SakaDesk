@@ -24,49 +24,49 @@ describe('useLandingHighlight', () => {
         vi.unstubAllGlobals();
     });
 
-    it('sets the id on the next animation frame, not synchronously', () => {
+    it('sets the row key on the next animation frame, not synchronously', () => {
         const { result } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
-        expect(result.current.highlightedMessageId).toBeNull();
+        act(() => result.current.flash('msg-7'));
+        expect(result.current.highlightedRowKey).toBeNull();
         act(() => runFrame());
-        expect(result.current.highlightedMessageId).toBe(7);
+        expect(result.current.highlightedRowKey).toBe('msg-7');
     });
 
     it('flashing the same id twice restarts it: null, then the id again', () => {
         const { result } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         act(() => runFrame());
-        expect(result.current.highlightedMessageId).toBe(7);
-        act(() => result.current.flash(7));
-        expect(result.current.highlightedMessageId).toBeNull();
+        expect(result.current.highlightedRowKey).toBe('msg-7');
+        act(() => result.current.flash('msg-7'));
+        expect(result.current.highlightedRowKey).toBeNull();
         act(() => runFrame());
-        expect(result.current.highlightedMessageId).toBe(7);
+        expect(result.current.highlightedRowKey).toBe('msg-7');
     });
 
     it('clears after the landing duration, and not before', () => {
         const { result } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         act(() => runFrame());
         act(() => { vi.advanceTimersByTime(motion.duration.landing - 1); });
-        expect(result.current.highlightedMessageId).toBe(7);
+        expect(result.current.highlightedRowKey).toBe('msg-7');
         act(() => { vi.advanceTimersByTime(1); });
-        expect(result.current.highlightedMessageId).toBeNull();
+        expect(result.current.highlightedRowKey).toBeNull();
     });
 
     it('a restart gets a fresh full duration', () => {
         const { result } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         act(() => runFrame());
         act(() => { vi.advanceTimersByTime(motion.duration.landing - 100); });
-        act(() => result.current.flash(8));
+        act(() => result.current.flash('letter-8'));
         act(() => runFrame());
         act(() => { vi.advanceTimersByTime(motion.duration.landing - 1); });
-        expect(result.current.highlightedMessageId).toBe(8);
+        expect(result.current.highlightedRowKey).toBe('letter-8');
     });
 
     it('unmounting cancels the pending frame', () => {
         const { result, unmount } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         expect(frames.size).toBe(1);
         unmount();
         expect(frames.size).toBe(0);
@@ -75,7 +75,7 @@ describe('useLandingHighlight', () => {
 
     it('unmounting cancels the pending timer', () => {
         const { result, unmount } = renderHook(() => useLandingHighlight('a'));
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         act(() => runFrame());
         expect(vi.getTimerCount()).toBe(1);
         unmount();
@@ -84,21 +84,21 @@ describe('useLandingHighlight', () => {
 
     it('a resetKey change cancels the pending frame and clears the highlight', () => {
         const { result, rerender } = renderHook(({ k }) => useLandingHighlight(k), { initialProps: { k: 'a' } });
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         expect(frames.size).toBe(1);
         rerender({ k: 'b' });
         expect(frames.size).toBe(0);
         act(() => runFrame());
-        expect(result.current.highlightedMessageId).toBeNull();
+        expect(result.current.highlightedRowKey).toBeNull();
     });
 
     it('a resetKey change cancels the pending timer and clears a shown highlight', () => {
         const { result, rerender } = renderHook(({ k }) => useLandingHighlight(k), { initialProps: { k: 'a' } });
-        act(() => result.current.flash(7));
+        act(() => result.current.flash('msg-7'));
         act(() => runFrame());
-        expect(result.current.highlightedMessageId).toBe(7);
+        expect(result.current.highlightedRowKey).toBe('msg-7');
         rerender({ k: 'b' });
-        expect(result.current.highlightedMessageId).toBeNull();
+        expect(result.current.highlightedRowKey).toBeNull();
         expect(vi.getTimerCount()).toBe(0);
     });
 });
