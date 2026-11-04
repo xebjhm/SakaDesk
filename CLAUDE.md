@@ -18,3 +18,12 @@ Before writing any of these, read `docs/DOC_FORMATS.md` and follow it exactly:
 A PreToolUse hook on this machine blocks `git commit` / `gh pr create` /
 `gh release` calls that violate these formats — if a call is blocked, fix the
 content per `docs/DOC_FORMATS.md` and re-run it.
+
+## UI design system (MUST follow)
+
+New or changed UI must use the design-system tokens and primitives in
+`frontend/src/design/`. Read `docs/design/DESIGN_SYSTEM.md` before touching UI:
+it defines the four levels, the only places group colour may appear, and the
+Do/Don't list. Never hard-code colours or arbitrary radius / shadow / text /
+spacing values — `frontend/src/design/guard.test.ts` fails the build on new
+ones. Preview tokens and primitives at `?view=design` on the dev server.
