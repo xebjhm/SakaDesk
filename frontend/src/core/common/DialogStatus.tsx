@@ -13,7 +13,7 @@ export interface DialogStatusProps {
     className?: string;
 }
 
-/** Loading, empty and error states inside a dialog (replaces ModalStates). */
+/** Loading, empty and error states inside a dialog (one component for every dialog's states). */
 export const DialogStatus: React.FC<DialogStatusProps> = ({ kind, title, hint, icon, onRetry, retryLabel, className }) => (
     <div
         role={kind === 'error' ? 'alert' : 'status'}
