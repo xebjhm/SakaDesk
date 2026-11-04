@@ -88,6 +88,16 @@ describe('login (D2d)', () => {
     });
 });
 
+describe('login banner text (D2d)', () => {
+    it('on the light banner only the title is in the official colour; the service line is secondary', () => {
+        const { unmount } = render(<LoginModal serviceId="sakurazaka46" featureId="messages" onClose={vi.fn()} onSuccess={vi.fn()} isFreshPrompt />);
+        expect(within(screen.getByTestId('login-banner')).getByText('櫻坂46')).toHaveClass('text-secondary');
+        unmount();
+        render(<LoginModal serviceId="hinatazaka46" featureId="messages" onClose={vi.fn()} onSuccess={vi.fn()} isFreshPrompt />);
+        expect(within(screen.getByTestId('login-banner')).getByText('日向坂46')).not.toHaveClass('text-secondary');
+    });
+});
+
 describe('login stale state (D2d)', () => {
     it('does not carry a failed login error onto the next service dialog', async () => {
         server.use(http.post('/api/auth/login', () => new HttpResponse(null, { status: 500 })));

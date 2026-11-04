@@ -188,7 +188,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         </span>
                         <div className="min-w-0 flex-1">
                             <h2 id={titleId} className="truncate text-title font-semibold">{title}</h2>
-                            <p className="truncate text-small">{service?.displayName ?? serviceId}</p>
+                            <p className={cn('truncate text-small', isLight && 'text-secondary')}>{service?.displayName ?? serviceId}</p>
                         </div>
                         <IconButton
                             size="sm"
