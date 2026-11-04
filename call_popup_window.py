@@ -15,6 +15,9 @@ reused for every call:
   is shown, then shows it with ``SW_SHOWNOACTIVATE`` / ``SWP_NOACTIVATE``.
   pywebview's ``window.show()`` is
   never called: it activates the form and would steal focus.
+- ``start`` / ``reveal`` / ``hide`` / ``cancel`` are serialized by one lock and
+  scoped to the call id: a call that was hidden or cancelled is never started
+  or revealed again, and a late hide for an older call never hides a newer one.
 - :meth:`CallPopupWindow.destroy` closes it with the main window. The close runs
   on a daemon thread and is awaited with a timeout, falling back to
   ``System.Windows.Forms.Application.Exit()``, so a stuck popup (even a hung GUI
@@ -270,7 +273,12 @@ class CallPopupWindow:
         self._shut_down = False
         self._destroying = False
         self._failures = 0
+        # Serializes start/reveal/hide/cancel (worker threads, never the GUI
+        # thread). ``_call_id`` is the call that owns the window; ``_ended_id``
+        # the newest call that was hidden or cancelled (ids only grow).
+        self._op_lock = threading.Lock()
         self._call_id: int | None = None
+        self._ended_id = 0
 
     # -- lazy native handles
 
@@ -384,8 +392,10 @@ class CallPopupWindow:
         """Start ``call_id`` in the popup page, creating the window if needed.
 
         True only when the page's ``__sakadeskCallPopup.start`` ran (the script
-        returned ``true``). Refused while quitting or when unavailable
-        (``call_popup_window action=start_refused`` with ``reason``).
+        returned ``true``). Refused while quitting, when unavailable, or when
+        ``call_id`` was already hidden or cancelled (``call_popup_window
+        action=start_refused`` with ``reason`` ``quitting``, ``unavailable`` or
+        ``ended``).
         """
         if self._is_quitting():
             logger.info(
@@ -405,14 +415,37 @@ class CallPopupWindow:
             return False
         if not self.ensure():
             return False
-        window = self._window
-        if window is None:
-            return False
-        self._call_id = call_id
-        return window.evaluate_js(_START_JS.format(call_id=int(call_id))) is True
+        with self._op_lock:
+            window = self._window
+            if window is None:
+                return False
+            if call_id <= self._ended_id:
+                logger.info(
+                    "call_popup_window",
+                    action="start_refused",
+                    reason="ended",
+                    call_id=call_id,
+                )
+                return False
+            self._call_id = call_id
+            return window.evaluate_js(_START_JS.format(call_id=int(call_id))) is True
 
-    def reveal(self) -> bool:
+    def _stale_locked(self, call_id: int) -> bool:
+        """True when a newer call owns the window (expects ``_op_lock``)."""
+        return self._call_id is not None and call_id < self._call_id
+
+    def _end_locked(self, call_id: int) -> None:
+        """Record ``call_id`` as ended (expects ``_op_lock``)."""
+        self._ended_id = max(self._ended_id, call_id)
+        if self._call_id == call_id:
+            self._call_id = None
+
+    def reveal(self, call_id: int) -> bool:
         """Place the popup bottom-right and show it without activating it.
+
+        A no-op returning False when ``call_id`` is not the started call or was
+        already hidden or cancelled (``call_popup_reveal_skipped
+        reason=stale_call``): a cancel that won the race must not be undone.
 
         In order: ``SetWindowPos`` to :func:`popup_rect` of the current work
         area and system DPI (``SWP_NOZORDER | SWP_NOACTIVATE``, so the first
@@ -424,6 +457,15 @@ class CallPopupWindow:
         (``error_type``; ``bad_dpi`` when the system DPI reads as 0 or less) and
         returns False.
         """
+        with self._op_lock:
+            if call_id != self._call_id or call_id <= self._ended_id:
+                logger.info(
+                    "call_popup_reveal_skipped", call_id=call_id, reason="stale_call"
+                )
+                return False
+            return self._reveal_locked(call_id)
+
+    def _reveal_locked(self, call_id: int) -> bool:
         try:
             hwnd = _hwnd_of(self._window)
             if not hwnd:
@@ -432,7 +474,7 @@ class CallPopupWindow:
             if dpi <= 0:
                 logger.warning(
                     "call_popup_reveal_failed",
-                    call_id=self._call_id,
+                    call_id=call_id,
                     error_type="bad_dpi",
                     dpi=dpi,
                 )
@@ -460,7 +502,7 @@ class CallPopupWindow:
             visible = bool(self._user32.IsWindowVisible(hwnd))
             logger.info(
                 "call_popup_reveal",
-                call_id=self._call_id,
+                call_id=call_id,
                 dpi=dpi,
                 width=rect.width,
                 height=rect.height,
@@ -470,26 +512,49 @@ class CallPopupWindow:
         except Exception as e:
             logger.warning(
                 "call_popup_reveal_failed",
-                call_id=self._call_id,
+                call_id=call_id,
                 error_type=type(e).__name__,
             )
             return False
 
-    def hide(self) -> None:
-        """Hide the popup (pywebview ``Form.Hide``, which activates nothing)."""
-        window = self._window
-        if window is not None:
-            window.hide()
+    def hide(self, call_id: int) -> None:
+        """Hide the popup for ``call_id`` (pywebview ``Form.Hide``, which activates nothing).
+
+        Marks ``call_id`` ended. A no-op when a newer call owns the window
+        (debug ``call_popup_hide_skipped reason=stale_call``).
+        """
+        with self._op_lock:
+            if self._stale_locked(call_id):
+                logger.debug(
+                    "call_popup_hide_skipped", call_id=call_id, reason="stale_call"
+                )
+                return
+            self._end_locked(call_id)
+            window = self._window
+            if window is not None:
+                window.hide()
 
     def cancel(self, call_id: int) -> None:
-        """Cancel ``call_id`` in the page, then hide (even if the script raised)."""
-        window = self._window
-        if window is None:
-            return
-        try:
-            window.evaluate_js(_CANCEL_JS.format(call_id=int(call_id)))
-        finally:
-            window.hide()
+        """Cancel ``call_id`` in the page, then hide (even if the script raised).
+
+        Marks ``call_id`` ended, even with no window, so a start still in
+        flight is refused. A no-op when a newer call owns the window (debug
+        ``call_popup_hide_skipped reason=stale_call``).
+        """
+        with self._op_lock:
+            if self._stale_locked(call_id):
+                logger.debug(
+                    "call_popup_hide_skipped", call_id=call_id, reason="stale_call"
+                )
+                return
+            self._end_locked(call_id)
+            window = self._window
+            if window is None:
+                return
+            try:
+                window.evaluate_js(_CANCEL_JS.format(call_id=int(call_id)))
+            finally:
+                window.hide()
 
     def deliver_heard(self, target: HeardTarget) -> str:
         """Ask the **main** window to mark ``target`` heard.

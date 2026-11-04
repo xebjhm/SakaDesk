@@ -179,8 +179,8 @@ class CallPopupHost(Protocol):
     def available(self) -> bool: ...
     def ensure(self) -> bool: ...
     def start(self, call_id: int) -> bool: ...
-    def reveal(self) -> bool: ...
-    def hide(self) -> None: ...
+    def reveal(self, call_id: int) -> bool: ...
+    def hide(self, call_id: int) -> None: ...
     def cancel(self, call_id: int) -> None: ...
     def deliver_heard(self, target: HeardTarget) -> str: ...
 
@@ -261,12 +261,12 @@ async def call_popup_start(call_id: int) -> bool:
     )
 
 
-async def call_popup_reveal() -> bool:
-    """True when the popup window was shown. Never raises."""
+async def call_popup_reveal(call_id: int) -> bool:
+    """True when the popup window was shown for ``call_id``. Never raises."""
     return bool(
         await _run_host(
             "reveal",
-            lambda h: h.reveal(),
+            lambda h: h.reveal(call_id),
             failed=False,
             no_host=False,
             timeout=BRIDGE_TIMEOUT_S,
@@ -274,10 +274,14 @@ async def call_popup_reveal() -> bool:
     )
 
 
-async def call_popup_hide() -> None:
-    """Hide the popup window. Never raises."""
+async def call_popup_hide(call_id: int) -> None:
+    """Hide the popup window unless a newer call owns it. Never raises."""
     await _run_host(
-        "hide", lambda h: h.hide(), failed=None, no_host=None, timeout=BRIDGE_TIMEOUT_S
+        "hide",
+        lambda h: h.hide(call_id),
+        failed=None,
+        no_host=None,
+        timeout=BRIDGE_TIMEOUT_S,
     )
 
 

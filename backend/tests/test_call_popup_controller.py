@@ -59,17 +59,20 @@ class Bridge:
         self.start_result, self.reveal_result = start, reveal
         self.heard = list(heard)
         self.calls: list[tuple] = []
+        self.reveal_hook: Any = None  # awaited inside call_popup_reveal
 
     async def call_popup_start(self, call_id):
         self.calls.append(("start", call_id))
         return self.start_result
 
-    async def call_popup_reveal(self):
-        self.calls.append(("reveal",))
+    async def call_popup_reveal(self, call_id):
+        self.calls.append(("reveal", call_id))
+        if self.reveal_hook is not None:
+            await self.reveal_hook()
         return self.reveal_result
 
-    async def call_popup_hide(self):
-        self.calls.append(("hide",))
+    async def call_popup_hide(self, call_id):
+        self.calls.append(("hide", call_id))
 
     async def call_popup_cancel(self, call_id):
         self.calls.append(("cancel", call_id))
@@ -501,7 +504,7 @@ async def test_skipped_already_read_has_no_toast_and_no_hide():
         await env.ctrl.on_event(cid, CallEvent("skipped", reason="already_read"))
         await env.settle()
     assert env.sent == [] and events(logs, "call_popup_toast") == []
-    assert ("hide",) not in env.bridge.calls and env.ctrl.phase == "idle"
+    assert ("hide", cid) not in env.bridge.calls and env.ctrl.phase == "idle"
 
 
 # 10
@@ -513,10 +516,55 @@ async def test_reveal_failure_cancels_and_falls_back():
         assert await env.ctrl.on_event(cid, CallEvent("ringing"))
         await env.settle()
     assert env.ctrl.phase == "idle"
-    assert env.bridge.calls[-2:] == [("reveal",), ("cancel", cid)]
+    assert env.bridge.calls[-2:] == [("reveal", cid), ("cancel", cid)]
     assert [e["reason"] for e in events(logs, "call_popup_hide")] == ["reveal_failed"]
     assert env.sent == [plan()]
     assert events(logs, "call_popup_toast")[0]["reason"] == "reveal_failed"
+
+
+@pytest.mark.parametrize("trigger", ["foreground", "disabled", "declined"])
+@pytest.mark.asyncio
+async def test_call_ended_during_reveal_hides_again(trigger):
+    """A cancel whose hide lands before the reveal's ShowWindow must not leave a popup."""
+    env = Env()
+    cid = await env.starting()
+
+    async def end_meanwhile():
+        if trigger == "foreground":
+            await env.ctrl.on_foreground()
+        elif trigger == "disabled":
+            await env.ctrl.cancel("disabled")
+        else:
+            assert await env.ctrl.on_event(cid, CallEvent("declined"))
+
+    env.bridge.reveal_hook = end_meanwhile
+    env.bridge.calls.clear()
+    with capture_logs() as logs:
+        assert await env.ctrl.on_event(cid, CallEvent("ringing"))
+        await env.settle()
+    assert env.ctrl.phase == "idle"
+    assert env.bridge.calls[-1] == ("hide", cid)
+    assert "superseded" in [e["reason"] for e in events(logs, "call_popup_hide")]
+    await env.ctrl.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_answer_during_reveal_keeps_the_popup():
+    env = Env()
+    cid = await env.starting()
+
+    async def answer_meanwhile():
+        assert await env.ctrl.on_event(cid, CallEvent("answered", message_id=10))
+
+    env.bridge.reveal_hook = answer_meanwhile
+    env.bridge.calls.clear()
+    with capture_logs() as logs:
+        assert await env.ctrl.on_event(cid, CallEvent("ringing"))
+        await env.settle()
+    assert env.ctrl.phase == "connected"
+    assert ("hide", cid) not in env.bridge.calls
+    assert events(logs, "call_popup_hide") == []
+    await env.ctrl.shutdown()
 
 
 # 11

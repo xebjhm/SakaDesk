@@ -447,7 +447,7 @@ def test_reveal_shows_no_activate_at_popup_rect():
     w.start(9)
     user32.calls.clear()
     with capture_logs() as logs:
-        assert w.reveal() is True
+        assert w.reveal(9) is True
     # Move first (no flash at the stale spot), then show, then topmost only.
     assert user32.calls == [
         ("SetWindowPos", 0x1234, 0, 1608, 495, 300, 533, 0x0004 | 0x0010),
@@ -473,7 +473,7 @@ def test_reveal_rejects_a_bad_dpi_without_touching_the_window(bad):
     w.start(6)
     user32.calls.clear()
     with capture_logs() as logs:
-        assert w.reveal() is False
+        assert w.reveal(6) is False
     assert user32.calls == []
     ev = [e for e in logs if e["event"] == "call_popup_reveal_failed"]
     assert [(e["error_type"], e["dpi"], e["call_id"]) for e in ev] == [
@@ -484,14 +484,15 @@ def test_reveal_rejects_a_bad_dpi_without_touching_the_window(bad):
 
 def test_reveal_without_window_or_hwnd_fails():
     w, _, _ = make([FakeWindow(hwnd=None)])
+    w.start(1)
     with capture_logs() as logs:
-        assert w.reveal() is False
+        assert w.reveal(1) is False
     assert [
         e["error_type"] for e in logs if e["event"] == "call_popup_reveal_failed"
     ] == ["LookupError"]
-    w.ensure()
+    w._window = None
     with capture_logs() as logs:
-        assert w.reveal() is False
+        assert w.reveal(1) is False
     assert [e["event"] for e in logs] == ["call_popup_reveal_failed"]
 
 
@@ -503,7 +504,7 @@ def test_reveal_with_raising_showwindow_fails():
     w, _, _ = make([FakeWindow()], user32=Raising())
     w.start(4)
     with capture_logs() as logs:
-        assert w.reveal() is False
+        assert w.reveal(4) is False
     ev = [e for e in logs if e["event"] == "call_popup_reveal_failed"][0]
     assert (ev["call_id"], ev["error_type"]) == (4, "OSError")
 
@@ -538,7 +539,7 @@ def test_cancel_hides_even_when_script_raises():
 def test_cancel_and_hide_without_window_are_noops():
     w, created, _ = make([FakeWindow()])
     w.cancel(7)
-    w.hide()
+    w.hide(7)
     assert created == []
 
 
@@ -546,8 +547,96 @@ def test_hide_hides_the_window():
     win = FakeWindow()
     w, _, _ = make([win])
     w.ensure()
-    w.hide()
+    w.hide(1)
     assert win.hidden == 1 and win.shown == 0
+
+
+def test_reveal_after_cancel_of_the_same_call_is_a_noop():
+    user32 = FakeUser32()
+    win = FakeWindow()
+    w, _, _ = make([win], user32=user32)
+    w.start(3)
+    w.cancel(3)  # the cancel won the race with the reveal
+    user32.calls.clear()
+    with capture_logs() as logs:
+        assert w.reveal(3) is False
+    assert user32.calls == []  # never shown
+    assert [(e["event"], e["reason"]) for e in logs] == [
+        ("call_popup_reveal_skipped", "stale_call")
+    ]
+
+
+def test_reveal_for_a_call_that_was_never_started_is_a_noop():
+    user32 = FakeUser32()
+    w, _, _ = make([FakeWindow()], user32=user32)
+    w.start(2)
+    user32.calls.clear()
+    assert w.reveal(1) is False and w.reveal(3) is False
+    assert user32.calls == []
+
+
+def test_reveal_after_hide_of_the_same_call_is_a_noop():
+    user32 = FakeUser32()
+    w, _, _ = make([FakeWindow()], user32=user32)
+    w.start(5)
+    w.hide(5)
+    user32.calls.clear()
+    assert w.reveal(5) is False
+    assert user32.calls == []
+
+
+def test_cancel_before_start_returns_refuses_that_start():
+    win = FakeWindow()
+    w, _, _ = make([win])
+    w.ensure()
+    w.cancel(4)  # the controller cancelled while start was still in ensure()
+    win.js.clear()
+    with capture_logs() as logs:
+        assert w.start(4) is False
+    assert win.js == []
+    (ev,) = [e for e in logs if e.get("action") == "start_refused"]
+    assert (ev["reason"], ev["call_id"]) == ("ended", 4)
+    assert w.start(5) is True  # the next call starts normally
+
+
+def test_late_hide_or_cancel_for_an_older_call_leaves_the_newer_one():
+    win = FakeWindow()
+    w, _, _ = make([win])
+    w.start(1)
+    w.start(2)
+    win.js.clear()
+    w.hide(1)
+    w.cancel(1)
+    assert win.hidden == 0 and win.js == []
+    assert w.reveal(2) is True
+    w.hide(2)
+    assert win.hidden == 1
+
+
+def test_reveal_and_cancel_are_serialized():
+    """A cancel issued while a reveal is in its Win32 calls waits for it, then hides."""
+    entered, release = threading.Event(), threading.Event()
+
+    class Slow(FakeUser32):
+        def ShowWindow(self, hwnd, cmd):
+            entered.set()
+            release.wait(5)
+            return super().ShowWindow(hwnd, cmd)
+
+    win = FakeWindow()
+    w, _, _ = make([win], user32=Slow())
+    w.start(8)
+    revealer = threading.Thread(target=w.reveal, args=(8,))
+    revealer.start()
+    assert entered.wait(5)
+    canceller = threading.Thread(target=w.cancel, args=(8,))
+    canceller.start()
+    canceller.join(0.05)
+    assert canceller.is_alive() and win.hidden == 0  # blocked on the op lock
+    release.set()
+    revealer.join(5)
+    canceller.join(5)
+    assert win.hidden == 1  # the hide landed after the show
 
 
 # ---------------------------------------------------------------- deliver_heard
@@ -746,7 +835,7 @@ def test_no_log_carries_url_path_or_name():
     with capture_logs() as logs:
         w.ensure()
         w.start(1)
-        w.reveal()
+        w.reveal(1)
         w.cancel(1)
         first.events.closed.set()
         w.start(2)
@@ -927,8 +1016,8 @@ def test_default_seams_used_by_the_host(monkeypatch):
         user32=user32,
         dwmapi=FakeDwm(),
     )
-    w.ensure()
-    assert w.reveal() is True
+    w.start(1)
+    assert w.reveal(1) is True
     assert ("SetWindowPos", 0x1234, 0, 1608, 495, 300, 533, 0x14) in user32.calls
 
 

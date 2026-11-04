@@ -198,7 +198,7 @@ class PendingCall:
 
 | event (fields) | valid in | effect |
 |---|---|---|
-| `ringing` | `starting` | → `ringing` (ring watchdog), then `bridge.call_popup_reveal()`. A failed reveal, while the call is still `ringing`, cancels the popup (`call_popup_cancel`), → `idle`, logs `call_popup_hide reason=reveal_failed` and sends the fallback toast (`reason=reveal_failed`) |
+| `ringing` | `starting` | → `ringing` (ring watchdog), then `bridge.call_popup_reveal(call_id)`. A failed reveal, while the call is still `ringing`, cancels the popup (`call_popup_cancel`), → `idle`, logs `call_popup_hide reason=reveal_failed` and sends the fallback toast (`reason=reveal_failed`). A successful reveal is re-checked: when the call is no longer current in `ringing` or `connected` (cancelled, watchdogged, declined or ended during the await, whose hide may have landed before the window was shown), it hides again (`bridge.call_popup_hide(call_id)`, `call_popup_hide reason=superseded`) |
 | `skipped` (`reason`) | `starting` | → `idle`, window stays hidden. `reason=already_read` → no toast (the voice was heard meanwhile); any other reason → fallback toast |
 | `answered` (`message_id`) | `ringing` | → `connected`; `deliver_heard` (below) as a background task; connected watchdog |
 | `declined` | `ringing` | hide, → `idle`, missed-call toast (`reason=declined`) |
@@ -327,7 +327,7 @@ webview.create_window(
 - **Styles** (the form and its HWND exist; the window is still hidden). pywebview 5.3.2 creates the form synchronously after `start`, so they are applied right after `create_window` returns; `before_show` is only the fallback when no HWND exists yet:
   - add `WS_EX_TOOLWINDOW` (`0x80`) to `GWL_EXSTYLE` with `SetWindowLongW`, so the popup has no taskbar button and is not in Alt+Tab. Use the style bit, not `Form.ShowInTaskbar`, which recreates the handle under the WebView2 control;
   - set `DWMWA_WINDOW_CORNER_PREFERENCE` (33) to `DWMWCP_ROUND` (2), giving Windows 11 rounded corners; on Windows 10 the call fails and is ignored (debug log).
-- **`ensure()`** waits up to `POPUP_LOAD_TIMEOUT_S = 15` on `events.loaded.wait`. A cached window is reused only when it is loaded and not closed; otherwise it is dropped (`action=lost`) and recreated. A creation that fails (`error_type` = `load_timeout`, `closed` or the exception type) destroys the half-made window. It logs `call_popup_window` with `action=created|reused|create_failed` and `error_type`. `start()` refuses while quitting or unavailable (`action=start_refused`, `reason=quitting|unavailable`).
+- **`ensure()`** waits up to `POPUP_LOAD_TIMEOUT_S = 15` on `events.loaded.wait`. A cached window is reused only when it is loaded and not closed; otherwise it is dropped (`action=lost`) and recreated. A creation that fails (`error_type` = `load_timeout`, `closed` or the exception type) destroys the half-made window. It logs `call_popup_window` with `action=created|reused|create_failed` and `error_type`. `start()` refuses while quitting, while unavailable, or for a call already hidden or cancelled (`action=start_refused`, `reason=quitting|unavailable|ended`, §6.3).
 - **Two failed creations in a row** set `available = False` for the rest of the process (`action=disabled_after_failures`), so every later call goes straight to a toast instead of waiting 15 s each time.
 
 ### 6.3 Show without stealing focus
@@ -335,6 +335,9 @@ webview.create_window(
 - **Reveal** (on `ringing`), in this order: `SetWindowPos(hwnd, 0, x, y, w, h, SWP_NOZORDER|SWP_NOACTIVATE)` (move and size while still hidden, so the first paint is at the right spot), `ShowWindow(hwnd, SW_SHOWNOACTIVATE=4)` (its `WM_SHOWWINDOW` keeps WinForms `Visible` in sync for `Form.Hide`), then `SetWindowPos(hwnd, HWND_TOPMOST=-1, 0, 0, 0, 0, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)`. A system DPI of 0 or less is a `call_popup_reveal_failed` with `error_type=bad_dpi`. None of the calls activates the window, so typing in another app continues uninterrupted. Clicks still reach the WebView2 content; `WS_EX_NOACTIVATE` keeps the popup from becoming the foreground window when it is clicked.
 - **Hide:** `window.hide()` (pywebview `Form.Hide`, which never activates anything).
 - **Cancel:** `evaluate_js("window.__sakadeskCallPopup && window.__sakadeskCallPopup.cancel(<call_id>)")`, then hide.
+- **Ordering and call scope.** `start`, `reveal`, `hide` and `cancel` run on worker threads that are otherwise unordered, so one host lock serializes them, and each takes the call id. The host remembers the started call (`start`) and the newest call that was hidden or cancelled (ids only grow):
+  - `hide(call_id)` / `cancel(call_id)` mark that call ended, even with no window, so a `start` still in flight for it is refused (`action=start_refused reason=ended`). When a newer call already owns the window they do nothing (debug `call_popup_hide_skipped reason=stale_call`), so a late hide never hides the next call;
+  - `reveal(call_id)` does nothing and returns `False` unless `call_id` is the started call and not ended (`call_popup_reveal_skipped reason=stale_call`), so a cancel that won the race is never undone. The controller's re-check after the reveal (§4.4) covers the other order.
 - **Logging:** reveal logs `call_popup_reveal` (`call_id`, `dpi`, `width`, `height`, `visible` = `IsWindowVisible` afterwards) or `call_popup_reveal_failed` (`error_type`). Physical sizes are not personal data.
 
 ### 6.4 Placement and DPI (pure helper)
@@ -373,16 +376,16 @@ class CallPopupHost(Protocol):
     def available(self) -> bool: ...
     def ensure(self) -> bool: ...
     def start(self, call_id: int) -> bool: ...        # True when __sakadeskCallPopup.start ran
-    def reveal(self) -> bool: ...
-    def hide(self) -> None: ...
+    def reveal(self, call_id: int) -> bool: ...     # False for a stale call id (§6.3)
+    def hide(self, call_id: int) -> None: ...       # a no-op when a newer call owns the window
     def cancel(self, call_id: int) -> None: ...
     def deliver_heard(self, target: HeardTarget) -> str: ...   # "delivered" | "not_ready"
 
 def set_call_popup_host(host: CallPopupHost | None) -> None
 def call_popup_available() -> bool
 async def call_popup_start(call_id: int) -> bool
-async def call_popup_reveal() -> bool
-async def call_popup_hide() -> None
+async def call_popup_reveal(call_id: int) -> bool
+async def call_popup_hide(call_id: int) -> None
 async def call_popup_cancel(call_id: int) -> None
 async def call_popup_deliver_heard(target: HeardTarget) -> str   # adds "error" | "no_host"
 def call_popup_ensure() -> None                                     # fire-and-forget thread
@@ -573,7 +576,7 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_abandoned` | call_id, reason (`sync_failed`/`cancelled`), toast (`sent`/`skipped`) |
 | `call_popup_event` | call_id, call_event, phase, reason, error_type |
 | `call_popup_event_stale` | call_id, call_event, reason (`unknown_call`/`wrong_phase`/`message_mismatch`) |
-| `call_popup_hide` | call_id, reason (the event or watchdog that ended the call, or `reveal_failed`) |
+| `call_popup_hide` | call_id, reason (the event or watchdog that ended the call, `reveal_failed`, or `superseded` for a re-hide after a late reveal) |
 | `call_popup_toast` | call_id, kind (`fallback`/`missed`), reason, sent |
 | `call_popup_toast_skip` | call_id, kind (`fallback`/`missed`), reason (`notifications_disabled`) |
 | `call_popup_heard` | call_id, message_id, delivered, attempts, reason (`not_ready`/`error`/`no_host`) |
@@ -587,6 +590,7 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_corner_skipped` (debug) | hresult or error_type (no DWM rounded corners, e.g. Windows 10) |
 | `call_popup_foreground_kept` (debug) | call_id (an answered call is not cut off by the main window gaining focus) |
 | `call_popup_reveal` / `call_popup_reveal_failed` | call_id, dpi, width, height, visible / call_id, error_type (`bad_dpi` also dpi) |
+| `call_popup_reveal_skipped` / `call_popup_hide_skipped` (debug) | call_id, reason (`stale_call`) |
 | `quiet_state` (debug) / `quiet_state_failed` | quns, focus_assist, result / api (`quns`/`wnf`), error_type |
 
 C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the toasts themselves.
@@ -652,7 +656,8 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `already_read` → no toast;
   - missed-call text for count 1 and > 1, with a CJK name;
   - heard retries (`not_ready` twice, then delivered; three failures);
-  - `on_foreground` per phase; `cancel`; `shutdown`; `abandon` for both reasons.
+  - `on_foreground` per phase; `cancel`; `shutdown`; `abandon` for both reasons;
+  - a call ended during the reveal await (foreground, `cancel(disabled)`, declined) is hidden again (`reason=superseded`); an answer during it keeps the popup.
 - **Watchdog vs B:** a test parses `RING_TIMEOUT_MS` and `PRELOAD_TIMEOUT_MS` from the frontend sources and asserts `RING_WATCHDOG_S*1000 > RING_TIMEOUT_MS` and `START_WATCHDOG_S*1000 > PRELOAD_TIMEOUT_MS`.
 - **Sync** (fake manager):
   - the voice item is downloaded in its own first `process_media_queue` call and removed from the chunk loop;
@@ -680,6 +685,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `start` returns False when the script returns false, or while quitting;
   - `reveal` calls `SetWindowPos(…, SWP_NOZORDER|SWP_NOACTIVATE)`, `ShowWindow(SW_SHOWNOACTIVATE)`, then `SetWindowPos(HWND_TOPMOST, …, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE)`, in that order, and never `window.show()`; a DPI of 0 fails with `bad_dpi`;
   - `cancel` runs the script then hides;
+  - call scope and ordering: a reveal after a hide or cancel of the same call, or for a call that was never started, touches no window; a cancel before `start` returns refuses that start (`reason=ended`); a late hide or cancel for an older call leaves the newer one; a cancel issued during a reveal's Win32 calls waits for it, then hides;
   - `destroy` success; `destroy` timeout, including a hung `window.destroy()`, → `Application.Exit` fallback (injected); a second `destroy` is a no-op;
   - a lost window is recreated by the next `start`;
   - `deliver_heard` maps `true`/`null` to `delivered`/`not_ready`.

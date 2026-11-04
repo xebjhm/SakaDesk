@@ -261,8 +261,8 @@ class CallInfo:
 
 class _Bridge(Protocol):
     async def call_popup_start(self, call_id: int) -> bool: ...
-    async def call_popup_reveal(self) -> bool: ...
-    async def call_popup_hide(self) -> None: ...
+    async def call_popup_reveal(self, call_id: int) -> bool: ...
+    async def call_popup_hide(self, call_id: int) -> None: ...
     async def call_popup_cancel(self, call_id: int) -> None: ...
     async def call_popup_deliver_heard(self, target: HeardTarget) -> str: ...
 
@@ -540,24 +540,30 @@ class CallPopupController:
         )
         kind = event.kind
         if kind == "ringing":
-            if not await self._bridge.call_popup_reveal():
-                with self._lock:
-                    still = self._current_id() == call_id and self._phase == RINGING
-                    if still:
-                        self._to_idle_locked()
-                if still:
-                    await self._bridge.call_popup_cancel(call_id)
-                    logger.info(
-                        "call_popup_hide", call_id=call_id, reason="reveal_failed"
-                    )
-                    self._spawn_toast(pending, "fallback", "reveal_failed")
+            revealed = await self._bridge.call_popup_reveal(call_id)
+            with self._lock:
+                current = self._current_id() == call_id
+                still = current and self._phase == RINGING
+                # An answer may land while the reveal returns: that call lives on.
+                alive = current and self._phase in (RINGING, CONNECTED)
+                if still and not revealed:
+                    self._to_idle_locked()
+            if revealed and not alive:
+                # Cancelled, watchdogged or ended while the reveal was awaited:
+                # its hide may have landed before the window was shown.
+                await self._bridge.call_popup_hide(call_id)
+                logger.info("call_popup_hide", call_id=call_id, reason="superseded")
+            elif not revealed and still:
+                await self._bridge.call_popup_cancel(call_id)
+                logger.info("call_popup_hide", call_id=call_id, reason="reveal_failed")
+                self._spawn_toast(pending, "fallback", "reveal_failed")
         elif kind == "answered":
             self._spawn(self._deliver_heard(pending), "call_popup_heard")
         elif kind == "skipped":
             if event.reason != "already_read":
                 self._spawn_toast(pending, "fallback", event.reason or "skipped")
         else:
-            await self._bridge.call_popup_hide()
+            await self._bridge.call_popup_hide(call_id)
             logger.info("call_popup_hide", call_id=call_id, reason=kind)
             if kind in ("declined", "timeout"):
                 self._spawn_toast(pending, "missed", kind)

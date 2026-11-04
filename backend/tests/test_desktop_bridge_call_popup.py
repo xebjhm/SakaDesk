@@ -31,11 +31,11 @@ class Host:
     def start(self, call_id):
         return self._do("start", call_id, result=True)
 
-    def reveal(self):
-        return self._do("reveal", result=True)
+    def reveal(self, call_id):
+        return self._do("reveal", call_id, result=True)
 
-    def hide(self):
-        return self._do("hide")
+    def hide(self, call_id):
+        return self._do("hide", call_id)
 
     def cancel(self, call_id):
         return self._do("cancel", call_id)
@@ -55,12 +55,12 @@ def test_no_host_logs_once_and_returns_safe_values():
     with capture_logs() as logs:
         assert db.call_popup_available() is False
         assert asyncio.run(db.call_popup_start(1)) is False
-        assert asyncio.run(db.call_popup_reveal()) is False
+        assert asyncio.run(db.call_popup_reveal(1)) is False
         assert (
             asyncio.run(db.call_popup_deliver_heard(db.HeardTarget("s", "p", 1)))
             == "no_host"
         )
-        asyncio.run(db.call_popup_hide())
+        asyncio.run(db.call_popup_hide(1))
         asyncio.run(db.call_popup_cancel(1))
         db.call_popup_ensure()
     assert [e for e in logs if e["event"] == "call_popup_unavailable"] == [
@@ -73,7 +73,8 @@ def test_host_calls_pass_through():
     db.set_call_popup_host(host)
     assert db.call_popup_available() is True
     assert asyncio.run(db.call_popup_start(7)) is True
-    assert asyncio.run(db.call_popup_reveal()) is True
+    assert asyncio.run(db.call_popup_reveal(7)) is True
+    asyncio.run(db.call_popup_hide(7))
     asyncio.run(db.call_popup_cancel(7))
     t = db.HeardTarget(
         "hinatazaka46", "日向坂46/messages/34 金村 美玖/58 金村 美玖", 10
@@ -81,6 +82,8 @@ def test_host_calls_pass_through():
     assert asyncio.run(db.call_popup_deliver_heard(t)) == "delivered"
     assert (
         ("start", 7) in host.calls
+        and ("reveal", 7) in host.calls
+        and ("hide", 7) in host.calls
         and ("cancel", 7) in host.calls
         and ("deliver_heard", t) in host.calls
     )
@@ -108,7 +111,7 @@ def test_hanging_host_times_out(monkeypatch):
 
     async def run() -> bool:
         try:
-            return await db.call_popup_reveal()
+            return await db.call_popup_reveal(1)
         finally:
             # Release the hung worker before asyncio.run joins the executor.
             gate.set()
@@ -129,7 +132,7 @@ def test_start_uses_the_longer_timeout(monkeypatch):
     db.set_call_popup_host(Host())
     monkeypatch.setattr(db.asyncio, "wait_for", fake_wait_for)
     asyncio.run(db.call_popup_start(1))
-    asyncio.run(db.call_popup_reveal())
+    asyncio.run(db.call_popup_reveal(1))
     assert seen == [db.BRIDGE_START_TIMEOUT_S, db.BRIDGE_TIMEOUT_S]
 
 
