@@ -10,7 +10,6 @@ import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
-import { motion } from '../../design/tokens';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
@@ -28,6 +27,7 @@ import { CallOverlay } from '../incomingCall/CallOverlay';
 import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 import { useTimelineJump } from './hooks/useTimelineJump';
+import { useLandingHighlight } from './hooks/useLandingHighlight';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -89,8 +89,6 @@ export interface AppSettings {
 
 const MAX_CACHED_CHATS = 20;
 
-/** How long a landed jump keeps its row highlighted before fading out. */
-const JUMP_HIGHLIGHT_MS = motion.duration.landing;
 
 interface MessageCacheEntry {
     messages: GroupMessage[];
@@ -413,31 +411,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
     }, [readState.lastReadId, readState.revealedIds]);
 
-    const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
-    const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const highlightFrameRef = useRef<number | null>(null);
-    const cancelHighlight = useCallback(() => {
-        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-        if (highlightFrameRef.current !== null) cancelAnimationFrame(highlightFrameRef.current);
-        highlightTimerRef.current = null;
-        highlightFrameRef.current = null;
-    }, []);
-    // Clearing first and re-setting on the next frame restarts the CSS animation
-    // when the same row lands twice in a row.
-    const flashLanded = useCallback((id: number) => {
-        cancelHighlight();
-        setHighlightedMessageId(null);
-        highlightFrameRef.current = requestAnimationFrame(() => {
-            highlightFrameRef.current = null;
-            setHighlightedMessageId(id);
-            highlightTimerRef.current = setTimeout(() => setHighlightedMessageId(null), JUMP_HIGHLIGHT_MS);
-        });
-    }, [cancelHighlight]);
-    useEffect(() => cancelHighlight, [cancelHighlight]);
-    useEffect(() => {
-        cancelHighlight();
-        setHighlightedMessageId(null);
-    }, [selectedGroupDir, cancelHighlight]);
+    const { highlightedMessageId, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
     // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
     useEffect(() => {
         visibleRangeRef.current = null;
