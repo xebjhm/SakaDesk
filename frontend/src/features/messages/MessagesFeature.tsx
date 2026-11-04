@@ -77,6 +77,8 @@ export interface AppSettings {
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
     incoming_call_enabled?: boolean;  // ring when opening a 1:1 chat whose newest voice is unheard (default on)
+    close_to_tray?: boolean;  // the window's close button hides it to the tray instead of quitting (default on)
+    autostart?: boolean;  // start at Windows sign-in, hidden in the tray (default off)
     translation_provider?: string | null;
     translation_model?: string | null;
     translation_api_key?: string | null;

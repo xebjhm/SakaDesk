@@ -17,6 +17,7 @@ import { openChatFromToast } from './openChat'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
+import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
@@ -82,6 +83,9 @@ function App() {
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
+        isPolling,
+        followSync,
+        lastHandledRunId,
     } = useSync({
         isAuthenticated,
         appSettings,
@@ -113,6 +117,15 @@ function App() {
         },
         markServiceDisconnected,
     });
+
+    // Follow syncs the backend scheduler / tray started on its own, including ones
+    // that finished (or failed) while nobody was watching.
+    useBackendSyncWatcher({
+        services: isAuthenticated ? connectedServices : [],
+        isPolling,
+        follow: followSync,
+        lastHandledRunId,
+    })
 
     // Track active feature per service for disconnected-service detection
     const activeFeatures = useAppStore(s => s.activeFeatures);

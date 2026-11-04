@@ -42,7 +42,7 @@ class TestStartSync:
             mock_svc.running = False
             mock_get.return_value = mock_svc
 
-            with patch("backend.api.sync.asyncio.create_task"):
+            with patch("backend.services.sync_launcher.asyncio.create_task"):
                 response = client.post("/api/sync/start?service=hinatazaka46")
 
         assert response.status_code == 200
@@ -75,7 +75,9 @@ class TestStartSync:
                 mock_svc.running = False
                 mock_get.return_value = mock_svc
 
-                with patch("backend.api.sync.asyncio.create_task") as mock_create_task:
+                with patch(
+                    "backend.services.sync_launcher.asyncio.create_task"
+                ) as mock_create_task:
                     response = client.post("/api/sync/start?service=hinatazaka46")
 
             assert response.status_code == 503
@@ -90,7 +92,7 @@ class TestStartSync:
             mock_svc.running = False
             mock_get.return_value = mock_svc
 
-            with patch("backend.api.sync.asyncio.create_task"):
+            with patch("backend.services.sync_launcher.asyncio.create_task"):
                 response = client.post(
                     "/api/sync/start?service=hinatazaka46&include_inactive=true"
                 )
@@ -110,7 +112,7 @@ class TestStartSync:
 
             with (
                 patch("backend.api.sync.run_sync_task") as mock_run,
-                patch("backend.api.sync.asyncio.create_task"),
+                patch("backend.services.sync_launcher.asyncio.create_task"),
             ):
                 response = client.post("/api/sync/start?service=hinatazaka46")
 
@@ -124,7 +126,7 @@ class TestStartSync:
             mock_svc.running = False
             mock_get.return_value = mock_svc
 
-            with patch("backend.api.sync.asyncio.create_task"):
+            with patch("backend.services.sync_launcher.asyncio.create_task"):
                 response = client.post(
                     "/api/sync/start?service=hinatazaka46&force_resync=true"
                 )

@@ -1,0 +1,9 @@
+{
+  "open": "Open SakaDesk",
+  "sync_now": "Sync now",
+  "quit": "Quit",
+  "tooltip_idle": "SakaDesk",
+  "tooltip_unread": "SakaDesk — {n} unread",
+  "still_running_title": "SakaDesk is still running",
+  "still_running_body": "It keeps syncing in the tray. Right-click the tray icon to quit."
+}

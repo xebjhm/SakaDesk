@@ -146,6 +146,11 @@ async def lifespan(app: FastAPI):
 
     cleanup_upgrade_files()
 
+    # Let desktop threads (the tray) schedule coroutines on this loop.
+    from backend.services import desktop_bridge
+
+    desktop_bridge.set_server_loop(asyncio.get_running_loop())
+
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
     app_state.init_db()
@@ -198,6 +203,22 @@ async def lifespan(app: FastAPI):
         asyncio.to_thread(warm_key_status_cache), name="warm_key_status_cache"
     )
 
+    # Background auto-sync (one task per service). Started last so everything it
+    # relies on exists; skipped under pytest / E2E test mode (see
+    # scheduler_allowed_in_env) so TestClient(app) never spawns real syncs.
+    from backend.services.auto_sync_scheduler import (
+        AutoSyncScheduler,
+        scheduler_allowed_in_env,
+    )
+    from backend.services.service_utils import get_all_services
+
+    auto_sync_scheduler: AutoSyncScheduler | None = None
+    if scheduler_allowed_in_env():
+        auto_sync_scheduler = AutoSyncScheduler(get_all_services())
+        auto_sync_scheduler.start()
+    else:
+        logger.info("auto_sync_scheduler_skipped", reason="env")
+
     yield
 
     # --- Shutdown ---
@@ -210,6 +231,13 @@ async def lifespan(app: FastAPI):
     # existed at the moment it runs.
     begin_shutdown()
 
+    # Desktop threads must stop scheduling onto this loop, and a waiting
+    # debounced tray refresh must not outlive it.
+    from backend.services.tray_tooltip import cancel_pending
+
+    desktop_bridge.set_server_loop(None)
+    await cancel_pending()
+
     # Cancel the deferred blog backup if it's still pending
     if not background_task.done():
         background_task.cancel()
@@ -217,6 +245,12 @@ async def lifespan(app: FastAPI):
             await background_task
         except asyncio.CancelledError:
             pass
+
+    # Stop the auto-sync scheduler before the write barrier so it cannot launch
+    # a sync while writers are being drained (launch_sync also refuses once
+    # begin_shutdown() has run).
+    if auto_sync_scheduler is not None:
+        await auto_sync_scheduler.stop()
 
     # Ordered write barrier (must not be reordered): quiesce+drain every
     # writer registered above, THEN allow final synchronous writes (window

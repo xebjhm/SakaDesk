@@ -2787,3 +2787,138 @@ class TestGroupFailureAggregation:
         # outer handler as progress.error(...) (old code: gather propagated it).
         mock_progress.error.assert_not_called()
         assert svc.running is False
+
+
+class TestAuthCacheInvalidation:
+    """A sync that saves or deletes the stored session must tell AuthService, so the
+    auto-sync scheduler's authentication gate does not trust a stale cached token."""
+
+    @staticmethod
+    def _client(refresh_error=None, get_groups=None, new_token="tok"):
+        client = MagicMock()
+        client.access_token = "tok"
+        client.refresh_token = "ref"
+        client.cookies = {}
+
+        async def refresh(*_a, **_k):
+            if refresh_error is not None:
+                raise refresh_error
+            client.access_token = new_token
+
+        client.refresh_if_needed = AsyncMock(side_effect=refresh)
+        client.get_groups = AsyncMock(return_value=get_groups)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_delete_is_followed_by_invalidate(self):
+        from pysaka import RefreshFailedError, SessionExpiredError
+
+        order: list[str] = []
+        tm = MagicMock()
+        tm.delete_session.side_effect = lambda s: order.append("delete")
+        client = self._client(refresh_error=RefreshFailedError("x"), get_groups=None)
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch(
+                "backend.api.auth.auth_service.invalidate_session",
+                side_effect=lambda s: order.append(f"invalidate:{s}"),
+            ),
+            pytest.raises(SessionExpiredError),
+        ):
+            await svc._authenticated_client(MagicMock())
+        # A failed verification deletes in both the inner branch and the outer
+        # handler; every delete is followed by an invalidate.
+        assert order[:2] == ["delete", "invalidate:hinatazaka46"]
+        assert order[-1] == "invalidate:hinatazaka46"
+        assert order.count("delete") == order.count("invalidate:hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_confirmed_expiry_via_get_groups_raising_invalidates(self):
+        from pysaka import RefreshFailedError, SessionExpiredError
+
+        tm = MagicMock()
+        client = self._client(refresh_error=RefreshFailedError("x"))
+        client.get_groups = AsyncMock(side_effect=SessionExpiredError("expired"))
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+            pytest.raises(SessionExpiredError),
+        ):
+            await svc._authenticated_client(MagicMock())
+        tm.delete_session.assert_called_once_with("hinatazaka46")
+        invalidate.assert_called_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_refreshed_tokens_save_invalidates_the_cache(self):
+        tm = MagicMock()
+        client = self._client(new_token="fresh")
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+        ):
+            await svc._authenticated_client(MagicMock())
+        tm.save_session.assert_called_once()
+        invalidate.assert_called_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_unchanged_token_does_not_invalidate(self):
+        tm = MagicMock()
+        client = self._client(new_token="tok")
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+        ):
+            await svc._authenticated_client(MagicMock())
+        invalidate.assert_not_called()
+
+    def test_invalidate_failure_is_logged_with_the_error_type_only(self):
+        from structlog.testing import capture_logs
+
+        svc = SyncService()
+        with (
+            patch(
+                "backend.api.auth.auth_service.invalidate_session",
+                side_effect=RuntimeError("secret detail"),
+            ),
+            capture_logs() as logs,
+        ):
+            svc._invalidate_auth_cache()
+        (failed,) = [e for e in logs if e["event"] == "auth_cache_invalidate_failed"]
+        assert failed["error_type"] == "RuntimeError"
+        assert "secret" not in str(logs)

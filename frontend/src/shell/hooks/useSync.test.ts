@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
 
@@ -247,6 +247,155 @@ describe('useSync', () => {
 
         // Not an error — it polled the existing run rather than reporting failure.
         expect(result.current.syncProgressByService['sakurazaka46']?.state).not.toBe('error')
+    })
+
+    // C2: the backend AutoSyncScheduler owns periodic syncs; the frontend only
+    // does the one-time startup sync and never schedules timers of its own.
+    describe('no frontend auto-sync timers', () => {
+        beforeEach(() => { vi.useFakeTimers() })
+        afterEach(() => { vi.useRealTimers() })
+
+        it.each([false, true])('does not start syncs on a timer (adaptive=%s)', async (adaptive) => {
+            const fetchMock = vi.fn((url: string) => {
+                if (url.includes('/api/sync/start')) {
+                    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ status: 'started' }) })
+                }
+                if (url.includes('/api/sync/progress')) {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve({ state: 'idle' }) })
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ is_fresh: false, interval_minutes: 1 }) })
+            })
+            vi.stubGlobal('fetch', fetchMock)
+
+            renderHook(() => useSync({
+                ...defaultOptions,
+                appSettings: {
+                    ...defaultOptions.appSettings,
+                    auto_sync_enabled: true,
+                    adaptive_sync_enabled: adaptive,
+                    sync_interval_minutes: 1,
+                },
+            }))
+            await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+            const startCalls = () => fetchMock.mock.calls.filter(([u]) => String(u).includes('/api/sync/start')).length
+            const afterStartup = startCalls()
+            expect(afterStartup).toBe(1)
+            expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/api/sync/next_interval'))).toBe(false)
+
+            await act(async () => { await vi.advanceTimersByTimeAsync(10 * 60 * 1000) })
+            expect(startCalls()).toBe(afterStartup)
+        })
+    })
+
+    it('exposes isPolling and followSync for the backend sync watcher', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ is_fresh: false, state: 'idle' }),
+        }))
+        const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+        expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        await act(async () => { result.current.followSync('hinatazaka46') })
+        await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle'))
+        expect(result.current.isPolling('hinatazaka46')).toBe(false)
+    })
+
+    describe('followSync on a backend sync that already finished', () => {
+        const progressFetch = (body: Record<string, unknown>) =>
+            vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({ is_fresh: false, ...body }),
+            }))
+
+        it('surfaces session expiry: modal, disconnected marking, no leftover poller', async () => {
+            progressFetch({ state: 'error', run_id: 5, error_code: 'session_expired', detail: 'SESSION_EXPIRED' })
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.sessionExpiredService).toBe('hinatazaka46'))
+            expect(defaultOptions.markServiceDisconnected).toHaveBeenCalledWith('hinatazaka46', 'Session expired')
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(result.current.showSyncModal).toBe(false)
+        })
+
+        it('refreshes messages once for a run that completed unseen', async () => {
+            progressFetch({ state: 'complete', run_id: 5 })
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            const before = result.current.syncVersion
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.syncVersion).toBe(before + 1))
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(defaultOptions.markServiceDisconnected).not.toHaveBeenCalled()
+        })
+    })
+
+    it('records the run_id of every handled progress response per service', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: true,
+            json: () => Promise.resolve({ is_fresh: false, state: 'complete', run_id: 9 }),
+        }))
+        const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+        expect(result.current.lastHandledRunId('hinatazaka46')).toBeUndefined()
+        await act(async () => { result.current.followSync('hinatazaka46') })
+        await waitFor(() => expect(result.current.lastHandledRunId('hinatazaka46')).toBe(9))
+        expect(result.current.lastHandledRunId('sakurazaka46')).toBeUndefined()
+    })
+
+    describe('startSync racing the backend sync watcher', () => {
+        afterEach(() => { vi.useRealTimers() })
+
+        function stubStartAndProgress() {
+            let resolvePost: (r: unknown) => void = () => {}
+            const progress = { state: 'running' as string }
+            vi.stubGlobal('fetch', vi.fn((url: string) => {
+                if (String(url).includes('/api/sync/start')) {
+                    return new Promise(resolve => { resolvePost = resolve })
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ...progress }) })
+            }))
+            return { progress, resolvePost: (r: unknown) => resolvePost(r) }
+        }
+
+        it('reports isPolling true while the start POST is in flight', async () => {
+            const { resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+
+            let pending: Promise<void> = Promise.resolve()
+            act(() => { pending = result.current.startSync(true, 'hinatazaka46') })
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
+                await pending
+            })
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+
+        it('closes the blocking modal when a follow lands before the start POST resolves', async () => {
+            vi.useFakeTimers()
+            const { progress, resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let pending: Promise<void> = Promise.resolve()
+            act(() => { pending = result.current.startSync(true, 'hinatazaka46') })
+            expect(result.current.showSyncModal).toBe(true)
+
+            // Watcher-style follow (non-blocking) attaches the poller first.
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('running')
+
+            // POST resolves afterwards: its blocking poll request must upgrade the live poller.
+            await act(async () => {
+                resolvePost({ ok: true, json: () => Promise.resolve({ status: 'started' }) })
+                await pending
+            })
+            expect(result.current.showSyncModal).toBe(true)
+
+            progress.state = 'idle'
+            await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle')
+            expect(result.current.showSyncModal).toBe(false)
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
     })
 
     it('should provide verifyAndFix callback', () => {

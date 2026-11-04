@@ -6,6 +6,8 @@ from fastapi import APIRouter, Body
 from pydantic import BaseModel
 
 from backend.services import app_state
+from backend.services.tray_tooltip import schedule_refresh_debounced
+from backend.services.unread_summary import READ_STATE_KEY_PREFIX
 
 router = APIRouter()
 
@@ -33,6 +35,10 @@ async def patch_conversation(
     path: str, patch: dict[str, Any] = Body(...)
 ) -> dict[str, bool]:
     await app_state.aset_conversation(path, patch)
+    if path.startswith(READ_STATE_KEY_PREFIX):
+        # The sidebar's read state changed; the tray tooltip's unread total is
+        # computed from these rows, so refresh it (bursts coalesce).
+        schedule_refresh_debounced()
     return {"ok": True}
 
 

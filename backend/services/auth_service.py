@@ -85,6 +85,28 @@ class AuthService:
         else:
             self._session_cache.pop(group_value, None)
 
+    def invalidate_session(self, service: str) -> None:
+        """Drop the cached session of ``service`` after another component changed it.
+
+        ``SyncService`` saves refreshed tokens and deletes expired sessions through
+        the TokenManager directly; calling this afterwards makes the next
+        :meth:`get_status` re-read the store, so the auto-sync scheduler's
+        authentication gate reflects the stored session. Logs ``auth_cache_invalidated``
+        (service). An unknown service id is logged as ``auth_cache_invalidate_skipped``
+        and ignored.
+        """
+        try:
+            group = self._get_group(service)
+        except ValueError:
+            logger.warning(
+                "auth_cache_invalidate_skipped",
+                service=service,
+                reason="unknown_service",
+            )
+            return
+        self._invalidate_session_cache(group.value)
+        logger.info("auth_cache_invalidated", service=service)
+
     def _is_token_expired(self, token: str) -> bool:
         """Check if JWT token is expired. Uses shared pysaka utility."""
         expired = is_jwt_expired(token)

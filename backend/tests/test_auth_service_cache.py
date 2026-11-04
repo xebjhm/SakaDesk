@@ -147,3 +147,45 @@ def test_refresh_invalidates_cache(auth_service):
 
     cached = asyncio.run(run())
     assert cached == "MISSING"
+
+
+def test_invalidate_session_makes_the_next_status_reread_the_store(auth_service):
+    """SyncService changes the stored session behind AuthService's back; calling
+    invalidate_session afterwards makes get_status reflect the real store."""
+    with patch("backend.services.auth_service.get_token_manager") as mock_tm:
+        load = mock_tm.return_value.load_session
+        load.return_value = {"access_token": "tok"}
+        with patch.object(auth_service, "_is_token_expired", return_value=False):
+            with patch.object(
+                auth_service, "_get_token_expiry_timestamp", return_value=None
+            ):
+                status = asyncio.run(auth_service.get_status(service="hinatazaka46"))
+                assert status["authenticated"] is True
+
+                # The session was deleted elsewhere; the cache still says valid.
+                load.return_value = None
+                stale = asyncio.run(auth_service.get_status(service="hinatazaka46"))
+                assert stale["authenticated"] is True
+
+                auth_service.invalidate_session("hinatazaka46")
+                fresh = asyncio.run(auth_service.get_status(service="hinatazaka46"))
+                assert fresh["authenticated"] is False
+
+
+def test_invalidate_session_only_drops_that_service(auth_service):
+    auth_service._session_cache["hinatazaka46"] = {"access_token": "a"}
+    auth_service._session_cache["sakurazaka46"] = {"access_token": "b"}
+    auth_service.invalidate_session("hinatazaka46")
+    assert "hinatazaka46" not in auth_service._session_cache
+    assert "sakurazaka46" in auth_service._session_cache
+
+
+def test_invalidate_session_unknown_service_is_logged_and_ignored(auth_service):
+    from structlog.testing import capture_logs
+
+    auth_service._session_cache["hinatazaka46"] = None
+    with capture_logs() as logs:
+        auth_service.invalidate_session("nope")
+    assert "hinatazaka46" in auth_service._session_cache
+    (skipped,) = [e for e in logs if e["event"] == "auth_cache_invalidate_skipped"]
+    assert skipped["reason"] == "unknown_service"

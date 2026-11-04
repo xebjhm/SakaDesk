@@ -12,3 +12,9 @@ import os
 import tempfile
 
 os.environ.setdefault("SAKADESK_DATA_DIR", tempfile.mkdtemp(prefix="sakadesk-tests-"))
+
+# The app lifespan starts a background auto-sync scheduler; tests that create
+# TestClient(app) must never spawn real syncs. Set here so both tests/ and
+# backend/tests/ runs are covered. A test that wants the scheduler removes this
+# variable with monkeypatch.delenv (see tests/test_auto_sync_scheduler.py).
+os.environ.setdefault("SAKADESK_DISABLE_AUTO_SYNC", "1")

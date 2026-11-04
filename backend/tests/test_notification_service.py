@@ -69,6 +69,13 @@ def test_null_notifier_returns_false_without_logging() -> None:
     assert logs == []
 
 
+def test_null_notifier_show_simple_returns_false_without_logging() -> None:
+    n = ns.NullNotifier("not_windows")
+    with capture_logs() as logs:
+        assert n.show_simple("t", "b") is False
+    assert logs == []
+
+
 def test_null_notifier_status() -> None:
     st = ns.NullNotifier("import_error").status()
     assert st["available"] is False
@@ -251,6 +258,67 @@ def test_windows_notifier_show_failure_sets_last_error(fake_wt) -> None:
     assert n.status()["last_error"] == "RuntimeError"
 
 
+def test_windows_notifier_show_simple_builds_a_hint_toast(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    assert n.show_simple("タイトル 🎉", "本文") is True
+    (toast,) = fake_wt.shown
+    assert toast.text_fields == ["タイトル 🎉", "本文"]
+    assert toast.tag == "app:hint"
+    assert toast.group == "app"
+    assert toast.images == []
+    assert toast.launch_action_set == []
+    assert n.status()["last_error"] is None
+
+
+def test_windows_notifier_show_simple_failure_sets_last_error(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n._toaster.show_toast = lambda _t: (_ for _ in ()).throw(RuntimeError("x"))
+    with pytest.raises(RuntimeError):
+        n.show_simple("t", "b")
+    assert n.status()["last_error"] == "RuntimeError"
+
+
+def test_simple_toast_click_opens_the_window(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_simple("t", "b")
+    calls: list[int] = []
+    with patch.object(ns.desktop_bridge, "open_window", lambda: calls.append(1)):
+        fake_wt.shown[0].on_activated(types.SimpleNamespace(arguments="x"))
+    assert calls == [1]
+
+
+def test_simple_toast_click_without_handler_is_a_noop(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_simple("t", "b")
+    ns.desktop_bridge.set_open_window_handler(None)
+    with capture_logs() as logs:
+        fake_wt.shown[0].on_activated(types.SimpleNamespace(arguments="x"))
+    assert [e["event"] for e in logs] == ["notify_clicked", "window_open_unhandled"]
+
+
+def test_simple_toast_click_never_raises(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_simple("t", "b")
+
+    def boom() -> None:
+        raise ValueError("x")
+
+    with patch.object(ns.desktop_bridge, "open_window", boom):
+        fake_wt.shown[0].on_activated(types.SimpleNamespace(arguments="x"))
+
+
+def test_simple_toast_failure_callback_logs_kind_simple(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_simple("t", "b")
+    with capture_logs() as logs:
+        fake_wt.shown[0].on_failed(types.SimpleNamespace(error_code=7))
+    (e,) = logs
+    assert e["event"] == "notify_failed"
+    assert e["kind"] == "simple"
+    assert e["error_code"] == 7
+    assert n.status()["last_error"] == "ToastFailed"
+
+
 class _Opened(list):
     """Records ``desktop_bridge.open_chat(target, message_id)`` calls."""
 
@@ -390,8 +458,11 @@ def test_get_notifier_builds_windows_notifier_on_win32(fake_wt) -> None:
 
 
 class FakeNotifier:
-    def __init__(self, results=None, exc=None):
+    def __init__(self, results=None, exc=None, simple_result=True, simple_exc=None):
         self.shown: list[ToastPlan] = []
+        self.simple: list[tuple[str, str]] = []
+        self._simple_result = simple_result
+        self._simple_exc = simple_exc
         self._results = results
         self._exc = exc
 
@@ -402,6 +473,12 @@ class FakeNotifier:
         if self._results is not None:
             return self._results[len(self.shown) - 1]
         return True
+
+    def show_simple(self, title, body):
+        self.simple.append((title, body))
+        if self._simple_exc is not None:
+            raise self._simple_exc
+        return self._simple_result
 
     def status(self):
         return {}
@@ -590,6 +667,101 @@ def test_executor_failure_is_logged_and_frees_the_slot() -> None:
     (failed,) = [e for e in logs if e["event"] == "notify_failed"]
     assert failed["error_type"] == "RuntimeError"
     assert not ns._show_running
+
+
+# ------------------------------------------------------------------ send_simple
+
+
+def test_send_simple_logs_sent_kind_simple_without_text() -> None:
+    fake = FakeNotifier()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_simple("標題 金村", "内容 秘密")) is True
+    assert fake.simple == [("標題 金村", "内容 秘密")]
+    (sent,) = [e for e in logs if e["event"] == "notify_sent"]
+    assert sent["kind"] == "simple"
+    assert "金村" not in repr(logs) and "秘密" not in repr(logs)
+
+
+def test_send_simple_runs_on_the_toast_thread() -> None:
+    names: list[str] = []
+
+    class Spy(FakeNotifier):
+        def show_simple(self, title, body):
+            names.append(threading.current_thread().name)
+            return True
+
+    with patch.object(ns, "get_notifier", lambda: Spy()):
+        assert asyncio.run(ns.send_simple("t", "b")) is True
+    assert names and names[0].startswith("toast")
+
+
+def test_send_simple_exception_is_logged_not_raised() -> None:
+    fake = FakeNotifier(simple_exc=RuntimeError("boom 金村"))
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_simple("t", "b")) is False
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["kind"] == "simple"
+    assert failed["error_type"] == "RuntimeError"
+    assert "金村" not in repr(logs)
+    assert not ns._show_running
+
+
+def test_send_simple_false_result_logs_not_shown() -> None:
+    fake = FakeNotifier(simple_result=False)
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_simple("t", "b")) is False
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["kind"] == "simple" and failed["reason"] == "not_shown"
+
+
+def test_send_simple_unavailable_notifier_is_skipped() -> None:
+    class Down(FakeNotifier):
+        def status(self):
+            return {"available": False, "last_error": "not_windows"}
+
+    fake = Down()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_simple("t", "b")) is False
+    assert fake.simple == []
+    (skip,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert skip["reason"] == "unavailable" and skip["kind"] == "simple"
+
+
+def test_send_simple_times_out_then_is_busy_like_plans() -> None:
+    release = threading.Event()
+
+    class Stuck(FakeNotifier):
+        def show_simple(self, title, body):
+            release.wait(5)
+            return True
+
+    fake = Stuck()
+
+    async def run():
+        with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
+            with patch.object(ns, "get_notifier", lambda: fake):
+                first = await ns.send_simple("t", "b")
+                # shares the guard with plans: a plan is skipped as busy too
+                plan_sent = await ns.send_planned([_plan("34")])
+                second = await ns.send_simple("t", "b")
+        return first, plan_sent, second
+
+    try:
+        with capture_logs() as logs:
+            first, plan_sent, second = asyncio.run(run())
+    finally:
+        release.set()
+    assert (first, plan_sent, second) == (False, 0, False)
+    failed = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed[0]["error_type"] == "TimeoutError"
+    assert failed[0]["kind"] == "simple"
+    skips = [e for e in logs if e["event"] == "notify_skip"]
+    assert [e["reason"] for e in skips] == ["busy", "busy"]
+    assert skips[1]["kind"] == "simple"
 
 
 def test_show_timeout_is_ten_seconds() -> None:

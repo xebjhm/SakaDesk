@@ -4,7 +4,9 @@ Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """
 
+import asyncio
 import json
+import sys
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -18,6 +20,8 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
+from backend.services import autostart
+from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
     load_config as _store_load,
@@ -103,6 +107,8 @@ class SettingsResponse(BaseModel):
     incoming_call_enabled: bool = (
         True  # Ring when opening a 1:1 chat whose newest voice is unheard
     )
+    close_to_tray: bool = True  # Closing the window hides it to the tray
+    autostart: bool = False  # Start at Windows sign-in, hidden in the tray
 
 
 class SettingsUpdate(BaseModel):
@@ -120,6 +126,8 @@ class SettingsUpdate(BaseModel):
     auto_download_updates: Optional[bool] = None
     sync_read_to_phone: Optional[bool] = None
     incoming_call_enabled: Optional[bool] = None
+    close_to_tray: Optional[bool] = None
+    autostart: Optional[bool] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -134,6 +142,28 @@ class ServiceSettings(BaseModel):
     adaptive_sync_enabled: bool = True
     last_sync: Optional[str] = None
     blogs_full_backup: bool = False
+
+
+# Settings that change when the auto-sync scheduler should next run.
+_SCHEDULE_KEYS = ("auto_sync_enabled", "sync_interval_minutes", "adaptive_sync_enabled")
+
+
+async def _apply_autostart(enabled: bool) -> None:
+    """Sync the Windows Run value with the saved setting, off the event loop.
+
+    ``autostart.apply`` never raises and logs its own outcome; the guard here
+    only keeps an unexpected error from failing a settings update that was
+    already saved.
+    """
+    try:
+        await asyncio.to_thread(
+            autostart.apply,
+            enabled,
+            frozen=bool(getattr(sys, "frozen", False)),
+            exe=Path(sys.executable),
+        )
+    except Exception as e:
+        logger.warning("autostart", action="failed", error_type=type(e).__name__)
 
 
 @router.get("", response_model=SettingsResponse)
@@ -160,14 +190,20 @@ async def get_settings():
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
         incoming_call_enabled=config.get("incoming_call_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
     )
 
 
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
+    autostart_change: Optional[bool] = None
+    schedule_changed = False
 
     def _apply(config: dict) -> None:
+        nonlocal autostart_change, schedule_changed
+        before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
             config["is_configured"] = True
@@ -190,8 +226,22 @@ async def update_settings(update: SettingsUpdate):
             config["sync_read_to_phone"] = update.sync_read_to_phone
         if update.incoming_call_enabled is not None:
             config["incoming_call_enabled"] = update.incoming_call_enabled
+        if update.close_to_tray is not None:
+            config["close_to_tray"] = update.close_to_tray
+        if update.autostart is not None:
+            if update.autostart != config.get("autostart", False):
+                autostart_change = update.autostart
+            config["autostart"] = update.autostart
+        schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
 
     config = await _store_update(_apply)
+
+    if schedule_changed:
+        # The scheduler would otherwise only notice after its current wait.
+        wake_scheduler()
+
+    if autostart_change is not None:
+        await _apply_autostart(autostart_change)
 
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
@@ -208,6 +258,8 @@ async def update_settings(update: SettingsUpdate):
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
         incoming_call_enabled=config.get("incoming_call_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
     )
 
 
@@ -234,8 +286,6 @@ async def check_fresh_install():
 @router.post("/select-folder")
 async def select_folder():
     """Open a native folder picker dialog."""
-    import asyncio
-
     try:
         import tkinter as tk
         from tkinter import filedialog

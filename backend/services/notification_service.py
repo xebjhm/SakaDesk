@@ -20,7 +20,7 @@ import sys
 import threading
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 import structlog
 
@@ -35,6 +35,8 @@ _BACKEND_WINDOWS = "windows_toasts"
 _BACKEND_NONE = "none"
 _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fire
 _SHOW_TIMEOUT_S = 10  # seconds one show may take before it counts as failed
+_SIMPLE_TAG = "app:hint"  # hint toasts share one Action Center slot
+_SIMPLE_GROUP = "app"
 
 _notifications_enabled = True
 
@@ -49,6 +51,8 @@ class Notifier(Protocol):
     """Shows one planned toast and reports its own health."""
 
     def show(self, plan: ToastPlan) -> bool: ...
+
+    def show_simple(self, title: str, body: str) -> bool: ...
 
     def status(self) -> dict: ...
 
@@ -80,6 +84,9 @@ class NullNotifier:
         self._reason = reason
 
     def show(self, plan: ToastPlan) -> bool:
+        return False
+
+    def show_simple(self, title: str, body: str) -> bool:
         return False
 
     def status(self) -> dict:
@@ -123,6 +130,28 @@ class WindowsToastNotifier:
                 self._add_avatar(toast, plan)
             toast.on_activated = lambda _args, p=plan: self._on_click(p)
             toast.on_failed = lambda args, p=plan: self._on_failed(p, args)
+            self._live.append(toast)
+            self._toaster.show_toast(toast)
+        except Exception as e:
+            self._last_error = type(e).__name__
+            raise
+        self._last_error = None
+        return True
+
+    def show_simple(self, title: str, body: str) -> bool:
+        """Show an app-level hint toast (no chat, no avatar); raises on failure.
+
+        A click shows the main window through :func:`desktop_bridge.open_window`
+        (a no-op when no handler is registered).
+        """
+        wt = self._wt
+        try:
+            toast = wt.Toast(text_fields=[title, body])
+            # One fixed slot: a newer hint replaces the older one.
+            toast.tag = _SIMPLE_TAG
+            toast.group = _SIMPLE_GROUP
+            toast.on_activated = lambda _args: self._on_simple_click()
+            toast.on_failed = lambda args: self._on_simple_failed(args)
             self._live.append(toast)
             self._toaster.show_toast(toast)
         except Exception as e:
@@ -182,6 +211,27 @@ class WindowsToastNotifier:
             desktop_bridge.open_chat(plan.target, message_id)
         except Exception as e:
             logger.warning("notify_open_chat_failed", error_type=type(e).__name__)
+
+    def _on_simple_click(self) -> None:
+        """WinRT-thread ``on_activated`` callback for a hint toast. Never raises."""
+        try:
+            logger.info("notify_clicked", kind="simple")
+            desktop_bridge.open_window()
+        except Exception as e:  # pragma: no cover - open_window never raises
+            logger.warning("window_open_failed", error_type=type(e).__name__)
+
+    def _on_simple_failed(self, event_args: Any) -> None:
+        """WinRT-thread callback for a hint toast. Never raises."""
+        self._last_error = "ToastFailed"
+        try:
+            logger.warning(
+                "notify_failed",
+                kind="simple",
+                error_type="ToastFailed",
+                error_code=getattr(event_args, "error_code", None),
+            )
+        except Exception:  # pragma: no cover - logging must not break WinRT
+            pass
 
     def _on_failed(self, plan: ToastPlan, event_args: Any) -> None:
         """WinRT-thread callback. Never raises."""
@@ -297,29 +347,34 @@ def _reset_toast_executor_for_tests() -> None:
         executor.shutdown(wait=False)
 
 
-async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
-    """Show ``plan`` on the toast worker thread; log the outcome. Never raises.
+async def _run_guarded(
+    job_fn: Callable[[], bool],
+    fields: dict[str, Any],
+    *,
+    skip_extra: dict[str, Any],
+    sent_extra: dict[str, Any],
+) -> bool:
+    """Run ``job_fn`` (a notifier show) on the toast worker; log the outcome.
+
+    Never raises. ``fields`` are added to every failure/skip log, ``skip_extra``
+    to the busy skip and ``sent_extra`` to the success log.
 
     A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
     ``notify_failed`` (``error_type=TimeoutError``); its worker thread is left
     to finish on its own. While such a show is still running, further shows
     are not queued behind it: they are skipped with ``notify_skip
-    reason=busy`` (ids and ``count`` only).
+    reason=busy``.
     """
     if not _claim_show_slot():
-        logger.info(
-            "notify_skip", reason="busy", **_fail_fields(plan), count=plan.count
-        )
+        logger.info("notify_skip", reason="busy", **fields, **skip_extra)
         return False
     try:
         # submit + done-callback (not run_in_executor) so the slot is also
         # freed if the job is cancelled before the worker ever starts it.
-        job = _get_toast_executor().submit(notifier.show, plan)
+        job = _get_toast_executor().submit(job_fn)
     except Exception as e:  # e.g. the executor was shut down
         _release_show_slot()
-        logger.warning(
-            "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
-        )
+        logger.warning("notify_failed", **fields, error_type=type(e).__name__)
         return False
     job.add_done_callback(lambda _f: _release_show_slot())
     try:
@@ -327,23 +382,30 @@ async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
             asyncio.wrap_future(job), timeout=_SHOW_TIMEOUT_S
         )
     except TimeoutError:
-        logger.warning("notify_failed", **_fail_fields(plan), error_type="TimeoutError")
+        logger.warning("notify_failed", **fields, error_type="TimeoutError")
         return False
     except Exception as e:
-        logger.warning(
-            "notify_failed", **_fail_fields(plan), error_type=type(e).__name__
-        )
+        logger.warning("notify_failed", **fields, error_type=type(e).__name__)
         return False
     if not shown:
-        logger.warning("notify_failed", **_fail_fields(plan), reason="not_shown")
+        logger.warning("notify_failed", **fields, reason="not_shown")
         return False
-    logger.info(
-        "notify_sent",
-        **_fail_fields(plan),
-        count=plan.count,
-        newest_type=plan.newest_type,
-    )
+    logger.info("notify_sent", **fields, **sent_extra)
     return True
+
+
+async def _show_one(notifier: Notifier, plan: ToastPlan) -> bool:
+    """Show ``plan`` on the toast worker thread; log the outcome. Never raises.
+
+    Guarded as described in :func:`_run_guarded`; logs carry ids and ``count``
+    only.
+    """
+    return await _run_guarded(
+        lambda: notifier.show(plan),
+        _fail_fields(plan),
+        skip_extra={"count": plan.count},
+        sent_extra={"count": plan.count, "newest_type": plan.newest_type},
+    )
 
 
 async def send_planned(plans: list[ToastPlan]) -> int:
@@ -378,6 +440,34 @@ async def send_planned(plans: list[ToastPlan]) -> int:
         if await _show_one(notifier, plan):
             sent += 1
     return sent
+
+
+async def send_simple(title: str, body: str) -> bool:
+    """Show an app-level hint toast (off the event loop); return whether it showed.
+
+    Goes through the same worker thread, busy guard and timeout as chat
+    toasts. Not gated on the notifications flag: it is a one-time lifecycle
+    hint, not a message notification. Skipped when the notifier is unavailable
+    (``notify_skip reason=unavailable kind=simple``). Outcomes are logged as
+    ``notify_sent`` / ``notify_failed`` with ``kind=simple``; the title and
+    body are never logged. Never raises.
+    """
+    notifier = await asyncio.to_thread(get_notifier)
+    status = notifier.status()
+    if not status.get("available", True):
+        logger.info(
+            "notify_skip",
+            reason="unavailable",
+            kind="simple",
+            backend_reason=status.get("last_error"),
+        )
+        return False
+    return await _run_guarded(
+        lambda: notifier.show_simple(title, body),
+        {"kind": "simple"},
+        skip_extra={},
+        sent_extra={},
+    )
 
 
 async def send_test(lang: str | None) -> bool:

@@ -11,6 +11,8 @@ project_root = Path(SPECPATH).parent.resolve()
 datas = [
     (str(project_root / 'frontend' / 'dist'), 'frontend/dist'),
     (str(project_root / 'pyproject.toml'), '.'),
+    # Tray icon, loaded by tray.py from sys._MEIPASS/assets when frozen.
+    (str(project_root / 'tooling' / 'windows' / 'SakaDesk.ico'), 'assets'),
 ]
 binaries = []
 hiddenimports = [
@@ -58,6 +60,9 @@ packages_to_collect = [
     'jaconv',
     'windows_toasts',
     'winrt',
+    # System tray (tray.py imports both lazily); PIL loads the tray icon.
+    'pystray',
+    'PIL',
 ]
 
 for pkg in packages_to_collect:

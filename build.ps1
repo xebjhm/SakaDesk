@@ -108,7 +108,7 @@ else {
 # --- 2. Executable (+ installer) ------------------------------------------
 Write-Host "[2/2] Building executable (PyInstaller)$(if (-not $ExeOnly) { ' + installer (Inno Setup)' })..." -ForegroundColor Cyan
 # Ephemeral build deps via --with (kept out of pyproject/uv.lock); pinned to 3.12.
-$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller', '--with', 'pywebview', 'python')
+$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller', '--with', 'pywebview==5.3.2', 'python')
 if ($ExeOnly) {
     & uv @uvPrefix -m PyInstaller --noconfirm --clean 'tooling/build_windows.spec'
 }
