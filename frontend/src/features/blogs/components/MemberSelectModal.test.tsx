@@ -54,4 +54,10 @@ describe('MemberSelectModal', () => {
         expect(screen.getByRole('button', { name: /^春野 ひなた$/ })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Add 春野 ひなた to favorites' })).toHaveAttribute('aria-pressed', 'false');
     });
+
+    it('names the heart with the formatted (spaced) name', async () => {
+        renderModal({ members: [{ id: '9903', name: '春野日向', thumbnail: null }] });
+        expect(screen.getByRole('button', { name: /^春野 日向$/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add 春野 日向 to favorites' })).toBeInTheDocument();
+    });
 });

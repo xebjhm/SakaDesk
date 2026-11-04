@@ -230,8 +230,8 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                     type="button"
                                                     onClick={() => toggleFavorite(serviceId, member.id)}
                                                     aria-label={isFavorited
-                                                        ? t('blogs.removeFavorite', { name: member.nameJp })
-                                                        : t('blogs.addFavorite', { name: member.nameJp })}
+                                                        ? t('blogs.removeFavorite', { name: formatName(member.nameJp) })
+                                                        : t('blogs.addFavorite', { name: formatName(member.nameJp) })}
                                                     aria-pressed={isFavorited}
                                                     className="absolute right-3 top-16 flex rounded-pill bg-pill p-1 shadow-pill transition-transform duration-fast ease-standard hover:scale-110 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
                                                 >

@@ -68,7 +68,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 cachedBlogs.map((blog) => getBlogContent(serviceId, blog.id).then((content) => ({ blog, content })))
             );
 
-            if (cancelled) return;
+            if (cancelled) { logDialogLoad('blog_gallery', 'cancelled'); return; }
 
             const allPhotos: BlogPhotoItem[] = [];
             for (const result of results) {
@@ -202,7 +202,8 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 bodyClassName="px-0 pb-0"
                 footer={
                     <>
-                        <p className="mr-auto text-small text-muted">{t('blogGallery.count', { count: photos.length })}</p>
+                        {/* An empty spacer while loading keeps the Jump to date button on the right. */}
+                        <p className="mr-auto text-small text-muted">{loading ? null : t('blogGallery.count', { count: photos.length })}</p>
                         <Button variant="ghost" onClick={() => setShowCalendar(true)}>
                             <Calendar className="h-4 w-4" />
                             {t('blogGallery.jumpToDate')}
