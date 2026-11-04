@@ -167,4 +167,13 @@ test.describe('timeline scroll', () => {
     }, id)
     expect(hit).toBe(`msg-${id}`)
   })
+
+  test('a sent letter shows on its day, keyed apart from messages', async ({ page }) => {
+    await openBigRoom(page)
+    const dialog = await openCalendarAt(page, 'February 2022')
+    // The grid also shows the dimmed 10 March; the in-month day comes first.
+    await dialog.getByRole('button', { name: '10', exact: true }).first().click()
+    await expect(page.locator('#letter-9001')).toBeAttached({ timeout: 2000 })
+    await expect(page.locator('#letter-9001 img').first()).toHaveAttribute('src', /letters\/9001\.jpg$/)
+  })
 })

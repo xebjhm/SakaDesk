@@ -16,6 +16,16 @@ const END = Date.UTC(2026, 10, 3, 3, 0, 0)
 // Pictures are sparse so the media gallery has exactly three items.
 export const PICTURE_IDS = new Set([100, 2000, 4990])
 
+export interface FixtureLetter { id: number; created_at: string; text: string; width: number; height: number }
+
+/** Sent letters of the big room (23:00 JST, after that day's messages). Letter 100 shares its id with message 100, a picture. */
+export const LETTERS: FixtureLetter[] = [
+  { id: 9001, created_at: '2022-02-10T14:00:00Z', text: 'Letter 9001 🌸', width: 341, height: 512 },
+  { id: 100, created_at: '2023-06-01T14:00:00Z', text: 'Letter 100', width: 341, height: 512 },
+  { id: 9002, created_at: '2025-05-05T14:00:00Z', text: 'Letter 9002', width: 341, height: 512 },
+  { id: 9003, created_at: '2026-11-02T14:00:00Z', text: 'Letter 9003', width: 341, height: 512 },
+]
+
 export interface FixtureMessage {
   id: number
   member_id: string
@@ -86,6 +96,8 @@ export interface PinOptions {
   lastReadId?: number
   /** Service the two rooms belong to (default hinatazaka46). */
   service?: string
+  /** Letters of the big room (default LETTERS); the other room has none. */
+  letters?: FixtureLetter[]
 }
 
 export async function pinBigRoom(page: Page, opts: PinOptions): Promise<void> {
@@ -158,6 +170,23 @@ export async function pinBigRoom(page: Page, opts: PinOptions): Promise<void> {
     return route.fulfill({ json: { dates: [...counts].map(([date, count]) => ({ date, count })) } })
   })
   await page.route('**/api/chat/streak/**', (route) => route.fulfill({ json: { days: 128, is_active: true } }))
+  await page.route('**/api/chat/letters_local*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    const letters = path.includes('Big Room') ? (opts.letters ?? LETTERS) : []
+    return route.fulfill({
+      json: {
+        letters: letters.map((l) => ({ ...l, image_url: `/api/content/media/${service}/messages/1 Big Room/1 Big Room/letters/${l.id}.jpg` })),
+      },
+    })
+  })
+  await page.route('**/api/account/profile*', (route) =>
+    route.fulfill({
+      json: {
+        name: 'Fixture Fan',
+        avatars: [{ url: `/api/content/media/${service}/account/profile_images/thumbnail/me.jpg`, first_seen: '2022-01-01T00:00:00Z' }],
+      },
+    }),
+  )
   await page.route('**/api/content/media/**', (route) =>
     route.fulfill({ body: PNG, contentType: 'image/png' }),
   )
@@ -182,14 +211,15 @@ export async function topVisibleMessageId(page: Page): Promise<number | null> {
   })
 }
 
-/** Whether the row for `id` lies inside the chat viewport. */
-export async function isRowInViewport(page: Page, id: number): Promise<boolean> {
+/** Whether a row (a message id, or a row key such as 'letter-100') lies inside the chat viewport. */
+export async function isRowInViewport(page: Page, row: number | string): Promise<boolean> {
+  const key = typeof row === 'number' ? `msg-${row}` : row
   return page.evaluate((target) => {
     const scroller = document.querySelector<HTMLElement>('[data-virtuoso-scroller]')
-    const row = document.getElementById(`msg-${target}`)
-    if (!scroller || !row) return false
+    const el = document.getElementById(target)
+    if (!scroller || !el) return false
     const s = scroller.getBoundingClientRect()
-    const r = row.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
     return r.bottom > s.top && r.top < s.bottom
-  }, id)
+  }, key)
 }

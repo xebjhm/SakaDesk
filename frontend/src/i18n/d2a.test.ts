@@ -14,6 +14,8 @@ const D2A_KEYS = [
     'serviceRail.label',
     'featureRail.label',
     'messageList.openConversations',
+    'letters.openImage',
+    'letters.you',
 ] as const;
 
 describe('D2a strings', () => {

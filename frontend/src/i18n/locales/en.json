@@ -631,5 +631,9 @@
     "roles": "Roles",
     "roleName": "Role",
     "roleStep": "Step"
+  },
+  "letters": {
+    "openImage": "Open letter",
+    "you": "You"
   }
 }

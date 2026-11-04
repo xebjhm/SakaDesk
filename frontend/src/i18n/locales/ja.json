@@ -631,5 +631,9 @@
     "roles": "役割",
     "roleName": "役割",
     "roleStep": "段階"
+  },
+  "letters": {
+    "openImage": "レターを開く",
+    "you": "あなた"
   }
 }

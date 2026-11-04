@@ -20,7 +20,8 @@ for (const service of SERVICES) {
     await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
     await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-home.png` })
     await page.getByText('Big Room', { exact: true }).click()
-    await expect(page.locator(`#msg-${COUNT - 4}`)).toBeVisible({ timeout: 10000 })
+    // The chat lands on the first unread row (COUNT - 2); the rows above it may be scrolled away.
+    await expect(page.locator(`#msg-${COUNT - 2}`)).toBeVisible({ timeout: 10000 })
     await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-chat.png` })
   })
 }

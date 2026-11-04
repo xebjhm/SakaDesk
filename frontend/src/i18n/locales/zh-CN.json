@@ -631,5 +631,9 @@
     "roles": "用途",
     "roleName": "用途",
     "roleStep": "色阶"
+  },
+  "letters": {
+    "openImage": "打开信件",
+    "you": "你"
   }
 }

@@ -37,7 +37,10 @@ import { useLandingHighlight } from './hooks/useLandingHighlight';
 import { buildTimeline } from './timeline/buildTimeline';
 import { firstUnreadIndex } from './timeline/jumpTarget';
 import { applyNickname } from './utils/nickname';
-import type { Letter } from './letters';
+import { useRoomLetters } from './hooks/useRoomLetters';
+import { LetterRow } from './components/LetterRow';
+import { letterAvatars, type Letter } from './letters';
+import { clientLog } from '../../utils/clientLog';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -98,8 +101,6 @@ export interface AppSettings {
 }
 
 const MAX_CACHED_CHATS = 20;
-/** No letters yet: Task 11 replaces this with the room's letters from the local archive. */
-const NO_LETTERS: readonly Letter[] = [];
 
 
 interface MessageCacheEntry {
@@ -430,7 +431,32 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // One timeline for the list, the jumps, the restore and the unread arrows.
     const userNickname = messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined;
     const displayMessages = useMemo(() => applyNickname(messages, userNickname), [messages, userNickname]);
-    const timeline = useMemo(() => buildTimeline(displayMessages, NO_LETTERS), [displayMessages]);
+    // Sent letters (local archive) and the account profile; group chats have none.
+    const roomLetters = useRoomLetters(activeService, selectedGroupDir, isGroupChat, syncVersion);
+    const timeline = useMemo(() => buildTimeline(displayMessages, roomLetters.letters), [displayMessages, roomLetters.letters]);
+    const letterAvatar = useMemo(
+        () => letterAvatars(roomLetters.letters, roomLetters.profile?.avatars ?? []),
+        [roomLetters.letters, roomLetters.profile],
+    );
+    // Breadcrumb: how each letter's avatar was chosen (history vs earliest-known fallback).
+    useEffect(() => {
+        if (!roomLetters.profile || roomLetters.letters.length === 0) return;
+        clientLog('letter_avatar', {
+            count: roomLetters.letters.length,
+            history: letterAvatar.history,
+            fallback: letterAvatar.fallback,
+        });
+    }, [letterAvatar, roomLetters.profile, roomLetters.letters.length]);
+    const letterUserName = roomLetters.profile?.name || userNickname || t('letters.you');
+    const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
+    const renderLetter = useCallback((letter: Letter) => (
+        <LetterRow
+            letter={letter}
+            avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
+            userName={letterUserName}
+            onOpenImage={setLetterViewer}
+        />
+    ), [letterAvatar, letterUserName]);
 
     const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
     // The old room's visible range says nothing about the new one: unknown until MessageList reports it.
@@ -787,7 +813,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-feedback-error">Error: {error}</div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomLetters.ready && (
                         <MessageList
                             memberId={selectedGroupDir}
                             timeline={timeline}
@@ -809,6 +835,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             highlightedRowKey={highlightedRowKey}
                             getMemberPath={getMemberPath}
                             onOpenCalendar={openCalendar}
+                            renderLetter={renderLetter}
                         />
                     )}
                     <CallOverlay
@@ -907,6 +934,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     currentIndex={mediaViewerIndex}
                     onClose={() => setMediaViewerIndex(null)}
                     onNavigate={setMediaViewerIndex}
+                />
+            )}
+            {/* Letter image viewer */}
+            {letterViewer?.image_url && (
+                <MediaViewerModal
+                    mediaItems={[{ src: letterViewer.image_url, type: 'picture', timestamp: letterViewer.created_at }]}
+                    currentIndex={0}
+                    onClose={() => setLetterViewer(null)}
+                    onNavigate={() => {}}
                 />
             )}
         </div>
