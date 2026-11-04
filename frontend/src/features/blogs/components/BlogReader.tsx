@@ -341,6 +341,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             <div className="px-4 py-2 border-b border-gray-200/60 backdrop-blur-sm bg-white/70 flex items-center gap-2 text-sm shrink-0 relative z-10">
                 <button
                     onClick={onBack}
+                    aria-label={t('blogs.back')}
                     className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
                 >
                     <svg

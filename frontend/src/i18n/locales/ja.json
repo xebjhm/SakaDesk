@@ -473,7 +473,8 @@
     "post_other": "{{count}}件の記事",
     "syncingBlogs": "ブログを同期中...",
     "firstSyncHint": "初回は少し時間がかかる場合があります",
-    "selectService": "サービスを選択してください"
+    "selectService": "サービスを選択してください",
+    "back": "新着ブログに戻る"
   },
   "voicePlayer": {
     "speed": "再生速度",

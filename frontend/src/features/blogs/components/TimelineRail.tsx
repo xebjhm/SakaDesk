@@ -233,6 +233,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
     return (
         <div
             ref={railRef}
+            data-testid="timeline-rail"
             className="absolute right-0 top-1/2 -translate-y-1/2 w-14 flex flex-col items-center cursor-pointer select-none"
             style={{ height: '70%', minHeight: '300px' }}
             onMouseMove={handleMouseMove}

@@ -473,7 +473,8 @@
     "post_other": "{{count}} 篇文章",
     "syncingBlogs": "正在同步 Blog...",
     "firstSyncHint": "首次同步可能需要一些時間",
-    "selectService": "請選擇服務"
+    "selectService": "請選擇服務",
+    "back": "返回最新 Blog"
   },
   "voicePlayer": {
     "speed": "播放速度",

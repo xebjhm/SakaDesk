@@ -473,7 +473,8 @@
     "post_other": "{{count}} 篇文",
     "syncingBlogs": "同步緊 Blog...",
     "firstSyncHint": "第一次同步可能要等陣",
-    "selectService": "請揀個服務先"
+    "selectService": "請揀個服務先",
+    "back": "返去最新 Blog"
   },
   "voicePlayer": {
     "speed": "播放速度",

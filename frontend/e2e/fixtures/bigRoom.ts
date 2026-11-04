@@ -98,6 +98,8 @@ export interface PinOptions {
   service?: string
   /** Letters of the big room (default LETTERS); the other room has none. */
   letters?: FixtureLetter[]
+  /** Feature open at start (default messages). */
+  feature?: 'messages' | 'blogs'
 }
 
 export async function pinBigRoom(page: Page, opts: PinOptions): Promise<void> {
@@ -117,7 +119,7 @@ export async function pinBigRoom(page: Page, opts: PinOptions): Promise<void> {
           state: {
             selectedServices: [service],
             activeService: service,
-            activeFeatures: { [service]: 'messages' },
+            activeFeatures: { [service]: opts.feature ?? 'messages' },
           },
           version: 4,
         }),

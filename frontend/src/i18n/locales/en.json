@@ -473,7 +473,8 @@
     "post_other": "{{count}} posts",
     "syncingBlogs": "Syncing blogs...",
     "firstSyncHint": "This may take a moment for the first time",
-    "selectService": "Please select a service"
+    "selectService": "Please select a service",
+    "back": "Back to latest blogs"
   },
   "voicePlayer": {
     "speed": "Speed",
