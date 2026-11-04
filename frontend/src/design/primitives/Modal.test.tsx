@@ -668,3 +668,265 @@ describe('Modal: the dialog layer in depth', () => {
         expect(zOf('上')).toBe(Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP);
     });
 });
+
+describe('Modal: focus restore and trap (fix wave 2)', () => {
+    const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    /** Outer opened by a button, inner opened by a button inside the outer; the app can close the outer. */
+    const OuterInner = () => {
+        const [outer, setOuter] = useState(false);
+        const [inner, setInner] = useState(false);
+        return (
+            <>
+                <button onClick={() => setOuter(true)}>外を開く</button>
+                <button data-testid="app-close" tabIndex={-1} onClick={() => setOuter(false)} />
+                <Modal isOpen={outer} onClose={() => setOuter(false)} title="外">
+                    <button onClick={() => setInner(true)}>内を開く</button>
+                    <Modal isOpen={inner} onClose={() => setInner(false)} title="内" closeLabel="内を閉じる"><button>はい</button></Modal>
+                </Modal>
+            </>
+        );
+    };
+
+    const openBoth = async () => {
+        await userEvent.click(screen.getByRole('button', { name: '外を開く' }));
+        await userEvent.click(screen.getByRole('button', { name: '内を開く' }));
+        expect(screen.getByRole('dialog', { name: '内' })).toHaveFocus();
+    };
+
+    it('the app closing the outer with the inner open returns focus to the outer opener', async () => {
+        render(<OuterInner />);
+        await openBoth();
+        act(() => { (screen.getByTestId('app-close') as HTMLButtonElement).click(); });
+        await flush();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByRole('button', { name: '外を開く' })).toHaveFocus();
+        expect(openDialogCount()).toBe(0);
+    });
+
+    it('the same under StrictMode', async () => {
+        render(<StrictMode><OuterInner /></StrictMode>);
+        await openBoth();
+        act(() => { (screen.getByTestId('app-close') as HTMLButtonElement).click(); });
+        await flush();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.getByRole('button', { name: '外を開く' })).toHaveFocus();
+    });
+
+    it('closing the inner alone returns focus to the inner opener', async () => {
+        render(<OuterInner />);
+        await openBoth();
+        await userEvent.click(screen.getByRole('button', { name: '内を閉じる' }));
+        await flush();
+        expect(screen.getByRole('button', { name: '内を開く' })).toHaveFocus();
+    });
+
+    it('closing the inner alone under StrictMode returns focus to the inner opener', async () => {
+        render(<StrictMode><OuterInner /></StrictMode>);
+        await openBoth();
+        await userEvent.keyboard('{Escape}');
+        await flush();
+        expect(screen.getByRole('button', { name: '内を開く' })).toHaveFocus();
+    });
+
+    it('a dialog that replaces another keeps the focus, and returns it to the first opener', async () => {
+        const Harness = () => {
+            const [which, setWhich] = useState<'none' | 'a' | 'b'>('none');
+            return (
+                <>
+                    <button onClick={() => setWhich('a')}>開く</button>
+                    <Modal isOpen={which === 'a'} onClose={() => setWhich('none')} title="A"><button onClick={() => setWhich('b')}>次へ</button></Modal>
+                    <Modal isOpen={which === 'b'} onClose={() => setWhich('none')} title="B" closeLabel="B を閉じる">x</Modal>
+                </>
+            );
+        };
+        render(<Harness />);
+        await userEvent.click(screen.getByRole('button', { name: '開く' }));
+        await userEvent.click(screen.getByRole('button', { name: '次へ' }));
+        await flush();
+        expect(screen.getByRole('dialog', { name: 'B' })).toHaveFocus();
+        await userEvent.click(screen.getByRole('button', { name: 'B を閉じる' }));
+        await flush();
+        expect(screen.getByRole('button', { name: '開く' })).toHaveFocus();
+    });
+
+    it('does not take back focus the app moved itself while closing', async () => {
+        const Harness = () => {
+            const [open, setOpen] = useState(true);
+            const input = useRef<HTMLInputElement>(null);
+            return (
+                <>
+                    <input ref={input} aria-label="chat" />
+                    <Modal isOpen={open} onClose={() => { setOpen(false); }} title="t" closeLabel="閉じる">x</Modal>
+                    {!open && <FocusOnMount target={input} />}
+                </>
+            );
+        };
+        const FocusOnMount = ({ target }: { target: React.RefObject<HTMLInputElement> }) => {
+            React.useEffect(() => { target.current?.focus(); }, [target]);
+            return null;
+        };
+        render(<Harness />);
+        await userEvent.click(screen.getByRole('button', { name: '閉じる' }));
+        await flush();
+        expect(screen.getByRole('textbox', { name: 'chat' })).toHaveFocus();
+    });
+
+    it('a same-render child returns focus to the parent initialFocusRef', async () => {
+        const Harness = () => {
+            const [open, setOpen] = useState(false);
+            const [child, setChild] = useState(true);
+            const first = useRef<HTMLInputElement>(null);
+            return (
+                <>
+                    <button onClick={() => setOpen(true)}>開く</button>
+                    <Modal isOpen={open} onClose={() => setOpen(false)} aria-label="親" layout="bare" initialFocusRef={first}>
+                        <input ref={first} aria-label="検索" />
+                        <Modal isOpen={child} onClose={() => setChild(false)} title="子">x</Modal>
+                    </Modal>
+                </>
+            );
+        };
+        render(<Harness />);
+        await userEvent.click(screen.getByRole('button', { name: '開く' }));
+        await userEvent.keyboard('{Escape}');
+        await flush();
+        expect(screen.getByRole('textbox', { name: '検索' })).toHaveFocus();
+    });
+
+    it('Tab skips a tabIndex=-1 last button and wraps', async () => {
+        render(<Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare"><button>一</button><button>二</button><button tabIndex={-1}>枠外</button></Modal>);
+        await userEvent.tab();
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '二' })).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '一' })).toHaveFocus();
+        await userEvent.tab({ shift: true });
+        expect(screen.getByRole('button', { name: '二' })).toHaveFocus();
+    });
+
+    it('Tab treats a radio group at the edge as one stop', async () => {
+        render(
+            <Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare">
+                <button>一</button>
+                <input type="radio" name="speed" aria-label="1x" />
+                <input type="radio" name="speed" aria-label="2x" defaultChecked />
+                <input type="radio" name="speed" aria-label="3x" />
+            </Modal>,
+        );
+        await userEvent.tab();
+        await userEvent.tab();
+        expect(screen.getByRole('radio', { name: '2x' })).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '一' })).toHaveFocus();
+        await userEvent.tab({ shift: true });
+        expect(screen.getByRole('radio', { name: '2x' })).toHaveFocus();
+    });
+
+    it('Tab skips a hidden file input at the edge', async () => {
+        render(
+            <Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare">
+                <button>一</button><button>二</button><input type="file" aria-label="file" style={{ display: 'none' }} />
+            </Modal>,
+        );
+        act(() => screen.getByRole('button', { name: '二' }).focus());
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '一' })).toHaveFocus();
+    });
+
+    it('Tab from an element inside the frame that is not tabbable moves to the next tabbable one', async () => {
+        render(
+            <Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare">
+                <button>一</button><div tabIndex={-1} data-testid="mid">中</div><button>二</button>
+            </Modal>,
+        );
+        act(() => screen.getByTestId('mid').focus());
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '二' })).toHaveFocus();
+        act(() => screen.getByTestId('mid').focus());
+        await userEvent.tab({ shift: true });
+        expect(screen.getByRole('button', { name: '一' })).toHaveFocus();
+    });
+
+    it('pulls focus that leaks outside the top-most dialog back to its frame', () => {
+        render(
+            <>
+                <button>外</button>
+                <Modal isOpen onClose={vi.fn()} title="t"><button>中</button></Modal>
+            </>,
+        );
+        const dialog = screen.getByRole('dialog');
+        act(() => screen.getByRole('button', { name: '外', hidden: true }).focus());
+        expect(dialog).toHaveFocus();
+    });
+
+    it('a lower dialog does not pull focus back while a dialog above it holds it', async () => {
+        render(<OuterInner />);
+        await openBoth();
+        act(() => screen.getByRole('button', { name: 'はい' }).focus());
+        expect(screen.getByRole('button', { name: 'はい' })).toHaveFocus();
+        act(() => screen.getByRole('button', { name: '内を開く', hidden: true }).focus());
+        expect(screen.getByRole('dialog', { name: '内' })).toHaveFocus();
+    });
+
+    it('lets focus go to a portaled menu and to a dialog outside the layer (legacy modals, the call overlay)', () => {
+        render(
+            <>
+                <div role="menu"><button role="menuitem">項目</button></div>
+                <div role="dialog" aria-modal="true" aria-label="legacy"><input aria-label="legacy input" /></div>
+                <Modal isOpen onClose={vi.fn()} title="t">x</Modal>
+            </>,
+        );
+        const item = screen.getByRole('menuitem', { name: '項目', hidden: true });
+        act(() => item.focus());
+        expect(item).toHaveFocus();
+        const legacy = screen.getByRole('textbox', { name: 'legacy input', hidden: true });
+        act(() => legacy.focus());
+        expect(legacy).toHaveFocus();
+    });
+
+    it('stops guarding focus once closed', () => {
+        const { rerender } = render(<><button>外</button><Modal isOpen onClose={vi.fn()} title="t">x</Modal></>);
+        rerender(<><button>外</button><Modal isOpen={false} onClose={vi.fn()} title="t">x</Modal></>);
+        act(() => screen.getByRole('button', { name: '外' }).focus());
+        expect(screen.getByRole('button', { name: '外' })).toHaveFocus();
+    });
+
+    it('a drag that starts inside the dialog and ends on the backdrop does not close it', () => {
+        const onClose = vi.fn();
+        render(<Modal isOpen onClose={onClose} title="t">inside</Modal>);
+        const backdrop = screen.getByTestId('modal-backdrop');
+        fireEvent.mouseDown(screen.getByText('inside'));
+        fireEvent.mouseUp(backdrop);
+        fireEvent.click(backdrop);
+        expect(onClose).not.toHaveBeenCalled();
+        fireEvent.mouseDown(backdrop);
+        fireEvent.mouseUp(backdrop);
+        fireEvent.click(backdrop);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('a drag that starts on the viewer media and ends on the stage does not close it', () => {
+        const onClose = vi.fn();
+        render(<Modal isOpen onClose={onClose} aria-label="viewer" tone="viewer" layout="bare"><img alt="写真" /></Modal>);
+        const stage = screen.getByRole('dialog', { name: 'viewer' });
+        fireEvent.mouseDown(screen.getByRole('img', { name: '写真' }));
+        fireEvent.click(stage);
+        expect(onClose).not.toHaveBeenCalled();
+        fireEvent.mouseDown(stage);
+        fireEvent.click(stage);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns in development when a dialog has no accessible name, or a title in a bare layout', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        render(<Modal isOpen onClose={vi.fn()} layout="bare">x</Modal>);
+        render(<Modal isOpen onClose={vi.fn()} layout="bare" title="見出し" aria-label="名前">x</Modal>);
+        render(<Modal isOpen onClose={vi.fn()} title="ok">x</Modal>);
+        expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
+            expect.stringContaining('no accessible name'),
+            expect.stringContaining('title is ignored'),
+        ]);
+        warn.mockRestore();
+    });
+});

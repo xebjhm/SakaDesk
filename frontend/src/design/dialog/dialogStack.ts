@@ -33,6 +33,8 @@ function notify(): void {
  * A new opening order. Dialogs take it while rendering, where a parent renders before the
  * dialogs nested in it; React runs their layout effects child first, so pushing in effect
  * order alone would put a child that opens in the same render below its parent.
+ * Taking it in render is safe: a render that runs twice (StrictMode) or is thrown away only
+ * skips numbers, and the order stays monotonic.
  */
 export function nextDialogOrder(): number {
     return nextOrder++;
@@ -69,6 +71,16 @@ export function popDialog(entry: DialogEntry): void {
     notify();
 }
 
+/** The top-most open dialog, or null. */
+export function topDialog(): DialogEntry | null {
+    return stack.length > 0 ? stack[stack.length - 1] : null;
+}
+
+/** True when `el` is the frame of a dialog on the layer (as opposed to a legacy modal or the call overlay). */
+export function isLayerFrame(el: Element): boolean {
+    return stack.some((e) => e.node() === el);
+}
+
 export function isTopDialog(entry: DialogEntry): boolean {
     return stack.length > 0 && stack[stack.length - 1].id === entry.id;
 }
@@ -89,7 +101,7 @@ export function openDialogCount(): number {
     return stack.length;
 }
 
-/** Calls `listener` after every push and pop (depths may have changed); returns the unsubscribe. */
+/** Calls `listener` after every push, pop and reset (depths may have changed); returns the unsubscribe. */
 export function subscribeDialogStack(listener: () => void): () => void {
     listeners.add(listener);
     return () => {

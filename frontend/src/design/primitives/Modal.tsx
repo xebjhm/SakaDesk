@@ -1,4 +1,4 @@
-import React, { useId, useRef } from 'react';
+import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { cn } from '../../utils/classnames';
@@ -26,7 +26,10 @@ export interface ModalProps {
     /** 'standard': header, body, footer. 'bare': children directly in the frame. */
     layout?: 'standard' | 'bare';
     placement?: 'center' | 'top';
-    /** false: Escape and the backdrop do not close and there is no close button (ToS, setup, sync). */
+    /**
+     * false: Escape and the backdrop do not close and there is no close button (ToS, setup, sync).
+     * Such a dialog does not claim Escape either, so a handler further out still sees the key.
+     */
     dismissible?: boolean;
     initialFocusRef?: React.RefObject<HTMLElement>;
     /** Frame classes (width, height). */
@@ -37,6 +40,15 @@ export interface ModalProps {
     logId?: DialogLogId;
     /** Keys for the dialog's own content (the viewer's ← / → / ↑ / ↓); Escape is the layer's. */
     onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+}
+
+const warned = new Set<string>();
+
+/** Development only: one console warning per message for a dialog that cannot be named as asked. */
+function warnOnce(message: string): void {
+    if (!import.meta.env.DEV || warned.has(message)) return;
+    warned.add(message);
+    console.warn(message);
 }
 
 /** Level 1 dialog on the dialog layer (docs/design/DESIGN_SYSTEM.md, "Dialogs"). */
@@ -51,6 +63,27 @@ const OpenModal: React.FC<ModalProps> = ({
     const titleId = useId();
     const { zIndex, requestClose } = useDialog({ isOpen: true, onClose, dismissible, frameRef, initialFocusRef, logId });
     const named = title !== undefined && layout === 'standard' ? titleId : labelledBy;
+    // A click closes only when the press also started on the backdrop (or the viewer stage):
+    // a drag that starts inside the dialog and ends outside it is not a dismissal.
+    const pressedOn = useRef<EventTarget | null>(null);
+    const startPress = (e: React.MouseEvent) => {
+        pressedOn.current = e.target;
+    };
+    const clickOutside = (e: React.MouseEvent) => {
+        const started = pressedOn.current === e.currentTarget;
+        pressedOn.current = null;
+        if (dismissible && started && e.target === e.currentTarget) requestClose('backdrop');
+    };
+
+    useEffect(() => {
+        if (title !== undefined && layout === 'bare') {
+            warnOnce('[Modal] title is ignored in layout="bare": name the dialog with aria-label or labelledBy');
+        }
+        if (!named && !ariaLabel) {
+            warnOnce('[Modal] dialog has no accessible name: pass title, aria-label or labelledBy');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- checked once per open
+    }, []);
 
     return createPortal(
         <div
@@ -62,9 +95,8 @@ const OpenModal: React.FC<ModalProps> = ({
             )}
             // 15vh from the top for the command-palette placement (an inline value: arbitrary padding classes are guarded).
             style={placement === 'top' ? { zIndex, paddingTop: '15vh' } : { zIndex }}
-            onClick={(e) => {
-                if (dismissible && e.target === e.currentTarget) requestClose('backdrop');
-            }}
+            onMouseDown={startPress}
+            onClick={clickOutside}
         >
             <div
                 ref={frameRef}
@@ -81,7 +113,8 @@ const OpenModal: React.FC<ModalProps> = ({
                         : 'flex max-h-full w-full max-w-lg flex-col overflow-hidden bg-sheet rounded-sheet shadow-sheet animate-reveal motion-reduce:animate-none',
                     className,
                 )}
-                onClick={tone === 'viewer' ? (e) => { if (dismissible && e.target === e.currentTarget) requestClose('backdrop'); } : undefined}
+                onMouseDown={tone === 'viewer' ? startPress : undefined}
+                onClick={tone === 'viewer' ? clickOutside : undefined}
             >
                 {layout === 'bare' ? children : (
                     <>
