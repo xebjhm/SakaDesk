@@ -26,6 +26,7 @@ export function measureLanding(messageId: number, align: JumpAlign): number | nu
     const scroller = row?.closest<HTMLElement>('[data-virtuoso-scroller]');
     if (!row || !scroller) return null;
     const atTop = scroller.scrollTop <= 0;
+    // The - 1 is slack for fractional scrollTop values on HiDPI screens.
     const atBottom = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 1;
     return landingError(row.getBoundingClientRect(), scroller.getBoundingClientRect(), { atTop, atBottom }, align);
 }

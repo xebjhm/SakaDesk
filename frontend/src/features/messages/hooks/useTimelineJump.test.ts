@@ -27,13 +27,14 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
     const measure = vi.fn(() => (queue.length > 1 ? queue.shift()! : queue[0]));
     let frames = 0;
     const nextFrame = () => { frames += 1; opts.onFrame?.(frames); return Promise.resolve(); };
-    const hook = renderHook(({ list }: { list: readonly Message[] }) => useTimelineJump({
+    const hook = renderHook(({ list, resetKey }: { list: readonly Message[]; resetKey?: unknown }) => useTimelineJump({
         virtuosoRef: ref,
         messages: list,
         isUnread: opts.unread ?? (() => false),
         onLanded,
+        resetKey,
         deps: { nextFrame, measure, now: () => 0 },
-    }), { initialProps: { list: messages as readonly Message[] } });
+    }), { initialProps: { list: messages as readonly Message[], resetKey: 'a' as unknown } });
     return { jumpTo: hook.result.current, scrollToIndex, onLanded, measure, ...hook };
 }
 
@@ -106,7 +107,7 @@ describe('useTimelineJump', () => {
     });
 
     it('never uses smooth scrolling', async () => {
-        const { jumpTo, scrollToIndex } = setup([40, 40, 0]);
+        const { jumpTo, scrollToIndex } = setup([40, 40, 0], { unread: id => id >= 2 });
         await jumpTo({ kind: 'date', date: toLocalDateStr(messages[1].timestamp) });
         await jumpTo({ kind: 'bottom' });
         await jumpTo({ kind: 'firstUnread' });
@@ -159,7 +160,7 @@ describe('useTimelineJump', () => {
     it('corrects to the target\'s current index when rows were inserted before it', async () => {
         let rerender: ReturnType<typeof setup>['rerender'] = () => {};
         const inserted = [msg(0, '2020-01-01T01:00:00Z'), ...messages];
-        const s = setup([40, 40, 0], { onFrame: n => { if (n === 1) rerender({ list: inserted }); } });
+        const s = setup([40, 40, 0], { onFrame: n => { if (n === 1) rerender({ list: inserted, resetKey: 'a' }); } });
         rerender = s.rerender;
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('landed');
         expect(s.scrollToIndex).toHaveBeenNthCalledWith(1, { index: 1, align: 'start', behavior: 'auto' });
@@ -170,7 +171,7 @@ describe('useTimelineJump', () => {
 
     it('cancels without a correction scroll when the target row disappears', async () => {
         let rerender: ReturnType<typeof setup>['rerender'] = () => {};
-        const s = setup([40], { onFrame: n => { if (n === 1) rerender({ list: [messages[0], messages[2]] }); } });
+        const s = setup([40], { onFrame: n => { if (n === 1) rerender({ list: [messages[0], messages[2]], resetKey: 'a' }); } });
         rerender = s.rerender;
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
         expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
@@ -200,5 +201,32 @@ describe('useTimelineJump', () => {
         await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('gave_up');
         expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
         expect(clientLog).toHaveBeenCalledWith('timeline_jump', expect.objectContaining({ corrections: 0, outcome: 'gave_up' }));
+    });
+
+    it('cancels at once when the row is removed while waiting for it to render', async () => {
+        let rerender: ReturnType<typeof setup>['rerender'] = () => {};
+        const s = setup([null], { onFrame: n => { if (n === 2) rerender({ list: [messages[0], messages[2]], resetKey: 'a' }); } });
+        rerender = s.rerender;
+        await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
+        expect(s.measure.mock.calls.length).toBeLessThan(10);
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels when the row is removed after settling', async () => {
+        // First measure renders (0), the settled re-measure finds nothing; the row left messages on frame 2.
+        let rerender: ReturnType<typeof setup>['rerender'] = () => {};
+        const s = setup([0, null], { onFrame: n => { if (n === 2) rerender({ list: [messages[0], messages[2]], resetKey: 'a' }); } });
+        rerender = s.rerender;
+        await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
+        expect(s.onLanded).not.toHaveBeenCalled();
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(1);
+    });
+
+    it('cancels an in-flight jump when resetKey changes (room switch)', async () => {
+        let rerender: ReturnType<typeof setup>['rerender'] = () => {};
+        const s = setup([null], { onFrame: n => { if (n === 2) rerender({ list: messages, resetKey: 'b' }); } });
+        rerender = s.rerender;
+        await expect(s.jumpTo({ kind: 'message', id: 2 })).resolves.toBe('cancelled');
+        expect(s.onLanded).not.toHaveBeenCalled();
     });
 });

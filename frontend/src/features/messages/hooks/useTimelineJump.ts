@@ -33,6 +33,8 @@ export interface UseTimelineJumpArgs {
     isUnread: (id: number) => boolean;
     /** Called with the landed message id for highlighted jumps (message, date). */
     onLanded?: (messageId: number) => void;
+    /** Changing this value cancels any in-flight jump (e.g. the selected room). */
+    resetKey?: unknown;
     /** Test seam: frame scheduler, DOM measurement and clock. */
     deps?: Partial<JumpDeps>;
 }
@@ -42,22 +44,27 @@ export interface UseTimelineJumpArgs {
  * target row to render, measure it and correct up to MAX_CORRECTIONS times
  * (Virtuoso estimates heights it has not measured, so a far jump can land a little
  * off). Each correction re-resolves the target's current index by message id, so a
- * refetch that shifts rows is followed and one that removes the row cancels the jump.
- * A newer jump (or unmount) cancels an older one that is still settling.
+ * refetch that shifts rows is followed.
  *
- * Worst case a jump runs (MAX_CORRECTIONS + 1) wait cycles of up to MAX_WAIT_FRAMES +
- * SETTLE_FRAMES frames each (a row that vanishes after settling consumes a cycle too),
- * i.e. at most about 3 * 62 frames, then ends 'gave_up'. Every jump logs exactly one
- * `timeline_jump` breadcrumb with no message text or names.
+ * A jump ends 'cancelled' when a newer jump starts, the hook unmounts, `resetKey`
+ * changes (the caller switches room), or the target message is no longer in
+ * `messages` while its row cannot be measured or before a correction.
+ *
+ * Worst case a jump runs (2 * MAX_CORRECTIONS + 1) wait cycles of up to
+ * MAX_WAIT_FRAMES + SETTLE_FRAMES frames each: corrections and cycles whose row
+ * vanished after settling (while still in `messages`) are counted separately, each
+ * at most MAX_CORRECTIONS, plus the final cycle. It then ends 'gave_up'. Every jump
+ * logs exactly one `timeline_jump` breadcrumb with no message text or names.
  */
-export function useTimelineJump({ virtuosoRef, messages, isUnread, onLanded, deps }: UseTimelineJumpArgs) {
+export function useTimelineJump({ virtuosoRef, messages, isUnread, onLanded, resetKey, deps }: UseTimelineJumpArgs) {
     const latest = useRef({ messages, isUnread, onLanded });
     latest.current = { messages, isUnread, onLanded };
     const depsRef = useRef<JumpDeps>({ ...defaultDeps, ...deps });
     depsRef.current = { ...defaultDeps, ...deps };
     const tokenRef = useRef(0);
 
-    useEffect(() => () => { tokenRef.current += 1; }, []);
+    // Cleanup runs on unmount and whenever resetKey changes: both cancel in-flight jumps.
+    useEffect(() => () => { tokenRef.current += 1; }, [resetKey]);
 
     return useCallback(async (target: JumpTarget): Promise<JumpOutcome> => {
         const token = ++tokenRef.current;
@@ -86,12 +93,14 @@ export function useTimelineJump({ virtuosoRef, messages, isUnread, onLanded, dep
         // Wait cycles that ended with the row vanished after settling. Each one consumes a
         // cycle; more than MAX_CORRECTIONS of them ends the jump, so the loop is bounded.
         let vanished = 0;
+        const removed = () => !latest.current.messages.some(m => m.id === resolved.messageId);
         for (;;) {
             let error: number | null = null;
             for (let frame = 0; frame < MAX_WAIT_FRAMES && error === null; frame++) {
                 await nextFrame();
                 if (token !== tokenRef.current) return finish('cancelled', index, corrections);
                 error = measure(resolved.messageId, resolved.align);
+                if (error === null && removed()) return finish('cancelled', index, corrections);
             }
             if (error === null) return finish('gave_up', index, corrections);
             for (let frame = 0; frame < SETTLE_FRAMES; frame++) {
@@ -100,6 +109,7 @@ export function useTimelineJump({ virtuosoRef, messages, isUnread, onLanded, dep
             }
             const settled = measure(resolved.messageId, resolved.align);
             if (settled === null) {
+                if (removed()) return finish('cancelled', index, corrections);
                 vanished += 1;
                 if (vanished > MAX_CORRECTIONS) return finish('gave_up', index, corrections);
                 continue;

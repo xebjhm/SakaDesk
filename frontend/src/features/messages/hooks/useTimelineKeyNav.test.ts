@@ -3,7 +3,7 @@ import { renderHook } from '@testing-library/react';
 import type React from 'react';
 import { useTimelineKeyNav } from './useTimelineKeyNav';
 
-const key = (k: string) => ({ key: k, preventDefault: vi.fn(), stopPropagation: vi.fn() }) as unknown as React.KeyboardEvent;
+const key = (k: string, repeat = false) => ({ key: k, repeat, preventDefault: vi.fn(), stopPropagation: vi.fn() }) as unknown as React.KeyboardEvent;
 
 function setup(callActive: boolean) {
     const jumpTo = vi.fn();
@@ -17,6 +17,14 @@ describe('useTimelineKeyNav', () => {
         const e = key('Home');
         handle(e);
         expect(jumpTo).toHaveBeenCalledWith({ kind: 'top' });
+        expect(e.preventDefault).toHaveBeenCalled();
+    });
+
+    it('a repeated Home does not jump but is still prevented', () => {
+        const { handle, jumpTo } = setup(false);
+        const e = key('Home', true);
+        handle(e);
+        expect(jumpTo).not.toHaveBeenCalled();
         expect(e.preventDefault).toHaveBeenCalled();
     });
 

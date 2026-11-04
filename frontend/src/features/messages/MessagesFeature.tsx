@@ -419,7 +419,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, []);
     useEffect(() => { setHighlightedMessageId(null); }, [selectedGroupDir]);
 
-    const jumpTo = useTimelineJump({ virtuosoRef, messages, isUnread, onLanded: flashLanded });
+    const jumpTo = useTimelineJump({ virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir });
 
     const updateUnreadNavState = useCallback((range?: { startIndex: number; endIndex: number }) => {
         const currentRange = range || visibleRangeRef.current;
@@ -554,7 +554,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';
 
-    // Keyboard navigation using Virtuoso (inert while a call covers the timeline)
+    // Keyboard navigation through the shared timeline jump (inert while a call covers the timeline)
     const handleKeyDown = useTimelineKeyNav(jumpTo, callActive);
 
     // Scroll to first message of a given date (for calendar navigation).
