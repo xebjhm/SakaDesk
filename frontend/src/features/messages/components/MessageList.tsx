@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useMemo, useEffect } from 'react';
-import { GroupedVirtuoso, type GroupedVirtuosoHandle, type ListRange } from 'react-virtuoso';
+import { GroupedVirtuoso, type GroupedVirtuosoHandle, type GroupedVirtuosoProps, type ListRange, type TopItemListProps } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
@@ -75,6 +75,17 @@ const TimelineDateHeader: React.FC<{ date: string; onOpenCalendar?: () => void }
     if (!day) return <div className="h-px" />;
     return <DatePill date={day} onClick={onOpenCalendar} actionLabel={t('messageList.openCalendar')} />;
 };
+
+/**
+ * The sticky band GroupedVirtuoso keeps the current day's header in: full width over the rows,
+ * transparent around the pill. Click-through, so rows behind it (media, the reveal shelter, the
+ * favourite star) stay clickable; the pill sets pointer-events back to auto.
+ */
+const StickyHeaderBand: React.FC<TopItemListProps> = ({ style, children }) => (
+    <div style={style} className="pointer-events-none">{children}</div>
+);
+
+const LIST_COMPONENTS: GroupedVirtuosoProps<unknown, unknown>['components'] = { TopItemList: StickyHeaderBand };
 
 const DEFAULT_ITEM_HEIGHT = 80;
 
@@ -208,6 +219,7 @@ export const MessageList: React.FC<ChatListProps> = ({
             scrollerRef={setScroller}
             style={{ height: '100%' }}
             groupCounts={timeline.groupCounts}
+            components={LIST_COMPONENTS}
             groupContent={(groupIndex) => (
                 <TimelineDateHeader date={timeline.groupDates[groupIndex]} onOpenCalendar={onOpenCalendar} />
             )}

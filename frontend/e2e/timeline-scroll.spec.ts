@@ -146,6 +146,25 @@ test.describe('timeline scroll', () => {
   test('clicking the sticky date pill opens the calendar', async ({ page }) => {
     await openBigRoom(page)
     await page.locator('[data-testid="virtuoso-top-item-list"] button').click()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    const dialog = page.getByRole('dialog')
+    await expect(dialog.getByText('Date Search', { exact: true })).toBeVisible()
+    await expect(dialog.getByText('November 2026', { exact: true })).toBeVisible() // its month grid
+  })
+
+  test('the sticky date band lets clicks through to the row behind it', async ({ page }) => {
+    await openBigRoom(page)
+    const dialog = await openCalendarAt(page, 'January 2022')
+    const id = firstIdOnDate(messages.current, '2022-01-15')
+    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await expect.poll(() => topVisibleMessageId(page), { timeout: 2000 }).toBe(id)
+    // Slide that row 30 px up behind the band, then hit-test the band beside the pill.
+    const hit = await page.evaluate((rowId) => {
+      const scroller = document.querySelector<HTMLElement>('[data-virtuoso-scroller]')!
+      scroller.scrollTop += 30
+      const band = scroller.querySelector<HTMLElement>('[data-testid="virtuoso-top-item-list"]')!.getBoundingClientRect()
+      const el = document.elementFromPoint(scroller.getBoundingClientRect().left + 40, band.bottom - 10)
+      return el?.closest('[id^="msg-"]')?.id ?? el?.outerHTML.slice(0, 80) ?? null
+    }, id)
+    expect(hit).toBe(`msg-${id}`)
   })
 })
