@@ -3,7 +3,7 @@
 exports[`VoicePlayer component > Snapshots > should match snapshot for compact variant 1`] = `
 <div
   class="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
-  style="--ring-color: #6da0d480;"
+  style="--ring-color: #4b556380;"
   tabindex="0"
 >
   <audio
@@ -18,7 +18,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(109, 160, 212);"
+        style="width: 0%; background-color: rgb(75, 85, 99);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -74,7 +74,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
             type="range"
             value="0.5"
           />
@@ -83,7 +83,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     </div>
     <button
       class="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
-      style="background-color: rgb(109, 160, 212);"
+      style="background-color: rgb(75, 85, 99);"
       type="button"
     >
       <svg
@@ -154,7 +154,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
 <div
   class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
-  style="--tw-ring-color: #6da0d480; border-width: 1px; border-color: rgba(109, 160, 212, 0.2);"
+  style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
   tabindex="0"
 >
   <audio
@@ -166,7 +166,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   >
     <div
       class="w-10 h-10 rounded-full p-0.5 shrink-0"
-      style="background: linear-gradient(right, rgb(109, 160, 212), rgba(109, 160, 212, 0.8));"
+      style="background: linear-gradient(right, rgb(75, 85, 99), rgba(75, 85, 99, 0.8));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -242,7 +242,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(109, 160, 212);"
+        style="width: 0%; background-color: rgb(75, 85, 99);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -312,7 +312,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
             type="range"
             value="0.5"
           />
@@ -354,7 +354,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </button>
       <button
         class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
-        style="background-color: rgb(109, 160, 212);"
+        style="background-color: rgb(75, 85, 99);"
         type="button"
       >
         <svg
@@ -415,7 +415,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
 <div
   class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
-  style="--tw-ring-color: #6da0d480; border-width: 1px; border-color: rgba(109, 160, 212, 0.2);"
+  style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
   tabindex="0"
 >
   <audio
@@ -427,7 +427,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   >
     <div
       class="w-10 h-10 rounded-full p-0.5 shrink-0"
-      style="background: linear-gradient(right, rgb(109, 160, 212), rgba(109, 160, 212, 0.8));"
+      style="background: linear-gradient(right, rgb(75, 85, 99), rgba(75, 85, 99, 0.8));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -497,7 +497,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(109, 160, 212);"
+        style="width: 0%; background-color: rgb(75, 85, 99);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -567,7 +567,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #6da0d4; background: linear-gradient(to right, rgb(109, 160, 212) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
             type="range"
             value="0.5"
           />
@@ -609,7 +609,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </button>
       <button
         class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
-        style="background-color: rgb(109, 160, 212);"
+        style="background-color: rgb(75, 85, 99);"
         type="button"
       >
         <svg

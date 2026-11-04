@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
 
 interface TranscribeButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
@@ -21,7 +22,7 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = '#6da0d4',
+    accentColor = FALLBACK_ACTION_COLOR,
     variant = 'dark',
 }) => {
     const { t } = useTranslation();

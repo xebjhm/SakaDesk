@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
 
 interface TranslateButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
@@ -32,7 +33,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = '#6da0d4',
+    accentColor = FALLBACK_ACTION_COLOR,
     variant = 'dark',
     doneLabel,
     onToggleExpanded,
