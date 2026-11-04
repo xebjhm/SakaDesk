@@ -19,10 +19,11 @@ def _reset():
 
 
 def test_open_chat_calls_the_handler() -> None:
-    seen: list[ChatTarget] = []
-    desktop_bridge.set_open_chat_handler(seen.append)
+    seen: list[tuple[ChatTarget, int | None]] = []
+    desktop_bridge.set_open_chat_handler(lambda t, m: seen.append((t, m)))
     desktop_bridge.open_chat(TARGET)
-    assert seen == [TARGET]
+    desktop_bridge.open_chat(TARGET, 4321)
+    assert seen == [(TARGET, None), (TARGET, 4321)]
 
 
 def test_open_chat_without_handler_logs_and_does_not_raise() -> None:
@@ -35,7 +36,7 @@ def test_open_chat_without_handler_logs_and_does_not_raise() -> None:
 
 
 def test_raising_handler_is_logged_with_its_type_only() -> None:
-    def boom(_t: ChatTarget) -> None:
+    def boom(_t: ChatTarget, _m: int | None) -> None:
         raise ValueError("secret 金村 detail")
 
     desktop_bridge.set_open_chat_handler(boom)
@@ -48,7 +49,7 @@ def test_raising_handler_is_logged_with_its_type_only() -> None:
 
 
 def test_handler_can_be_cleared() -> None:
-    desktop_bridge.set_open_chat_handler(lambda _t: None)
+    desktop_bridge.set_open_chat_handler(lambda _t, _m: None)
     desktop_bridge.set_open_chat_handler(None)
     with capture_logs() as logs:
         desktop_bridge.open_chat(TARGET)

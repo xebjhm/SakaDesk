@@ -45,6 +45,7 @@ ALLOWED_FIELDS = frozenset(
         "ring_ms",
         "talk_ms",
         "error_type",
+        "has_target",
     }
 )
 WARNING_EVENTS = frozenset({"call_error"})

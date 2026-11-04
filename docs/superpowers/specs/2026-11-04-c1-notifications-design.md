@@ -15,7 +15,7 @@
    - **Title:** the member's name, or the room's name.
    - **Body:** a preview of the newest message.
    - **Image:** the member's avatar.
-   - **Click:** opens that chat.
+   - **Click:** opens the chat at the message shown in the notification.
 4. **Localized text** in all five locales. Today the text is hard-coded English.
 5. **Logging.** Every decision, skip and failure is logged with ids, counts and codes only. Never names, message text or paths.
 
@@ -34,7 +34,7 @@ C1 sends voice messages as normal toasts and exposes a hook that C3 will use to 
 | granularity | One toast per member (1:1) or per room (group chat) per sync. |
 | skip | Don't toast a chat the user is viewing while the app is in the foreground; toast in every other case. |
 | content | Show text up to 80 chars. Media shows "sent a photo / video / voice message". A new setting **"hide content in notifications"** (default off) replaces every body with "sent a new message". |
-| click | Bring SakaDesk to the front (restoring it if minimised) and open that chat. |
+| click | Bring SakaDesk to the front (restoring it if minimised) and open that chat at the message shown in the notification (the newest new message, `newest_id`). |
 | rooms | One toast per room: title = room name, body = `member: preview`. |
 | voice | A normal toast in C1. A `divert` hook lets C3 replace a member's toast with the popup. |
 | sound | The Windows default toast sound. |
@@ -95,7 +95,8 @@ class ToastPlan:
     avatar: Path | None   # local file, or None
     count: int            # visible new messages in this chat
     newest_type: str      # text|picture|video|voice
-    newest_id: str        # id of the newest message ("" when it has none)
+    newest_id: str        # id of the newest message ("" when it has none);
+                          # the body previews it and a click scrolls to it
 ```
 
 **`plan_toasts(chats, *, service, service_display, output_service_dir, ui_state, enabled, hide_content, strings, avatar_for, divert, member_count_for) -> tuple[list[ToastPlan], list[Skip]]`**
@@ -167,7 +168,7 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
   - It uses the default audio.
   - **No launch arguments.** `Toast.launch_action` is never set: in windows-toasts 1.3.1 it also sets `activationType="protocol"`, so a click would make Windows open the string as a URI instead of firing the in-process callback (verified on Windows; the spike validated `on_activated` without a launch action).
   - `toast.tag` is `"{group_id}:{member_id}"` (ids only, ≤ 64 characters) and `toast.group` is the service, so a newer toast for the same chat replaces the older one. The test toast keeps the library's default tag.
-  - **Click:** each toast's `on_activated` is a closure over its own `ToastPlan`. It logs `notify_clicked` (`service`, `group_id`, `member_id`, from the plan) and calls the registered **open-chat handler** (§7) with `plan.target`. A plan without a chat (the test toast) logs `notify_click_unhandled` (`reason=no_target`).
+  - **Click:** each toast's `on_activated` is a closure over its own `ToastPlan`. It turns `plan.newest_id` into the message id to scroll to: an ASCII decimal id above zero becomes an `int`; anything else gives no jump. It logs `notify_clicked` (`service`, `group_id`, `member_id`, from the plan; `has_target`; and, without a jump, `target_reason` = `no_id` for an empty id or `bad_id` otherwise) and calls the registered **open-chat handler** (§7) with `plan.target` and that id (or `None`). The chat opens either way. A plan without a chat (the test toast) logs `notify_click_unhandled` (`reason=no_target`).
   - **Failure:** `on_failed` logs `notify_failed` (`error_type`, ids).
   - **Threading:** `show()` runs `toaster.show_toast` inside `asyncio.to_thread`, so it never blocks the event loop. WinRT calls happen on that worker thread.
 - **`NullNotifier`** (non-Windows, a `windows_toasts` import failure, or a toaster that fails to initialise) returns `False`. `notify_unavailable` is logged once per process, when the notifier is built, with `reason` = `not_windows`, `import_error` (`error_type`, `module`) or `init_error` (`error_type`).
@@ -193,20 +194,21 @@ The backend has no translations today. Add `backend/i18n/` holding one `notifica
 
 ## 7. Click → open chat
 
-- **Bridge.** `backend/services/desktop_bridge.py` holds an optional `open_chat_handler: Callable[[ChatTarget], None]`, set by `desktop.py` after the window exists.
-  - `open_chat(target)` calls it, or logs `notify_click_unhandled` when there is none.
+- **Bridge.** `backend/services/desktop_bridge.py` holds an optional `open_chat_handler: Callable[[ChatTarget, int | None], None]`, set by `desktop.py` after the window exists.
+  - `open_chat(target, message_id=None)` calls it with the target and the message id to scroll to, or logs `notify_click_unhandled` when there is none.
   - It never raises; exceptions are logged with their type.
 - **`desktop.py` handler.**
   - Shows the window (`window.show()`). It never calls `window.restore()`: pywebview forces `WindowState = Normal`, which un-maximizes the window.
   - Brings it to the front with `_focus_window(hwnd)`, using the window's own handle (`window.native.Handle` on WinForms) or, without one, `FindWindowW(None, "SakaDesk")`. If `IsIconic(hwnd)` it calls `ShowWindow(SW_RESTORE)`, otherwise `ShowWindow(SW_SHOW)` (a maximized window stays maximized), then `SetForegroundWindow`. Best-effort and never raises; it logs `window_focus`, `window_focus_skipped` or `window_focus_failed`. The single-instance `_focus_existing_window()` uses the same function.
-  - Calls `window.evaluate_js("window.__sakadeskOpenChat ? (window.__sakadeskOpenChat(<payload>), true) : false")`, where the payload is `json.dumps(target_dict)`.
-  - Logs `notify_open_chat` (`service`, `is_group_chat`, `delivered=true`) when the script returned `true`; `notify_open_chat_failed` with `reason=not_ready` when the frontend has not installed the function yet; or `notify_open_chat_failed` (`error_type`) on an exception.
-- **Frontend.** `frontend/src/shell/openChat.ts` exports `openChat(target)`, which performs exactly the navigation `SearchModal` uses, minus `setTargetMessageId`. In order:
-  1. `setSelectedConversation(service, {path, name: formatName(name), isGroupChat})`;
-  2. `setActiveFeature(service, 'messages')`;
-  3. `setActiveService(service)` when switching service, otherwise `triggerConversationNavigation()`.
+  - Calls `window.evaluate_js("window.__sakadeskOpenChat ? (window.__sakadeskOpenChat(<payload>), true) : false")`, where the payload is `json.dumps(target_dict)` plus `message_id` (an `int`) when the handler got one; the key is absent otherwise.
+  - Logs `notify_open_chat` (`service`, `is_group_chat`, `has_target`, `delivered=true`) when the script returned `true`; `notify_open_chat_failed` with `reason=not_ready` when the frontend has not installed the function yet; or `notify_open_chat_failed` (`error_type`) on an exception.
+- **Frontend.** `frontend/src/shell/openChat.ts` exports `openChat(target)`, which performs the navigation `SearchModal` uses. `OpenChatTarget` is `{service, path, name, is_group_chat, message_id?}`; a target without a valid `service`, `path`, `name` and `is_group_chat` is ignored. In order:
+  1. when `message_id` is a positive safe integer, `setTargetMessageId(message_id)`, so `MessageList` scrolls to that message. It is set before navigating so the destination view sees it on mount. Any other `message_id` is ignored (`console.debug`) and the chat still opens; without one the current target is left alone;
+  2. `setSelectedConversation(service, {path, name: formatName(name), isGroupChat})`;
+  3. `setActiveFeature(service, 'messages')`;
+  4. `setActiveService(service)` when switching service, otherwise `triggerConversationNavigation()`.
 
-  `SearchModal` is refactored to call the shared function, keeping its `setTargetMessageId` call. `App.tsx` installs `window.__sakadeskOpenChat = openChat` on mount, removes it on unmount, and logs `client_log('notify_open_chat', {service})` via the existing endpoint (add the event to the whitelist).
+  `SearchModal` calls the shared function without `message_id`, after its own `setTargetMessageId` call. `App.tsx` installs `window.__sakadeskOpenChat = openChatFromToast` on mount and removes it on unmount. `openChatFromToast` calls `openChat`, then logs `client_log('notify_open_chat', {service, has_target})` via the existing endpoint, adding `reason=bad_message_id` when a malformed id was ignored (the event and the `has_target` field are on the whitelist).
 
 ---
 
@@ -270,18 +272,20 @@ Check whether a notifications toggle already exists in `SettingsModal`. If it do
   - 1:1 versus room grouping, including a member count of 1 for a `GROUP_CHAT_IDS` room;
   - the title and body for text, the 80-character cut and whitespace collapse, each media type, empty text, `hide_content`, the room prefix and `more`;
   - path building;
-  - avatar fallback order.
+  - avatar fallback order;
+  - `newest_id` is the previewed message, including in a room.
 - **i18n:** every locale has every key; the loader falls back to `en` per key; a missing `en` never raises; `resolve_ui_language` precedence (prefs, then settings.json, then none).
 - **Notifier:**
-  - no launch action is ever set; each toast's `on_activated` opens its own plan's target;
+  - no launch action is ever set; each toast's `on_activated` opens its own plan's target at its `newest_id`; an empty or malformed id still opens the chat, without a jump;
   - `NullNotifier` on a non-Windows platform;
   - `send_planned` logging with a fake notifier.
 - **App identity:** the logic with a fake shell layer (create / update / ok / failed / skipped_dev).
 - **UI state:** endpoint validation; the store; the default when unreported.
-- **Bridge:** with no handler it logs; with a handler that raises it logs.
+- **Bridge:** passes the message id to the handler; with no handler it logs; with a handler that raises it logs.
+- **Desktop handler:** the payload carries `message_id` as an `int` when given and omits it otherwise.
 - **Frontend:**
-  - `openChat`: same-service and cross-service navigation;
-  - `SearchModal` behaviour is unchanged;
+  - `openChat`: same-service and cross-service navigation; the target message is set before navigating; a malformed `message_id` is ignored and the chat still opens;
+  - `SearchModal` behaviour is unchanged (a message result opens the chat at that message);
   - the UI-state reporter: debounce, focus/blur, room `member_id` `"0"`;
   - the settings toggle;
   - i18n presence.
@@ -292,7 +296,7 @@ Check whether a notifications toggle already exists in `SettingsModal`. If it do
 - `hide_content` works;
 - the viewing skip works;
 - `debug.log` breadcrumbs are present;
-- the user clicks a toast and the chat opens. This is the one step left to the user.
+- the user clicks a toast and the chat opens at the message shown in the toast. This is the one step left to the user.
 
 ---
 

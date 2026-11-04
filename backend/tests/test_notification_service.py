@@ -251,21 +251,58 @@ def test_windows_notifier_show_failure_sets_last_error(fake_wt) -> None:
     assert n.status()["last_error"] == "RuntimeError"
 
 
+class _Opened(list):
+    """Records ``desktop_bridge.open_chat(target, message_id)`` calls."""
+
+    def __call__(self, target: ChatTarget, message_id: int | None = None) -> None:
+        self.append((target, message_id))
+
+
 def test_on_activated_opens_the_planned_chat_and_logs_ids(fake_wt) -> None:
     n = ns.WindowsToastNotifier()
     n.show(make_plan())
     toast = fake_wt.shown[0]
-    opened: list[ChatTarget] = []
-    with patch.object(ns.desktop_bridge, "open_chat", opened.append):
+    opened = _Opened()
+    with patch.object(ns.desktop_bridge, "open_chat", opened):
         with capture_logs() as logs:
             # The WinRT event args are ignored: the target comes from the plan.
             toast.on_activated(types.SimpleNamespace(arguments="uuid-default"))
-    assert opened == [CJK_TARGET]
+    # The chat opens at the message the toast previews (newest_id "101").
+    assert opened == [(CJK_TARGET, 101)]
     (clicked,) = [e for e in logs if e["event"] == "notify_clicked"]
     assert clicked["service"] == "hinatazaka46"
     assert clicked["group_id"] == "34"
     assert clicked["member_id"] == "58"
+    assert clicked["has_target"] is True
+    assert "target_reason" not in clicked
     assert "金村" not in repr(logs)
+
+
+@pytest.mark.parametrize(
+    ("newest_id", "reason"),
+    [
+        ("", "no_id"),
+        ("0", "bad_id"),
+        ("-5", "bad_id"),
+        ("12a", "bad_id"),
+        ("１２", "bad_id"),  # full-width digits are not an ASCII id
+        ("²", "bad_id"),
+    ],
+)
+def test_click_without_a_usable_id_still_opens_the_chat(
+    fake_wt, newest_id: str, reason: str
+) -> None:
+    n = ns.WindowsToastNotifier()
+    plan = ToastPlan(CJK_TARGET, "34", "58", "t", "b", None, 1, "text", newest_id)
+    n.show(plan)
+    opened = _Opened()
+    with patch.object(ns.desktop_bridge, "open_chat", opened):
+        with capture_logs() as logs:
+            fake_wt.shown[0].on_activated(None)
+    assert opened == [(CJK_TARGET, None)]
+    (clicked,) = [e for e in logs if e["event"] == "notify_clicked"]
+    assert clicked["has_target"] is False
+    assert clicked["target_reason"] == reason
 
 
 def test_each_toast_opens_its_own_chat(fake_wt) -> None:
@@ -275,12 +312,12 @@ def test_each_toast_opens_its_own_chat(fake_wt) -> None:
     n.show(room)
     first, second = fake_wt.shown
     assert second.tag == "79:0"
-    opened: list[ChatTarget] = []
-    with patch.object(ns.desktop_bridge, "open_chat", opened.append):
+    opened = _Opened()
+    with patch.object(ns.desktop_bridge, "open_chat", opened):
         with capture_logs() as logs:
             second.on_activated(None)
             first.on_activated(None)
-    assert opened == [ROOM_TARGET, CJK_TARGET]
+    assert opened == [(ROOM_TARGET, 9), (CJK_TARGET, 101)]
     clicked = [e for e in logs if e["event"] == "notify_clicked"]
     assert [(e["group_id"], e["member_id"]) for e in clicked] == [
         ("79", "0"),
@@ -305,8 +342,8 @@ def test_test_toast_click_is_unhandled_and_keeps_default_tag(fake_wt) -> None:
     n.show(plan)
     toast = fake_wt.shown[0]
     assert toast.tag == "uuid-default" and toast.group is None
-    opened: list = []
-    with patch.object(ns.desktop_bridge, "open_chat", opened.append):
+    opened = _Opened()
+    with patch.object(ns.desktop_bridge, "open_chat", opened):
         with capture_logs() as logs:
             toast.on_activated(None)
     assert opened == []
@@ -319,7 +356,7 @@ def test_on_activated_never_raises(fake_wt) -> None:
     n.show(make_plan())
     toast = fake_wt.shown[0]
 
-    def boom(_t):
+    def boom(_t, _m=None):
         raise RuntimeError("x 金村")
 
     with patch.object(ns.desktop_bridge, "open_chat", boom):

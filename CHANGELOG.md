@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   You can turn this off in Settings.
 - **Windows notifications for new messages.** Each member who sends new
   messages gets one notification with their photo and a preview; click it
-  to open the chat. You can hide message content or turn notifications off
-  in Settings.
+  to open the chat at that message. You can hide message content or turn
+  notifications off in Settings.
 
 ### Changed
 - **Hovering a group in the left rail shows its Japanese name** (乃木坂46,

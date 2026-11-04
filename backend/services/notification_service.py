@@ -4,10 +4,10 @@ The planner (:mod:`backend.services.notification_planner`) decides what to
 show; this module delivers it. On Windows a toast is sent through
 ``windows_toasts`` under the ``SakaDesk`` AUMID. A click fires the toast's
 in-process ``on_activated`` callback, whose closure holds the plan, and opens
-that chat via :mod:`backend.services.desktop_bridge`. No launch action is set:
-in windows-toasts it turns the click into a protocol activation. Everywhere
-else (or when ``windows_toasts`` cannot be imported) a :class:`NullNotifier`
-is used.
+that chat via :mod:`backend.services.desktop_bridge`, scrolled to the message
+the toast previews (``newest_id``). No launch action is set: in windows-toasts
+it turns the click into a protocol activation. Everywhere else (or when
+``windows_toasts`` cannot be imported) a :class:`NullNotifier` is used.
 
 Logs carry ids, counts, codes and error types only: never titles, bodies,
 names, paths or URLs.
@@ -54,6 +54,19 @@ class Notifier(Protocol):
 
 
 # ------------------------------------------------------------------- notifiers
+
+
+def _click_message_id(newest_id: str) -> tuple[int | None, str | None]:
+    """The message a click jumps to: ``(id, None)`` or ``(None, reason)``.
+
+    ``newest_id`` is an ASCII decimal id above zero; anything else yields no
+    jump, with ``reason`` ``no_id`` (empty) or ``bad_id`` (not such an id).
+    """
+    if not newest_id:
+        return None, "no_id"
+    if newest_id.isascii() and newest_id.isdigit() and int(newest_id) > 0:
+        return int(newest_id), None
+    return None, "bad_id"
 
 
 class NullNotifier:
@@ -153,13 +166,20 @@ class WindowsToastNotifier:
                 # The test toast has no chat behind it.
                 logger.info("notify_click_unhandled", reason="no_target")
                 return
+            # The chat opens at the message the toast previews; without a
+            # usable id it still opens, just without the jump.
+            message_id, no_target = _click_message_id(plan.newest_id)
+            fields: dict[str, Any] = {"has_target": message_id is not None}
+            if no_target is not None:
+                fields["target_reason"] = no_target
             logger.info(
                 "notify_clicked",
                 service=plan.target.service,
                 group_id=plan.group_id,
                 member_id=plan.member_id,
+                **fields,
             )
-            desktop_bridge.open_chat(plan.target)
+            desktop_bridge.open_chat(plan.target, message_id)
         except Exception as e:
             logger.warning("notify_open_chat_failed", error_type=type(e).__name__)
 
