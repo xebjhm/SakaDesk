@@ -206,6 +206,29 @@ describe('sync tab saving', () => {
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'ok' }));
     });
 
+    it('stops polling the backup status once the dialog closes', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            useAppStore.setState({ selectedServices: ['hinatazaka46'] });
+            fetchMock.mockImplementation(async (url: string) => {
+                if (url === '/api/blogs/backup/status') return { ok: true, json: async () => ({ running: { hinatazaka46: true } }) };
+                return { ok: false, json: async () => ({}) };
+            });
+            const statusReads = () => fetchMock.mock.calls.filter(([url]) => url === '/api/blogs/backup/status').length;
+            const { unmount } = render(
+                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" setOutputDirInput={vi.fn()}
+                    onSaveSettings={vi.fn()} onClose={vi.fn()} activeService="hinatazaka46" onVerifyAndFix={vi.fn()} onDeepResync={vi.fn()} />,
+            );
+            await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'ok' }));
+            const before = statusReads();
+            unmount();
+            await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+            expect(statusReads()).toBe(before);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('logs a failed backup status read as an error', async () => {
         useAppStore.setState({ selectedServices: ['hinatazaka46'] });
         fetchMock.mockRejectedValue(new Error('offline'));

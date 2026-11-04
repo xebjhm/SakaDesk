@@ -157,6 +157,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             return;
         }
         let cancelled = false;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
         // One `ok` breadcrumb per open, not one per 5 s poll while a backup runs.
         let logged = false;
         // The stats breadcrumb repeats only when its outcome changes between polls.
@@ -175,7 +176,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     }
                     const running = Object.keys(data.running ?? {}).length > 0;
                     setBlogBackupRunning(running);
-                    if (running) setTimeout(check, 5000);
+                    if (running) pollTimer = setTimeout(check, 5000);
                     // Fetch aggregate cache stats for all services
                     if (running || appSettings.blogs_full_backup) {
                         Promise.all(
@@ -205,7 +206,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 });
         };
         check();
-        return () => { cancelled = true; };
+        // Stop the poll when the dialog closes: no status request after it is gone.
+        return () => { cancelled = true; clearTimeout(pollTimer); };
     }, [appSettings.blogs_full_backup, selectedServices]);
 
     // Runs after both in-app confirmations (see the ConfirmDialog below).
