@@ -331,3 +331,20 @@ def test_timeline_jump_rejects_text_in_its_fields():
         json={"event": "timeline_jump", "fields": {"target": "高井 俐香"}},
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("event", "fields"),
+    [
+        ("letters_load", {"outcome": "ok", "count": 3}),
+        ("letters_load", {"outcome": "skipped_group"}),
+        ("account_profile_load", {"outcome": "error"}),
+        ("letter_avatar", {"count": 3, "history": 2, "fallback": 1}),
+        ("streak_load", {"outcome": "ok"}),
+    ],
+)
+def test_letter_breadcrumbs_are_accepted(event, fields):
+    with capture_logs() as logs:
+        res = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert res.status_code == 204
+    assert _client_events(logs)[0]["event"] == event

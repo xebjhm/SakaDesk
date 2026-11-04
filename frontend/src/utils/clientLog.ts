@@ -11,14 +11,14 @@ export type ClientLogEvent =
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'
     | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback'
-    | 'timeline_jump';
+    | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
     | 'surface' | 'call_id' | 'changed' | 'has_target'
     | 'theme' | 'size'
-    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path';
+    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

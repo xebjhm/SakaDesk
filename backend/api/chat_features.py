@@ -2,12 +2,14 @@
 Chat Features API for SakaDesk.
 
 Provides endpoints for:
-- Sent letters
+- Sent letters (live API and local archive)
 - Subscription streak
 - Message dates for calendar
 """
 
+import asyncio
 import json
+import re
 import structlog
 import aiohttp
 from collections import defaultdict
@@ -26,9 +28,11 @@ from backend.services.platform import (
     get_default_output_dir,
 )
 from backend.services.service_utils import (
+    get_service_display_name,
     get_service_enum,
     validate_service,
 )
+from backend.services.archive_urls import media_url, parse_iso
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = structlog.get_logger(__name__)
@@ -62,6 +66,95 @@ class DateCount(BaseModel):
 class MessageDatesResponse(BaseModel):
     dates: List[DateCount]
     total_dates: int
+
+
+# pysaka (>= 0.4.5) writes letter images as letters/<id>.<ext>; nothing else is served.
+LETTER_IMAGE_FILE = re.compile(r"^letters/[0-9]+\.[A-Za-z0-9]{1,5}$")
+
+
+class LocalLetter(BaseModel):
+    id: int
+    text: str
+    created_at: str
+    image_url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class LocalLettersResponse(BaseModel):
+    letters: List[LocalLetter]
+
+
+def _positive_int(value: object) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        return None
+    return value
+
+
+def _read_local_letters(
+    member_dir: Path, service: str, member_parts: list[str]
+) -> tuple[str, list[LocalLetter], int]:
+    """Read ``<member_dir>/letters.json``.
+
+    Returns ``(outcome, letters, skipped)``: outcome is ``missing`` (no file),
+    ``invalid`` (unreadable or not ``{"letters": [...]}``), ``empty`` or
+    ``found``. Entries without an integer id or a parseable ``created_at`` are
+    skipped and counted. ``image_url`` is set only for a canonical
+    ``letters/<id>.<ext>`` file that exists. Letters come back oldest first.
+    """
+    letters_file = member_dir / "letters.json"
+    if not letters_file.is_file():
+        return "missing", [], 0
+    try:
+        with open(letters_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return "invalid", [], 0
+    raw = data.get("letters") if isinstance(data, dict) else None
+    if not isinstance(raw, list):
+        return "invalid", [], 0
+    dated: list[tuple[datetime, LocalLetter]] = []
+    skipped = 0
+    for entry in raw:
+        if not isinstance(entry, dict):
+            skipped += 1
+            continue
+        letter_id = entry.get("id")
+        created_at = entry.get("created_at")
+        created = parse_iso(created_at)
+        if (
+            isinstance(letter_id, bool)
+            or not isinstance(letter_id, int)
+            or not isinstance(created_at, str)
+            or created is None
+        ):
+            skipped += 1
+            continue
+        image_file = entry.get("image_file")
+        image_url = None
+        if (
+            isinstance(image_file, str)
+            and LETTER_IMAGE_FILE.match(image_file)
+            and (member_dir / image_file).is_file()
+        ):
+            image_url = media_url(service, [*member_parts, *image_file.split("/")])
+        text = entry.get("text")
+        dated.append(
+            (
+                created,
+                LocalLetter(
+                    id=letter_id,
+                    text=text if isinstance(text, str) else "",
+                    created_at=created_at,
+                    image_url=image_url,
+                    width=_positive_int(entry.get("width")),
+                    height=_positive_int(entry.get("height")),
+                ),
+            )
+        )
+    dated.sort(key=lambda pair: pair[0])
+    letters = [letter for _, letter in dated]
+    return ("found" if letters else "empty"), letters, skipped
 
 
 def _local_date(timestamp: str) -> Optional[str]:
@@ -208,6 +301,46 @@ async def get_letters(group_id: int, service: str, count: int = 200):
         )
     finally:
         await session.close()
+
+
+@router.get("/letters_local", response_model=LocalLettersResponse)
+async def get_letters_local(service: str, path: str):
+    """The user's sent letters to one member, from the local archive only.
+
+    ``path`` is the member directory relative to the output directory (as in
+    ``/api/content/messages_by_path``) and must lie inside this service's
+    folder. A missing or unreadable ``letters.json`` gives an empty list.
+    Logs one ``letters_local`` breadcrumb per request: outcome and counts,
+    never letter text, names or paths.
+    """
+    from backend.api.content import get_output_dir, validate_path_within_dir
+
+    try:
+        display_name = get_service_display_name(service)
+    except ValueError:
+        logger.warning("letters_local", outcome="bad_service")
+        raise HTTPException(status_code=400, detail="Invalid service")
+    output_dir = get_output_dir()
+    member_dir = validate_path_within_dir(output_dir, path)
+    try:
+        parts = list(member_dir.relative_to(output_dir.resolve()).parts)
+    except ValueError:
+        parts = []
+    if not parts or parts[0] != display_name:
+        logger.warning("letters_local", outcome="wrong_service", service=service)
+        raise HTTPException(status_code=400, detail="Path is not in this service")
+    outcome, letters, skipped = await asyncio.to_thread(
+        _read_local_letters, member_dir, service, parts[1:]
+    )
+    log = logger.warning if outcome == "invalid" else logger.info
+    log(
+        "letters_local",
+        outcome=outcome,
+        service=service,
+        count=len(letters),
+        skipped=skipped,
+    )
+    return LocalLettersResponse(letters=letters)
 
 
 @router.get("/streak/{group_id}", response_model=StreakResponse)
