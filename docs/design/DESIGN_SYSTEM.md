@@ -33,8 +33,8 @@ It is read via `groupTokens[id].official` or `groupRoles(id)` and follows the
 active service automatically through CSS variables. It is never hard-coded,
 and a primitive never takes a group id.
 
-- **Official layer:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`,
-  the canvas and the shelters.
+- **Official layer:** `bg-group-title` (the title gradient), `bg-group-title-bar`,
+  `text-group-title`, `--ds-group-title-*`, the canvas and the shelters.
 - **Roles:** the Colour system table; for example `Avatar selected` draws a white
   ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
   focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
@@ -94,7 +94,7 @@ if components need it). Never add a new hex to a component or to
 | Scale | Utilities | Values |
 |---|---|---|
 | Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` | 11/16, 13/20, 14/22, 16/24, 20/28 px |
-| Radius | `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 14px, 20px, full |
+| Radius | `rounded-tail` `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 4px (only the first bubble's top-left corner, as `rounded-tl-tail`), 14px, 20px, full |
 | Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
 | Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
 | Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, `cubic-bezier(0.2, 0, 0, 1)` |
