@@ -1,7 +1,6 @@
-import React from 'react';
-import { FolderOpen } from 'lucide-react';
+import React, { useId } from 'react';
 import { useTranslation } from '../../i18n';
-import { Modal } from '../../design/primitives';
+import { Button, Input, Modal } from '../../design/primitives';
 
 interface SetupWizardProps {
     outputDirInput: string;
@@ -13,6 +12,7 @@ interface SetupWizardProps {
     isValid: boolean;
 }
 
+/** First-launch output folder (spec D2d decisions 4, 17, 18): not dismissible; one primary. */
 export const SetupWizard: React.FC<SetupWizardProps> = ({
     outputDirInput,
     setOutputDirInput,
@@ -23,70 +23,55 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     isValid,
 }) => {
     const { t } = useTranslation();
+    const inputId = useId();
 
     return (
-        <Modal isOpen onClose={() => {}} layout="bare" labelledBy="setup-title" dismissible={false} logId="setup" className="max-w-md">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
-                    <div className="flex items-center gap-3">
-                        <FolderOpen className="w-8 h-8 text-white" />
-                        <div>
-                            <h3 id="setup-title" className="text-xl font-bold text-white">{t('setup.welcome')}</h3>
-                            <p className="text-sm text-white/80">{t('setup.setupDataFolder')}</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {t('setup.outputFolderPath')}
-                        </label>
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                value={outputDirInput}
-                                onChange={(e) => setOutputDirInput(e.target.value)}
-                                placeholder={t('setup.outputFolderPlaceholder')}
-                                className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                            <button
-                                onClick={onSelectFolder}
-                                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-medium transition-colors border border-gray-200"
-                            >
-                                {t('common.browse')}
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                            {t('setup.outputFolderHint')}
-                        </p>
-                    </div>
+        <Modal
+            isOpen
+            onClose={() => {}}
+            title={t('setup.welcome')}
+            dismissible={false}
+            logId="setup"
+            className="max-w-md"
+            bodyClassName="flex flex-col gap-4"
+            footer={
+                <Button variant="primary" className="w-full" onClick={onComplete} disabled={!isValid}>
+                    {t('setup.startUsing')}
+                </Button>
+            }
+        >
+            <p className="text-small text-muted">{t('setup.setupDataFolder')}</p>
 
-                    {/* Blog Sync Mode Option */}
-                    <div className="bg-gray-50 rounded-xl p-4">
-                        <label className="flex items-start gap-3 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={setupBlogFullBackup}
-                                onChange={(e) => setSetupBlogFullBackup(e.target.checked)}
-                                className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                            />
-                            <div>
-                                <span className="text-sm font-medium text-gray-700">{t('setup.downloadBlogsOffline')}</span>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    {t('setup.downloadBlogsHint')}
-                                </p>
-                            </div>
-                        </label>
-                    </div>
-
-                    <button
-                        onClick={onComplete}
-                        disabled={!isValid}
-                        className="w-full py-3 bg-blue-400 text-white rounded-xl font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {t('setup.startUsing')}
-                    </button>
+            <div className="flex flex-col gap-2">
+                <label htmlFor={inputId} className="text-small font-semibold text-secondary">
+                    {t('setup.outputFolderPath')}
+                </label>
+                <div className="flex gap-2">
+                    <Input
+                        id={inputId}
+                        value={outputDirInput}
+                        onChange={(e) => setOutputDirInput(e.target.value)}
+                        placeholder={t('setup.outputFolderPlaceholder')}
+                        className="flex-1"
+                    />
+                    <Button variant="secondary" onClick={onSelectFolder}>{t('common.browse')}</Button>
                 </div>
-            </Modal>
+                <p className="text-caption text-muted">{t('setup.outputFolderHint')}</p>
+            </div>
+
+            {/* Blog Sync Mode Option */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-card bg-sunken p-4">
+                <input
+                    type="checkbox"
+                    checked={setupBlogFullBackup}
+                    onChange={(e) => setSetupBlogFullBackup(e.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-group"
+                />
+                <span className="flex flex-col gap-1">
+                    <span className="text-small font-semibold text-primary">{t('setup.downloadBlogsOffline')}</span>
+                    <span className="text-caption text-secondary">{t('setup.downloadBlogsHint')}</span>
+                </span>
+            </label>
+        </Modal>
     );
 };

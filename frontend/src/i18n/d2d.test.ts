@@ -22,4 +22,15 @@ describe('D2d strings', () => {
             expect((value as string).trim().length, dotted).toBeGreaterThan(0);
         }
     });
+
+    /** Keys only the deleted LoginPage used (decision 14). */
+    const REMOVED_KEYS = ['login.browserPrompt', 'login.launchBrowserLogin', 'login.waitingForBrowser'] as const;
+
+    it.each(Object.entries(locales))('%s no longer has the LoginPage keys', (_code, data) => {
+        const tree = data as unknown as Tree;
+        for (const dotted of REMOVED_KEYS) {
+            const [section, key] = dotted.split('.');
+            expect(tree[section]?.[key], dotted).toBeUndefined();
+        }
+    });
 });

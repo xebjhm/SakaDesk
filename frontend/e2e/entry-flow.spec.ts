@@ -99,3 +99,30 @@ test('a newly added group shows the inline sync view while its first sync runs',
   state.progress.sakurazaka46 = COMPLETE
   await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toHaveCount(0, { timeout: 10000 })
 })
+
+test('a short window scrolls the terms; Accept stays on screen (D2d)', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 480 })
+  await pinEntry(page)
+  await page.goto('/')
+  const tos = page.getByRole('dialog', { name: 'Terms of Service' })
+  await expect(tos).toBeVisible({ timeout: 10000 })
+  await expect(tos.getByRole('button', { name: 'Accept and Continue' })).toBeInViewport({ ratio: 1 })
+  await tos.getByRole('checkbox').check()
+  await expect(tos.getByRole('button', { name: 'Accept and Continue' })).toBeEnabled()
+  await expect(tos.getByRole('button', { name: 'Accept and Continue' })).toBeInViewport({ ratio: 1 })
+})
+
+test('the next service login dialog shows no error from the previous failed login (D2d)', async ({ page }) => {
+  const state = await pinEntry(page, { tosAccepted: true })
+  state.loginStatus = 500
+  await page.goto('/')
+  await startWith(page, '日向坂46', '櫻坂46')
+  const first = page.getByRole('dialog', { name: 'Connect Your Account?' })
+  await first.getByRole('button', { name: 'Connect Account' }).click()
+  await expect(first.getByText('Login failed or cancelled')).toBeVisible()
+  await first.getByRole('button', { name: 'Maybe Later' }).click()
+  const second = page.getByRole('dialog', { name: 'Connect Your Account?' })
+  await expect(second).toContainText('櫻坂46')
+  await expect(second.getByRole('alert')).toHaveCount(0)
+  await expect(second.getByText('Login failed or cancelled')).toHaveCount(0)
+})

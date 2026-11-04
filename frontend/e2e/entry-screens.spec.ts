@@ -69,7 +69,7 @@ test('login: gradient, error, light header', async ({ page }) => {
   const second = page.getByRole('dialog', { name: 'Connect Your Account?' })
   await expect(second).toContainText('櫻坂46')
   await expect(second).not.toContainText('日向坂46')
-  // The earlier error text stays on the second dialog today; this shot records that.
+  await expect(second.getByText('Login failed or cancelled')).toHaveCount(0)
   await shot(page, 'login-sakurazaka46')
 })
 
