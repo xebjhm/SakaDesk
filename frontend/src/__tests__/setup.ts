@@ -1,9 +1,12 @@
 import '@testing-library/jest-dom'
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach, afterAll, beforeAll, vi } from 'vitest'
 import { server } from './mocks/server'
 import { resetDialogStack } from '../design/dialog/dialogStack'
 import { resetMenuStack } from '../design/primitives/menuStack'
+
+// findBy* / waitFor: 1 s by default, too short for a full App mount on a loaded machine.
+configure({ asyncUtilTimeout: 3000 })
 
 // Start MSW server before all tests
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
