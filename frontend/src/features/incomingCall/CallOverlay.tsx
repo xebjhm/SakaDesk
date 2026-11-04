@@ -80,7 +80,14 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
             const lost = overlay?.isConnected
                 ? active !== null && overlay.contains(active)
                 : active === null || active === document.body || !active.isConnected;
-            if (lost) topDialog()?.node()?.focus({ preventScroll: true });
+            if (!lost) {
+                clientLog('call_layer', { phase: 'focus', outcome: 'kept' });
+                return;
+            }
+            const node = topDialog()?.node();
+            node?.focus({ preventScroll: true });
+            // `dropped`: focus was in the call but no dialog is left to take it.
+            clientLog('call_layer', { phase: 'focus', outcome: node ? 'restored' : 'dropped' });
         };
     }, [lifted]);
 

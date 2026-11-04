@@ -444,3 +444,19 @@ def test_sync_start_skipped_breadcrumb_is_accepted(reason):
     events = _client_events(logs)
     assert events[0]["event"] == "sync_start_skipped"
     assert events[0]["reason"] == reason
+
+
+@pytest.mark.parametrize("outcome", ["restored", "kept", "dropped"])
+def test_call_layer_focus_breadcrumb_is_accepted(outcome):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_layer",
+                "fields": {"phase": "focus", "outcome": outcome},
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["phase"] == "focus"
+    assert events[0]["outcome"] == outcome

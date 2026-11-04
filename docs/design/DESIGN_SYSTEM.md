@@ -275,6 +275,8 @@ frame (its `z-30` is local to the chat area). A call that starts while a dialog 
 (`dialogStack.ts`), half a `DIALOG_STEP` above the dialogs that were open when it rang, so a
 dialog opened during the call still goes above it. It is not on the dialog layer: the layer
 leaves Escape and Tab pressed inside it to the call (`useDialog`), and focus there is allowed.
+Because the layer does not track the call, a lifted call that goes away with focus inside it
+hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase` `focus`).
 
 ## Do / Don't
 

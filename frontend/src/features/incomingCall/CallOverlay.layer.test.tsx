@@ -150,6 +150,7 @@ describe('CallOverlay layering (spec D2d decisions 20, 21)', () => {
         rerender(app(['設定'], idle(c)));
         expect(screen.queryByTestId('call-overlay')).toBeNull();
         expect(screen.getByRole('dialog', { name: '設定' })).toHaveFocus();
+        expect(layerEvents()).toContainEqual(['call_layer', { phase: 'focus', outcome: 'restored' }]);
     });
 
     it('a lifted call that ends leaves focus alone when it is already in the dialog', () => {
@@ -159,6 +160,30 @@ describe('CallOverlay layering (spec D2d decisions 20, 21)', () => {
         act(() => ok.focus());
         rerender(app(['設定'], idle(c)));
         expect(ok).toHaveFocus();
+        expect(layerEvents()).toContainEqual(['call_layer', { phase: 'focus', outcome: 'kept' }]);
+    });
+
+    it('a dialog opened above a lifted call keeps Escape and Tab; the call keeps ringing', () => {
+        const c = call();
+        const { rerender } = ringOver(['設定'], c);
+        rerender(app(['設定', '確認'], c));
+        const top = screen.getByRole('dialog', { name: '確認' });
+        expect(top).toHaveFocus();
+        expect(backdropZ('確認')).toBeGreaterThan(overlayZ());
+
+        // Tab from the last control wraps inside the top dialog.
+        const last = screen.getByRole('button', { name: '確認 OK' });
+        act(() => last.focus());
+        const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+        act(() => { last.dispatchEvent(tab); });
+        expect(tab.defaultPrevented).toBe(true);
+        expect(top).toContainElement(document.activeElement as HTMLElement);
+
+        fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+        expect(screen.queryByRole('dialog', { name: '確認' })).toBeNull();
+        expect(screen.getByRole('dialog', { name: '設定' })).toBeInTheDocument();
+        expect(c.decline).not.toHaveBeenCalled();
+        expect(screen.getByTestId('call-overlay')).toHaveAttribute('data-layer', 'lifted');
     });
 
     it('decides the layer afresh for each call, even when the same message rings again', () => {
@@ -171,6 +196,7 @@ describe('CallOverlay layering (spec D2d decisions 20, 21)', () => {
         expect(screen.getByTestId('call-overlay')).toHaveAttribute('data-layer', 'frame');
         expect(layerEvents()).toEqual([
             ['call_layer', { phase: 'lifted', count: 1 }],
+            ['call_layer', { phase: 'focus', outcome: 'kept' }],
             ['call_layer', { phase: 'in_frame', count: 0 }],
         ]);
     });
