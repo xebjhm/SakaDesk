@@ -1,0 +1,236 @@
+/**
+ * Dev-only living style page (`?view=design`). Shows every token and every
+ * primitive state for the selected group. Never shipped: main.tsx loads it
+ * only behind `import.meta.env.DEV`.
+ */
+import React, { useEffect, useState } from 'react';
+import { BookOpen, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
+import { useTranslation } from '../i18n';
+import { serviceThemes } from '../config/serviceThemes';
+import { cn } from '../utils/classnames';
+import { applyGroupTokens } from './applyTokens';
+import { contrastRatio } from './contrast';
+import { GROUP_IDS, color, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
+import {
+    Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Modal, Pill, RailItem, Sheet,
+} from './primitives';
+
+// Full class names so Tailwind's scanner generates them.
+const RADIUS_CLASS: Record<RadiusStep, string> = {
+    none: 'rounded-none', card: 'rounded-card', sheet: 'rounded-sheet', pill: 'rounded-pill',
+};
+const SHADOW_CLASS: Record<ShadowStep, string> = {
+    none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
+};
+const TYPE_CLASS: Record<TypeStep, string> = {
+    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading',
+};
+
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+    <section className="flex flex-col gap-4">
+        <h2 className="text-heading font-semibold text-primary">{title}</h2>
+        {children}
+    </section>
+);
+
+const Swatch: React.FC<{ name: string; value: string }> = ({ name, value }) => {
+    const { t } = useTranslation();
+    const ratio = contrastRatio(value, color.text.inverse);
+    return (
+        <Card className="flex w-44 flex-col overflow-hidden">
+            <div className="h-14" style={{ background: value }} />
+            <div className="flex flex-col gap-1 p-3">
+                <span className="text-small font-semibold text-primary">{name}</span>
+                <span className="break-all text-caption text-muted">{value}</span>
+                <span className="text-caption text-secondary">
+                    {ratio === null ? t('designPage.contrastNA') : t('designPage.contrast', { ratio: ratio.toFixed(1) })}
+                </span>
+            </div>
+        </Card>
+    );
+};
+
+function daysAgo(n: number): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return d;
+}
+
+export const DesignPage: React.FC = () => {
+    const { t } = useTranslation();
+    const [group, setGroup] = useState<GroupId>('hinatazaka');
+    const [filter, setFilter] = useState<'all' | 'unread'>('all');
+    const [rail, setRail] = useState<'talk' | 'blog' | 'news'>('talk');
+    const [moved, setMoved] = useState(false);
+    const [modalOpen, setModalOpen] = useState(false);
+
+    useEffect(() => applyGroupTokens(group), [group]);
+
+    const g = groupTokens[group];
+    const neutral = Object.entries(color).flatMap(([role, values]) =>
+        Object.entries(values).map(([name, value]) => [`${role}.${name}`, value] as const),
+    );
+    const groupSwatches = [
+        ['accent', g.accent], ['badge', g.badge], ['bubbleBorder', g.bubbleBorder], ['ring', g.ring],
+        ['glow', g.glow], ['title.text', g.title.text], ['title.bar', g.title.bar],
+        ['canvas', `linear-gradient(to bottom, ${g.canvas.join(', ')})`],
+    ] as const;
+
+    return (
+        <Canvas data-testid="design-page" className="min-h-screen p-6">
+            <Sheet className="mx-auto flex max-w-5xl flex-col gap-10 p-8">
+                <header className="flex flex-col gap-3">
+                    <h1 className="text-heading font-semibold text-primary">{t('designPage.title')}</h1>
+                    <p className="text-body text-secondary">{t('designPage.subtitle')}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-small text-muted">{t('designPage.group')}</span>
+                        {GROUP_IDS.map((id) => (
+                            <Pill key={id} selected={id === group} onClick={() => setGroup(id)}>
+                                {serviceThemes[id].name || id}
+                            </Pill>
+                        ))}
+                    </div>
+                </header>
+
+                <Section title={t('designPage.colors')}>
+                    <h3 className="text-title text-secondary">{t('designPage.neutral')}</h3>
+                    <div className="flex flex-wrap gap-3">
+                        {neutral.map(([name, value]) => <Swatch key={name} name={name} value={value} />)}
+                    </div>
+                    <h3 className="text-title text-secondary">{t('designPage.groupColors')}</h3>
+                    <div className="flex flex-wrap gap-3">
+                        {groupSwatches.map(([name, value]) => <Swatch key={name} name={name} value={value} />)}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.radius')}>
+                    <div className="flex flex-wrap gap-4">
+                        {(Object.keys(radius) as RadiusStep[]).map((step) => (
+                            <div key={step} className="flex flex-col items-center gap-2">
+                                <div className={cn('h-16 w-24 bg-sunken', RADIUS_CLASS[step])} />
+                                <span className="text-caption text-muted">{step} · {radius[step]}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.shadow')}>
+                    <div className="flex flex-wrap gap-6 bg-elevated p-6 rounded-card">
+                        {(Object.keys(shadow) as ShadowStep[]).map((step) => (
+                            <div key={step} className={cn('flex h-16 w-28 items-center justify-center bg-card rounded-card text-caption text-muted', SHADOW_CLASS[step])}>
+                                {step}
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.type')}>
+                    <div className="flex flex-col gap-2">
+                        {(Object.keys(typeScale) as TypeStep[]).map((step) => (
+                            <div key={step} className="flex items-baseline gap-4">
+                                <span className="w-32 text-caption text-muted">{step} · {typeScale[step].size}/{typeScale[step].leading}</span>
+                                <span className={cn('text-primary', TYPE_CLASS[step])}>{t('designPage.sample')}</span>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.motion')}>
+                    <div className="flex items-center gap-4">
+                        <Button size="sm" onClick={() => setMoved((m) => !m)}>{t('designPage.animate')}</Button>
+                        {(['duration-fast', 'duration-base'] as const).map((d) => (
+                            <div key={d} className="flex w-48 flex-col gap-1">
+                                <span className="text-caption text-muted">{d}</span>
+                                <div className="h-8 bg-sunken rounded-pill">
+                                    <div className={cn('h-8 w-8 bg-group-accent rounded-pill transition-transform ease-standard', d, moved && 'translate-x-40')} />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.primitives')}>
+                    <h3 className="text-title text-secondary">{t('designPage.surfaces')}</h3>
+                    <Canvas className="p-4 rounded-card">
+                        <Sheet className="p-4">
+                            <Card className="p-4 text-body text-primary">Canvas › Sheet › Card</Card>
+                        </Sheet>
+                    </Canvas>
+
+                    <h3 className="text-title text-secondary">{t('designPage.pills')}</h3>
+                    <div className="flex gap-2">
+                        <Pill selected={filter === 'all'} onClick={() => setFilter('all')}>{t('designPage.filterAll')}</Pill>
+                        <Pill selected={filter === 'unread'} onClick={() => setFilter('unread')}>{t('designPage.filterUnread')}</Pill>
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.badges')}</h3>
+                    <div className="flex items-center gap-3">
+                        {[0, 1, 99, 100].map((n) => <Badge key={n} count={n} />)}
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.avatars')}</h3>
+                    <div className="flex items-center gap-4">
+                        <Avatar src="/logo-192.png" name="SakaDesk" size="sm" />
+                        <Avatar src="/logo-192.png" name="SakaDesk" size="md" />
+                        <Avatar src="/logo-192.png" name="SakaDesk" size="lg" selected />
+                        <Avatar name="日向坂" size="xl" />
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.datePills')}</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {[0, 1, 10, 400].map((n) => <DatePill key={n} date={daysAgo(n)} />)}
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.buttons')}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="primary">{t('designPage.primary')}</Button>
+                        <Button>{t('designPage.secondary')}</Button>
+                        <Button variant="ghost">{t('designPage.ghost')}</Button>
+                        <Button disabled>{t('designPage.disabled')}</Button>
+                        <Button size="sm">{t('designPage.secondary')}</Button>
+                        <IconButton aria-label={t('designPage.close')} icon={<X />} />
+                        <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.rail')}</h3>
+                    <div className="flex w-24 flex-col gap-1 bg-group-canvas p-2 rounded-card">
+                        <RailItem icon={<MessageCircle />} label={t('features.messages')} selected={rail === 'talk'} onClick={() => setRail('talk')} />
+                        <RailItem icon={<BookOpen />} label={t('features.blogs')} selected={rail === 'blog'} onClick={() => setRail('blog')} />
+                        <RailItem icon={<Newspaper />} label={t('features.news')} selected={rail === 'news'} onClick={() => setRail('news')} />
+                        <RailItem icon={<Search />} label={t('designPage.filterAll')} />
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.modal')}</h3>
+                    <div>
+                        <Button onClick={() => setModalOpen(true)}>{t('designPage.openModal')}</Button>
+                    </div>
+                    <Modal
+                        isOpen={modalOpen}
+                        onClose={() => setModalOpen(false)}
+                        title={t('designPage.modalTitle')}
+                        footer={<Button variant="primary" onClick={() => setModalOpen(false)}>{t('designPage.close')}</Button>}
+                    >
+                        {t('designPage.modalBody')}
+                    </Modal>
+                </Section>
+
+                <Section title={t('designPage.rules')}>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        {(['1', '2', '3'] as const).map((n) => (
+                            <React.Fragment key={n}>
+                                <Card className="flex flex-col gap-1 p-4">
+                                    <span className="text-caption font-semibold text-secondary">{t('designPage.do')}</span>
+                                    <span className="text-body text-primary">{t(`designPage.do${n}`)}</span>
+                                </Card>
+                                <Card className="flex flex-col gap-1 p-4">
+                                    <span className="text-caption font-semibold text-muted">{t('designPage.dont')}</span>
+                                    <span className="text-body text-primary">{t(`designPage.dont${n}`)}</span>
+                                </Card>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                </Section>
+            </Sheet>
+        </Canvas>
+    );
+};
