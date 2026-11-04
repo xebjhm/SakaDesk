@@ -43,6 +43,8 @@ describe('Pill', () => {
 
     it('never uses the group colour for the selected state', () => {
         render(<Pill selected>x</Pill>);
-        expect(screen.getByRole('button').className).not.toMatch(/group/);
+        const btn = screen.getByRole('button');
+        expect(btn.className).not.toMatch(/\b(bg|text)-group-/);
+        expect(btn).toHaveClass('focus-visible:ring-group');
     });
 });

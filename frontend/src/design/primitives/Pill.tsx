@@ -16,6 +16,7 @@ export const Pill = React.forwardRef<HTMLButtonElement, PillProps>(
             className={cn(
                 'inline-flex items-center gap-1 rounded-pill px-3 py-1 text-small shadow-pill',
                 'transition-colors duration-fast ease-standard',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
                 selected ? 'bg-sunken font-semibold text-primary' : 'bg-pill text-secondary hover:text-primary',
                 className,
             )}
