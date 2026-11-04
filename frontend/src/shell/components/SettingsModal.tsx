@@ -99,10 +99,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
     // The row whose last save failed: it shows the failure inline (the App toast says it too).
     const [failedRow, setFailedRow] = useState<SaveRow | null>(null);
+    // Mirrors failedRow so a successful save on another row does not schedule a render.
+    const failedRowRef = React.useRef<SaveRow | null>(null);
     const save = async (row: SaveRow, updates: Partial<AppSettings>): Promise<boolean> => {
         const ok = await onSaveSettings(updates);
         logDialogLoad('settings_app_save', ok ? 'ok' : 'error');
-        setFailedRow(prev => (ok ? (prev === row ? null : prev) : row));
+        const next = ok ? (failedRowRef.current === row ? null : failedRowRef.current) : row;
+        if (next !== failedRowRef.current) {
+            failedRowRef.current = next;
+            setFailedRow(next);
+        }
         return ok;
     };
     const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
