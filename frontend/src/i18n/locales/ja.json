@@ -29,7 +29,6 @@
     "error": "エラー",
     "loading": "読み込み中...",
     "done": "完了",
-    "refresh": "更新",
     "browse": "参照",
     "download": "ダウンロード",
     "dismiss": "閉じる",
@@ -447,10 +446,9 @@
     "noLetters": "まだレターを送信していません",
     "noTextContent": "テキストなし",
     "noContent": "内容なし",
-    "tapToClose": "タップして閉じる",
-    "noGroupId": "グループIDがありません",
-    "noService": "アクティブなサービスがありません",
-    "fetchFailed": "レターの読み込みに失敗しました"
+    "loading": "レターを読み込み中…",
+    "unavailable": "現在レターを表示できません",
+    "letterSent": "{{date}}に送信したレター"
   },
   "blogs": {
     "latestBlogs": "新着ブログ",
@@ -634,6 +632,7 @@
   },
   "letters": {
     "openImage": "レターを開く",
-    "you": "あなた"
+    "you": "あなた",
+    "openImageAt": "{{date}}に送信したレターを開く"
   }
 }

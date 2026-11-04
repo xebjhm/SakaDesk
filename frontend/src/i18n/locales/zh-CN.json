@@ -29,7 +29,6 @@
     "error": "错误",
     "loading": "加载中...",
     "done": "完成",
-    "refresh": "刷新",
     "browse": "浏览",
     "download": "下载",
     "dismiss": "忽略",
@@ -447,10 +446,9 @@
     "noLetters": "尚未发送过信件",
     "noTextContent": "无文字内容",
     "noContent": "无内容",
-    "tapToClose": "点击任意位置关闭",
-    "noGroupId": "没有可用的群组 ID",
-    "noService": "没有活动的服务",
-    "fetchFailed": "加载信件失败"
+    "loading": "正在加载信件…",
+    "unavailable": "暂时无法显示信件",
+    "letterSent": "{{date}} 发送的信件"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -634,6 +632,7 @@
   },
   "letters": {
     "openImage": "打开信件",
-    "you": "你"
+    "you": "你",
+    "openImageAt": "打开 {{date}} 发送的信件"
   }
 }

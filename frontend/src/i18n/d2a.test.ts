@@ -16,6 +16,10 @@ const D2A_KEYS = [
     'messageList.openConversations',
     'letters.openImage',
     'letters.you',
+    'letters.openImageAt',
+    'sentLetters.loading',
+    'sentLetters.unavailable',
+    'sentLetters.letterSent',
 ] as const;
 
 describe('D2a strings', () => {
@@ -24,6 +28,17 @@ describe('D2a strings', () => {
         for (const dotted of D2A_KEYS) {
             const [section, key] = dotted.split('.');
             expect(tree[section]?.[key], dotted).toBeTruthy();
+        }
+    });
+});
+
+describe('D2a removed strings', () => {
+    const DEAD_KEYS = ['common.refresh', 'sentLetters.tapToClose', 'sentLetters.noGroupId', 'sentLetters.noService', 'sentLetters.fetchFailed'];
+    it.each(Object.entries(locales))('%s has none of the dead keys', (_code, data) => {
+        const tree = data as unknown as Record<string, Record<string, string>>;
+        for (const dotted of DEAD_KEYS) {
+            const [section, key] = dotted.split('.');
+            expect(tree[section]?.[key], dotted).toBeUndefined();
         }
     });
 });

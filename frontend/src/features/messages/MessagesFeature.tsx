@@ -767,6 +767,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
                             letters={roomExtras.letters}
+                            lettersStatus={roomExtras.lettersStatus}
                             onJumpToLetter={jumpToLetter}
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
@@ -814,7 +815,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-secondary">{t('messageList.loadingMessages')}</div>
                     )}
                     {error && (
-                        <div className="p-10 text-center text-feedback-error">Error: {error}</div>
+                        <div className="p-10 text-center text-feedback-error">
+                            <p className="font-semibold">{t('common.error')}</p>
+                            <p>{error}</p>
+                        </div>
                     )}
 
                     {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && (

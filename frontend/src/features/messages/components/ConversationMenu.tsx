@@ -3,6 +3,7 @@ import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react
 import { cn } from '../../../utils/classnames';
 import type { Message, BackgroundSettings } from '../../../types';
 import type { Letter } from '../letters';
+import type { LettersStatus } from '../hooks/useRoomExtras';
 import { SentLettersModal } from '../../../core/modals/SentLettersModal';
 import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
@@ -28,6 +29,8 @@ interface ChatHeaderMenuProps {
     iconColor?: string;
     /** The room's sent letters (the timeline's list), for the overview. */
     letters: readonly Letter[];
+    /** Whether the letters are loading, loaded or unavailable (the overview says so). */
+    lettersStatus: LettersStatus;
     /** Jumps the chat to a letter chosen in the overview. */
     onJumpToLetter: (id: number) => void;
 }
@@ -41,6 +44,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     memberName,
     memberAvatar,
     letters,
+    lettersStatus,
     onJumpToLetter,
     activeService,
     onOpenCalendar,
@@ -134,6 +138,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 isOpen={activeModal === 'letters'}
                 onClose={() => setActiveModal(null)}
                 letters={letters}
+                status={lettersStatus}
                 onSelectLetter={onJumpToLetter}
             />
 

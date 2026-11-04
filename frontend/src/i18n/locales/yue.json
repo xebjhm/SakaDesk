@@ -29,7 +29,6 @@
     "error": "錯誤",
     "loading": "撈緊...",
     "done": "搞掂",
-    "refresh": "刷新",
     "browse": "瀏覽",
     "download": "下載",
     "dismiss": "關閉",
@@ -447,10 +446,9 @@
     "noLetters": "未寄過信",
     "noTextContent": "冇文字內容",
     "noContent": "冇內容",
-    "tapToClose": "撳任意位置關閉",
-    "noGroupId": "冇可用嘅群組 ID",
-    "noService": "冇作用中嘅服務",
-    "fetchFailed": "載入信件失敗"
+    "loading": "載入緊信…",
+    "unavailable": "暫時顯示唔到信",
+    "letterSent": "{{date}} 寄嘅信"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -634,6 +632,7 @@
   },
   "letters": {
     "openImage": "打開信",
-    "you": "你"
+    "you": "你",
+    "openImageAt": "打開 {{date}} 寄嘅信"
   }
 }

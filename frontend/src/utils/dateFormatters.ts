@@ -16,12 +16,21 @@
  * throwing or matching everything).
  */
 export function toLocalDateStr(timestamp: string | Date): string {
-  const d = timestamp instanceof Date ? timestamp : new Date(timestamp);
-  if (Number.isNaN(d.getTime())) return '';
+  const d = toValidDate(timestamp);
+  if (!d) return '';
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * The Date of a timestamp (ISO string or Date), or null when it cannot be parsed, so a
+ * caller can skip it instead of formatting an Invalid Date (Intl throws a RangeError).
+ */
+export function toValidDate(timestamp: string | Date): Date | null {
+  const d = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 export type DatePillKey = 'date.today' | 'date.yesterday';

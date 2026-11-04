@@ -29,7 +29,6 @@
     "error": "Error",
     "loading": "Loading...",
     "done": "Done",
-    "refresh": "Refresh",
     "browse": "Browse",
     "download": "Download",
     "dismiss": "Dismiss",
@@ -447,10 +446,9 @@
     "noLetters": "No letters sent yet",
     "noTextContent": "No text content",
     "noContent": "No content",
-    "tapToClose": "Tap anywhere to close",
-    "noGroupId": "No group ID available",
-    "noService": "No active service",
-    "fetchFailed": "Failed to load letters"
+    "loading": "Loading letters…",
+    "unavailable": "Letters are unavailable right now",
+    "letterSent": "Letter sent {{date}}"
   },
   "blogs": {
     "latestBlogs": "Latest Blogs",
@@ -634,6 +632,7 @@
   },
   "letters": {
     "openImage": "Open letter",
-    "you": "You"
+    "you": "You",
+    "openImageAt": "Open letter sent {{date}}"
   }
 }

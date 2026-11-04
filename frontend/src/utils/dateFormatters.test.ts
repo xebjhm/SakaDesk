@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr } from './dateFormatters';
+import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr, toValidDate } from './dateFormatters';
 
 // SD-FE-CORE-02: bucket/match by LOCAL date, matching what message bubbles show.
 describe('toLocalDateStr', () => {
@@ -83,5 +83,19 @@ describe('fromLocalDateStr', () => {
     expect(fromLocalDateStr('')).toBeNull();
     expect(fromLocalDateStr('2022-1-15')).toBeNull();
     expect(fromLocalDateStr('2022-01-15T00:00:00Z')).toBeNull();
+  });
+});
+
+describe('toValidDate', () => {
+  it('parses a valid timestamp and passes a valid Date through', () => {
+    expect(toValidDate('2025-10-31T16:19:35Z')?.toISOString()).toBe('2025-10-31T16:19:35.000Z');
+    const d = new Date(2026, 0, 1);
+    expect(toValidDate(d)).toBe(d);
+  });
+
+  it('is null for anything unparseable, so formatting never throws', () => {
+    expect(toValidDate('not a date')).toBeNull();
+    expect(toValidDate('')).toBeNull();
+    expect(toValidDate(new Date(NaN))).toBeNull();
   });
 });

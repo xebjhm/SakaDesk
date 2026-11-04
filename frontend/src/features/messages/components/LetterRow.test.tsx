@@ -12,7 +12,8 @@ describe('LetterRow', () => {
     it('shows the full letter image at 180 px with its height reserved, and opens it', () => {
         const onOpenImage = vi.fn();
         render(<LetterRow letter={base} avatarUrl="/me.jpg" userName="ゆき" onOpenImage={onOpenImage} />);
-        const button = screen.getByRole('button', { name: 'Open letter' });
+        const button = screen.getByRole('button', { name: /^Open letter sent .*2025/ });
+        expect(button).toHaveAttribute('title', 'Open letter');
         expect(button).toHaveStyle({ width: '180px', height: '270px' });
         fireEvent.click(button);
         expect(onOpenImage).toHaveBeenCalledWith(base);
@@ -31,5 +32,14 @@ describe('LetterRow', () => {
     it('carries no "sent letter" tag', () => {
         render(<LetterRow letter={base} avatarUrl={null} userName="ゆき" onOpenImage={vi.fn()} />);
         expect(screen.queryByText(/sent letter/i)).toBeNull();
+    });
+
+    it('names the open button by the send date and time, so same-day letters differ', () => {
+        render(<>
+            <LetterRow letter={base} avatarUrl={null} userName="ゆき" onOpenImage={vi.fn()} />
+            <LetterRow letter={{ ...base, id: 8, created_at: '2025-10-31T18:45:00Z' }} avatarUrl={null} userName="ゆき" onOpenImage={vi.fn()} />
+        </>);
+        const [a, b] = screen.getAllByRole('button', { name: /^Open letter sent/ });
+        expect(a.getAttribute('aria-label')).not.toBe(b.getAttribute('aria-label'));
     });
 });
