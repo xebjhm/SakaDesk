@@ -45,6 +45,9 @@ Items found during D2a, D2b and D2c that were left on purpose. Pick them up in E
 - **`checkVisibility` needs Chromium 121+.** `frontend/src/design/dialog/tabbables.ts` relies on `Element.checkVisibility` (with a fallback for jsdom); confirm the WebView2 floor or keep the fallback tested.
 - **`Z_INDEX` depth.** `dialogZIndex` (`frontend/src/design/dialog/dialogStack.ts`) assumes at most about 20 stacked dialogs so `DIALOG + depth × DIALOG_STEP` stays far below `POPOVER`; cap or assert it.
 - **Style-ratchet gaps.** `VideoPlayer`, `VoicePlayer` and `MessagesFeature` are not in the `FILES` list of `frontend/src/core/dialogs.style.test.ts` (they still have palette classes); add them once the player internals and the chat screen are on tokens.
+- **Reset row error.** In `frontend/src/shell/components/SettingsModal.tsx`, `save('reset', …)` can set `failedRow = 'reset'`, but no row renders `rowError('reset')`, so a failed Reset to defaults shows only the App toast. Either show the error on the footer row or drop `'reset'` from `SaveRow`.
+- **Inline settings error announcement.** `frontend/src/shell/components/SettingRow.tsx` mounts its `role="status"` paragraph together with its text, so some screen readers may not announce it. Keep the region mounted empty, as the AI tab does.
+- **Leftover `z-50` classes.** The DESIGN_SYSTEM "Layering" rule says use `Z_INDEX` only, but `frontend/src/features/blogs/components/TimelineRail.tsx` (rail tooltip) and `frontend/src/core/media/VideoPlayer.tsx` (player toast) still use `z-50`.
 
 ## D2d notes
 
