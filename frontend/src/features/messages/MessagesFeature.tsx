@@ -15,7 +15,7 @@ import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
-import { Avatar, IconButton } from '../../design/primitives';
+import { Avatar, Button, IconButton, Modal } from '../../design/primitives';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
@@ -874,34 +874,29 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 )}
 
                 {/* Reveal All Confirmation Modal */}
-                {showRevealConfirm && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">{t('messageList.revealAllTitle')}</h3>
-                            <p className="text-gray-600 mb-6">
-                                {t('messageList.revealAllDescription', { count: displayUnreadCount })}
-                            </p>
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    onClick={() => setShowRevealConfirm(false)}
-                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
-                                >
-                                    {t('common.cancel')}
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        revealAllMessages();
-                                        setShowRevealConfirm(false);
-                                    }}
-                                    className="px-4 py-2 text-white rounded-lg font-medium"
-                                    style={{ backgroundColor: theme.modals.accentColor }}
-                                >
-                                    {t('messageList.confirm')}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <Modal
+                    isOpen={showRevealConfirm}
+                    onClose={() => setShowRevealConfirm(false)}
+                    title={t('messageList.revealAllTitle')}
+                    logId="reveal_all"
+                    className="max-w-sm"
+                    footer={
+                        <>
+                            <Button variant="ghost" onClick={() => setShowRevealConfirm(false)}>{t('common.cancel')}</Button>
+                            <Button
+                                variant="primary"
+                                onClick={() => {
+                                    revealAllMessages();
+                                    setShowRevealConfirm(false);
+                                }}
+                            >
+                                {t('messageList.confirm')}
+                            </Button>
+                        </>
+                    }
+                >
+                    <p className="text-body text-secondary">{t('messageList.revealAllDescription', { count: displayUnreadCount })}</p>
+                </Modal>
             </ContentSheet>
 
             {selectedGroupDir && (

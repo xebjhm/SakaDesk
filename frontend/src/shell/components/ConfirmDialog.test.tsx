@@ -35,4 +35,17 @@ describe('ConfirmDialog', () => {
         renderDialog({ cancelLabel: '閉じる' });
         expect(screen.getByRole('button', { name: '閉じる' })).toBeInTheDocument();
     });
+
+    it('is a dialog: Escape cancels, focus starts on Cancel', async () => {
+        const p = renderDialog();
+        expect(screen.getByRole('dialog', { name: '確認 ✅' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+        await userEvent.keyboard('{Escape}');
+        expect(p.onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('a danger confirm uses the danger button', () => {
+        renderDialog({ variant: 'danger' });
+        expect(screen.getByRole('button', { name: 'はい' })).toHaveClass('bg-status-danger');
+    });
 });

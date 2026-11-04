@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Modal, Button } from '../../design/primitives';
+import { cn } from '../../utils/classnames';
 
 interface ConfirmDialogProps {
     open: boolean;
@@ -13,63 +15,34 @@ interface ConfirmDialogProps {
     onCancel: () => void;
 }
 
-const CONFIRM_BTN: Record<NonNullable<ConfirmDialogProps['variant']>, string> = {
-    warning: 'bg-amber-500 hover:bg-amber-600',
-    danger: 'bg-red-500 hover:bg-red-600',
-    default: 'bg-blue-400 hover:bg-blue-500',
+const ICON_TONE: Record<NonNullable<ConfirmDialogProps['variant']>, string> = {
+    warning: 'text-status-warning',
+    danger: 'text-status-danger',
+    default: 'text-secondary',
 };
 
-/**
- * App-styled confirmation dialog (replaces the browser-native window.confirm).
- * Matches the SakaDesk modal language: gradient header + rounded card. Renders
- * above other modals (z-[60]).
- */
+/** In-app confirmation dialog. Escape cancels; at most one emphasised button. */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
-    open,
-    title,
-    message,
-    confirmLabel,
-    cancelLabel,
-    variant = 'default',
-    onConfirm,
-    onCancel,
+    open, title, message, confirmLabel, cancelLabel, variant = 'default', onConfirm, onCancel,
 }) => {
     const { t } = useTranslation();
-    if (!open) return null;
-
+    const cancelRef = useRef<HTMLButtonElement>(null);
     return (
-        <div
-            className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center p-4"
-            onClick={(e) => { e.stopPropagation(); onCancel(); }}
+        <Modal
+            isOpen={open}
+            onClose={onCancel}
+            title={<span className="flex items-center gap-2"><AlertTriangle aria-hidden="true" className={cn('h-5 w-5 shrink-0', ICON_TONE[variant])} />{title}</span>}
+            logId="confirm"
+            initialFocusRef={cancelRef}
+            className="max-w-md"
+            footer={
+                <>
+                    <Button ref={cancelRef} variant="ghost" onClick={onCancel}>{cancelLabel ?? t('common.cancel')}</Button>
+                    <Button variant={variant === 'danger' ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
+                </>
+            }
         >
-            <div
-                className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
-                    <div className="flex items-center gap-3">
-                        <AlertTriangle className="w-6 h-6 text-white" />
-                        <h3 className="text-lg font-bold text-white">{title}</h3>
-                    </div>
-                </div>
-                <div className="p-6 space-y-5">
-                    <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{message}</p>
-                    <div className="flex justify-end gap-2">
-                        <button
-                            onClick={onCancel}
-                            className="px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700 transition-colors"
-                        >
-                            {cancelLabel ?? t('common.cancel')}
-                        </button>
-                        <button
-                            onClick={onConfirm}
-                            className={`px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors ${CONFIRM_BTN[variant]}`}
-                        >
-                            {confirmLabel}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
+            <p className="whitespace-pre-line text-body text-secondary">{message}</p>
+        </Modal>
     );
 };
