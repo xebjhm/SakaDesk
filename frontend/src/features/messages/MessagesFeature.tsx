@@ -778,8 +778,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                     <CallOverlay
                         call={incomingCall}
-                        // Light-style services (櫻坂) use their bubble-edge pink and a white answer button.
-                        accentColor={theme.messages.headerStyle === 'light' ? theme.messages.bubbleBorder : theme.modals.accentColor}
+                        // The accent is the group action colour (step 600); light-style services (櫻坂) get a white answer button.
+                        accentColor={theme.modals.accentColor}
                         answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />

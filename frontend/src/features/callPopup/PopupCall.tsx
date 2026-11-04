@@ -77,7 +77,8 @@ export const PopupCall: React.FC<PopupCallProps> = ({
 
     const theme = getServiceTheme(info.service);
     const light = theme.messages.headerStyle === 'light';
-    const accent = light ? theme.messages.bubbleBorder : theme.modals.accentColor;
+    // The accent is the group action colour (step 600): readable on the white answer button of light groups.
+    const accent = theme.modals.accentColor;
 
     // One always-mounted live region, as in CallOverlay. No Esc/Enter handler:
     // the window never receives keyboard focus.
