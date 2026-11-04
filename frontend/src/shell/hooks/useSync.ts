@@ -454,15 +454,12 @@ export function useSync({
             }
         }
 
+        // In flight until the poll-or-error decision is made (not only during the POST), so a second
+        // start that lands while a refused answer is still being read is skipped too.
+        startingRef.current[targetService] = true;
         try {
             const startUrl = `/api/sync/start?service=${encodeURIComponent(targetService)}${forceResync ? '&force_resync=true' : ''}`;
-            let response: Response;
-            startingRef.current[targetService] = true;
-            try {
-                response = await fetch(startUrl, { method: 'POST' });
-            } finally {
-                startingRef.current[targetService] = false;
-            }
+            const response = await fetch(startUrl, { method: 'POST' });
             if (response.ok) {
                 // Sync started successfully
                 pollSyncProgress(targetService, blocking);
@@ -477,6 +474,8 @@ export function useSync({
                     pollSyncProgress(targetService, blocking);
                 } else {
                     log(`${targetService}: failed to start`, data.detail);
+                    // No poller owns this start: a modal request from a skipped start ends here.
+                    blockingRef.current[targetService] = false;
                     if (currentProgress?.state !== 'running') {
                         const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
                         setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -487,6 +486,7 @@ export function useSync({
                 }
             }
         } catch {
+            blockingRef.current[targetService] = false;
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -494,6 +494,8 @@ export function useSync({
                     setSyncProgress(errorProgress);
                 }
             }
+        } finally {
+            startingRef.current[targetService] = false;
         }
     }, [pollSyncProgress]);
 
