@@ -13,7 +13,7 @@ const BASE = cn(
 );
 
 const VARIANT: Record<ButtonVariant, string> = {
-    /** Group accent. At most ONE primary or danger per screen (docs/design/DESIGN_SYSTEM.md). */
+    /** Group accent. At most ONE primary or danger per screen and per dialog (docs/design/DESIGN_SYSTEM.md). */
     primary: 'bg-group-accent text-inverse shadow-pill hover:brightness-105',
     secondary: 'bg-pill text-primary shadow-pill hover:bg-sunken',
     ghost: 'bg-transparent text-secondary hover:bg-sunken hover:text-primary',
