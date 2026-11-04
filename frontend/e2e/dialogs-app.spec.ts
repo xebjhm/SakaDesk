@@ -99,12 +99,29 @@ test.describe('app dialogs', () => {
     await expect(page.getByRole('heading', { name: 'Report an Issue' })).toHaveCount(0)
   })
 
-  test('add service lists other groups and Escape closes it', async ({ page }) => {
+  test('add service lists other groups; adding and removing groups works', async ({ page }) => {
+    // The fresh-login prompt is dismissed with Maybe Later; auth is answered here, never by the real login.
+    await page.route('**/api/auth/**', (route) => route.abort('blockedbyclient'))
+    await page.route((url) => url.pathname === '/api/auth/status', (route) => route.fulfill({ json: { services: {} } }))
     await openHome(page)
     await page.getByRole('button', { name: 'Add Service' }).click()
     await expect(page.getByRole('heading', { name: 'Add Service' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'Add Service' })).toHaveCount(0)
+
+    const rail = page.getByRole('navigation', { name: 'Groups' })
+    await page.getByRole('button', { name: 'Add Service' }).click()
+    await page.getByRole('dialog', { name: 'Add Service' }).getByRole('button', { name: /櫻坂46/ }).click()
+    await page.getByRole('dialog', { name: 'Connect Your Account?' }).getByRole('button', { name: 'Maybe Later' }).click()
+    await expect(rail.getByRole('button', { name: '櫻坂46', exact: true })).toBeVisible()
+
+    await rail.getByRole('button', { name: '櫻坂46', exact: true }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Remove Service' }).click()
+    await expect(rail.getByRole('button', { name: '櫻坂46', exact: true })).toHaveCount(0)
+
+    await rail.getByRole('button', { name: '日向坂46', exact: true }).click({ button: 'right' })
+    await page.getByRole('menuitem', { name: 'Remove Service' }).click()
+    await expect(page.getByRole('heading', { name: 'Welcome to SakaDesk' })).toBeVisible()
   })
 
   test('Ctrl+K opens search, a query shows results, Escape closes it', async ({ page }) => {
