@@ -77,7 +77,7 @@ export default {
                 pill: 'var(--ds-shadow-pill)',
                 card: 'var(--ds-shadow-card)',
                 sheet: 'var(--ds-shadow-sheet)',
-                'group-glow': '0 0 12px 2px var(--ds-group-glow)',
+                'group-glow': 'var(--ds-shadow-group-glow)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],

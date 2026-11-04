@@ -612,6 +612,8 @@
     "do2": "rounded-card や text-body などのトークンクラスを使う。",
     "dont2": "#hex カラーや rounded-[10px] などの任意値を直書きする。",
     "do3": "グループカラーは4か所と、画面ごとに1つのプライマリボタンだけ。",
-    "dont3": "それ以外の要素をグループカラーで塗る。"
+    "dont3": "それ以外の要素をグループカラーで塗る。",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "検索"
   }
 }

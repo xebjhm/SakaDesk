@@ -34,6 +34,7 @@ export function groupTokenVars(groupId: GroupId): Record<string, string> {
         '--ds-group-title-text': t.title.text,
         '--ds-group-ring': t.ring,
         '--ds-group-glow': t.glow,
+        '--ds-shadow-group-glow': `0 0 12px 2px ${t.glow}`,
         '--ds-group-bubble-border': t.bubbleBorder,
         '--ds-group-badge': t.badge,
     };

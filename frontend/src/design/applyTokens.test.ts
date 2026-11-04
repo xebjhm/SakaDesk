@@ -32,7 +32,8 @@ describe('cssVars', () => {
         );
         expect(vars['--ds-group-badge']).toBe(t.badge);
         expect(vars['--ds-group-bubble-border']).toBe(t.bubbleBorder);
-        expect(Object.keys(vars)).toHaveLength(11);
+        expect(Object.keys(vars)).toHaveLength(12);
+        expect(vars['--ds-shadow-group-glow']).toBe(`0 0 12px 2px ${t.glow}`);
     });
 });
 

@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
 import { cn } from '../utils/classnames';
 import { applyGroupTokens } from './applyTokens';
+import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
 import { GROUP_IDS, color, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
@@ -73,7 +74,7 @@ export const DesignPage: React.FC = () => {
     const groupSwatches = [
         ['accent', g.accent], ['badge', g.badge], ['bubbleBorder', g.bubbleBorder], ['ring', g.ring],
         ['glow', g.glow], ['title.text', g.title.text], ['title.bar', g.title.bar],
-        ['canvas', `linear-gradient(to bottom, ${g.canvas.join(', ')})`],
+        ['canvas', groupTokenVars(group)['--ds-group-canvas']],
     ] as const;
 
     return (
@@ -153,7 +154,7 @@ export const DesignPage: React.FC = () => {
                     <h3 className="text-title text-secondary">{t('designPage.surfaces')}</h3>
                     <Canvas className="p-4 rounded-card">
                         <Sheet className="p-4">
-                            <Card className="p-4 text-body text-primary">Canvas › Sheet › Card</Card>
+                            <Card className="p-4 text-body text-primary">{t('designPage.levelsSample')}</Card>
                         </Sheet>
                     </Canvas>
 
@@ -197,7 +198,7 @@ export const DesignPage: React.FC = () => {
                         <RailItem icon={<MessageCircle />} label={t('features.messages')} selected={rail === 'talk'} onClick={() => setRail('talk')} />
                         <RailItem icon={<BookOpen />} label={t('features.blogs')} selected={rail === 'blog'} onClick={() => setRail('blog')} />
                         <RailItem icon={<Newspaper />} label={t('features.news')} selected={rail === 'news'} onClick={() => setRail('news')} />
-                        <RailItem icon={<Search />} label={t('designPage.filterAll')} />
+                        <RailItem icon={<Search />} label={t('designPage.search')} />
                     </div>
 
                     <h3 className="text-title text-secondary">{t('designPage.modal')}</h3>

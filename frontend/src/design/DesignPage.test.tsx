@@ -19,7 +19,7 @@ describe('DesignPage', () => {
     it('renders every section', () => {
         render(<DesignPage />);
         expect(screen.getByTestId('design-page')).toBeInTheDocument();
-        for (const name of ['Design system', 'Colours', 'Radius', 'Shadow', 'Type', 'Motion', 'Primitives', 'Rules']) {
+        for (const name of ['Design system', 'Colors', 'Radius', 'Shadow', 'Type', 'Motion', 'Primitives', 'Rules']) {
             expect(screen.getByRole('heading', { name })).toBeInTheDocument();
         }
     });

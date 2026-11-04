@@ -612,6 +612,8 @@
     "do2": "用 rounded-card、text-body 呢類 token class。",
     "dont2": "寫死 #hex 顏色或者 rounded-[10px] 呢類任意值。",
     "do3": "團體色淨係用喺 4 個地方，加每個畫面最多一粒主要按鈕。",
-    "dont3": "用團體色塗其他元素。"
+    "dont3": "用團體色塗其他元素。",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "搜尋"
   }
 }

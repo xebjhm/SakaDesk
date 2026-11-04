@@ -23,6 +23,7 @@ const DESIGN_PAGE_KEYS = [
     'filterAll', 'filterUnread', 'badges', 'avatars', 'datePills', 'buttons', 'primary', 'secondary',
     'ghost', 'disabled', 'close', 'rail', 'modal', 'openModal', 'modalTitle', 'modalBody', 'rules',
     'do', 'dont', 'do1', 'dont1', 'do2', 'dont2', 'do3', 'dont3',
+    'levelsSample', 'search',
 ] as const;
 
 describe('design page strings', () => {
