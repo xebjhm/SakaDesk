@@ -63,7 +63,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Jumping to an old date is instant.** Picking a day in the chat calendar now
   goes straight there instead of scrolling through every message in between, and
-  the message you land on flashes briefly so you can see where you are.
+  the message you land on flashes briefly so you can see where you are. Jumps
+  from search results, notifications and the media gallery land instantly and
+  flash the message too.
 - **The new-message count after a sync is now exact.** It used to include
   messages that were already saved.
 - **A chat could stay frozen if its whole history was an exact multiple of 200

@@ -60,6 +60,7 @@ function useTimelineJump(args: {
   messages: readonly Message[];
   isUnread: (id: number) => boolean;
   onLanded?: (messageId: number) => void;   // drives the highlight
+  resetKey?: unknown;                       // a change cancels in-flight jumps (room switch)
   deps?: Partial<{ nextFrame; measure; now }>;   // test seam
 }): (target: JumpTarget) => Promise<JumpOutcome>;   // jumpTo
 ```
@@ -68,7 +69,7 @@ The flow of a jump:
 
 1. Resolve the target to a message row with a pure function (`resolveJump`). If there is none, the outcome is `not_found`.
 2. Call `scrollToIndex({ index, align, behavior: 'auto' })`. Message and date targets align `start` unless the message target asks for `center`; first-unread aligns `center`; bottom aligns `end`. Top and bottom land exactly and are not verified.
-3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too. The outcome is `landed` or `gave_up`. A newer jump or an unmount cancels an older one. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
+3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too (at most 2 × 2 + 1 wait cycles in total). The outcome is `landed` or `gave_up`. A jump is `cancelled` by a newer jump, an unmount, a room switch (the hook takes a `resetKey`; `MessagesFeature` passes the selected room), or when the target message has left the list while its row cannot be measured. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
 4. **Landing highlight.** For message and date jumps, the landed row gets `bg-group-subtle` for 1 s, faded with `duration-base`. It adds no new colour. First-unread, top and bottom jumps are not highlighted.
 5. **Breadcrumb log** `timeline_jump` for every jump, with `target`, `index`, `corrections`, `outcome` and `jump_ms`. No message text and no names.
 
@@ -87,13 +88,13 @@ Every entry point moves onto `jumpTo`:
 
 ### Real-browser tests (new)
 
-jsdom cannot measure layout, so the scroll behaviour is tested with Playwright: `frontend/e2e/timeline-scroll.spec.ts` against the Vite dev server, with the API mocked by `page.route`, as the D1 visual tests do. The fixture room has 5,000 messages from 2022-01 to 2026-11, mixed text, pictures with dimensions, and voice. The tests check:
+jsdom cannot measure layout, so the scroll behaviour is tested with Playwright: `frontend/e2e/timeline-scroll.spec.ts` against the backend on :8000 serving `frontend/dist` (the `webServer` in `playwright.config.ts`), not the Vite dev server, with the API mocked by `page.route`, as the D1 visual tests do. The fixture room has 5,000 messages from 2022-01 to 2026-11, mixed text and pictures with dimensions (no voice). The tests check:
 
 - From the bottom, jumping to a 2022 date finishes in < 1 s, and the first date visible at the top is the target date.
 - Jumping to a message id leaves that message in the viewport and highlighted.
 - Re-opening the room restores the last top message (ID-based restore).
 - At the bottom, an appended message is followed (`followOutput`).
-- First-unread jump centres the first unread message.
+- First-unread jump brings the first unread message into view.
 
 ### Verification
 
