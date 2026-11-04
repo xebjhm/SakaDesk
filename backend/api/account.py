@@ -55,15 +55,16 @@ def _canonical_avatar_file(file: str) -> bool:
 
 def _read_profile(
     output_dir: Path, account_dir: Path, service: str
-) -> tuple[str, Optional[str], list[AccountAvatar], int]:
-    """Returns ``(outcome, name, avatars oldest first, skipped)``.
+) -> tuple[str, Optional[str], list[AccountAvatar], int, int]:
+    """Returns ``(outcome, name, avatars oldest first, skipped, bad_images)``.
 
     outcome: ``missing`` (neither file), ``invalid`` (a file exists but cannot
     be read or parsed, is oversized, or resolves outside the output directory;
     whatever the other file holds is still returned), ``found`` or ``empty``.
     Index entries of another kind are ignored; thumbnail entries with a
     non-canonical, missing or unsafe file or an unparseable ``first_seen`` are
-    skipped.
+    skipped. ``bad_images`` counts the skipped avatars whose file failed the
+    containment or filesystem check (a subset of ``skipped``).
     """
     profile_file = account_dir / "profile.json"
     index_file = account_dir / "profile_images" / "index.json"
@@ -78,7 +79,7 @@ def _read_profile(
     except ArchiveReadError:
         index, invalid = MISSING, True
     if profile is MISSING and index is MISSING and not invalid:
-        return "missing", None, [], 0
+        return "missing", None, [], 0, 0
     if profile is not MISSING:
         if not isinstance(profile, dict):
             invalid = True
@@ -87,6 +88,7 @@ def _read_profile(
             name = raw_name if isinstance(raw_name, str) and raw_name else None
     dated: list[tuple[datetime, AccountAvatar]] = []
     skipped = 0
+    bad_images = 0
     if index is not MISSING:
         images = index.get("images") if isinstance(index, dict) else None
         if not isinstance(images, list):
@@ -114,6 +116,7 @@ def _read_profile(
                 )
             except ArchiveReadError:
                 present = False
+                bad_images += 1
             if not present:
                 skipped += 1
                 continue
@@ -127,15 +130,17 @@ def _read_profile(
         outcome = "found"
     else:
         outcome = "empty"
-    return outcome, name, avatars, skipped
+    return outcome, name, avatars, skipped, bad_images
 
 
 @router.get("/profile", response_model=AccountProfileResponse)
 async def get_account_profile(service: str):
     """The user's nickname and avatar history for one service, from the local archive.
 
-    Logs one ``account_profile`` breadcrumb (outcome and counts; never the
-    nickname or any URL).
+    Logs one ``account_profile`` breadcrumb (outcome and counts, including
+    ``bad_images``; never the nickname or any URL). It is a warning for an
+    ``invalid`` file or when any avatar image failed the containment or
+    filesystem check.
     """
     from backend.api.content import get_output_dir
 
@@ -147,18 +152,19 @@ async def get_account_profile(service: str):
     output_dir = get_output_dir()
     try:
         account_dir = resolve_within(output_dir, output_dir / display_name / "account")
-        outcome, name, avatars, skipped = await asyncio.to_thread(
+        outcome, name, avatars, skipped, bad_images = await asyncio.to_thread(
             _read_profile, output_dir, account_dir, service
         )
     except ArchiveReadError:
-        outcome, name, avatars, skipped = "invalid", None, [], 0
-    log = logger.warning if outcome == "invalid" else logger.info
+        outcome, name, avatars, skipped, bad_images = "invalid", None, [], 0, 0
+    log = logger.warning if outcome == "invalid" or bad_images > 0 else logger.info
     log(
         "account_profile",
         outcome=outcome,
         service=service,
         avatars=len(avatars),
         skipped=skipped,
+        bad_images=bad_images,
         has_name=name is not None,
     )
     return AccountProfileResponse(name=name, avatars=avatars)

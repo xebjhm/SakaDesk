@@ -344,3 +344,47 @@ def test_permission_error_is_invalid_not_500(root):
     assert res.status_code == 200 and res.json() == {"letters": []}
     assert _events(logs)[0]["outcome"] == "invalid"
     _no_paths_logged(logs)
+
+
+# --- final fix wave ------------------------------------------------------------
+
+
+def test_symlink_loop_in_path_is_403_not_500(root):
+    (root / "日向坂46").mkdir()
+    _symlink(root / "日向坂46" / "a", root / "日向坂46" / "b")
+    _symlink(root / "日向坂46" / "b", root / "日向坂46" / "a")
+    with capture_logs() as logs:
+        res = _get(path="日向坂46/a/x")
+    assert res.status_code == 403
+    [event] = _events(logs)
+    assert event["outcome"] == "rejected" and event["status"] == 403
+    assert event["log_level"] == "warning" and event["service"] == "hinatazaka46"
+    _no_paths_logged(logs)
+
+
+@pytest.mark.parametrize(
+    "error", [RuntimeError("Symlink loop from '/x/日向坂46/a'"), OSError("/x/日向坂46")]
+)
+def test_os_error_while_resolving_the_path_is_403_path_free(root, error):
+    with patch("backend.api.content.validate_path_within_dir", side_effect=error):
+        with capture_logs() as logs:
+            res = _get()
+    assert res.status_code == 403
+    assert "日向坂46" not in res.text
+    [event] = _events(logs)
+    assert event["outcome"] == "rejected" and event["status"] == 403
+    _no_paths_logged(logs)
+
+
+def test_bad_images_raise_the_breadcrumb_to_a_warning(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "x.jpg"
+    outside.write_bytes(b"secret")
+    member_dir = _write(
+        root, {"version": 1, "letters": [_letter(1, "2025-10-31T16:19:35Z")]}
+    )
+    _symlink(member_dir / "letters" / "1.jpg", outside)
+    with capture_logs() as logs:
+        _get()
+    [event] = _events(logs)
+    assert event["outcome"] == "found" and event["bad_images"] == 1
+    assert event["log_level"] == "warning"

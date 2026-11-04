@@ -105,11 +105,12 @@ def _read_local_letters(
 
     Returns ``(outcome, letters, skipped, bad_images)``: outcome is ``missing``
     (no file), ``invalid`` (unreadable, oversized, outside the output directory
-    or not ``{"letters": [...]}``), ``empty`` or
-    ``found``. Entries without an integer id or a parseable ``created_at`` are
-    skipped and counted. ``image_url`` is set only for a canonical
-    ``letters/<id>.<ext>`` file that exists inside the output directory; images
-    that fail the containment or filesystem check are counted in ``bad_images``. Letters come back oldest first.
+    or not ``{"letters": [...]}``), ``empty`` or ``found``. Entries without an
+    integer id or a parseable ``created_at`` are skipped and counted.
+    ``image_url`` is set only for a canonical ``letters/<id>.<ext>`` file that
+    exists inside the output directory; images that fail the containment or
+    filesystem check are counted in ``bad_images``. Letters come back oldest
+    first.
     """
     try:
         data = read_archive_json(output_dir, member_dir / "letters.json")
@@ -319,9 +320,12 @@ async def get_letters_local(service: str, path: str):
 
     ``path`` is the member directory relative to the output directory (as in
     ``/api/content/messages_by_path``) and must lie inside this service's
-    folder. A missing or unreadable ``letters.json`` gives an empty list.
+    folder. A missing or unreadable ``letters.json`` gives an empty list. A
+    path that escapes the output directory, or that cannot be resolved (a
+    symlink loop or another filesystem error), is rejected with 403.
     Logs one ``letters_local`` breadcrumb per request: outcome and counts,
-    never letter text, names or paths.
+    never letter text, names or paths. It is a warning for an ``invalid`` file
+    or when any letter image failed the containment or filesystem check.
     """
     from backend.api.content import get_output_dir, validate_path_within_dir
 
@@ -338,6 +342,11 @@ async def get_letters_local(service: str, path: str):
             "letters_local", outcome="rejected", service=service, status=e.status_code
         )
         raise
+    except (RuntimeError, OSError):
+        # A symlink loop or filesystem error while resolving: the error text
+        # carries the path, so it is dropped and only the status is logged.
+        logger.warning("letters_local", outcome="rejected", service=service, status=403)
+        raise HTTPException(status_code=403, detail="Access denied") from None
     try:
         parts = list(member_dir.relative_to(output_dir.resolve()).parts)
     except ValueError:
@@ -348,7 +357,7 @@ async def get_letters_local(service: str, path: str):
     outcome, letters, skipped, bad_images = await asyncio.to_thread(
         _read_local_letters, output_dir, member_dir, service, parts[1:]
     )
-    log = logger.warning if outcome == "invalid" else logger.info
+    log = logger.warning if outcome == "invalid" or bad_images > 0 else logger.info
     log(
         "letters_local",
         outcome=outcome,

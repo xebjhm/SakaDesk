@@ -249,3 +249,39 @@ def test_permission_error_is_invalid_not_500(root):
             res = _get()
     assert res.status_code == 200
     assert _events(logs)[0]["outcome"] == "invalid"
+
+
+# --- final fix wave ------------------------------------------------------------
+
+
+def test_breadcrumb_counts_bad_avatar_images(root, tmp_path_factory):
+    outside = tmp_path_factory.mktemp("outside") / "a.jpg"
+    outside.write_bytes(b"secret")
+    account = _account(
+        root,
+        index={
+            "version": 1,
+            "images": [
+                _image("thumbnail/a.jpg", "2025-01-01T00:00:00Z"),
+                _image("thumbnail/gone.jpg", "2025-01-01T00:00:00Z"),
+                _image("thumbnail/b.jpg", "2025-02-01T00:00:00Z"),
+            ],
+        },
+        files=("thumbnail/b.jpg",),
+    )
+    _symlink(account / "profile_images" / "thumbnail" / "a.jpg", outside)
+    with capture_logs() as logs:
+        body = _get().json()
+    assert len(body["avatars"]) == 1
+    [event] = _events(logs)
+    assert event["skipped"] == 2 and event["bad_images"] == 1
+    assert event["log_level"] == "warning"
+    assert "outside" not in str(logs)
+
+
+def test_breadcrumb_has_zero_bad_images_when_clean(root):
+    _account(root, profile={"version": 1, "name": NAME})
+    with capture_logs() as logs:
+        _get()
+    [event] = _events(logs)
+    assert event["bad_images"] == 0 and event["log_level"] == "info"
