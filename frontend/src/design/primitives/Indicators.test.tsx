@@ -1,0 +1,79 @@
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+
+import i18n from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
+import { Badge, Avatar, DatePill } from './index';
+
+beforeAll(async () => {
+    await i18n.changeLanguage('en');
+});
+
+describe('Badge', () => {
+    it('renders nothing at zero', () => {
+        const { container } = render(<Badge count={0} />);
+        expect(container).toBeEmptyDOMElement();
+    });
+
+    it.each([
+        [1, '1'],
+        [99, '99'],
+        [100, '99+'],
+        [1234, '99+'],
+    ])('shows %i as %s with an accessible label', (count, text) => {
+        render(<Badge count={count} />);
+        const badge = screen.getByText(text);
+        expect(badge).toHaveAttribute('aria-label', `${count} unread`);
+        expect(badge).toHaveClass('bg-group-badge', 'rounded-pill');
+    });
+});
+
+describe('Avatar', () => {
+    beforeEach(() => vi.mocked(clientLog).mockClear());
+
+    it('shows the image with the name as alt text', () => {
+        render(<Avatar src="/a.jpg" name="小坂菜緒" />);
+        expect(screen.getByRole('img', { name: '小坂菜緒' })).toHaveAttribute('src', '/a.jpg');
+    });
+
+    it('falls back to the first character and logs only the size', () => {
+        render(<Avatar src="/missing.jpg" name="小坂菜緒" size="lg" />);
+        fireEvent.error(screen.getByRole('img', { name: '小坂菜緒' }));
+        expect(screen.getByText('小')).toBeInTheDocument();
+        expect(clientLog).toHaveBeenCalledWith('avatar_fallback', { size: 'lg' });
+    });
+
+    it('takes a whole emoji as the initial', () => {
+        render(<Avatar name="🌸さくら" />);
+        expect(screen.getByText('🌸')).toBeInTheDocument();
+        expect(clientLog).not.toHaveBeenCalled();
+    });
+
+    it('adds the white ring and group glow when selected', () => {
+        const { container } = render(<Avatar name="A" selected />);
+        expect(container.firstChild).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');
+    });
+});
+
+describe('DatePill', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 10, 4, 12, 0));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('labels today and carries the machine-readable date', () => {
+        render(<DatePill date={new Date(2026, 10, 4, 9, 0)} />);
+        const time = screen.getByText('Today');
+        expect(time.tagName).toBe('TIME');
+        expect(time).toHaveAttribute('dateTime', '2026-11-04');
+    });
+
+    it('sticks to the top when asked', () => {
+        const { container } = render(<DatePill date={new Date(2025, 0, 1)} sticky />);
+        expect(container.firstChild).toHaveClass('sticky', 'top-0');
+        expect(screen.getByText(/2025/)).toBeInTheDocument();
+    });
+});
