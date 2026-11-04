@@ -67,3 +67,25 @@ export function fromLocalDateStr(date: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
+
+/** Blog date styles: card and older/newer (short), rail tooltip (medium), reader (long). */
+export type BlogDateStyle = 'short' | 'medium' | 'long';
+
+const BLOG_DATE_OPTIONS: Record<BlogDateStyle, Intl.DateTimeFormatOptions> = {
+  short: { month: 'short', day: 'numeric' },
+  medium: { year: 'numeric', month: 'short', day: 'numeric' },
+  long: { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' },
+};
+
+/**
+ * A blog date in the app language (pass i18n.language). '' for an invalid date; an
+ * invalid locale tag falls back to the runtime default.
+ */
+export function formatBlogDate(date: Date, locale: string | undefined, style: BlogDateStyle): string {
+  if (Number.isNaN(date.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(locale, BLOG_DATE_OPTIONS[style]).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, BLOG_DATE_OPTIONS[style]).format(date);
+  }
+}

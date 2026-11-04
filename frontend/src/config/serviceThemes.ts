@@ -5,6 +5,7 @@
 
 import { GROUP_IDS, groupTokens, type GroupId } from '../design/tokens/groups';
 import { groupRoles } from '../design/tokens/roles';
+import { ambientLayout } from '../design/tokens/ambient';
 
 export type { GroupId };
 
@@ -14,8 +15,6 @@ interface AmbientOrb {
     size: string;
     opacity: number;
 }
-
-type OrbLayout = Omit<AmbientOrb, 'color'>;
 
 export interface ServiceTheme {
     id: GroupId;
@@ -76,54 +75,28 @@ interface ThemeMeta {
     name: string;
     nameJp: string;
     vibe: string[];
-    ambient: { orb1: OrbLayout; orb2: OrbLayout; orb3: OrbLayout };
 }
 
 const THEME_META: Record<GroupId, ThemeMeta> = {
     hinatazaka: {
         name: 'Hinatazaka46', nameJp: '日向坂46',
         vibe: ['airy', 'bright', 'komorebi', 'summer sky', 'gentle warmth'],
-        ambient: {
-            orb1: { position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.4 },
-            orb2: { position: 'top: 15%; right: -15%;', size: '60vw', opacity: 0.35 },
-            orb3: { position: 'bottom: -25%; left: 25%;', size: '50vw', opacity: 0.3 },
-        },
     },
     sakurazaka: {
         name: 'Sakurazaka46', nameJp: '櫻坂46',
         vibe: ['artistic', 'ephemeral', 'clean canvas', 'cherry blossom', 'cool elegance'],
-        ambient: {
-            orb1: { position: 'top: -15%; right: -10%;', size: '65vw', opacity: 0.5 },
-            orb2: { position: 'top: 30%; left: -20%;', size: '55vw', opacity: 0.4 },
-            orb3: { position: 'bottom: -20%; right: 20%;', size: '45vw', opacity: 0.35 },
-        },
     },
     nogizaka: {
         name: 'Nogizaka46', nameJp: '乃木坂46',
         vibe: ['sophisticated', 'french', 'mature', 'noble', 'elegant'],
-        ambient: {
-            orb1: { position: 'top: -18%; left: -8%;', size: '68vw', opacity: 0.5 },
-            orb2: { position: 'top: 25%; right: -18%;', size: '58vw', opacity: 0.45 },
-            orb3: { position: 'bottom: -22%; left: 35%;', size: '48vw', opacity: 0.38 },
-        },
     },
     yodel: {
         name: 'Yodel', nameJp: 'ヨーデル',
         vibe: ['fresh', 'natural', 'independent', 'meadow', 'serene'],
-        ambient: {
-            orb1: { position: 'top: -18%; left: -8%;', size: '68vw', opacity: 0.45 },
-            orb2: { position: 'top: 25%; right: -18%;', size: '58vw', opacity: 0.4 },
-            orb3: { position: 'bottom: -22%; left: 30%;', size: '48vw', opacity: 0.35 },
-        },
     },
     default: {
         name: 'Default', nameJp: '',
         vibe: ['neutral', 'minimal', 'professional'],
-        ambient: {
-            orb1: { position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.4 },
-            orb2: { position: 'top: 20%; right: -15%;', size: '60vw', opacity: 0.35 },
-            orb3: { position: 'bottom: -25%; left: 30%;', size: '50vw', opacity: 0.3 },
-        },
     },
 };
 
@@ -140,9 +113,9 @@ function buildTheme(id: GroupId): ServiceTheme {
         secondaryColor: r.action,
         accentColor: r.subtle,
         ambient: {
-            orb1: { color: r.ambient.orb1, ...meta.ambient.orb1 },
-            orb2: { color: r.ambient.orb2, ...meta.ambient.orb2 },
-            orb3: { color: r.ambient.orb3, ...meta.ambient.orb3 },
+            orb1: { color: r.ambient.orb1, ...ambientLayout[id].orb1 },
+            orb2: { color: r.ambient.orb2, ...ambientLayout[id].orb2 },
+            orb3: { color: r.ambient.orb3, ...ambientLayout[id].orb3 },
         },
         surface: { background: g.legacyNeutral.surfaceBackground },
         text: { secondary: g.legacyNeutral.textSecondary, muted: g.legacyNeutral.textMuted },

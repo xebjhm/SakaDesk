@@ -2,7 +2,10 @@
  * Pure token -> CSS custom property maps. `applyTokens.ts` writes them to
  * :root; `tailwind.config.js` utilities read them via var(--ds-*).
  */
-import { color, groupRoles, groupTokens, radius, shadow, typeScale, motion, easingCss, type GroupId } from './tokens';
+import {
+    color, groupRoles, groupTokens, radius, shadow, typeScale, fontFamily, motion, easingCss,
+    ambientLayout, memberWash, type GroupId,
+} from './tokens';
 
 export function staticTokenVars(): Record<string, string> {
     const vars: Record<string, string> = {};
@@ -11,6 +14,7 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
     for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
     for (const [name, value] of Object.entries(color.feedback)) vars[`--ds-feedback-${name}`] = value;
+    for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
     for (const [name, value] of Object.entries(radius)) vars[`--ds-radius-${name}`] = value;
     for (const [name, value] of Object.entries(shadow)) vars[`--ds-shadow-${name}`] = value;
     for (const [name, step] of Object.entries(typeScale)) {
@@ -19,12 +23,18 @@ export function staticTokenVars(): Record<string, string> {
     }
     for (const [name, ms] of Object.entries(motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-standard'] = easingCss(motion.easing.standard);
+    vars['--ds-font-family-reading'] = fontFamily.reading;
+    // Member penlight wash: the colours are set per member on the wash element; none by default.
+    vars['--ds-member-wash-alpha'] = memberWash.alpha;
+    vars['--ds-member-wash-1'] = 'transparent';
+    vars['--ds-member-wash-2'] = 'transparent';
     return vars;
 }
 
 export function groupTokenVars(groupId: GroupId): Record<string, string> {
     const o = groupTokens[groupId].official;
     const r = groupRoles(groupId);
+    const a = ambientLayout[groupId];
     return {
         '--ds-group-accent': r.action,
         '--ds-group-logo': r.logo,
@@ -44,5 +54,14 @@ export function groupTokenVars(groupId: GroupId): Record<string, string> {
         '--ds-group-subtle-border': r.subtleBorder,
         '--ds-group-highlight': r.highlight,
         '--ds-group-link-underline': r.linkUnderline,
+        '--ds-group-ambient-1': r.ambient.orb1,
+        '--ds-group-ambient-2': r.ambient.orb2,
+        '--ds-group-ambient-3': r.ambient.orb3,
+        '--ds-group-ambient-1-size': a.orb1.size,
+        '--ds-group-ambient-2-size': a.orb2.size,
+        '--ds-group-ambient-3-size': a.orb3.size,
+        '--ds-group-ambient-1-opacity': String(a.orb1.opacity),
+        '--ds-group-ambient-2-opacity': String(a.orb2.opacity),
+        '--ds-group-ambient-3-opacity': String(a.orb3.opacity),
     };
 }

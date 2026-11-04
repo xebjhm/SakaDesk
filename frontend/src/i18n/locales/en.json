@@ -474,7 +474,14 @@
     "syncingBlogs": "Syncing blogs...",
     "firstSyncHint": "This may take a moment for the first time",
     "selectService": "Please select a service",
-    "back": "Back to latest blogs"
+    "back": "Back to latest blogs",
+    "postsFrom": "Show posts from",
+    "feedLoadFailed": "Blog posts could not be loaded",
+    "postLoadFailed": "This post could not be loaded",
+    "loadingPost": "Loading post...",
+    "olderPost": "Older post",
+    "newerPost": "Newer post",
+    "postNavigation": "Post navigation"
   },
   "voicePlayer": {
     "speed": "Speed",

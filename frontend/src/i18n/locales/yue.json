@@ -474,7 +474,14 @@
     "syncingBlogs": "同步緊 Blog...",
     "firstSyncHint": "第一次同步可能要等陣",
     "selectService": "請揀個服務先",
-    "back": "返去最新 Blog"
+    "back": "返去最新 Blog",
+    "postsFrom": "顯示範圍",
+    "feedLoadFailed": "載入唔到文章",
+    "postLoadFailed": "載入唔到呢篇文章",
+    "loadingPost": "載入緊文章...",
+    "olderPost": "上一篇",
+    "newerPost": "下一篇",
+    "postNavigation": "文章導覽"
   },
   "voicePlayer": {
     "speed": "播放速度",

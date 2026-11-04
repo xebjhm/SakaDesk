@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr, toValidDate } from './dateFormatters';
+import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr, toValidDate, formatBlogDate } from './dateFormatters';
 
 // SD-FE-CORE-02: bucket/match by LOCAL date, matching what message bubbles show.
 describe('toLocalDateStr', () => {
@@ -97,5 +97,32 @@ describe('toValidDate', () => {
     expect(toValidDate('not a date')).toBeNull();
     expect(toValidDate('')).toBeNull();
     expect(toValidDate(new Date(NaN))).toBeNull();
+  });
+});
+
+describe('formatBlogDate', () => {
+  const d = new Date(2026, 10, 4, 21, 5); // local 2026-11-04 21:05
+
+  it('formats the card / footer date (short)', () => {
+    expect(formatBlogDate(d, 'en', 'short')).toBe('Nov 4');
+    expect(formatBlogDate(d, 'ja', 'short')).toBe('11月4日');
+  });
+
+  it('formats the rail tooltip date (medium)', () => {
+    expect(formatBlogDate(d, 'en', 'medium')).toBe('Nov 4, 2026');
+    expect(formatBlogDate(d, 'zh-TW', 'medium')).toBe('2026年11月4日');
+  });
+
+  it('formats the reader date with a 24-hour time (long)', () => {
+    expect(formatBlogDate(d, 'ja', 'long')).toBe('2026年11月4日 21:05');
+    expect(formatBlogDate(d, 'en', 'long')).toBe('November 4, 2026 at 21:05');
+  });
+
+  it('gives an empty string for an invalid date', () => {
+    expect(formatBlogDate(new Date('not a date'), 'en', 'short')).toBe('');
+  });
+
+  it('falls back to the runtime locale for an invalid locale tag', () => {
+    expect(formatBlogDate(d, 'not_a_locale!', 'medium')).not.toBe('');
   });
 });

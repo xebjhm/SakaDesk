@@ -35,4 +35,10 @@ export const color = {
         warning: '#F59E0B',
         error: '#EF4444',
     },
+    /** Search matches inside text (blog reader): exact match, match by reading, and its dashed underline. Values from the pre-D2b reader. */
+    mark: {
+        exact: '#FEF08A',
+        reading: '#DBEAFE',
+        underline: '#60A5FA',
+    },
 } as const;
