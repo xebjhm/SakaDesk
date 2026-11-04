@@ -8,7 +8,7 @@ afterEach(async () => { await act(async () => { await i18n.changeLanguage('en');
 describe('AboutModal', () => {
     it.each(['en', 'ja', 'zh-TW'])('names the heart button in %s', async (lang) => {
         await act(async () => { await i18n.changeLanguage(lang); });
-        render(<AboutModal isOpen onClose={vi.fn()} />);
+        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
         const expected = i18n.t('about.madeWithLove');
         expect(expected).not.toBe('about.madeWithLove');
         expect(screen.getByRole('button', { name: expected })).toBeInTheDocument();
