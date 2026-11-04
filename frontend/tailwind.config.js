@@ -36,6 +36,61 @@ export default {
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
+                // Design system (docs/design/DESIGN_SYSTEM.md)
+                'group-canvas': 'var(--ds-group-canvas)',
+                'group-title-bar': 'var(--ds-group-title-bar)',
+            },
+            // ---- Design system tokens (frontend/src/design/tokens) ----
+            // Values are CSS variables written by design/applyTokens.ts.
+            // Opacity modifiers (bg-sheet/50) do not work with these; add a token instead.
+            backgroundColor: {
+                sheet: 'var(--ds-surface-sheet)',
+                card: 'var(--ds-surface-card)',
+                pill: 'var(--ds-surface-pill)',
+                elevated: 'var(--ds-surface-elevated)',
+                sunken: 'var(--ds-surface-sunken)',
+                'group-accent': 'var(--ds-group-accent)',
+                'group-badge': 'var(--ds-group-badge)',
+            },
+            textColor: {
+                primary: 'var(--ds-text-primary)',
+                secondary: 'var(--ds-text-secondary)',
+                muted: 'var(--ds-text-muted)',
+                inverse: 'var(--ds-text-inverse)',
+                'group-title': 'var(--ds-group-title-text)',
+            },
+            borderColor: {
+                subtle: 'var(--ds-border-subtle)',
+                strong: 'var(--ds-border-strong)',
+                'group-bubble': 'var(--ds-group-bubble-border)',
+            },
+            ringColor: {
+                group: 'var(--ds-group-ring)',
+            },
+            borderRadius: {
+                card: 'var(--ds-radius-card)',
+                sheet: 'var(--ds-radius-sheet)',
+                pill: 'var(--ds-radius-pill)',
+            },
+            boxShadow: {
+                pill: 'var(--ds-shadow-pill)',
+                card: 'var(--ds-shadow-card)',
+                sheet: 'var(--ds-shadow-sheet)',
+                'group-glow': '0 0 12px 2px var(--ds-group-glow)',
+            },
+            fontSize: {
+                caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
+                small: ['var(--ds-font-small-size)', { lineHeight: 'var(--ds-font-small-leading)' }],
+                body: ['var(--ds-font-body-size)', { lineHeight: 'var(--ds-font-body-leading)' }],
+                title: ['var(--ds-font-title-size)', { lineHeight: 'var(--ds-font-title-leading)' }],
+                heading: ['var(--ds-font-heading-size)', { lineHeight: 'var(--ds-font-heading-leading)' }],
+            },
+            transitionDuration: {
+                fast: 'var(--ds-duration-fast)',
+                base: 'var(--ds-duration-base)',
+            },
+            transitionTimingFunction: {
+                standard: 'var(--ds-ease-standard)',
             },
         },
     },

@@ -1,5 +1,20 @@
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+// Teach tailwind-merge the design-system classes (tailwind.config.js) so a token
+// text size and a token text colour are not treated as conflicting `text-*` classes.
+const twMerge = extendTailwindMerge({
+    extend: {
+        classGroups: {
+            'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading'] }],
+            'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'group-title'] }],
+            rounded: [{ rounded: ['card', 'sheet', 'pill'] }],
+            shadow: [{ shadow: ['pill', 'card', 'sheet', 'group-glow'] }],
+            duration: [{ duration: ['fast', 'base'] }],
+            ease: [{ ease: ['standard'] }],
+        },
+    },
+})
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))

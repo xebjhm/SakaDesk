@@ -139,3 +139,22 @@ describe('formatDownloadFilename', () => {
       .toBe('\u5199\u771f.png')
   })
 })
+
+describe('cn with design-system classes', () => {
+    it('keeps a token text size and a token text colour together', () => {
+        expect(cn('text-body', 'text-primary')).toBe('text-body text-primary');
+    });
+    it('lets a later token text size win', () => {
+        expect(cn('text-body', 'text-title')).toBe('text-title');
+    });
+    it('lets a later token text colour win', () => {
+        expect(cn('text-primary', 'text-muted')).toBe('text-muted');
+    });
+    it('merges token radius and shadow steps', () => {
+        expect(cn('rounded-card', 'rounded-sheet')).toBe('rounded-sheet');
+        expect(cn('shadow-card', 'shadow-sheet')).toBe('shadow-sheet');
+    });
+    it('merges token durations', () => {
+        expect(cn('duration-fast', 'duration-base')).toBe('duration-base');
+    });
+});
