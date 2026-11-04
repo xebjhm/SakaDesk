@@ -611,9 +611,14 @@
     "dont1": "画直的分隔线。",
     "do2": "使用 rounded-card、text-body 等 token class。",
     "dont2": "写死 #hex 颜色或 rounded-[10px] 之类的任意值。",
-    "do3": "团体色只用在 4 个地方，加上每个页面最多一个主要按钮。",
-    "dont3": "用团体色涂其他元素。",
+    "do3": "团体色只通过官方层和色彩系统表中的角色使用，绝不写死。每个页面最多一个主要按钮。",
+    "dont3": "写死团体色，或用它涂其他元素。",
     "levelsSample": "Canvas › Sheet › Card",
-    "search": "搜索"
+    "search": "搜索",
+    "scale": "色阶",
+    "logoStep": "logo 原色",
+    "roles": "用途",
+    "roleName": "用途",
+    "roleStep": "色阶"
   }
 }

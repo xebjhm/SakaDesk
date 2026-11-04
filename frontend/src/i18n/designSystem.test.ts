@@ -23,7 +23,7 @@ const DESIGN_PAGE_KEYS = [
     'filterAll', 'filterUnread', 'badges', 'avatars', 'datePills', 'buttons', 'primary', 'secondary',
     'ghost', 'disabled', 'close', 'rail', 'modal', 'openModal', 'modalTitle', 'modalBody', 'rules',
     'do', 'dont', 'do1', 'dont1', 'do2', 'dont2', 'do3', 'dont3',
-    'levelsSample', 'search',
+    'levelsSample', 'search', 'scale', 'logoStep', 'roles', 'roleName', 'roleStep',
 ] as const;
 
 describe('design page strings', () => {
@@ -31,5 +31,12 @@ describe('design page strings', () => {
         const page = (data as unknown as Tree).designPage;
         for (const key of DESIGN_PAGE_KEYS) expect(page?.[key], key).toBeTruthy();
         expect(page.contrast).toContain('{{ratio}}');
+    });
+});
+
+describe('design page colour-system strings', () => {
+    it.each(Object.entries(locales))('%s has the scale and role keys', (_code, data) => {
+        const page = (data as unknown as Tree).designPage;
+        for (const key of ['scale', 'logoStep', 'roles', 'roleName', 'roleStep']) expect(page?.[key], key).toBeTruthy();
     });
 });

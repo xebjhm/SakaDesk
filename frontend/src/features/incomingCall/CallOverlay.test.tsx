@@ -4,6 +4,9 @@ import type { IncomingCall } from './useIncomingCall';
 import { CallOverlay } from './CallOverlay';
 import { persisted } from '../../core/persistence/persisted';
 import { VOLUME_STORAGE_KEY } from '../../core/media/VoicePlayer';
+import { groupRoles } from '../../design/tokens';
+
+const SAKURA = groupRoles('sakurazaka').action;
 
 const theme = { accentColor: '#7cc7e8', answerStyle: 'solid' as const, groupLabel: '日向坂46' };
 
@@ -24,17 +27,17 @@ describe('CallOverlay', () => {
 
     it('lays out ambient backdrop, a 9:16 frame and a halo that follows the phase', () => {
         const { container, rerender } = render(
-            <CallOverlay call={call()} accentColor="#E85298" answerStyle="light" groupLabel="櫻坂46" />,
+            <CallOverlay call={call()} accentColor={SAKURA} answerStyle="light" groupLabel="櫻坂46" />,
         );
         const overlay = screen.getByTestId('call-overlay');
         expect(overlay).toHaveClass('sd-call-overlay');
-        expect(overlay.style.getPropertyValue('--sd-accent')).toBe('#E85298');
+        expect(overlay.style.getPropertyValue('--sd-accent')).toBe(SAKURA);
         expect(container.querySelector('.sd-call-ambient')).toHaveStyle({ backgroundImage: 'url("/img/phone.jpg")' });
         expect(container.querySelector('.sd-call-stage .sd-call-frame .sd-call-screen')).not.toBeNull();
         expect(container.querySelector('.sd-call-halo')).toHaveAttribute('data-phase', 'ringing');
         expect(container.querySelector('.sd-call-screen')).toHaveAttribute('data-answer-style', 'light');
         expect(screen.getByText('櫻坂46')).toBeInTheDocument();
-        rerender(<CallOverlay call={call({ phase: 'connected', talkStartedAt: Date.now() })} accentColor="#E85298" answerStyle="light" groupLabel="櫻坂46" />);
+        rerender(<CallOverlay call={call({ phase: 'connected', talkStartedAt: Date.now() })} accentColor={SAKURA} answerStyle="light" groupLabel="櫻坂46" />);
         expect(container.querySelector('.sd-call-halo')).toHaveAttribute('data-phase', 'connected');
     });
 

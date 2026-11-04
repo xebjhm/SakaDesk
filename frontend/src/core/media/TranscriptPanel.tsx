@@ -3,6 +3,7 @@ import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
+import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -47,7 +48,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     currentTime = 0,
     onSeek,
     onRerun,
-    accentColor = '#6da0d4',
+    accentColor = FALLBACK_ACTION_COLOR,
     variant = 'dark',
     defaultExpanded = false,
     messageId,

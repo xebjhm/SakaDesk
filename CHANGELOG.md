@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **One consistent colour design per group.** Badges, buttons, member
+  names, links, dialogs and the voice player now follow each group's logo
+  colours, so every group looks equally clear. The official title bars,
+  sidebars and unread covers stay exactly as before.
 - **Hovering a group in the left rail shows its Japanese name** (乃木坂46,
   櫻坂46, 日向坂46) instead of an internal id.
 - **The sidebar no longer re-reads your whole archive every two seconds**, and

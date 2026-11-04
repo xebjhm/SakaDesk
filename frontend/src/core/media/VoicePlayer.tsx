@@ -10,6 +10,7 @@ import { useTranscription } from '../../hooks/useTranscription';
 import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
+import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
 
 export const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
@@ -97,9 +98,7 @@ const SkipButton: React.FC<{
     );
 };
 
-// Fallback to Hinatazaka's voice player accent (#6da0d4) when no theme color provided.
-// Canonical values defined in serviceThemes.ts -> messages.voicePlayerAccent
-const DEFAULT_ACCENT_COLOR = '#6da0d4';
+const DEFAULT_ACCENT_COLOR = FALLBACK_ACTION_COLOR; // neutral action colour when no group theme is given
 
 export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     src,

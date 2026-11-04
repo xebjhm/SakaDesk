@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -6,7 +6,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import i18n from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
-import { GROUP_IDS, groupTokens } from './tokens';
+import { GROUP_IDS, SCALE_STEPS, groupRoles, groupTokens } from './tokens';
 import { DesignPage } from './DesignPage';
 
 beforeAll(async () => {
@@ -24,21 +24,67 @@ describe('DesignPage', () => {
         }
     });
 
-    it('shows the Hinatazaka badge contrast', () => {
+    it('shows the Hinatazaka logo colour and action colour contrast', () => {
         render(<DesignPage />);
         expect(screen.getAllByText('White text 1.9:1').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('White text 3.0:1').length).toBeGreaterThan(0);
     });
 
     it.each(GROUP_IDS)('switching to %s applies its tokens', async (id) => {
         render(<DesignPage />);
         await userEvent.click(screen.getByRole('button', { name: groupLabel(id) }));
         expect(screen.getByRole('button', { name: groupLabel(id) })).toHaveAttribute('aria-pressed', 'true');
-        expect(document.documentElement.style.getPropertyValue('--ds-group-badge')).toBe(groupTokens[id].badge);
+        expect(document.documentElement.style.getPropertyValue('--ds-group-badge')).toBe(groupRoles(id).action);
     });
 
     it('opens the sample modal', async () => {
         render(<DesignPage />);
         await userEvent.click(screen.getByRole('button', { name: 'Open modal' }));
         expect(await screen.findByRole('dialog', { name: 'Sample modal' })).toBeInTheDocument();
+    });
+});
+
+describe('DesignPage colour system', () => {
+    it('shows the selected group scale with the logo step marked', async () => {
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Scale' })).toBeInTheDocument();
+        for (const step of SCALE_STEPS) {
+            expect(screen.getAllByText(groupTokens.hinatazaka.scale[step]).length).toBeGreaterThan(0);
+        }
+        expect(screen.getByText('Logo color')).toBeInTheDocument();
+    });
+
+    it('lists the role map', () => {
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Roles' })).toBeInTheDocument();
+        for (const role of ['action', 'strong', 'subtle', 'subtleBorder', 'linkUnderline']) {
+            expect(screen.getAllByText(role).length).toBeGreaterThan(0);
+        }
+    });
+});
+
+describe('DesignPage language', () => {
+    afterEach(async () => {
+        window.history.replaceState(null, '', '/');
+        await i18n.changeLanguage('en');
+    });
+
+    it('switches the UI language from the language pills', async () => {
+        render(<DesignPage />);
+        await userEvent.click(screen.getByRole('button', { name: '繁體中文' }));
+        expect(await screen.findByRole('heading', { name: '設計系統' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '繁體中文' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('honours ?lang= in the URL', async () => {
+        window.history.replaceState(null, '', '/?view=design&lang=zh-TW');
+        render(<DesignPage />);
+        expect(await screen.findByRole('heading', { name: '設計系統' })).toBeInTheDocument();
+    });
+
+    it('ignores an unsupported ?lang=', async () => {
+        window.history.replaceState(null, '', '/?view=design&lang=xx');
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Design system' })).toBeInTheDocument();
     });
 });

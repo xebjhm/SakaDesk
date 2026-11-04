@@ -18,6 +18,7 @@ import { useAppStore } from '../../../store/appStore';
 import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
+import { FALLBACK_ACTION_COLOR } from '../../../design/tokens';
 
 interface ShelterColors {
     picture: string;
@@ -463,8 +464,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     <div
                         className="rounded-b-xl border-t-0 border px-3 py-1.5 -mt-1"
                         style={{
-                            borderColor: `${theme?.voicePlayerAccent || '#6da0d4'}30`,
-                            background: `${theme?.voicePlayerAccent || '#6da0d4'}05`,
+                            borderColor: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}30`,
+                            background: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}05`,
                         }}
                     >
                         {transcriptionState !== 'done' ? (

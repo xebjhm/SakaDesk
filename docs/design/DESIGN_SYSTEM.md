@@ -25,24 +25,65 @@ A level sits on the level below it. Do not put a sheet on a card.
 
 ## Where group colour may appear
 
-Group colour comes from `groupTokens` and follows the active service
-automatically through CSS variables. A primitive never takes a group id.
+Group colour is used ONLY through the official layer (title gradient, title
+bar and text, canvas, unread shelters) and the roles in the Colour system
+table (`text-group-strong`, `bg-group-subtle`, `border-group-subtle`,
+`decoration-group`, `bg-group-accent`, `ring-group`, `shadow-group-glow`, ...).
+It is read via `groupTokens[id].official` or `groupRoles(id)` and follows the
+active service automatically through CSS variables. It is never hard-coded,
+and a primitive never takes a group id.
 
-1. **Title gradient:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`
-2. **Selection glow:** `Avatar selected` draws a white ring plus the group-colour
-   glow (`shadow-group-glow`); `ring-group` is the keyboard focus ring: `Pill`, `Button`, `IconButton` and `RailItem` use
-   `focus-visible:ring-2 focus-visible:ring-group`.
-3. **Bubble border:** `border-group-bubble`
-4. **Badge:** `Badge`, `bg-group-badge`
+- **Official layer:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`,
+  the canvas and the shelters.
+- **Roles:** the Colour system table; for example `Avatar selected` draws a white
+  ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
+  focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
+  (`focus-visible:ring-2 focus-visible:ring-group`).
 
-**Exception:** at most **one** `Button variant="primary"` per screen, which
-uses `bg-group-accent` (e.g. the call screen's "answer", a dialog's "save").
+**Exception:** at most **one** `Button variant="primary"` per screen. It
+uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
+"answer", a dialog's "save".
 
 The level-0 background (`Canvas`, `bg-group-canvas`) is the official sidebar
 gradient. Everything else is neutral: `bg-sheet/card/pill/elevated/sunken`,
 `bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`.
 Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
 `bg-black/NN`: the token carries its own alpha.
+
+## Colour system
+
+Every group colour comes from `frontend/src/design/tokens/groups.ts` through
+one of two layers:
+
+- **Official layer** (`groupTokens[id].official`): title gradient, thin bar and
+  title text, the canvas (sidebar) gradient, unread-shelter colours and the
+  `shelterStyle` / `headerStyle` switches. These were copied from the official
+  apps and are kept verbatim — tests pin them. Do not "fix" them to match the
+  scale.
+- **System layer**: each group has its logo colour and a 10-step scale
+  (50 lightest … 900 darkest, logo colour snapped into its step). Colours are
+  taken by **role**, never by step, through `groupRoles(id)` in
+  `design/tokens/roles.ts`:
+
+| Role | Step | Used for | Utility |
+|---|---|---|---|
+| `action` | 600 | badge, primary button, play / scroll buttons | `bg-group-accent`, `bg-group-badge` |
+| `strong` | 700 | member names, links, selected text | `text-group-strong` |
+| `subtle` | 50 | selected / hover background | `bg-group-subtle` |
+| `subtleBorder` | 200 | border of subtle selections | `border-group-subtle` |
+| `linkUnderline` | 300 | link underline | `decoration-group` |
+| `ring` | 600 | keyboard focus ring | `ring-group` |
+| `bubbleBorder` | logo (Nogizaka 600) | message bubble border | `border-group-bubble` |
+| `glow` | logo at alpha | selection glow | `shadow-group-glow` |
+
+Contrast floors are enforced by tests: `action` with white text ≥ 3:1 and
+`strong` on white ≥ 4.5:1. Sakurazaka is the one stylistic exception: a white
+base with pink accents (`light` header and shelters). `--ds-group-accent` is
+the **action** colour; the logo colour itself is `--ds-group-logo`.
+
+To add a colour, add a **role** in `roles.ts` (and a CSS variable and utility
+if components need it). Never add a new hex to a component or to
+`serviceThemes.ts` (a test fails if that file contains any colour literal).
 
 ## Scales
 
@@ -85,7 +126,7 @@ are composed from these in the feature folder. They are not primitives.
 | Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
 | Use token classes (`rounded-card`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
 | Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
-| Keep group colour in the four places, plus one primary button | Colour any other element with the group colour |
+| Take group colour from the official layer and the Colour system roles (`groupTokens` / `groupRoles`) | Hard-code a group colour, or colour any other element with it |
 | Translate every visible string (`t('…')`) | Put text in primitives; callers pass translated labels |
 | Use role names for new tokens (`surface.x`) | Name tokens after hues (`lightBlue`) — dark mode will reuse the names |
 

@@ -4,7 +4,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import { clientLog } from '../utils/clientLog';
 import legacy from './__fixtures__/legacy-theme-values.json';
-import { GROUP_IDS, groupTokens } from './tokens';
+import { GROUP_IDS, groupRoles, groupTokens } from './tokens';
 import { staticTokenVars, groupTokenVars } from './cssVars';
 import { applyStaticTokens, applyGroupTokens } from './applyTokens';
 
@@ -26,14 +26,15 @@ describe('cssVars', () => {
 
     it.each(GROUP_IDS)('maps every %s group token', (id) => {
         const vars = groupTokenVars(id);
-        const t = groupTokens[id];
+        const o = groupTokens[id].official;
+        const r = groupRoles(id);
         expect(vars['--ds-group-canvas']).toBe(
-            `linear-gradient(to bottom, ${t.canvas[0]}, ${t.canvas[1]}, ${t.canvas[2]})`,
+            `linear-gradient(to bottom, ${o.canvas[0]}, ${o.canvas[1]}, ${o.canvas[2]})`,
         );
-        expect(vars['--ds-group-badge']).toBe(t.badge);
-        expect(vars['--ds-group-bubble-border']).toBe(t.bubbleBorder);
-        expect(Object.keys(vars)).toHaveLength(12);
-        expect(vars['--ds-shadow-group-glow']).toBe(`0 0 12px 2px ${t.glow}`);
+        expect(vars['--ds-group-badge']).toBe(r.action);
+        expect(vars['--ds-group-bubble-border']).toBe(r.bubbleBorder);
+        expect(Object.keys(vars)).toHaveLength(17);
+        expect(vars['--ds-shadow-group-glow']).toBe(`0 0 12px 2px ${r.glow}`);
     });
 });
 
@@ -54,9 +55,13 @@ describe('applyGroupTokens', () => {
         for (const [name, value] of Object.entries(groupTokenVars(id))) {
             expect(style().getPropertyValue(name)).toBe(value);
         }
+        const changed = ['--color-primary', '--color-secondary', '--color-accent', '--color-gradient-from', '--color-gradient-to'];
         for (const [name, value] of Object.entries(legacy.cssVars[id])) {
-            expect(style().getPropertyValue(name)).toBe(value);
+            if (!changed.includes(name)) expect(style().getPropertyValue(name)).toBe(value);
         }
+        const r = groupRoles(id);
+        expect(style().getPropertyValue('--color-primary')).toBe(r.logo);
+        expect(style().getPropertyValue('--color-secondary')).toBe(r.action);
         expect(clientLog).toHaveBeenCalledWith('design_tokens_applied', { theme: id });
     });
 });
