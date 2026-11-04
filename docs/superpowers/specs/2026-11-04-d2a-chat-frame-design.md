@@ -47,29 +47,30 @@ New hook `frontend/src/features/messages/hooks/useTimelineJump.ts`:
 
 ```ts
 type JumpTarget =
-  | { kind: 'message'; id: number }
+  | { kind: 'message'; id: number; align?: 'start' | 'center' }   // align defaults to 'start'
   | { kind: 'date'; date: string }      // local YYYY-MM-DD, same bucketing as toLocalDateStr
   | { kind: 'firstUnread' }
   | { kind: 'top' }
   | { kind: 'bottom' };
 
-type JumpOutcome = 'landed' | 'not_found' | 'gave_up';
+type JumpOutcome = 'landed' | 'not_found' | 'gave_up' | 'cancelled';
 
 function useTimelineJump(args: {
-  virtuosoRef: RefObject<VirtuosoHandle>;
-  resolveIndex: (target: JumpTarget) => number | -1;   // pure, unit-tested
-  visibleRange: () => { startIndex: number; endIndex: number };
-  onLanded?: (index: number) => void;                  // drives the highlight
-}): { jumpTo: (target: JumpTarget) => Promise<JumpOutcome> };
+  virtuosoRef: RefObject<VirtuosoHandle | null>;
+  messages: readonly Message[];
+  isUnread: (id: number) => boolean;
+  onLanded?: (messageId: number) => void;   // drives the highlight
+  deps?: Partial<{ nextFrame; measure; now }>;   // test seam
+}): (target: JumpTarget) => Promise<JumpOutcome>;   // jumpTo
 ```
 
 The flow of a jump:
 
-1. Resolve the target to an item index with a pure function. If it is `-1`, the outcome is `not_found`.
-2. Call `scrollToIndex({ index, align, behavior: 'auto' })`. Message, date and top targets align `start`; first-unread aligns `center`, as today.
-3. **Settle and correct.** On the next animation frame after `rangeChanged` reports the target as rendered, check its position. If it is off the aligned position by more than 8 px, issue `scrollToIndex` again. Retry at most 2 times. The outcome is `landed` or `gave_up`. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
-4. **Landing highlight.** The target item gets a short glow (`shadow-group-glow`) that fades out over about 1.2 s. It uses motion tokens and adds no new colour.
-5. **Breadcrumb log** for every jump: target kind, resolved index, corrections, outcome, duration. No message text and no names.
+1. Resolve the target to a message row with a pure function (`resolveJump`). If there is none, the outcome is `not_found`.
+2. Call `scrollToIndex({ index, align, behavior: 'auto' })`. Message and date targets align `start` unless the message target asks for `center`; first-unread aligns `center`; bottom aligns `end`. Top and bottom land exactly and are not verified.
+3. **Settle and correct.** The hook waits up to 60 frames for the row to render, then settles 2 frames and measures. If the row is off the aligned position by more than 8 px, it re-finds the row by message id (gone: `cancelled`) and issues `scrollToIndex` again, at most 2 times. A row that vanishes after settling sends the jump back to waiting, which is bounded too. The outcome is `landed` or `gave_up`. A newer jump or an unmount cancels an older one. Virtuoso estimates heights it has not measured yet, so the first jump can land a little off.
+4. **Landing highlight.** For message and date jumps, the landed row gets `bg-group-subtle` for 1 s, faded with `duration-base`. It adds no new colour. First-unread, top and bottom jumps are not highlighted.
+5. **Breadcrumb log** `timeline_jump` for every jump, with `target`, `index`, `corrections`, `outcome` and `jump_ms`. No message text and no names.
 
 Media with known `width` / `height` reserves its box before the image loads, so landing positions do not drift. Pictures and videos already carry those fields.
 
@@ -79,9 +80,9 @@ Every entry point moves onto `jumpTo`:
 |---|---|---|
 | Calendar date (`scrollToDate`) | smooth scroll | `jumpTo({kind:'date'})` |
 | First unread (two arrow buttons) | `scrollToIndex` auto | `jumpTo({kind:'firstUnread'})` |
-| Same-room `targetMessageId` (search, notification toast, media gallery "jump to message", conversation menu) | `scrollToIndex` in a `MessageList` effect | `jumpTo({kind:'message'})` |
-| Cross-room `targetMessageId` (Virtuoso mounts fresh) | `initialTopMostItemIndex` | unchanged mount path, then one settle/correct pass and the highlight |
-| Incoming call ended → its message (`scrollToMessage`) | `scrollToIndex` auto | `jumpTo({kind:'message'})` |
+| Same-room `targetMessageId` (search, notification toast, media gallery "jump to message", conversation menu) | `scrollToIndex` in a `MessageList` effect | `jumpTo({kind:'message', align:'start'})` through `MessageList`'s `onJumpToMessage` |
+| Cross-room `targetMessageId` (Virtuoso mounts fresh) | `initialTopMostItemIndex` | the same `onJumpToMessage` jump runs on a fresh mount too |
+| Incoming call ended → its message (`scrollToMessage`) | `scrollToIndex` auto | `jumpTo({kind:'message', align:'center'})`, highlighted |
 | Home / End keys (`useTimelineKeyNav`) | `scrollToIndex` auto | `jumpTo({kind:'top'/'bottom'})`, no highlight |
 
 ### Real-browser tests (new)
