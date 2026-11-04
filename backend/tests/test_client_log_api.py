@@ -151,3 +151,17 @@ def test_backend_sync_skipped_event_is_accepted():
     assert len(events) == 1
     assert events[0]["event"] == "backend_sync_skipped"
     assert events[0]["reason"] == "already_handled"
+
+
+def test_notify_open_chat_accepts_has_target():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "notify_open_chat",
+                "fields": {"service": "hinatazaka46", "has_target": True},
+            },
+        )
+    assert res.status_code == 204
+    (event,) = _client_events(logs)
+    assert event["has_target"] is True

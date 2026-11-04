@@ -10,7 +10,8 @@ export type ClientLogEvent =
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
-    | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type';
+    | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
+    | 'has_target';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

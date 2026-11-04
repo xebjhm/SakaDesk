@@ -221,18 +221,23 @@ def make_open_chat_handler(window, focus_fn):
     The handler runs on a WinRT thread. It shows the window (never
     ``window.restore()``, which would un-maximize it), calls
     ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
-    frontend to navigate via ``window.__sakadeskOpenChat``. The script returns
-    whether that function existed: it logs ``notify_open_chat``
-    (service, is_group_chat, ``delivered=True``) or ``notify_open_chat_failed``
-    with ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
+    frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
+    target's fields plus ``message_id`` (an int, the message to scroll to)
+    when one is given. The script returns whether that function existed: it
+    logs ``notify_open_chat`` (service, is_group_chat, has_target,
+    ``delivered=True``) or ``notify_open_chat_failed`` with
+    ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
     It never raises. Names and paths are never logged.
     """
 
-    def handler(target) -> None:
+    def handler(target, message_id: int | None = None) -> None:
         try:
             window.show()
             focus_fn(_native_hwnd(window))
-            payload = json.dumps(asdict(target), ensure_ascii=False)
+            fields = asdict(target)
+            if message_id is not None:
+                fields["message_id"] = message_id
+            payload = json.dumps(fields, ensure_ascii=False)
             delivered = window.evaluate_js(
                 "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
                 + payload
@@ -243,6 +248,7 @@ def make_open_chat_handler(window, focus_fn):
                     "notify_open_chat",
                     service=target.service,
                     is_group_chat=target.is_group_chat,
+                    has_target=message_id is not None,
                     delivered=True,
                 )
             else:
