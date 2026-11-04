@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { SettingsModal } from './SettingsModal';
@@ -51,13 +51,15 @@ function renderModal(appSettings: AppSettings = base, props: Partial<React.Compo
 const openTab = (name: string) => fireEvent.click(screen.getByRole('button', { name, exact: true } as never));
 
 describe('general tab saving', () => {
-    it('language select switches the language and persists it', () => {
+    it('language select switches the language and persists it', async () => {
         const setPref = vi.spyOn(persisted, 'setPref').mockImplementation(() => {});
         renderModal();
         const select = screen.getByDisplayValue('English');
-        fireEvent.change(select, { target: { value: 'ja' } });
+        await act(async () => { fireEvent.change(select, { target: { value: 'ja' } }); });
         expect(i18n.language).toBe('ja');
         expect(setPref).toHaveBeenCalledWith('language', 'ja');
+        // Back to English while the dialog is still mounted, inside act.
+        await act(async () => { await i18n.changeLanguage('en'); });
     });
 
     it('output folder: typing updates the input, Save posts output_dir', () => {
@@ -80,7 +82,7 @@ describe('sync tab saving', () => {
         expect(onSaveSettings).toHaveBeenCalledWith({ auto_sync_enabled: true, adaptive_sync_enabled: true });
     });
 
-    it('fixed interval radio saves, and the interval select posts a number', () => {
+    it('the fixed interval radio saves auto sync on, adaptive off', () => {
         const { onSaveSettings } = renderModal({ ...base, auto_sync_enabled: false });
         openTab('Sync');
         fireEvent.click(screen.getByRole('radio', { name: /^Fixed Interval/ }));
@@ -142,6 +144,20 @@ describe('sync tab saving', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('Escape with a confirm open closes only the confirm and returns focus to its opener', async () => {
+        const { onClose, onDeepResync } = renderModal();
+        openTab('Sync');
+        const opener = screen.getByRole('button', { name: 'Re-sync all' });
+        await userEvent.click(opener);
+        await screen.findByRole('dialog', { name: 'Deep re-verify (full re-sync)' });
+        await userEvent.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Deep re-verify (full re-sync)' })).toBeNull());
+        expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+        await waitFor(() => expect(opener).toHaveFocus());
+        expect(onClose).not.toHaveBeenCalled();
+        expect(onDeepResync).not.toHaveBeenCalled();
+    });
+
     it('delete backup asks twice in-app, then deletes each service cache', async () => {
         useAppStore.setState({ selectedServices: ['hinatazaka46'] });
         fetchMock.mockImplementation(async (url: string) => {
@@ -197,6 +213,71 @@ describe('sync tab saving', () => {
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'error' }));
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_cache', outcome: 'error' }));
     });
+
+    async function confirmDeleteBackup() {
+        openTab('Sync');
+        fireEvent.click(screen.getByRole('button', { name: 'Delete backup' }));
+        fireEvent.click(within(await screen.findByRole('dialog', { name: 'Delete backup' })).getByRole('button', { name: 'Confirm' }));
+        const second = (await screen.findByText('Are you sure? This cannot be undone.')).closest('[role="dialog"]') as HTMLElement;
+        fireEvent.click(within(second).getByRole('button', { name: 'Confirm' }));
+    }
+
+    it('a refused DELETE logs the clean as an error, not ok', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] });
+        fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+            if (init?.method === 'DELETE') return { ok: false, json: async () => ({}) };
+            if (url.startsWith('/api/blogs/cache-size')) return { ok: true, json: async () => ({ size_bytes: 2048 }) };
+            if (url === '/api/blogs/backup/status') return { ok: true, json: async () => ({ running: {} }) };
+            return { ok: true, json: async () => ({}) };
+        });
+        renderModal({ ...base, blogs_full_backup: true });
+        await confirmDeleteBackup();
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_clean', outcome: 'error' }));
+        expect(clientLog).not.toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_clean', outcome: 'ok' });
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Delete backup' })).toBeEnabled());
+    });
+
+    it('one refused DELETE out of two logs the clean as partial with the failure count', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] });
+        fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+            if (init?.method === 'DELETE') return { ok: url.includes('hinatazaka46'), json: async () => ({}) };
+            if (url.startsWith('/api/blogs/cache-size')) return { ok: true, json: async () => ({ size_bytes: 2048 }) };
+            if (url === '/api/blogs/backup/status') return { ok: true, json: async () => ({ running: {} }) };
+            return { ok: true, json: async () => ({}) };
+        });
+        renderModal({ ...base, blogs_full_backup: true });
+        await confirmDeleteBackup();
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_clean', outcome: 'partial', count: 1 }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Delete backup' })).toBeEnabled());
+    });
+
+    it('a refused cache-size read and a refused backup status log partial / error, never ok', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] });
+        fetchMock.mockImplementation(async (url: string) => {
+            if (url.startsWith('/api/blogs/cache-size')) return { ok: !url.includes('sakurazaka46'), json: async () => ({ size_bytes: 2048 }) };
+            if (url === '/api/blogs/backup/status') return { ok: false, json: async () => ({ detail: 'x' }) };
+            return { ok: false, json: async () => ({}) };
+        });
+        renderModal({ ...base, blogs_full_backup: true });
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_cache', outcome: 'partial', count: 1 }));
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'error' }));
+        expect(clientLog).not.toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'ok' });
+    });
+
+    it('failed cache-stats reads are logged with the failure count', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] });
+        fetchMock.mockImplementation(async (url: string) => {
+            if (url.startsWith('/api/blogs/cache-size')) return { ok: true, json: async () => ({ size_bytes: 2048 }) };
+            if (url === '/api/blogs/backup/status') return { ok: true, json: async () => ({ running: {} }) };
+            if (url.startsWith('/api/blogs/cache-stats')) {
+                if (url.includes('sakurazaka46')) throw new Error('offline');
+                return { ok: true, json: async () => ({ cached_blogs: 1, available_blogs: 2 }) };
+            }
+            return { ok: false, json: async () => ({}) };
+        });
+        renderModal({ ...base, blogs_full_backup: true });
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_stats', outcome: 'partial', count: 1 }));
+    });
 });
 
 describe('updates tab', () => {
@@ -212,8 +293,10 @@ describe('updates tab', () => {
             url === '/api/version?force=true' ? { ok: true, json: async () => ({ update_available: false }) } : { ok: false, json: async () => ({}) });
         renderModal();
         openTab('Updates');
+        // The live region is in place (empty) before the check, so the result is announced.
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
         fireEvent.click(screen.getByRole('button', { name: 'Check Now' }));
-        expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('settings.upToDate'));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n.t('settings.upToDate')));
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_update_check', outcome: 'ok' });
     });
 
@@ -226,37 +309,159 @@ describe('updates tab', () => {
         renderModal();
         openTab('Updates');
         fireEvent.click(screen.getByRole('button', { name: 'Check Now' }));
-        expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('settings.updateCheckFailed'));
+        await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n.t('settings.updateCheckFailed')));
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_update_check', outcome: 'error' });
         expect(consoleError).not.toHaveBeenCalled();
     });
 });
 
 describe('AI tab', () => {
-    it('transcription and translation switches drive the store', () => {
-        renderModal();
+    const KEY = 'AIzaSECRETkey123';
+    const MASKED = 'AIza...xQ';
+    type Outcome = 'ok' | 'refused' | 'reject';
+
+    /** Fake translation API: config, models, configure and clear-api-key, each ok / refused / rejected. */
+    function mockAi({ config = 'ok', models = 'ok', configure = 'ok', clear = 'ok', hasKey = true, provider = 'gemini' as string | null }: {
+        config?: Outcome; models?: Outcome; configure?: Outcome; clear?: Outcome; hasKey?: boolean; provider?: string | null;
+    } = {}) {
+        const reply = (outcome: Outcome, body: unknown) => {
+            if (outcome === 'reject') throw new Error(`offline ${KEY}`);
+            return { ok: outcome === 'ok', json: async () => (outcome === 'ok' ? body : { detail: `bad ${KEY}` }) };
+        };
+        fetchMock.mockImplementation(async (url: string) => {
+            if (url === '/api/translation/config') {
+                return reply(config, { provider, model: provider ? 'm1' : null, has_api_key: hasKey, api_key_masked: hasKey ? MASKED : null, target_language: null });
+            }
+            if (url === '/api/translation/models') return reply(models, { gemini: [{ id: 'm1', label: 'Model 1' }, { id: 'm2', label: 'Model 2' }] });
+            if (url === '/api/translation/configure') return reply(configure, { ok: true });
+            if (url === '/api/translation/clear-api-key') return reply(clear, { ok: true });
+            return { ok: false, json: async () => ({}) };
+        });
+    }
+
+    /** Open the AI tab and let both of its loads settle (no state update after the test). */
+    async function openAi() {
         openTab('AI');
+        await waitFor(() => expect(vi.mocked(clientLog).mock.calls.some(([, f]) => f?.surface === 'settings_ai_config')).toBe(true));
+        await waitFor(() => expect(vi.mocked(clientLog).mock.calls.some(([, f]) => f?.surface === 'settings_ai_models')).toBe(true));
+    }
+
+    const configureBodies = () => fetchMock.mock.calls
+        .filter(([url]) => url === '/api/translation/configure')
+        .map(([, init]) => JSON.parse((init as RequestInit).body as string));
+
+    it('transcription and translation switches drive the store', async () => {
+        mockAi();
+        renderModal();
+        await openAi();
         fireEvent.click(screen.getByRole('switch', { name: 'Transcription' }));
         expect(useAppStore.getState().transcriptionEnabled).toBe(false);
         fireEvent.click(screen.getByRole('switch', { name: 'Translation' }));
         expect(useAppStore.getState().translationEnabled).toBe(true);
     });
 
-    it('clear API key asks in-app, then clears the stored key', async () => {
-        fetchMock.mockImplementation(async (url: string) => {
-            if (url === '/api/translation/config') {
-                return { ok: true, json: async () => ({ provider: 'gemini', model: 'm', has_api_key: true, api_key_masked: 'AIza...xQ', target_language: null }) };
-            }
-            if (url === '/api/translation/models') return { ok: true, json: async () => ({ gemini: [{ id: 'm', label: 'M' }] }) };
-            return { ok: true, json: async () => ({}) };
-        });
+    it('logs the config and models loads', async () => {
+        mockAi();
         renderModal();
-        openTab('AI');
+        await openAi();
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_config', outcome: 'ok' });
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_models', outcome: 'ok' });
+    });
+
+    it.each([['refused'], ['reject']] as const)('a %s config or models load logs an error', async (outcome) => {
+        mockAi({ config: outcome, models: outcome });
+        renderModal();
+        await openAi();
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_config', outcome: 'error' });
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_models', outcome: 'error' });
+    });
+
+    it('target language, provider, model and key (on blur) save to /configure', async () => {
+        useAppStore.setState({ translationEnabled: true });
+        mockAi({ hasKey: false });
+        renderModal();
+        await openAi();
+        fireEvent.change(screen.getByLabelText('Target Language'), { target: { value: 'zh-TW' } });
+        await waitFor(() => expect(configureBodies()).toContainEqual({ provider: 'gemini', model: 'm1', api_key: null, target_language: 'zh-TW' }));
+        expect(useAppStore.getState().translationTargetLanguage).toBe('zh-TW');
+
+        fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'm2' } });
+        await waitFor(() => expect(configureBodies()).toContainEqual({ provider: 'gemini', model: 'm2', api_key: null, target_language: 'zh-TW' }));
+
+        fireEvent.change(screen.getByLabelText('Provider'), { target: { value: '' } });
+        await waitFor(() => expect(configureBodies()).toContainEqual({ provider: null, model: null, api_key: null, target_language: 'zh-TW' }));
+        fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'gemini' } });
+        await waitFor(() => expect(configureBodies()).toContainEqual({ provider: 'gemini', model: 'm1', api_key: null, target_language: 'zh-TW' }));
+
+        const key = screen.getByLabelText('API Key');
+        fireEvent.change(key, { target: { value: KEY } });
+        fireEvent.blur(key);
+        await waitFor(() => expect(configureBodies()).toContainEqual({ provider: 'gemini', model: 'm1', api_key: KEY, target_language: 'zh-TW' }));
+        await waitFor(() => expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.surface === 'settings_ai_save' && f.outcome === 'ok')).toHaveLength(5));
+
+        // The saved key reads as stored once the field is cleared.
+        fireEvent.change(key, { target: { value: '' } });
+        expect(screen.getByText('Saved securely in credential manager')).toBeInTheDocument();
+    });
+
+    it.each([['refused'], ['reject']] as const)('a %s key save shows an error, logs it, and never claims the key is saved', async (outcome) => {
+        useAppStore.setState({ translationEnabled: false });
+        mockAi({ hasKey: false, configure: outcome });
+        renderModal();
+        await openAi();
+        const key = screen.getByLabelText('API Key');
+        fireEvent.change(key, { target: { value: KEY } });
+        fireEvent.blur(key);
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_save', outcome: 'error' }));
+        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.saveFailed'));
+        fireEvent.change(key, { target: { value: '' } });
+        expect(screen.queryByText('Saved securely in credential manager')).toBeNull();
+        expect(screen.getByText(i18n.t('translation.settings.keyMissing'))).toBeInTheDocument();
+    });
+
+    it('clear API key asks in-app, then clears the stored key and logs ok', async () => {
+        mockAi();
+        renderModal();
+        await openAi();
         fireEvent.click(await screen.findByRole('button', { name: 'Clear API key' }));
         const confirm = await screen.findByRole('dialog', { name: 'Clear API key' });
         expect(fetchMock).not.toHaveBeenCalledWith('/api/translation/clear-api-key', expect.anything());
         fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/translation/clear-api-key', { method: 'POST' }));
         await waitFor(() => expect(screen.queryByRole('button', { name: 'Clear API key' })).toBeNull());
+        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'ok' });
+    });
+
+    it.each([['refused'], ['reject']] as const)('a %s clear keeps the key shown as saved and says it failed', async (outcome) => {
+        mockAi({ clear: outcome });
+        renderModal();
+        await openAi();
+        fireEvent.click(await screen.findByRole('button', { name: 'Clear API key' }));
+        fireEvent.click(within(await screen.findByRole('dialog', { name: 'Clear API key' })).getByRole('button', { name: 'Confirm' }));
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'error' }));
+        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.clearApiKeyFailed'));
+        expect(screen.getByText('Saved securely in credential manager')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Clear API key' })).toBeInTheDocument();
+    });
+
+    it('never logs the API key or its masked form', async () => {
+        mockAi({ configure: 'refused', clear: 'reject' });
+        renderModal();
+        await openAi();
+        const key = screen.getByLabelText('API Key');
+        fireEvent.change(key, { target: { value: KEY } });
+        fireEvent.blur(key);
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_save', outcome: 'error' }));
+        fireEvent.change(key, { target: { value: '' } });
+        fireEvent.click(await screen.findByRole('button', { name: 'Clear API key' }));
+        fireEvent.click(within(await screen.findByRole('dialog', { name: 'Clear API key' })).getByRole('button', { name: 'Confirm' }));
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'error' }));
+
+        const logged = JSON.stringify(vi.mocked(clientLog).mock.calls);
+        const clientLogBodies = JSON.stringify(fetchMock.mock.calls.filter(([url]) => url === '/api/client-log'));
+        for (const secret of [KEY, MASKED, 'SECRET']) {
+            expect(logged).not.toContain(secret);
+            expect(clientLogBodies).not.toContain(secret);
+        }
     });
 });

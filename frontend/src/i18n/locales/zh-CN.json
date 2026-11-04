@@ -569,6 +569,8 @@
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
       "savedSecurely": "已安全保存在凭据管理器中",
+      "saveFailed": "无法保存 AI 设置，请重试。",
+      "clearApiKeyFailed": "无法清除 API 密钥，请重试。",
       "keyMissing": "尚未保存 API 密钥，翻译无法使用。请在上方输入密钥。"
     },
     "error": {

@@ -3,7 +3,7 @@ import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucid
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { Modal, Button, Switch, Input, Select } from '../../design/primitives';
-import { logDialogLoad } from '../../design/dialog/dialogLog';
+import { logDialogLoad, type DialogLoadSurface } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SettingRow } from './SettingRow';
@@ -41,6 +41,17 @@ const RADIO_ROW = 'flex cursor-pointer items-center gap-3 rounded-card p-2 trans
 const FIELD_LABEL = 'text-small font-semibold text-secondary';
 /** Text-only danger action (Delete backup, Clear API key). */
 const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
+
+/** Outcome of a per-service batch: `ok`, `error` when every request failed, else `partial` with the failure count. */
+function batchOutcome(failed: number, total: number): ['ok'] | ['error'] | ['partial', number] {
+    if (failed === 0) return ['ok'];
+    return failed >= total ? ['error'] : ['partial', failed];
+}
+
+function logBatch(surface: DialogLoadSurface, failed: number, total: number): void {
+    const [outcome, count] = batchOutcome(failed, total);
+    logDialogLoad(surface, outcome, count);
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
@@ -93,15 +104,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setBlogSizeLoading(true);
         try {
             let totalBytes = 0;
+            let failed = 0;
             for (const service of selectedServices) {
                 const res = await fetch(`/api/blogs/cache-size?service=${encodeURIComponent(service)}`);
                 if (res.ok) {
                     const data = await res.json();
                     totalBytes += data.size_bytes || 0;
+                } else {
+                    failed += 1;
                 }
             }
             setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
-            logDialogLoad('settings_blog_cache', 'ok');
+            logBatch('settings_blog_cache', failed, selectedServices.length);
         } catch {
             setBlogCacheSize(null);
             logDialogLoad('settings_blog_cache', 'error');
@@ -125,9 +139,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         let cancelled = false;
         // One `ok` breadcrumb per open, not one per 5 s poll while a backup runs.
         let logged = false;
+        // The stats breadcrumb repeats only when its outcome changes between polls.
+        let lastStats = '';
         const check = () => {
             fetch('/api/blogs/backup/status')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('backup status refused');
+                    return res.json();
+                })
                 .then(data => {
                     if (cancelled) return;
                     if (!logged) {
@@ -147,6 +166,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             )
                         ).then(results => {
                             if (cancelled) return;
+                            const failed = results.filter(r => r === null).length;
+                            const outcome = batchOutcome(failed, results.length);
+                            if (results.length > 0 && outcome.join() !== lastStats) {
+                                lastStats = outcome.join();
+                                logBatch('settings_blog_stats', failed, results.length);
+                            }
                             let cached = 0, total = 0;
                             for (const r of results) {
                                 if (r) { cached += r.cached_blogs || 0; total += r.available_blogs || 0; }
@@ -167,11 +192,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const handleCleanBlogCache = async () => {
         setIsClearing(true);
         try {
+            let failed = 0;
             for (const service of selectedServices) {
-                await fetch(`/api/blogs/cache?service=${encodeURIComponent(service)}`, { method: 'DELETE' });
+                const res = await fetch(`/api/blogs/cache?service=${encodeURIComponent(service)}`, { method: 'DELETE' });
+                if (!res.ok) failed += 1;
             }
+            logBatch('settings_blog_clean', failed, selectedServices.length);
             await loadBlogCacheSize();
-            logDialogLoad('settings_blog_clean', 'ok');
         } catch {
             logDialogLoad('settings_blog_clean', 'error');
         } finally {
@@ -205,6 +232,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setTranslationTargetLanguage(null);
     };
 
+    const syncModeLabelId = useId();
     const syncMode = !appSettings.auto_sync_enabled ? 'off' : appSettings.adaptive_sync_enabled ? 'smart' : 'fixed';
 
     return (
@@ -215,7 +243,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             closeLabel={t('common.close')}
             logId="settings"
             className="h-[600px] max-h-[90vh] max-w-3xl"
-            bodyClassName="flex min-h-0 gap-0 px-0 pb-0"
+            bodyClassName="flex min-h-0 gap-0 px-0 pb-4"
             footer={<Button variant="ghost" size="sm" onClick={() => setConfirm('reset')}>{t('settings.resetDefaults')}</Button>}
         >
             <nav aria-label={t('settings.sections')} className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto p-3">
@@ -314,6 +342,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 {activeTab === 'sync' && (<>
                     <SettingRow
                         label={t('settings.syncMode')}
+                        labelId={syncModeLabelId}
                         description={
                             syncMode === 'off'
                                 ? t('settings.syncCurrentOff')
@@ -322,7 +351,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     : t('settings.syncCurrentFixed', { minutes: appSettings.sync_interval_minutes })
                         }
                     >
-                        <div className="flex flex-col gap-1">
+                        <div role="radiogroup" aria-labelledby={syncModeLabelId} className="flex flex-col gap-1">
                             <label className={RADIO_ROW}>
                                 <input
                                     type="radio"
@@ -550,9 +579,8 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
                     }
                     {t('settings.checkForUpdates')}
                 </Button>
-                {result && (
-                    <span role="status" className="text-small text-secondary">{result}</span>
-                )}
+                {/* Mounted empty so the result is announced when it arrives. */}
+                <span role="status" className="text-small text-secondary">{result}</span>
             </div>
         </SettingRow>
     );
@@ -600,8 +628,12 @@ function AiTab() {
 
     useEffect(() => {
         fetch('/api/translation/config')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('config refused');
+                return res.json();
+            })
             .then(data => {
+                logDialogLoad('settings_ai_config', 'ok');
                 setProvider(data.provider ?? null);
                 setModel(data.model ?? null);
                 setHasApiKey(data.has_api_key ?? false);
@@ -618,7 +650,7 @@ function AiTab() {
                     setTranslationTargetLanguage(data.target_language);
                 }
             })
-            .catch(() => {})
+            .catch(() => logDialogLoad('settings_ai_config', 'error'))
             .finally(() => setConfigLoading(false));
     }, [setTranslationTargetLanguage]);
 
@@ -632,8 +664,12 @@ function AiTab() {
 
     useEffect(() => {
         fetch('/api/translation/models')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('models refused');
+                return res.json();
+            })
             .then(data => {
+                logDialogLoad('settings_ai_models', 'ok');
                 // Transform backend format {gemini: [{id, label}]} to {gemini: [{value, label}]}
                 const opts: Record<string, { value: string; label: string }[]> = {};
                 for (const [prov, models] of Object.entries(data)) {
@@ -641,7 +677,7 @@ function AiTab() {
                 }
                 setModelOptions(opts);
             })
-            .catch(() => {});
+            .catch(() => logDialogLoad('settings_ai_models', 'error'));
     }, []);
 
     const MODELS = modelOptions;
@@ -692,7 +728,16 @@ function AiTab() {
 
     // Runs after the in-app confirm (the ConfirmDialog at the end of this tab).
     const handleClearApiKey = async () => {
-        await fetch('/api/translation/clear-api-key', { method: 'POST' });
+        try {
+            const res = await fetch('/api/translation/clear-api-key', { method: 'POST' });
+            if (!res.ok) throw new Error('clear refused');
+        } catch {
+            // The key is still stored: keep showing it as saved and say the clear failed.
+            logDialogLoad('settings_ai_key_clear', 'error');
+            setTestResult(t('translation.settings.clearApiKeyFailed'));
+            return;
+        }
+        logDialogLoad('settings_ai_key_clear', 'ok');
         setApiKeyInput('');
         setHasApiKey(false);
         setApiKeyMasked(null);
@@ -710,7 +755,6 @@ function AiTab() {
         if (updates.model !== undefined) setModel(updates.model);
         if (updates.api_key !== undefined) {
             setApiKeyInput(updates.api_key ?? '');
-            if (updates.api_key) setHasApiKey(true);
         }
         if (updates.target_language !== undefined) {
             setTargetLang(updates.target_language);
@@ -721,7 +765,7 @@ function AiTab() {
         aiConfigCache = {
             provider: newProvider,
             model: newModel,
-            hasApiKey: updates.api_key ? true : hasApiKey,
+            hasApiKey,  // a new key counts as stored only once the save succeeds (below)
             apiKeyMasked: aiConfigCache?.apiKeyMasked ?? null,  // refreshed by the next fetch
             targetLang: newTargetLang,
         };
@@ -729,6 +773,7 @@ function AiTab() {
         // Persist to backend (API key stored in keyring, not settings.json)
         // Only send api_key if user typed a new one
         const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        const failedMsg = t('translation.settings.saveFailed');
         fetch('/api/translation/configure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -738,7 +783,21 @@ function AiTab() {
                 api_key: apiKeyToSend ?? null,
                 target_language: newTargetLang,
             }),
-        });
+        })
+            .then(res => {
+                if (!res.ok) throw new Error('configure refused');
+                logDialogLoad('settings_ai_save', 'ok');
+                if (apiKeyToSend) {
+                    setHasApiKey(true);
+                    if (aiConfigCache) aiConfigCache.hasApiKey = true;
+                }
+                // A later save that works replaces an earlier failure message.
+                setTestResult(prev => (prev === failedMsg ? null : prev));
+            })
+            .catch(() => {
+                logDialogLoad('settings_ai_save', 'error');
+                setTestResult(failedMsg);
+            });
     };
 
     const handleProviderChange = (value: string | null) => {
@@ -862,11 +921,10 @@ function AiTab() {
                                 {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
                                     <p className="mt-1 text-caption text-status-warning">{t('translation.settings.keyMissing')}</p>
                                 )}
-                                {testResult && (
-                                    <p role="status" className="mt-1 text-small text-secondary">{testResult}</p>
-                                )}
                             </div>
                         )}
+                        {/* Test, cache and save results; mounted empty so each one is announced. */}
+                        <p role="status" className="text-small text-secondary">{testResult}</p>
                     </div>
                 </SettingRow>
             )}

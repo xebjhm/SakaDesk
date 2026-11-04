@@ -11,6 +11,7 @@ export type DialogLogId =
 export type DialogLoadSurface =
     | 'calendar' | 'diagnostics' | 'blog_gallery' | 'profile_images' | 'search'
     | 'settings_blog_cache' | 'settings_blog_backup' | 'settings_update_check' | 'settings_blog_clean'
+    | 'settings_blog_stats' | 'settings_ai_config' | 'settings_ai_models' | 'settings_ai_key_clear' | 'settings_ai_save'
     | 'report_issue';
 
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled';

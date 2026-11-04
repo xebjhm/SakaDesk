@@ -41,6 +41,24 @@ describe('SettingsModal layout', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it.each([['General', ['Save']], ['Sync', []], ['AI', []], ['Updates', []]] as const)(
+        'the %s tab has at most the one primary button',
+        async (tab, expected) => {
+            renderModal();
+            await userEvent.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: tab }));
+            const primaries = screen.getAllByRole('button')
+                .filter((b) => /\b(?:bg-group-accent|bg-status-danger)\b/.test(b.className) && !b.getAttribute('role'));
+            expect(primaries.map((b) => b.textContent)).toEqual(expected);
+        },
+    );
+
+    it('names the sync mode radio group', async () => {
+        renderModal();
+        await userEvent.click(screen.getByRole('button', { name: 'Sync' }));
+        const group = screen.getByRole('radiogroup', { name: 'Sync Mode' });
+        expect(within(group).getAllByRole('radio')).toHaveLength(3);
+    });
+
     it('the blog backup toggle is a named switch', async () => {
         renderModal();
         await userEvent.click(screen.getByRole('button', { name: 'Sync' }));
