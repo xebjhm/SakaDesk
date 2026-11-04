@@ -8,6 +8,7 @@ import { DEFAULT_BACKGROUND, loadBackgroundSettings, saveBackgroundSettings } fr
 import { UI_CONSTANTS } from '../../config/uiConstants';
 import { useTranslation } from '../../i18n';
 import { persisted } from '../persistence/persisted';
+import { logDialogLoad } from '../../design/dialog/dialogLog';
 
 interface BackgroundModalProps extends BaseModalProps {
     conversationPath: string;
@@ -27,6 +28,11 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     const [uploadError, setUploadError] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // A rejected upload's message belongs to that visit: clear it when the dialog closes.
+    useEffect(() => {
+        if (!isOpen) setUploadError(null);
+    }, [isOpen]);
+
     // Load settings from localStorage on open
     useEffect(() => {
         if (isOpen && conversationPath) {
@@ -45,22 +51,29 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         setUploadError(null);
         const file = e.target.files?.[0];
-        if (!file) return;
+        if (!file) {
+            logDialogLoad('background_upload', 'cancelled'); // the picker was dismissed
+            return;
+        }
 
         // Check file size
         if (file.size > UI_CONSTANTS.limits.maxImageSizeBytes) {
             setUploadError(t('background.imageTooLarge'));
+            logDialogLoad('background_upload', 'skipped', undefined, 'too_large');
             return;
         }
 
         // Check file type
         if (!file.type.startsWith('image/')) {
             setUploadError(t('background.selectImageFile'));
+            logDialogLoad('background_upload', 'skipped', undefined, 'not_image');
             return;
         }
 
         const reader = new FileReader();
+        reader.onerror = () => logDialogLoad('background_upload', 'error');
         reader.onload = () => {
+            logDialogLoad('background_upload', 'ok');
             const base64 = reader.result as string;
             setPreview(base64);
             persistSettings({
@@ -161,7 +174,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                                 className={cn(
                                     'h-10 w-10 rounded-card shadow-pill transition-shadow duration-fast ease-standard',
                                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
-                                    isSelected && 'ring-2 ring-strong ring-offset-2',
+                                    isSelected && 'ring-2 ring-strong ring-offset-2 ring-offset-surface',
                                 )}
                                 style={{ backgroundColor: color }}
                             />

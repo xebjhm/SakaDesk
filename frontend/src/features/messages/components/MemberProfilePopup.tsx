@@ -47,12 +47,12 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         setImages({});
         fetchProfileImages(memberPath, controller.signal)
             .then(k => {
-                if (controller.signal.aborted) return;
+                if (controller.signal.aborted) { logDialogLoad('profile_images', 'cancelled'); return; }
                 setImages(k);
                 logDialogLoad('profile_images', 'ok', Object.values(k).reduce((n, v) => n + (v?.length ?? 0), 0));
             })
             .catch(() => {
-                if (controller.signal.aborted) return;
+                if (controller.signal.aborted) { logDialogLoad('profile_images', 'cancelled'); return; }
                 setImages({});
                 logDialogLoad('profile_images', 'error');
             });
