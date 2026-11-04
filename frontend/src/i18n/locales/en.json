@@ -626,6 +626,7 @@
     "search": "Search",
     "scale": "Scale",
     "logoStep": "Logo color",
+    "railLogo": "Selected group logo (rail)",
     "roles": "Roles",
     "roleName": "Role",
     "roleStep": "Step"

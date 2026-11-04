@@ -626,6 +626,7 @@
     "search": "検索",
     "scale": "色階",
     "logoStep": "ロゴの色",
+    "railLogo": "選択中のグループロゴ（レール）",
     "roles": "役割",
     "roleName": "役割",
     "roleStep": "段階"

@@ -626,6 +626,7 @@
     "search": "搜索",
     "scale": "色阶",
     "logoStep": "logo 原色",
+    "railLogo": "选中的分组 logo（侧栏）",
     "roles": "用途",
     "roleName": "用途",
     "roleStep": "色阶"

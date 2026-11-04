@@ -79,6 +79,7 @@ one of two layers:
 | `ring` | 600 | keyboard focus ring | `ring-group` |
 | `bubbleBorder` | logo (Nogizaka 600) | message bubble border | `border-group-bubble` |
 | `glow` | logo at alpha | selection glow | `shadow-group-glow` |
+| `ring-group-logo` | logo | group rail selection ring (with a white gap) | `ring-group-logo` |
 
 Contrast floors are enforced by tests: `action` with white text ≥ 3:1 and
 `strong` on white ≥ 4.5:1. Sakurazaka is the one stylistic exception: a white

@@ -6,7 +6,7 @@ const SCROLL_KEYS = new Set(['Home', 'End', 'PageUp', 'PageDown']);
 
 /**
  * Keyboard handler for the message timeline: Home/End jump to the first/last
- * message through the shared timeline jump (key auto-repeat is swallowed). While an incoming call covers the
+ * row (which may be a letter) through the shared timeline jump (key auto-repeat is swallowed). While an incoming call covers the
  * timeline (`callActive`) the list is hidden, so Home/End/PageUp/PageDown are
  * swallowed and nothing scrolls.
  */
