@@ -197,7 +197,7 @@ export const MessageList: React.FC<ChatListProps> = ({
 
     const renderItem = (item: TimelineItem) => {
         const rowKey = rowKeyOf(item);
-        const rowClass = cn('px-4 py-1 rounded-card', highlightedRowKey === rowKey && 'animate-landing');
+        const rowClass = cn('rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
         if (item.kind === 'letter') {
             return <div className={rowClass} id={rowKey}>{renderLetter?.(item.letter)}</div>;
         }
@@ -219,6 +219,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                     service={service}
                     memberPath={getMemberPath?.(msg)}
                     userNickname={userNickname}
+                    runStart={item.runStart}
                 />
             </div>
         );

@@ -307,7 +307,8 @@
     "confirm": "確認",
     "noContent": "(内容なし)",
     "attachment": "添付ファイル",
-    "openCalendar": "日付を選んで移動"
+    "openCalendar": "日付を選んで移動",
+    "openConversations": "トーク一覧を表示"
   },
   "calendar": {
     "title": "日付検索",

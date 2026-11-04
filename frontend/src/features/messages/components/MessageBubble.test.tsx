@@ -44,8 +44,7 @@ describe('MessageBubble component', () => {
 
   it('should render timestamp in expected format', () => {
     render(<MessageBubble {...defaultProps} />)
-    // Timestamp format: YYYY/MM/DD HH:MM (time may vary based on timezone)
-    expect(screen.getByText(/2024\/01\/15 \d{2}:\d{2}/)).toBeInTheDocument()
+    expect(screen.getByText('10:30')).toBeInTheDocument()
   })
 
   it('should render avatar image when provided', () => {
@@ -59,20 +58,19 @@ describe('MessageBubble component', () => {
     const { rerender } = render(<MessageBubble {...defaultProps} />)
     const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
     expect(button.className).not.toContain('cursor-pointer')
-    expect(button.className).not.toContain('hover:ring')
+    expect(button.className).not.toContain('hover:shadow-card')
 
     const onAvatarClick = vi.fn()
     rerender(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
     expect(button.className).toContain('cursor-pointer')
-    expect(button.className).toContain('hover:ring-2')
+    expect(button.className).toContain('hover:shadow-card')
     await userEvent.click(button)
     expect(onAvatarClick).toHaveBeenCalledTimes(1)
   })
 
   it('should render initials when no avatar provided', () => {
     render(<MessageBubble {...defaultProps} member_avatar={undefined} />)
-    // Should show first 2 chars of name
-    expect(screen.getByText('Te')).toBeInTheDocument()
+    expect(screen.getByText('T')).toBeInTheDocument()
   })
 
   it('should show shelter overlay when isUnread is true', () => {
@@ -169,6 +167,26 @@ describe('MessageBubble component', () => {
     const images = screen.getAllByRole('img')
     const mediaImage = images.find(img => img.getAttribute('src')?.includes('my%20photo.jpg'))
     expect(mediaImage).toBeInTheDocument()
+  })
+
+  it('a later bubble of a run hides avatar and name and shows its time on hover', () => {
+    render(<MessageBubble {...defaultProps} runStart={false} />)
+    expect(screen.queryByText('Test User')).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Test User' })).toBeNull()
+    expect(screen.getByText('10:30')).toHaveClass('opacity-0', 'group-hover/row:opacity-100')
+  })
+
+  it('only the first bubble of a run keeps the small top-left corner', () => {
+    const { container, rerender } = render(<MessageBubble {...defaultProps} />)
+    expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card', 'rounded-tl-tail', 'shadow-card')
+    rerender(<MessageBubble {...defaultProps} runStart={false} />)
+    expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card')
+    expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-tl-tail')
+  })
+
+  it('names the sender with the strong group role', () => {
+    render(<MessageBubble {...defaultProps} />)
+    expect(screen.getByText('Test User')).toHaveClass('text-group-strong')
   })
 
   describe('Snapshots', () => {

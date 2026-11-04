@@ -14,7 +14,10 @@ import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
-import { useTranslation } from '../../i18n';
+import { useTranslation, Trans } from '../../i18n';
+import { Avatar, IconButton } from '../../design/primitives';
+import { FadeOnChange } from '../../core/layout/FadeOnChange';
+import { useMemberStreak } from './hooks/useMemberStreak';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
@@ -517,6 +520,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     };
 
+    // The 1:1 room's member: header avatar, the ⋯ menu and the profile popup.
+    const headerMember = Object.values(membersMap)[0];
+    const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
+    const isLightHeader = theme.messages.headerStyle === 'light';
+    // Streak from the session cache (one official request per room per local day), shared by the header and the profile popup.
+    const groupId = selectedGroupDir?.split('/')[2]?.split(' ')[0];
+    const { streak, retry: retryStreak } = useMemberStreak(groupId, activeService ?? undefined);
+
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
         return {
@@ -676,51 +687,46 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             {/* Main Chat Area */}
             <ContentSheet className="relative">
-                {/* Header */}
+                {/* Header: the official title layer (gradient, or Sakurazaka's white header + thin bar) */}
                 <header
                     className={cn(
-                        "h-16 flex items-center px-4 z-20 shrink-0",
-                        theme.messages.headerStyle !== 'light' && "shadow-sm"
+                        'z-20 flex h-16 shrink-0 items-center gap-3 px-4',
+                        isLightHeader ? 'bg-sheet text-group-title' : 'bg-group-title text-inverse',
                     )}
-                    style={{
-                        background: theme.messages.headerStyle === 'light'
-                            ? '#FFFFFF'
-                            : `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`,
-                    }}
                 >
-                    <button
-                        className="md:hidden mr-3"
-                        style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}
+                    <IconButton
+                        className="text-current md:hidden"
+                        aria-label={t('messageList.openConversations')}
+                        icon={<Menu />}
                         onClick={() => setIsSidebarOpen(true)}
-                    >
-                        <Menu />
-                    </button>
-                    <div className="flex-1" style={{ color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white' }}>
-                        <h2 className="text-lg font-bold">{selectedName || t('messageList.selectConversation')}</h2>
-                        {isGroupChat && <span className="text-xs opacity-80">{t('messageList.groupChat')}</span>}
+                    />
+                    {selectedGroupDir && !isGroupChat && (
+                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-white" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                        <h2 className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
+                        {isGroupChat ? (
+                            <p className="text-caption">{t('messageList.groupChat')}</p>
+                        ) : streak.status === 'ready' && streak.days > 0 ? (
+                            <p className="text-caption">
+                                <Trans
+                                    i18nKey="memberProfile.subscribedDays"
+                                    values={{ days: streak.days }}
+                                    components={{ num: <span className="font-semibold" /> }}
+                                />
+                            </p>
+                        ) : null}
                     </div>
                     {displayUnreadCount > 0 && (
-                        <span
-                            className="text-xs px-2 py-1 rounded-full"
-                            style={{
-                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}20` : 'rgba(255,255,255,0.2)',
-                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'white',
-                            }}
-                        >
+                        <span className="rounded-pill bg-pill px-3 py-1 text-caption font-semibold text-secondary shadow-pill">
                             {t('messageList.unread', { count: displayUnreadCount })}
                         </span>
                     )}
                     {syncProgress.state === 'running' && (
-                        <div
-                            className="flex items-center ml-4 text-xs px-3 py-1 rounded-full"
-                            style={{
-                                backgroundColor: theme.messages.headerStyle === 'light' ? `${theme.messages.headerTextColor}15` : 'rgba(0,0,0,0.2)',
-                                color: theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : 'rgba(255,255,255,0.9)',
-                            }}
-                        >
-                            <Loader2 className="w-3 h-3 animate-spin mr-2" />
+                        <span className="flex items-center gap-2 rounded-pill bg-pill px-3 py-1 text-caption text-secondary shadow-pill">
+                            <Loader2 className="h-3 w-3 animate-spin" />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
-                        </div>
+                        </span>
                     )}
                     {selectedGroupDir && (
                         <ConversationMenu
@@ -728,24 +734,19 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             isGroupChat={isGroupChat}
                             messages={messages}
                             memberName={selectedName || ''}
-                            memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
-                            groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
+                            memberAvatar={headerAvatar}
+                            groupId={groupId}
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
-                            iconColor={theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : undefined}
+                            iconColor={isLightHeader ? theme.messages.headerTextColor : undefined}
                         />
                     )}
                 </header>
 
-                {/* Gradient Bar below header (only for light style) */}
-                {theme.messages.headerStyle === 'light' && (
-                    <div
-                        className="h-1 shrink-0"
-                        style={{ background: theme.messages.headerBarGradient }}
-                    />
-                )}
+                {isLightHeader && <div className="h-1 shrink-0 bg-group-title-bar" />}
 
+                <FadeOnChange changeKey={selectedGroupDir} className="flex min-h-0 flex-1 flex-col">
                 {/* Virtualized Timeline */}
                 <div
                     className="flex-1 overflow-hidden relative isolate"
@@ -769,19 +770,19 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         }}
                     />
                     {!selectedGroupDir && (
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+                        <div className="absolute inset-0 flex items-center justify-center text-muted">
                             <div className="text-center">
-                                <p className="text-lg mb-2">{t('messageList.welcomeTitle')}</p>
-                                <p className="text-sm">{t('messageList.welcomeSubtitle')}</p>
+                                <p className="mb-2 text-title">{t('messageList.welcomeTitle')}</p>
+                                <p className="text-small">{t('messageList.welcomeSubtitle')}</p>
                             </div>
                         </div>
                     )}
 
                     {loading && messages.length === 0 && (
-                        <div className="p-10 text-center text-gray-500">{t('messageList.loadingMessages')}</div>
+                        <div className="p-10 text-center text-secondary">{t('messageList.loadingMessages')}</div>
                     )}
                     {error && (
-                        <div className="p-10 text-center text-red-500">Error: {error}</div>
+                        <div className="p-10 text-center text-feedback-error">Error: {error}</div>
                     )}
 
                     {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && (
@@ -816,33 +817,30 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />
                 </div>
+                </FadeOnChange>
 
                 {/* Navigation Buttons */}
-                {/* Up arrow: bottom-right, shows when oldest unread is ABOVE center */}
+                {/* Up arrow: bottom-right, when the oldest unread is ABOVE the view */}
                 {selectedGroupDir && hasUnreadAbove && !callActive && (
-                    <div className="absolute right-4 bottom-4 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
-                            style={{ backgroundColor: theme.modals.accentColor }}
-                            title={t('messageList.jumpToOldestUnread')}
-                        >
-                            <ChevronUp className="w-5 h-5" />
-                        </button>
-                    </div>
+                    <IconButton
+                        variant="secondary"
+                        className="absolute bottom-4 right-4 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        aria-label={t('messageList.jumpToOldestUnread')}
+                        title={t('messageList.jumpToOldestUnread')}
+                        icon={<ChevronUp className="h-5 w-5" />}
+                        onClick={scrollToFirstUnread}
+                    />
                 )}
-                {/* Down arrow: top-right (below header), shows when oldest unread is BELOW center */}
+                {/* Down arrow: top-right below the header, when the oldest unread is BELOW the view */}
                 {selectedGroupDir && hasUnreadBelow && !callActive && (
-                    <div className="absolute right-4 top-20 z-20">
-                        <button
-                            onClick={scrollToFirstUnread}
-                            className="w-10 h-10 rounded-full shadow-lg flex items-center justify-center text-white transition-all"
-                            style={{ backgroundColor: theme.modals.accentColor }}
-                            title={t('messageList.jumpToOldestUnread')}
-                        >
-                            <ChevronDown className="w-5 h-5" />
-                        </button>
-                    </div>
+                    <IconButton
+                        variant="secondary"
+                        className="absolute right-4 top-20 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        aria-label={t('messageList.jumpToOldestUnread')}
+                        title={t('messageList.jumpToOldestUnread')}
+                        icon={<ChevronDown className="h-5 w-5" />}
+                        onClick={scrollToFirstUnread}
+                    />
                 )}
 
                 {/* Reveal All Confirmation Modal */}
@@ -893,8 +891,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 isOpen={showMemberProfile}
                 onClose={() => setShowMemberProfile(false)}
                 memberName={selectedName || ''}
-                memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
-                groupId={selectedGroupDir?.split('/')[2]?.split(' ')[0]}
+                memberAvatar={headerAvatar}
+                streak={streak}
+                onRetryStreak={retryStreak}
                 activeService={activeService || undefined}
                 memberPath={isGroupChat ? undefined : selectedGroupDir}
             />

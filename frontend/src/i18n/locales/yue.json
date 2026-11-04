@@ -307,7 +307,8 @@
     "confirm": "確認",
     "noContent": "(冇內容)",
     "attachment": "附件",
-    "openCalendar": "跳去某一日"
+    "openCalendar": "跳去某一日",
+    "openConversations": "顯示對話列表"
   },
   "calendar": {
     "title": "日子搜尋",

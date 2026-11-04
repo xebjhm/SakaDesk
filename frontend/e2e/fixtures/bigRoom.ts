@@ -157,6 +157,7 @@ export async function pinBigRoom(page: Page, opts: PinOptions): Promise<void> {
     for (const m of opts.messages.current) counts.set(tokyoDate(m.timestamp), (counts.get(tokyoDate(m.timestamp)) ?? 0) + 1)
     return route.fulfill({ json: { dates: [...counts].map(([date, count]) => ({ date, count })) } })
   })
+  await page.route('**/api/chat/streak/**', (route) => route.fulfill({ json: { days: 128, is_active: true } }))
   await page.route('**/api/content/media/**', (route) =>
     route.fulfill({ body: PNG, contentType: 'image/png' }),
   )

@@ -2,44 +2,50 @@
 
 exports[`MessageBubble component > Snapshots > should match snapshot for picture message 1`] = `
 <div
-  class="flex gap-3 mb-6 relative"
+  class="group/row relative flex gap-3 pt-3"
 >
   <div
-    class="flex-shrink-0"
+    class="w-10 shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
+      class="block rounded-pill cursor-default"
+      type="button"
     >
-      <img
-        alt="Test User"
-        class="w-full h-full object-cover"
-        src="/avatar.jpg"
-      />
+      <span
+        class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
+      >
+        <img
+          alt="Test User"
+          class="h-full w-full object-cover"
+          draggable="false"
+          src="/avatar.jpg"
+        />
+      </span>
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%] group/bubble"
+    class="flex min-w-0 max-w-[80%] flex-col"
   >
     <div
-      class="flex items-center gap-2 mb-1"
+      class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-sm text-gray-700 font-medium"
+        class="text-small font-semibold text-group-strong"
       >
         Test User
       </span>
-      <span
-        class="text-xs text-gray-400"
+      <time
+        class="text-caption text-muted"
+        datetime="2024-01-15T10:30:00Z"
       >
-        2024/01/15 10:30
-      </span>
+        10:30
+      </time>
     </div>
     <div
       class="relative"
     >
       <div
-        class="bg-white rounded-2xl shadow-sm border transition-all duration-300 p-3 overflow-hidden"
-        style="border-color: rgb(229, 231, 235);"
+        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
           class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
@@ -53,7 +59,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
           />
         </div>
         <div
-          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+          class="whitespace-pre-wrap text-body text-primary"
         >
           <span>
             Hello world
@@ -67,47 +73,53 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
 
 exports[`MessageBubble component > Snapshots > should match snapshot for text message 1`] = `
 <div
-  class="flex gap-3 mb-6 relative"
+  class="group/row relative flex gap-3 pt-3"
 >
   <div
-    class="flex-shrink-0"
+    class="w-10 shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
+      class="block rounded-pill cursor-default"
+      type="button"
     >
-      <img
-        alt="Test User"
-        class="w-full h-full object-cover"
-        src="/avatar.jpg"
-      />
+      <span
+        class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
+      >
+        <img
+          alt="Test User"
+          class="h-full w-full object-cover"
+          draggable="false"
+          src="/avatar.jpg"
+        />
+      </span>
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%] group/bubble"
+    class="flex min-w-0 max-w-[80%] flex-col"
   >
     <div
-      class="flex items-center gap-2 mb-1"
+      class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-sm text-gray-700 font-medium"
+        class="text-small font-semibold text-group-strong"
       >
         Test User
       </span>
-      <span
-        class="text-xs text-gray-400"
+      <time
+        class="text-caption text-muted"
+        datetime="2024-01-15T10:30:00Z"
       >
-        2024/01/15 10:30
-      </span>
+        10:30
+      </time>
     </div>
     <div
       class="relative"
     >
       <div
-        class="bg-white rounded-2xl shadow-sm border transition-all duration-300 p-3 overflow-hidden"
-        style="border-color: rgb(229, 231, 235);"
+        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+          class="whitespace-pre-wrap text-body text-primary"
         >
           <span>
             Hello world
@@ -121,43 +133,50 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
 
 exports[`MessageBubble component > Snapshots > should match snapshot for unread message with overlay 1`] = `
 <div
-  class="flex gap-3 mb-6 relative"
+  class="group/row relative flex gap-3 pt-3"
 >
   <div
-    class="flex-shrink-0"
+    class="w-10 shrink-0"
   >
     <button
-      class="w-10 h-10 rounded-full bg-gray-200 overflow-hidden cursor-default"
+      class="block rounded-pill cursor-default"
+      type="button"
     >
-      <img
-        alt="Test User"
-        class="w-full h-full object-cover"
-        src="/avatar.jpg"
-      />
+      <span
+        class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
+      >
+        <img
+          alt="Test User"
+          class="h-full w-full object-cover"
+          draggable="false"
+          src="/avatar.jpg"
+        />
+      </span>
     </button>
   </div>
   <div
-    class="flex flex-col max-w-[80%] group/bubble"
+    class="flex min-w-0 max-w-[80%] flex-col"
   >
     <div
-      class="flex items-center gap-2 mb-1"
+      class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-sm text-gray-700 font-medium"
+        class="text-small font-semibold text-group-strong"
       >
         Test User
       </span>
-      <span
-        class="text-xs text-gray-400"
+      <time
+        class="text-caption text-muted"
+        datetime="2024-01-15T10:30:00Z"
       >
-        2024/01/15 10:30
-      </span>
+        10:30
+      </time>
     </div>
     <div
       class="relative"
     >
       <div
-        class="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
+        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail"
         style="background-color: rgb(139, 184, 214); border: medium;"
       >
         <svg
@@ -179,11 +198,10 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         </svg>
       </div>
       <div
-        class="bg-white rounded-2xl shadow-sm border transition-all duration-300 p-3 overflow-hidden opacity-0 pointer-events-none"
-        style="border-color: rgb(229, 231, 235);"
+        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
       >
         <div
-          class="text-gray-900 whitespace-pre-wrap text-[15px]"
+          class="whitespace-pre-wrap text-body text-primary"
         >
           <span>
             Hello world

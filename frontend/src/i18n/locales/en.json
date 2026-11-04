@@ -307,7 +307,8 @@
     "confirm": "Confirm",
     "noContent": "(No content)",
     "attachment": "Attachment",
-    "openCalendar": "Jump to a date"
+    "openCalendar": "Jump to a date",
+    "openConversations": "Show conversations"
   },
   "calendar": {
     "title": "Date Search",

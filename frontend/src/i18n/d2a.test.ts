@@ -13,6 +13,7 @@ const D2A_KEYS = [
     'contentArea.comingSoon',
     'serviceRail.label',
     'featureRail.label',
+    'messageList.openConversations',
 ] as const;
 
 describe('D2a strings', () => {
