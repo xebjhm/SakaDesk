@@ -94,8 +94,8 @@ test('a newly added group shows the inline sync view while its first sync runs',
   await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toBeVisible({ timeout: 10000 })
   await expect(page.getByText('5 / 20')).toBeVisible()
   expect(state.loginCalls).toEqual(['sakurazaka46'])
-  // The already-added group may sync too (and a start can repeat), so lock only that the new group started.
-  expect(state.syncStarts).toContain('sakurazaka46')
+  // The already-added group syncs at start-up; each group starts exactly once.
+  await expect.poll(() => state.syncStarts).toEqual(['hinatazaka46', 'sakurazaka46'])
   state.progress.sakurazaka46 = COMPLETE
   await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toHaveCount(0, { timeout: 10000 })
 })

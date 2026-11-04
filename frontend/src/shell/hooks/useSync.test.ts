@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
+import { clientLog } from '../../utils/clientLog'
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }))
 
 // Mock appStore
 const { mockRemoveInitialSyncService } = vi.hoisted(() => ({
@@ -395,6 +398,26 @@ describe('useSync', () => {
             expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle')
             expect(result.current.showSyncModal).toBe(false)
             expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+
+        it('starts the same service once when two starts overlap', async () => {
+            const { resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let first: Promise<void> = Promise.resolve()
+            let second: Promise<void> = Promise.resolve()
+            act(() => { first = result.current.startSync(false, 'hinatazaka46') })
+            act(() => { second = result.current.startSync(true, 'hinatazaka46') })
+            // The skipped blocking start still asks for the modal.
+            expect(result.current.showSyncModal).toBe(true)
+            expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting' })
+
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
+                await Promise.all([first, second])
+            })
+            const posts = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/sync/start'))
+            expect(posts).toHaveLength(1)
         })
     })
 
