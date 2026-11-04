@@ -115,3 +115,6 @@ frontend/playwright/.cache/
 
 # Playwright output (was tracked with a stale failed run — code review 2026-07-07)
 test-results/
+
+# Local-only pixel baselines (e2e/visual-zero-pixel.spec.ts)
+frontend/e2e/*.spec.ts-snapshots/

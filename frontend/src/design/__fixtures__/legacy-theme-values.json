@@ -1,0 +1,190 @@
+{
+  "groups": {
+    "hinatazaka": {
+      "accent": "#7cc7e8",
+      "canvas": [
+        "#c8d8ec",
+        "#dde6f0",
+        "#f0f4f8"
+      ],
+      "titleGradient": {
+        "from": "#a8c4e8",
+        "via": "#a0a9d8",
+        "to": "#9181c4"
+      },
+      "titleBar": "linear-gradient(to right, #a8c4e8, #9181c4)",
+      "titleText": "#5d95ae",
+      "ring": "#7cc7e8",
+      "glow": "rgba(124, 199, 232, 0.35)",
+      "bubbleBorder": "#7cc7e8",
+      "badge": "#7cc7e8"
+    },
+    "sakurazaka": {
+      "accent": "#f7a6c9",
+      "canvas": [
+        "#fce7f3",
+        "#fdf2f8",
+        "#fff5f7"
+      ],
+      "titleGradient": {
+        "from": "#fffdfe",
+        "via": "#d8b0c8",
+        "to": "#9b56a1"
+      },
+      "titleBar": "linear-gradient(to right, #ffffff 0%, #ffffff 5%, #fff6f7 10%, #eec8d2 25%, #e39eb1 50%, #bf78a0 75%, #95569c 100%)",
+      "titleText": "#d892aa",
+      "ring": "#f7a6c9",
+      "glow": "rgba(247, 166, 201, 0.35)",
+      "bubbleBorder": "#E85298",
+      "badge": "#E85298"
+    },
+    "nogizaka": {
+      "accent": "#7e1083",
+      "canvas": [
+        "#ede4f2",
+        "#f3eef6",
+        "#f8f5fa"
+      ],
+      "titleGradient": {
+        "from": "#d8c8e8",
+        "via": "#c4a8d8",
+        "to": "#9B59B6"
+      },
+      "titleBar": "linear-gradient(to right, #9B59B6, #7e1083)",
+      "titleText": "#7e1083",
+      "ring": "#9B59B6",
+      "glow": "rgba(126, 16, 131, 0.28)",
+      "bubbleBorder": "#9B59B6",
+      "badge": "#9B59B6"
+    },
+    "yodel": {
+      "accent": "#5a8a6a",
+      "canvas": [
+        "#d4ebe0",
+        "#e5f2eb",
+        "#f0f8f4"
+      ],
+      "titleGradient": {
+        "from": "#b8d8c8",
+        "via": "#8ab89a",
+        "to": "#5a8a6a"
+      },
+      "titleBar": "linear-gradient(to right, #b8d8c8, #5a8a6a)",
+      "titleText": "#4a7a5a",
+      "ring": "#5a8a6a",
+      "glow": "rgba(90, 138, 106, 0.3)",
+      "bubbleBorder": "#5a8a6a",
+      "badge": "#5a8a6a"
+    },
+    "default": {
+      "accent": "#6B7280",
+      "canvas": [
+        "#e5e7eb",
+        "#f3f4f6",
+        "#f9fafb"
+      ],
+      "titleGradient": {
+        "from": "#a8c4e8",
+        "via": "#a0a9d8",
+        "to": "#9181c4"
+      },
+      "titleBar": "linear-gradient(to right, #a8c4e8, #9181c4)",
+      "titleText": "#4B5563",
+      "ring": "#6B7280",
+      "glow": "rgba(107, 114, 128, 0.25)",
+      "bubbleBorder": "#E5E7EB",
+      "badge": "#6B7280"
+    }
+  },
+  "cssVars": {
+    "hinatazaka": {
+      "--color-primary": "#7cc7e8",
+      "--color-secondary": "#5dc2b5",
+      "--color-accent": "#fffacd",
+      "--color-gradient-from": "#7cc7e8",
+      "--color-gradient-to": "#5dc2b5",
+      "--color-surface-base": "#FFFFFF",
+      "--color-surface-elevated": "#FAFAFA",
+      "--color-surface-sunken": "#F3F4F6",
+      "--color-text-primary": "#1f2937",
+      "--color-text-secondary": "#4b5563",
+      "--color-text-muted": "#9ca3af",
+      "--color-text-inverse": "#FFFFFF",
+      "--color-success": "#10B981",
+      "--color-warning": "#F59E0B",
+      "--color-error": "#EF4444"
+    },
+    "sakurazaka": {
+      "--color-primary": "#f7a6c9",
+      "--color-secondary": "#FFFFFF",
+      "--color-accent": "#8B9DC3",
+      "--color-gradient-from": "#f7a6c9",
+      "--color-gradient-to": "#FFFFFF",
+      "--color-surface-base": "#FFFFFF",
+      "--color-surface-elevated": "#FAFAFA",
+      "--color-surface-sunken": "#F3F4F6",
+      "--color-text-primary": "#1f2937",
+      "--color-text-secondary": "#4b5563",
+      "--color-text-muted": "#9ca3af",
+      "--color-text-inverse": "#FFFFFF",
+      "--color-success": "#10B981",
+      "--color-warning": "#F59E0B",
+      "--color-error": "#EF4444"
+    },
+    "nogizaka": {
+      "--color-primary": "#7e1083",
+      "--color-secondary": "#9B59B6",
+      "--color-accent": "#E8E0F0",
+      "--color-gradient-from": "#7e1083",
+      "--color-gradient-to": "#9B59B6",
+      "--color-surface-base": "#FFFFFF",
+      "--color-surface-elevated": "#FAFAFA",
+      "--color-surface-sunken": "#F3F4F6",
+      "--color-text-primary": "#1f2937",
+      "--color-text-secondary": "#4b5563",
+      "--color-text-muted": "#9ca3af",
+      "--color-text-inverse": "#FFFFFF",
+      "--color-success": "#10B981",
+      "--color-warning": "#F59E0B",
+      "--color-error": "#EF4444"
+    },
+    "yodel": {
+      "--color-primary": "#5a8a6a",
+      "--color-secondary": "#7ab08a",
+      "--color-accent": "#d4ebe0",
+      "--color-gradient-from": "#5a8a6a",
+      "--color-gradient-to": "#7ab08a",
+      "--color-surface-base": "#FFFFFF",
+      "--color-surface-elevated": "#FAFAFA",
+      "--color-surface-sunken": "#F3F4F6",
+      "--color-text-primary": "#1f2937",
+      "--color-text-secondary": "#4b5563",
+      "--color-text-muted": "#9ca3af",
+      "--color-text-inverse": "#FFFFFF",
+      "--color-success": "#10B981",
+      "--color-warning": "#F59E0B",
+      "--color-error": "#EF4444"
+    },
+    "default": {
+      "--color-primary": "#6B7280",
+      "--color-secondary": "#9CA3AF",
+      "--color-accent": "#E5E7EB",
+      "--color-gradient-from": "#6B7280",
+      "--color-gradient-to": "#9CA3AF",
+      "--color-surface-base": "#FFFFFF",
+      "--color-surface-elevated": "#FAFAFA",
+      "--color-surface-sunken": "#F3F4F6",
+      "--color-text-primary": "#1f2937",
+      "--color-text-secondary": "#4b5563",
+      "--color-text-muted": "#9ca3af",
+      "--color-text-inverse": "#FFFFFF",
+      "--color-success": "#10B981",
+      "--color-warning": "#F59E0B",
+      "--color-error": "#EF4444"
+    }
+  },
+  "border": {
+    "light": "#e5e7eb",
+    "base": "#d1d5db"
+  }
+}
