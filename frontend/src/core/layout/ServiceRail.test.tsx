@@ -1,6 +1,6 @@
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { useAppStore } from '../../store/appStore';
 import { ServiceRail } from './ServiceRail';
 
@@ -53,5 +53,10 @@ describe('ServiceRail', () => {
         await userEvent.click(screen.getByRole('button', { name: /^Search/ }));
         expect(cb.search).toHaveBeenCalledOnce();
         expect(screen.getByRole('button', { name: 'Add Service' })).toBeInTheDocument();
+    });
+    it('right-click on a group offers Remove Service', async () => {
+        renderRail();
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
+        expect(await screen.findByText('Remove Service')).toBeInTheDocument();
     });
 });

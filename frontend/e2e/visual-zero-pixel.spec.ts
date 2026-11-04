@@ -161,6 +161,13 @@ async function pinData(page: Page) {
   await page.route('**/api/chat/streak/**', (route) => route.fulfill({ json: { days: 0, is_active: false } }))
 }
 
+// D2c restyles two triggers on these screens on purpose (spec decision 29): the rail's
+// settings button and the chat header's ⋯ button. Everything else must stay identical.
+const ZERO_PIXEL_MASKS = (page: Page) => [
+  page.getByTitle('Settings', { exact: true }),
+  page.getByTitle('More options', { exact: true }),
+]
+
 test.describe('zero-pixel regression', () => {
   test.beforeEach(async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-11-04T12:00:00+09:00'))
@@ -172,7 +179,7 @@ test.describe('zero-pixel regression', () => {
     await page.goto('/')
     await expect(page.getByText('Test Member')).toBeVisible({ timeout: 10000 })
     await page.waitForLoadState('networkidle')
-    await expect(page).toHaveScreenshot('home.png', { fullPage: true })
+    await expect(page).toHaveScreenshot('home.png', { fullPage: true, mask: ZERO_PIXEL_MASKS(page) })
   })
 
   test('member chat', async ({ page }) => {
@@ -182,7 +189,7 @@ test.describe('zero-pixel regression', () => {
     // The click leaves the pointer on the member cell (hover lift); park it away so the shot is stable.
     await page.mouse.move(1000, 700)
     await page.waitForLoadState('networkidle')
-    await expect(page).toHaveScreenshot('chat-member.png', { fullPage: true })
+    await expect(page).toHaveScreenshot('chat-member.png', { fullPage: true, mask: ZERO_PIXEL_MASKS(page) })
   })
 
   test('group chat', async ({ page }) => {
@@ -192,6 +199,6 @@ test.describe('zero-pixel regression', () => {
     // The click leaves the pointer on the member cell (hover lift); park it away so the shot is stable.
     await page.mouse.move(1000, 700)
     await page.waitForLoadState('networkidle')
-    await expect(page).toHaveScreenshot('chat-group.png', { fullPage: true })
+    await expect(page).toHaveScreenshot('chat-group.png', { fullPage: true, mask: ZERO_PIXEL_MASKS(page) })
   })
 })
