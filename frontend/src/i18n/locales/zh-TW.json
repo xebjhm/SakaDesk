@@ -301,6 +301,7 @@
   "messageList": {
     "noMessages": "沒有訊息",
     "jumpToOldestUnread": "跳至最早未讀",
+    "messageActions": "訊息操作",
     "welcomeTitle": "歡迎使用 SakaDesk",
     "welcomeSubtitle": "從側邊欄選擇一個對話開始。",
     "loadingMessages": "正在載入訊息...",

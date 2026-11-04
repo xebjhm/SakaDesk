@@ -301,6 +301,7 @@
   "messageList": {
     "noMessages": "メッセージがありません",
     "jumpToOldestUnread": "未読の最初へ移動",
+    "messageActions": "メッセージの操作",
     "welcomeTitle": "SakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",

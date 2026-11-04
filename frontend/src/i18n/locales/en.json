@@ -301,6 +301,7 @@
   "messageList": {
     "noMessages": "No messages",
     "jumpToOldestUnread": "Jump to oldest unread",
+    "messageActions": "Message actions",
     "welcomeTitle": "Welcome to SakaDesk",
     "welcomeSubtitle": "Select a conversation from the sidebar to start.",
     "loadingMessages": "Loading messages...",

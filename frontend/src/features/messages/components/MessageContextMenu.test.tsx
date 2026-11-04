@@ -34,4 +34,10 @@ describe('MessageContextMenu', () => {
         expect(item.querySelector('svg')).toHaveClass('fill-current');
         expect(screen.getByRole('menu').parentElement).toBe(document.body);
     });
+
+    it('has its own name, not the generic "More options"', () => {
+        render(<MessageContextMenu x={10} y={10} isFavorite={false} onToggleFavorite={vi.fn()} onClose={vi.fn()} />);
+        expect(screen.getByRole('menu', { name: i18n.t('messageList.messageActions') })).toBeInTheDocument();
+        expect(i18n.t('messageList.messageActions')).toBe('Message actions');
+    });
 });
