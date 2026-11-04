@@ -139,3 +139,49 @@ def test_failed_call_leaves_no_partial_hidden_counter():
     (s,) = [e for e in logs if e["event"] == "notify_collected"]
     assert s["skipped_hidden"] == 0
     assert c.counts() == {}
+
+
+def _voice(mid, ts, **extra):
+    return _msg(mid, ts, type="voice", content=None, **extra)
+
+
+def test_newest_voice_is_the_newest_visible_voice():
+    c = NewMessageCollector("hinatazaka46")
+    c.on_new_messages(
+        _info(),
+        [
+            _voice(1, "2026-11-04T10:00:00Z"),
+            _voice(2, "2026-11-04T11:00:00Z"),
+            _msg(3, "2026-11-04T12:00:00Z"),
+        ],
+    )
+    (chat,) = c.entries()
+    assert chat.newest["id"] == 3
+    assert chat.newest_voice is not None and chat.newest_voice["id"] == 2
+
+
+def test_hidden_voice_never_counts():
+    c = NewMessageCollector("hinatazaka46")
+    # is_hidden_message: any set state other than "published" is hidden (withdrawn).
+    hidden = _voice(5, "2026-11-04T13:00:00Z", state="unpublished")
+    c.on_new_messages(_info(), [_voice(1, "2026-11-04T10:00:00Z"), hidden])
+    newest_voice = c.entries()[0].newest_voice
+    assert newest_voice is not None and newest_voice["id"] == 1
+
+
+def test_newest_voice_is_none_without_a_voice():
+    c = NewMessageCollector("hinatazaka46")
+    c.on_new_messages(_info(), [_msg(1, "2026-11-04T10:00:00Z")])
+    assert c.entries()[0].newest_voice is None
+
+
+def test_merge_keeps_the_newer_voice_and_a_voiceless_call_keeps_it():
+    c = NewMessageCollector("hinatazaka46")
+    c.on_new_messages(_info(), [_voice(1, "2026-11-04T10:00:00Z")])
+    c.on_new_messages(_info(), [_voice(9, "2026-11-04T09:00:00Z")])  # older
+    c.on_new_messages(_info(), [_msg(4, "2026-11-04T14:00:00Z")])  # no voice
+    first = c.entries()[0].newest_voice
+    assert first is not None and first["id"] == 1
+    c.on_new_messages(_info(), [_voice(7, "2026-11-04T15:00:00Z")])  # newer
+    latest = c.entries()[0].newest_voice
+    assert latest is not None and latest["id"] == 7

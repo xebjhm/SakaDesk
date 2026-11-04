@@ -15,13 +15,16 @@ import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
+import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
+import type { ReadState } from './readStateStore';
+import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
-import { persisted } from '../../core/persistence/persisted';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
+import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 
 // Types specific to messages feature
@@ -36,11 +39,7 @@ export interface GroupMessagesResponse {
     messages: GroupMessage[];
 }
 
-export interface ReadState {
-    lastReadId: number;
-    readCount: number;
-    revealedIds: number[];
-}
+export type { ReadState } from './readStateStore';
 
 export interface SyncProgress {
     state: 'idle' | 'running' | 'complete' | 'error';
@@ -77,6 +76,7 @@ export interface AppSettings {
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app
     incoming_call_enabled?: boolean;  // ring when opening a 1:1 chat whose newest voice is unheard (default on)
+    call_popup_enabled?: boolean;  // ring in the bottom-right popup when the app is in the background (default on)
     close_to_tray?: boolean;  // the window's close button hides it to the tray instead of quitting (default on)
     autostart?: boolean;  // start at Windows sign-in, hidden in the tray (default off)
     translation_provider?: string | null;
@@ -424,89 +424,39 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [updateUnreadNavState]);
 
     // === READ STATE ===
-    const loadReadState = (path: string): ReadState => {
-        try {
-            const saved = persisted.getConv<{ value?: string }>(`read_state_${path}`, {}).value ?? null;
-            return saved ? JSON.parse(saved) : { lastReadId: 0, readCount: 0, revealedIds: [] };
-        } catch {
-            return { lastReadId: 0, readCount: 0, revealedIds: [] };
-        }
-    };
-
-    const saveReadState = (path: string, state: ReadState) => {
-        try {
-            persisted.setConv(`read_state_${path}`, { value: JSON.stringify(state) });
-            // Increment version to trigger sidebar refresh
-            setReadStateVersion(v => v + 1);
-        } catch {
-            // Ignore localStorage errors
-        }
-        // Sync to backend for search filter support (fire-and-forget)
-        const parsed = parseReadStatePath(path);
-        if (parsed) {
-            fetch('/api/read-states', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    service: parsed.service,
-                    group_id: parsed.groupId,
-                    member_id: parsed.memberId,
-                    last_read_id: state.lastReadId,
-                    read_count: state.readCount,
-                    revealed_ids: state.revealedIds,
-                }),
-            }).catch(() => {}); // Silent fail - localStorage is still the source of truth
-        }
-    };
+    // Persist + bump the version so the sidebar re-reads its unread dots.
+    const saveAndBump = useCallback((path: string, s: ReadState) => {
+        saveReadState(path, s);
+        setReadStateVersion(v => v + 1);
+    }, []);
 
     const revealMessage = useCallback((msgId: number) => {
         setReadState(prev => {
-            if (prev.revealedIds.includes(msgId)) return prev;
-
-            // Add the new revealed ID
-            const newRevealedIds = [...prev.revealedIds, msgId];
-
-            // Consolidate: If all messages from lastReadId+1 up to some point are now revealed,
-            // advance lastReadId and remove those IDs from revealedIds.
-            const unreadMsgIds = messages
-                .map(m => m.id)
-                .filter(id => id > prev.lastReadId)
-                .sort((a, b) => a - b);
-
-            let newLastReadId = prev.lastReadId;
-
-            for (const id of unreadMsgIds) {
-                if (newRevealedIds.includes(id)) {
-                    const allPreviousRead = unreadMsgIds
-                        .filter(uid => uid <= id && uid > newLastReadId)
-                        .every(uid => newRevealedIds.includes(uid));
-
-                    if (allPreviousRead) {
-                        newLastReadId = id;
-                    }
-                }
-            }
-
-            // Remove IDs that are now covered by newLastReadId
-            const consolidatedRevealedIds = newRevealedIds.filter(id => id > newLastReadId);
-
-            const next: ReadState = {
-                lastReadId: newLastReadId,
-                revealedIds: consolidatedRevealedIds,
-                readCount: (prev.readCount || 0) + 1
-            };
-
-            if (selectedGroupDir) saveReadState(selectedGroupDir, next);
+            const next = applyReveal(prev, msgId, messages.map(m => m.id));
+            if (next !== prev && selectedGroupDir) saveAndBump(selectedGroupDir, next);
             return next;
         });
-    }, [selectedGroupDir, messages]);
+    }, [selectedGroupDir, messages, saveAndBump]);
+
+    // A heard change made through the main-window bridge (popup answered a voice).
+    // Merge, never replace: an in-chat reveal still queued in setReadState would
+    // otherwise be overwritten (and its later save would clobber the bridge write).
+    // When the merge holds more than the stored row, write it back.
+    const mergeLoadedReadState = useCallback((loaded: ReadState) => {
+        setReadState(prev => {
+            const merged = mergeReadState(prev, loaded);
+            if (selectedGroupDir && !readStateEquals(merged, loaded)) saveAndBump(selectedGroupDir, merged);
+            return merged;
+        });
+    }, [selectedGroupDir, saveAndBump]);
+    useReadStateSubscription(selectedGroupDir, mergeLoadedReadState, () => setReadStateVersion(v => v + 1));
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;
         const next: ReadState = { lastReadId: maxMessageId, readCount: totalMessages, revealedIds: [] };
-        if (selectedGroupDir) saveReadState(selectedGroupDir, next);
+        if (selectedGroupDir) saveAndBump(selectedGroupDir, next);
         setReadState(next);
-    }, [selectedGroupDir, maxMessageId, totalMessages]);
+    }, [selectedGroupDir, maxMessageId, totalMessages, saveAndBump]);
 
     // === HELPERS ===
 
@@ -564,6 +514,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [messages]);
 
+    // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
+    const isCallElsewhere = useCallback((messageId: number) => {
+        const ctx = selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null;
+        return ctx ? isCallPopupActive(ctx, messageId) : Promise.resolve(false);
+    }, [selectedGroupDir]);
+
     const callMember = isGroupChat ? undefined : Object.values(membersMap)[0];
     const incomingCall = useIncomingCall({
         service: messagesService,
@@ -579,6 +535,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         revealMessage,
         scrollToMessage,
         logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
+        isCallElsewhere,
     });
     useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';

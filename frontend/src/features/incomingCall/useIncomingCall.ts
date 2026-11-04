@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type { MemberInfo, Message } from '../../types';
 import { memberImageUrl } from '../messages/profileImages';
 import { buildMediaUrl } from '../messages/mediaUrl';
-import { clientLog, type ClientLogFields } from '../../utils/clientLog';
-import { decideCall, type CallDecision } from './callDecision';
+import { clientLog, type ClientLogEvent, type ClientLogFields } from '../../utils/clientLog';
+import { decideCall, type CallDecision, type CallSkipReason } from './callDecision';
 import { preloadAudio } from './preloadAudio';
 
 export type CallPhase = 'idle' | 'ringing' | 'connected' | 'ended';
@@ -17,6 +17,19 @@ export interface CallLogContext {
     groupId: number;
     memberId: number;
 }
+
+/**
+ * What happened to a call, reported through the optional `onOutcome` hook (the popup uses it
+ * to tell the backend). `skipped` fires on every skip, including repeats whose `call_skip`
+ * breadcrumb is deduped.
+ */
+export type CallOutcome =
+    | { kind: 'skipped'; reason: CallSkipReason | 'superseded' | 'media_unavailable' }
+    | { kind: 'ringing' } | { kind: 'declined' } | { kind: 'timeout' }
+    // When the ended hold finishes (where scrollToMessage is called). `reason` is how the call
+    // ended (`call_end`'s reason); absent after a playback error, which logs `call_error`.
+    | { kind: 'ended'; reason?: 'played' | 'hung_up' }
+    | { kind: 'cancelled' };    // visit cleanup or setting off while ringing/connected
 
 export interface UseIncomingCallArgs {
     /** Service used to build media URLs (MessagesFeature's messagesService). */
@@ -36,6 +49,16 @@ export interface UseIncomingCallArgs {
     revealMessage: (id: number) => void;
     scrollToMessage: (id: number) => void;
     logContext: CallLogContext | null;
+    /** Set by the popup: adds `surface` to every breadcrumb this hook logs. */
+    surface?: 'popup';
+    /** Called on every call outcome (additive; the in-app call does not use it). */
+    onOutcome?: (o: CallOutcome) => void;
+    /**
+     * Asked once, after the preload and the unread check, before ringing: true when another
+     * surface (the popup) already owns this voice, so the call is skipped as `popup_active`.
+     * A rejection or a synchronous throw counts as false (logged as `popup_check_failed`).
+     */
+    isCallElsewhere?: (messageId: number) => Promise<boolean>;
 }
 
 export interface IncomingCall {
@@ -99,6 +122,13 @@ export function useIncomingCall(
     const mediaErrorLoggedRef = useRef(new Set<number>());
     const lastSkipRef = useRef(new Map<string, string>());
 
+    // Every breadcrumb of this hook goes through `log`, so `surface` is added uniformly.
+    const log = useCallback((event: ClientLogEvent, fields: ClientLogFields) => {
+        const surface = argsRef.current.surface;
+        clientLog(event, surface ? { ...fields, surface } : fields);
+    }, []);
+    const outcome = useCallback((o: CallOutcome) => { argsRef.current.onOutcome?.(o); }, []);
+
     const ctxFields = useCallback((): ClientLogFields => {
         const c = argsRef.current.logContext;
         return c ? { service: c.service, group_id: c.groupId, member_id: c.memberId } : {};
@@ -129,7 +159,7 @@ export function useIncomingCall(
         enter('idle');
     }, [clearTimer, enter]);
 
-    const toEnded = useCallback(() => {
+    const toEnded = useCallback((reason?: 'played' | 'hung_up') => {
         clearTimer();
         enter('ended');
         timerRef.current = setTimeout(() => {
@@ -137,8 +167,9 @@ export function useIncomingCall(
             const id = callRef.current?.message.id;
             toIdle();
             if (id !== undefined) argsRef.current.scrollToMessage(id);
+            outcome(reason ? { kind: 'ended', reason } : { kind: 'ended' });
         }, ENDED_HOLD_MS);
-    }, [clearTimer, enter, toIdle]);
+    }, [clearTimer, enter, toIdle, outcome]);
 
     const startRinging = useCallback((active: ActiveCall) => {
         clearTimer();
@@ -146,25 +177,28 @@ export function useIncomingCall(
         setCall(active);
         ringStartedAtRef.current = Date.now();
         enter('ringing');
-        clientLog('call_ring', { ...ctxFields(), message_id: active.message.id });
+        log('call_ring', { ...ctxFields(), message_id: active.message.id });
+        outcome({ kind: 'ringing' });
         timerRef.current = setTimeout(() => {
             timerRef.current = null;
             dismissedRef.current.add(active.message.id);
-            clientLog('call_timeout', { message_id: active.message.id });
+            log('call_timeout', { message_id: active.message.id });
             toIdle();
+            outcome({ kind: 'timeout' });
         }, RING_TIMEOUT_MS);
-    }, [clearTimer, ctxFields, enter, toIdle]);
+    }, [clearTimer, ctxFields, enter, toIdle, log, outcome]);
 
     const logSkip = useCallback((chatDir: string, d: Extract<CallDecision, { ring: false }>) => {
+        outcome({ kind: 'skipped', reason: d.reason });
         const key = `${d.messageId ?? ''}:${d.reason}`;
         if (lastSkipRef.current.get(chatDir) === key) return;
         lastSkipRef.current.set(chatDir, key);
-        clientLog('call_skip', {
+        log('call_skip', {
             ...ctxFields(),
             ...(d.messageId !== undefined ? { message_id: d.messageId } : {}),
             reason: d.reason,
         });
-    }, [ctxFields]);
+    }, [ctxFields, log, outcome]);
 
     // A new visit starts whenever the selected chat changes; leaving cancels any call.
     useEffect(() => {
@@ -178,11 +212,12 @@ export function useIncomingCall(
             cancelPreload();
             const active = callRef.current;
             if (phaseRef.current !== 'idle' && active) {
-                clientLog('call_cancel', { message_id: active.message.id, phase: phaseRef.current });
+                log('call_cancel', { message_id: active.message.id, phase: phaseRef.current });
+                outcome({ kind: 'cancelled' });
             }
             toIdle();
         };
-    }, [args.chatDir, toIdle, cancelPreload]);
+    }, [args.chatDir, toIdle, cancelPreload, log, outcome]);
 
     // Turning the setting off ends any call immediately (no ended screen, no scroll) and drops
     // a preload that has not rung yet.
@@ -192,10 +227,11 @@ export function useIncomingCall(
         cancelPreload();
         const active = callRef.current;
         if ((phaseRef.current === 'ringing' || phaseRef.current === 'connected') && active) {
-            clientLog('call_cancel', { message_id: active.message.id, phase: phaseRef.current, reason: 'disabled' });
+            log('call_cancel', { message_id: active.message.id, phase: phaseRef.current, reason: 'disabled' });
             toIdle();
+            outcome({ kind: 'cancelled' });
         }
-    }, [args.enabled, toIdle, cancelPreload]);
+    }, [args.enabled, toIdle, cancelPreload, log, outcome]);
 
     // Evaluate after each fresh fetch of the selected chat (never on the cached render).
     const freshSeq = args.freshFetch?.seq;
@@ -224,12 +260,14 @@ export function useIncomingCall(
         const message = decision.message;
         const fail = () => {
             if (evalId !== evalIdRef.current) {
-                clientLog('call_skip', { ...ctx, message_id: message.id, reason: 'superseded' });
+                log('call_skip', { ...ctx, message_id: message.id, reason: 'superseded' });
+                outcome({ kind: 'skipped', reason: 'superseded' });
                 return;
             }
+            outcome({ kind: 'skipped', reason: 'media_unavailable' });
             if (mediaErrorLoggedRef.current.has(message.id)) return;
             mediaErrorLoggedRef.current.add(message.id);
-            clientLog('call_error', {
+            log('call_error', {
                 ...ctx, message_id: message.id, error_type: 'media_unavailable', phase: 'idle',
             });
         };
@@ -244,18 +282,33 @@ export function useIncomingCall(
             if (preloadAbortRef.current === controller) preloadAbortRef.current = null;
         };
         preloadRef.current(audioUrl, controller.signal).then(
-            () => {
+            async () => {
                 settled();
-                const latest = argsRef.current;
-                const skip = (reason: 'superseded' | 'call_active' | 'already_read') =>
-                    clientLog('call_skip', { ...ctx, message_id: message.id, reason });
-                if (evalId !== evalIdRef.current || latest.chatDir !== chatDir) return skip('superseded');
+                const skip = (reason: 'superseded' | 'call_active' | 'already_read' | 'popup_active') => {
+                    log('call_skip', { ...ctx, message_id: message.id, reason });
+                    outcome({ kind: 'skipped', reason });
+                };
+                const stale = () => evalId !== evalIdRef.current || argsRef.current.chatDir !== chatDir;
+                if (stale()) return skip('superseded');
                 // Defensive and effectively unreachable: ringing starts only from this branch, and
                 // every newer evaluation or visit change bumps evalId first (so an older preload
                 // takes the `superseded` exit above). Kept, with its breadcrumb, in case another
                 // ring path is ever added.
                 if (phaseRef.current !== 'idle') return skip('call_active');
-                if (!latest.isUnread(message.id)) return skip('already_read');
+                if (!argsRef.current.isUnread(message.id)) return skip('already_read');
+                const elsewhere = argsRef.current.isCallElsewhere;
+                if (elsewhere) {
+                    // The popup owns this voice (main window visible but unfocused): don't ring it twice.
+                    // A sync throw or a rejection both count as "not elsewhere" (we ring) and are logged here;
+                    // isCallPopupActive handles its own failures, so there is no double log.
+                    const active = await Promise.resolve().then(() => elsewhere(message.id)).catch(() => {
+                        log('call_error', { message_id: message.id, phase: 'idle', error_type: 'popup_check_failed' });
+                        return false;
+                    });
+                    if (stale()) return skip('superseded');
+                    if (phaseRef.current !== 'idle') return skip('call_active');
+                    if (active) return skip('popup_active');
+                }
                 startRinging({ message, name: a.name, photoUrl: photoUrl as string, audioUrl });
             },
             () => {
@@ -263,7 +316,7 @@ export function useIncomingCall(
                 fail();
             },
         );
-    }, [freshSeq, ctxFields, logSkip, startRinging, cancelPreload]);
+    }, [freshSeq, ctxFields, logSkip, startRinging, cancelPreload, log, outcome]);
 
     const answer = useCallback(() => {
         const active = callRef.current;
@@ -271,26 +324,27 @@ export function useIncomingCall(
         clearTimer();
         argsRef.current.revealMessage(active.message.id);
         const now = Date.now();
-        clientLog('call_answer', { message_id: active.message.id, ring_ms: now - ringStartedAtRef.current });
+        log('call_answer', { message_id: active.message.id, ring_ms: now - ringStartedAtRef.current });
         talkStartedAtRef.current = now;
         setTalkStartedAt(now);
         enter('connected');
-    }, [clearTimer, enter]);
+    }, [clearTimer, enter, log]);
 
     const decline = useCallback(() => {
         const active = callRef.current;
         if (phaseRef.current !== 'ringing' || !active) return;
         dismissedRef.current.add(active.message.id);
-        clientLog('call_decline', { message_id: active.message.id, ring_ms: Date.now() - ringStartedAtRef.current });
+        log('call_decline', { message_id: active.message.id, ring_ms: Date.now() - ringStartedAtRef.current });
         toIdle();
-    }, [toIdle]);
+        outcome({ kind: 'declined' });
+    }, [toIdle, log, outcome]);
 
     const finish = useCallback((reason: 'played' | 'hung_up') => {
         const active = callRef.current;
         if (phaseRef.current !== 'connected' || !active) return;
-        clientLog('call_end', { message_id: active.message.id, reason, talk_ms: Date.now() - talkStartedAtRef.current });
-        toEnded();
-    }, [toEnded]);
+        log('call_end', { message_id: active.message.id, reason, talk_ms: Date.now() - talkStartedAtRef.current });
+        toEnded(reason);
+    }, [toEnded, log]);
 
     const hangUp = useCallback(() => finish('hung_up'), [finish]);
     const onPlaybackEnded = useCallback(() => finish('played'), [finish]);
@@ -298,11 +352,11 @@ export function useIncomingCall(
     const onPlaybackError = useCallback(() => {
         const active = callRef.current;
         if (phaseRef.current !== 'connected' || !active) return;
-        clientLog('call_error', {
+        log('call_error', {
             ...ctxFields(), message_id: active.message.id, error_type: 'playback_failed', phase: 'connected',
         });
         toEnded();
-    }, [ctxFields, toEnded]);
+    }, [ctxFields, toEnded, log]);
 
     return {
         phase,

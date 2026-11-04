@@ -214,20 +214,46 @@ def test_divert_false_keeps_the_same_plan(tmp_path: Path) -> None:
     assert skips == [] and plans == seen
 
 
-def test_rule_order_disabled_before_viewing_before_divert(tmp_path: Path) -> None:
-    ui = UiState(SERVICE, "34", "58", True)
-    called: list[int] = []
+def test_rule_order_diverted_before_disabled_before_viewing(tmp_path: Path) -> None:
+    seen: list[str] = []
 
-    def divert(_p: ToastPlan) -> bool:
-        called.append(1)
+    def yes(p: ToastPlan) -> bool:
+        seen.append(p.member_id)
         return True
 
-    _, skips = run(
-        [chat(tmp_path)], tmp_path, ui_state=ui, enabled=False, divert=divert
+    def no(p: ToastPlan) -> bool:
+        seen.append(p.member_id)
+        return False
+
+    _, skips = run([chat(tmp_path)], tmp_path, enabled=False, divert=yes)
+    assert skips == [Skip("diverted", "34", "58", 1)] and seen == ["58"]
+    seen.clear()
+    _, skips = run([chat(tmp_path)], tmp_path, enabled=False, divert=no)
+    assert skips == [Skip("disabled", "34", "58", 1)] and seen == ["58"]
+    ui = UiState(SERVICE, "34", "58", True)
+    _, skips = run([chat(tmp_path)], tmp_path, ui_state=ui, divert=no)
+    assert skips == [Skip("viewing", "34", "58", 1)]
+
+
+def test_disabled_still_offers_every_chat_to_divert(tmp_path: Path) -> None:
+    offered: list[str] = []
+
+    def divert(p: ToastPlan) -> bool:
+        offered.append(p.member_id)
+        return p.member_id == "58"
+
+    other = chat(
+        tmp_path,
+        group_id="35",
+        group_dir="35 小坂 菜緒",
+        member_id="59",
+        member_dir="59 小坂 菜緒",
+        member_name="小坂 菜緒",
     )
-    assert skips[0].reason == "disabled"
-    _, skips = run([chat(tmp_path)], tmp_path, ui_state=ui, divert=divert)
-    assert skips[0].reason == "viewing" and called == []
+    plans, skips = run([chat(tmp_path), other], tmp_path, enabled=False, divert=divert)
+    assert plans == []
+    assert offered == ["58", "59"]
+    assert [s.reason for s in skips] == ["diverted", "disabled"]
 
 
 def test_empty_input(tmp_path: Path) -> None:

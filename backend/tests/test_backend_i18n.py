@@ -241,3 +241,28 @@ def test_missing_en_still_uses_the_requested_locale(catalog):
     s = get_strings("notifications", "ja")
     assert s["sent_photo"] == "写真を送信しました"
     assert s["sent_video"] == ""
+
+
+CALL_POPUP_KEYS = {"missed_title", "missed_body", "missed_more"}
+
+
+def _load_call_popup(lang: str) -> dict:
+    return json.loads((I18N_DIR / lang / "call_popup.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("lang", SUPPORTED)
+def test_call_popup_locale_has_same_keys_as_en(lang):
+    data = _load_call_popup(lang)
+    assert set(data) == CALL_POPUP_KEYS
+    assert "{name}" in data["missed_title"] and "{n}" in data["missed_more"]
+    assert get_strings("call_popup", lang) == data
+
+
+def test_call_popup_non_ascii_round_trip():
+    assert (
+        get_strings("call_popup", "ja")["missed_title"].format(name="金村 美玖")
+        == "不在着信：金村 美玖"
+    )
+    assert (
+        get_strings("call_popup", "yue")["missed_more"].format(n=2) == "仲有 2 則訊息"
+    )

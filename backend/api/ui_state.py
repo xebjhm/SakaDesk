@@ -1,7 +1,10 @@
 """Foreground / current-chat reporting.
 
 The webview POSTs the chat it is showing and whether the window is focused, so
-toasts can skip the chat being viewed. Only code-like values are accepted
+toasts can skip the chat being viewed. A focused report also tells the
+call popup controller that the main window came forward, so a popup that is
+still ringing yields to it (no toast). That runs as a tracked background task,
+so the 204 never waits on the popup host. Only code-like values are accepted
 (ids and the service code), so names, text or paths can never reach the log.
 """
 
@@ -11,6 +14,8 @@ import structlog
 from fastapi import APIRouter, Response
 from pydantic import BaseModel, StrictBool, StringConstraints
 
+from backend.services.background_tasks import track_background_task
+from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_planner import UiState
 from backend.services.ui_state import set_ui_state
 
@@ -28,6 +33,14 @@ class UiStateRequest(BaseModel):
     group_id: Optional[IdStr]
     member_id: Optional[IdStr]
     focused: StrictBool
+
+
+async def _popup_foreground() -> None:
+    """Tell the popup controller the main window came forward. Never raises."""
+    try:
+        await get_call_popup_controller().on_foreground()
+    except Exception as e:
+        logger.warning("call_popup_foreground_failed", error_type=type(e).__name__)
 
 
 @router.post("", status_code=204)
@@ -48,4 +61,8 @@ async def post_ui_state(body: UiStateRequest) -> Response:
         member_id=body.member_id,
         focused=body.focused,
     )
+    if body.focused:
+        # The main window came forward: a popup that is still ringing yields to
+        # it (no toast). Not awaited: the cancel waits on the popup host.
+        track_background_task(_popup_foreground(), name="call_popup_foreground")
     return Response(status_code=204)

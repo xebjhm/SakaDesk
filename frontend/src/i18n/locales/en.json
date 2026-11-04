@@ -86,6 +86,8 @@
     "syncReadToPhoneDesc": "Opening a chat here also clears its unread count (the red dot) in the official app, just like opening it there. Off by default.",
     "incomingCall": "Incoming calls",
     "incomingCallDesc": "When you open a member's chat with an unheard voice message, play the newest one as an incoming call",
+    "callPopup": "Background call popup",
+    "callPopupDesc": "When SakaDesk is in the background and a member sends a voice message, it rings in a small window at the bottom right",
     "closeToTray": "Keep running in the tray when closed",
     "closeToTrayDesc": "Closing the window keeps SakaDesk syncing in the background",
     "autostart": "Start with Windows",

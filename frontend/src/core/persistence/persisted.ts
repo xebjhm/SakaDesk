@@ -50,9 +50,20 @@ function flush(): void {
 // hydrated in full at startup to give synchronous getConv/setConv reads,
 // matching the prefs cache pattern above.
 let convCache: Record<string, Record<string, unknown>> = {};
+// True only after the latest hydration GET succeeded. Until then (still loading,
+// or the GET failed and the cache fell back to {}) getConv cannot tell a missing
+// row from an unread one, so callers that write a row derived from its current
+// value (the popup's heard bridge) must wait for this flag.
+let convReady = false;
 
 async function hydrateConversations(): Promise<void> {
-  try { convCache = await api.getAllConversations(); } catch { convCache = {}; }
+  try {
+    convCache = await api.getAllConversations();
+    convReady = true;
+  } catch {
+    convCache = {};
+    convReady = false;
+  }
 }
 
 export const persisted = {
@@ -91,6 +102,10 @@ export const persisted = {
   getConversation: api.getConversation,
   setConversation: api.patchConversation,
   hydrateConversations,
+  /** True once the conversation cache loaded successfully (see convReady). */
+  conversationsReady(): boolean {
+    return convReady;
+  },
   getConv<T = Record<string, unknown>>(key: string, fallback: T): T {
     return (key in convCache ? (convCache[key] as unknown as T) : fallback);
   },
