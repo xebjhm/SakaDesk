@@ -50,6 +50,7 @@
     "tabSync": "同期",
     "tabAi": "AI",
     "tabUpdates": "アップデート",
+    "sections": "設定の項目",
     "outputFolder": "保存先フォルダ",
     "autoSync": "自動同期",
     "syncEvery": "同期間隔",

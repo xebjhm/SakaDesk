@@ -62,6 +62,26 @@ test.describe('app dialogs', () => {
     await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCount(0)
   })
 
+  test('settings: a sync radio saves, reset asks in-app then saves (D2c)', async ({ page }) => {
+    const saved: Record<string, unknown>[] = []
+    await pinSettings(page, saved)
+    await openHome(page)
+    await openRailMenu(page, 'Settings')
+    const settings = page.getByRole('dialog', { name: 'Settings' })
+
+    await settings.getByRole('navigation').getByRole('button', { name: 'Sync', exact: true }).click()
+    await settings.getByRole('radio', { name: /^Off/ }).click() // controlled: checks once the save lands
+    await expect.poll(() => saved).toContainEqual({ auto_sync_enabled: false, adaptive_sync_enabled: false })
+
+    await settings.getByRole('button', { name: 'Reset to defaults', exact: true }).click()
+    const confirm = page.getByRole('dialog', { name: 'Reset to defaults' })
+    await expect(confirm).toBeVisible()
+    await confirm.getByRole('button', { name: 'Confirm', exact: true }).click()
+    await expect(confirm).toHaveCount(0)
+    await expect.poll(() => saved.some((b) => b.incoming_call_enabled === true && b.auto_sync_enabled === true)).toBe(true)
+    await expect(settings).toBeVisible()
+  })
+
   test('about opens from the rail menu and Escape closes it', async ({ page }) => {
     await openHome(page)
     await openRailMenu(page, 'About')

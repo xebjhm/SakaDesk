@@ -50,6 +50,7 @@
     "tabSync": "同步",
     "tabAi": "AI",
     "tabUpdates": "更新",
+    "sections": "设置分类",
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",
