@@ -33,16 +33,52 @@ automatically through CSS variables. A primitive never takes a group id.
    glow (`shadow-group-glow`); `ring-group` is the keyboard focus ring: `Pill`, `Button`, `IconButton` and `RailItem` use
    `focus-visible:ring-2 focus-visible:ring-group`.
 3. **Bubble border:** `border-group-bubble`
-4. **Badge:** `Badge`, `bg-group-badge`
+4. **Badge:** `Badge`, `bg-group-badge` (the action colour)
 
-**Exception:** at most **one** `Button variant="primary"` per screen, which
-uses `bg-group-accent` (e.g. the call screen's "answer", a dialog's "save").
+**Exception:** at most **one** `Button variant="primary"` per screen. It
+uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
+"answer", a dialog's "save".
 
 The level-0 background (`Canvas`, `bg-group-canvas`) is the official sidebar
 gradient. Everything else is neutral: `bg-sheet/card/pill/elevated/sunken`,
 `bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`.
 Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
 `bg-black/NN`: the token carries its own alpha.
+
+## Colour system
+
+Every group colour comes from `frontend/src/design/tokens/groups.ts` through
+one of two layers:
+
+- **Official layer** (`groupTokens[id].official`): title gradient, thin bar and
+  title text, the canvas (sidebar) gradient, unread-shelter colours and the
+  `shelterStyle` / `headerStyle` switches. These were copied from the official
+  apps and are kept verbatim — tests pin them. Do not "fix" them to match the
+  scale.
+- **System layer**: each group has its logo colour and a 10-step scale
+  (50 lightest … 900 darkest, logo colour snapped into its step). Colours are
+  taken by **role**, never by step, through `groupRoles(id)` in
+  `design/tokens/roles.ts`:
+
+| Role | Step | Used for | Utility |
+|---|---|---|---|
+| `action` | 600 | badge, primary button, play / scroll buttons | `bg-group-accent`, `bg-group-badge` |
+| `strong` | 700 | member names, links, selected text | `text-group-strong` |
+| `subtle` | 50 | selected / hover background | `bg-group-subtle` |
+| `subtleBorder` | 200 | border of subtle selections | `border-group-subtle` |
+| `linkUnderline` | 300 | link underline | `decoration-group` |
+| `ring` | 600 | keyboard focus ring | `ring-group` |
+| `bubbleBorder` | logo (Nogizaka 600) | message bubble border | `border-group-bubble` |
+| `glow` | logo at alpha | selection glow | `shadow-group-glow` |
+
+Contrast floors are enforced by tests: `action` with white text ≥ 3:1 and
+`strong` on white ≥ 4.5:1. Sakurazaka is the one stylistic exception: a white
+base with pink accents (`light` header and shelters). `--ds-group-accent` is
+the **action** colour; the logo colour itself is `--ds-group-logo`.
+
+To add a colour, add a **role** in `roles.ts` (and a CSS variable and utility
+if components need it). Never add a new hex to a component or to
+`serviceThemes.ts` (a test fails if that file contains any colour literal).
 
 ## Scales
 

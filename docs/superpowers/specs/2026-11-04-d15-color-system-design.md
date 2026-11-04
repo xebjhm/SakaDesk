@@ -36,7 +36,7 @@ All three Sakamichi logos share the Sakamichi purple `#7F1083`.
 | 5 | Hinatazaka step 600 is `#389DD1` (white text 3.0:1). The user rejected `#0A88B0` as too far from sky blue, and preferred `#389DD1` to the logo colour with white text. |
 | 6 | Unused legacy fields are deleted. Off-logo colours (teal `#5dc2b5`, sunlight yellow `#fffacd`, grey-blue `#8B9DC3`, Sakurazaka voice purple `#d695ec`, …) are replaced by scale steps. |
 | 7 | Dark mode is still reserved, not built. |
-| 8 | Out of scope: the ~200 hard-coded *neutral* values in components (those are D2, watched by the guard). The 8 hard-coded *group* colours in 6 files are in scope. |
+| 8 | Out of scope: the ~200 hard-coded *neutral* values in components (those are D2, watched by the guard). The 8 hard-coded *group* colours in 5 files are in scope. |
 
 ## The model
 
@@ -73,8 +73,8 @@ They are committed as literal values. Nothing is computed at runtime.
 
 | Role | Step | Replaces legacy fields |
 |---|---|---|
-| `accent` (brand, logo colour) | logo | `primaryColor` |
-| `onAccent` (badge, primary button, play button, scroll button) | 600 | `unreadBadge`, `voicePlayerAccent`, `scrollButtonColor`, `modals.accentColor`, `secondaryColor` |
+| `logo` (brand, logo colour) | logo | `primaryColor` |
+| `action` (badge, primary button, play button, scroll button) | 600 | `unreadBadge`, `voicePlayerAccent`, `scrollButtonColor`, `modals.accentColor`, `secondaryColor` |
 | `strong` (names, links, selected text, blog title, timeline) | 700 | `blog.memberNameColor`, `blog.linkColor`, `blog.headerTitleColor`, `blog.timelineIndicator` |
 | `subtle` (selected / hover background) | 50 | `modals.accentColorLight`, theme `accentColor` |
 | `subtleBorder` | 200 | `modals.accentColorMuted` |
@@ -82,6 +82,8 @@ They are committed as literal values. Nothing is computed at runtime.
 | `bubbleBorder` | logo colour; Nogizaka 600 | `messages.bubbleBorder` |
 | `glow` (selection glow) | logo colour at the legacy alpha | `interaction.hoverGlow` |
 | `ring` (keyboard focus) | 600 | (was the D1 `ring`) |
+
+In the code, `action` is written to `--ds-group-accent` and `--ds-group-badge`, and `logo` is written to `--ds-group-logo`.
 
 The `bubbleBorder` row resolves to these values:
 
@@ -137,7 +139,7 @@ These are deleted after the plan's `tsc` check confirms they have no consumers:
 - `messages.defaultBackground`
 - `getServiceThemeCSSVariables`
 
-Neutral fields that are still used stay unchanged in this step: `surface.background`, `text.secondary`, `text.muted`, `vibe`.
+Neutral fields that are still used stay unchanged in this step: `surface.background`, `text.secondary`, `text.muted`, `vibe`. Their per-group values move to `groupTokens[id].legacyNeutral` (`surfaceBackground`, `textSecondary`, `textMuted`), so `serviceThemes.ts` holds no colour literal.
 
 ## Architecture
 
@@ -158,7 +160,8 @@ Neutral fields that are still used stay unchanged in this step: `surface.backgro
   - `core/media/TranscriptPanel.tsx`
   - `core/media/TranscribeButton.tsx`
   - `core/common/TranslateButton.tsx`
-  - `config/uiConstants.ts`
+
+  `config/uiConstants.ts` is a neutral chat-background preset list, not a group colour, so it is out of scope. The replacement for the old `#6da0d4` fallback is `FALLBACK_ACTION_COLOR` in `design/tokens/roles.ts` (default group step 600).
 - **`/design` page** shows each group's 10-step scale with the logo step marked, and the role table with contrast labels.
 - **`DESIGN_SYSTEM.md`** gains a "Colour system" section: the two layers, the scale, the role table, and "add colours as roles, never as new hex".
 
@@ -168,11 +171,11 @@ Neutral fields that are still used stay unchanged in this step: `surface.backgro
   - title, bar, text and canvas still equal `legacy-theme-values.json`;
   - shelters and styles equal today's literal values, asserted in the test.
 - **System layer:** a table test asserts every role value for all five groups equals this spec's tables. It also checks white-text contrast:
-  - `onAccent` ≥ 3.0:1;
+  - `action` ≥ 3.0:1;
   - `strong` ≥ 4.5:1.
 - **Scale shape:** 10 steps per group, lightness decreasing monotonically (luminance strictly decreasing), and the logo colour present in the scale.
 - **Legacy shape:** every remaining `serviceThemes` colour field resolves to a role or official value. A test enumerates the fields so that no hand-written hex survives in `serviceThemes.ts`.
-- **Guard:** the 6 files lose their group hex literals, and their baseline counts drop accordingly.
+- **Guard:** the 5 files lose their group hex literals, and their baseline counts drop accordingly.
 - **Pixels:** the zero-pixel spec is expected to fail on intentional changes.
   - Baselines are recaptured after the change.
   - The PR attaches before and after screenshots.
