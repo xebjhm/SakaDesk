@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
-import { useMemberStreak, resetStreakCache, streakCacheKey } from './useMemberStreak';
+import { useMemberStreak, resetStreakCache, streakCacheKey, streakGroupId } from './useMemberStreak';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
@@ -35,6 +35,39 @@ describe('useMemberStreak', () => {
     it('keys the cache by service, group and local day', () => {
         expect(streakCacheKey('hinatazaka46', '64', new Date(2026, 10, 4, 23, 59))).toBe('hinatazaka46|64|2026-11-04');
         expect(streakCacheKey('hinatazaka46', '64', new Date(2026, 10, 5, 0, 1))).toBe('hinatazaka46|64|2026-11-05');
+    });
+
+    it('reads the member group id from a member room path, never from a group chat', () => {
+        expect(streakGroupId('hinatazaka46/messages/90 高井 俐香/142 高井 俐香', false)).toBe('90');
+        expect(streakGroupId('hinatazaka46/messages/43 日向坂46/43 日向坂46', true)).toBeUndefined();
+        expect(streakGroupId('hinatazaka46/messages/abc/1 x', false)).toBeUndefined();
+        expect(streakGroupId('hinatazaka46', false)).toBeUndefined();
+        expect(streakGroupId(null, false)).toBeUndefined();
+    });
+
+    it('makes no request for a group chat room', async () => {
+        const calls = serveStreak();
+        const { result } = renderHook(() => useMemberStreak(
+            streakGroupId('hinatazaka46/messages/43 日向坂46/43 日向坂46', true), 'hinatazaka46'));
+        expect(result.current.streak).toEqual({ status: 'idle' });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(calls.count).toBe(0);
+    });
+
+    it('makes no request for an id that is not a member group id', async () => {
+        const calls = serveStreak();
+        const { result } = renderHook(() => useMemberStreak('abc', 'hinatazaka46'));
+        expect(result.current.streak).toEqual({ status: 'idle' });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(calls.count).toBe(0);
+    });
+
+    it('fetches once for a member room', async () => {
+        const calls = serveStreak();
+        const { result } = renderHook(() => useMemberStreak(
+            streakGroupId('hinatazaka46/messages/90 高井 俐香/142 高井 俐香', false), 'hinatazaka46'));
+        await waitFor(() => expect(result.current.streak).toEqual({ status: 'ready', days: 180 }));
+        expect(calls.count).toBe(1);
     });
 
     it('fetches once across repeated opens of the same room on the same day', async () => {

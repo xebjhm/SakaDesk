@@ -17,7 +17,8 @@ import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, IconButton } from '../../design/primitives';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
-import { useMemberStreak } from './hooks/useMemberStreak';
+import { useMemberStreak, streakGroupId } from './hooks/useMemberStreak';
+import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
@@ -525,8 +526,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
     const isLightHeader = theme.messages.headerStyle === 'light';
     // Streak from the session cache (one official request per room per local day), shared by the header and the profile popup.
+    // It is a 1:1 subscription: a group chat (or a path without a numeric id) makes no request.
     const groupId = selectedGroupDir?.split('/')[2]?.split(' ')[0];
-    const { streak, retry: retryStreak } = useMemberStreak(groupId, activeService ?? undefined);
+    const { streak, retry: retryStreak } = useMemberStreak(streakGroupId(selectedGroupDir, isGroupChat), activeService ?? undefined);
 
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
@@ -718,15 +720,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         ) : null}
                     </div>
                     {displayUnreadCount > 0 && (
-                        <span className="rounded-pill bg-pill px-3 py-1 text-caption font-semibold text-secondary shadow-pill">
+                        <ChatHeaderPill light={isLightHeader} className="font-semibold">
                             {t('messageList.unread', { count: displayUnreadCount })}
-                        </span>
+                        </ChatHeaderPill>
                     )}
                     {syncProgress.state === 'running' && (
-                        <span className="flex items-center gap-2 rounded-pill bg-pill px-3 py-1 text-caption text-secondary shadow-pill">
+                        <ChatHeaderPill light={isLightHeader}>
                             <Loader2 className="h-3 w-3 animate-spin" />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
-                        </span>
+                        </ChatHeaderPill>
                     )}
                     {selectedGroupDir && (
                         <ConversationMenu

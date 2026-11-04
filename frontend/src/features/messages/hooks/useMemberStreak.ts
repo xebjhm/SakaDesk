@@ -23,6 +23,20 @@ export function streakCacheKey(service: string, groupId: string, now: Date): str
     return `${service}|${groupId}|${toLocalDateStr(now)}`;
 }
 
+/** A member group id is the numeric prefix of the room's member directory. */
+const MEMBER_GROUP_ID = /^\d+$/;
+
+/**
+ * The member group id whose streak the room shows: the numeric prefix of the path's member
+ * directory (`<service>/messages/<id> <name>/…`). Undefined for a group chat (the streak is a
+ * 1:1 subscription) or when the path has no numeric id, so the hook stays idle and never asks.
+ */
+export function streakGroupId(groupDir: string | null | undefined, isGroupChat: boolean): string | undefined {
+    if (isGroupChat || !groupDir) return undefined;
+    const id = groupDir.split('/')[2]?.split(' ')[0];
+    return id && MEMBER_GROUP_ID.test(id) ? id : undefined;
+}
+
 /** Test seam: forget every cached and in-flight streak. */
 export function resetStreakCache(): void {
     streakCache.clear();
@@ -61,6 +75,7 @@ function loadStreak(key: string, service: string, groupId: string, fallbackError
  * The subscription streak of the open room (GET /api/chat/streak/{groupId}), shared by the
  * chat header and the profile popup. Served from the session cache when this room was already
  * fetched today (local date), otherwise fetched once (concurrent callers share the request).
+ * Idle, with no request, unless `groupId` is a numeric member group id (see `streakGroupId`).
  * A late answer for a room the user has left is ignored (SD-FE-GAP-B-01). On failure the state
  * is 'error' (the header omits the day count; the popup offers `retry`, which fetches again).
  * `now` is a test seam for the clock.
@@ -76,7 +91,8 @@ export function useMemberStreak(
     const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
     useEffect(() => {
-        if (!groupId) {
+        // No member room (none open, a group chat, or not a numeric id): idle, no request.
+        if (!groupId || !MEMBER_GROUP_ID.test(groupId)) {
             setStreak({ status: 'idle' });
             return;
         }

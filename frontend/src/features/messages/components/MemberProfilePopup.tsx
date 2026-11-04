@@ -196,11 +196,11 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                                     components={{ num: <span className="font-bold text-2xl text-gray-900" /> }}
                                 />
                             </p>
-                        ) : (
+                        ) : streak.status === 'ready' ? (
                             <p className="text-lg text-gray-500">
                                 {t('memberProfile.startSubscription')}
                             </p>
-                        )}
+                        ) : null}
                     </div>
                 </div>
             </div>

@@ -17,6 +17,12 @@ describe('MemberProfilePopup streak', () => {
         expect(onRetry).toHaveBeenCalledOnce();
     });
 
+    it('shows no streak line without a streak (group chat)', () => {
+        render(<MemberProfilePopup isOpen onClose={vi.fn()} memberName="A" />);
+        expect(screen.queryByText(/Subscribed for/)).toBeNull();
+        expect(screen.queryByText(i18n.t('memberProfile.startSubscription'))).toBeNull();
+    });
+
     it('never fetches the streak itself', () => {
         const spy = vi.spyOn(globalThis, 'fetch');
         render(<MemberProfilePopup isOpen onClose={vi.fn()} memberName="A" />);
