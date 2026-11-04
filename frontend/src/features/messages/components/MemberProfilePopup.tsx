@@ -88,8 +88,8 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                     onClick={onClose}
                 />
                 {/* Official title banner, as the chat header: gradient, or white + the thin title bar. */}
-                <div className={cn('h-32 shrink-0', isLightHeader ? 'bg-sheet' : 'bg-group-title')} />
-                {isLightHeader && <div className="-mt-1 h-1 shrink-0 bg-group-title-bar" />}
+                <div data-testid="profile-banner" className={cn('h-32 shrink-0', isLightHeader ? 'bg-sheet' : 'bg-group-title')} />
+                {isLightHeader && <div data-testid="profile-title-bar" className="-mt-1 h-1 shrink-0 bg-group-title-bar" />}
 
                 <div className="-mt-24 flex justify-center">
                     <button

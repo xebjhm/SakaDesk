@@ -70,6 +70,8 @@ for (const service of SERVICES) {
     await page.keyboard.press('Escape')
 
     await page.locator(`#msg-${COUNT}`).getByRole('button', { name: 'Big Room' }).first().click()
+    // Sakurazaka's card has the light header (white + title bar); the others the gradient.
+    await expect(page.getByTestId('profile-banner')).toBeVisible()
     await shot(page, `${service}-member-profile`)
     await page.keyboard.press('Escape')
   })
