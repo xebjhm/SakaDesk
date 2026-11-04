@@ -63,6 +63,7 @@ export const DesignPage: React.FC = () => {
     const [filter, setFilter] = useState<'all' | 'unread'>('all');
     const [rail, setRail] = useState<'talk' | 'blog' | 'news'>('talk');
     const [moved, setMoved] = useState(false);
+    const [landingKey, setLandingKey] = useState(0);
     const [modalOpen, setModalOpen] = useState(false);
 
     useEffect(() => applyGroupTokens(group), [group]);
@@ -79,7 +80,7 @@ export const DesignPage: React.FC = () => {
     );
     const groupSwatches = [
         ['logo', r.logo], ['action (600)', r.action], ['strong (700)', r.strong], ['subtle (50)', r.subtle],
-        ['subtleBorder (200)', r.subtleBorder], ['linkUnderline (300)', r.linkUnderline],
+        ['subtleBorder (200)', r.subtleBorder], ['highlight (100)', r.highlight], ['linkUnderline (300)', r.linkUnderline],
         ['bubbleBorder', r.bubbleBorder], ['glow', r.glow],
         ['title.text', groupTokenVars(group)['--ds-group-title-text']],
         ['title.bar', groupTokenVars(group)['--ds-group-title-bar']],
@@ -144,7 +145,7 @@ export const DesignPage: React.FC = () => {
                             <span />
                             {([
                                 ['action', 600, r.action], ['strong', 700, r.strong], ['subtle', 50, r.subtle],
-                                ['subtleBorder', 200, r.subtleBorder], ['linkUnderline', 300, r.linkUnderline], ['ring', 600, r.ring],
+                                ['subtleBorder', 200, r.subtleBorder], ['highlight', 100, r.highlight], ['linkUnderline', 300, r.linkUnderline], ['ring', 600, r.ring],
                             ] as const).map(([role, step, value]) => (
                                 <React.Fragment key={role}>
                                     <span className="text-primary">{role}</span>
@@ -199,6 +200,15 @@ export const DesignPage: React.FC = () => {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.landing')}>
+                    <div className="flex items-center gap-4">
+                        <Button size="sm" onClick={() => setLandingKey((k) => k + 1)}>{t('designPage.replay')}</Button>
+                        <div key={landingKey} data-testid="landing-sample" className="px-4 py-1 rounded-card animate-landing text-body text-primary">
+                            {t('designPage.sample')}
+                        </div>
                     </div>
                 </Section>
 

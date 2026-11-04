@@ -49,7 +49,7 @@ test.describe('timeline scroll', () => {
     await dialog.getByRole('button', { name: '15', exact: true }).click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 1000, intervals: [50] }).toBe(expected)
     expect(Date.now() - t0).toBeLessThan(1000)
-    await expect(page.locator(`#msg-${expected}`)).toHaveClass(/bg-group-subtle/)
+    await expect(page.locator(`#msg-${expected}`)).toHaveClass(/animate-landing/)
   })
 
   test('media gallery "jump to message" lands on a 2022 message', async ({ page }) => {
@@ -60,7 +60,7 @@ test.describe('timeline scroll', () => {
     await page.getByRole('dialog').locator('button:has(img)').last().click()
     await page.getByTitle('Jump to message').click()
     await expect.poll(() => isRowInViewport(page, 100), { timeout: 1000, intervals: [50] }).toBe(true)
-    await expect(page.locator('#msg-100')).toHaveClass(/bg-group-subtle/)
+    await expect(page.locator('#msg-100')).toHaveClass(/animate-landing/)
   })
 
   test('re-opening the room restores the last top message', async ({ page }) => {

@@ -173,8 +173,8 @@ export const MessageList: React.FC<ChatListProps> = ({
                 return (
                     <div
                         className={cn(
-                            'px-4 py-1 rounded-card transition-colors duration-base ease-standard',
-                            highlightedMessageId === msg.id && 'bg-group-subtle',
+                            'px-4 py-1 rounded-card',
+                            highlightedMessageId === msg.id && 'animate-landing',
                         )}
                         id={`msg-${msg.id}`}
                     >

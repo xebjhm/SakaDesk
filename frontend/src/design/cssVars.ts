@@ -42,6 +42,7 @@ export function groupTokenVars(groupId: GroupId): Record<string, string> {
         '--ds-group-strong': r.strong,
         '--ds-group-subtle': r.subtle,
         '--ds-group-subtle-border': r.subtleBorder,
+        '--ds-group-highlight': r.highlight,
         '--ds-group-link-underline': r.linkUnderline,
     };
 }

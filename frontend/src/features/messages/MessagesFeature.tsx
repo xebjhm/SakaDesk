@@ -10,6 +10,7 @@ import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
+import { motion } from '../../design/tokens';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
@@ -89,7 +90,7 @@ export interface AppSettings {
 const MAX_CACHED_CHATS = 20;
 
 /** How long a landed jump keeps its row highlighted before fading out. */
-const JUMP_HIGHLIGHT_MS = 1000;
+const JUMP_HIGHLIGHT_MS = motion.duration.landing;
 
 interface MessageCacheEntry {
     messages: GroupMessage[];
@@ -409,15 +410,29 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
     const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const highlightFrameRef = useRef<number | null>(null);
+    const cancelHighlight = useCallback(() => {
+        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+        if (highlightFrameRef.current !== null) cancelAnimationFrame(highlightFrameRef.current);
+        highlightTimerRef.current = null;
+        highlightFrameRef.current = null;
+    }, []);
+    // Clearing first and re-setting on the next frame restarts the CSS animation
+    // when the same row lands twice in a row.
     const flashLanded = useCallback((id: number) => {
-        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-        setHighlightedMessageId(id);
-        highlightTimerRef.current = setTimeout(() => setHighlightedMessageId(null), JUMP_HIGHLIGHT_MS);
-    }, []);
-    useEffect(() => () => {
-        if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-    }, []);
-    useEffect(() => { setHighlightedMessageId(null); }, [selectedGroupDir]);
+        cancelHighlight();
+        setHighlightedMessageId(null);
+        highlightFrameRef.current = requestAnimationFrame(() => {
+            highlightFrameRef.current = null;
+            setHighlightedMessageId(id);
+            highlightTimerRef.current = setTimeout(() => setHighlightedMessageId(null), JUMP_HIGHLIGHT_MS);
+        });
+    }, [cancelHighlight]);
+    useEffect(() => cancelHighlight, [cancelHighlight]);
+    useEffect(() => {
+        cancelHighlight();
+        setHighlightedMessageId(null);
+    }, [selectedGroupDir, cancelHighlight]);
 
     const jumpTo = useTimelineJump({ virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir });
 

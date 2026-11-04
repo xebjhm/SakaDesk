@@ -53,8 +53,9 @@ describe('MessageList jump wiring', () => {
 
     it('highlights only the flashed row', () => {
         const { container } = renderList({ highlightedMessageId: 2 });
-        expect(container.querySelector('#msg-2')?.className).toContain('bg-group-subtle');
-        expect(container.querySelector('#msg-1')?.className).not.toContain('bg-group-subtle');
-        expect(container.querySelector('#msg-3')?.className).not.toContain('bg-group-subtle');
+        expect(container.querySelector('#msg-2')?.className).toContain('animate-landing');
+        expect(container.querySelector('#msg-2')?.className).not.toContain('bg-group-subtle');
+        expect(container.querySelector('#msg-1')?.className).not.toContain('animate-landing');
+        expect(container.querySelector('#msg-3')?.className).not.toContain('animate-landing');
     });
 });

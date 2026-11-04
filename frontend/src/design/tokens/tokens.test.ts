@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import legacy from '../__fixtures__/legacy-theme-values.json';
 import { contrastRatio } from '../contrast';
 import {
-    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, SPACE_UNIT_PX,
+    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
 } from './index';
 
 const SHELTERS = {
@@ -58,6 +58,7 @@ describe('group tokens — system layer', () => {
         const r = groupRoles(id);
         expect([r.logo, r.action, r.strong, r.subtle, r.subtleBorder, r.linkUnderline, r.bubbleBorder, r.glow]).toEqual([...ROLES[id]]);
         expect(r.ring).toBe(r.action);
+        expect(r.highlight).toBe(groupTokens[id].scale[100]);
     });
 
     it.each(GROUP_IDS)('%s meets the contrast floors', (id) => {
@@ -109,8 +110,25 @@ describe('scales', () => {
         expect(radius).toEqual({ none: '0px', card: '14px', sheet: '20px', pill: '9999px' });
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
         expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading']);
-        expect(motion.duration).toEqual({ fast: 150, base: 200 });
+        expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });
         expect(easingCss(motion.easing.standard)).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(SPACE_UNIT_PX).toBe(4);
+    });
+});
+
+describe('bezierEasing', () => {
+    const f = bezierEasing(motion.easing.standard);
+    it('maps endpoints and is monotonic', () => {
+        expect(f(0)).toBe(0);
+        expect(f(1)).toBe(1);
+        let prev = 0;
+        for (let x = 0.05; x <= 1.0001; x += 0.05) {
+            const y = f(Math.min(x, 1));
+            expect(y).toBeGreaterThanOrEqual(prev);
+            prev = y;
+        }
+    });
+    it('decelerates', () => {
+        expect(f(0.5)).toBeGreaterThan(0.5);
     });
 });

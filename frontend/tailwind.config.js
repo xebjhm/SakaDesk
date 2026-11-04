@@ -92,9 +92,21 @@ export default {
                 title: ['var(--ds-font-title-size)', { lineHeight: 'var(--ds-font-title-leading)' }],
                 heading: ['var(--ds-font-heading-size)', { lineHeight: 'var(--ds-font-heading-leading)' }],
             },
+            keyframes: {
+                landing: {
+                    '0%': { backgroundColor: 'transparent' },
+                    '15%': { backgroundColor: 'var(--ds-group-highlight)' },
+                    '40%': { backgroundColor: 'var(--ds-group-highlight)' },
+                    '100%': { backgroundColor: 'transparent' },
+                },
+            },
+            animation: {
+                landing: 'landing var(--ds-duration-landing) var(--ds-ease-standard) both',
+            },
             transitionDuration: {
                 fast: 'var(--ds-duration-fast)',
                 base: 'var(--ds-duration-base)',
+                glide: 'var(--ds-duration-glide)',
             },
             transitionTimingFunction: {
                 standard: 'var(--ds-ease-standard)',
