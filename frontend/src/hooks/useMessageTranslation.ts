@@ -204,6 +204,7 @@ export async function translateBatch(params: {
 /**
  * Clear all translation cache entries from the backend translation cache.
  */
+/** Clears the stored translations; rejects when the backend refuses or is unreachable. */
 export async function clearTranslationCache(): Promise<void> {
     await api.clearTranslations();
 }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileText, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Modal } from '../../design/primitives';
 import { persisted } from '../../core/persistence/persisted';
 
 interface TosDialogProps {
@@ -24,14 +25,13 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+        <Modal isOpen onClose={() => {}} layout="bare" labelledBy="tos-title" dismissible={false} logId="tos" className="max-w-lg">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
                     <div className="flex items-center gap-3">
                         <FileText className="w-8 h-8 text-white" />
                         <div>
-                            <h3 className="text-xl font-bold text-white">{t('tos.title')}</h3>
+                            <h3 id="tos-title" className="text-xl font-bold text-white">{t('tos.title')}</h3>
                             <p className="text-sm text-white/80">{t('tos.subtitle')}</p>
                         </div>
                     </div>
@@ -136,7 +136,6 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                         {t('tos.acceptAndContinue')}
                     </button>
                 </div>
-            </div>
-        </div>
+            </Modal>
     );
 };

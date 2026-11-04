@@ -64,6 +64,15 @@ export default {
                 'group-subtle': 'var(--ds-group-subtle)',
                 'mark-exact': 'var(--ds-mark-exact)',
                 'mark-reading': 'var(--ds-mark-reading)',
+                toast: 'var(--ds-overlay-toast)',
+                'status-danger': 'var(--ds-status-danger)',
+                'status-attention': 'var(--ds-status-attention)',
+                'viewer-scrim': 'var(--ds-viewer-scrim)',
+                'viewer-stage': 'var(--ds-viewer-stage)',
+                'viewer-control': 'var(--ds-viewer-control)',
+                'viewer-control-hover': 'var(--ds-viewer-control-hover)',
+                'control-off': 'var(--ds-border-strong)',
+                'group-marker': 'var(--ds-group-marker)',
             },
             textColor: {
                 primary: 'var(--ds-text-primary)',
@@ -72,6 +81,13 @@ export default {
                 inverse: 'var(--ds-text-inverse)',
                 'group-title': 'var(--ds-group-title-text)',
                 'group-strong': 'var(--ds-group-strong)',
+                'status-danger': 'var(--ds-status-danger)',
+                'status-success': 'var(--ds-status-success)',
+                'status-warning': 'var(--ds-status-warning)',
+                viewer: 'var(--ds-viewer-text)',
+                'viewer-muted': 'var(--ds-viewer-text-muted)',
+                sunday: 'var(--ds-decor-sunday)',
+                heart: 'var(--ds-decor-heart)',
             },
             borderColor: {
                 subtle: 'var(--ds-border-subtle)',
@@ -79,13 +95,23 @@ export default {
                 'mark-underline': 'var(--ds-mark-underline)',
                 'group-bubble': 'var(--ds-group-bubble-border)',
                 'group-subtle': 'var(--ds-group-subtle-border)',
+                surface: 'var(--ds-surface-sheet)',
             },
             ringColor: {
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
+                surface: 'var(--ds-surface-sheet)',
+                strong: 'var(--ds-border-strong)',
+            },
+            ringOffsetColor: {
+                surface: 'var(--ds-surface-sheet)',
             },
             textDecorationColor: {
                 group: 'var(--ds-group-link-underline)',
+                viewer: 'var(--ds-viewer-underline)',
+            },
+            accentColor: {
+                group: 'var(--ds-group-accent)',
             },
             borderRadius: {
                 tail: 'var(--ds-radius-tail)',
@@ -136,6 +162,17 @@ export default {
                     '33%': { transform: 'scale(1.08) translate(20px, -15px)', opacity: 'calc(var(--orb-opacity, 0.35) * 1.15)' },
                     '66%': { transform: 'scale(0.95) translate(-15px, 10px)', opacity: 'calc(var(--orb-opacity, 0.35) * 0.9)' },
                 },
+                'heart-float': {
+                    '0%': { opacity: '1', transform: 'translateX(-50%) translateY(0) scale(1)' },
+                    '100%': { opacity: '0', transform: 'translateX(-50%) translateY(-30px) scale(1.3)' },
+                },
+                heartbeat: {
+                    '0%, 100%': { transform: 'scale(1)' },
+                    '15%': { transform: 'scale(1.3)' },
+                    '30%': { transform: 'scale(1)' },
+                    '45%': { transform: 'scale(1.2)' },
+                    '60%': { transform: 'scale(1)' },
+                },
             },
             animation: {
                 landing: 'landing var(--ds-duration-landing) var(--ds-ease-standard) both',
@@ -143,6 +180,8 @@ export default {
                 'orb-drift-1': 'orb-drift-1 28s ease-in-out infinite',
                 'orb-drift-2': 'orb-drift-2 34s ease-in-out infinite',
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
+                'heart-float': 'heart-float 800ms ease-out forwards',
+                heartbeat: 'heartbeat 1.2s ease-in-out infinite',
             },
             transitionDuration: {
                 fast: 'var(--ds-duration-fast)',

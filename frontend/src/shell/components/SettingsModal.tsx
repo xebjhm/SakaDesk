@@ -1,9 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
-import { useModalClose } from '../../core/common/useModalClose';
+import { Modal, Button, Switch, Input, Select } from '../../design/primitives';
+import { logDialogLoad, type DialogLoadSurface, type DialogLoadReason } from '../../design/dialog/dialogLog';
+import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
+import { SettingRow } from './SettingRow';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 import { apiKeyStatus } from './apiKeyStatus';
@@ -22,12 +25,37 @@ interface SettingsModalProps {
 
 type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
+/** A settings row that saves app settings (the failure shows on that row). */
+type SaveRow = 'outputDir' | 'incomingCall' | 'callPopup' | 'closeToTray' | 'autostart' | 'notifications'
+    | 'notificationsHideContent' | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
+
+/** The in-app confirm on screen: reset, delete backup (two steps), deep re-sync. */
+type ConfirmKind = 'reset' | 'clean' | 'clean2' | 'deep' | null;
+
 const SETTINGS_TABS: { id: SettingsTab; labelKey: string; Icon: typeof SlidersHorizontal }[] = [
     { id: 'general', labelKey: 'settings.tabGeneral', Icon: SlidersHorizontal },
     { id: 'sync', labelKey: 'settings.tabSync', Icon: RefreshCw },
     { id: 'ai', labelKey: 'settings.tabAi', Icon: Sparkles },
     { id: 'updates', labelKey: 'settings.tabUpdates', Icon: Download },
 ];
+
+/** A sync-mode radio row (the radio, its title and hint). */
+const RADIO_ROW = 'flex cursor-pointer items-center gap-3 rounded-card p-2 transition-colors duration-fast ease-standard hover:bg-sunken';
+/** A field label above an Input or Select. */
+const FIELD_LABEL = 'text-small font-semibold text-secondary';
+/** Text-only danger action (Delete backup, Clear API key). */
+const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
+
+/** Outcome of a per-service batch: `ok`, `error` when every request failed, else `partial` with the failure count. */
+function batchOutcome(failed: number, total: number): ['ok'] | ['error'] | ['partial', number] {
+    if (failed === 0) return ['ok'];
+    return failed >= total ? ['error'] : ['partial', failed];
+}
+
+function logBatch(surface: DialogLoadSurface, failed: number, total: number): void {
+    const [outcome, count] = batchOutcome(failed, total);
+    logDialogLoad(surface, outcome, count);
+}
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
@@ -40,13 +68,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     onDeepResync,
 }) => {
     const { t, i18n } = useTranslation();
-    const handleBackdropClick = useModalClose(true, onClose);
     const selectedServices = useAppStore(s => s.selectedServices);
     const setTranscriptionEnabled = useAppStore(s => s.setTranscriptionEnabled);
     const setTranslationEnabled = useAppStore(s => s.setTranslationEnabled);
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
-    const [showDeepConfirm, setShowDeepConfirm] = useState(false);
+    const [confirm, setConfirm] = useState<ConfirmKind>(null);
     const [blogCacheSize, setBlogCacheSize] = useState<string | null>(null);
     const [blogSizeLoading, setBlogSizeLoading] = useState(false);
     const [isClearing, setIsClearing] = useState(false);
@@ -62,12 +89,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const autostart = appSettings.autostart ?? false;
     const notificationsEnabled = appSettings.notifications_enabled ?? true;
     const notificationsHideContent = appSettings.notifications_hide_content ?? false;
+    const syncReadToPhone = appSettings.sync_read_to_phone ?? false;
     // Clear pending state once appSettings catches up
     React.useEffect(() => {
         if (blogTogglePending !== null && appSettings.blogs_full_backup === blogTogglePending) {
             setBlogTogglePending(null);
         }
     }, [appSettings.blogs_full_backup, blogTogglePending]);
+
+    // The row whose last save failed: it shows the failure inline (the App toast says it too).
+    const [failedRow, setFailedRow] = useState<SaveRow | null>(null);
+    // Mirrors failedRow so a successful save on another row does not schedule a render.
+    const failedRowRef = React.useRef<SaveRow | null>(null);
+    const save = async (row: SaveRow, updates: Partial<AppSettings>): Promise<boolean> => {
+        const ok = await onSaveSettings(updates);
+        logDialogLoad('settings_app_save', ok ? 'ok' : 'error');
+        const next = ok ? (failedRowRef.current === row ? null : failedRowRef.current) : row;
+        if (next !== failedRowRef.current) {
+            failedRowRef.current = next;
+            setFailedRow(next);
+        }
+        return ok;
+    };
+    const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -80,16 +124,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setBlogSizeLoading(true);
         try {
             let totalBytes = 0;
+            let failed = 0;
             for (const service of selectedServices) {
                 const res = await fetch(`/api/blogs/cache-size?service=${encodeURIComponent(service)}`);
                 if (res.ok) {
                     const data = await res.json();
                     totalBytes += data.size_bytes || 0;
+                } else {
+                    failed += 1;
                 }
             }
             setBlogCacheSize(totalBytes > 0 ? formatBytes(totalBytes) : null);
+            logBatch('settings_blog_cache', failed, selectedServices.length);
         } catch {
             setBlogCacheSize(null);
+            logDialogLoad('settings_blog_cache', 'error');
         } finally {
             setBlogSizeLoading(false);
         }
@@ -108,11 +157,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             return;
         }
         let cancelled = false;
+        // One `ok` breadcrumb per open, not one per 5 s poll while a backup runs.
+        let logged = false;
+        // The stats breadcrumb repeats only when its outcome changes between polls.
+        let lastStats = '';
         const check = () => {
             fetch('/api/blogs/backup/status')
-                .then(res => res.json())
+                .then(res => {
+                    if (!res.ok) throw new Error('backup status refused');
+                    return res.json();
+                })
                 .then(data => {
                     if (cancelled) return;
+                    if (!logged) {
+                        logged = true;
+                        logDialogLoad('settings_blog_backup', 'ok');
+                    }
                     const running = Object.keys(data.running ?? {}).length > 0;
                     setBlogBackupRunning(running);
                     if (running) setTimeout(check, 5000);
@@ -126,6 +186,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             )
                         ).then(results => {
                             if (cancelled) return;
+                            const failed = results.filter(r => r === null).length;
+                            const outcome = batchOutcome(failed, results.length);
+                            if (results.length > 0 && outcome.join() !== lastStats) {
+                                lastStats = outcome.join();
+                                logBatch('settings_blog_stats', failed, results.length);
+                            }
                             let cached = 0, total = 0;
                             for (const r of results) {
                                 if (r) { cached += r.cached_blogs || 0; total += r.available_blogs || 0; }
@@ -134,24 +200,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         });
                     }
                 })
-                .catch(() => {});
+                .catch(() => {
+                    if (!cancelled) logDialogLoad('settings_blog_backup', 'error');
+                });
         };
         check();
         return () => { cancelled = true; };
     }, [appSettings.blogs_full_backup, selectedServices]);
 
+    // Runs after both in-app confirmations (see the ConfirmDialog below).
     const handleCleanBlogCache = async () => {
-        if (!window.confirm(t('settings.cleanBlogCacheConfirm'))) return;
-        if (!window.confirm(t('settings.cleanBlogCacheConfirm2'))) return;
-
         setIsClearing(true);
         try {
+            let failed = 0;
             for (const service of selectedServices) {
-                await fetch(`/api/blogs/cache?service=${encodeURIComponent(service)}`, { method: 'DELETE' });
+                const res = await fetch(`/api/blogs/cache?service=${encodeURIComponent(service)}`, { method: 'DELETE' });
+                if (!res.ok) failed += 1;
             }
+            logBatch('settings_blog_clean', failed, selectedServices.length);
             await loadBlogCacheSize();
-        } catch (err) {
-            console.error('Failed to clean blog cache:', err);
+        } catch {
+            logDialogLoad('settings_blog_clean', 'error');
         } finally {
             setIsClearing(false);
         }
@@ -163,10 +232,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     // Restore behavioural preferences to defaults. Non-destructive: keeps the
-    // data folder, the saved API key, and the chosen language.
+    // data folder, the saved API key, and the chosen language. Runs after the in-app confirm.
     const handleResetDefaults = async () => {
-        if (!window.confirm(t('settings.resetConfirm'))) return;
-        await onSaveSettings({
+        await save('reset', {
             auto_sync_enabled: true,
             adaptive_sync_enabled: true,
             sync_interval_minutes: 15,
@@ -184,469 +252,319 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         setTranslationTargetLanguage(null);
     };
 
+    const syncModeLabelId = useId();
+    const syncMode = !appSettings.auto_sync_enabled ? 'off' : appSettings.adaptive_sync_enabled ? 'smart' : 'fixed';
+
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-3xl w-full shadow-xl overflow-hidden h-[600px] max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="bg-gray-100 px-6 py-4 flex items-center justify-between border-b flex-shrink-0">
-                    <h3 className="text-lg font-bold text-gray-800">{t('settings.title')}</h3>
+        <Modal
+            isOpen
+            onClose={onClose}
+            title={t('settings.title')}
+            closeLabel={t('common.close')}
+            logId="settings"
+            className="h-[600px] max-h-[90vh] max-w-3xl"
+            bodyClassName="flex min-h-0 gap-0 px-0 pb-4"
+            footer={<Button variant="ghost" size="sm" onClick={() => setConfirm('reset')}>{t('settings.resetDefaults')}</Button>}
+        >
+            <nav aria-label={t('settings.sections')} className="flex w-44 shrink-0 flex-col gap-1 overflow-y-auto p-3">
+                {SETTINGS_TABS.map(({ id, labelKey, Icon }) => (
                     <button
-                        onClick={onClose}
-                        className="text-gray-500 hover:text-gray-700"
+                        key={id}
+                        type="button"
+                        aria-current={activeTab === id ? 'true' : undefined}
+                        onClick={() => setActiveTab(id)}
+                        className={cn(
+                            'flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                            activeTab === id ? 'bg-sunken font-semibold text-primary' : 'text-secondary hover:bg-sunken hover:text-primary',
+                        )}
                     >
-                        X
+                        <Icon className="h-4 w-4 shrink-0" />
+                        {t(labelKey)}
                     </button>
-                </div>
-                <div className="flex flex-1 min-h-0">
-                    {/* Category nav */}
-                    <nav className="w-44 flex-shrink-0 border-r bg-gray-50 p-2 space-y-0.5 overflow-y-auto">
-                        {SETTINGS_TABS.map(({ id, labelKey, Icon }) => (
-                            <button
-                                key={id}
-                                onClick={() => setActiveTab(id)}
-                                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-left transition-colors ${
-                                    activeTab === id
-                                        ? 'bg-white shadow-sm text-gray-800 font-medium'
-                                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                                }`}
-                            >
-                                <Icon className="w-4 h-4 shrink-0" />
-                                {t(labelKey)}
-                            </button>
-                        ))}
-                    </nav>
-                    {/* Active category content */}
-                    <div className="flex-1 min-w-0 p-6 space-y-6 overflow-y-auto">
-                    {activeTab === 'general' && (<>
-                    {/* Language Selector */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {t('settings.language')}
-                        </label>
-                        <select
+                ))}
+            </nav>
+            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6 pt-2">
+                {activeTab === 'general' && (<>
+                    <SettingRow label={t('settings.language')} description={t('settings.languageDesc')}>
+                        <Select
+                            aria-label={t('settings.language')}
                             value={i18n.language}
                             onChange={(e) => handleLanguageChange(e.target.value as SupportedLanguage)}
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                             {Object.entries(SUPPORTED_LANGUAGES).map(([code, { nativeName }]) => (
                                 <option key={code} value={code}>
                                     {nativeName}
                                 </option>
                             ))}
-                        </select>
-                        <p className="text-xs text-gray-500 mt-1">{t('settings.languageDesc')}</p>
-                    </div>
+                        </Select>
+                    </SettingRow>
 
-                    {/* Output Folder */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {t('settings.outputFolder')}
-                        </label>
+                    <SettingRow label={t('settings.outputFolder')} error={rowError('outputDir')}>
                         <div className="flex gap-2">
-                            <input
-                                type="text"
+                            <Input
+                                aria-label={t('settings.outputFolder')}
                                 value={outputDirInput}
                                 onChange={(e) => setOutputDirInput(e.target.value)}
-                                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="flex-1"
                             />
-                            <button
-                                onClick={() => onSaveSettings({ output_dir: outputDirInput })}
-                                className="px-4 py-2 bg-blue-400 text-white rounded-lg text-sm hover:bg-blue-500"
-                            >
+                            <Button variant="primary" onClick={() => save('outputDir', { output_dir: outputDirInput })}>
                                 {t('common.save')}
-                            </button>
+                            </Button>
                         </div>
-                    </div>
+                    </SettingRow>
 
-                    {/* Incoming call (default on) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.incomingCall')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={incomingCallEnabled}
-                                aria-label={t('settings.incomingCall')}
-                                onClick={() => onSaveSettings({ incoming_call_enabled: !incomingCallEnabled })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    incomingCallEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    incomingCallEnabled ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.incomingCallDesc')}
-                        </p>
-                    </div>
+                    <SettingRow
+                        label={t('settings.incomingCall')}
+                        error={rowError('incomingCall')}
+                        description={t('settings.incomingCallDesc')}
+                        control={<Switch checked={incomingCallEnabled} onCheckedChange={(v) => save('incomingCall', { incoming_call_enabled: v })} aria-label={t('settings.incomingCall')} />}
+                    />
 
-                    {/* Background call popup (default on) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.callPopup')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={callPopupEnabled}
-                                aria-label={t('settings.callPopup')}
-                                onClick={() => onSaveSettings({ call_popup_enabled: !callPopupEnabled })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    callPopupEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    callPopupEnabled ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.callPopupDesc')}
-                        </p>
-                    </div>
+                    <SettingRow
+                        label={t('settings.callPopup')}
+                        error={rowError('callPopup')}
+                        description={t('settings.callPopupDesc')}
+                        control={<Switch checked={callPopupEnabled} onCheckedChange={(v) => save('callPopup', { call_popup_enabled: v })} aria-label={t('settings.callPopup')} />}
+                    />
 
-                    {/* Keep running in the tray when closed (default on) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.closeToTray')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={closeToTray}
-                                aria-label={t('settings.closeToTray')}
-                                onClick={() => onSaveSettings({ close_to_tray: !closeToTray })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    closeToTray ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    closeToTray ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.closeToTrayDesc')}
-                        </p>
-                    </div>
+                    <SettingRow
+                        label={t('settings.closeToTray')}
+                        error={rowError('closeToTray')}
+                        description={t('settings.closeToTrayDesc')}
+                        control={<Switch checked={closeToTray} onCheckedChange={(v) => save('closeToTray', { close_to_tray: v })} aria-label={t('settings.closeToTray')} />}
+                    />
 
-                    {/* Start with Windows, hidden in the tray (default off) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.autostart')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={autostart}
-                                aria-label={t('settings.autostart')}
-                                onClick={() => onSaveSettings({ autostart: !autostart })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    autostart ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    autostart ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.autostartDesc')}
-                        </p>
-                    </div>
+                    <SettingRow
+                        label={t('settings.autostart')}
+                        error={rowError('autostart')}
+                        description={t('settings.autostartDesc')}
+                        control={<Switch checked={autostart} onCheckedChange={(v) => save('autostart', { autostart: v })} aria-label={t('settings.autostart')} />}
+                    />
 
-                    {/* Notifications (default on) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.notifications')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={notificationsEnabled}
-                                aria-label={t('settings.notifications')}
-                                onClick={() => onSaveSettings({ notifications_enabled: !notificationsEnabled })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    notificationsEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    notificationsEnabled ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.notificationsDesc')}
-                        </p>
-                    </div>
+                    <SettingRow
+                        label={t('settings.notifications')}
+                        error={rowError('notifications')}
+                        description={t('settings.notificationsDesc')}
+                        control={<Switch checked={notificationsEnabled} onCheckedChange={(v) => save('notifications', { notifications_enabled: v })} aria-label={t('settings.notifications')} />}
+                    />
 
-                    {/* Hide message content in notifications (default off) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.notificationsHideContent')}
-                            </label>
-                            <button
-                                role="switch"
-                                aria-checked={notificationsHideContent}
-                                aria-disabled={!notificationsEnabled}
+                    <SettingRow
+                        label={t('settings.notificationsHideContent')}
+                        error={rowError('notificationsHideContent')}
+                        description={t('settings.notificationsHideContentDesc')}
+                        control={
+                            <Switch
+                                checked={notificationsHideContent}
+                                onCheckedChange={(v) => save('notificationsHideContent', { notifications_hide_content: v })}
                                 disabled={!notificationsEnabled}
+                                aria-disabled={!notificationsEnabled}
                                 aria-label={t('settings.notificationsHideContent')}
-                                onClick={() => onSaveSettings({ notifications_hide_content: !notificationsHideContent })}
-                                className={`relative w-12 h-6 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                                    notificationsHideContent ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    notificationsHideContent ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.notificationsHideContentDesc')}
-                        </p>
-                    </div>
-                    </>)}
+                            />
+                        }
+                    />
+                </>)}
 
-                    {activeTab === 'sync' && (<>
-                    {/* Sync Mode */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {t('settings.syncMode')}
-                        </label>
-                        {/* Current state summary */}
-                        <p className="text-xs text-gray-500 mb-2">
-                            {!appSettings.auto_sync_enabled
+                {activeTab === 'sync' && (<>
+                    <SettingRow
+                        label={t('settings.syncMode')}
+                        error={rowError('syncMode')}
+                        labelId={syncModeLabelId}
+                        description={
+                            syncMode === 'off'
                                 ? t('settings.syncCurrentOff')
-                                : appSettings.adaptive_sync_enabled
+                                : syncMode === 'smart'
                                     ? t('settings.syncCurrentSmart')
-                                    : t('settings.syncCurrentFixed', { minutes: appSettings.sync_interval_minutes })}
-                        </p>
-                        <div className="space-y-1">
-                            {/* Off */}
-                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                                    : t('settings.syncCurrentFixed', { minutes: appSettings.sync_interval_minutes })
+                        }
+                    >
+                        <div role="radiogroup" aria-labelledby={syncModeLabelId} className="flex flex-col gap-1">
+                            <label className={RADIO_ROW}>
                                 <input
                                     type="radio"
                                     name="syncMode"
-                                    checked={!appSettings.auto_sync_enabled}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: false, adaptive_sync_enabled: false })}
-                                    className="w-4 h-4 text-blue-500"
+                                    checked={syncMode === 'off'}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: false, adaptive_sync_enabled: false })}
+                                    className="h-4 w-4 accent-group"
                                 />
                                 <div>
-                                    <span className="text-sm text-gray-700">{t('settings.syncOff')}</span>
-                                    <p className="text-xs text-gray-400">{t('settings.syncOffDesc')}</p>
+                                    <span className="text-body text-primary">{t('settings.syncOff')}</span>
+                                    <p className="text-small text-muted">{t('settings.syncOffDesc')}</p>
                                 </div>
                             </label>
 
-                            {/* Fixed interval */}
-                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                            <label className={RADIO_ROW}>
                                 <input
                                     type="radio"
                                     name="syncMode"
-                                    checked={appSettings.auto_sync_enabled && !appSettings.adaptive_sync_enabled}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: true, adaptive_sync_enabled: false })}
-                                    className="w-4 h-4 text-blue-500"
+                                    checked={syncMode === 'fixed'}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: false })}
+                                    className="h-4 w-4 accent-group"
                                 />
                                 <div>
-                                    <span className="text-sm text-gray-700">{t('settings.syncFixed')}</span>
-                                    <p className="text-xs text-gray-400">{t('settings.syncFixedDesc')}</p>
+                                    <span className="text-body text-primary">{t('settings.syncFixed')}</span>
+                                    <p className="text-small text-muted">{t('settings.syncFixedDesc')}</p>
                                 </div>
                             </label>
-                            {appSettings.auto_sync_enabled && !appSettings.adaptive_sync_enabled && (
-                                <div className="ml-9 flex items-center gap-2">
-                                    <span className="text-sm text-gray-600">{t('settings.syncEvery')}</span>
-                                    <select
+                            {syncMode === 'fixed' && (
+                                <div className="ml-8 flex items-center gap-2">
+                                    <span className="text-small text-secondary">{t('settings.syncEvery')}</span>
+                                    <Select
+                                        aria-label={t('settings.syncEvery')}
                                         value={appSettings.sync_interval_minutes}
-                                        onChange={(e) => onSaveSettings({ sync_interval_minutes: parseInt(e.target.value) })}
-                                        className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        onChange={(e) => save('syncMode', { sync_interval_minutes: parseInt(e.target.value) })}
+                                        className="w-auto"
                                     >
                                         <option value={1}>{t('time.minute', { count: 1 })}</option>
                                         <option value={5}>{t('time.minute', { count: 5 })}</option>
                                         <option value={10}>{t('time.minute', { count: 10 })}</option>
                                         <option value={30}>{t('time.minute', { count: 30 })}</option>
                                         <option value={60}>{t('time.hour', { count: 1 })}</option>
-                                    </select>
+                                    </Select>
                                 </div>
                             )}
 
-                            {/* Smart timing */}
-                            <label className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                            <label className={RADIO_ROW}>
                                 <input
                                     type="radio"
                                     name="syncMode"
-                                    checked={appSettings.auto_sync_enabled && !!appSettings.adaptive_sync_enabled}
-                                    onChange={() => onSaveSettings({ auto_sync_enabled: true, adaptive_sync_enabled: true })}
-                                    className="w-4 h-4 text-blue-500"
+                                    checked={syncMode === 'smart'}
+                                    onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: true })}
+                                    className="h-4 w-4 accent-group"
                                 />
                                 <div>
-                                    <span className="text-sm text-gray-700">{t('settings.syncSmart')}</span>
-                                    <p className="text-xs text-gray-400">{t('settings.smartTimingDesc')}</p>
+                                    <span className="text-body text-primary">{t('settings.syncSmart')}</span>
+                                    <p className="text-small text-muted">{t('settings.smartTimingDesc')}</p>
                                 </div>
                             </label>
                         </div>
-                    </div>
+                    </SettingRow>
 
-                    {/* Blog Full Backup (Global) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                                {t('settings.blogFullBackup')}
-                                {blogBackupRunning && (
-                                    <span className="text-xs text-blue-500 flex items-center gap-1">
-                                        <Loader2 className="w-3 h-3 animate-spin" />
-                                        {blogBackupStats
-                                            ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
-                                            : t('settings.blogBackupWorking')}
-                                    </span>
-                                )}
-                            </label>
-                            <button
-                                onClick={() => {
-                                    const next = !blogBackupEnabled;
-                                    setBlogTogglePending(next);
-                                    onSaveSettings({ blogs_full_backup: next });
-                                }}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    blogBackupEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    blogBackupEnabled ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">
-                            {blogBackupEnabled
-                                ? t('settings.blogFullBackupOnDesc')
-                                : t('settings.blogFullBackupOffDesc')}
-                        </p>
+                    <SettingRow
+                        label={<>
+                            {t('settings.blogFullBackup')}
+                            {blogBackupRunning && (
+                                <span className="flex items-center gap-1 text-caption font-normal text-secondary">
+                                    <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                    {blogBackupStats
+                                        ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
+                                        : t('settings.blogBackupWorking')}
+                                </span>
+                            )}
+                        </>}
+                        error={rowError('blogFullBackup')}
+                        description={blogBackupEnabled ? t('settings.blogFullBackupOnDesc') : t('settings.blogFullBackupOffDesc')}
+                        control={
+                            <Switch
+                                checked={!!blogBackupEnabled}
+                                onCheckedChange={(v) => { setBlogTogglePending(v); save('blogFullBackup', { blogs_full_backup: v }); }}
+                                aria-label={t('settings.blogFullBackup')}
+                            />
+                        }
+                    >
                         {blogBackupEnabled && (
-                            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-                                <div className="text-xs text-gray-500 flex items-center gap-1">
+                            <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-1 text-small text-muted">
                                     {blogSizeLoading
-                                        ? <><Loader2 className="w-3 h-3 animate-spin" />{t('settings.blogBackupCalculating')}</>
+                                        ? <><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />{t('settings.blogBackupCalculating')}</>
                                         : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
-                                <button
-                                    onClick={handleCleanBlogCache}
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className={DANGER_GHOST}
+                                    onClick={() => setConfirm('clean')}
                                     disabled={isClearing}
-                                    className="text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
                                 >
                                     {isClearing ? t('common.loading') : t('settings.cleanBlogCache')}
-                                </button>
+                                </Button>
                             </div>
                         )}
-                    </div>
+                    </SettingRow>
 
-                    {/* Data completeness: verify & fix media */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.verifyFixMedia')}
-                            </label>
-                            <button
+                    <SettingRow
+                        label={t('settings.verifyFixMedia')}
+                        description={t('settings.verifyFixMediaDesc')}
+                        control={
+                            <Button
+                                variant="secondary"
+                                size="sm"
                                 onClick={() => {
                                     // Close settings so the verify progress/result
                                     // (shown in the sync modal) is in focus.
                                     onVerifyAndFix(activeService);
                                     onClose();
                                 }}
-                                className="text-xs font-medium text-blue-600 hover:text-blue-800"
                             >
                                 {t('settings.verifyFixButton')}
-                            </button>
-                        </div>
-                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.verifyFixMediaDesc')}
-                        </p>
-                    </div>
+                            </Button>
+                        }
+                    />
 
                     {/* Deep re-verify: full re-sync (re-paginates every member from
                         scratch, skipping already-downloaded assets). Catches gaps the
                         media-only check can't (e.g. entirely-missing messages). */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.deepResync')}
-                            </label>
-                            <button
-                                onClick={() => setShowDeepConfirm(true)}
-                                className="text-xs font-medium text-amber-600 hover:text-amber-800"
-                            >
+                    <SettingRow
+                        label={t('settings.deepResync')}
+                        description={t('settings.deepResyncDesc')}
+                        control={
+                            <Button variant="secondary" size="sm" onClick={() => setConfirm('deep')}>
                                 {t('settings.deepResyncButton')}
-                            </button>
-                        </div>
-                        <p className="mt-1 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.deepResyncDesc')}
-                        </p>
-                    </div>
-
-                    <ConfirmDialog
-                        open={showDeepConfirm}
-                        title={t('settings.deepResync')}
-                        message={t('settings.deepResyncConfirm')}
-                        confirmLabel={t('settings.deepResyncButton')}
-                        variant="warning"
-                        onConfirm={() => {
-                            setShowDeepConfirm(false);
-                            onDeepResync(activeService);
-                            onClose();
-                        }}
-                        onCancel={() => setShowDeepConfirm(false)}
+                            </Button>
+                        }
                     />
 
-                    {/* Sync read status to phone (opt-in) */}
-                    <div>
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-medium text-gray-700">
-                                {t('settings.syncReadToPhone')}
-                            </label>
-                            <button
-                                onClick={() => onSaveSettings({ sync_read_to_phone: !(appSettings.sync_read_to_phone ?? false) })}
-                                className={`relative w-12 h-6 rounded-full transition-colors ${
-                                    appSettings.sync_read_to_phone ? 'bg-blue-400' : 'bg-gray-300'
-                                }`}
-                            >
-                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                                    appSettings.sync_read_to_phone ? 'translate-x-7' : 'translate-x-1'
-                                }`} />
-                            </button>
-                        </div>
-                        <p className="mt-2 max-w-md text-xs leading-relaxed text-gray-500">
-                            {t('settings.syncReadToPhoneDesc')}
-                        </p>
-                    </div>
-                    </>)}
+                    <SettingRow
+                        label={t('settings.syncReadToPhone')}
+                        error={rowError('syncReadToPhone')}
+                        description={t('settings.syncReadToPhoneDesc')}
+                        control={<Switch checked={syncReadToPhone} onCheckedChange={(v) => save('syncReadToPhone', { sync_read_to_phone: v })} aria-label={t('settings.syncReadToPhone')} />}
+                    />
+                </>)}
 
-                    {activeTab === 'ai' && <AiTab />}
+                {activeTab === 'ai' && <AiTab />}
 
-                    {activeTab === 'updates' && (
-                        <UpdatesSection
-                            autoDownload={appSettings.auto_download_updates ?? false}
-                            onToggleAutoDownload={(val) => onSaveSettings({ auto_download_updates: val })}
-                        />
-                    )}
-                    </div>
-                </div>
-                <div className="flex-shrink-0 border-t bg-gray-50 px-6 py-3 flex justify-end">
-                    <button
-                        onClick={handleResetDefaults}
-                        className="text-xs font-medium text-gray-500 hover:text-red-600"
-                    >
-                        {t('settings.resetDefaults')}
-                    </button>
-                </div>
+                {activeTab === 'updates' && (
+                    <UpdatesSection
+                        autoDownload={appSettings.auto_download_updates ?? false}
+                        onToggleAutoDownload={(val) => save('autoDownload', { auto_download_updates: val })}
+                        saveError={rowError('autoDownload')}
+                    />
+                )}
             </div>
-        </div>
+            <ConfirmDialog
+                // The second delete step is a fresh dialog: focus starts on Cancel again.
+                key={confirm === 'clean2' ? 'clean2' : 'confirm'}
+                open={confirm !== null}
+                title={confirm === 'reset' ? t('settings.resetDefaults') : confirm === 'deep' ? t('settings.deepResync') : t('settings.cleanBlogCache')}
+                message={
+                    confirm === 'reset' ? t('settings.resetConfirm')
+                    : confirm === 'deep' ? t('settings.deepResyncConfirm')
+                    : confirm === 'clean2' ? t('settings.cleanBlogCacheConfirm2')
+                    : t('settings.cleanBlogCacheConfirm')
+                }
+                confirmLabel={confirm === 'deep' ? t('settings.deepResyncButton') : t('common.confirm')}
+                variant={confirm === 'clean' || confirm === 'clean2' ? 'danger' : 'warning'}
+                onCancel={() => setConfirm(null)}
+                onConfirm={() => {
+                    const kind = confirm;
+                    if (kind === 'clean') { setConfirm('clean2'); return; } // second confirmation, as before
+                    setConfirm(null);
+                    if (kind === 'clean2') void handleCleanBlogCache();
+                    if (kind === 'reset') void handleResetDefaults();
+                    if (kind === 'deep') { onDeepResync(activeService); onClose(); }
+                }}
+            />
+        </Modal>
     );
 };
 
 
-function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
+function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
     autoDownload: boolean;
     onToggleAutoDownload: (val: boolean) => void;
+    /** Inline failure of the last auto-download save. */
+    saveError?: string;
 }) {
     const { t } = useTranslation();
     const [checking, setChecking] = useState(false);
@@ -661,16 +579,18 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
             const res = await fetch('/api/version?force=true');
             if (res.ok) {
                 const data = await res.json();
+                logDialogLoad('settings_update_check', 'ok');
                 if (data.update_available) {
                     setResult(t('settings.updateFound', { version: data.latest_version }));
                 } else {
                     setResult(t('settings.upToDate'));
                 }
             } else {
+                logDialogLoad('settings_update_check', 'error');
                 setResult(t('settings.updateCheckFailed'));
             }
-        } catch (err) {
-            console.error('[Settings] Update check failed:', err);
+        } catch {
+            logDialogLoad('settings_update_check', 'error');
             setResult(t('settings.updateCheckFailed'));
         } finally {
             setChecking(false);
@@ -678,42 +598,24 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload }: {
     };
 
     return (
-        <div>
-            <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700">
-                    {t('settings.autoDownloadUpdates')}
-                </label>
-                <button
-                    onClick={() => onToggleAutoDownload(!autoDownload)}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                        autoDownload ? 'bg-blue-400' : 'bg-gray-300'
-                    }`}
-                >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                        autoDownload ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                </button>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-                {t('settings.autoDownloadUpdatesDesc')}
-            </p>
-            <div className="mt-3 flex items-center gap-3">
-                <button
-                    onClick={handleCheckNow}
-                    disabled={checking}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
-                >
+        <SettingRow
+            label={t('settings.autoDownloadUpdates')}
+            description={t('settings.autoDownloadUpdatesDesc')}
+            control={<Switch checked={autoDownload} onCheckedChange={onToggleAutoDownload} aria-label={t('settings.autoDownloadUpdates')} />}
+            error={saveError}
+        >
+            <div className="mt-2 flex items-center gap-3">
+                <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>
                     {checking
-                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        : <RefreshCw className="w-3.5 h-3.5" />
+                        ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        : <RefreshCw className="h-4 w-4" />
                     }
                     {t('settings.checkForUpdates')}
-                </button>
-                {result && (
-                    <span className="text-xs text-gray-500">{result}</span>
-                )}
+                </Button>
+                {/* Mounted empty so the result is announced when it arrives. */}
+                <span role="status" className="text-small text-secondary">{result}</span>
             </div>
-        </div>
+        </SettingRow>
     );
 }
 
@@ -738,6 +640,8 @@ function AiTab() {
     const setTranslationTargetLanguage = useAppStore(s => s.setTranslationTargetLanguage);
     const [testing, setTesting] = useState(false);
     const [testResult, setTestResult] = useState<string | null>(null);
+    const [confirmClear, setConfirmClear] = useState(false);
+    const fieldId = useId();
 
     // Own state loaded from /api/translation/config (not from appSettings).
     // Seed from the session cache so a reopen renders instantly, then revalidate.
@@ -757,8 +661,12 @@ function AiTab() {
 
     useEffect(() => {
         fetch('/api/translation/config')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('config refused');
+                return res.json();
+            })
             .then(data => {
+                logDialogLoad('settings_ai_config', 'ok');
                 setProvider(data.provider ?? null);
                 setModel(data.model ?? null);
                 setHasApiKey(data.has_api_key ?? false);
@@ -775,7 +683,7 @@ function AiTab() {
                     setTranslationTargetLanguage(data.target_language);
                 }
             })
-            .catch(() => {})
+            .catch(() => logDialogLoad('settings_ai_config', 'error'))
             .finally(() => setConfigLoading(false));
     }, [setTranslationTargetLanguage]);
 
@@ -789,8 +697,12 @@ function AiTab() {
 
     useEffect(() => {
         fetch('/api/translation/models')
-            .then(res => res.json())
+            .then(res => {
+                if (!res.ok) throw new Error('models refused');
+                return res.json();
+            })
             .then(data => {
+                logDialogLoad('settings_ai_models', 'ok');
                 // Transform backend format {gemini: [{id, label}]} to {gemini: [{value, label}]}
                 const opts: Record<string, { value: string; label: string }[]> = {};
                 for (const [prov, models] of Object.entries(data)) {
@@ -798,7 +710,7 @@ function AiTab() {
                 }
                 setModelOptions(opts);
             })
-            .catch(() => {});
+            .catch(() => logDialogLoad('settings_ai_models', 'error'));
     }, []);
 
     const MODELS = modelOptions;
@@ -823,19 +735,23 @@ function AiTab() {
             });
             const data = await res.json();
             if (data.ok) {
+                logDialogLoad('settings_ai_test', 'ok');
                 setTestResult(t('translation.settings.testSuccess'));
             } else {
                 // Map the backend's reason code to a localized message instead of
-                // showing its English `detail`.
-                const byCode: Record<string, string> = {
-                    auth: 'translation.settings.testErrorAuth',
-                    unreachable: 'translation.settings.testErrorUnreachable',
-                    no_key: 'translation.settings.testErrorNoKey',
+                // showing its English `detail`; the breadcrumb carries only the code.
+                const byCode: Record<string, { key: string; reason: DialogLoadReason }> = {
+                    auth: { key: 'translation.settings.testErrorAuth', reason: 'auth' },
+                    unreachable: { key: 'translation.settings.testErrorUnreachable', reason: 'unreachable' },
+                    no_key: { key: 'translation.settings.testErrorNoKey', reason: 'no_key' },
                 };
-                const key = (data.code && byCode[data.code]) || 'translation.settings.testFailed';
+                const known = typeof data.code === 'string' && Object.prototype.hasOwnProperty.call(byCode, data.code) ? byCode[data.code] : null;
+                const { key, reason } = known ?? { key: 'translation.settings.testFailed', reason: 'failed' as const };
+                logDialogLoad('settings_ai_test', 'error', undefined, reason);
                 setTestResult(t(key));
             }
         } catch {
+            logDialogLoad('settings_ai_test', 'error', undefined, 'unreachable');
             setTestResult(t('translation.settings.testErrorUnreachable'));
         } finally {
             setTesting(false);
@@ -843,13 +759,29 @@ function AiTab() {
     };
 
     const handleClearCache = async () => {
-        await clearTranslationCache();
+        try {
+            await clearTranslationCache();
+        } catch {
+            logDialogLoad('settings_ai_cache_clear', 'error');
+            setTestResult(t('translation.settings.cacheClearFailed'));
+            return;
+        }
+        logDialogLoad('settings_ai_cache_clear', 'ok');
         setTestResult(t('translation.settings.cacheClearedMsg'));
     };
 
+    // Runs after the in-app confirm (the ConfirmDialog at the end of this tab).
     const handleClearApiKey = async () => {
-        if (!window.confirm(t('translation.settings.clearApiKeyConfirm'))) return;
-        await fetch('/api/translation/clear-api-key', { method: 'POST' });
+        try {
+            const res = await fetch('/api/translation/clear-api-key', { method: 'POST' });
+            if (!res.ok) throw new Error('clear refused');
+        } catch {
+            // The key is still stored: keep showing it as saved and say the clear failed.
+            logDialogLoad('settings_ai_key_clear', 'error');
+            setTestResult(t('translation.settings.clearApiKeyFailed'));
+            return;
+        }
+        logDialogLoad('settings_ai_key_clear', 'ok');
         setApiKeyInput('');
         setHasApiKey(false);
         setApiKeyMasked(null);
@@ -867,7 +799,6 @@ function AiTab() {
         if (updates.model !== undefined) setModel(updates.model);
         if (updates.api_key !== undefined) {
             setApiKeyInput(updates.api_key ?? '');
-            if (updates.api_key) setHasApiKey(true);
         }
         if (updates.target_language !== undefined) {
             setTargetLang(updates.target_language);
@@ -878,7 +809,7 @@ function AiTab() {
         aiConfigCache = {
             provider: newProvider,
             model: newModel,
-            hasApiKey: updates.api_key ? true : hasApiKey,
+            hasApiKey,  // a new key counts as stored only once the save succeeds (below)
             apiKeyMasked: aiConfigCache?.apiKeyMasked ?? null,  // refreshed by the next fetch
             targetLang: newTargetLang,
         };
@@ -886,6 +817,7 @@ function AiTab() {
         // Persist to backend (API key stored in keyring, not settings.json)
         // Only send api_key if user typed a new one
         const apiKeyToSend = updates.api_key !== undefined ? updates.api_key : undefined;
+        const failedMsg = t('translation.settings.saveFailed');
         fetch('/api/translation/configure', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -895,7 +827,21 @@ function AiTab() {
                 api_key: apiKeyToSend ?? null,
                 target_language: newTargetLang,
             }),
-        });
+        })
+            .then(res => {
+                if (!res.ok) throw new Error('configure refused');
+                logDialogLoad('settings_ai_save', 'ok');
+                if (apiKeyToSend) {
+                    setHasApiKey(true);
+                    if (aiConfigCache) aiConfigCache.hasApiKey = true;
+                }
+                // A later save that works replaces an earlier failure message.
+                setTestResult(prev => (prev === failedMsg ? null : prev));
+            })
+            .catch(() => {
+                logDialogLoad('settings_ai_save', 'error');
+                setTestResult(failedMsg);
+            });
     };
 
     const handleProviderChange = (value: string | null) => {
@@ -908,159 +854,137 @@ function AiTab() {
 
     return (
         <>
-            {/* Transcription */}
-            <div>
-                <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-gray-700">
-                        {t('settings.transcriptionDevice')}
-                    </label>
-                    <button
-                        onClick={() => setTranscriptionEnabled(!transcriptionEnabled)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${
-                            transcriptionEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                        }`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                            transcriptionEnabled ? 'translate-x-7' : 'translate-x-1'
-                        }`} />
-                    </button>
-                </div>
-            </div>
+            <SettingRow
+                label={t('settings.transcriptionDevice')}
+                control={<Switch checked={transcriptionEnabled} onCheckedChange={setTranscriptionEnabled} aria-label={t('settings.transcriptionDevice')} />}
+            />
 
-            {/* Translation */}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                        {t('translation.settings.title')}
-                    </label>
-                    <button
-                        onClick={() => setTranslationEnabled(!translationEnabled)}
-                        className={`relative w-12 h-6 rounded-full transition-colors ${
-                            translationEnabled ? 'bg-blue-400' : 'bg-gray-300'
-                        }`}
-                    >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                            translationEnabled ? 'translate-x-7' : 'translate-x-1'
-                        }`} />
-                    </button>
-                </div>
+            <SettingRow
+                label={t('translation.settings.title')}
+                control={<Switch checked={translationEnabled} onCheckedChange={setTranslationEnabled} aria-label={t('translation.settings.title')} />}
+            >
                 {translationEnabled && (
-                    <div className="space-y-3">
-                        {/* Target Language */}
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.targetLanguage')}</label>
-                            <select
+                    <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <label htmlFor={`${fieldId}-target`} className={FIELD_LABEL}>{t('translation.settings.targetLanguage')}</label>
+                            <Select
+                                id={`${fieldId}-target`}
                                 value={targetLang ?? ''}
                                 onChange={(e) => saveConfig({ target_language: e.target.value || null })}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-auto"
                             >
                                 <option value="">—</option>
                                 {TARGET_LANGUAGES.map(l => (
                                     <option key={l.value} value={l.value}>{l.label}</option>
                                 ))}
-                            </select>
+                            </Select>
                         </div>
-                        {/* Clear Cache */}
-                        <button
-                            onClick={handleClearCache}
-                            className="text-xs text-red-500 hover:text-red-700 font-medium"
-                        >
+                        <Button variant="secondary" size="sm" className="self-start" onClick={handleClearCache}>
                             {t('translation.settings.clearCache')}
-                        </button>
+                        </Button>
                     </div>
                 )}
-            </div>
+            </SettingRow>
 
             {/* Shared AI provider — used by both Transcription and Translation */}
             {showProvider && (
-                <div className="pt-4 border-t border-gray-100 space-y-3">
-                    <label className="block text-sm font-medium text-gray-700">{t('settings.aiProvider')}</label>
-                    {configLoading && (
-                        <div className="flex items-center gap-2 text-xs text-gray-400">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            {t('common.loading')}
-                        </div>
-                    )}
-                    {/* Provider */}
-                    <div>
-                        <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.provider')}</label>
-                        <select
-                            value={provider ?? ''}
-                            onChange={(e) => handleProviderChange(e.target.value || null)}
-                            className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="">—</option>
-                            {PROVIDERS.map(p => (
-                                <option key={p.value} value={p.value}>{p.label}</option>
-                            ))}
-                        </select>
-                        {provider === 'gemini' && (
-                            <div className="text-xs text-gray-400 mt-1.5 space-y-0.5">
-                                <p>{t('translation.dataPolicy.geminiFree')}</p>
-                                <p>{t('translation.dataPolicy.geminiPaid')}</p>
+                <SettingRow label={t('settings.aiProvider')}>
+                    <div className="flex flex-col gap-3">
+                        {configLoading && (
+                            <div className="flex items-center gap-2 text-caption text-muted">
+                                <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                {t('common.loading')}
                             </div>
                         )}
-                    </div>
-
-                    {/* Model */}
-                    {provider && MODELS[provider] && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.model')}</label>
-                            <select
-                                value={model ?? ''}
-                                onChange={(e) => saveConfig({ model: e.target.value || null })}
-                                className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        <div className="flex flex-col gap-1">
+                            <label htmlFor={`${fieldId}-provider`} className={FIELD_LABEL}>{t('translation.settings.provider')}</label>
+                            <Select
+                                id={`${fieldId}-provider`}
+                                value={provider ?? ''}
+                                onChange={(e) => handleProviderChange(e.target.value || null)}
                             >
-                                {MODELS[provider].map(m => (
-                                    <option key={m.value} value={m.value}>{m.label}</option>
+                                <option value="">—</option>
+                                {PROVIDERS.map(p => (
+                                    <option key={p.value} value={p.value}>{p.label}</option>
                                 ))}
-                            </select>
-                        </div>
-                    )}
-
-                    {/* API Key */}
-                    {provider && (
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">{t('translation.settings.apiKey')}</label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="password"
-                                    value={apiKeyInput}
-                                    onChange={(e) => setApiKeyInput(e.target.value)}
-                                    onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
-                                    className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
-                                />
-                                <button
-                                    onClick={handleTestConnection}
-                                    disabled={testing || (!apiKeyInput && !hasApiKey)}
-                                    className="flex items-center gap-1 px-3 py-1.5 text-xs text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                    {testing && <Loader2 className="w-3 h-3 animate-spin" />}
-                                    {t('translation.settings.testConnection')}
-                                </button>
-                            </div>
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
-                                <div className="flex items-center justify-between mt-0.5">
-                                    <p className="text-xs text-green-600">{t('translation.settings.savedSecurely')}</p>
-                                    <button
-                                        onClick={handleClearApiKey}
-                                        className="text-xs font-medium text-red-500 hover:text-red-700"
-                                    >
-                                        {t('translation.settings.clearApiKey')}
-                                    </button>
+                            </Select>
+                            {provider === 'gemini' && (
+                                <div className="mt-2 flex flex-col gap-1 text-caption text-muted">
+                                    <p>{t('translation.dataPolicy.geminiFree')}</p>
+                                    <p>{t('translation.dataPolicy.geminiPaid')}</p>
                                 </div>
                             )}
-                            {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
-                                <p className="text-xs text-amber-600 mt-0.5">{t('translation.settings.keyMissing')}</p>
-                            )}
-                            {testResult && (
-                                <p className="text-xs mt-1 text-gray-500">{testResult}</p>
-                            )}
                         </div>
-                    )}
-                </div>
+
+                        {provider && MODELS[provider] && (
+                            <div className="flex flex-col gap-1">
+                                <label htmlFor={`${fieldId}-model`} className={FIELD_LABEL}>{t('translation.settings.model')}</label>
+                                <Select
+                                    id={`${fieldId}-model`}
+                                    value={model ?? ''}
+                                    onChange={(e) => saveConfig({ model: e.target.value || null })}
+                                >
+                                    {MODELS[provider].map(m => (
+                                        <option key={m.value} value={m.value}>{m.label}</option>
+                                    ))}
+                                </Select>
+                            </div>
+                        )}
+
+                        {provider && (
+                            <div className="flex flex-col gap-1">
+                                <label htmlFor={`${fieldId}-key`} className={FIELD_LABEL}>{t('translation.settings.apiKey')}</label>
+                                <div className="flex items-center gap-2">
+                                    <Input
+                                        id={`${fieldId}-key`}
+                                        type="password"
+                                        value={apiKeyInput}
+                                        onChange={(e) => setApiKeyInput(e.target.value)}
+                                        onBlur={() => { if (apiKeyInput) saveConfig({ api_key: apiKeyInput }); }}
+                                        className="flex-1"
+                                        placeholder={hasApiKey && apiKeyMasked ? apiKeyMasked : 'sk-... / AIza...'}
+                                    />
+                                    <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={handleTestConnection}
+                                        disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                    >
+                                        {testing && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
+                                        {t('translation.settings.testConnection')}
+                                    </Button>
+                                </div>
+                                {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'saved' && (
+                                    <div className="mt-1 flex items-center justify-between gap-4">
+                                        <p className="text-caption text-status-success">{t('translation.settings.savedSecurely')}</p>
+                                        <Button variant="ghost" size="sm" className={DANGER_GHOST} onClick={() => setConfirmClear(true)}>
+                                            {t('translation.settings.clearApiKey')}
+                                        </Button>
+                                    </div>
+                                )}
+                                {apiKeyStatus({ provider, hasApiKey, hasInput: !!apiKeyInput }) === 'missing' && !configLoading && (
+                                    <p className="mt-1 text-caption text-status-warning">{t('translation.settings.keyMissing')}</p>
+                                )}
+                            </div>
+                        )}
+                        {/* Test, cache and save results; mounted empty so each one is announced. */}
+                        <p role="status" className="text-small text-secondary">{testResult}</p>
+                    </div>
+                </SettingRow>
             )}
+
+            <ConfirmDialog
+                open={confirmClear}
+                title={t('translation.settings.clearApiKey')}
+                message={t('translation.settings.clearApiKeyConfirm')}
+                confirmLabel={t('common.confirm')}
+                variant="danger"
+                onCancel={() => setConfirmClear(false)}
+                onConfirm={() => {
+                    setConfirmClear(false);
+                    void handleClearApiKey();
+                }}
+            />
         </>
     );
 }

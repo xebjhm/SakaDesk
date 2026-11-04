@@ -7,6 +7,9 @@ import {
     ambientLayout, memberWash, type GroupId,
 } from './tokens';
 
+/** camelCase token name → kebab-case CSS variable segment (controlHover → control-hover). */
+const kebab = (name: string) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+
 export function staticTokenVars(): Record<string, string> {
     const vars: Record<string, string> = {};
     for (const [name, value] of Object.entries(color.surface)) vars[`--ds-surface-${name}`] = value;
@@ -15,6 +18,11 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
     for (const [name, value] of Object.entries(color.feedback)) vars[`--ds-feedback-${name}`] = value;
     for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
+    for (const group of ['status', 'viewer', 'decor'] as const) {
+        for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
+    }
+    // Cross-group search dots: set per element by groupMarkerStyle(); none by default.
+    vars['--ds-group-marker'] = 'transparent';
     for (const [name, value] of Object.entries(radius)) vars[`--ds-radius-${name}`] = value;
     for (const [name, value] of Object.entries(shadow)) vars[`--ds-shadow-${name}`] = value;
     for (const [name, step] of Object.entries(typeScale)) {

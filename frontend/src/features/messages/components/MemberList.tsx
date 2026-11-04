@@ -10,6 +10,7 @@ import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
+import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { Portal } from '../../../core/common/Portal';
 import { MemberContextMenu } from './MemberContextMenu';
 import { ProfileImageViewer } from './ProfileImageViewer';
@@ -74,12 +75,15 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         const requestId = ++imagesRequestId.current;
         fetchProfileImages(path)
             .then(k => {
-                if (requestId !== imagesRequestId.current) return;
-                if (PROFILE_IMAGE_KINDS.every(kind => !k[kind]?.length)) return;
+                // A newer "View images" request superseded this one.
+                if (requestId !== imagesRequestId.current) { logDialogLoad('profile_images', 'cancelled'); return; }
+                const count = PROFILE_IMAGE_KINDS.reduce((n, kind) => n + (k[kind]?.length ?? 0), 0);
+                if (count === 0) { logDialogLoad('profile_images', 'skipped', undefined, 'empty'); return; }
                 setViewer(k);
+                logDialogLoad('profile_images', 'ok', count);
             })
-            .catch(err => {
-                if (requestId === imagesRequestId.current) console.error('Failed to load profile images:', err);
+            .catch(() => {
+                logDialogLoad('profile_images', requestId === imagesRequestId.current ? 'error' : 'cancelled');
             });
     };
 
@@ -256,7 +260,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                                 <span className={cn(
                                     'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
                                     'transition-shadow duration-fast ease-standard',
-                                    isSelected ? 'ring-2 ring-white shadow-group-glow' : 'group-hover:shadow-card',
+                                    isSelected ? 'ring-2 ring-surface shadow-group-glow' : 'group-hover:shadow-card',
                                 )}>
                                     <Users className="h-6 w-6" />
                                 </span>

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { X, MessageCircle } from 'lucide-react';
-import { Button, IconButton, RailItem, Modal } from './index';
+import { Button, IconButton, RailItem } from './index';
 
 describe('Button', () => {
     it('defaults to a secondary md button of type button', () => {
@@ -61,34 +61,22 @@ describe('RailItem', () => {
     });
 });
 
-describe('Modal', () => {
-    it('renders nothing when closed', () => {
-        render(<Modal isOpen={false} onClose={vi.fn()} title="t">body</Modal>);
-        expect(screen.queryByRole('dialog')).toBeNull();
+describe('D2c button variants', () => {
+    it('danger and overlay buttons use their tokens', () => {
+        render(<><Button variant="danger">削除</Button><Button variant="overlay">保存</Button></>);
+        expect(screen.getByRole('button', { name: '削除' })).toHaveClass('bg-status-danger', 'text-inverse');
+        expect(screen.getByRole('button', { name: '保存' })).toHaveClass('bg-viewer-control', 'text-viewer');
     });
 
-    it('renders a labelled sheet dialog with footer', async () => {
-        render(
-            <Modal isOpen onClose={vi.fn()} title="設定" footer={<Button>OK</Button>}>
-                本文
-            </Modal>,
-        );
-        const dialog = await screen.findByRole('dialog', { name: '設定' });
-        expect(dialog).toHaveClass('bg-sheet', 'rounded-sheet', 'shadow-sheet');
-        expect(dialog).toHaveTextContent('本文');
-        expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
+    it('the accent icon button is today’s unread-arrow look', () => {
+        render(<IconButton variant="accent" aria-label="未読へ" icon={<X />} />);
+        const b = screen.getByRole('button', { name: '未読へ' });
+        expect(b).toHaveClass('bg-group-accent', 'text-inverse', 'shadow-card', 'hover:brightness-105');
+        expect(b).not.toHaveClass('bg-pill');
     });
 
-    it('closes on Escape and on backdrop click, not on a click inside', async () => {
-        const onClose = vi.fn();
-        render(<Modal isOpen onClose={onClose} title="t">inside</Modal>);
-        const dialog = await screen.findByRole('dialog');
-        await userEvent.click(dialog);
-        expect(onClose).not.toHaveBeenCalled();
-        await userEvent.keyboard('{Escape}');
-        expect(onClose).toHaveBeenCalledTimes(1);
-        expect(screen.getByTestId('modal-backdrop')).toHaveClass('bg-scrim');
-        await userEvent.click(screen.getByTestId('modal-backdrop'));
-        expect(onClose).toHaveBeenCalledTimes(2);
+    it('the overlay icon button is the viewer control', () => {
+        render(<IconButton variant="overlay" aria-label="閉じる" icon={<X />} />);
+        expect(screen.getByRole('button', { name: '閉じる' })).toHaveClass('bg-viewer-control', 'hover:bg-viewer-control-hover', 'text-viewer');
     });
 });

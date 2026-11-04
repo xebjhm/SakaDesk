@@ -3,8 +3,8 @@
  * primitive state for the selected group. Never shipped: main.tsx loads it
  * only behind `import.meta.env.DEV`.
  */
-import React, { useEffect, useState } from 'react';
-import { BookOpen, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { BookOpen, ChevronDown, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
 import { SUPPORTED_LANGUAGES, useTranslation, type SupportedLanguage } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
 import { cn } from '../utils/classnames';
@@ -13,7 +13,7 @@ import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
 import { GROUP_IDS, SCALE_STEPS, color, groupRoles, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
-    Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Modal, Pill, RailItem, Sheet,
+    Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Input, Menu, MenuItem, MenuSeparator, Modal, Pill, RailItem, Select, Sheet, Switch,
 } from './primitives';
 
 // Full class names so Tailwind's scanner generates them.
@@ -65,6 +65,9 @@ export const DesignPage: React.FC = () => {
     const [moved, setMoved] = useState(false);
     const [landingKey, setLandingKey] = useState(0);
     const [modalOpen, setModalOpen] = useState(false);
+    const [switchOn, setSwitchOn] = useState(true);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuTrigger = useRef<HTMLButtonElement>(null);
 
     useEffect(() => applyGroupTokens(group), [group]);
 
@@ -260,10 +263,44 @@ export const DesignPage: React.FC = () => {
                         <Button variant="primary">{t('designPage.primary')}</Button>
                         <Button>{t('designPage.secondary')}</Button>
                         <Button variant="ghost">{t('designPage.ghost')}</Button>
+                        <Button variant="danger">{t('designPage.danger')}</Button>
+                        <IconButton variant="accent" aria-label={t('designPage.accent')} icon={<ChevronDown />} />
+                        <span className="inline-flex items-center gap-2 rounded-card bg-viewer-stage p-2">
+                            <Button variant="overlay" size="sm">{t('designPage.overlay')}</Button>
+                            <IconButton variant="overlay" size="sm" aria-label={t('designPage.close')} icon={<X />} />
+                        </span>
                         <Button disabled>{t('designPage.disabled')}</Button>
                         <Button size="sm">{t('designPage.secondary')}</Button>
                         <IconButton aria-label={t('designPage.close')} icon={<X />} />
                         <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.forms')}</h3>
+                    <div className="flex max-w-md flex-col gap-3">
+                        <Switch checked={switchOn} onCheckedChange={setSwitchOn} aria-label={t('designPage.switchSample')} />
+                        <Input aria-label={t('designPage.inputSample')} placeholder={t('designPage.inputSample')} />
+                        <Select aria-label={t('designPage.selectSample')}><option>{t('designPage.selectSample')}</option></Select>
+                    </div>
+
+                    <h3 className="text-title text-secondary">{t('designPage.menu')}</h3>
+                    <div className="relative h-40">
+                        <Button ref={menuTrigger} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
+                            {t('designPage.menuOpen')}
+                        </Button>
+                        {menuOpen && (
+                            <Menu
+                                aria-label={t('designPage.menu')}
+                                onClose={() => setMenuOpen(false)}
+                                returnFocusRef={menuTrigger}
+                                ignoreRefs={[menuTrigger]}
+                                className="absolute left-0 top-12 w-48"
+                            >
+                                <MenuItem icon={<Settings />}>{t('designPage.menuItem')}</MenuItem>
+                                <MenuItem radio selected>{t('designPage.menuSelected')}</MenuItem>
+                                <MenuSeparator />
+                                <MenuItem destructive>{t('designPage.danger')}</MenuItem>
+                            </Menu>
+                        )}
                     </div>
 
                     <h3 className="text-title text-secondary">{t('designPage.rail')}</h3>

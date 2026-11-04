@@ -1,26 +1,13 @@
 /**
- * Centralized z-index management for the application.
- * All z-index values should be defined here to prevent stacking context conflicts.
+ * Layering, one source (docs/superpowers/specs/2026-11-05-d2c-dialogs-design.md, decision 31).
+ * DROPDOWN: menus anchored inside the app frame. DIALOG + depth × DIALOG_STEP: each open
+ * dialog (design/dialog/dialogStack.ts). POPOVER: portaled menus, above any dialog.
+ * TOAST: above everything.
  */
 export const Z_INDEX = {
-    // Navigation & overlays
-    DROPDOWN_OVERLAY: 40,
     DROPDOWN: 50,
-
-    // Modal system
-    MODAL_BACKDROP: 100,
-    MODAL: 100,
-    MODAL_DETAIL: 110,  // For nested views within modals (e.g., full image view)
-
-    // Tooltips & popovers
-    TOOLTIP: 120,
-} as const;
-
-// Tailwind class helpers for common z-index values
-export const Z_CLASS = {
-    DROPDOWN_OVERLAY: 'z-40',
-    DROPDOWN: 'z-50',
-    MODAL: 'z-[100]',
-    MODAL_DETAIL: 'z-[110]',
-    TOOLTIP: 'z-[120]',
+    DIALOG: 100,
+    DIALOG_STEP: 10,
+    POPOVER: 1000,
+    TOAST: 1100,
 } as const;

@@ -2,6 +2,7 @@ import React from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { getServiceTheme } from '../../config/serviceThemes';
+import { groupRoles } from '../../design/tokens';
 import { formatSyncTime, formatSyncSpeed, getSyncPhaseName, getSyncUnitLabel, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
@@ -13,6 +14,7 @@ interface InlineSyncViewProps {
 export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncProgress }) => {
     const { t } = useTranslation();
     const theme = getServiceTheme(service);
+    const r = groupRoles(theme.id);
     const isLightHeader = theme.messages.headerStyle === 'light';
     const headerGradient = `linear-gradient(to right, ${theme.messages.headerGradient.from}, ${theme.messages.headerGradient.via}, ${theme.messages.headerGradient.to})`;
 
@@ -30,7 +32,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                     <div className="flex items-center gap-3">
                         <div
                             className="w-10 h-10 rounded-full flex items-center justify-center"
-                            style={{ backgroundColor: isLightHeader ? `${theme.modals.accentColorLight}` : 'rgba(255,255,255,0.2)' }}
+                            style={{ backgroundColor: isLightHeader ? `${r.subtle}` : 'rgba(255,255,255,0.2)' }}
                         >
                             <Download className="w-5 h-5" style={{ color: isLightHeader ? theme.messages.headerTextColor : 'white' }} />
                         </div>
@@ -108,7 +110,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                     {/* Current Item Detail */}
                     <div
                         className={`rounded-xl px-4 py-3 flex items-center ${syncProgress.phase_number === 3 ? 'bg-amber-50 border border-amber-100 justify-center' : ''}`}
-                        style={syncProgress.phase_number !== 3 ? { backgroundColor: theme.modals.accentColorLight } : undefined}
+                        style={syncProgress.phase_number !== 3 ? { backgroundColor: r.subtle } : undefined}
                     >
                         {syncProgress.phase_number === 3 ? (
                             <div className="flex items-center gap-2 text-amber-700">
@@ -119,7 +121,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                             </div>
                         ) : (
                             <div className="flex items-center gap-2">
-                                <Loader2 className="w-4 h-4 animate-spin" style={{ color: theme.modals.accentColor }} />
+                                <Loader2 className="w-4 h-4 animate-spin" style={{ color: r.action }} />
                                 <span className="text-sm text-gray-700 font-medium truncate">
                                     {getSyncDetail(syncProgress, t, t('sync.processing'))}
                                     {syncProgress.detail_extra && ` ${syncProgress.detail_extra}`}
@@ -148,13 +150,13 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                                             isComplete ? 'bg-green-500' : !isActive ? 'bg-gray-200' : ''
                                         }`}
                                         style={isActive ? {
-                                            backgroundColor: theme.modals.accentColor,
-                                            boxShadow: `0 0 0 4px ${theme.modals.accentColorLight}`,
+                                            backgroundColor: r.action,
+                                            boxShadow: `0 0 0 4px ${r.subtle}`,
                                         } : undefined}
                                     />
                                     <span
                                         className={`text-xs ${!isActive ? 'text-gray-400' : 'font-medium'}`}
-                                        style={isActive ? { color: theme.modals.accentColor } : undefined}
+                                        style={isActive ? { color: r.action } : undefined}
                                     >
                                         {p.label}
                                     </span>

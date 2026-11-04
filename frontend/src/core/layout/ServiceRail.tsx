@@ -9,7 +9,7 @@ import { AddServiceModal } from './AddServiceModal';
 import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
-import { IconButton } from '../../design/primitives';
+import { IconButton, Menu, MenuItem } from '../../design/primitives';
 
 export interface ServiceRailProps {
     services: string[];
@@ -184,10 +184,10 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 {/* Disconnected Warning Badge */}
                                 {isServiceDisconnected(service) && (
                                     <div
-                                        className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-orange-500 rounded-full border-2 border-gray-50 flex items-center justify-center"
+                                        className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-pill border-2 border-surface bg-status-attention"
                                         title={t('serviceRail.sessionExpiredRelogin')}
                                     >
-                                        <Unplug className="w-2.5 h-2.5 text-white" />
+                                        <Unplug className="h-2.5 w-2.5 text-inverse" />
                                     </div>
                                 )}
                             </button>
@@ -203,18 +203,9 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
             {/* Context Menu for removing service */}
             {contextMenu && (
-                <div
-                    className="fixed bg-white rounded-lg shadow-xl py-1 z-50 min-w-[140px] border border-gray-200"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <button
-                        onClick={handleRemoveService}
-                        className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                        {t('common.removeService')}
-                    </button>
-                </div>
+                <Menu aria-label={t('common.removeService')} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 48 }}>
+                    <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
+                </Menu>
             )}
 
             {/* Bottom actions */}

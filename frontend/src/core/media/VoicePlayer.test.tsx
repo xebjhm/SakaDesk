@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VoicePlayer } from './VoicePlayer'
 import { useAppStore } from '../../store/appStore'
@@ -205,5 +205,23 @@ describe('VoicePlayer component', () => {
       )
       expect(container.firstChild).toMatchSnapshot()
     })
+  })
+})
+
+describe('VoicePlayer shortcuts', () => {
+  it('does not run player shortcuts for keys pressed inside its menu', () => {
+    render(<VoicePlayer src="/api/media/voice.m4a" viewerMode />)
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    const item = screen.getByRole('menuitemradio', { name: '1x' })
+    const ev = new KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true })
+    act(() => { item.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(false)
+  })
+
+  it('still runs the shortcut outside the menu', () => {
+    render(<VoicePlayer src="/api/media/voice.m4a" viewerMode />)
+    const ev = new KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true })
+    act(() => { document.body.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(true)
   })
 })

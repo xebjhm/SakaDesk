@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
-import { cn } from '../../../utils/classnames';
 import type { Message, BackgroundSettings } from '../../../types';
 import type { Letter } from '../letters';
 import type { LettersStatus } from '../hooks/useRoomExtras';
@@ -9,8 +8,8 @@ import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
-import { getServiceTheme } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
+import { IconButton, Menu, MenuItem } from '../../../design/primitives';
 
 // Re-export for backward compatibility
 export type { BackgroundSettings } from '../../../types';
@@ -25,8 +24,6 @@ interface ChatHeaderMenuProps {
     /** Opens the date-search calendar (owned by MessagesFeature; the date pills open it too). */
     onOpenCalendar: () => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
-    /** Icon color for header (used in light header style) */
-    iconColor?: string;
     /** The room's sent letters (the timeline's list), for the overview. */
     letters: readonly Letter[];
     /** Whether the letters are loading, loaded or unavailable (the overview says so). */
@@ -49,15 +46,12 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     activeService,
     onOpenCalendar,
     onBackgroundChange,
-    iconColor,
 }) => {
     const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
 
-    // Get per-service theme colors
-    const currentService = useAppStore((state) => state.activeService);
-    const theme = getServiceTheme(currentService);
+    const triggerRef = useRef<HTMLButtonElement>(null);
     const setTargetMessageId = useAppStore((state) => state.setTargetMessageId);
 
     const handleJumpToMessage = (messageId: number) => {
@@ -87,49 +81,35 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
         <>
             {/* Three-dot menu button */}
             <div className="relative">
-                <button
-                    onClick={() => setShowMenu(!showMenu)}
-                    className={cn(
-                        "p-2 rounded-lg transition-colors",
-                        iconColor ? "hover:bg-black/5" : "text-white/80 hover:text-white hover:bg-white/10"
-                    )}
-                    style={iconColor ? { color: iconColor } : undefined}
+                <IconButton
+                    ref={triggerRef}
+                    className="h-9 w-9 text-current hover:bg-sunken hover:text-current"
+                    aria-label={t('common.moreOptions')}
                     title={t('common.moreOptions')}
-                >
-                    <MoreVertical className="w-5 h-5" />
-                </button>
-
-                {/* Dropdown menu */}
+                    aria-haspopup="menu"
+                    aria-expanded={showMenu}
+                    icon={<MoreVertical className="h-5 w-5" />}
+                    onClick={() => setShowMenu((s) => !s)}
+                />
                 {showMenu && (
-                    <>
-                        {/* Clickaway overlay */}
-                        <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setShowMenu(false)}
-                        />
-                        {/* Menu */}
-                        <div className="absolute right-0 top-full mt-1 bg-white shadow-xl rounded-lg border border-gray-100 py-1 w-48 z-50">
-                            {menuItems.map((item) => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => item.enabled && handleMenuItemClick(item.id)}
-                                    disabled={!item.enabled}
-                                    className={cn(
-                                        "w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-colors",
-                                        item.enabled
-                                            ? "text-gray-700 hover:bg-gray-50"
-                                            : "text-gray-300 cursor-not-allowed"
-                                    )}
-                                >
-                                    <item.icon
-                                        className="w-4 h-4"
-                                        style={item.enabled ? { color: theme.modals.accentColor } : undefined}
-                                    />
-                                    {item.label}
-                                </button>
-                            ))}
-                        </div>
-                    </>
+                    <Menu
+                        aria-label={t('common.moreOptions')}
+                        onClose={() => setShowMenu(false)}
+                        returnFocusRef={triggerRef}
+                        ignoreRefs={[triggerRef]}
+                        className="absolute right-0 top-full mt-1 w-48"
+                    >
+                        {menuItems.map((item) => (
+                            <MenuItem
+                                key={item.id}
+                                icon={<item.icon className="h-4 w-4" />}
+                                disabled={!item.enabled}
+                                onClick={() => item.enabled && handleMenuItemClick(item.id)}
+                            >
+                                {item.label}
+                            </MenuItem>
+                        ))}
+                    </Menu>
                 )}
             </div>
 

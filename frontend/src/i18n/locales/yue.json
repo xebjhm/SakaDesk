@@ -39,7 +39,10 @@
     "moreOptions": "更多選項",
     "removeService": "移除服務",
     "on": "開",
-    "unreadCount": "{{count}} 則未讀"
+    "unreadCount": "{{count}} 則未讀",
+    "retry": "再試",
+    "confirm": "確認",
+    "mediaViewer": "媒體檢視器"
   },
   "settings": {
     "title": "設定",
@@ -47,6 +50,7 @@
     "tabSync": "同步",
     "tabAi": "AI",
     "tabUpdates": "更新",
+    "sections": "設定分類",
     "outputFolder": "輸出資料夾",
     "autoSync": "自動同步",
     "syncEvery": "同步間隔",
@@ -110,6 +114,7 @@
     "aiProvider": "AI 服務商",
     "resetDefaults": "還原預設",
     "resetConfirm": "要將設定還原做預設值？資料夾、已儲存嘅 API key 同語言會保留。",
+    "saveFailed": "儲存唔到呢個設定，請再試一次。",
     "transcriptionCpuDesc": "所有電腦都用得，速度慢啲",
     "transcriptionGpuDesc": "要 NVIDIA GPU（CUDA），快好多",
     "transcriptionGpuTesting": "測試緊 GPU...",
@@ -232,6 +237,7 @@
     "identity": "坂道系列非官方工具",
     "features": "Message • Blog • 存檔",
     "madeWith": "Made with",
+    "madeWithLove": "用心整嘅",
     "by": "by",
     "goldenFingerEnabled": "下載掣啟用咗 ✨",
     "goldenFingerDisabled": "下載掣停用咗",
@@ -295,6 +301,7 @@
   "messageList": {
     "noMessages": "冇訊息",
     "jumpToOldestUnread": "跳去最早未讀",
+    "messageActions": "訊息操作",
     "welcomeTitle": "歡迎使用 SakaDesk",
     "welcomeSubtitle": "喺側邊揀個對話開始啦。",
     "loadingMessages": "載入緊訊息...",
@@ -310,9 +317,13 @@
     "openConversations": "顯示對話列表"
   },
   "calendar": {
+    "loadFailed": "載入唔到日期",
+    "prevMonth": "上個月",
+    "nextMonth": "下個月",
     "title": "日子搜尋",
     "today": "今日",
     "availableOnDays": "有 {{count}} 日有嘢",
+    "itemCount": "{{count}} 項",
     "tapToJump": "撳個日子跳過去",
     "weekdays": {
       "sun": "日",
@@ -395,9 +406,10 @@
     "resultCountPartial": "顯示緊 {{shown}} / {{total}} 個結果",
     "loadMore": "載入更多結果",
     "pressEnterToSelect": "撳 Enter 揀選",
-    "errorSearchFailed": "搜尋失敗，請再試。",
-    "building": "建緊搜尋索引...",
+    "searchFailed": "搜尋唔到，請再試一次。",
+    "title": "搜尋",
     "filters": "篩選",
+    "removeFilter": "移除篩選：{{name}}",
     "exactMatchOnly": "淨係完全相符",
     "includeUnread": "包含未讀",
     "filterByMember": "按成員或服務篩選...",
@@ -439,7 +451,8 @@
       "photos": "{{count}} 張相",
       "videos": "{{count}} 條片",
       "voice": "{{count}} 個錄音"
-    }
+    },
+    "typeTabs": "媒體類型"
   },
   "sentLetters": {
     "title": "寄咗嘅信",
@@ -463,7 +476,6 @@
     "addMembersHint": "加返啲我推嘅成員就可以喺度睇到",
     "selectServiceHint": "揀服務再同步嚟載入 Blog",
     "noMembersFound": "搵唔到成員",
-    "tapOutsideToClose": "撳外面閂返",
     "publishedRecently": "24小時內出",
     "cached": "已 Cache",
     "mascot": "吉祥物",
@@ -481,7 +493,9 @@
     "loadingPost": "載入緊文章...",
     "olderPost": "上一篇",
     "newerPost": "下一篇",
-    "postNavigation": "文章導覽"
+    "postNavigation": "文章導覽",
+    "addFavorite": "將{{name}}加入收藏",
+    "removeFavorite": "將{{name}}移出收藏"
   },
   "voicePlayer": {
     "speed": "播放速度",
@@ -556,7 +570,10 @@
       "clearApiKey": "清除 API key",
       "clearApiKeyConfirm": "要喺呢部機度移除已儲存嘅 API key？",
       "cacheClearedMsg": "翻譯緩存已清除",
+      "cacheClearFailed": "清除唔到翻譯緩存，請再試。",
       "savedSecurely": "已安全咁存喺憑證管理員度",
+      "saveFailed": "儲存唔到 AI 設定，請再試。",
+      "clearApiKeyFailed": "清除唔到 API key，請再試。",
       "keyMissing": "重未存 API key，翻譯用唔到。請喺上面輸入。"
     },
     "error": {
@@ -579,7 +596,8 @@
     "phoneImageHint": "來電時顯示嘅相",
     "viewImages": "睇圖片",
     "current": "而家",
-    "versions": "{{count}} 個版本"
+    "versions": "{{count}} 個版本",
+    "kinds": "圖片類型"
   },
   "date": {
     "today": "今日",
@@ -637,7 +655,18 @@
     "railLogo": "選咗嘅組別 logo（側欄）",
     "roles": "用途",
     "roleName": "用途",
-    "roleStep": "色階"
+    "roleStep": "色階",
+    "danger": "危險",
+    "accent": "強調",
+    "overlay": "浮層",
+    "forms": "表單控制",
+    "switchSample": "開關例子",
+    "inputSample": "輸入框例子",
+    "selectSample": "揀選框例子",
+    "menu": "選單",
+    "menuItem": "選單項目",
+    "menuSelected": "揀咗嘅項目",
+    "menuOpen": "打開選單"
   },
   "letters": {
     "openImage": "打開信",

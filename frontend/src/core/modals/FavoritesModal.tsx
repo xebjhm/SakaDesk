@@ -1,12 +1,15 @@
 import React, { useState, useMemo } from 'react';
-import { Star, Play, MoreHorizontal } from 'lucide-react';
+import { Star, Play, X } from 'lucide-react';
 import type { Message } from '../../types';
 import { formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
-import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
+import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
+import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
+import { DialogStatus } from '../common/DialogStatus';
+import { groupRoles } from '../../design/tokens';
+import { serviceGroupId } from '../../config/serviceGroup';
 import { useAppStore } from '../../store/appStore';
-import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
 
 interface FavoritesModalProps extends BaseModalProps {
@@ -27,10 +30,10 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
 
-    // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const theme = getServiceTheme(activeService);
+    // The voice player still takes a hex accent (player internals are E).
+    const voiceAccent = groupRoles(serviceGroupId(activeService)).action;
 
     // Filter only favorite messages, sorted by timestamp (newest first)
     const favoriteMessages = useMemo(() => {
@@ -48,181 +51,113 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
             : `/api/content/media/${encodedPath}`;
     };
 
-    // Detail view for media (photos/videos)
+    // Detail view for media (photos/videos): the dark viewer
     const renderDetailView = () => {
         if (!selectedMedia) return null;
-
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
-
         return (
-            <DetailModal
-                isOpen={!!selectedMedia}
+            <Modal
+                isOpen
                 onClose={() => setSelectedMedia(null)}
-                footer={
-                    <>
-                        <span>{memberName}</span>
-                        <span className="mx-2">•</span>
-                        <span>{formatDateTime(selectedMedia.timestamp)}</span>
-                    </>
-                }
+                tone="viewer"
+                layout="bare"
+                aria-label={t('common.mediaViewer')}
+                logId="media_viewer"
             >
-                {selectedMedia.type === 'picture' && mediaUrl && (
-                    <SafeImage
-                        src={mediaUrl}
-                        alt="Favorite"
-                        className="max-w-full max-h-[80vh] object-contain"
-                    />
-                )}
-                {selectedMedia.type === 'video' && mediaUrl && (
-                    <video
-                        src={mediaUrl}
-                        controls
-                        controlsList={goldenFingerActive ? undefined : "nodownload"}
-                        disablePictureInPicture
-                        autoPlay
-                        className="max-w-full max-h-[80vh]"
-                    />
-                )}
-            </DetailModal>
-        );
-    };
-
-    // Render a single favorite message card
-    const renderMessageCard = (message: Message) => {
-        const mediaUrl = message.media_file ? getMediaUrl(message.media_file) : null;
-
-        return (
-            <div key={message.id} className="bg-white">
-                {/* Header row: avatar, name, solid star + timestamp, menu */}
-                <div className="flex items-center gap-3 px-4 py-3">
-                    {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 shrink-0">
-                        {memberAvatar ? (
-                            <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                                {memberName.substring(0, 2)}
-                            </div>
+                <IconButton variant="overlay" className="absolute right-4 top-4" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                <div className="flex max-h-[90vh] w-full max-w-4xl flex-col items-center gap-4 p-4">
+                    <div className="flex flex-1 items-center justify-center overflow-hidden rounded-card bg-viewer-stage">
+                        {selectedMedia.type === 'picture' && mediaUrl && (
+                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-[80vh] max-w-full object-contain" />
                         )}
-                    </div>
-
-                    {/* Name */}
-                    <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-900">{memberName}</span>
-                    </div>
-
-                    {/* Solid star followed by timestamp */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        <Star
-                            className="w-4 h-4"
-                            style={{ color: theme.modals.accentColor, fill: theme.modals.accentColor }}
-                        />
-                        <span className="text-sm text-gray-500">{formatDateTime(message.timestamp)}</span>
-                    </div>
-
-                    {/* Menu icon */}
-                    <button className="p-1 text-gray-400 hover:text-gray-600">
-                        <MoreHorizontal className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Content area */}
-                <div className="px-4 pb-4 pl-16">
-                    {/* Text message */}
-                    {message.type === 'text' && (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                            <p className="text-gray-800 whitespace-pre-wrap">{message.content}</p>
-                        </div>
-                    )}
-
-                    {/* Picture */}
-                    {message.type === 'picture' && mediaUrl && (
-                        <button
-                            onClick={() => setSelectedMedia(message)}
-                            className="rounded-xl overflow-hidden border border-gray-200 shadow-sm max-w-sm block"
-                        >
-                            <SafeImage
-                                src={mediaUrl}
-                                alt="Favorite"
-                                className="max-w-full max-h-64 object-contain"
-                            />
-                        </button>
-                    )}
-
-                    {/* Video */}
-                    {message.type === 'video' && mediaUrl && (
-                        <button
-                            onClick={() => setSelectedMedia(message)}
-                            className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm max-w-sm block"
-                        >
+                        {selectedMedia.type === 'video' && mediaUrl && (
                             <video
                                 src={mediaUrl}
-                                className="max-w-full max-h-64 object-contain"
-                                preload="metadata"
+                                controls
+                                controlsList={goldenFingerActive ? undefined : 'nodownload'}
+                                disablePictureInPicture
+                                autoPlay
+                                className="max-h-[80vh] max-w-full"
                             />
-                            {/* Play button overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                                    <Play className="w-7 h-7 text-gray-700 ml-1" />
-                                </div>
-                            </div>
-                        </button>
-                    )}
-
-                    {/* Voice */}
-                    {message.type === 'voice' && mediaUrl && (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm max-w-md">
-                            <VoicePlayer src={mediaUrl} accentColor={theme.modals.accentColor} />
-                        </div>
-                    )}
+                        )}
+                    </div>
+                    <p className="text-small text-viewer-muted">
+                        <span>{memberName}</span>
+                        <span aria-hidden="true" className="mx-2">•</span>
+                        <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                    </p>
                 </div>
-            </div>
+            </Modal>
         );
     };
 
-    // Render content
-    const renderContent = () => {
-        if (favoriteMessages.length === 0) {
-            return (
-                <div className="flex-1 flex items-center justify-center py-12">
-                    <ModalEmptyState
-                        icon={Star}
-                        message={t('favorites.noFavorites')}
-                        hint={t('favorites.addHint')}
-                    />
-                </div>
-            );
-        }
-
+    const renderMessageCard = (message: Message) => {
+        const mediaUrl = message.media_file ? getMediaUrl(message.media_file) : null;
         return (
-            <div className="flex-1 overflow-y-auto bg-gray-50">
-                <div className="divide-y divide-gray-100">
-                    {favoriteMessages.map(renderMessageCard)}
+            <Card key={message.id} className="flex flex-col gap-3 p-4">
+                <div className="flex items-center gap-3">
+                    <Avatar src={memberAvatar} name={memberName} size="md" decorative />
+                    <span className="min-w-0 flex-1 truncate text-body font-semibold text-primary">{memberName}</span>
+                    <span className="flex shrink-0 items-center gap-1 text-small text-muted">
+                        <Star aria-hidden="true" className="h-4 w-4 fill-current text-group-strong" />
+                        {formatDateTime(message.timestamp)}
+                    </span>
                 </div>
-            </div>
+                <div className="pl-12">
+                    {message.type === 'text' && (
+                        <p className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
+                    )}
+                    {message.type === 'picture' && mediaUrl && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMedia(message)}
+                            className="block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        >
+                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-64 max-w-full object-contain" />
+                        </button>
+                    )}
+                    {message.type === 'video' && mediaUrl && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMedia(message)}
+                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        >
+                            <video src={mediaUrl} className="max-h-64 max-w-full object-contain" preload="metadata" />
+                            <span className="absolute inset-0 flex items-center justify-center">
+                                <span className="flex h-14 w-14 items-center justify-center rounded-pill bg-viewer-control text-viewer">
+                                    <Play className="ml-1 h-7 w-7" />
+                                </span>
+                            </span>
+                        </button>
+                    )}
+                    {message.type === 'voice' && mediaUrl && (
+                        <div className="max-w-md">
+                            <VoicePlayer src={mediaUrl} accentColor={voiceAccent} />
+                        </div>
+                    )}
+                </div>
+            </Card>
         );
     };
 
     return (
         <>
-            <BaseModal
+            <Modal
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('favorites.title')}
-                icon={Star}
-                maxWidth="max-w-3xl"
-                className="h-[80vh]"
-                footer={
-                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
-                        <span className="text-sm text-gray-500">
-                            {t('favorites.count', { count: favoriteMessages.length })}
-                        </span>
-                    </div>
-                }
+                closeLabel={t('common.close')}
+                logId="favorites"
+                className="h-[80vh] max-w-3xl"
+                bodyClassName="bg-sunken px-4 py-4"
+                footer={<p className="mr-auto text-small text-muted">{t('favorites.count', { count: favoriteMessages.length })}</p>}
             >
-                {renderContent()}
-            </BaseModal>
-
+                {favoriteMessages.length === 0 ? (
+                    <DialogStatus kind="empty" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
+                ) : (
+                    <div className="flex flex-col gap-3">{favoriteMessages.map(renderMessageCard)}</div>
+                )}
+            </Modal>
             {renderDetailView()}
         </>
     );

@@ -29,6 +29,8 @@ export const color = {
     overlay: {
         /** Dimmed backdrop behind modals. Carries its own alpha (token colours cannot take Tailwind opacity modifiers). */
         scrim: 'rgba(0, 0, 0, 0.4)',
+        /** Toasts (viewer clipboard, About). The pre-D2c `bg-black/80`. */
+        toast: 'rgba(0, 0, 0, 0.8)',
     },
     feedback: {
         success: '#10B981',
@@ -40,5 +42,27 @@ export const color = {
         exact: '#FEF08A',
         reading: '#DBEAFE',
         underline: '#60A5FA',
+    },
+    /** Status by role, readable as small text on white (≥ 4.5:1); `attention` is the rail's disconnected badge fill (pre-D2c orange-500). */
+    status: {
+        danger: '#DC2626',
+        success: '#15803D',
+        warning: '#B45309',
+        attention: '#F97316',
+    },
+    /** The dark photo/video viewer's chrome (D2c). Values are the pre-D2c viewer's. */
+    viewer: {
+        scrim: 'rgba(0, 0, 0, 0.9)',
+        stage: '#000000',
+        control: 'rgba(255, 255, 255, 0.2)',
+        controlHover: 'rgba(255, 255, 255, 0.3)',
+        text: '#FFFFFF',
+        textMuted: 'rgba(255, 255, 255, 0.7)',
+        underline: 'rgba(255, 255, 255, 0.3)',
+    },
+    /** Decorations kept from the pre-D2c look: calendar Sundays, About's heart. */
+    decor: {
+        sunday: '#EF4444',
+        heart: '#F87171',
     },
 } as const;

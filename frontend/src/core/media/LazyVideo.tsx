@@ -62,16 +62,16 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
         <button
             ref={containerRef}
             onClick={onClick}
-            className={cn("relative bg-gray-200 overflow-hidden", className)}
+            className={cn("relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group", className)}
         >
             {/* Placeholder - visible until video loads */}
             <div
                 className={cn(
-                    "absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out",
+                    "absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard",
                     isLoaded ? "opacity-0" : "opacity-100"
                 )}
             >
-                <Film className="w-8 h-8 text-gray-400" />
+                <Film className="h-8 w-8 text-muted" />
             </div>
 
             {/* Video - only render when visible, fade in when loaded */}
@@ -79,7 +79,7 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
                 <video
                     src={src}
                     className={cn(
-                        "w-full h-full object-cover transition-opacity duration-400 ease-out",
+                        "h-full w-full object-cover transition-opacity duration-base ease-standard",
                         isLoaded ? "opacity-100" : "opacity-0"
                     )}
                     preload="metadata"

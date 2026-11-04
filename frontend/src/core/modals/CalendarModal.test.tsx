@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse, delay } from 'msw'
@@ -6,8 +6,21 @@ import { server } from '../../__tests__/mocks/server'
 import { CalendarModal } from './CalendarModal'
 import type { Message } from '../../types'
 
+// Frozen clock: the calendar opens on June 2026 in every test, so the visible month and the
+// snapshots do not depend on the day the suite runs. Only Date is faked (msw and userEvent
+// keep real timers).
+const YEAR = 2026
+const MONTH = '06'
+const DAY_15 = `${YEAR}-${MONTH}-15`
+
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date(YEAR, 5, 10, 12, 0, 0))
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 // Helper to create test messages
@@ -203,7 +216,7 @@ describe('CalendarModal component', () => {
       )
 
       await waitFor(() => {
-        expect(screen.getByText(/API Error|Failed/i)).toBeInTheDocument()
+        expect(screen.getByText('Could not load the dates')).toBeInTheDocument()
       })
     })
 
@@ -211,9 +224,7 @@ describe('CalendarModal component', () => {
       const user = userEvent.setup()
       const onSelectDate = vi.fn()
 
-      // Use current month for the test date so the day is visible
-      const today = new Date()
-      const testDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-15`
+      const testDate = DAY_15
 
       setupApiHandler([{ date: testDate, count: 5 }])
 
@@ -241,9 +252,7 @@ describe('CalendarModal component', () => {
       const user = userEvent.setup()
       const onClose = vi.fn()
 
-      // Use current month for the test date
-      const today = new Date()
-      const testDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-15`
+      const testDate = DAY_15
 
       setupApiHandler([{ date: testDate, count: 5 }])
 
@@ -268,11 +277,10 @@ describe('CalendarModal component', () => {
   })
 
   describe('Messages mode', () => {
-    // Generate test dates based on current month
+    // Test dates in the frozen month
     const getTestMessagesWithMedia = () => {
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = String(today.getMonth() + 1).padStart(2, '0')
+      const year = YEAR
+      const month = MONTH
 
       return [
         createMessage({ id: 1, timestamp: `${year}-${month}-15T10:00:00Z`, media_file: 'photo1.jpg', type: 'picture' }),
@@ -342,9 +350,8 @@ describe('CalendarModal component', () => {
     })
 
     it('should only count messages with media_file', async () => {
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = String(today.getMonth() + 1).padStart(2, '0')
+      const year = YEAR
+      const month = MONTH
 
       const mixedMessages = [
         createMessage({ id: 1, timestamp: `${year}-${month}-15T10:00:00Z`, media_file: 'photo.jpg', type: 'picture' }),
@@ -385,9 +392,7 @@ describe('CalendarModal component', () => {
 
   describe('Date indicators', () => {
     it('should disable dates without messages', async () => {
-      // Use current month for test date
-      const today = new Date()
-      const testDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-15`
+      const testDate = DAY_15
 
       setupApiHandler([{ date: testDate, count: 5 }])
 
@@ -420,9 +425,7 @@ describe('CalendarModal component', () => {
     })
 
     it('should show indicator dot on dates with messages', async () => {
-      // Use current month for test date
-      const today = new Date()
-      const testDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-15`
+      const testDate = DAY_15
 
       setupApiHandler([{ date: testDate, count: 5 }])
 
@@ -444,66 +447,53 @@ describe('CalendarModal component', () => {
       const day15Button = day15Span.closest('button')
 
       // The button with messages should have the indicator dot element inside it
-      // (indicator dot uses inline backgroundColor style from theme)
-      const indicatorDot = day15Button?.querySelector('.w-1\\.5.h-1\\.5.rounded-full')
+      const indicatorDot = day15Button?.querySelector('span[aria-hidden="true"]')
       expect(indicatorDot).toBeInTheDocument()
     })
   })
 
-  describe('Snapshots', () => {
-    it('should match snapshot in API mode', async () => {
-      // Use current month
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = String(today.getMonth() + 1).padStart(2, '0')
+  describe('Day tooltip', () => {
+    it('gives a day its translated item count', async () => {
+      setupApiHandler([{ date: DAY_15, count: 5 }, { date: `${YEAR}-${MONTH}-20`, count: 1 }])
+      render(<CalendarModal isOpen onClose={defaultCloseHandler} conversationPath="/test/path" onSelectDate={vi.fn()} />)
+      await waitFor(() => expect(screen.getByText('Available on 2 days')).toBeInTheDocument())
+      expect(screen.getByText('15').closest('button')).toHaveAttribute('title', '5 items')
+      expect(screen.getByText('20').closest('button')).toHaveAttribute('title', '1 item')
+      expect(screen.getByText('14').closest('button')).not.toHaveAttribute('title')
+    })
+  })
 
+  // Role-based structure checks (the dialog is portaled, so a container snapshot was empty).
+  describe('Structure', () => {
+    const dayButtons = () =>
+      screen.getAllByRole('button').filter(b => /^\d{1,2}$/.test(b.textContent ?? ''))
+
+    it('API mode: a named dialog showing the frozen month, with only the dated days enabled', async () => {
       setupApiHandler([
-        { date: `${year}-${month}-15`, count: 5 },
-        { date: `${year}-${month}-20`, count: 3 },
+        { date: `${YEAR}-${MONTH}-15`, count: 5 },
+        { date: `${YEAR}-${MONTH}-20`, count: 3 },
       ])
+      render(<CalendarModal isOpen onClose={defaultCloseHandler} conversationPath="/test/path" onSelectDate={vi.fn()} />)
+      await waitFor(() => expect(screen.getByText('Available on 2 days')).toBeInTheDocument())
 
-      const { container } = render(
-        <CalendarModal
-          isOpen={true}
-          onClose={defaultCloseHandler}
-          conversationPath="/test/path"
-          onSelectDate={vi.fn()}
-        />
-      )
-
-      await waitFor(() => {
-        expect(screen.getByText('Available on 2 days')).toBeInTheDocument()
-      })
-
-      expect(container.firstChild).toMatchSnapshot()
+      const dialog = screen.getByRole('dialog', { name: 'Date Search' })
+      expect(dialog).toHaveAttribute('aria-modal', 'true')
+      expect(screen.getByText('June 2026')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Previous month' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Next month' })).toBeInTheDocument()
+      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.textContent)).toEqual(['15', '20'])
     })
 
-    it('should match snapshot in Messages mode', async () => {
-      // Use current month for messages
-      const today = new Date()
-      const year = today.getFullYear()
-      const month = String(today.getMonth() + 1).padStart(2, '0')
-
+    it('Messages mode: the custom title names the dialog and the media days are enabled', async () => {
       const messages = [
-        createMessage({ id: 1, timestamp: `${year}-${month}-15T10:00:00Z`, media_file: 'photo.jpg', type: 'picture' }),
-        createMessage({ id: 2, timestamp: `${year}-${month}-20T10:00:00Z`, media_file: 'video.mp4', type: 'video' }),
+        createMessage({ id: 1, timestamp: `${YEAR}-${MONTH}-15T10:00:00Z`, media_file: 'photo.jpg', type: 'picture' }),
+        createMessage({ id: 2, timestamp: `${YEAR}-${MONTH}-20T10:00:00Z`, media_file: 'video.mp4', type: 'video' }),
       ]
+      render(<CalendarModal isOpen onClose={defaultCloseHandler} messages={messages} onSelectDate={vi.fn()} title="Jump to Date" />)
+      await waitFor(() => expect(screen.getByText('Available on 2 days')).toBeInTheDocument())
 
-      const { container } = render(
-        <CalendarModal
-          isOpen={true}
-          onClose={defaultCloseHandler}
-          messages={messages}
-          onSelectDate={vi.fn()}
-          title="Jump to Date"
-        />
-      )
-
-      await waitFor(() => {
-        expect(screen.getByText('Available on 2 days')).toBeInTheDocument()
-      })
-
-      expect(container.firstChild).toMatchSnapshot()
+      expect(screen.getByRole('dialog', { name: 'Jump to Date' })).toBeInTheDocument()
+      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.textContent)).toEqual(['15', '20'])
     })
   })
 })

@@ -39,7 +39,10 @@
     "moreOptions": "More options",
     "removeService": "Remove Service",
     "on": "ON",
-    "unreadCount": "{{count}} unread"
+    "unreadCount": "{{count}} unread",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "mediaViewer": "Media viewer"
   },
   "settings": {
     "title": "Settings",
@@ -47,6 +50,7 @@
     "tabSync": "Sync",
     "tabAi": "AI",
     "tabUpdates": "Updates",
+    "sections": "Settings sections",
     "outputFolder": "Output Folder",
     "autoSync": "Auto-Sync",
     "syncEvery": "Sync every",
@@ -110,6 +114,7 @@
     "aiProvider": "AI Provider",
     "resetDefaults": "Reset to defaults",
     "resetConfirm": "Reset settings to defaults? Your data folder, saved API key, and language are kept.",
+    "saveFailed": "Couldn't save this setting. Try again.",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",
@@ -232,6 +237,7 @@
     "identity": "Unofficial Sakamichi Utility",
     "features": "Message • Blog • Archive",
     "madeWith": "Made with",
+    "madeWithLove": "Made with love",
     "by": "by",
     "goldenFingerEnabled": "Download button enabled ✨",
     "goldenFingerDisabled": "Download button disabled",
@@ -295,6 +301,7 @@
   "messageList": {
     "noMessages": "No messages",
     "jumpToOldestUnread": "Jump to oldest unread",
+    "messageActions": "Message actions",
     "welcomeTitle": "Welcome to SakaDesk",
     "welcomeSubtitle": "Select a conversation from the sidebar to start.",
     "loadingMessages": "Loading messages...",
@@ -310,9 +317,14 @@
     "openConversations": "Show conversations"
   },
   "calendar": {
+    "loadFailed": "Could not load the dates",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
     "title": "Date Search",
     "today": "Today",
     "availableOnDays": "Available on {{count}} days",
+    "itemCount": "{{count}} item",
+    "itemCount_other": "{{count}} items",
     "tapToJump": "Tap a date to jump",
     "weekdays": {
       "sun": "Sun",
@@ -395,9 +407,10 @@
     "resultCountPartial": "{{shown}} of {{total}} results",
     "loadMore": "Load more results",
     "pressEnterToSelect": "Press Enter to select",
-    "errorSearchFailed": "Search failed. Please try again.",
-    "building": "Building search index...",
+    "searchFailed": "Search failed. Try again.",
+    "title": "Search",
     "filters": "Filters",
+    "removeFilter": "Remove filter: {{name}}",
     "exactMatchOnly": "Exact match only",
     "includeUnread": "Include unread",
     "filterByMember": "Filter by member or service...",
@@ -439,7 +452,8 @@
       "photos": "{{count}} photos",
       "videos": "{{count}} videos",
       "voice": "{{count}} voice messages"
-    }
+    },
+    "typeTabs": "Media type"
   },
   "sentLetters": {
     "title": "Sent Letters",
@@ -463,7 +477,6 @@
     "addMembersHint": "Add members to favorites to see their posts here",
     "selectServiceHint": "Select a service and sync to load blogs",
     "noMembersFound": "No members found",
-    "tapOutsideToClose": "Tap outside to close",
     "publishedRecently": "Published within 24 hours",
     "cached": "Cached",
     "mascot": "Mascot",
@@ -481,7 +494,9 @@
     "loadingPost": "Loading post...",
     "olderPost": "Older post",
     "newerPost": "Newer post",
-    "postNavigation": "Post navigation"
+    "postNavigation": "Post navigation",
+    "addFavorite": "Add {{name}} to favorites",
+    "removeFavorite": "Remove {{name}} from favorites"
   },
   "voicePlayer": {
     "speed": "Speed",
@@ -556,7 +571,10 @@
       "clearApiKey": "Clear API key",
       "clearApiKeyConfirm": "Remove the saved API key from this device?",
       "cacheClearedMsg": "Translation cache cleared",
+      "cacheClearFailed": "Couldn't clear the translation cache. Try again.",
       "savedSecurely": "Saved securely in credential manager",
+      "saveFailed": "Couldn't save the AI settings. Try again.",
+      "clearApiKeyFailed": "Couldn't remove the API key. Try again.",
       "keyMissing": "No API key stored — translation won't work. Enter your key above."
     },
     "error": {
@@ -579,7 +597,8 @@
     "phoneImageHint": "Photo shown when the member calls",
     "viewImages": "View images",
     "current": "Now",
-    "versions": "{{count}} versions"
+    "versions": "{{count}} versions",
+    "kinds": "Image type"
   },
   "date": {
     "today": "Today",
@@ -637,7 +656,18 @@
     "railLogo": "Selected group logo (rail)",
     "roles": "Roles",
     "roleName": "Role",
-    "roleStep": "Step"
+    "roleStep": "Step",
+    "danger": "Danger",
+    "accent": "Accent",
+    "overlay": "Overlay",
+    "forms": "Form controls",
+    "switchSample": "Sample switch",
+    "inputSample": "Sample input",
+    "selectSample": "Sample select",
+    "menu": "Menu",
+    "menuItem": "Menu item",
+    "menuSelected": "Selected item",
+    "menuOpen": "Open menu"
   },
   "letters": {
     "openImage": "Open letter",

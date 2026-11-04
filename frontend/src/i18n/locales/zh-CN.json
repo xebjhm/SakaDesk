@@ -39,7 +39,10 @@
     "moreOptions": "更多选项",
     "removeService": "移除服务",
     "on": "开",
-    "unreadCount": "{{count}} 条未读"
+    "unreadCount": "{{count}} 条未读",
+    "retry": "重试",
+    "confirm": "确认",
+    "mediaViewer": "媒体查看器"
   },
   "settings": {
     "title": "设置",
@@ -47,6 +50,7 @@
     "tabSync": "同步",
     "tabAi": "AI",
     "tabUpdates": "更新",
+    "sections": "设置分类",
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",
@@ -110,6 +114,7 @@
     "aiProvider": "AI 服务商",
     "resetDefaults": "重置为默认值",
     "resetConfirm": "要将设置重置为默认值吗？数据文件夹、已保存的 API 密钥与语言会保留。",
+    "saveFailed": "无法保存此设置，请重试。",
     "transcriptionCpuDesc": "适用所有电脑，速度较慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",
@@ -232,6 +237,7 @@
     "identity": "坂道系列非官方工具",
     "features": "Message • Blog • 存档",
     "madeWith": "Made with",
+    "madeWithLove": "用爱制作",
     "by": "by",
     "goldenFingerEnabled": "下载按钮已启用 ✨",
     "goldenFingerDisabled": "下载按钮已停用",
@@ -295,6 +301,7 @@
   "messageList": {
     "noMessages": "没有消息",
     "jumpToOldestUnread": "跳转到最早未读",
+    "messageActions": "消息操作",
     "welcomeTitle": "欢迎使用 SakaDesk",
     "welcomeSubtitle": "从侧边栏选择一个对话开始。",
     "loadingMessages": "正在加载消息...",
@@ -310,9 +317,13 @@
     "openConversations": "显示对话列表"
   },
   "calendar": {
+    "loadFailed": "无法载入日期",
+    "prevMonth": "上个月",
+    "nextMonth": "下个月",
     "title": "日期搜索",
     "today": "今天",
     "availableOnDays": "有 {{count}} 天可用",
+    "itemCount": "{{count}} 项",
     "tapToJump": "点击日期跳转",
     "weekdays": {
       "sun": "日",
@@ -395,9 +406,10 @@
     "resultCountPartial": "显示 {{shown}} / {{total}} 条结果",
     "loadMore": "加载更多结果",
     "pressEnterToSelect": "按 Enter 选择",
-    "errorSearchFailed": "搜索失败，请重试。",
-    "building": "正在构建搜索索引...",
+    "searchFailed": "搜索失败，请重试。",
+    "title": "搜索",
     "filters": "筛选",
+    "removeFilter": "移除筛选：{{name}}",
     "exactMatchOnly": "仅完全相符",
     "includeUnread": "包含未读",
     "filterByMember": "按成员或服务筛选...",
@@ -439,7 +451,8 @@
       "photos": "{{count}} 张照片",
       "videos": "{{count}} 个视频",
       "voice": "{{count}} 条语音"
-    }
+    },
+    "typeTabs": "媒体类型"
   },
   "sentLetters": {
     "title": "已发送的信件",
@@ -463,7 +476,6 @@
     "addMembersHint": "添加我的推即可在此查看更新",
     "selectServiceHint": "选择服务并同步以加载 Blog",
     "noMembersFound": "未找到成员",
-    "tapOutsideToClose": "点击外部关闭",
     "publishedRecently": "24小时内发布",
     "cached": "已缓存",
     "mascot": "吉祥物",
@@ -481,7 +493,9 @@
     "loadingPost": "正在加载博文...",
     "olderPost": "上一篇",
     "newerPost": "下一篇",
-    "postNavigation": "文章导航"
+    "postNavigation": "文章导航",
+    "addFavorite": "将{{name}}加入收藏",
+    "removeFavorite": "将{{name}}移出收藏"
   },
   "voicePlayer": {
     "speed": "播放速度",
@@ -556,7 +570,10 @@
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
+      "cacheClearFailed": "无法清除翻译缓存，请重试。",
       "savedSecurely": "已安全保存在凭据管理器中",
+      "saveFailed": "无法保存 AI 设置，请重试。",
+      "clearApiKeyFailed": "无法清除 API 密钥，请重试。",
       "keyMissing": "尚未保存 API 密钥，翻译无法使用。请在上方输入密钥。"
     },
     "error": {
@@ -579,7 +596,8 @@
     "phoneImageHint": "来电时显示的照片",
     "viewImages": "查看图片",
     "current": "目前",
-    "versions": "{{count}} 个版本"
+    "versions": "{{count}} 个版本",
+    "kinds": "图片类型"
   },
   "date": {
     "today": "今天",
@@ -637,7 +655,18 @@
     "railLogo": "选中的分组 logo（侧栏）",
     "roles": "用途",
     "roleName": "用途",
-    "roleStep": "色阶"
+    "roleStep": "色阶",
+    "danger": "危险",
+    "accent": "强调",
+    "overlay": "浮层",
+    "forms": "表单控件",
+    "switchSample": "开关示例",
+    "inputSample": "输入框示例",
+    "selectSample": "选择框示例",
+    "menu": "菜单",
+    "menuItem": "菜单项",
+    "menuSelected": "已选项",
+    "menuOpen": "打开菜单"
   },
   "letters": {
     "openImage": "打开信件",

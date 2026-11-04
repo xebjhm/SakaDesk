@@ -75,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   group's soft background colours and each member's colours in the reader.
   Posts read at a comfortable width with more space between lines, dates
   follow your app language, and the older and newer posts float at the bottom.
+- **Dialogs, menus and the photo viewer match the new look.** Settings, search,
+  the date picker, favourites, the media and photo galleries, the member lists
+  for blogs, About and every other window now share one calm design and one
+  menu style; photos and videos still open in a dark full-screen viewer.
+- **Confirmations appear inside the app.** Resetting settings, deleting the
+  blog backup, a deep re-sync and revealing all unread messages now ask in a
+  SakaDesk window instead of a browser pop-up, with Cancel selected first.
 
 ### Fixed
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
@@ -115,6 +122,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The arrow keys no longer switch blog posts by accident.** Left and right
   now leave the post alone while you type in a text field, use a blog dialog
   or the photo viewer.
+- **Closing one window no longer closes the one behind it.** Escape now
+  closes only the top window (for example the date picker over the media
+  gallery), and every window keeps the keyboard inside it and puts you back
+  where you were when it closes.
+- **Settings that fail to save now say so.** If a setting cannot be saved, a
+  message appears under it and an error notice shows above the Settings
+  window, instead of the change seeming to work.
 
 ## [0.3.4] - 2026-11-03
 

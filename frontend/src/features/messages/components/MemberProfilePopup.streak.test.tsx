@@ -6,6 +6,9 @@ import { MemberProfilePopup } from './MemberProfilePopup';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
+/** Where clientLog posts breadcrumbs (utils/clientLog.ts): the only fetch the popup may make. */
+const CLIENT_LOG_URL = '/api/client-log';
+
 describe('MemberProfilePopup streak', () => {
     it('shows the shared streak and retries through the callback', async () => {
         const onRetry = vi.fn();
@@ -26,7 +29,8 @@ describe('MemberProfilePopup streak', () => {
     it('never fetches the streak itself', () => {
         const spy = vi.spyOn(globalThis, 'fetch');
         render(<MemberProfilePopup isOpen onClose={vi.fn()} memberName="A" />);
-        expect(spy).not.toHaveBeenCalled();
+        // The dialog's own breadcrumb goes to client-log; nothing else may be fetched.
+        expect(spy.mock.calls.filter(([url]) => String(url) !== CLIENT_LOG_URL)).toEqual([]);
         spy.mockRestore();
     });
 });

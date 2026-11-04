@@ -2,12 +2,12 @@
 import React, { useState, useMemo } from 'react';
 import { X, Loader2, LogIn } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Modal } from '../../design/primitives';
 import { getServiceById } from '../../data/services';
 import { getServiceTheme } from '../../config/serviceThemes';
 import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
-import { useModalClose } from '../../core/common/useModalClose';
 import { ConfirmDialog } from './ConfirmDialog';
 
 interface LoginModalProps {
@@ -28,7 +28,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     isFreshPrompt = false,
 }) => {
     const { t } = useTranslation();
-    const handleBackdropClick = useModalClose(true, onClose);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [showGeoWarning, setShowGeoWarning] = useState(false);
@@ -89,8 +88,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     return (
         <>
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+        <Modal isOpen onClose={onClose} layout="bare" labelledBy="login-title" logId="login" className="max-w-md">
                 {/* Header — matches chat room header style per service */}
                 <div
                     className={cn('px-6 py-4', !isLightHeader && 'shadow-sm')}
@@ -105,7 +103,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                                 <LogIn className="w-5 h-5" style={{ color: headerTextColor }} />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold" style={{ color: headerTextColor }}>
+                                <h3 id="login-title" className="text-lg font-bold" style={{ color: headerTextColor }}>
                                     {isFreshPrompt
                                         ? t('login.connectPromptTitle')
                                         : isDisconnected
@@ -185,8 +183,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         {t('login.credentialsSaved')}
                     </p>
                 </div>
-            </div>
-        </div>
+            </Modal>
         <ConfirmDialog
             open={showGeoWarning}
             title={t('login.yodelJpOnlyTitle')}

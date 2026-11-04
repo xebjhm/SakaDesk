@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Image, Film, Volume2, Calendar, VolumeX, Download } from 'lucide-react';
+import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
@@ -7,11 +7,13 @@ import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { LazyVideo } from './LazyVideo';
 import { PhotoPlayer } from './PhotoPlayer';
-import { BaseModal, DetailModal, ModalEmptyState } from '../common';
+import { Modal, Button, IconButton, Avatar } from '../../design/primitives';
+import { DialogStatus } from '../common/DialogStatus';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
-import { getServiceTheme } from '../../config/serviceThemes';
+import { groupRoles } from '../../design/tokens';
+import { serviceGroupId } from '../../config/serviceGroup';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -40,8 +42,6 @@ interface VoiceRowProps {
     memberAvatar?: string;
     serviceId?: string;
     memberPath?: string;
-    accentColor: string;
-    accentColorLight: string;
     dateAnchorRef?: (el: HTMLButtonElement | null) => void;
 }
 
@@ -58,8 +58,6 @@ const VoiceRow: React.FC<VoiceRowProps> = ({
     memberAvatar,
     serviceId,
     memberPath,
-    accentColor,
-    accentColorLight,
     dateAnchorRef,
 }) => {
     const { t } = useTranslation();
@@ -69,52 +67,35 @@ const VoiceRow: React.FC<VoiceRowProps> = ({
     return (
         <button
             ref={dateAnchorRef}
+            type="button"
             onClick={onSelect}
+            aria-pressed={isSelected}
             className={cn(
-                "w-full flex items-center gap-3 px-4 py-4 text-left transition-colors",
-                !isSelected && "hover:bg-gray-50"
+                'flex w-full items-center gap-3 rounded-card px-4 py-4 text-left transition-colors duration-fast ease-standard',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group',
+                isSelected ? 'bg-group-subtle' : 'hover:bg-sunken',
             )}
-            style={isSelected ? { backgroundColor: accentColorLight } : undefined}
         >
-            {/* Avatar */}
-            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200 shrink-0">
-                {memberAvatar ? (
-                    <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                        {memberName.substring(0, 2)}
-                    </div>
-                )}
-            </div>
-
-            {/* Name + transcript preview */}
-            <div className="flex-1 min-w-0">
-                <p
-                    className="text-sm font-medium"
-                    style={{ color: isSelected ? accentColor : '#111827' }}
-                >{memberName}</p>
+            <Avatar src={memberAvatar} name={memberName} size="md" className="h-12 w-12" decorative />
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className={cn('text-small font-semibold', isSelected ? 'text-group-strong' : 'text-primary')}>{memberName}</span>
                 {previewText ? (
-                    <p className="text-xs text-gray-400 truncate mt-0.5">{previewText}</p>
+                    <span className="truncate text-caption text-muted">{previewText}</span>
                 ) : isSelected ? (
-                    <p className="text-xs text-gray-400 italic mt-0.5">{t('transcription.noTranscript')}</p>
+                    <span className="text-caption italic text-muted">{t('transcription.noTranscript')}</span>
                 ) : null}
-            </div>
-
-            {/* Date and duration */}
-            <div className="text-right shrink-0">
-                <p className="text-sm text-gray-500">{formatDateTime(item.timestamp)}</p>
-                <p
-                    className="text-sm"
-                    style={{ color: isSelected ? accentColor : '#9ca3af' }}
-                >{formatDuration(item.media_duration)}</p>
-            </div>
+            </span>
+            <span className="flex shrink-0 flex-col items-end gap-1 text-small">
+                <span className="text-muted">{formatDateTime(item.timestamp)}</span>
+                <span className={cn('tabular-nums', isSelected ? 'text-group-strong' : 'text-muted')}>{formatDuration(item.media_duration)}</span>
+            </span>
         </button>
     );
 };
 
 // Tab configuration - module level constant to avoid recreation on each render
 const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; labelKey: string }[] = [
-    { id: 'photos', icon: Image, labelKey: 'media.tabs.photos' },
+    { id: 'photos', icon: ImageIcon, labelKey: 'media.tabs.photos' },
     { id: 'videos', icon: Film, labelKey: 'media.tabs.videos' },
     { id: 'voice', icon: Volume2, labelKey: 'media.tabs.voice' },
 ];
@@ -139,7 +120,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Get per-service theme colors
     const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const theme = getServiceTheme(activeService);
+    const voiceAccent = groupRoles(serviceGroupId(activeService)).action;
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
@@ -147,7 +128,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
     // Closing detail/voice state must happen BEFORE bubbling up — the
-    // photo/video DetailModal is a sibling of the gallery's main modal
+    // photo/video viewer is a sibling of the gallery's main dialog
     // so it wouldn't auto-close on parent state change, and leaving
     // audio running after navigating away is jarring. Memoised so
     // VoiceRow prop identity stays stable across renders.
@@ -313,19 +294,36 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const detailIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
 
         return (
-            <DetailModal
-                isOpen={!!selectedMedia}
-                onClose={() => setSelectedMedia(null)}
-                footer={
-                    <div className="flex items-center justify-between w-full">
+            <Modal isOpen onClose={() => setSelectedMedia(null)} tone="viewer" layout="bare" aria-label={t('common.mediaViewer')} logId="media_viewer">
+                <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                <div className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-4 p-4">
+                    <div className="flex flex-1 items-center justify-center overflow-hidden rounded-card bg-viewer-stage">
+                        {selectedMedia.type === 'picture' && mediaUrl && (
+                            <PhotoPlayer variant="fullscreen" src={mediaUrl} alt={t('common.mediaViewer')} className="max-h-[80vh]" />
+                        )}
+                        {selectedMedia.type === 'video' && mediaUrl && (
+                            <VideoPlayer
+                                src={mediaUrl}
+                                variant="gallery"
+                                autoPlay
+                                messageTimestamp={selectedMedia.timestamp}
+                                noAudio={selectedMedia.is_muted}
+                                videoClassName="max-w-full max-h-[80vh]"
+                                messageId={selectedMedia.id}
+                                service={serviceId}
+                                memberPath={memberPath}
+                            />
+                        )}
+                    </div>
+                    <div className="flex w-full items-center justify-between text-small text-viewer-muted">
                         <div>
                             <span>{memberName}</span>
-                            <span className="mx-2">•</span>
+                            <span aria-hidden="true" className="mx-2">•</span>
                             {handleSourceJump ? (
                                 <button
                                     type="button"
-                                    onClick={(e) => { e.stopPropagation(); handleSourceJump(selectedMedia.id); }}
-                                    className="underline underline-offset-2 decoration-white/30 hover:decoration-white/60 hover:text-white transition-colors"
+                                    onClick={() => handleSourceJump(selectedMedia.id)}
+                                    className="rounded-pill underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
                                     title={t('media.jumpToMessage')}
                                 >
                                     {formatDateTime(selectedMedia.timestamp)}
@@ -335,58 +333,32 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             )}
                             {currentTabItems.length > 1 && (
                                 <>
-                                    <span className="mx-2">•</span>
-                                    <span>{currentTabItems.length - detailIdx} / {currentTabItems.length}</span>
+                                    <span aria-hidden="true" className="mx-2">•</span>
+                                    <span className="tabular-nums">{currentTabItems.length - detailIdx} / {currentTabItems.length}</span>
                                 </>
                             )}
                         </div>
                         {selectedMedia.type === 'picture' && mediaUrl && goldenFingerActive && (
-                            <button
-                                onClick={(e) => { e.stopPropagation(); downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp)); }}
-                                className="px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 transition-colors"
-                            >
-                                <Download className="w-4 h-4" />
+                            <Button variant="overlay" size="sm" onClick={() => downloadMedia(mediaUrl, formatDownloadFilename(mediaUrl, selectedMedia.timestamp))}>
+                                <Download className="h-4 w-4" />
                                 {t('common.download')}
-                            </button>
+                            </Button>
                         )}
                     </div>
-                }
-            >
-                {selectedMedia.type === 'picture' && mediaUrl && (
-                    <PhotoPlayer
-                        variant="fullscreen"
-                        src={mediaUrl}
-                        alt="Media"
-                        className="max-h-[80vh]"
-                    />
-                )}
-                {selectedMedia.type === 'video' && mediaUrl && (
-                    <VideoPlayer
-                        src={mediaUrl}
-                        variant="gallery"
-                        autoPlay
-                        messageTimestamp={selectedMedia.timestamp}
-                        noAudio={selectedMedia.is_muted}
-                        videoClassName="max-w-full max-h-[80vh]"
-                        messageId={selectedMedia.id}
-                        service={serviceId}
-                        memberPath={memberPath}
-                    />
-                )}
-                {/* Clipboard toast */}
+                </div>
                 {clipboardToast && (
-                    <div className="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-[60]">
+                    <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer">
                         {clipboardToast}
                     </div>
                 )}
-            </DetailModal>
+            </Modal>
         );
     };
 
     // Get empty state icon
     const getEmptyIcon = () => {
         switch (activeTab) {
-            case 'photos': return Image;
+            case 'photos': return ImageIcon;
             case 'videos': return Film;
             case 'voice': return Volume2;
         }
@@ -394,47 +366,37 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     // Render icon-only tabs (like official app) - sticky at top of scroll container
     const renderTabs = () => (
-        <div
-            role="tablist"
-            aria-label="Media type tabs"
-            className="flex bg-white border-b border-gray-200 shrink-0 sticky top-0 z-20"
-        >
-            {MEDIA_TABS.map((tab) => (
-                <button
-                    key={tab.id}
-                    role="tab"
-                    aria-selected={activeTab === tab.id}
-                    aria-label={t(tab.labelKey)}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={cn(
-                        "flex-1 flex items-center justify-center py-3 transition-colors relative",
-                        activeTab !== tab.id && "text-gray-400 hover:text-gray-600"
-                    )}
-                    style={activeTab === tab.id ? { color: theme.modals.accentColor } : undefined}
-                >
-                    <tab.icon className="w-6 h-6" />
-                    {/* Active indicator - colored line under */}
-                    {activeTab === tab.id && (
-                        <div
-                            className="absolute bottom-0 left-4 right-4 h-1 rounded-t"
-                            style={{ backgroundColor: theme.modals.accentColorMuted }}
-                        />
-                    )}
-                </button>
-            ))}
+        <div role="tablist" aria-label={t('media.typeTabs')} className="sticky top-0 z-20 flex shrink-0 bg-sheet">
+            {MEDIA_TABS.map((tab) => {
+                const selected = activeTab === tab.id;
+                return (
+                    <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        aria-label={t(tab.labelKey)}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={cn(
+                            'relative flex flex-1 items-center justify-center py-3 transition-colors duration-fast ease-standard',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group',
+                            selected ? 'text-group-strong' : 'text-muted hover:text-secondary',
+                        )}
+                    >
+                        <tab.icon className="h-6 w-6" />
+                        {selected && <span aria-hidden="true" className="absolute bottom-0 left-4 right-4 h-1 rounded-pill bg-group-accent" />}
+                    </button>
+                );
+            })}
         </div>
     );
 
     // Render photos/videos grid with month grouping
     const renderMediaGrid = () => {
+        const EmptyIcon = getEmptyIcon();
         if (groupedItems.length === 0) {
             return (
-                <div className="flex-1 flex items-center justify-center py-12">
-                    <ModalEmptyState
-                        icon={getEmptyIcon()}
-                        message={t(`media.empty.${activeTab}`)}
-                    />
-                </div>
+                <DialogStatus kind="empty" icon={<EmptyIcon />} title={t(`media.empty.${activeTab}`)} />
             );
         }
 
@@ -442,7 +404,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const seenDates = new Set<string>();
 
         return (
-            <div ref={scrollContainerRef} className="bg-white">
+            <div ref={scrollContainerRef}>
                 {groupedItems.map((group) => (
                     <div
                         key={group.key}
@@ -451,12 +413,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         }}
                     >
                         {/* Month header - sticky below tabs (top-12 = tabs height) */}
-                        <div className="px-4 py-3 text-sm font-medium text-gray-700 bg-white sticky top-12 z-10">
+                        <div className="sticky top-12 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
                             {group.label}
                         </div>
 
                         {/* Grid */}
-                        <div className="grid grid-cols-4 gap-0.5 px-1">
+                        <div className="grid grid-cols-4 gap-1 px-1">
                             {group.items.map((item) => {
                                 const mediaUrl = item.media_file ? getMediaUrl(item.media_file) : null;
                                 if (!mediaUrl) return null;
@@ -497,12 +459,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                         >
                                             {/* Mute icon - bottom left with background like official app */}
                                             {item.is_muted && (
-                                                <div className="absolute bottom-1 left-1 bg-black/50 rounded p-0.5">
-                                                    <VolumeX className="w-4 h-4 text-white" />
+                                                <div className="absolute bottom-1 left-1 rounded-pill bg-toast p-1">
+                                                    <VolumeX className="h-4 w-4 text-viewer" />
                                                 </div>
                                             )}
                                             {/* Duration overlay - bottom right */}
-                                            <div className="absolute bottom-1 right-1 bg-black/60 text-white text-xs px-1 rounded">
+                                            <div className="absolute bottom-1 right-1 rounded-pill bg-toast px-2 text-caption tabular-nums text-viewer">
                                                 {formatDuration(item.media_duration)}
                                             </div>
                                         </LazyVideo>
@@ -520,12 +482,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const renderVoiceList = () => {
         if (groupedItems.length === 0) {
             return (
-                <div className="flex-1 flex items-center justify-center py-12">
-                    <ModalEmptyState
-                        icon={Volume2}
-                        message={t('media.empty.voice')}
-                    />
-                </div>
+                <DialogStatus kind="empty" icon={<Volume2 />} title={t('media.empty.voice')} />
             );
         }
 
@@ -539,7 +496,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
         return (
             <>
-                <div ref={scrollContainerRef} className="bg-white">
+                <div ref={scrollContainerRef}>
                     {groupedItems.map((group) => (
                         <div
                             key={group.key}
@@ -548,12 +505,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             }}
                         >
                             {/* Month header - sticky below tabs (top-12 = tabs height) */}
-                            <div className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-50 sticky top-12 z-10">
+                            <div className="sticky top-12 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
                                 {group.label}
                             </div>
 
                             {/* Voice items in this month */}
-                            <div className="divide-y divide-gray-100">
+                            <div className="flex flex-col gap-1 px-2">
                                 {group.items.map((item) => {
                                     const mediaUrl = item.media_file ? getMediaUrl(item.media_file) : null;
                                     if (!mediaUrl) return null;
@@ -573,8 +530,6 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                             memberAvatar={memberAvatar}
                                             serviceId={serviceId}
                                             memberPath={memberPath}
-                                            accentColor={theme.modals.accentColor}
-                                            accentColorLight={theme.modals.accentColorLight}
                                             dateAnchorRef={isFirstOfDate ? (el) => {
                                                 if (el) itemRefs.current.set(dateKey, el);
                                             } : undefined}
@@ -587,25 +542,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 </div>
 
                 {/* Bottom voice player bar - sticky at bottom with gradient blur effect */}
-                <div className="relative sticky bottom-0 z-20">
-                    {/* Gradient blur layer - matches card height, fades from clear at top to blurred at bottom */}
-                    <div
-                        className="absolute inset-0 backdrop-blur-xl pointer-events-none"
-                        style={{
-                            maskImage: 'linear-gradient(to bottom, transparent 0%, black 100%)',
-                            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 100%)',
-                        }}
-                    />
-                    {/* Gradient background overlay - transparent at top, white at bottom */}
-                    <div
-                        className="absolute inset-0 bg-gradient-to-b from-transparent to-white pointer-events-none"
-                    />
-                    {/* Content — VoicePlayer variant="gallery" renders its
-                        own transcript above the player card, so the sticky
-                        bottom container grows upward when transcript expands,
-                        keeping the player anchored at the bottom. */}
-                    <div className="relative px-4 py-4">
-                        <div className="max-w-lg mx-auto">
+                <div className="sticky bottom-0 z-20 bg-sheet shadow-card">
+                    <div className="px-4 py-4">
+                        <div className="mx-auto max-w-lg">
                             <VoicePlayer
                                 key={currentVoice?.id}
                                 src={currentVoiceUrl}
@@ -614,7 +553,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 memberName={memberName}
                                 timestamp={currentVoice ? formatDateTime(currentVoice.timestamp) : undefined}
                                 durationText={currentVoice ? formatDuration(currentVoice.media_duration) : undefined}
-                                accentColor={theme.modals.accentColor}
+                                accentColor={voiceAccent}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
                                 onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
@@ -639,36 +578,31 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     return (
         <>
-            <BaseModal
+            <Modal
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('media.title')}
-                icon={Image}
-                maxWidth="max-w-4xl"
-                className="h-[80vh]"
+                closeLabel={t('common.close')}
+                logId="media_gallery"
+                className="h-[80vh] max-w-4xl"
+                bodyClassName="px-0 pb-0"
                 footer={
-                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-sm text-gray-500">
+                    <>
+                        <p className="mr-auto text-small text-muted">
                             {activeTab === 'photos' && t('media.count.photos', { count: mediaItems.photos.length })}
                             {activeTab === 'videos' && t('media.count.videos', { count: mediaItems.videos.length })}
                             {activeTab === 'voice' && t('media.count.voice', { count: mediaItems.voice.length })}
-                        </span>
-                        <button
-                            onClick={() => setShowCalendar(true)}
-                            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                            <Calendar className="w-4 h-4" />
+                        </p>
+                        <Button variant="ghost" onClick={() => setShowCalendar(true)}>
+                            <Calendar className="h-4 w-4" />
                             {t('media.jumpToDate')}
-                        </button>
-                    </div>
+                        </Button>
+                    </>
                 }
             >
-                {/* Tabs - sticky at top of scroll container */}
                 {renderTabs()}
-
-                {/* Content */}
                 {renderContent()}
-            </BaseModal>
+            </Modal>
 
             {renderDetailView()}
 

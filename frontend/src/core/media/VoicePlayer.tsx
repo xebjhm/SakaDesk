@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
 import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
@@ -123,7 +124,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
-    const menuPortalRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Only gallery/fullscreen own transcription; callers must supply all
@@ -293,6 +293,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     // Keyboard shortcuts - must be after handler definitions
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // A menu, field or already-handled key is not a player shortcut.
+            if (e.defaultPrevented) return;
+            const el = e.target instanceof HTMLElement ? e.target : null;
+            if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
             // In viewer mode: listen globally (no focus check), skip Left/Right (reserved for modal nav)
             // In normal mode: only when container is focused
             if (!viewerMode) {
@@ -343,34 +347,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewerMode, togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle, volume, setVolume]);
-
-    // Close menu on click outside or Escape key
-    useEffect(() => {
-        if (!showMenu) return;
-
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as Node;
-            if (
-                menuButtonRef.current && !menuButtonRef.current.contains(target) &&
-                menuPortalRef.current && !menuPortalRef.current.contains(target)
-            ) {
-                setShowMenu(false);
-            }
-        };
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape') return;
-            // Claim the key so the incoming-call overlay doesn't also decline.
-            e.preventDefault();
-            setShowMenu(false);
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEsc);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('keydown', handleEsc);
-        };
-    }, [showMenu]);
 
     const handleVolumeMouseEnter = useCallback(() => {
         if (volumeHideTimeout.current) {
@@ -501,6 +477,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     <button
                         ref={menuButtonRef}
                         onClick={handleMenuToggle}
+                        aria-label={t('common.moreOptions')}
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
                         className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
                         type="button"
                     >
@@ -612,41 +591,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                 {/* Menu portal */}
                 {showMenu && createPortal(
-                    <div
-                        ref={menuPortalRef}
+                    <Menu
+                        aria-label={t('common.moreOptions')}
+                        onClose={() => setShowMenu(false)}
+                        layer="popover"
                         style={menuStyle}
-                        className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                        ignoreRefs={[menuButtonRef]}
+                        returnFocusRef={menuButtonRef}
+                        className="w-max whitespace-nowrap"
                     >
                         {goldenFingerActive && (
                             <>
-                                <button
-                                    onClick={handleDownload}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
-                                    type="button"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    {t('common.download')}
-                                </button>
-                                <div className="border-t border-gray-200 my-1" />
+                                <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                                <MenuSeparator />
                             </>
                         )}
-                        <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                        {[0.5, 1, 1.5, 2].map(rate => (
-                            <button
-                                key={rate}
-                                onClick={() => handlePlaybackRateChange(rate)}
-                                className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80"
-                                style={{
-                                    color: playbackRate === rate ? accentColor : '#374151',
-                                    fontWeight: playbackRate === rate ? 500 : 400,
-                                }}
-                                type="button"
-                            >
+                        <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                        {[0.5, 1, 1.5, 2].map((rate) => (
+                            <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
                                 {rate}x
-                            </button>
+                            </MenuItem>
                         ))}
-                    </div>,
-                    document.body
+                    </Menu>,
+                    document.body,
                 )}
             </div>
         );
@@ -796,6 +763,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     <button
                         ref={menuButtonRef}
                         onClick={handleMenuToggle}
+                        aria-label={t('common.moreOptions')}
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
                         className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
                         type="button"
                     >
@@ -806,38 +776,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
             {/* Menu portal */}
             {showMenu && createPortal(
-                <div
-                    ref={menuPortalRef}
+                <Menu
+                    aria-label={t('common.moreOptions')}
+                    onClose={() => setShowMenu(false)}
+                    layer="popover"
                     style={menuStyle}
-                    className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                    ignoreRefs={[menuButtonRef]}
+                    returnFocusRef={menuButtonRef}
+                    className="w-max whitespace-nowrap"
                 >
                     {goldenFingerActive && (
                         <>
-                            <button
-                                onClick={handleDownload}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                type="button"
-                            >
-                                <Download className="w-4 h-4" />
-                                {t('common.download')}
-                            </button>
-                            <div className="border-t border-gray-200 my-1" />
+                            <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                            <MenuSeparator />
                         </>
                     )}
-                    <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                    {[0.5, 1, 1.5, 2].map(rate => (
-                        <button
-                            key={rate}
-                            onClick={() => handlePlaybackRateChange(rate)}
-                            className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
-                            style={{ color: playbackRate === rate ? accentColor : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
-                            type="button"
-                        >
+                    <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                    {[0.5, 1, 1.5, 2].map((rate) => (
+                        <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
                             {rate}x
-                        </button>
+                        </MenuItem>
                     ))}
-                </div>,
-                document.body
+                </Menu>,
+                document.body,
             )}
         </div>
     );

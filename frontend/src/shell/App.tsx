@@ -9,6 +9,7 @@ import { useAppStore } from '../store/appStore'
 import type { FeatureId } from '../store/appStore'
 import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
+import { Z_INDEX } from '../constants/zIndex'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
@@ -371,9 +372,13 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST */}
+                {/* ERROR TOAST: on the toast layer, so it shows over an open Settings dialog. */}
                 {settingsError && (
-                    <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
+                    <div
+                        data-testid="settings-error-toast"
+                        style={{ zIndex: Z_INDEX.TOAST }}
+                        className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3"
+                    >
                         <div className="bg-red-100 p-2 rounded-full">
                             <Loader2 className="w-4 h-4 text-red-600" />
                         </div>

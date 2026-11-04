@@ -41,17 +41,19 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
     if (available.length === 0) return null;
 
     const tabs = (
-        <div role="tablist" className="flex gap-1.5">
+        <div role="tablist" aria-label={t('profileImages.kinds')} className="flex gap-1">
             {available.map(k => (
                 <button
                     key={k}
+                    type="button"
                     role="tab"
                     aria-selected={k === kind}
                     title={t(`profileImages.${KIND_I18N_KEY[k]}Hint`)}
                     onClick={() => { setKind(k); setIndex(0); }}
                     className={cn(
-                        'px-3 py-1 rounded-full text-xs transition-colors',
-                        k === kind ? 'bg-white text-gray-900' : 'bg-white/15 text-white/80 hover:bg-white/25',
+                        'rounded-pill px-3 py-1 text-caption transition-colors duration-fast ease-standard',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                        k === kind ? 'bg-pill font-semibold text-primary' : 'bg-viewer-control text-viewer-muted hover:bg-viewer-control-hover',
                     )}
                 >
                     {t(`profileImages.${KIND_I18N_KEY[k]}`)}

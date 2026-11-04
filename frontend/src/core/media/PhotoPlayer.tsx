@@ -60,8 +60,8 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
 
     const fallback = (extraClasses?: string) => (
-        <div className={cn('flex items-center justify-center bg-gray-200', extraClasses)}>
-            <ImageOff className="w-8 h-8 text-gray-400" />
+        <div className={cn('flex items-center justify-center bg-sunken', extraClasses)}>
+            <ImageOff className="h-8 w-8 text-muted" />
         </div>
     );
 
@@ -71,7 +71,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                 ref={anchorRef}
                 type="button"
                 onClick={onClick}
-                className={cn('aspect-square relative bg-gray-100 cursor-pointer', className)}
+                className={cn('relative aspect-square cursor-pointer bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group', className)}
             >
                 {hasError ? (
                     fallback('w-full h-full')
@@ -97,7 +97,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                 loading={effectiveLoading}
                 draggable={false}
                 onError={() => setHasError(true)}
-                className={cn('max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-150', className)}
+                className={cn('max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-fast ease-standard motion-reduce:transition-none', className)}
                 style={{ transform: `scale(${zoom})` }}
             />
         );

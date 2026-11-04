@@ -31,8 +31,8 @@ const baseProgress: SyncProgress = {
 
 describe('SyncModal', () => {
     it('renders without crashing', () => {
-        const { container } = render(<SyncModal syncProgress={baseProgress} />);
-        expect(container.querySelector('.fixed')).toBeInTheDocument();
+        render(<SyncModal syncProgress={baseProgress} />);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
     it('shows progress fraction', () => {

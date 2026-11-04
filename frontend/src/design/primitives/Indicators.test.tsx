@@ -62,7 +62,7 @@ describe('Avatar', () => {
 
     it('adds the white ring and group glow when selected', () => {
         const { container } = render(<Avatar name="A" selected />);
-        expect(container.firstChild).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');
+        expect(container.firstChild).toHaveClass('ring-2', 'ring-surface', 'shadow-group-glow');
     });
 });
 

@@ -36,16 +36,9 @@ describe('serviceThemes', () => {
             }
         })
 
-        it('should have all required theme sections', () => {
+        it('keeps only the fields the app still reads', () => {
             for (const theme of Object.values(serviceThemes)) {
-                expect(theme).toHaveProperty('ambient')
-                expect(theme).toHaveProperty('surface')
-                expect(theme).toHaveProperty('text')
-                expect(theme).toHaveProperty('interaction')
-                expect(theme).toHaveProperty('vibe')
-                expect(theme).toHaveProperty('blog')
-                expect(theme).toHaveProperty('modals')
-                expect(theme).toHaveProperty('messages')
+                expect(Object.keys(theme).sort()).toEqual(['accentColor', 'id', 'messages', 'name', 'nameJp', 'primaryColor', 'secondaryColor'])
             }
         })
 
@@ -114,32 +107,6 @@ describe('serviceThemes', () => {
             expect(getServiceTheme('unknown')).toBe(serviceThemes.default)
             expect(getServiceTheme('akb48')).toBe(serviceThemes.default)
             expect(getServiceTheme('')).toBe(serviceThemes.default)
-        })
-    })
-
-    describe('theme consistency', () => {
-        it('should have consistent vibe arrays (non-empty strings)', () => {
-            for (const theme of Object.values(serviceThemes)) {
-                expect(Array.isArray(theme.vibe)).toBe(true)
-                expect(theme.vibe.length).toBeGreaterThan(0)
-                for (const v of theme.vibe) {
-                    expect(typeof v).toBe('string')
-                    expect(v.length).toBeGreaterThan(0)
-                }
-            }
-        })
-
-        it('should have valid ambient orb configurations', () => {
-            for (const theme of Object.values(serviceThemes)) {
-                for (const orb of [theme.ambient.orb1, theme.ambient.orb2, theme.ambient.orb3]) {
-                    expect(typeof orb.color).toBe('string')
-                    expect(typeof orb.position).toBe('string')
-                    expect(typeof orb.size).toBe('string')
-                    expect(typeof orb.opacity).toBe('number')
-                    expect(orb.opacity).toBeGreaterThanOrEqual(0)
-                    expect(orb.opacity).toBeLessThanOrEqual(1)
-                }
-            }
         })
     })
 })

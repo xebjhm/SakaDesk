@@ -289,6 +289,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
         return (
             <div
+                data-testid="unread-shelter"
                 className={cn('absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors', bubbleCorners, isLightStyle && 'bg-card')}
                 style={{ backgroundColor: isLightStyle ? undefined : themeColor, border: borderStyle }}
                 onClick={(e) => {

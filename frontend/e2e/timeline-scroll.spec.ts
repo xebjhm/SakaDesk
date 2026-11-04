@@ -18,8 +18,8 @@ async function openBigRoom(page: Page) {
 async function openCalendarAt(page: Page, monthLabel: string) {
   await page.getByTitle('More options').click()
   await page.getByText('Date Search', { exact: true }).click()
-  const dialog = page.getByRole('dialog')
-  const prev = dialog.locator('button.p-2').first() // previous-month chevron (lucide adds no class here)
+  const dialog = page.getByRole('dialog', { name: 'Date Search' })
+  const prev = dialog.getByRole('button', { name: 'Previous month' })
   for (let i = 0; i < 80; i++) {
     if (await dialog.getByText(monthLabel, { exact: true }).isVisible()) return dialog
     await prev.click()

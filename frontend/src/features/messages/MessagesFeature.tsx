@@ -16,6 +16,7 @@ import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, IconButton } from '../../design/primitives';
+import { groupRoles } from '../../design/tokens';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
@@ -25,6 +26,7 @@ import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
+import { ConfirmDialog } from '../../shell/components/ConfirmDialog';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
@@ -725,7 +727,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         onClick={() => setIsSidebarOpen(true)}
                     />
                     {selectedGroupDir && !isGroupChat && (
-                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-white" />
+                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-surface" />
                     )}
                     <div className="min-w-0 flex-1">
                         <h2 className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
@@ -765,7 +767,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
-                            iconColor={isLightHeader ? theme.messages.headerTextColor : undefined}
                         />
                     )}
                 </header>
@@ -842,7 +843,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     <CallOverlay
                         call={incomingCall}
                         // The accent is the group action colour (step 600); light-style services (櫻坂) get a white answer button.
-                        accentColor={theme.modals.accentColor}
+                        accentColor={groupRoles(theme.id).action}
                         answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />
@@ -853,8 +854,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {/* Up arrow: bottom-right, when the oldest unread is ABOVE the view */}
                 {selectedGroupDir && hasUnreadAbove && !callActive && (
                     <IconButton
-                        variant="secondary"
-                        className="absolute bottom-4 right-4 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        variant="accent"
+                        className="absolute bottom-4 right-4 z-20"
                         aria-label={t('messageList.jumpToOldestUnread')}
                         title={t('messageList.jumpToOldestUnread')}
                         icon={<ChevronUp className="h-5 w-5" />}
@@ -864,8 +865,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {/* Down arrow: top-right below the header, when the oldest unread is BELOW the view */}
                 {selectedGroupDir && hasUnreadBelow && !callActive && (
                     <IconButton
-                        variant="secondary"
-                        className="absolute right-4 top-20 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        variant="accent"
+                        className="absolute right-4 top-20 z-20"
                         aria-label={t('messageList.jumpToOldestUnread')}
                         title={t('messageList.jumpToOldestUnread')}
                         icon={<ChevronDown className="h-5 w-5" />}
@@ -873,35 +874,20 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     />
                 )}
 
-                {/* Reveal All Confirmation Modal */}
-                {showRevealConfirm && (
-                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div className="bg-white rounded-xl max-w-sm w-full p-6 shadow-xl">
-                            <h3 className="text-lg font-bold text-gray-900 mb-2">{t('messageList.revealAllTitle')}</h3>
-                            <p className="text-gray-600 mb-6">
-                                {t('messageList.revealAllDescription', { count: displayUnreadCount })}
-                            </p>
-                            <div className="flex justify-end gap-3">
-                                <button
-                                    onClick={() => setShowRevealConfirm(false)}
-                                    className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium"
-                                >
-                                    {t('common.cancel')}
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        revealAllMessages();
-                                        setShowRevealConfirm(false);
-                                    }}
-                                    className="px-4 py-2 text-white rounded-lg font-medium"
-                                    style={{ backgroundColor: theme.modals.accentColor }}
-                                >
-                                    {t('messageList.confirm')}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                {/* Reveal all: an in-app confirm, focus starts on Cancel like every other confirm. */}
+                <ConfirmDialog
+                    open={showRevealConfirm}
+                    title={t('messageList.revealAllTitle')}
+                    message={t('messageList.revealAllDescription', { count: displayUnreadCount })}
+                    confirmLabel={t('messageList.confirm')}
+                    variant="default"
+                    logId="reveal_all"
+                    onCancel={() => setShowRevealConfirm(false)}
+                    onConfirm={() => {
+                        revealAllMessages();
+                        setShowRevealConfirm(false);
+                    }}
+                />
             </ContentSheet>
 
             {selectedGroupDir && (

@@ -374,3 +374,47 @@ def test_blog_load_breadcrumb_is_accepted():
     assert event["target"] == "content"
     assert event["outcome"] == "cache_hit"
     assert event["count"] == 3
+
+
+def test_dialog_breadcrumbs_are_accepted():
+    with capture_logs() as logs:
+        a = client.post(
+            "/api/client-log",
+            json={
+                "event": "dialog",
+                "fields": {
+                    "surface": "media_viewer",
+                    "phase": "close",
+                    "reason": "escape",
+                },
+            },
+        )
+        b = client.post(
+            "/api/client-log",
+            json={
+                "event": "dialog_load",
+                "fields": {
+                    "surface": "blog_gallery",
+                    "outcome": "partial",
+                    "count": 12,
+                },
+            },
+        )
+    assert a.status_code == 204
+    assert b.status_code == 204
+    events = _client_events(logs)
+    assert [e["event"] for e in events] == ["dialog", "dialog_load"]
+    assert events[0]["reason"] == "escape"
+    assert events[1]["count"] == 12
+    assert all(e["log_level"] == "info" for e in events)
+
+
+def test_dialog_breadcrumb_rejects_free_text():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "dialog",
+            "fields": {"surface": "Settings Dialog!", "phase": "open"},
+        },
+    )
+    assert res.status_code == 422

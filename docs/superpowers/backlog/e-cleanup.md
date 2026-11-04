@@ -1,6 +1,6 @@
 # E clean-up list
 
-Items found during D2a that were left on purpose. Pick them up in E (or D2c where noted).
+Items found during D2a, D2b and D2c that were left on purpose. Pick them up in E (or D2d where noted).
 
 - **Live letters endpoint unused.** `GET /api/chat/letters/{group_id}` (`backend/api/chat_features.py`) is no longer called by the UI (letters come from `letters_local`); remove it and its model, or keep it only if something else needs it.
 - **Visible range resolved twice per frame.** `MessageList.resolveVisibleRange` (`frontend/src/features/messages/components/MessageList.tsx`) and `useChatScroll.resolvePending` (`frontend/src/features/messages/hooks/useChatScroll.ts`) both resolve the visible range on each frame; share one result.
@@ -9,17 +9,7 @@ Items found during D2a that were left on purpose. Pick them up in E (or D2c wher
 - **Quick revisit after a failed first load.** In `frontend/src/features/messages/hooks/useRoomLetters.ts`, `alreadyReady` can let letter rows appear in an already mounted list after a failed first load, which shifts rows; keep the list stable.
 - **Path forms differ.** `serviceOfPath` (`frontend/src/features/messages/readStatePath.ts`) accepts id folders, while the backend `letters_local` accepts display-name paths only; align them, or move the e2e fixture (`frontend/e2e/fixtures/bigRoom.ts`) to display-name paths.
 - **Profile fetched for group chats.** `useRoomExtras` (`frontend/src/features/messages/hooks/useRoomExtras.ts`) fetches the account profile for group chats, where it is unused; skip it.
-- **D2c: `ring-surface` token.** Add a `ring-surface` token to replace `ring-white` in `frontend/src/design/primitives/Avatar.tsx`, the chat header avatar and the group-chat cell in `frontend/src/features/messages/components/MemberList.tsx`.
-- **D2c: `MemberProfilePopup` palette classes.** Replace the named palette classes in `frontend/src/features/messages/components/MemberProfilePopup.tsx` with tokens.
-- **D2c: reveal-all dialog.** The inline "reveal all" confirm dialog in `frontend/src/features/messages/MessagesFeature.tsx` still uses its old look.
-- **D2c: `IconButton` accent variant.** Give the unread arrows a real accent variant on `IconButton` instead of class overrides.
-- **D2c: rail disconnected badge.** `frontend/src/core/layout/ServiceRail.tsx` uses `bg-orange-500` for the disconnected badge; use a status token.
-- **D2c: calendar chevron labels.** Add aria-labels to the calendar chevrons, then drop the `button.p-2` selector in `frontend/e2e/timeline-scroll.spec.ts`.
-- **Legacy blog theme.** After D2c restyles the blog dialogs, remove `useBlogTheme`, `ServiceTheme.blog` and `ServiceTheme.ambient` from `frontend/src/config/serviceThemes.ts`. Keep `groupRoles().ambient` and `design/tokens/ambient.ts`: `DynamicBackground` reads them through `--ds-group-ambient-*`.
 - **`TranslateButton` palette.** `frontend/src/core/common/TranslateButton.tsx` builds its colours from hex + alpha; move it to tokens (shared with the chat).
-- **D2c: blog dialogs.** Restyle `MemberSelectModal` (hard-coded pink `#ff69b4` favourite, the mascot's CDN thumbnail URL; it also uses member penlight colours), `MemberTimelineModal` and `BlogPhotoGalleryModal`; `frontend/e2e/blogs.spec.ts` selects these dialogs by role and text and may need new selectors.
-- **D2c: search marks.** Move the search dialog's `.search-snippet mark` styles (`frontend/src/features/search/SearchModal.tsx`) to the `bg-mark-exact` / `bg-mark-reading` / `border-mark-underline` tokens.
-- **D2c: `MemberTimelineModal` dialog semantics.** Add `role="dialog"`, `aria-modal` and focus management in `frontend/src/features/blogs/components/MemberTimelineModal.tsx`; D2b only guards the arrow keys through `keysEnabled`.
 - **Rail: fast move then click selects nothing.** Moving fast and clicking at once in `frontend/src/features/blogs/components/TimelineRail.tsx` selects no post.
 - **Back label on the timeline path.** "Back to latest blogs" in `frontend/src/features/blogs/components/BlogReader.tsx` is misleading when the reader was opened from a member timeline.
 - **Fonts are not pinned in the shots.** `frontend/e2e/d2b-screens.spec.ts` and `frontend/e2e/visual-zero-pixel.spec.ts` depend on the Google Fonts load; pin or stub the fonts.
@@ -35,4 +25,35 @@ Items found during D2a that were left on purpose. Pick them up in E (or D2c wher
 - **e2e ring locator.** The `.border-2` locator for the rail hover ring in `frontend/e2e/d2b-screens.spec.ts:46` follows a class, not a role; use a test id.
 - **Hard-coded colon in the screen-reader prefix.** `frontend/src/features/blogs/components/BlogNavFooter.tsx` renders `{prefix}:`; move the separator into the i18n string.
 - **Rail tooltip covers the year label.** The card tooltip in `frontend/src/features/blogs/components/TimelineRail.tsx` hides the year label beside it.
-- **D2c: app-level dialogs.** App-level dialogs (Settings, Add service, About, Report, Diagnostics, Sync, Confirm, ToS) lack `role="dialog"`/`aria-modal`/focus management; once they move to the Modal primitive, `frontend/src/features/blogs/components/arrowKeys.ts` covers them.
+
+## From D2c
+
+- **Player internals on tokens.** `VideoPlayer`'s control bar, the `VoicePlayer` cards, `TranscriptPanel`, `TranscribeButton` and `SubtitleOverlay` (`frontend/src/core/media/`) still take the group colour as a hex prop and use palette classes; move them to tokens together with `TranslateButton` (D2c spec decision 15).
+- **App error toast.** The settings error toast in `frontend/src/shell/App.tsx` (now on `Z_INDEX.TOAST`) still has a hard-coded English "Error" title and "Debug" button and palette classes; restyle it on tokens (`bg-toast` or a status card) and translate its strings.
+- **`UpgradeIcon` ring.** `frontend/src/core/layout/UpgradeIcon.tsx` uses `text-blue-500` and palette classes for its progress ring.
+- **Search autocomplete keys.** The member autocomplete in `frontend/src/features/search/components/SearchFilterBar.tsx` has no ↑ / ↓ selection.
+- **`BlogsFeature` `keysEnabled`.** Now that the blog dialogs are `aria-modal`, `arrowKeys.ts` alone covers them; the `keysEnabled` prop through `BlogReader` to `BlogNavFooter` can go.
+- **One viewer key model, three viewers.** `MediaGalleryModal` (`frontend/src/core/media/MediaGalleryModal.tsx`), `FavoritesModal` (`frontend/src/core/modals/FavoritesModal.tsx`) and `MediaViewerModal` (`frontend/src/core/media/PhotoDetailModal.tsx`) each wire ← / → / ↑ / ↓ and the video and voice key hand-off themselves; define one viewer key model (who owns which key while a video, a voice note or a menu has focus) and share one implementation.
+- **Search keyboard scope.** In `frontend/src/features/search/SearchModal.tsx`, Tab and Enter move through and open results from anywhere in the dialog; scope them to the input so the filter controls are reachable by keyboard (today Tab never leaves the result list).
+- **Search mention combobox semantics.** The member mention field in `SearchFilterBar.tsx` should be a real combobox: `aria-selected` on the active option, arrow keys, and its own label instead of the shared "Filters" label the date and type menus also use.
+- **Narrow the `DATA_COLOUR` exemption.** `frontend/src/core/dialogs.style.test.ts` skips the inline-colour check for whole files (`BackgroundModal`, `SearchFilterBar`); allow only the specific data-colour lines instead.
+- **Heart touch target.** About's heart button (`frontend/src/core/modals/AboutModal.tsx`) is a 12 px icon; give it at least a 24 px hit area without moving the icon.
+- **Re-indent `DiagnosticsModal`.** `frontend/src/core/modals/DiagnosticsModal.tsx` kept its old indentation when it moved onto `Modal`; re-indent it in a whitespace-only commit.
+- **Fragile locators.** The context-menu position lock (inline `style.left` / `style.top` in `frontend/src/features/messages/components/MemberContextMenu.test.tsx`), the ReportIssue category pick (first button that is not Cancel, `frontend/src/core/modals/ReportIssueModal.test.tsx`) and the search-row lookup through `parentElement.parentElement` (`frontend/src/features/search/SearchModal.test.tsx`) follow layout, not roles; give them roles or test ids.
+- **Config substring test.** `frontend/src/design/d2cTokens.test.ts` checks `tailwind.config.js` by substring; load the config and assert on the parsed values.
+- **Dev warning naming.** `Modal`'s development `console.warn` messages (`frontend/src/design/primitives/Modal.tsx`) use a `[Modal]` prefix that matches nothing else; use one naming scheme for dev warnings across the primitives.
+- **`checkVisibility` needs Chromium 121+.** `frontend/src/design/dialog/tabbables.ts` relies on `Element.checkVisibility` (with a fallback for jsdom); confirm the WebView2 floor or keep the fallback tested.
+- **`Z_INDEX` depth.** `dialogZIndex` (`frontend/src/design/dialog/dialogStack.ts`) assumes at most about 20 stacked dialogs so `DIALOG + depth × DIALOG_STEP` stays far below `POPOVER`; cap or assert it.
+- **Style-ratchet gaps.** `VideoPlayer`, `VoicePlayer` and `MessagesFeature` are not in the `FILES` list of `frontend/src/core/dialogs.style.test.ts` (they still have palette classes); add them once the player internals and the chat screen are on tokens.
+- **Reset row error.** In `frontend/src/shell/components/SettingsModal.tsx`, `save('reset', …)` can set `failedRow = 'reset'`, but no row renders `rowError('reset')`, so a failed Reset to defaults shows only the App toast. Either show the error on the footer row or drop `'reset'` from `SaveRow`.
+- **Inline settings error announcement.** `frontend/src/shell/components/SettingRow.tsx` mounts its `role="status"` paragraph together with its text, so some screen readers may not announce it. Keep the region mounted empty, as the AI tab does.
+- **Leftover `z-50` classes.** The DESIGN_SYSTEM "Layering" rule says use `Z_INDEX` only, but `frontend/src/features/blogs/components/TimelineRail.tsx` (rail tooltip) and `frontend/src/core/media/VideoPlayer.tsx` (player toast) still use `z-50`.
+
+## D2d notes
+
+- **Short window clips the ToS card.** The `bare` frame of `TosDialog` clips the tall card in a short window; let it scroll inside the frame.
+- **Entry-shell indentation and fixed title ids.** `LoginModal`, `SyncModal`, `SetupWizard` and `TosDialog` (`frontend/src/shell/components/`) kept their old indentation, and name the dialog through fixed ids (`login-title`, `sync-title`, `setup-title`, `tos-title`); re-indent them and use `useId`.
+- **AddService lock is thin.** The Add service lock only asserts the heading; also lock adding and removing a service.
+- **LoginModal flow test.** Add a test for the `LoginModal` flow (open, sign in, success and failure paths).
+- **Call overlay under dialogs.** The incoming-call overlay (`frontend/src/features/incomingCall/CallOverlay.tsx`, `z-30` inside the frame) sits under any open dialog; add a `Z_INDEX` entry between `DIALOG` and `POPOVER` for it.
+- **Entry-shell contents still use palette classes or hex.** `InlineSyncView` (`frontend/src/core/layout/InlineSyncView.tsx`), `SetupWizard` and `LandingPage` (`frontend/src/pages/LandingPage.tsx`) keep palette classes and hex values inside the D2c shells.

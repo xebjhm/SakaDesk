@@ -9,8 +9,6 @@
  *   nearest step). Every other colour is a role from `roles.ts`. The only
  *   other hex written here are the per-group `bubbleBorder` and `glow` values
  *   listed in the D1.5 spec.
- * `legacyNeutral` holds today's per-group neutral tints, which D2 replaces
- * with shared neutrals.
  */
 export type GroupId = 'hinatazaka' | 'sakurazaka' | 'nogizaka' | 'yodel' | 'default';
 
@@ -57,7 +55,6 @@ export interface GroupTokens {
     /** Selection glow: the logo colour at the group's alpha. */
     glow: string;
     official: OfficialLayer;
-    legacyNeutral: { surfaceBackground: string; textSecondary: string; textMuted: string };
 }
 
 export const groupTokens: Record<GroupId, GroupTokens> = {
@@ -80,7 +77,6 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },
-        legacyNeutral: { surfaceBackground: '#FEFEFE', textSecondary: '#4b5563', textMuted: '#9ca3af' },
     },
     sakurazaka: {
         logo: '#f19db5',
@@ -101,7 +97,6 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
             shelterStyle: 'light',
             headerStyle: 'light',
         },
-        legacyNeutral: { surfaceBackground: '#FAFBFC', textSecondary: '#5a5a6e', textMuted: '#9898a8' },
     },
     nogizaka: {
         logo: '#7f1083',
@@ -122,7 +117,6 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },
-        legacyNeutral: { surfaceBackground: '#FCFBFD', textSecondary: '#5c5666', textMuted: '#8e889a' },
     },
     yodel: {
         logo: '#5a8a6a',
@@ -143,7 +137,6 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },
-        legacyNeutral: { surfaceBackground: '#FBFDFC', textSecondary: '#4b5e53', textMuted: '#8fa399' },
     },
     default: {
         logo: '#6b7280',
@@ -164,6 +157,5 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },
-        legacyNeutral: { surfaceBackground: '#FAFAFA', textSecondary: '#4B5563', textMuted: '#9CA3AF' },
     },
 };

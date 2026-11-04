@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { SettingsModal } from './SettingsModal';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 
@@ -29,12 +29,13 @@ function renderModal(onSaveSettings = vi.fn().mockResolvedValue(true), appSettin
 describe('SettingsModal reset to defaults', () => {
     beforeEach(() => {
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
     });
 
     it('turns the incoming call setting back on', async () => {
         const save = renderModal();
         fireEvent.click(screen.getByText('Reset to defaults'));
+        const confirm = await screen.findByRole('dialog', { name: 'Reset to defaults' });
+        fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(save).toHaveBeenCalled());
         expect(save).toHaveBeenCalledWith(expect.objectContaining({ incoming_call_enabled: true, auto_sync_enabled: true }));
     });
@@ -42,6 +43,8 @@ describe('SettingsModal reset to defaults', () => {
     it('turns the background call popup back on', async () => {
         const save = renderModal(undefined, { ...settings, call_popup_enabled: false });
         fireEvent.click(screen.getByText('Reset to defaults'));
+        const confirm = await screen.findByRole('dialog', { name: 'Reset to defaults' });
+        fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(save).toHaveBeenCalled());
         expect(save).toHaveBeenCalledWith(expect.objectContaining({ call_popup_enabled: true }));
     });
@@ -59,6 +62,8 @@ describe('SettingsModal reset to defaults', () => {
     it('restores the tray settings: close to tray on, autostart off', async () => {
         const save = renderModal();
         fireEvent.click(screen.getByText('Reset to defaults'));
+        const confirm = await screen.findByRole('dialog', { name: 'Reset to defaults' });
+        fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(save).toHaveBeenCalled());
         expect(save).toHaveBeenCalledWith(expect.objectContaining({ close_to_tray: true, autostart: false }));
     });

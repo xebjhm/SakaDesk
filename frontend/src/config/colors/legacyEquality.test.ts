@@ -41,14 +41,8 @@ describe('legacy theme is a view of the design tokens', () => {
         const t = serviceThemes[id];
         const r = groupRoles(id);
         expect(t.primaryColor).toBe(r.logo);
-        expect([t.messages.unreadBadge, t.messages.voicePlayerAccent, t.messages.scrollButtonColor, t.modals.accentColor]).toEqual([r.action, r.action, r.action, r.action]);
-        expect([t.blog.memberNameColor, t.blog.linkColor, t.blog.headerTitleColor, t.blog.timelineIndicator]).toEqual([r.strong, r.strong, r.strong, r.strong]);
-        expect(t.modals.accentColorLight).toBe(r.subtle);
-        expect(t.modals.accentColorMuted).toBe(r.subtleBorder);
-        expect(t.blog.linkUnderlineColor).toBe(r.linkUnderline);
+        expect([t.messages.unreadBadge, t.messages.voicePlayerAccent, t.messages.scrollButtonColor]).toEqual([r.action, r.action, r.action]);
         expect(t.messages.bubbleBorder).toBe(r.bubbleBorder);
-        expect(t.interaction.hoverGlow).toBe(r.glow);
-        expect(t.ambient.orb1.color).toBe(r.ambient.orb1);
     });
 
     it('serviceThemes.ts contains no hand-written colour', () => {

@@ -50,8 +50,8 @@ describe('MemberList — right-click menu', () => {
         fireEvent.contextMenu(await screen.findByText('石塚 瑶季'));
         fireEvent.click(await screen.findByRole('menuitem', { name: 'View images' }));
         const tablist = await screen.findByRole('tablist');
-        const modalRoot = tablist.closest('[tabindex="-1"]')!;
-        expect(modalRoot.parentElement).toBe(document.body);
+        const backdrop = tablist.closest('[data-testid="modal-backdrop"]')!;
+        expect(backdrop.parentElement).toBe(document.body);
     });
 
     it('does not open a viewer when the member has no images', async () => {

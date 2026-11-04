@@ -1,6 +1,7 @@
 import React from 'react';
 import { FolderOpen } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Modal } from '../../design/primitives';
 
 interface SetupWizardProps {
     outputDirInput: string;
@@ -24,14 +25,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     const { t } = useTranslation();
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+        <Modal isOpen onClose={() => {}} layout="bare" labelledBy="setup-title" dismissible={false} logId="setup" className="max-w-md">
                 {/* Header */}
                 <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
                     <div className="flex items-center gap-3">
                         <FolderOpen className="w-8 h-8 text-white" />
                         <div>
-                            <h3 className="text-xl font-bold text-white">{t('setup.welcome')}</h3>
+                            <h3 id="setup-title" className="text-xl font-bold text-white">{t('setup.welcome')}</h3>
                             <p className="text-sm text-white/80">{t('setup.setupDataFolder')}</p>
                         </div>
                     </div>
@@ -87,7 +87,6 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                         {t('setup.startUsing')}
                     </button>
                 </div>
-            </div>
-        </div>
+            </Modal>
     );
 };

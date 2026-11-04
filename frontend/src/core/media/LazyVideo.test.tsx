@@ -250,11 +250,11 @@ describe('LazyVideo component', () => {
       expect(button?.className).toContain('h-32')
     })
 
-    it('should have bg-gray-200 placeholder background', () => {
+    it('should have bg-sunken placeholder background', () => {
       const { container } = render(<LazyVideo {...defaultProps} />)
 
       const button = container.querySelector('button')
-      expect(button?.className).toContain('bg-gray-200')
+      expect(button?.className).toContain('bg-sunken')
     })
 
     it('should have overflow-hidden for clean video display', () => {

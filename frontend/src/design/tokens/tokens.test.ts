@@ -75,7 +75,6 @@ describe('group tokens — system layer', () => {
     it('derives shadow, button gradient and ambient orbs from the scale', () => {
         const h = groupRoles('hinatazaka');
         expect(h.unreadShadow).toBe('0 0 12px rgba(124, 199, 232, 0.4)');
-        expect(h.buttonGradient).toBe('linear-gradient(135deg, #7cc7e8 0%, #389dd1 100%)');
         expect(h.ambient.orb1).toBe('radial-gradient(circle, #bbe4f7 0%, #dbf1fb 30%, transparent 70%)');
         expect(h.ambient.orb2).toBe('radial-gradient(circle, #fce4fc 0%, #eff9fd 40%, transparent 70%)');
         expect(h.ambient.orb3).toBe('radial-gradient(circle, #dbf1fb 0%, transparent 70%)');
