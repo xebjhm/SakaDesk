@@ -63,7 +63,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
 
     return (
         <>
-            <nav className="flex w-20 shrink-0 flex-col gap-1 px-2 py-3">
+            <nav aria-label={t('featureRail.label')} className="flex w-20 shrink-0 flex-col gap-1 px-2 py-3">
                 {sortedFeatures.map(feature => {
                     const Icon = feature.icon;
                     return (

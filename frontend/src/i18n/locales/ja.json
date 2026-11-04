@@ -361,6 +361,9 @@
   "contentArea": {
     "comingSoon": "近日公開"
   },
+  "featureRail": {
+    "label": "機能"
+  },
   "features": {
     "messages": "メッセージ",
     "blogs": "ブログ",
@@ -378,6 +381,7 @@
     "selectService": "サービスを選択してください"
   },
   "serviceRail": {
+    "label": "グループ",
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
     "addService": "サービスを追加"
   },

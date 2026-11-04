@@ -361,6 +361,9 @@
   "contentArea": {
     "comingSoon": "即將推出"
   },
+  "featureRail": {
+    "label": "功能"
+  },
   "features": {
     "messages": "訊息",
     "blogs": "Blog",
@@ -378,6 +381,7 @@
     "selectService": "選擇服務以開始使用"
   },
   "serviceRail": {
+    "label": "群組",
     "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
     "addService": "新增服務"
   },

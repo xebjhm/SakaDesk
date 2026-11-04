@@ -117,7 +117,8 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     }, [dragIndex, services, getServiceOrder, setServiceOrder, handleDragEnd]);
 
     return (
-        <div
+        <nav
+            aria-label={t('serviceRail.label')}
             className="flex h-full w-16 shrink-0 flex-col items-center bg-elevated py-3"
             onClick={() => setContextMenu(null)}
         >
@@ -148,13 +149,15 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 onContextMenu={(e) => handleContextMenu(e, service)}
                                 className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
                                 title={getServiceDisplayName(service)}
+                                aria-label={getServiceDisplayName(service)}
+                                aria-current={isActive ? 'page' : undefined}
                             >
                                 {/* Service Icon Container */}
                                 <div
                                     className={cn(
                                         'flex h-11 w-11 items-center justify-center overflow-hidden rounded-pill bg-card',
                                         'transition duration-fast ease-standard hover:scale-105',
-                                        isActive ? 'ring-2 ring-white shadow-group-glow' : 'shadow-pill hover:shadow-card',
+                                        isActive ? 'ring-2 ring-group-logo ring-offset-2 shadow-group-glow' : 'shadow-pill hover:shadow-card',
                                     )}
                                 >
                                     {getServiceLogoUrl(service) ? (
@@ -256,6 +259,6 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     onClose={() => setShowAddModal(false)}
                 />
             )}
-        </div>
+        </nav>
     );
 };

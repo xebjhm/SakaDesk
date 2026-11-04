@@ -361,6 +361,9 @@
   "contentArea": {
     "comingSoon": "Coming soon"
   },
+  "featureRail": {
+    "label": "Features"
+  },
   "features": {
     "messages": "Messages",
     "blogs": "Blogs",
@@ -378,6 +381,7 @@
     "selectService": "Select a service to get started"
   },
   "serviceRail": {
+    "label": "Groups",
     "sessionExpiredRelogin": "Session expired - click to re-login",
     "addService": "Add Service"
   },

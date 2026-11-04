@@ -70,6 +70,7 @@ export default {
             },
             ringColor: {
                 group: 'var(--ds-group-ring)',
+                'group-logo': 'var(--ds-group-logo)',
             },
             textDecorationColor: {
                 group: 'var(--ds-group-link-underline)',

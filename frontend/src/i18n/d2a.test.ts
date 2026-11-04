@@ -11,6 +11,8 @@ const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 const D2A_KEYS = [
     'messageList.openCalendar',
     'contentArea.comingSoon',
+    'serviceRail.label',
+    'featureRail.label',
 ] as const;
 
 describe('D2a strings', () => {

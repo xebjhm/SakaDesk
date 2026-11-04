@@ -38,7 +38,10 @@ and a primitive never takes a group id.
 - **Roles:** the Colour system table; for example `Avatar selected` draws a white
   ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
   focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
-  (`focus-visible:ring-2 focus-visible:ring-group`).
+  (`focus-visible:ring-2 focus-visible:ring-group`). The group rail's selected logo
+  has a selection ring: a 2 px white gap plus a 2 px ring in the group logo colour
+  (`ring-2 ring-offset-2 ring-group-logo`, from `--ds-group-logo`) and the group glow.
+  It is the only place the logo colour is used as a ring.
 
 **Exception:** at most **one** `Button variant="primary"` per screen. It
 uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
