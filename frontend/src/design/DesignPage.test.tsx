@@ -6,7 +6,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import i18n from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
-import { GROUP_IDS, groupTokens } from './tokens';
+import { GROUP_IDS, groupRoles } from './tokens';
 import { DesignPage } from './DesignPage';
 
 beforeAll(async () => {
@@ -33,7 +33,7 @@ describe('DesignPage', () => {
         render(<DesignPage />);
         await userEvent.click(screen.getByRole('button', { name: groupLabel(id) }));
         expect(screen.getByRole('button', { name: groupLabel(id) })).toHaveAttribute('aria-pressed', 'true');
-        expect(document.documentElement.style.getPropertyValue('--ds-group-badge')).toBe(groupTokens[id].badge);
+        expect(document.documentElement.style.getPropertyValue('--ds-group-badge')).toBe(groupRoles(id).action);
     });
 
     it('opens the sample modal', async () => {

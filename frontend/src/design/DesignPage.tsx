@@ -11,7 +11,7 @@ import { cn } from '../utils/classnames';
 import { applyGroupTokens } from './applyTokens';
 import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
-import { GROUP_IDS, color, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
+import { GROUP_IDS, color, groupRoles, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
     Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Modal, Pill, RailItem, Sheet,
 } from './primitives';
@@ -67,13 +67,16 @@ export const DesignPage: React.FC = () => {
 
     useEffect(() => applyGroupTokens(group), [group]);
 
-    const g = groupTokens[group];
+    const r = groupRoles(group);
     const neutral = Object.entries(color).flatMap(([role, values]) =>
         Object.entries(values).map(([name, value]) => [`${role}.${name}`, value] as const),
     );
     const groupSwatches = [
-        ['accent', g.accent], ['badge', g.badge], ['bubbleBorder', g.bubbleBorder], ['ring', g.ring],
-        ['glow', g.glow], ['title.text', g.title.text], ['title.bar', g.title.bar],
+        ['logo', r.logo], ['action (600)', r.action], ['strong (700)', r.strong], ['subtle (50)', r.subtle],
+        ['subtleBorder (200)', r.subtleBorder], ['linkUnderline (300)', r.linkUnderline],
+        ['bubbleBorder', r.bubbleBorder], ['glow', r.glow],
+        ['title.text', groupTokenVars(group)['--ds-group-title-text']],
+        ['title.bar', groupTokenVars(group)['--ds-group-title-bar']],
         ['canvas', groupTokenVars(group)['--ds-group-canvas']],
     ] as const;
 

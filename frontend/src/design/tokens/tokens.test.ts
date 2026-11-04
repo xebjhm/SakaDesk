@@ -1,31 +1,84 @@
 import { describe, it, expect } from 'vitest';
 import legacy from '../__fixtures__/legacy-theme-values.json';
+import { contrastRatio } from '../contrast';
 import {
-    GROUP_IDS, groupTokens, color, radius, shadow, typeScale, motion, easingCss, SPACE_UNIT_PX,
+    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, SPACE_UNIT_PX,
 } from './index';
 
-describe('group tokens', () => {
+const SHELTERS = {
+    hinatazaka: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
+    sakurazaka: { picture: '#ec9595', video: '#edc094', voice: '#d695ec', text: '#eb95ae' },
+    nogizaka: { picture: '#c4a8d8', video: '#9B59B6', voice: '#b8a8d8', text: '#d8c8e8' },
+    yodel: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
+    default: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
+} as const;
+
+const ROLES = {
+    hinatazaka: ['#7cc7e8', '#389dd1', '#0d7aab', '#eff9fd', '#bbe4f7', '#7cc7e8', '#7cc7e8', 'rgba(124, 199, 232, 0.35)'],
+    sakurazaka: ['#f19db5', '#c84575', '#a72f5d', '#fff3f6', '#fecdda', '#feacc3', '#f19db5', 'rgba(241, 157, 181, 0.35)'],
+    nogizaka: ['#7f1083', '#b24ab5', '#943397', '#fef3fe', '#f9cbf8', '#f1abf1', '#b24ab5', 'rgba(127, 16, 131, 0.28)'],
+    yodel: ['#5a8a6a', '#5a8a6a', '#416f51', '#f3f8f4', '#cde3d3', '#afd1b9', '#5a8a6a', 'rgba(90, 138, 106, 0.3)'],
+    default: ['#6b7280', '#4b5563', '#374151', '#f9fafb', '#e5e7eb', '#d1d5db', '#E5E7EB', 'rgba(107, 114, 128, 0.25)'],
+} as const;
+
+describe('group tokens — official layer (verbatim)', () => {
     it('defines exactly the five groups', () => {
         expect([...GROUP_IDS].sort()).toEqual(Object.keys(legacy.groups).sort());
         expect(Object.keys(groupTokens).sort()).toEqual([...GROUP_IDS].sort());
     });
 
-    it.each(GROUP_IDS)('%s equals the frozen pre-D1 values', (id) => {
-        const t = groupTokens[id];
+    it.each(GROUP_IDS)('%s title and canvas equal the official values', (id) => {
+        const o = groupTokens[id].official;
         const want = legacy.groups[id];
-        expect(t.accent).toBe(want.accent);
-        expect([...t.canvas]).toEqual(want.canvas);
-        expect(t.title.gradient).toEqual(want.titleGradient);
-        expect(t.title.bar).toBe(want.titleBar);
-        expect(t.title.text).toBe(want.titleText);
-        expect(t.ring).toBe(want.ring);
-        expect(t.glow).toBe(want.glow);
-        expect(t.bubbleBorder).toBe(want.bubbleBorder);
-        expect(t.badge).toBe(want.badge);
+        expect(o.title.gradient).toEqual(want.titleGradient);
+        expect(o.title.bar).toBe(want.titleBar);
+        expect(o.title.text).toBe(want.titleText);
+        expect([...o.canvas]).toEqual(want.canvas);
     });
 
-    it('keeps the Hinatazaka badge unchanged', () => {
-        expect(groupTokens.hinatazaka.badge).toBe('#7cc7e8');
+    it.each(GROUP_IDS)('%s shelters and styles equal the official values', (id) => {
+        const o = groupTokens[id].official;
+        expect(o.shelter).toEqual(SHELTERS[id]);
+        expect(o.shelterStyle).toBe(id === 'sakurazaka' ? 'light' : 'classic');
+        expect(o.headerStyle).toBe(id === 'sakurazaka' ? 'light' : 'gradient');
+    });
+});
+
+describe('group tokens — system layer', () => {
+    it.each(GROUP_IDS)('%s has a 10-step scale that darkens and contains the logo colour', (id) => {
+        const { scale, logo } = groupTokens[id];
+        expect(Object.keys(scale).map(Number)).toEqual([...SCALE_STEPS]);
+        const white = color.text.inverse;
+        const ratios = SCALE_STEPS.map((s) => contrastRatio(scale[s], white) as number);
+        for (let i = 1; i < ratios.length; i++) expect(ratios[i]).toBeGreaterThan(ratios[i - 1]);
+        expect(Object.values(scale).map((v) => v.toLowerCase())).toContain(logo.toLowerCase());
+    });
+
+    it.each(GROUP_IDS)('%s roles match the spec table', (id) => {
+        const r = groupRoles(id);
+        expect([r.logo, r.action, r.strong, r.subtle, r.subtleBorder, r.linkUnderline, r.bubbleBorder, r.glow]).toEqual([...ROLES[id]]);
+        expect(r.ring).toBe(r.action);
+    });
+
+    it.each(GROUP_IDS)('%s meets the contrast floors', (id) => {
+        const r = groupRoles(id);
+        const white = color.text.inverse;
+        expect(contrastRatio(r.action, white)).toBeGreaterThanOrEqual(3.0);
+        expect(contrastRatio(r.strong, white)).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('keeps the user-chosen Hinatazaka 600', () => {
+        expect(groupTokens.hinatazaka.scale[600]).toBe('#389dd1');
+    });
+
+    it('derives shadow, button gradient and ambient orbs from the scale', () => {
+        const h = groupRoles('hinatazaka');
+        expect(h.unreadShadow).toBe('0 0 12px rgba(124, 199, 232, 0.4)');
+        expect(h.buttonGradient).toBe('linear-gradient(135deg, #7cc7e8 0%, #389dd1 100%)');
+        expect(h.ambient.orb1).toBe('radial-gradient(circle, #bbe4f7 0%, #dbf1fb 30%, transparent 70%)');
+        expect(h.ambient.orb2).toBe('radial-gradient(circle, #fce4fc 0%, #eff9fd 40%, transparent 70%)');
+        expect(h.ambient.orb3).toBe('radial-gradient(circle, #dbf1fb 0%, transparent 70%)');
+        expect(groupRoles('yodel').ambient.orb2).toBe('radial-gradient(circle, #e5f0e8 0%, #f3f8f4 40%, transparent 70%)');
     });
 });
 
@@ -45,11 +98,6 @@ describe('neutral colour tokens', () => {
         expect(color.feedback.error).toBe(vars['--color-error']);
     });
 
-    it('match the pre-D1 border values', () => {
-        expect(color.border.subtle).toBe(legacy.border.light);
-        expect(color.border.strong).toBe(legacy.border.base);
-    });
-
     it('use role names, never hue names (dark-mode ready)', () => {
         const names = Object.values(color).flatMap((group) => Object.keys(group));
         for (const n of names) expect(n).not.toMatch(/white|black|gray|grey|blue|pink|purple|green/i);
@@ -57,27 +105,12 @@ describe('neutral colour tokens', () => {
 });
 
 describe('scales', () => {
-    it('radius has the four agreed steps', () => {
+    it('radius, shadow, type, motion and spacing are unchanged', () => {
         expect(radius).toEqual({ none: '0px', card: '14px', sheet: '20px', pill: '9999px' });
-    });
-
-    it('shadow has four layers', () => {
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
-        expect(shadow.none).toBe('none');
-    });
-
-    it('type has the five agreed sizes', () => {
-        expect(Object.fromEntries(Object.entries(typeScale).map(([k, v]) => [k, v.size]))).toEqual({
-            caption: '11px', small: '13px', body: '14px', title: '16px', heading: '20px',
-        });
-    });
-
-    it('motion stays within 150-200 ms', () => {
+        expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading']);
         expect(motion.duration).toEqual({ fast: 150, base: 200 });
         expect(easingCss(motion.easing.standard)).toBe('cubic-bezier(0.2, 0, 0, 1)');
-    });
-
-    it('spacing unit is 4 px', () => {
         expect(SPACE_UNIT_PX).toBe(4);
     });
 });

@@ -2,7 +2,7 @@
  * Pure token -> CSS custom property maps. `applyTokens.ts` writes them to
  * :root; `tailwind.config.js` utilities read them via var(--ds-*).
  */
-import { color, groupTokens, radius, shadow, typeScale, motion, easingCss, type GroupId } from './tokens';
+import { color, groupRoles, groupTokens, radius, shadow, typeScale, motion, easingCss, type GroupId } from './tokens';
 
 export function staticTokenVars(): Record<string, string> {
     const vars: Record<string, string> = {};
@@ -23,19 +23,25 @@ export function staticTokenVars(): Record<string, string> {
 }
 
 export function groupTokenVars(groupId: GroupId): Record<string, string> {
-    const t = groupTokens[groupId];
+    const o = groupTokens[groupId].official;
+    const r = groupRoles(groupId);
     return {
-        '--ds-group-accent': t.accent,
-        '--ds-group-canvas': `linear-gradient(to bottom, ${t.canvas[0]}, ${t.canvas[1]}, ${t.canvas[2]})`,
-        '--ds-group-title-from': t.title.gradient.from,
-        '--ds-group-title-via': t.title.gradient.via,
-        '--ds-group-title-to': t.title.gradient.to,
-        '--ds-group-title-bar': t.title.bar,
-        '--ds-group-title-text': t.title.text,
-        '--ds-group-ring': t.ring,
-        '--ds-group-glow': t.glow,
-        '--ds-shadow-group-glow': `0 0 12px 2px ${t.glow}`,
-        '--ds-group-bubble-border': t.bubbleBorder,
-        '--ds-group-badge': t.badge,
+        '--ds-group-accent': r.action,
+        '--ds-group-logo': r.logo,
+        '--ds-group-canvas': `linear-gradient(to bottom, ${o.canvas[0]}, ${o.canvas[1]}, ${o.canvas[2]})`,
+        '--ds-group-title-from': o.title.gradient.from,
+        '--ds-group-title-via': o.title.gradient.via,
+        '--ds-group-title-to': o.title.gradient.to,
+        '--ds-group-title-bar': o.title.bar,
+        '--ds-group-title-text': o.title.text,
+        '--ds-group-ring': r.ring,
+        '--ds-group-glow': r.glow,
+        '--ds-shadow-group-glow': `0 0 12px 2px ${r.glow}`,
+        '--ds-group-bubble-border': r.bubbleBorder,
+        '--ds-group-badge': r.action,
+        '--ds-group-strong': r.strong,
+        '--ds-group-subtle': r.subtle,
+        '--ds-group-subtle-border': r.subtleBorder,
+        '--ds-group-link-underline': r.linkUnderline,
     };
 }
