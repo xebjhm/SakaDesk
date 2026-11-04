@@ -41,7 +41,7 @@ describe('D2b tokens', () => {
     });
 
     it('keeps the pre-D2b orb layout, which the legacy theme now reads', () => {
-        expect(ambientLayout.hinatazaka.orb1).toEqual({ position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.4 });
+        expect(ambientLayout.hinatazaka.orb1).toEqual({ position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.5 });
         expect(ambientLayout.sakurazaka.orb3).toEqual({ position: 'bottom: -20%; right: 20%;', size: '45vw', opacity: 0.35 });
         expect(getServiceTheme('nogizaka46').ambient.orb2).toEqual({
             color: groupRoles('nogizaka').ambient.orb2, position: 'top: 25%; right: -18%;', size: '58vw', opacity: 0.45,

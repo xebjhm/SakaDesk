@@ -63,7 +63,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
             <header className="relative flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
                 <div className="flex min-w-0 items-baseline gap-3">
-                    <h2 id="blogs-feed-title" className="font-reading text-heading font-semibold text-primary">
+                    <h2 id="blogs-feed-title" className="font-reading text-heading font-semibold text-group-title">
                         {t('blogs.latestBlogs')}
                     </h2>
                     {syncing && (

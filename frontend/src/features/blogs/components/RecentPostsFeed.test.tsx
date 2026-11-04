@@ -76,6 +76,6 @@ describe('RecentPostsFeed', () => {
         const { container } = render(<RecentPostsFeed {...props()} />);
         expect(container.querySelector('style')).toBeNull();
         expect(container.querySelectorAll('.bg-group-ambient-1, .bg-group-ambient-2, .bg-group-ambient-3')).toHaveLength(3);
-        expect(screen.getByRole('heading', { name: 'Latest Blogs' })).toHaveClass('font-reading');
+        expect(screen.getByRole('heading', { name: 'Latest Blogs' })).toHaveClass('font-reading', 'text-group-title');
     });
 });
