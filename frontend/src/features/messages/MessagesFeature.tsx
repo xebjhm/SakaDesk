@@ -11,6 +11,7 @@ import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
+import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation } from '../../i18n';
@@ -650,12 +651,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     return (
         <div className="flex h-full w-full overflow-hidden">
-            {/* Sidebar */}
-            <div className={`
-                fixed inset-y-0 left-0 z-30 w-80 transform transition-transform duration-300 ease-in-out
-                md:relative md:translate-x-0 bg-white
-                ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-            `}>
+            {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
+            <div className={cn(
+                'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
+                'max-md:bg-group-canvas md:relative md:translate-x-0',
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+            )}>
                 <MemberList
                     onSelectGroup={handleSelectGroup}
                     selectedGroupDir={selectedGroupDir}
@@ -668,13 +669,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 z-20 bg-black/50 md:hidden"
+                    className="fixed inset-0 z-20 bg-scrim md:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Main Chat Area */}
-            <div className="flex-1 flex flex-col h-full relative min-w-0">
+            <ContentSheet className="relative">
                 {/* Header */}
                 <header
                     className={cn(
@@ -873,7 +874,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     </div>
                 )}
-            </div>
+            </ContentSheet>
 
             {selectedGroupDir && (
                 <CalendarModal

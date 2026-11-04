@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { ServiceRail } from './ServiceRail';
 import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
+import { Canvas } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
@@ -19,6 +20,11 @@ interface LayoutProps {
     blogBackupEnabled?: boolean;
 }
 
+/**
+ * D-4/D-5 frame: a neutral group rail, then one canvas block (level 0, the official group
+ * gradient, rounded on the left) holding the feature rail, each feature's own sidebar and the
+ * content sheet.
+ */
 export const Layout: React.FC<LayoutProps> = ({
     messagesContent,
     onAddService,
@@ -47,8 +53,7 @@ export const Layout: React.FC<LayoutProps> = ({
     }, [services, activeService, setActiveService]);
 
     return (
-        <div className="flex flex-1 h-full overflow-hidden">
-            {/* Zone A: Service Rail */}
+        <div className="flex h-full flex-1 overflow-hidden bg-elevated">
             <ServiceRail
                 services={services}
                 onAddService={onAddService}
@@ -58,25 +63,22 @@ export const Layout: React.FC<LayoutProps> = ({
                 onOpenSearch={onOpenSearch}
             />
 
-            {/* Zone B: Feature Rail (only show when service selected) */}
-            {activeService && (
-                <FeatureRail service={activeService} />
-            )}
-
-            {/* Zone C: Content Area */}
             {activeService ? (
-                <ContentArea
-                    service={activeService}
-                    messagesContent={messagesContent}
-                    syncProgress={syncProgressByService?.[activeService]}
-                    isInitialSyncing={!!initialSyncServices?.[activeService]}
-                    blogBackupEnabled={blogBackupEnabled}
-                />
+                <Canvas className="flex h-full min-w-0 flex-1 rounded-l-sheet">
+                    <FeatureRail service={activeService} />
+                    <ContentArea
+                        service={activeService}
+                        messagesContent={messagesContent}
+                        syncProgress={syncProgressByService?.[activeService]}
+                        isInitialSyncing={!!initialSyncServices?.[activeService]}
+                        blogBackupEnabled={blogBackupEnabled}
+                    />
+                </Canvas>
             ) : (
-                <div className="flex-1 flex items-center justify-center bg-[#F0F2F5] text-gray-500">
+                <div className="flex flex-1 items-center justify-center text-secondary">
                     <div className="text-center">
-                        <p className="text-lg mb-2">{t('landing.welcome')}</p>
-                        <p className="text-sm">{t('landing.selectService')}</p>
+                        <p className="mb-2 text-title">{t('landing.welcome')}</p>
+                        <p className="text-small">{t('landing.selectService')}</p>
                     </div>
                 </div>
             )}

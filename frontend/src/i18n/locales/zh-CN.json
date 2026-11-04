@@ -358,6 +358,9 @@
     "imageTooLarge": "图片过大。请选择 2MB 以下的图片。",
     "selectImageFile": "请选择图片文件。"
   },
+  "contentArea": {
+    "comingSoon": "即将推出"
+  },
   "features": {
     "messages": "消息",
     "blogs": "Blog",

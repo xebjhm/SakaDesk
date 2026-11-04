@@ -358,6 +358,9 @@
     "imageTooLarge": "画像が大きすぎます。2MB以下の画像を選択してください。",
     "selectImageFile": "画像ファイルを選択してください。"
   },
+  "contentArea": {
+    "comingSoon": "近日公開"
+  },
   "features": {
     "messages": "メッセージ",
     "blogs": "ブログ",

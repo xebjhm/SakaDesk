@@ -358,6 +358,9 @@
     "imageTooLarge": "張相太大啦。請揀張 2MB 以下嘅。",
     "selectImageFile": "請揀圖片檔案。"
   },
+  "contentArea": {
+    "comingSoon": "就快推出"
+  },
   "features": {
     "messages": "訊息",
     "blogs": "Blog",

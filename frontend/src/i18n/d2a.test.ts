@@ -10,6 +10,7 @@ const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 /** Every string D2a adds (later tasks append to this list). */
 const D2A_KEYS = [
     'messageList.openCalendar',
+    'contentArea.comingSoon',
 ] as const;
 
 describe('D2a strings', () => {
