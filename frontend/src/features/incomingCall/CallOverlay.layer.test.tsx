@@ -206,6 +206,8 @@ describe('CallOverlay layering (spec D2d decisions 20, 21)', () => {
         const { rerender } = ringOver(['設定'], c, true);
         const overlay = screen.getByTestId('call-overlay');
         expect(overlay).toHaveAttribute('data-layer', 'lifted');
+        // StrictMode's effect re-run is not the call going away: no focus breadcrumb yet.
+        expect(layerEvents().filter(([, f]) => f?.phase === 'focus')).toEqual([]);
         expect(overlayZ()).toBeGreaterThan(backdropZ('設定'));
         expect(screen.getByRole('dialog', { name: '設定' })).toHaveFocus();
         const decline = screen.getByRole('button', { name: 'Decline' });
@@ -218,5 +220,21 @@ describe('CallOverlay layering (spec D2d decisions 20, 21)', () => {
         // A dialog opened afterwards still stacks normally.
         rerender(app(['設定', '確認'], idle(c), true));
         expect(backdropZ('確認')).toBeGreaterThan(backdropZ('設定'));
+    });
+
+    it('logs the focus breadcrumb only when the call goes away, not on a StrictMode re-run', () => {
+        const c = call();
+        const tree = (withChat: boolean, current: IncomingCall) => (
+            <StrictMode>
+                <Dialog title="設定" />
+                {withChat && <div data-testid="chat-frame" className="relative"><CallOverlay call={current} {...theme} /></div>}
+            </StrictMode>
+        );
+        const { rerender } = render(tree(false, c));
+        rerender(tree(true, c)); // the chat (and its ringing call) mounts over the open dialog
+        expect(screen.getByTestId('call-overlay')).toHaveAttribute('data-layer', 'lifted');
+        expect(layerEvents().filter(([, f]) => f?.phase === 'focus')).toEqual([]);
+        rerender(tree(true, idle(c)));
+        expect(layerEvents().filter(([, f]) => f?.phase === 'focus')).toEqual([['call_layer', { phase: 'focus', outcome: 'kept' }]]);
     });
 });

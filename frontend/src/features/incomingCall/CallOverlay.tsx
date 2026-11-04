@@ -72,6 +72,10 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
     // A lifted call that goes away with focus inside it hands focus to the top-most dialog (the
     // layer does not track the call, so nothing else would). Its node is already removed when the
     // call ends; still connected (the chat view unmounting, a StrictMode re-run), only focus inside it counts.
+    // The latest render's `lifted`: false in the cleanup below only when the call went away (not on
+    // a StrictMode re-run or an unmount), so `kept` is logged once per lifted call.
+    const liftedRef = useRef(lifted);
+    liftedRef.current = lifted;
     useLayoutEffect(() => {
         if (!lifted) return;
         const overlay = overlayRef.current;
@@ -81,7 +85,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
                 ? active !== null && overlay.contains(active)
                 : active === null || active === document.body || !active.isConnected;
             if (!lost) {
-                clientLog('call_layer', { phase: 'focus', outcome: 'kept' });
+                if (!liftedRef.current) clientLog('call_layer', { phase: 'focus', outcome: 'kept' });
                 return;
             }
             const node = topDialog()?.node();
