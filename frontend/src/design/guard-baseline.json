@@ -21,7 +21,6 @@
   "features/blogs/components/RecentPostsFeed.tsx": 10,
   "features/blogs/components/TimelineRail.tsx": 8,
   "features/blogs/hooks/useInlineBlogTranslations.ts": 2,
-  "features/messages/components/MemberList.tsx": 2,
   "features/messages/components/MessageBubble.tsx": 7,
   "features/messages/components/MessageContextMenu.tsx": 1,
   "features/messages/components/ProfileImagePills.tsx": 2,
