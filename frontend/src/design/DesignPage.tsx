@@ -11,7 +11,7 @@ import { cn } from '../utils/classnames';
 import { applyGroupTokens } from './applyTokens';
 import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
-import { GROUP_IDS, color, groupRoles, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
+import { GROUP_IDS, SCALE_STEPS, color, groupRoles, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
     Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Modal, Pill, RailItem, Sheet,
 } from './primitives';
@@ -105,6 +105,41 @@ export const DesignPage: React.FC = () => {
                     <div className="flex flex-wrap gap-3">
                         {groupSwatches.map(([name, value]) => <Swatch key={name} name={name} value={value} />)}
                     </div>
+                    <h3 className="text-title text-secondary">{t('designPage.scale')}</h3>
+                    <div className="flex flex-wrap gap-2">
+                        {SCALE_STEPS.map((step) => {
+                            const value = groupTokens[group].scale[step];
+                            const isLogo = value.toLowerCase() === groupTokens[group].logo.toLowerCase();
+                            return (
+                                <Card key={step} className={cn('flex w-20 flex-col overflow-hidden', isLogo && 'ring-2 ring-group')}>
+                                    <div className="h-10" style={{ background: value }} />
+                                    <div className="flex flex-col p-2">
+                                        <span className="text-caption font-semibold text-primary">{step}</span>
+                                        <span className="text-caption text-muted">{value}</span>
+                                        {isLogo && <span className="text-caption text-secondary">{t('designPage.logoStep')}</span>}
+                                    </div>
+                                </Card>
+                            );
+                        })}
+                    </div>
+                    <h3 className="text-title text-secondary">{t('designPage.roles')}</h3>
+                    <Card className="p-4">
+                        <div className="grid grid-cols-3 gap-2 text-small">
+                            <span className="font-semibold text-secondary">{t('designPage.roleName')}</span>
+                            <span className="font-semibold text-secondary">{t('designPage.roleStep')}</span>
+                            <span />
+                            {([
+                                ['action', 600, r.action], ['strong', 700, r.strong], ['subtle', 50, r.subtle],
+                                ['subtleBorder', 200, r.subtleBorder], ['linkUnderline', 300, r.linkUnderline], ['ring', 600, r.ring],
+                            ] as const).map(([role, step, value]) => (
+                                <React.Fragment key={role}>
+                                    <span className="text-primary">{role}</span>
+                                    <span className="text-muted">{step}</span>
+                                    <span className="h-5 w-12 rounded-pill" style={{ background: value }} />
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    </Card>
                 </Section>
 
                 <Section title={t('designPage.radius')}>

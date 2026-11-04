@@ -6,7 +6,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import i18n from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
-import { GROUP_IDS, groupRoles } from './tokens';
+import { GROUP_IDS, SCALE_STEPS, groupRoles, groupTokens } from './tokens';
 import { DesignPage } from './DesignPage';
 
 beforeAll(async () => {
@@ -40,5 +40,24 @@ describe('DesignPage', () => {
         render(<DesignPage />);
         await userEvent.click(screen.getByRole('button', { name: 'Open modal' }));
         expect(await screen.findByRole('dialog', { name: 'Sample modal' })).toBeInTheDocument();
+    });
+});
+
+describe('DesignPage colour system', () => {
+    it('shows the selected group scale with the logo step marked', async () => {
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Scale' })).toBeInTheDocument();
+        for (const step of SCALE_STEPS) {
+            expect(screen.getAllByText(groupTokens.hinatazaka.scale[step]).length).toBeGreaterThan(0);
+        }
+        expect(screen.getByText('Logo color')).toBeInTheDocument();
+    });
+
+    it('lists the role map', () => {
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Roles' })).toBeInTheDocument();
+        for (const role of ['action', 'strong', 'subtle', 'subtleBorder', 'linkUnderline']) {
+            expect(screen.getAllByText(role).length).toBeGreaterThan(0);
+        }
     });
 });

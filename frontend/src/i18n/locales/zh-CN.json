@@ -614,6 +614,11 @@
     "do3": "团体色只用在 4 个地方，加上每个页面最多一个主要按钮。",
     "dont3": "用团体色涂其他元素。",
     "levelsSample": "Canvas › Sheet › Card",
-    "search": "搜索"
+    "search": "搜索",
+    "scale": "色阶",
+    "logoStep": "logo 原色",
+    "roles": "用途",
+    "roleName": "用途",
+    "roleStep": "色阶"
   }
 }

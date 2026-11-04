@@ -614,6 +614,11 @@
     "do3": "グループカラーは4か所と、画面ごとに1つのプライマリボタンだけ。",
     "dont3": "それ以外の要素をグループカラーで塗る。",
     "levelsSample": "Canvas › Sheet › Card",
-    "search": "検索"
+    "search": "検索",
+    "scale": "色階",
+    "logoStep": "ロゴの色",
+    "roles": "役割",
+    "roleName": "役割",
+    "roleStep": "段階"
   }
 }

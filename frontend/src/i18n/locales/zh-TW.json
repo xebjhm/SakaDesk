@@ -614,6 +614,11 @@
     "do3": "團體色只用在 4 個地方，加上每個畫面最多一顆主要按鈕。",
     "dont3": "用團體色塗其他元素。",
     "levelsSample": "Canvas › Sheet › Card",
-    "search": "搜尋"
+    "search": "搜尋",
+    "scale": "色階",
+    "logoStep": "logo 原色",
+    "roles": "用途",
+    "roleName": "用途",
+    "roleStep": "色階"
   }
 }

@@ -614,6 +614,11 @@
     "do3": "Use group color only in the four places, plus one primary button per screen.",
     "dont3": "Color any other element with the group color.",
     "levelsSample": "Canvas › Sheet › Card",
-    "search": "Search"
+    "search": "Search",
+    "scale": "Scale",
+    "logoStep": "Logo color",
+    "roles": "Roles",
+    "roleName": "Role",
+    "roleStep": "Step"
   }
 }
