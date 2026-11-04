@@ -125,13 +125,12 @@ export const MessageList: React.FC<ChatListProps> = ({
     // Get theme colors for message bubbles
     const theme = useMessagesTheme();
     const bubbleTheme = useMemo(() => ({
-        bubbleBorder: theme.bubbleBorder,
         voicePlayerAccent: theme.voicePlayerAccent,
         favoriteColor: theme.favoriteColor,
         linkColor: theme.linkColor,
         shelterColors: theme.shelterColors,
         shelterStyle: theme.shelterStyle,
-    }), [theme.bubbleBorder, theme.voicePlayerAccent, theme.favoriteColor, theme.linkColor, theme.shelterColors, theme.shelterStyle]);
+    }), [theme.voicePlayerAccent, theme.favoriteColor, theme.linkColor, theme.shelterColors, theme.shelterStyle]);
 
     // The first row the user can see; rows hidden behind a sticky date header do not count.
     const topVisibleIndex = useCallback((range: ListRange) =>

@@ -31,7 +31,6 @@ interface ShelterColors {
 type ShelterStyle = 'classic' | 'light';
 
 interface MessageBubbleTheme {
-    bubbleBorder: string;
     voicePlayerAccent: string;
     favoriteColor?: string;
     linkColor?: string;
@@ -309,7 +308,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const favoriteStar = message.is_favorite && (
         <Star
             className="w-3.5 h-3.5 shrink-0"
-            style={{ color: theme?.favoriteColor || '#3b82f6', fill: theme?.favoriteColor || '#3b82f6' }}
+            style={{ color: theme?.favoriteColor || FALLBACK_ACTION_COLOR, fill: theme?.favoriteColor || FALLBACK_ACTION_COLOR }}
         />
     );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (

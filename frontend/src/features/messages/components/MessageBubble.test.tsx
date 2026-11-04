@@ -1,8 +1,19 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../../__tests__/mocks/server'
 import { MessageBubble } from './MessageBubble'
+import { FALLBACK_ACTION_COLOR } from '../../../design/tokens'
 import type { Message } from '../../../types'
+
+// The translation and transcription hooks read their backend caches on mount: both are empty.
+beforeEach(() => {
+  server.use(
+    http.get('/api/app-state/translations', () => HttpResponse.json({})),
+    http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })),
+  )
+})
 
 // Fix timezone to UTC for deterministic snapshot output
 const originalTZ = process.env.TZ
@@ -182,6 +193,18 @@ describe('MessageBubble component', () => {
     rerender(<MessageBubble {...defaultProps} runStart={false} />)
     expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card')
     expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-tl-tail')
+  })
+
+  it('without a theme, the favourite star uses the neutral action colour', () => {
+    const { container } = render(<MessageBubble {...defaultProps} message={createMessage({ is_favorite: true })} />)
+    const star = container.querySelector('svg.h-3\\.5') as SVGElement
+    expect(star).not.toBeNull()
+    // jsdom normalises some colour properties: compare against the same normalisation.
+    const probe = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    probe.style.setProperty('color', FALLBACK_ACTION_COLOR)
+    probe.style.setProperty('fill', FALLBACK_ACTION_COLOR)
+    expect(star.style.color).toBe(probe.style.color)
+    expect(star.style.fill).toBe(probe.style.fill)
   })
 
   it('names the sender with the strong group role', () => {
