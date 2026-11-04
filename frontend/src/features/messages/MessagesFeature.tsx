@@ -186,6 +186,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Scroll ref
     const virtuosoRef = useRef<GroupedVirtuosoHandle>(null);
+    // Rows the user sees, as MessageList reports them (none hidden behind the sticky date header).
     const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
     // Virtuoso's scroll element, which the timeline jump glides.
     const chatScrollerRef = useRef<HTMLElement | null>(null);
@@ -427,7 +428,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const timeline = useMemo(() => buildTimeline(displayMessages, NO_LETTERS), [displayMessages]);
 
     const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
-    // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
+    // The old room's visible range says nothing about the new one: unknown until MessageList reports it.
     useEffect(() => {
         visibleRangeRef.current = null;
     }, [selectedGroupDir]);

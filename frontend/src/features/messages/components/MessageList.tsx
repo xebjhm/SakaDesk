@@ -35,7 +35,7 @@ interface ChatListProps {
     onReveal: (msgId: number) => void;
     /** Callback for long-press on unread message */
     onLongPress: () => void;
-    /** Callback when the rendered item range changes (for unread navigation) */
+    /** The rows the user sees (none hidden behind the sticky date header), one frame after each range change */
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
     /** Ref to expose the list handle for external scroll control */
     virtuosoRef?: React.RefObject<GroupedVirtuosoHandle>;
@@ -160,18 +160,40 @@ export const MessageList: React.FC<ChatListProps> = ({
 
     const initialTopMostItemIndex = targetIndex ?? savedScrollIndex;
 
-    // Range change: restore position, unread navigation and the panel auto-collapse registry
-    // (message rows only; letters have no panels).
-    const onRangeChange = useCallback((range: ListRange) => {
-        handleRangeChanged(range);
-        onRangeChanged?.(range);
+    // What the user sees: Virtuoso's range minus rows hidden behind the sticky date header. Like
+    // the scroll save, it is resolved one frame after rangeChanged (so the DOM matches the range),
+    // once per frame, and only for the room that reported it.
+    const latest = useRef({ memberId, timeline, onRangeChanged, topVisibleIndex });
+    latest.current = { memberId, timeline, onRangeChanged, topVisibleIndex };
+    const pendingRangeRef = useRef<{ range: ListRange; memberId: string } | null>(null);
+    const frameRef = useRef<number | null>(null);
+    useEffect(() => () => {
+        if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    }, []);
+
+    /** Unread navigation and the panel auto-collapse registry (message rows only; letters have no panels). */
+    const resolveVisibleRange = useCallback(() => {
+        frameRef.current = null;
+        const pending = pendingRangeRef.current;
+        pendingRangeRef.current = null;
+        const { memberId: room, timeline: current, onRangeChanged: report, topVisibleIndex: topOf } = latest.current;
+        if (!pending || pending.memberId !== room) return;
+        const visible = { startIndex: topOf(pending.range), endIndex: pending.range.endIndex };
+        report?.(visible);
         const visibleIds = new Set<number>();
-        for (let i = range.startIndex; i <= range.endIndex && i < timeline.items.length; i++) {
-            const item = timeline.items[i];
+        for (let i = visible.startIndex; i <= visible.endIndex && i < current.items.length; i++) {
+            const item = current.items[i];
             if (item.kind === 'message') visibleIds.add(item.message.id);
         }
         notifyVisibleMessages(visibleIds);
-    }, [handleRangeChanged, onRangeChanged, timeline]);
+    }, []);
+
+    // Range change: restore position (resolved inside useChatScroll), then what the user sees.
+    const onRangeChange = useCallback((range: ListRange) => {
+        handleRangeChanged(range);
+        pendingRangeRef.current = { range, memberId: latest.current.memberId };
+        if (frameRef.current === null) frameRef.current = requestAnimationFrame(resolveVisibleRange);
+    }, [handleRangeChanged, resolveVisibleRange]);
 
     const renderItem = (item: TimelineItem) => {
         const rowKey = rowKeyOf(item);
