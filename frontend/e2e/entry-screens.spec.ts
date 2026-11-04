@@ -12,8 +12,13 @@ const LABEL = process.env.SHOT_LABEL
 test.use({ timezoneId: TZ, viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' })
 test.skip(!LABEL, 'capture only: set SHOT_LABEL=before or SHOT_LABEL=after')
 
+/** Two animation frames: layout and paint have settled (progress polling never goes network-idle). */
+async function settle(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+}
+
 async function shot(page: Page, name: string) {
-  await page.waitForLoadState('networkidle')
+  await settle(page)
   await page.screenshot({ path: `e2e-shots/${LABEL}/entry-${name}.png`, animations: 'disabled' })
 }
 
@@ -33,6 +38,7 @@ test('terms of service', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Terms of Service' })).toBeVisible({ timeout: 10000 })
   await shot(page, 'tos')
   await page.setViewportSize({ width: 1280, height: 480 })
+  await settle(page)
   await shot(page, 'tos-short')
 })
 
@@ -52,13 +58,18 @@ test('login: gradient, error, light header', async ({ page }) => {
   await startWith(page, '日向坂46', '櫻坂46')
   const first = page.getByRole('dialog', { name: 'Connect Your Account?' })
   await expect(first).toBeVisible()
+  await expect(first).toContainText('日向坂46')
   await shot(page, 'login-hinatazaka46')
   state.loginStatus = 500
   await first.getByRole('button', { name: 'Connect Account' }).click()
   await expect(first.getByText('Login failed or cancelled')).toBeVisible()
   await shot(page, 'login-error')
   await first.getByRole('button', { name: 'Maybe Later' }).click()
-  await expect(page.getByRole('dialog', { name: 'Connect Your Account?' })).toBeVisible()
+  // Both dialogs share one name: wait for the first to go, then for the second group's own text.
+  const second = page.getByRole('dialog', { name: 'Connect Your Account?' })
+  await expect(second).toContainText('櫻坂46')
+  await expect(second).not.toContainText('日向坂46')
+  // The earlier error text stays on the second dialog today; this shot records that.
   await shot(page, 'login-sakurazaka46')
 })
 
@@ -78,8 +89,9 @@ test('setup and a sequential first sync', async ({ page }) => {
   state.progress.sakurazaka46 = RUNNING
   await page.goto('/')
   await startWith(page, '日向坂46', '櫻坂46')
-  for (let i = 0; i < 2; i++) {
+  for (const [i, name] of ['日向坂46', '櫻坂46'].entries()) {
     const login = page.getByRole('dialog', { name: 'Connect Your Account?' })
+    await expect(login).toContainText(name)
     await login.getByRole('button', { name: 'Connect Account' }).click()
     await expect.poll(() => state.loginCalls.length, { timeout: 10000 }).toBe(i + 1)
   }
@@ -99,6 +111,9 @@ test('setup and a sequential first sync', async ({ page }) => {
   await expect(page.getByText(/\(2\/2\)/)).toBeVisible({ timeout: 10000 })
   state.progress.hinatazaka46 = COMPLETE
   await expect(page.getByRole('dialog', { name: 'Complete' })).toBeVisible({ timeout: 10000 })
+  // The Complete dialog dismisses itself: assert it is still up right before the capture.
+  await expect(page.getByRole('dialog', { name: 'Complete' })).toBeVisible()
+  await settle(page)
   await page.screenshot({ path: `e2e-shots/${LABEL}/entry-sync-complete.png`, animations: 'disabled' })
 })
 

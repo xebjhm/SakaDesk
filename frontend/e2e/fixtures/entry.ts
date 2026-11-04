@@ -34,6 +34,10 @@ export interface EntryState {
   settingsSaveStatus: number
   /** /api/sync/progress per service (idle when missing); tests change it to move a sync on. */
   progress: Record<string, Record<string, unknown>>
+  /** Services a sync was started for (POST /api/sync/start), in order. */
+  syncStarts: string[]
+  /** Bodies of non-GET /api/app-state/prefs requests, in order. */
+  prefsPosts: Record<string, unknown>[]
 }
 
 export interface EntryOptions {
@@ -69,10 +73,18 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
     settingsSaves: [],
     settingsSaveStatus: 200,
     progress: {},
+    syncStarts: [],
+    prefsPosts: [],
   }
 
   await page.route('**/api/app-state/prefs', (route) => {
-    if (route.request().method() !== 'GET') return route.fulfill({ status: 204 })
+    if (route.request().method() !== 'GET') {
+      const raw = route.request().postData()
+      if (raw) {
+        try { state.prefsPosts.push(JSON.parse(raw)) } catch { /* not JSON: nothing to record */ }
+      }
+      return route.fulfill({ status: 204 })
+    }
     return route.fulfill({
       json: {
         language: 'en',
@@ -123,7 +135,15 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
   await page.route((url) => url.pathname.startsWith('/api/settings/service/'), (route) => route.fulfill({ json: {} }))
   await page.route((url) => url.pathname === '/api/settings/fresh', (route) => route.fulfill({ json: { is_fresh: false } }))
 
-  await page.route('**/api/sync/start*', (route) => route.fulfill({ json: { status: 'started' } }))
+  await page.route('**/api/sync/start*', (route) => {
+    state.syncStarts.push(new URL(route.request().url()).searchParams.get('service') ?? '')
+    return route.fulfill({ json: { status: 'started' } })
+  })
+  await page.route((url) => url.pathname === '/api/version', (route) =>
+    route.fulfill({
+      json: { current_version: '0.0.0', latest_version: null, update_available: false, release_url: null, release_notes: null, error: null, upgrade_supported: false },
+    }),
+  )
   await page.route('**/api/sync/cancel*', (route) => route.fulfill({ json: { status: 'cancelled' } }))
   await page.route('**/api/sync/progress*', (route) => {
     const service = new URL(route.request().url()).searchParams.get('service') ?? ''

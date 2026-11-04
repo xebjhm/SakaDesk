@@ -16,6 +16,11 @@ async function acceptTos(page: Page) {
   await accept.click()
 }
 
+/** The accepted ToS reaches the prefs store as a write-once timestamp. */
+async function expectTosSaved(state: { prefsPosts: Record<string, unknown>[] }) {
+  await expect.poll(() => state.prefsPosts.some((p) => typeof p.tos_accepted_at === 'string')).toBe(true)
+}
+
 /** On the landing page: pick the groups (by name, in order) and press Get Started. */
 async function startWith(page: Page, ...names: string[]) {
   await expect(page.getByRole('heading', { name: 'Welcome to SakaDesk' })).toBeVisible({ timeout: 10000 })
@@ -28,6 +33,7 @@ test('first launch: terms, groups, login, folder, first sync, then the app', asy
   state.progress.hinatazaka46 = RUNNING
   await page.goto('/')
   await acceptTos(page)
+  await expectTosSaved(state)
   await startWith(page, '日向坂46')
 
   const login = page.getByRole('dialog', { name: 'Connect Your Account?' })
@@ -44,6 +50,7 @@ test('first launch: terms, groups, login, folder, first sync, then the app', asy
   const sync = page.getByRole('dialog', { name: /^Phase 1/ })
   await expect(sync).toBeVisible({ timeout: 10000 })
   await expect(sync.getByText('5 / 20')).toBeVisible({ timeout: 10000 })
+  expect(state.syncStarts).toEqual(['hinatazaka46'])
   state.progress.hinatazaka46 = COMPLETE
   await expect(page.getByRole('dialog', { name: 'Complete' })).toBeVisible({ timeout: 10000 })
   await expect(page.getByRole('dialog', { name: 'Complete' })).toHaveCount(0, { timeout: 10000 })
@@ -86,6 +93,9 @@ test('a newly added group shows the inline sync view while its first sync runs',
   await page.getByRole('dialog', { name: 'Connect Your Account?' }).getByRole('button', { name: 'Connect Account' }).click()
   await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toBeVisible({ timeout: 10000 })
   await expect(page.getByText('5 / 20')).toBeVisible()
+  expect(state.loginCalls).toEqual(['sakurazaka46'])
+  // The already-added group may sync too (and a start can repeat), so lock only that the new group started.
+  expect(state.syncStarts).toContain('sakurazaka46')
   state.progress.sakurazaka46 = COMPLETE
   await expect(page.getByRole('heading', { name: 'Phase 1: Scanning Groups' })).toHaveCount(0, { timeout: 10000 })
 })
