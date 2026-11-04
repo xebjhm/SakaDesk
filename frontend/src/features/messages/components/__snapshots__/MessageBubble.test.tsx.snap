@@ -177,6 +177,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     >
       <div
         class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail"
+        data-testid="unread-shelter"
         style="background-color: rgb(139, 184, 214); border: medium;"
       >
         <svg

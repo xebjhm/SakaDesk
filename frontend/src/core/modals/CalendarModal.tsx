@@ -249,6 +249,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <button
                     onClick={goToPrevMonth}
+                    aria-label={t('calendar.prevMonth')}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                     <ChevronLeft className="w-5 h-5 text-gray-600" />
@@ -275,6 +276,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                 </div>
                 <button
                     onClick={goToNextMonth}
+                    aria-label={t('calendar.nextMonth')}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                 >
                     <ChevronRight className="w-5 h-5 text-gray-600" />

@@ -310,6 +310,8 @@
     "openConversations": "顯示對話列表"
   },
   "calendar": {
+    "prevMonth": "上個月",
+    "nextMonth": "下個月",
     "title": "日子搜尋",
     "today": "今日",
     "availableOnDays": "有 {{count}} 日有嘢",

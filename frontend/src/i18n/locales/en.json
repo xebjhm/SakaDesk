@@ -310,6 +310,8 @@
     "openConversations": "Show conversations"
   },
   "calendar": {
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
     "title": "Date Search",
     "today": "Today",
     "availableOnDays": "Available on {{count}} days",
