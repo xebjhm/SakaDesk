@@ -51,6 +51,15 @@ describe('Avatar', () => {
         expect(clientLog).not.toHaveBeenCalled();
     });
 
+    it('is hidden from assistive tech when decorative (a visible label follows)', () => {
+        const { container, rerender } = render(<Avatar src="/a.jpg" name="小坂菜緒" decorative />);
+        expect(screen.queryByRole('img', { name: '小坂菜緒' })).toBeNull();
+        expect(container.querySelector('img')).toHaveAttribute('alt', '');
+        rerender(<Avatar name="小坂菜緒" decorative />);
+        expect(screen.queryByRole('img')).toBeNull();
+        expect(screen.getByText('小')).toHaveAttribute('aria-hidden', 'true');
+    });
+
     it('adds the white ring and group glow when selected', () => {
         const { container } = render(<Avatar name="A" selected />);
         expect(container.firstChild).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');

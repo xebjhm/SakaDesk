@@ -264,6 +264,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                                 <Avatar
                                     src={info.avatar ?? undefined}
                                     name={info.displayName}
+                                    decorative
                                     size="lg"
                                     selected={isSelected}
                                     className={cn('h-16 w-16', !isSelected && 'group-hover:shadow-card')}

@@ -35,8 +35,18 @@ describe('MemberList (D2a)', () => {
         serve();
         render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
         expect(await screen.findByText('99+')).toHaveClass('bg-group-badge');
-        const avatar = screen.getByRole('img', { name: /石塚/ }).parentElement!;
+        const cell = screen.getByRole('button', { name: /石塚 瑶季/ });
+        const avatar = cell.querySelector('.ring-2')!;
         expect(avatar).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');
+    });
+
+    it('announces each member once: the avatar is decorative beside the visible name', async () => {
+        serve();
+        render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
+        const cell = await screen.findByRole('button', { name: /石塚 瑶季/ });
+        // The name is spoken once (the avatar adds nothing); the unread badge may follow it.
+        expect(cell).not.toHaveAccessibleName(/石塚 瑶季.*石塚 瑶季/);
+        expect(screen.queryByRole('img', { name: /石塚/ })).toBeNull();
     });
 
     it('uses sticky pill headings and a floating sync pill, with no divider lines or own gradient', async () => {
