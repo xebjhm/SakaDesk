@@ -8,7 +8,7 @@ import { MemberProfilePopup } from './components/MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import { VirtuosoHandle } from 'react-virtuoso';
 import { useAppStore } from '../../store/appStore';
-import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings, toLocalDateStr } from '../../utils';
+import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
@@ -26,6 +26,8 @@ import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
 import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
+import { useTimelineJump } from './hooks/useTimelineJump';
+import { useLandingHighlight } from './hooks/useLandingHighlight';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -86,6 +88,7 @@ export interface AppSettings {
 }
 
 const MAX_CACHED_CHATS = 20;
+
 
 interface MessageCacheEntry {
     messages: GroupMessage[];
@@ -173,7 +176,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Scroll ref
     const virtuosoRef = useRef<VirtuosoHandle>(null);
-    const visibleRangeRef = useRef<{ startIndex: number; endIndex: number }>({ startIndex: 0, endIndex: 0 });
+    const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
+    // Virtuoso's scroll element, which the timeline jump glides.
+    const chatScrollerRef = useRef<HTMLElement | null>(null);
+    const setChatScroller = useCallback((el: HTMLElement | Window | null) => {
+        chatScrollerRef.current = el instanceof HTMLElement ? el : null;
+    }, []);
 
     // Nav button state
     const [hasUnreadAbove, setHasUnreadAbove] = useState(false);
@@ -403,8 +411,20 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
     }, [readState.lastReadId, readState.revealedIds]);
 
+    const { highlightedMessageId, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
+    // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
+    useEffect(() => {
+        visibleRangeRef.current = null;
+    }, [selectedGroupDir]);
+
+    const jumpTo = useTimelineJump({
+        virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
+        getScroller: () => chatScrollerRef.current,
+        visibleRange: () => visibleRangeRef.current,
+    });
+
     const updateUnreadNavState = useCallback((range?: { startIndex: number; endIndex: number }) => {
-        const currentRange = range || visibleRangeRef.current;
+        const currentRange = range || visibleRangeRef.current || { startIndex: 0, endIndex: 0 };
         if (range) visibleRangeRef.current = range;
 
         const firstUnreadIndex = messages.findIndex(m => isUnread(m.id));
@@ -500,19 +520,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         return selectedGroupDir;
     }, [isGroupChat, membersMap, selectedGroupDir]);
 
-    const scrollToFirstUnread = useCallback(() => {
-        const index = messages.findIndex(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id));
-        if (index !== -1) {
-            virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
-        }
-    }, [messages, readState]);
+    const scrollToFirstUnread = useCallback(() => { void jumpTo({ kind: 'firstUnread' }); }, [jumpTo]);
 
     const scrollToMessage = useCallback((id: number) => {
-        const index = messages.findIndex(m => m.id === id);
-        if (index !== -1) {
-            virtuosoRef.current?.scrollToIndex({ index, align: 'center', behavior: 'auto' });
-        }
-    }, [messages]);
+        void jumpTo({ kind: 'message', id, align: 'center' });
+    }, [jumpTo]);
+
+    const jumpToTargetMessage = useCallback((id: number) => {
+        void jumpTo({ kind: 'message', id, align: 'start' });
+    }, [jumpTo]);
 
     // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
     const isCallElsewhere = useCallback((messageId: number) => {
@@ -540,8 +556,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';
 
-    // Keyboard navigation using Virtuoso (inert while a call covers the timeline)
-    const handleKeyDown = useTimelineKeyNav(virtuosoRef, messages.length, callActive);
+    // Keyboard navigation through the shared timeline jump (inert while a call covers the timeline)
+    const handleKeyDown = useTimelineKeyNav(jumpTo, callActive);
 
     // Scroll to first message of a given date (for calendar navigation).
     // SD-FE-CORE-02: the calendar buckets days by LOCAL date (backend
@@ -549,11 +565,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // LOCAL date, not its raw UTC `timestamp` prefix, or a jump near midnight
     // lands on the wrong day (or fails to find any message) for non-UTC users.
     const scrollToDate = useCallback((dateStr: string) => {
-        const index = messages.findIndex(m => toLocalDateStr(m.timestamp) === dateStr);
-        if (index !== -1) {
-            virtuosoRef.current?.scrollToIndex({ index, align: 'start', behavior: 'smooth' });
-        }
-    }, [messages]);
+        void jumpTo({ kind: 'date', date: dateStr });
+    }, [jumpTo]);
 
     // Build media items list for the viewer (all photos/videos/voices sorted by timestamp)
     const mediaItems = useMemo((): MediaViewerItem[] => {
@@ -764,6 +777,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onLongPress={() => setShowRevealConfirm(true)}
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
+                            scrollerRef={setChatScroller}
                             userNickname={
                                 messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined
                             }
@@ -773,6 +787,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             service={messagesService}
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
+                            onJumpToMessage={jumpToTargetMessage}
+                            highlightedMessageId={highlightedMessageId}
                             getMemberPath={getMemberPath}
                         />
                     )}

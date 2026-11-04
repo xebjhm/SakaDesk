@@ -57,7 +57,7 @@ describe('DesignPage colour system', () => {
     it('lists the role map', () => {
         render(<DesignPage />);
         expect(screen.getByRole('heading', { name: 'Roles' })).toBeInTheDocument();
-        for (const role of ['action', 'strong', 'subtle', 'subtleBorder', 'linkUnderline']) {
+        for (const role of ['action', 'strong', 'subtle', 'subtleBorder', 'linkUnderline', 'highlight']) {
             expect(screen.getAllByText(role).length).toBeGreaterThan(0);
         }
     });

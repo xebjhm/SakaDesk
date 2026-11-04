@@ -42,6 +42,7 @@ ClientEvent = Literal[
     "design_tokens_applied",
     "design_tokens_fallback",
     "avatar_fallback",
+    "timeline_jump",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -61,6 +62,12 @@ ALLOWED_FIELDS = frozenset(
         "has_target",
         "theme",
         "size",
+        "target",
+        "index",
+        "corrections",
+        "outcome",
+        "jump_ms",
+        "path",
     }
 )
 WARNING_EVENTS = frozenset({"call_error", "app_load_failed", "design_tokens_fallback"})

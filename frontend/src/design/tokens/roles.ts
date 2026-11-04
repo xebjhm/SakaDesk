@@ -16,6 +16,8 @@ export interface GroupRoles {
     subtle: string;
     /** Step 200: border of subtle selections. */
     subtleBorder: string;
+    /** Step 100: landed-row highlight (`animate-landing`). */
+    highlight: string;
     /** Step 300: link underline. */
     linkUnderline: string;
     bubbleBorder: string;
@@ -43,6 +45,7 @@ export function groupRoles(id: GroupId): GroupRoles {
         strong: s[700],
         subtle: s[50],
         subtleBorder: s[200],
+        highlight: s[100],
         linkUnderline: s[300],
         bubbleBorder: g.bubbleBorder,
         glow: g.glow,

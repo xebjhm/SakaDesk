@@ -5,6 +5,7 @@ import { useChatScroll } from '../hooks/useChatScroll';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
+import { cn } from '../../../utils/classnames';
 
 /**
  * Avatar click handler for a message. Member 0 is the room itself (messages
@@ -32,6 +33,8 @@ interface ChatListProps {
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
     /** Ref to expose Virtuoso handle for external scroll control */
     virtuosoRef?: React.RefObject<VirtuosoHandle>;
+    /** Receives Virtuoso's scroll element (the timeline jump glides it) */
+    scrollerRef?: (el: HTMLElement | Window | null) => void;
     /** User's nickname for %%% placeholder replacement */
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
@@ -44,6 +47,10 @@ interface ChatListProps {
     targetMessageId?: number | null;
     /** Callback to clear targetMessageId after it's consumed */
     onTargetMessageConsumed?: () => void;
+    /** Jump to a message through the shared timeline jump (same-room and fresh-mount targets) */
+    onJumpToMessage?: (id: number) => void;
+    /** Message row to flash after a jump landed on it */
+    highlightedMessageId?: number | null;
     /** Callback when a media item is clicked (for media viewer modal) */
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     /** Function to resolve the member directory path for a message (for transcription) */
@@ -61,12 +68,15 @@ export const MessageList: React.FC<ChatListProps> = ({
     onLongPress,
     onRangeChanged,
     virtuosoRef: externalRef,
+    scrollerRef,
     userNickname,
     onToggleFavorite,
     onAvatarClick,
     service,
     targetMessageId,
     onTargetMessageConsumed,
+    onJumpToMessage,
+    highlightedMessageId,
     onMediaClick,
     getMemberPath,
 }) => {
@@ -109,21 +119,22 @@ export const MessageList: React.FC<ChatListProps> = ({
         handleRangeChanged,
     } = useChatScroll(memberId, processedMessages);
 
-    // Search navigation: find target index for initialTopMostItemIndex (cross-room)
-    // and scrollToIndex (same-room). Both place the target at the top.
+    // Search navigation: the target's index seeds initialTopMostItemIndex on a fresh
+    // mount, which places it at the top.
     const targetIndex = useMemo(() => {
         if (targetMessageId == null) return undefined;
         const idx = processedMessages.findIndex(m => m.id === targetMessageId);
         return idx !== -1 ? idx : undefined;
     }, [targetMessageId, processedMessages]);
 
-    // Same-room navigation: Virtuoso is already mounted, so scrollToIndex works.
-    // Cross-room navigation uses initialTopMostItemIndex below instead.
+    // Fresh mounts already start at the target (initialTopMostItemIndex) and same-room
+    // targets arrive on a mounted list; both call onJumpToMessage, the shared jump that
+    // scrolls, verifies the landing and highlights it.
     useEffect(() => {
-        if (targetIndex == null) return;
-        virtuosoRef.current?.scrollToIndex({ index: targetIndex, align: 'start' });
+        if (targetIndex == null || targetMessageId == null) return;
+        onJumpToMessage?.(targetMessageId);
         onTargetMessageConsumed?.();
-    }, [targetIndex, onTargetMessageConsumed, virtuosoRef]);
+    }, [targetIndex, targetMessageId, onJumpToMessage, onTargetMessageConsumed]);
 
     // Cross-room: on fresh mount, initialTopMostItemIndex places target at top.
     // Falls back to savedScrollIndex when no search navigation is active.
@@ -152,6 +163,7 @@ export const MessageList: React.FC<ChatListProps> = ({
         <Virtuoso
             key={virtuosoKey}
             ref={virtuosoRef}
+            scrollerRef={scrollerRef}
             style={{ height: '100%' }}
             data={processedMessages}
             initialTopMostItemIndex={initialTopMostItemIndex}
@@ -163,7 +175,13 @@ export const MessageList: React.FC<ChatListProps> = ({
                 const isMsgUnread = isUnread(msg.id);
 
                 return (
-                    <div className="px-4 py-1" id={`msg-${msg.id}`}>
+                    <div
+                        className={cn(
+                            'px-4 py-1 rounded-card',
+                            highlightedMessageId === msg.id && 'animate-landing',
+                        )}
+                        id={`msg-${msg.id}`}
+                    >
                         <MessageBubble
                             message={msg}
                             member_name={senderInfo.name}

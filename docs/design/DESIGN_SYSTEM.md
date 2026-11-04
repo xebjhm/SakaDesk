@@ -70,6 +70,7 @@ one of two layers:
 | `action` | 600 | badge, primary button, play / scroll buttons | `bg-group-accent`, `bg-group-badge` |
 | `strong` | 700 | member names, links, selected text | `text-group-strong` |
 | `subtle` | 50 | selected / hover background | `bg-group-subtle` |
+| `highlight` | 100 | landed-row highlight | `animate-landing` |
 | `subtleBorder` | 200 | border of subtle selections | `border-group-subtle` |
 | `linkUnderline` | 300 | link underline | `decoration-group` |
 | `ring` | 600 | keyboard focus ring | `ring-group` |
@@ -93,7 +94,12 @@ if components need it). Never add a new hex to a component or to
 | Radius | `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 14px, 20px, full |
 | Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
 | Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
-| Motion | `duration-fast` `duration-base` `ease-standard` | 150ms, 200ms, `cubic-bezier(0.2, 0, 0, 1)` |
+| Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, `cubic-bezier(0.2, 0, 0, 1)` |
+
+`duration-glide` (400 ms) is only for scroll glides and `animate-landing`
+(1400 ms, `--ds-group-highlight` fading in and out) only for the landed-row
+highlight. Every other animation stays at 150-200 ms. `bezierEasing` in
+`design/tokens/motion.ts` evaluates the standard curve in JS.
 
 framer-motion reads numbers from `design/tokens/motion.ts`:
 `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.

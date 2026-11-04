@@ -61,6 +61,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   looking empty or missing messages until then.
 
 ### Fixed
+- **Jumping to an old date is quick.** Picking a day in the chat calendar now
+  goes straight there instead of scrolling through every message in between,
+  then glides the last stretch into place and gently highlights the message you
+  land on. Jumps from search results, notifications and the media gallery glide
+  in and highlight the message the same way.
 - **The new-message count after a sync is now exact.** It used to include
   messages that were already saved.
 - **A chat could stay frozen if its whole history was an exact multiple of 200

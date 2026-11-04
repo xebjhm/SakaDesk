@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import legacy from '../__fixtures__/legacy-theme-values.json';
 import { contrastRatio } from '../contrast';
 import {
-    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, SPACE_UNIT_PX,
+    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
 } from './index';
 
 const SHELTERS = {
@@ -58,6 +58,7 @@ describe('group tokens — system layer', () => {
         const r = groupRoles(id);
         expect([r.logo, r.action, r.strong, r.subtle, r.subtleBorder, r.linkUnderline, r.bubbleBorder, r.glow]).toEqual([...ROLES[id]]);
         expect(r.ring).toBe(r.action);
+        expect(r.highlight).toBe(groupTokens[id].scale[100]);
     });
 
     it.each(GROUP_IDS)('%s meets the contrast floors', (id) => {
@@ -109,8 +110,52 @@ describe('scales', () => {
         expect(radius).toEqual({ none: '0px', card: '14px', sheet: '20px', pill: '9999px' });
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
         expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading']);
-        expect(motion.duration).toEqual({ fast: 150, base: 200 });
+        expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });
         expect(easingCss(motion.easing.standard)).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(SPACE_UNIT_PX).toBe(4);
+    });
+});
+
+describe('bezierEasing', () => {
+    const f = bezierEasing(motion.easing.standard);
+    it('maps endpoints and is monotonic', () => {
+        expect(f(0)).toBe(0);
+        expect(f(1)).toBe(1);
+        let prev = 0;
+        for (let x = 0.05; x <= 1.0001; x += 0.05) {
+            const y = f(Math.min(x, 1));
+            expect(y).toBeGreaterThanOrEqual(prev);
+            prev = y;
+        }
+    });
+    it('decelerates', () => {
+        expect(f(0.5)).toBeGreaterThan(0.5);
+    });
+    it('the linear curve is the identity', () => {
+        const lin = bezierEasing([0, 0, 1, 1]);
+        for (const x of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) expect(lin(x)).toBeCloseTo(x, 6);
+    });
+    it('matches an independent evaluation of the standard curve', () => {
+        // Independent method: bisect the parametric form with the expanded polynomial.
+        const [x1, y1, x2, y2] = motion.easing.standard;
+        const poly = (a: number, b: number, t: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
+        const expected = (x: number) => {
+            let lo = 0;
+            let hi = 1;
+            while (hi - lo > 1e-12) {
+                const mid = (lo + hi) / 2;
+                if (poly(x1, x2, mid) < x) lo = mid;
+                else hi = mid;
+            }
+            return poly(y1, y2, lo);
+        };
+        expect(Math.abs(f(0.5) - expected(0.5))).toBeLessThan(1e-3);
+        // Hand-checked: x(t) = 0.5 at t of about 0.78, where y(t) is about 0.878.
+        expect(f(0.5)).toBeCloseTo(0.878, 3);
+    });
+    it('rejects x control points outside [0, 1]', () => {
+        expect(() => bezierEasing([-0.1, 0, 0.5, 1])).toThrow(RangeError);
+        expect(() => bezierEasing([0.2, 0, 1.2, 1])).toThrow(RangeError);
+        expect(() => bezierEasing([0.2, -2, 0.5, 3])).not.toThrow();
     });
 });

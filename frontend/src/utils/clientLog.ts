@@ -10,13 +10,15 @@ export type ClientLogEvent =
     | 'call_popup_start' | 'call_popup_error'
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'
-    | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback';
+    | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback'
+    | 'timeline_jump';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
     | 'surface' | 'call_id' | 'changed' | 'has_target'
-    | 'theme' | 'size';
+    | 'theme' | 'size'
+    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 
