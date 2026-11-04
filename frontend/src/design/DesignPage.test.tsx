@@ -24,9 +24,10 @@ describe('DesignPage', () => {
         }
     });
 
-    it('shows the Hinatazaka badge contrast', () => {
+    it('shows the Hinatazaka logo colour and action colour contrast', () => {
         render(<DesignPage />);
         expect(screen.getAllByText('White text 1.9:1').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('White text 3.0:1').length).toBeGreaterThan(0);
     });
 
     it.each(GROUP_IDS)('switching to %s applies its tokens', async (id) => {
