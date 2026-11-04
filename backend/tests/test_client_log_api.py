@@ -177,17 +177,18 @@ def test_call_popup_heard_applied_is_accepted_with_its_fields():
     assert events[0]["message_id"] == 10
 
 
-def test_call_popup_heard_ignored_is_accepted():
+@pytest.mark.parametrize("reason", ["already_heard", "not_ready", "malformed", "error"])
+def test_call_popup_heard_ignored_is_accepted(reason):
     with capture_logs() as logs:
         res = client.post(
             "/api/client-log",
             json={
                 "event": "call_popup_heard_ignored",
-                "fields": {"reason": "already_heard"},
+                "fields": {"reason": reason},
             },
         )
     assert res.status_code == 204
-    assert _client_events(logs)[0]["reason"] == "already_heard"
+    assert _client_events(logs)[0]["reason"] == reason
 
 
 def test_call_ring_from_the_popup_carries_surface():

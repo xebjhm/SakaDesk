@@ -392,7 +392,7 @@ def call_popup_ensure() -> None                                     # fire-and-f
 - They never raise:
   - with no host, `call_popup_unavailable` (`reason=no_host`) is logged once;
   - a timeout or an exception logs `call_popup_bridge_failed` (`op`, `error_type` or `reason=timeout`) and returns `False` / `"error"`.
-- **`deliver_heard`** runs `evaluate_js("window.__sakadeskMarkVoiceHeard ? window.__sakadeskMarkVoiceHeard(<json>) : null")` on the **main** window. The result is `true` → `delivered`, `null` → `not_ready`.
+- **`deliver_heard`** runs `evaluate_js("window.__sakadeskMarkVoiceHeard ? window.__sakadeskMarkVoiceHeard(<json>) : null")` on the **main** window. The result is `true` → `delivered`, `null` (no bridge yet, or its conversation cache not loaded, §7.4) → `not_ready`.
 - **`HeardTarget(service, path, message_id)`** is a frozen dataclass in the bridge module.
 - Off Windows no host is registered, so the gate reports `unavailable` and Linux CI never imports pywebview or Win32 code. `call_popup_window.py` imports `ctypes.windll` and `System.Windows.Forms` lazily inside its methods, and `user32`/`dwmapi` are injectable for tests.
 
@@ -498,11 +498,12 @@ All of these are optional. B's existing call sites and tests are unchanged.
 Add `revealInStore(path, msgId)`. It loads the state, and if the id is already heard (`!isUnreadIn(state)(msgId)`) it returns `false`. Otherwise it saves `applyReveal(prev, msgId, [])`: the id goes into `revealedIds`, and consolidation happens the next time the chat is open, as today. It then notifies the subscribers and returns `true`. `subscribeReadState(listener)` (used through `useReadStateSubscription`) lets `MessagesFeature` refresh when the selected chat's row changed outside it, and bump `readStateVersion` (sidebar refresh) for any change. The subscriber does not overwrite its in-memory state: it merges the stored row into it with `mergeReadState` (max `lastReadId`, union of revealed ids, so an in-flight in-chat reveal is never lost) and, when the merge holds more than the stored row, writes it back through the same `saveReadState` path. `MessagesFeature` keeps calling `applyReveal` and `saveReadState` for its own reveals, so behaviour is byte-identical.
 
 **The main-window heard bridge** (`shell/markVoiceHeard.ts`). `App.tsx` installs `window.__sakadeskMarkVoiceHeard = markVoiceHeard` next to `__sakadeskOpenChat`, and removes it on unmount. `markVoiceHeard({service, path, message_id})`:
+- first checks `persisted.conversationsReady()`, which is true only after the latest `hydrateConversations()` GET succeeded. Until then (still loading at startup or after a reload, or the GET failed and the cache fell back to `{}`), an existing read row reads as empty, so writing "heard" over it would reset the chat's read progress to `lastReadId: 0`. The bridge therefore applies nothing, logs `call_popup_heard_ignored reason=not_ready` and returns `null`;
 - validates the shape (and that `parseReadStatePath(path)` parses). A malformed payload (bad shape, `service` not matching the path, a non-positive or non-integer id) logs `call_popup_heard_ignored reason=malformed` and returns `true`, so the backend does not retry a payload that can never apply;
 - otherwise calls `revealInStore(path, message_id)`, logs `call_popup_heard_applied` (`service`, `group_id`, `member_id`, `message_id`, `changed`) and returns `true`;
 - an exception while applying logs `call_popup_heard_ignored reason=error` (no error text, which could carry a path) and returns `true` as well.
 
-The bridge therefore **always returns `true`**: the host maps `true` to `delivered` (final), `null` (bridge not installed yet) to `not_ready`, and a thrown JS error to `error`, and retries only the last two. A request that can never succeed on retry must not be retried; the voice then stays unheard and B rings it in the app later.
+Once the cache is loaded, the bridge therefore **always returns `true`**: the host maps `true` to `delivered` (final), `null` (bridge not installed yet, or the cache not loaded) to `not_ready`, and a thrown JS error to `error`, and retries only the last two. A request that can never succeed on retry must not be retried; the voice then stays unheard and B rings it in the app later. The retry budget (3 attempts, 1 s apart, about 2 s plus the script calls) covers a reload that finishes hydrating in that window; a call can only be answered after a sync and a ring, by which time a normal startup has long hydrated. A cache that never loads leaves the voice unheard, the documented safe outcome.
 
 The popup never writes read state. The main window, the only writer, applies the reveal through the same code path it uses for any heard voice, so its cache, the backend row, the search copy, the sidebar badge and the C2 tooltip all agree, and B's next decision sees the voice as heard.
 
@@ -597,7 +598,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `call_popup_start` (call_id);
   - `call_popup_error` (call_id, error_type: `info_failed`, `info_not_found`, `start_failed`, `settings_failed`, `messages_failed`, `read_state_failed`, `message_mismatch`, `render_failed`, `event_post_failed`, `load_failed`);
   - `call_popup_heard_applied` (service, group_id, member_id, message_id, changed);
-  - `call_popup_heard_ignored` (reason).
+  - `call_popup_heard_ignored` (reason: `not_ready`, `malformed`, `error`).
 - **Whitelist:** add these events to `ClientEvent` and the fields `surface`, `call_id` and `changed` to `ALLOWED_FIELDS`. The value rules are unchanged.
 
 ---
@@ -695,7 +696,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `applyReveal` matches the old `revealMessage` results (table-driven, moved tests);
   - `revealInStore` writes through `persisted.setConv` and the search PUT, notifies subscribers and returns false when already heard;
   - `MessagesFeature`'s subscriber refreshes the selected chat (harness).
-- **`markVoiceHeard`:** valid → applied, `changed` true then false; malformed → ignored and logged; returns `true` in both cases.
+- **`markVoiceHeard`:** valid → applied, `changed` true then false; malformed → ignored and logged; returns `true` in both cases. Before the conversation cache loaded, or after its load failed → `null`, `not_ready` logged, no `setConv` and no PUT, the row untouched; after a later successful load → applied. `persisted.conversationsReady()` is true only after a successful load.
 - **`CallPopupApp` / `PopupCall`** (mocked fetch and `Audio`, fake timers):
   - `start` → fetches → `ringing` posted;
   - answer → `answered` posted with the message id, then `ended` after the hold;

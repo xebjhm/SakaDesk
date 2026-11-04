@@ -4,6 +4,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import { clientLog } from '../utils/clientLog';
 import { persisted } from '../core/persistence/persisted';
+import * as appStateApi from '../core/persistence/appStateApi';
 import { markVoiceHeard } from './markVoiceHeard';
 
 const PATH = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
@@ -14,6 +15,7 @@ describe('markVoiceHeard', () => {
     beforeEach(() => {
         row = {};
         vi.mocked(clientLog).mockClear();
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
         vi.spyOn(persisted, 'getConv').mockImplementation(((k: string, fb: unknown) => row[k] ?? fb) as never);
         setConv = vi.spyOn(persisted, 'setConv').mockImplementation(((k: string, v: unknown) => { row[k] = v; }) as never);
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
@@ -65,6 +67,36 @@ describe('markVoiceHeard', () => {
         expect(clientLog).toHaveBeenCalledTimes(1);
         expect(clientLog).toHaveBeenCalledWith('call_popup_heard_ignored', { reason: 'error' });
         expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toMatch(/金村|boom/);
+    });
+
+    it('returns null (not_ready) and leaves the row untouched until the cache has loaded', () => {
+        vi.mocked(persisted.conversationsReady).mockReturnValue(false);
+        const key = `read_state_${PATH}`;
+        row[key] = { value: JSON.stringify({ lastReadId: 99, readCount: 5, revealedIds: [] }) };
+        const fetchMock = vi.mocked(fetch);
+        fetchMock.mockClear();
+        expect(markVoiceHeard({ service: 'hinatazaka46', path: PATH, message_id: 10 })).toBeNull();
+        expect(clientLog).toHaveBeenCalledTimes(1);
+        expect(clientLog).toHaveBeenCalledWith('call_popup_heard_ignored', { reason: 'not_ready' });
+        expect(setConv).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled(); // no search-copy PUT either
+        expect(row[key]).toEqual({ value: JSON.stringify({ lastReadId: 99, readCount: 5, revealedIds: [] }) });
+    });
+
+    it('stays not_ready after a failed cache load, and applies once a load succeeds', async () => {
+        vi.mocked(persisted.conversationsReady).mockRestore();
+        const load = vi.spyOn(appStateApi, 'getAllConversations').mockRejectedValueOnce(new Error('down'));
+        await persisted.hydrateConversations();
+        const payload = { service: 'hinatazaka46', path: PATH, message_id: 10 };
+        expect(markVoiceHeard(payload)).toBeNull();
+        expect(clientLog).toHaveBeenLastCalledWith('call_popup_heard_ignored', { reason: 'not_ready' });
+        expect(setConv).not.toHaveBeenCalled();
+
+        load.mockResolvedValueOnce({});
+        await persisted.hydrateConversations();
+        expect(markVoiceHeard(payload)).toBe(true);
+        expect(clientLog).toHaveBeenLastCalledWith('call_popup_heard_applied', expect.objectContaining({ changed: true }));
+        expect(setConv).toHaveBeenCalledTimes(1);
     });
 
     it('never logs the path or a name', () => {

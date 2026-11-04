@@ -495,8 +495,9 @@ class CallPopupWindow:
         """Ask the **main** window to mark ``target`` heard.
 
         ``"delivered"`` when its bridge returned ``true``; ``"not_ready"``
-        otherwise (``null``: the bridge is not installed yet). A JS error
-        raises, and the bridge reports it as ``"error"``.
+        otherwise (``null``: the bridge is not installed yet, or the main
+        window's conversation cache has not loaded). A JS error raises, and the
+        bridge reports it as ``"error"``.
         """
         payload = json.dumps(asdict(target), ensure_ascii=False)
         result = self._main_window.evaluate_js(_HEARD_JS.format(payload=payload))
