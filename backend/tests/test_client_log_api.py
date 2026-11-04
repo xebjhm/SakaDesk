@@ -284,3 +284,35 @@ def test_design_system_events_are_accepted(event, fields, level):
     assert entry["log_level"] == level
     for key, value in fields.items():
         assert entry[key] == value
+
+
+def test_timeline_jump_is_accepted_with_its_fields():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "timeline_jump",
+                "fields": {
+                    "target": "first_unread",
+                    "index": 2500,
+                    "corrections": 1,
+                    "outcome": "landed",
+                    "jump_ms": 140,
+                },
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert len(events) == 1
+    assert events[0]["event"] == "timeline_jump"
+    assert events[0]["log_level"] == "info"
+    assert events[0]["outcome"] == "landed"
+    assert events[0]["corrections"] == 1
+
+
+def test_timeline_jump_rejects_text_in_its_fields():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "timeline_jump", "fields": {"target": "高井 俐香"}},
+    )
+    assert res.status_code == 422
