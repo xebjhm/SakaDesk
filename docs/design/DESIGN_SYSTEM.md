@@ -269,6 +269,13 @@ stacked dialog, `POPOVER` 1000 (portaled menus, above any dialog) and `TOAST` 11
 everything, e.g. the settings error toast). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
 `z-20` stay for stacking inside one frame (sticky headers, viewer chrome).
 
+**The incoming call (D2d).** A call that starts with no dialog open is drawn inside the chat
+frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is
+**lifted**: portaled over the chat area's rectangle at `interleavedZIndex(order)`
+(`dialogStack.ts`), half a `DIALOG_STEP` above the dialogs that were open when it rang, so a
+dialog opened during the call still goes above it. It is not on the dialog layer: the layer
+leaves Escape and Tab pressed inside it to the call (`useDialog`), and focus there is allowed.
+
 ## Do / Don't
 
 | Do | Don't |

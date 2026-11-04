@@ -1,9 +1,15 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from '../../i18n';
+import {
+    interleavedZIndex, nextDialogOrder, openDialogCount, subscribeDialogStack, topDialog,
+} from '../../design/dialog/dialogStack';
+import { clientLog } from '../../utils/clientLog';
 import { CallAudio } from './CallAudio';
 import { CallScreen } from './CallScreen';
 import type { AnswerStyle } from './CallScreen';
 import type { IncomingCall } from './useIncomingCall';
+import { useAnchorRect } from './useAnchorRect';
 
 interface CallOverlayProps {
     call: IncomingCall;
@@ -14,12 +20,74 @@ interface CallOverlayProps {
     groupLabel: string;
 }
 
-/** Covers the chat area while a call is active; hosts the call audio and handles Esc/Enter. */
+/** Where a call is drawn, decided once per call when it first shows (spec D2d decision 20). */
+interface CallLayer {
+    messageId: number | null;
+    lifted: boolean;
+    /** Opening order taken when lifted: the call sits above the dialogs opened before it. */
+    order: number;
+    /** Dialogs open when it first showed. */
+    below: number;
+}
+
+const NO_LAYER: CallLayer = { messageId: null, lifted: false, order: 0, below: 0 };
+
+function decideLayer(messageId: number): CallLayer {
+    const below = openDialogCount();
+    return below > 0
+        ? { messageId, lifted: true, order: nextDialogOrder(), below }
+        : { messageId, lifted: false, order: 0, below };
+}
+
+/**
+ * Covers the chat area while a call is active; hosts the call audio and handles Esc/Enter.
+ * A call that starts while a dialog is open is lifted: portaled over the chat area's rectangle,
+ * above the dialogs that were open (interleavedZIndex) and below any opened later.
+ */
 export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, answerStyle, groupLabel }) => {
     const { t } = useTranslation();
     const overlayRef = useRef<HTMLDivElement | null>(null);
+    const anchorRef = useRef<HTMLDivElement | null>(null);
     const [now, setNow] = useState(() => Date.now());
     const { phase, answer, decline, hangUp } = call;
+    const hasOverlay = phase !== 'idle' && !!call.message;
+    const messageId = call.message?.id ?? null;
+
+    // The layer is fixed for the call's life, so the audio never remounts; it is forgotten when
+    // the call goes away, so the same message ringing again (after leaving the chat) decides afresh.
+    const [layer, setLayer] = useState<CallLayer>(NO_LAYER);
+    if (hasOverlay && messageId !== null && layer.messageId !== messageId) setLayer(decideLayer(messageId));
+    else if (!hasOverlay && layer.messageId !== null) setLayer(NO_LAYER);
+    const lifted = hasOverlay && layer.lifted;
+
+    const rect = useAnchorRect(anchorRef, lifted);
+    const [zIndex, setZIndex] = useState(0);
+    useLayoutEffect(() => {
+        if (!lifted) return;
+        const sync = () => setZIndex(interleavedZIndex(layer.order));
+        sync();
+        return subscribeDialogStack(sync);
+    }, [lifted, layer.order]);
+
+    // A lifted call that goes away with focus inside it hands focus to the top-most dialog (the
+    // layer does not track the call, so nothing else would). Its node is already removed when the
+    // call ends; still connected (the chat view unmounting, a StrictMode re-run), only focus inside it counts.
+    useLayoutEffect(() => {
+        if (!lifted) return;
+        const overlay = overlayRef.current;
+        return () => {
+            const active = document.activeElement;
+            const lost = overlay?.isConnected
+                ? active !== null && overlay.contains(active)
+                : active === null || active === document.body || !active.isConnected;
+            if (lost) topDialog()?.node()?.focus({ preventScroll: true });
+        };
+    }, [lifted]);
+
+    useEffect(() => {
+        if (layer.messageId === null) return;
+        clientLog('call_layer', { phase: layer.lifted ? 'lifted' : 'in_frame', count: layer.below });
+    }, [layer]);
 
     // Tick the talk timer while connected.
     useEffect(() => {
@@ -31,7 +99,6 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
 
     // Take keyboard focus when the call starts ringing so Enter/Esc work wherever focus was
     // (a clicked sidebar button, the timeline). Never steal it from text entry or another modal.
-    const hasOverlay = phase !== 'idle' && !!call.message;
     useEffect(() => {
         if (phase !== 'ringing' || !hasOverlay) return;
         const overlay = overlayRef.current;
@@ -91,18 +158,22 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
     if (phase === 'idle' || !call.message) return liveRegion;
 
     const talkSeconds = call.talkStartedAt ? (now - call.talkStartedAt) / 1000 : 0;
+    const placement: React.CSSProperties = lifted
+        ? { zIndex, left: rect?.left ?? 0, top: rect?.top ?? 0, width: rect?.width ?? 0, height: rect?.height ?? 0 }
+        : {};
 
-    return (
-        <>
-        {liveRegion}
+    const overlay = (
         <div
             ref={overlayRef}
             role="dialog"
             aria-label={call.name}
             tabIndex={-1}
-            className="sd-call-overlay absolute inset-0 z-30 overflow-hidden outline-none"
-            style={{ '--sd-accent': accentColor } as React.CSSProperties}
+            className={lifted
+                ? 'sd-call-overlay fixed overflow-hidden rounded-b-sheet outline-none'
+                : 'sd-call-overlay absolute inset-0 z-30 overflow-hidden outline-none'}
+            style={{ '--sd-accent': accentColor, ...placement } as React.CSSProperties}
             data-testid="call-overlay"
+            data-layer={lifted ? 'lifted' : 'frame'}
         >
             <div aria-hidden className="sd-call-ambient" style={{ backgroundImage: `url("${call.photoUrl}")` }} />
             <div aria-hidden className="sd-call-vignette" />
@@ -130,6 +201,17 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, ans
                 onPlaybackError={call.onPlaybackError}
             />
         </div>
+    );
+
+    return (
+        <>
+            {liveRegion}
+            {lifted ? (
+                <>
+                    <div ref={anchorRef} aria-hidden="true" className="pointer-events-none absolute inset-0" />
+                    {createPortal(overlay, document.body)}
+                </>
+            ) : overlay}
         </>
     );
 };
