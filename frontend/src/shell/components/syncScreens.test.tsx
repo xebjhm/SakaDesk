@@ -31,6 +31,16 @@ describe('sync dialog (D2d)', () => {
         expect(scope.querySelectorAll('span.h-1.rounded-pill.bg-group-accent')).toHaveLength(2);
     });
 
+    it('keeps the last synced service’s colours on Complete after the sequence ends', () => {
+        const { rerender } = render(
+            <SyncModal syncProgress={RUNNING} sequentialSyncInfo={{ total: 2, currentIndex: 1, currentService: 'sakurazaka46' }} />,
+        );
+        rerender(<SyncModal syncProgress={{ ...RUNNING, state: 'complete', phase: 'complete', completed: 20 }} sequentialSyncInfo={null} onClose={vi.fn()} />);
+        expect(screen.getByRole('heading', { level: 2, name: 'Complete' })).toBeInTheDocument();
+        const scope = screen.getByRole('progressbar').closest('[style*="--ds-group-accent"]') as HTMLElement | null;
+        expect(scope?.style.getPropertyValue('--ds-group-accent')).toBe(groupRoles('sakurazaka').action);
+    });
+
     it('Done and Cancel are secondary buttons', () => {
         const { rerender } = render(<SyncModal syncProgress={RUNNING} onCancel={vi.fn()} />);
         expect(screen.getByRole('button', { name: 'Cancel' })).not.toHaveClass('bg-group-accent');

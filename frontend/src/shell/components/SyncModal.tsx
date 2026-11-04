@@ -1,5 +1,5 @@
 // frontend/src/shell/components/SyncModal.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Image as ImageIcon, Mic, Video } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button, Modal } from '../../design/primitives';
@@ -24,6 +24,12 @@ interface SyncModalProps {
 /** The blocking sync dialog (spec D2d decisions 4, 6, 9–11, 17, 19): not dismissible; Done or Cancel. */
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose, onCancel }) => {
     const { t } = useTranslation();
+    // The service a sequential sync last scoped this dialog to. Kept until the dialog closes, so
+    // Complete stays in that service's colours after the sequence info is cleared.
+    const sequentialService = sequentialSyncInfo?.currentService ?? null;
+    const [lastScopedService, setLastScopedService] = useState(sequentialService);
+    if (sequentialService && sequentialService !== lastScopedService) setLastScopedService(sequentialService);
+    const scopedService = sequentialService ?? lastScopedService;
     const isComplete = syncProgress.phase === 'complete';
     const title = isComplete
         ? t('sync.complete')
@@ -58,7 +64,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
         >
             <div
                 className="flex flex-col gap-5"
-                style={sequentialSyncInfo ? groupScopeStyle(serviceIdToGroupId(sequentialSyncInfo.currentService)) : undefined}
+                style={scopedService ? groupScopeStyle(serviceIdToGroupId(scopedService)) : undefined}
             >
                 {sequentialSyncInfo && sequentialSyncInfo.total > 1 && (
                     <div className="flex items-center justify-center gap-2">
