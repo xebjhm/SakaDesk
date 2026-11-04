@@ -157,6 +157,12 @@ interface Timeline {
 - Every index-based caller (`useChatScroll`, unread navigation, `jumpTo`, the visibility registry, key navigation) asks the model for an index by **id**. None of them indexes `messages[]` directly any more. `useChatScroll` keeps saving the top **message** id. If the top item is a letter, it saves the nearest message above it.
 - Unread logic ignores letters: they are never unread, are not counted, and are skipped by the unread arrows and "reveal all". Key navigation does step through them.
 - **First step of the plan:** a test establishes whether `GroupedVirtuoso`'s `rangeChanged` reports item indices with or without group headers. The model's index helpers are written to match that result.
+- **Constraints from the D2a-0 final review** (the jump hook was built for a message-only list):
+  - **One index source.** `useTimelineJump` and `resolveJump` take the `Timeline` model, or an `indexOf(target)` resolver built from it, instead of `messages`. The correction pass re-resolves through the same model. No caller computes an index from `messages[]`.
+  - **Row keys, not message ids.** Message ids and letter ids can collide. Rows are keyed `msg-<id>` and `letter-<id>`, and so are the DOM ids, `measureLanding`, the highlight state (`useLandingHighlight` keyed by row key) and `JumpTarget`. A new `{ kind: 'letter'; id }` target serves the overview.
+  - **The sticky header offsets the landing.** With a sticky `DatePill` group header covering the top of the viewport, `align: 'start'` must land **below** the header. The plan probes where `scrollToIndex` puts a row under a sticky group, and then `landingError` measures against the header's bottom edge (or an equivalent offset), so that jumps do not make spurious corrections and give up. The e2e helper `topVisibleMessageId` must ignore rows hidden behind the header.
+  - **Date jumps target the group.** In grouped mode a date jump scrolls to the day's group header (`groupIndex`), so the date pill itself lands at the top.
+  - The e2e restore test replaces `waitForTimeout(800)` with waiting for the scroll-save request.
 
 ### 5. Letters in chat
 
