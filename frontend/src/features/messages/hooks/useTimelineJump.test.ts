@@ -329,6 +329,25 @@ describe('useTimelineJump glide', () => {
         expect(scroller.scrollTop).toBe(1000);
     });
 
+    it('far, but the target never rendered during the glide: finishes with an exact instant scroll', async () => {
+        // Measured in the browser (grouped list, Home from the bottom): right after the lead-in,
+        // rows above the viewport measure taller and Virtuoso pushes scrollTop down by 170 px
+        // before the glide starts, so the planned glide ends short with the target unrendered.
+        const scroller = fakeScroller();
+        let pushed = false;
+        const s = setup([], {
+            list: many,
+            glide: { scroller, range: above, targetTop: 1000 },
+            onFrame: () => { if (!pushed && scroller.scrollTop === 1000 + LEAD) { pushed = true; scroller.scrollTop += 170; } },
+        });
+        await expect(s.jumpTo({ kind: 'top' })).resolves.toBe('landed');
+        expect(pushed).toBe(true);
+        expect(s.scrollToIndex).toHaveBeenCalledTimes(2);
+        expect(s.scrollToIndex).toHaveBeenLastCalledWith({ index: 0, align: 'start', behavior: 'auto' });
+        expect(scroller.scrollTop).toBe(1000);
+        expect(pathLogged()).toBe('far_snap');
+    });
+
     it('downward: follows the target when it moves mid-glide, without a correction', async () => {
         // A picture above the target finishes loading mid-glide and pushes it 60 px down.
         const scroller = fakeScroller();

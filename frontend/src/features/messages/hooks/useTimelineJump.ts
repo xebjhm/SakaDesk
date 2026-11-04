@@ -61,7 +61,7 @@ export function estimateTravel(
 
 /** Which branch of the jump ran; logged as the `path` breadcrumb field. */
 export type JumpPath =
-    | 'instant' | 'onscreen' | 'onscreen_snap' | 'close' | 'close_snap' | 'far' | 'far_unsettled' | 'none';
+    | 'instant' | 'onscreen' | 'onscreen_snap' | 'close' | 'close_snap' | 'far' | 'far_snap' | 'far_unsettled' | 'none';
 
 /** What the hook needs from the list; Virtuoso's and GroupedVirtuoso's handles both fit. */
 export interface TimelineHandle {
@@ -115,7 +115,7 @@ export interface UseTimelineJumpArgs {
  *   viewports short of it in the direction of travel; once Virtuoso has stopped
  *   re-scrolling that lead-in (STILLNESS_MS still, at most MAX_WAIT_FRAMES) it
  *   glides the rest of the way, or scrolls instantly if heights never settle.
- * If an on-screen target cannot be measured, or a close glide ends without the row
+ * If an on-screen target cannot be measured, or a close or far glide ends without the row
  * rendered, the jump snaps there with an instant scrollToIndex instead. A far lead-in
  * shrinks, possibly to zero (no glide at all), near the list's bottom edge, because
  * Virtuoso clamps the offset to the scroll range; the jump still lands. Wheel or touch
@@ -230,6 +230,12 @@ export function useTimelineJump({
             if (leadIn === 'cancelled') return finish('cancelled', resolved.index, 0);
             if (leadIn === 'still') {
                 if (!(await glide(scroller, dir * lead))) return finish('cancelled', resolved.index, 0);
+                // Virtuoso may have moved the lead-in (rows measured taller or shorter) before the
+                // glide started, so the glide can end short with the row still unrendered.
+                if (aim() === null) {
+                    path = 'far_snap';
+                    if (!snap()) return finish('gave_up', resolved.index, 0);
+                }
             } else {
                 path = 'far_unsettled';
                 // Heights never settled: scroll exactly; the list may be gone.
