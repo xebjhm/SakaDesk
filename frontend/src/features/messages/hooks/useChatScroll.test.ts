@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { useLayoutEffect } from 'react'
 import { renderHook, act } from '@testing-library/react'
 import type { ListRange } from 'react-virtuoso'
 import { useChatScroll } from './useChatScroll'
@@ -87,6 +88,12 @@ describe('useChatScroll', () => {
     act(() => result.current.handleRangeChanged({ startIndex: 0, endIndex: 3 }))
     act(() => { result.current.savePositionImmediate() })
     expect(persisted.setConv).toHaveBeenCalledTimes(1) // still 101: never written twice
+
+    // At the very top the letter has no message above it: the one below is saved.
+    const top = renderHook(() => useChatScroll('room-2', timeline))
+    act(() => top.result.current.handleRangeChanged({ startIndex: 0, endIndex: 3 }))
+    act(() => { top.result.current.savePositionImmediate() })
+    expect(persisted.setConv).toHaveBeenLastCalledWith('sakadesk_scroll_room-2', { value: '101' })
   })
 
   it('savePositionImmediate resolves a pending range at once', () => {
@@ -115,6 +122,23 @@ describe('useChatScroll', () => {
     expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
     act(() => { vi.advanceTimersByTime(1000) })
     expect(persisted.setConv).toHaveBeenCalledTimes(1)
+  })
+
+  it('an old-room frame that fires before the room-switch effect never saves a new-room id', () => {
+    // The rAF queued by the old room can run after the new room's render commits but before
+    // the passive room-switch effect: it must not resolve the old range on the new timeline.
+    const { result, rerender } = renderHook(({ id, t }) => {
+      const r = useChatScroll(id, t)
+      useLayoutEffect(() => { if (id === 'room-2') vi.advanceTimersToNextFrame() }, [id])
+      return r
+    }, { initialProps: { id: 'room-1', t: timelineOf([101, 102, 103]) } })
+    act(() => result.current.handleRangeChanged({ startIndex: 1, endIndex: 2 }))
+    act(() => { vi.advanceTimersToNextFrame() })
+    act(() => result.current.handleRangeChanged({ startIndex: 2, endIndex: 2 }))
+    rerender({ id: 'room-2', t: timelineOf([201, 202, 203]) })
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(persisted.setConv).toHaveBeenCalledTimes(1)
+    expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
   })
 
   it('saves on unmount instead of dropping a pending save', () => {

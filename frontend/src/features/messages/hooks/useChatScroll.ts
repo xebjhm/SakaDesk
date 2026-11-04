@@ -22,7 +22,8 @@ export interface UseChatScrollResult {
  *   stops moving. A letter on top saves the nearest message above it (below it at the very top).
  * - Which row is "top-most visible" is resolved one animation frame after `rangeChanged`, so
  *   the DOM matches the range: `topVisibleIndex(range)` skips rows hidden behind the sticky date
- *   header; without it the range start is used.
+ *   header; without it the range start is used. A range is only resolved for the room that
+ *   reported it.
  * - Restores by looking the saved id up in the timeline; a new room or an unknown id opens at the bottom.
  * - The last resolved position is also written on a room switch, on unmount, and (through the
  *   keepalive beacon) on pagehide / hidden.
@@ -34,9 +35,11 @@ export function useChatScroll(
 ): UseChatScrollResult {
   const storageKey = `${STORAGE_KEY_PREFIX}${memberId}`;
   const keyRef = useRef(storageKey);
-  const latest = useRef({ timeline, topVisibleIndex });
-  latest.current = { timeline, topVisibleIndex };
-  const pendingRangeRef = useRef<ListRange | null>(null);
+  // Updated during render: after a room switch commits, this already holds the new room.
+  const latest = useRef({ storageKey, timeline, topVisibleIndex });
+  latest.current = { storageKey, timeline, topVisibleIndex };
+  /** The last reported range and the room it was reported for. */
+  const pendingRangeRef = useRef<{ range: ListRange; key: string } | null>(null);
   const frameRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const topIdRef = useRef<number | null>(null);
@@ -52,12 +55,19 @@ export function useChatScroll(
     lastSavedRef.current = { key, id };
   }, []);
 
-  /** Turn the last reported range into the top visible message id (needs THIS room's DOM). */
+  /**
+   * Turn the last reported range into the top visible message id (needs THIS room's DOM).
+   * A range reported by another room is dropped: an old room's frame can fire after the new
+   * room has rendered but before the room-switch effect runs, and resolving it on the new
+   * timeline would save a new-room id under the old room's key.
+   */
   const resolvePending = useCallback(() => {
-    const range = pendingRangeRef.current;
+    const pending = pendingRangeRef.current;
     pendingRangeRef.current = null;
-    if (!range) return;
-    const { timeline: current, topVisibleIndex: resolve } = latest.current;
+    if (!pending) return;
+    const { storageKey: currentKey, timeline: current, topVisibleIndex: resolve } = latest.current;
+    if (pending.key !== currentKey) return;
+    const { range } = pending;
     const id = current.messageIdNear(resolve ? resolve(range) : range.startIndex);
     if (id !== null) topIdRef.current = id;
   }, []);
@@ -94,7 +104,7 @@ export function useChatScroll(
   }, [storageKey, timeline]);
 
   const handleRangeChanged = useCallback((range: ListRange) => {
-    pendingRangeRef.current = range;
+    pendingRangeRef.current = { range, key: latest.current.storageKey };
     if (frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
