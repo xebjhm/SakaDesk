@@ -16,6 +16,10 @@ describe('countViolations', () => {
         ["style={{ color: 'rgba(0, 0, 0, .5)', background: 'hsl(10 20% 30%)' }}", 2],
         ['className="rounded-[10px] shadow-[0_0_4px] text-[13px] p-[3px] -mt-[2px] gap-x-[5px] space-y-[7px]"', 7],
         ['className="hover:rounded-tl-[6px] md:px-[10px]"', 2],
+        ['<input accept="image/*" style={{ color: "#fff" }} />\n{/* note */}', 1],
+        ["const s = '// not a comment #abc';", 1],
+        ["const t = `a /* b */ #123456`;", 1],
+        ["x = 'a' // #fff\n", 0],
     ])('counts %s as %i', (source, count) => {
         expect(countViolations(source)).toBe(count);
     });

@@ -13,6 +13,7 @@
   "core/media/TranscriptPanel.tsx": 20,
   "core/media/VideoPlayer.tsx": 3,
   "core/media/VoicePlayer.tsx": 9,
+  "core/modals/BackgroundModal.tsx": 2,
   "core/modals/SentLettersModal.tsx": 3,
   "data/memberData.ts": 2,
   "features/blogs/components/BlogCard.tsx": 9,

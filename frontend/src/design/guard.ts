@@ -19,10 +19,57 @@ const PATTERNS: readonly RegExp[] = [
 const EXCLUDED_PREFIXES = ['design/tokens/', 'config/colors/', '__tests__/'];
 const EXCLUDED_FILES = new Set(['design/guard.ts', 'config/serviceThemes.ts']);
 
+/**
+ * Removes comments in a single pass, keeping string contents (hex colours live
+ * inside strings, so they must still be counted). Rules:
+ * - Tracks code, '...', "..." and `...` states; a backslash escapes the next
+ *   character in all three string states. A whole template literal, including
+ *   any ${...}, counts as string.
+ * - Only in code state, a block comment is removed (its newlines are kept so
+ *   line structure is preserved), and `//` starts a line comment that runs to
+ *   the end of the line, unless the preceding character is `:` (keeps
+ *   `https://...` in JSX text).
+ * - Everything else is copied through unchanged.
+ */
 function stripComments(source: string): string {
-    return source
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/(^|[^:\w"'`])\/\/.*$/gm, '$1');
+    let out = '';
+    let quote: string | null = null;
+    let i = 0;
+    while (i < source.length) {
+        const ch = source[i];
+        if (quote !== null) {
+            out += ch;
+            if (ch === '\\' && i + 1 < source.length) {
+                out += source[i + 1];
+                i += 2;
+                continue;
+            }
+            if (ch === quote) quote = null;
+            i += 1;
+            continue;
+        }
+        if (ch === "'" || ch === '"' || ch === '`') {
+            quote = ch;
+            out += ch;
+            i += 1;
+            continue;
+        }
+        if (ch === '/' && source[i + 1] === '*') {
+            const end = source.indexOf('*/', i + 2);
+            const stop = end === -1 ? source.length : end + 2;
+            out += source.slice(i, stop).replace(/[^\n]/g, '');
+            i = stop;
+            continue;
+        }
+        if (ch === '/' && source[i + 1] === '/' && source[i - 1] !== ':') {
+            const eol = source.indexOf('\n', i);
+            i = eol === -1 ? source.length : eol;
+            continue;
+        }
+        out += ch;
+        i += 1;
+    }
+    return out;
 }
 
 export function countViolations(source: string): number {
