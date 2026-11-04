@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { BookOpen, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
-import { useTranslation } from '../i18n';
+import { SUPPORTED_LANGUAGES, useTranslation, type SupportedLanguage } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
 import { cn } from '../utils/classnames';
 import { applyGroupTokens } from './applyTokens';
@@ -58,7 +58,7 @@ function daysAgo(n: number): Date {
 }
 
 export const DesignPage: React.FC = () => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [group, setGroup] = useState<GroupId>('hinatazaka');
     const [filter, setFilter] = useState<'all' | 'unread'>('all');
     const [rail, setRail] = useState<'talk' | 'blog' | 'news'>('talk');
@@ -66,6 +66,12 @@ export const DesignPage: React.FC = () => {
     const [modalOpen, setModalOpen] = useState(false);
 
     useEffect(() => applyGroupTokens(group), [group]);
+
+    // `?view=design&lang=zh-TW` opens the page in a given UI language.
+    useEffect(() => {
+        const lang = new URLSearchParams(window.location.search).get('lang');
+        if (lang && lang in SUPPORTED_LANGUAGES) void i18n.changeLanguage(lang);
+    }, [i18n]);
 
     const r = groupRoles(group);
     const neutral = Object.entries(color).flatMap(([role, values]) =>
@@ -91,6 +97,14 @@ export const DesignPage: React.FC = () => {
                         {GROUP_IDS.map((id) => (
                             <Pill key={id} selected={id === group} onClick={() => setGroup(id)}>
                                 {serviceThemes[id].name || id}
+                            </Pill>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-small text-muted">{t('settings.language')}</span>
+                        {(Object.keys(SUPPORTED_LANGUAGES) as SupportedLanguage[]).map((code) => (
+                            <Pill key={code} selected={i18n.language === code} onClick={() => void i18n.changeLanguage(code)}>
+                                {SUPPORTED_LANGUAGES[code].nativeName}
                             </Pill>
                         ))}
                     </div>

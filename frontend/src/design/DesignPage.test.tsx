@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -60,5 +60,31 @@ describe('DesignPage colour system', () => {
         for (const role of ['action', 'strong', 'subtle', 'subtleBorder', 'linkUnderline']) {
             expect(screen.getAllByText(role).length).toBeGreaterThan(0);
         }
+    });
+});
+
+describe('DesignPage language', () => {
+    afterEach(async () => {
+        window.history.replaceState(null, '', '/');
+        await i18n.changeLanguage('en');
+    });
+
+    it('switches the UI language from the language pills', async () => {
+        render(<DesignPage />);
+        await userEvent.click(screen.getByRole('button', { name: '繁體中文' }));
+        expect(await screen.findByRole('heading', { name: '設計系統' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '繁體中文' })).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('honours ?lang= in the URL', async () => {
+        window.history.replaceState(null, '', '/?view=design&lang=zh-TW');
+        render(<DesignPage />);
+        expect(await screen.findByRole('heading', { name: '設計系統' })).toBeInTheDocument();
+    });
+
+    it('ignores an unsupported ?lang=', async () => {
+        window.history.replaceState(null, '', '/?view=design&lang=xx');
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Design system' })).toBeInTheDocument();
     });
 });
