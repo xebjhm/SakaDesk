@@ -1,9 +1,9 @@
 // frontend/src/core/common/SyncProgressPanel.tsx
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Check, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../utils/classnames';
-import { formatSyncTime, formatSyncSpeed, getSyncDetail } from '../../utils/syncFormatters';
+import { formatSyncTime, formatSyncSpeedParts, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 const PHASE_ORDER = ['scanning', 'discovering', 'syncing', 'downloading', 'complete'];
@@ -23,10 +23,12 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
     const ratio = total > 0 ? (progress.completed || 0) / total : 0;
     const percent = Math.round(ratio * 100);
     const currentIndex = PHASE_ORDER.indexOf(progress.phase || '');
+    const speed = formatSyncSpeedParts(progress.speed, progress.speed_unit || 'it');
+    // Every tile is a number over a unit line (an empty unit keeps the height equal).
     const stats = [
-        { key: 'elapsed', label: t('time.elapsed'), value: formatSyncTime(progress.elapsed_seconds) },
-        { key: 'eta', label: t('time.eta'), value: progress.eta_seconds ? formatSyncTime(progress.eta_seconds) : '--:--' },
-        { key: 'speed', label: t('time.speed'), value: formatSyncSpeed(progress.speed, progress.speed_unit || 'it') },
+        { key: 'elapsed', label: t('time.elapsed'), value: formatSyncTime(progress.elapsed_seconds), unit: '' },
+        { key: 'eta', label: t('time.eta'), value: progress.eta_seconds ? formatSyncTime(progress.eta_seconds) : '--:--', unit: '' },
+        { key: 'speed', label: t('time.speed'), value: speed.value, unit: speed.unit },
     ];
     const steps = [
         { phase: 'scanning', label: t('sync.scan') },
@@ -49,6 +51,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={percent}
+                    aria-valuetext={`${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
                     className="h-2 overflow-hidden rounded-pill bg-sunken"
                 >
                     <div
@@ -63,6 +66,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     <div key={s.key} className="flex flex-col gap-1 rounded-card bg-sunken p-3 text-center">
                         <span className="text-caption text-secondary">{s.label}</span>
                         <span className="font-mono text-title font-semibold tabular-nums text-primary">{s.value}</span>
+                        <span className="min-h-4 text-caption text-secondary">{s.unit}</span>
                     </div>
                 ))}
             </div>
@@ -93,11 +97,14 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                             <span
                                 aria-hidden="true"
                                 className={cn(
-                                    'h-3 w-3 rounded-pill transition-colors duration-fast ease-standard',
+                                    'flex h-3 w-3 items-center justify-center rounded-pill transition-colors duration-fast ease-standard',
                                     isActive ? 'bg-group-accent shadow-group-glow' : isComplete ? 'bg-status-success' : 'bg-control-off',
                                 )}
-                            />
-                            <span className={cn('text-caption', isActive ? 'font-semibold text-group-strong' : 'text-muted')}>{step.label}</span>
+                            >
+                                {isComplete && !isActive && <Check className="h-2 w-2 text-inverse" strokeWidth={4} />}
+                            </span>
+                            <span className={cn('text-caption', isActive ? 'font-semibold text-group-strong' : 'text-secondary')}>{step.label}</span>
+                            <span className="sr-only">{isActive ? t('sync.stepCurrent') : isComplete ? t('sync.stepDone') : t('sync.stepPending')}</span>
                         </li>
                     );
                 })}

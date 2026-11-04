@@ -48,8 +48,9 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                         <Download className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
+                        {/* The light banner's title uses the official colour; its low contrast is a property of that colour. */}
                         <h3 className="truncate text-title font-semibold">{title}</h3>
-                        <p className="text-small">{subtitle}</p>
+                        <p className={cn('text-small', isLight && 'text-secondary')}>{subtitle}</p>
                     </div>
                 </div>
                 {isLight && <div className="h-1 shrink-0 bg-group-title-bar" />}

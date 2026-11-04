@@ -80,7 +80,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                     </div>
                 )}
 
-                <p className="text-small text-muted">{subtitle}</p>
+                <p className="text-small text-secondary">{subtitle}</p>
 
                 {result && (
                     <div className="flex flex-col gap-2 text-small text-secondary">

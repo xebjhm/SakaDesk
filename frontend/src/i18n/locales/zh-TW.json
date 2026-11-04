@@ -231,7 +231,10 @@
     "sessionExpired": "認證工作階段已過期。請重新登入以繼續使用服務。",
     "refreshFailed": "認證意外失敗。請重新登入以繼續使用服務。若問題持續，請回報此問題。",
     "cancelled": "已取消同步",
-    "progress": "同步進度"
+    "progress": "同步進度",
+    "stepDone": "已完成",
+    "stepCurrent": "目前步驟",
+    "stepPending": "待處理"
   },
   "about": {
     "title": "關於",

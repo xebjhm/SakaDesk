@@ -47,4 +47,39 @@ describe('SyncProgressPanel', () => {
         expect(screen.getByText('Syncing...')).toHaveClass('text-group-strong');
         expect(dot('Download')).toHaveClass('bg-control-off');
     });
+
+    it('does not rely on colour alone: a check on done steps and a status string on each', () => {
+        render(<SyncProgressPanel progress={RUNNING} />);
+        const li = (label: string) => screen.getByText(label).closest('li')!;
+        expect(li('Scan').querySelector('svg')).not.toBeNull();
+        expect(li('Scan').querySelector('.sr-only')).toHaveTextContent('Done');
+        expect(li('Syncing...').querySelector('.sr-only')).toHaveTextContent('Current step');
+        expect(li('Syncing...').querySelector('svg')).toBeNull();
+        expect(li('Download').querySelector('.sr-only')).toHaveTextContent('Pending');
+    });
+
+    it('stacks each stat as a number over its unit so a long unit cannot make a tile taller', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, speed: 12.345, speed_unit: 'ファイル' }} />);
+        const unit = screen.getByText('ファイル/s');
+        expect(unit).toHaveClass('text-caption', 'text-secondary');
+        const value = screen.getByText('12.3');
+        expect(value).toHaveClass('text-title');
+        expect(value.parentElement).toBe(unit.parentElement);
+    });
+
+    it('exposes the count as the progressbar value text', () => {
+        render(<SyncProgressPanel progress={RUNNING} />);
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '5 / 20');
+    });
+
+    it('a zero total shows 0%', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, total: 0, completed: 0 }} />);
+        expect(screen.getByText('0%')).toBeInTheDocument();
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    });
+
+    it('discovering counts as the scan step being current', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, phase: 'discovering' }} />);
+        expect(screen.getByText('Scan').closest('li')).toHaveAttribute('aria-current', 'step');
+    });
 });

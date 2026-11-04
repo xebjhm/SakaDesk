@@ -231,7 +231,10 @@
     "sessionExpired": "认证会话已过期。请重新登录以继续使用服务。",
     "refreshFailed": "认证意外失败。请重新登录以继续使用服务。如果问题持续，请报告此问题。",
     "cancelled": "已取消同步",
-    "progress": "同步进度"
+    "progress": "同步进度",
+    "stepDone": "已完成",
+    "stepCurrent": "当前步骤",
+    "stepPending": "待处理"
   },
   "about": {
     "title": "关于",

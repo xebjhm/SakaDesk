@@ -3,6 +3,7 @@ import type { SyncProgress } from '../features/messages/MessagesFeature'
 import {
     formatSyncTime,
     formatSyncSpeed,
+    formatSyncSpeedParts,
     getSyncPhaseName,
     getSyncUnitLabel,
     getSyncDetail,
@@ -144,5 +145,15 @@ describe('getSyncDetail', () => {
     it('prefixes the localized scanning text', () => {
         expect(getSyncDetail({ state: 'running', detail: '日向坂46', detail_code: 'scanning_history' }, t, 'F')).toBe('SCAN · 日向坂46')
         expect(getSyncDetail({ state: 'running', detail_code: 'scanning_history' }, t, 'F')).toBe('SCAN')
+    })
+})
+
+describe('formatSyncSpeedParts', () => {
+    it('splits the number from the unit', () => {
+        expect(formatSyncSpeedParts(12.345, 'ファイル')).toEqual({ value: '12.3', unit: 'ファイル/s' })
+    })
+
+    it('is empty for no speed', () => {
+        expect(formatSyncSpeedParts(0, 'files')).toEqual({ value: '', unit: '' })
     })
 })
