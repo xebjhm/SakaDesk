@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Z_INDEX } from '../../constants/zIndex';
-import { dialogZIndex, isTopDialog, popDialog, pushDialog, type DialogEntry } from './dialogStack';
+import {
+    dialogAbove, dialogZIndex, isTopDialog, nextDialogOrder, popDialog, pushDialog, subscribeDialogStack, type DialogEntry,
+} from './dialogStack';
 import { logDialog, type CloseReason, type DialogLogId } from './dialogLog';
 
 export type { CloseReason } from './dialogLog';
@@ -21,6 +23,10 @@ export interface UseDialogOptions {
  * The dialog layer's behaviour (docs/superpowers/specs/2026-11-05-d2c-dialogs-design.md, "The dialog layer"):
  * stack entry + scroll lock, z-index by depth, initial focus and restore, Tab trap and
  * Escape for the top-most dialog only, and the `dialog` breadcrumb.
+ *
+ * The stack position comes from an opening order taken while rendering (parents render before
+ * the dialogs nested in them), so a parent and child that open in the same render stack
+ * correctly even though the child's effect pushes first; the z-index follows the stack.
  */
 export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocusRef, logId }: UseDialogOptions) {
     const [zIndex, setZIndex] = useState<number>(Z_INDEX.DIALOG);
@@ -28,6 +34,10 @@ export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocus
     const reasonRef = useRef<CloseReason | null>(null);
     const onCloseRef = useRef(onClose);
     onCloseRef.current = onClose;
+
+    // A fresh opening order each time the dialog opens, taken during render.
+    const [opening, setOpening] = useState(() => ({ isOpen, order: nextDialogOrder() }));
+    if (opening.isOpen !== isOpen) setOpening({ isOpen, order: isOpen ? nextDialogOrder() : opening.order });
 
     const requestClose = useCallback((reason: CloseReason) => {
         reasonRef.current = reason;
@@ -37,20 +47,37 @@ export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocus
     // Stack entry, z-index, focus in / restore, breadcrumbs.
     useLayoutEffect(() => {
         if (!isOpen) return;
-        const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-        const entry = pushDialog({ node: () => frameRef.current, dismissible });
+        const entry = pushDialog({
+            node: () => frameRef.current,
+            dismissible,
+            order: opening.order,
+            restoreTo: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+        });
         entryRef.current = entry;
         reasonRef.current = null;
-        setZIndex(dialogZIndex(entry));
+        const above = dialogAbove(entry);
+        if (above) {
+            // A dialog nested in this one opened in the same render and is already above: it took
+            // the focus and remembered this dialog's opener. It now returns focus to this frame,
+            // and this dialog returns it to the opener.
+            entry.restoreTo = above.restoreTo;
+            above.restoreTo = frameRef.current;
+        } else {
+            (initialFocusRef?.current ?? frameRef.current)?.focus({ preventScroll: true });
+        }
+        const syncZIndex = () => setZIndex(dialogZIndex(entry));
+        syncZIndex();
+        const unsubscribe = subscribeDialogStack(syncZIndex);
         if (logId) logDialog(logId, 'open');
-        (initialFocusRef?.current ?? frameRef.current)?.focus({ preventScroll: true });
         return () => {
+            unsubscribe();
             popDialog(entry);
             entryRef.current = null;
             if (logId) logDialog(logId, 'close', reasonRef.current ?? 'app');
-            if (previous && document.contains(previous)) previous.focus({ preventScroll: true });
+            const target = entry.restoreTo;
+            if (target && document.contains(target)) target.focus({ preventScroll: true });
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- one entry per open; dismissible/logId are read at open time
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- one entry per open; order/dismissible/logId are read at open time
     }, [isOpen]);
 
     // Escape and Tab for the top-most dialog (bubble phase: handlers inside the dialog run first).

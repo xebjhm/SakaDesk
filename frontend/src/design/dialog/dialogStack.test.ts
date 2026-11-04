@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Z_INDEX } from '../../constants/zIndex';
-import { dialogZIndex, isTopDialog, openDialogCount, popDialog, pushDialog, resetDialogStack } from './dialogStack';
+import {
+    dialogAbove, dialogZIndex, isTopDialog, nextDialogOrder, openDialogCount, popDialog, pushDialog, resetDialogStack,
+    subscribeDialogStack,
+} from './dialogStack';
 
 const entry = () => ({ node: () => null, dismissible: true });
 
@@ -81,5 +84,55 @@ describe('dialogStack', () => {
         resetDialogStack();
         expect(openDialogCount()).toBe(0);
         expect(document.body.style.overflow).toBe('auto');
+    });
+
+    it('inserts by order: a parent pushed after its child (same render) goes below it', () => {
+        const parentOrder = nextDialogOrder();
+        const childOrder = nextDialogOrder();
+        const child = pushDialog({ ...entry(), order: childOrder });
+        const parent = pushDialog({ ...entry(), order: parentOrder });
+        expect(isTopDialog(child)).toBe(true);
+        expect(isTopDialog(parent)).toBe(false);
+        expect(dialogZIndex(parent)).toBe(Z_INDEX.DIALOG);
+        expect(dialogZIndex(child)).toBe(Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP);
+        expect(dialogAbove(parent)).toBe(child);
+        expect(dialogAbove(child)).toBeNull();
+    });
+
+    it('an entry without an order goes on top of every ordered one', () => {
+        const a = pushDialog({ ...entry(), order: nextDialogOrder() });
+        const b = pushDialog(entry());
+        expect(isTopDialog(b)).toBe(true);
+        expect(dialogAbove(a)).toBe(b);
+    });
+
+    it('equal orders keep push order', () => {
+        const a = pushDialog({ ...entry(), order: 5 });
+        const b = pushDialog({ ...entry(), order: 5 });
+        expect(isTopDialog(b)).toBe(true);
+        expect(dialogAbove(a)).toBe(b);
+    });
+
+    it('notifies subscribers on push, pop and reset, until they unsubscribe', () => {
+        const seen: number[] = [];
+        const off = subscribeDialogStack(() => seen.push(openDialogCount()));
+        const a = pushDialog(entry());
+        const b = pushDialog(entry());
+        popDialog(a);
+        popDialog(a); // not in the stack: no change, no notification
+        resetDialogStack();
+        off();
+        pushDialog(entry());
+        expect(seen).toEqual([1, 2, 1, 0]);
+        expect(isTopDialog(b)).toBe(false);
+    });
+
+    it('remembers where focus returns, and the entry may hand it on', () => {
+        const opener = document.createElement('button');
+        const a = pushDialog({ ...entry(), restoreTo: opener });
+        expect(a.restoreTo).toBe(opener);
+        a.restoreTo = null;
+        expect(a.restoreTo).toBeNull();
+        expect(pushDialog(entry()).restoreTo).toBeNull();
     });
 });

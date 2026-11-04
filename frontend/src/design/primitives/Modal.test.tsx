@@ -1,4 +1,4 @@
-import { StrictMode, useRef, useState } from 'react';
+import React, { StrictMode, useRef, useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -537,5 +537,134 @@ describe('Modal: the dialog layer in depth', () => {
         expect(ignoresPostKeys(key())).toBe(false);
         rerender(<Modal isOpen onClose={vi.fn()} title="t">x</Modal>);
         expect(ignoresPostKeys(key())).toBe(true);
+    });
+
+    describe('a parent and its child opening in the same render (restored or deep-linked state)', () => {
+        const SameRender = ({ onParentClose, onChildClose, depth = 2 }: { onParentClose: () => void; onChildClose: () => void; depth?: 2 | 3 }) => {
+            const [open, setOpen] = useState(false);
+            const [child, setChild] = useState(true);
+            const [grandchild, setGrandchild] = useState(depth === 3);
+            return (
+                <>
+                    <button onClick={() => setOpen(true)}>開く</button>
+                    <Modal isOpen={open} onClose={() => { onParentClose(); setOpen(false); }} title="親" closeLabel="親を閉じる" logId="media_gallery">
+                        <Modal isOpen={child} onClose={() => { onChildClose(); setChild(false); }} title="子" closeLabel="子を閉じる" logId="calendar">
+                            <button>日</button>
+                            <Modal isOpen={grandchild} onClose={() => setGrandchild(false)} title="孫" logId="confirm">
+                                <button>はい</button>
+                            </Modal>
+                        </Modal>
+                    </Modal>
+                </>
+            );
+        };
+
+        const run = async (wrap: (n: React.ReactNode) => React.ReactNode) => {
+            const onParentClose = vi.fn();
+            const onChildClose = vi.fn();
+            render(<>{wrap(<SameRender onParentClose={onParentClose} onChildClose={onChildClose} />)}</>);
+            const opener = screen.getByRole('button', { name: '開く' });
+            await userEvent.click(opener);
+            expect(openDialogCount()).toBe(2);
+            const parent = screen.getByRole('dialog', { name: '親' });
+            const child = screen.getByRole('dialog', { name: '子' });
+            const z = (d: HTMLElement) => Number(d.parentElement!.style.zIndex);
+            expect(z(parent)).toBe(Z_INDEX.DIALOG);
+            expect(z(child)).toBe(Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP);
+            expect(child).toHaveFocus();
+            // Tab stays in the child (the top-most)
+            await userEvent.tab();
+            expect(child.contains(document.activeElement)).toBe(true);
+            await userEvent.keyboard('{Escape}');
+            expect(onChildClose).toHaveBeenCalledTimes(1);
+            expect(onParentClose).not.toHaveBeenCalled();
+            expect(screen.queryByRole('dialog', { name: '子' })).toBeNull();
+            // the child had no opener of its own: focus goes to the parent
+            expect(parent).toHaveFocus();
+            expect(z(parent)).toBe(Z_INDEX.DIALOG);
+            await userEvent.keyboard('{Escape}');
+            expect(onParentClose).toHaveBeenCalledTimes(1);
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(opener).toHaveFocus();
+            expect(openDialogCount()).toBe(0);
+            expect(document.body.style.overflow).not.toBe('hidden');
+        };
+
+        it('the child is top-most with the higher z-index; Escape closes the child, then the parent', async () => {
+            await run((n) => n);
+        });
+
+        it('the same under StrictMode', async () => {
+            await run((n) => <StrictMode>{n}</StrictMode>);
+        });
+
+        it('logs both opens and the child close before the parent close', async () => {
+            await run((n) => n);
+            const calls = vi.mocked(clientLog).mock.calls.filter(([, f]) => (f as { phase: string }).phase === 'close');
+            expect(calls).toEqual([
+                ['dialog', { surface: 'calendar', phase: 'close', reason: 'escape' }],
+                ['dialog', { surface: 'media_gallery', phase: 'close', reason: 'escape' }],
+            ]);
+            expect(clientLog).toHaveBeenCalledWith('dialog', { surface: 'media_gallery', phase: 'open' });
+            expect(clientLog).toHaveBeenCalledWith('dialog', { surface: 'calendar', phase: 'open' });
+        });
+
+        it('three levels: depth order, Escape peels them one by one and focus walks back out', async () => {
+            const wraps: Array<(n: React.ReactNode) => React.ReactNode> = [(n) => n, (n) => <StrictMode>{n}</StrictMode>];
+            for (const wrap of wraps) {
+                resetDialogStack();
+                const { unmount } = render(<>{wrap(<SameRender onParentClose={vi.fn()} onChildClose={vi.fn()} depth={3} />)}</>);
+                const opener = screen.getByRole('button', { name: '開く' });
+                await userEvent.click(opener);
+                const [p, c, g] = ['親', '子', '孫'].map((name) => screen.getByRole('dialog', { name }));
+                expect([p, c, g].map((d) => Number(d.parentElement!.style.zIndex))).toEqual([
+                    Z_INDEX.DIALOG, Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP, Z_INDEX.DIALOG + 2 * Z_INDEX.DIALOG_STEP,
+                ]);
+                expect(g).toHaveFocus();
+                await userEvent.keyboard('{Escape}');
+                expect(screen.queryByRole('dialog', { name: '孫' })).toBeNull();
+                expect(c).toHaveFocus();
+                await userEvent.keyboard('{Escape}');
+                expect(p).toHaveFocus();
+                await userEvent.keyboard('{Escape}');
+                expect(opener).toHaveFocus();
+                expect(openDialogCount()).toBe(0);
+                unmount();
+            }
+        });
+
+        it('a dialog opened later still goes on top of a same-render pair', async () => {
+            const Harness = () => {
+                const [late, setLate] = useState(false);
+                return (
+                    <>
+                        <Modal isOpen onClose={vi.fn()} title="親">
+                            <Modal isOpen onClose={vi.fn()} title="子"><button onClick={() => setLate(true)}>後で開く</button></Modal>
+                        </Modal>
+                        <Modal isOpen={late} onClose={vi.fn()} title="後">x</Modal>
+                    </>
+                );
+            };
+            render(<Harness />);
+            await userEvent.click(screen.getByRole('button', { name: '後で開く' }));
+            expect(Number(screen.getByRole('dialog', { name: '後' }).parentElement!.style.zIndex)).toBe(Z_INDEX.DIALOG + 2 * Z_INDEX.DIALOG_STEP);
+        });
+    });
+
+    it('z-index follows the stack: after the lower dialog closes, a new one opens above the remaining one', () => {
+        const Harness = ({ lower, third }: { lower: boolean; third: boolean }) => (
+            <>
+                <Modal isOpen={lower} onClose={vi.fn()} title="下">a</Modal>
+                <Modal isOpen onClose={vi.fn()} title="中">b</Modal>
+                <Modal isOpen={third} onClose={vi.fn()} title="上">c</Modal>
+            </>
+        );
+        const { rerender } = render(<Harness lower third={false} />);
+        const zOf = (name: string) => Number(screen.getByRole('dialog', { name }).parentElement!.style.zIndex);
+        expect(zOf('中')).toBe(Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP);
+        rerender(<Harness lower={false} third={false} />);
+        expect(zOf('中')).toBe(Z_INDEX.DIALOG);
+        rerender(<Harness lower={false} third />);
+        expect(zOf('上')).toBe(Z_INDEX.DIALOG + Z_INDEX.DIALOG_STEP);
     });
 });
