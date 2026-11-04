@@ -45,5 +45,5 @@ if (isCallPopupView(window.location.search)) {
                 </AuthProvider>
             </React.StrictMode>,
         )
-    })
+    }).catch(() => clientLog('app_load_failed', { error_type: 'load_failed' }))
 }

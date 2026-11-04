@@ -408,7 +408,7 @@ def call_popup_ensure() -> None                                     # fire-and-f
 ### 7.1 Route
 
 - `shell/main.tsx` checks `isCallPopupView(location.search)` (`view=call-popup`, in `shell/callPopupRoute.ts`, unit-tested).
-- Each route is loaded with a dynamic `import()`, so the popup never evaluates `App`'s module graph and the main window never loads the popup's. Before the import resolves, the popup route calls `installCallPopupBridge()` synchronously (§7.2); a failed import logs `call_popup_error error_type=load_failed`.
+- Each route is loaded with a dynamic `import()`, so the popup never evaluates `App`'s module graph and the main window never loads the popup's. Before the import resolves, the popup route calls `installCallPopupBridge()` synchronously (§7.2); a failed import logs `call_popup_error error_type=load_failed`. A failed main-route import logs `app_load_failed error_type=load_failed` (a warning), so a blank main window leaves a breadcrumb.
 - When it matches, it renders `<CallPopupApp />` from `features/callPopup/` inside `ErrorBoundary`, **without** `AuthProvider` or `App`. The popup therefore never runs:
   - the startup sync or `useBackendSyncWatcher`;
   - the ui-state reporter;
@@ -605,7 +605,8 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `call_popup_start` (call_id);
   - `call_popup_error` (call_id, error_type: `info_failed`, `info_not_found`, `start_failed`, `settings_failed`, `messages_failed`, `read_state_failed`, `message_mismatch`, `render_failed`, `event_post_failed`, `load_failed`);
   - `call_popup_heard_applied` (service, group_id, member_id, message_id, changed);
-  - `call_popup_heard_ignored` (reason: `not_ready`, `malformed`, `error`).
+  - `call_popup_heard_ignored` (reason: `not_ready`, `malformed`, `error`);
+  - `app_load_failed` (error_type `load_failed`; a warning): the main route's dynamic import failed.
 - **Whitelist:** add these events to `ClientEvent` and the fields `surface`, `call_id` and `changed` to `ALLOWED_FIELDS`. The value rules are unchanged.
 
 ---
@@ -674,7 +675,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - `active` true/false;
   - `ui-state` focused calls `on_foreground` as a background task: the 204 does not wait for a slow cancel, and a raising one logs `call_popup_foreground_failed`;
 - **Settings:** `call_popup_enabled` defaults to on and round-trips; on → `call_popup_ensure`; off → `cancel(disabled)`.
-- **Client-log:** the new events and fields are accepted, and the old rules still reject.
+- **Client-log:** the new events and fields are accepted (including `app_load_failed` as a warning and every `call_popup_heard_ignored` reason), and the old rules still reject.
 - **i18n:** the `call_popup` section exists in all five locales.
 - **Bridge:** no host → logs once and returns False/`no_host`; a raising or hanging host → `call_popup_bridge_failed` (timeout injected); host calls run on `call_popup_host` threads (at most two); two timeouts in a row → `available()` False without asking the host and `call_popup_unavailable reason=host_timeouts`; a completed call resets the count; `shutdown_call_popup_executor` does not wait for a blocked call and a later call gets a fresh pool.
 
@@ -720,7 +721,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - non-ASCII names render.
 - **`fetchPreload`:** resolves on a 2xx `audio/*` ranged GET; rejects `media_unavailable` on a non-2xx, a non-audio type, a network error or the timeout, and `aborted` on abort.
 - **Bridge:** an early `start` is queued and replayed on attach; `cancel` drops it.
-- **Route:** `isCallPopupView`. **Language:** `applyStartupLanguage` precedence, shared by `App` and the popup.
+- **Route:** `isCallPopupView`; a failed main-route import logs `app_load_failed`. **Language:** `applyStartupLanguage` precedence, shared by `App` and the popup.
 - **Settings:** the toggle and Reset. **i18n:** the new keys are present in all five locales.
 
 ### 11.4 Manual (Windows, on the `C:\D\saka-verify` copy only, never the live archive)

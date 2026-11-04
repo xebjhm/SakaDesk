@@ -8,7 +8,8 @@ export type ClientLogEvent =
     | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error'
     | 'notify_open_chat' | 'backend_sync_followed' | 'backend_sync_skipped'
     | 'call_popup_start' | 'call_popup_error'
-    | 'call_popup_heard_applied' | 'call_popup_heard_ignored';
+    | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
+    | 'app_load_failed';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

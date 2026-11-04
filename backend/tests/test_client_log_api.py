@@ -236,3 +236,18 @@ def test_call_popup_events_still_reject_unknown_keys_and_bad_values():
             res = client.post("/api/client-log", json=body)
         assert res.status_code == 422
         assert _client_events(logs) == []
+
+
+def test_app_load_failed_is_accepted_as_a_warning():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "app_load_failed", "fields": {"error_type": "load_failed"}},
+        )
+    assert res.status_code == 204
+    (ev,) = _client_events(logs)
+    assert (ev["event"], ev["log_level"], ev["error_type"]) == (
+        "app_load_failed",
+        "warning",
+        "load_failed",
+    )
