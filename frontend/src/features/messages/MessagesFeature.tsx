@@ -725,7 +725,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         onClick={() => setIsSidebarOpen(true)}
                     />
                     {selectedGroupDir && !isGroupChat && (
-                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-white" />
+                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-surface" />
                     )}
                     <div className="min-w-0 flex-1">
                         <h2 className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
@@ -853,8 +853,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {/* Up arrow: bottom-right, when the oldest unread is ABOVE the view */}
                 {selectedGroupDir && hasUnreadAbove && !callActive && (
                     <IconButton
-                        variant="secondary"
-                        className="absolute bottom-4 right-4 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        variant="accent"
+                        className="absolute bottom-4 right-4 z-20"
                         aria-label={t('messageList.jumpToOldestUnread')}
                         title={t('messageList.jumpToOldestUnread')}
                         icon={<ChevronUp className="h-5 w-5" />}
@@ -864,8 +864,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {/* Down arrow: top-right below the header, when the oldest unread is BELOW the view */}
                 {selectedGroupDir && hasUnreadBelow && !callActive && (
                     <IconButton
-                        variant="secondary"
-                        className="absolute right-4 top-20 z-20 bg-group-accent text-inverse shadow-card hover:bg-group-accent hover:text-inverse hover:brightness-105"
+                        variant="accent"
+                        className="absolute right-4 top-20 z-20"
                         aria-label={t('messageList.jumpToOldestUnread')}
                         title={t('messageList.jumpToOldestUnread')}
                         icon={<ChevronDown className="h-5 w-5" />}

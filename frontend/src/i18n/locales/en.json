@@ -639,7 +639,10 @@
     "railLogo": "Selected group logo (rail)",
     "roles": "Roles",
     "roleName": "Role",
-    "roleStep": "Step"
+    "roleStep": "Step",
+    "danger": "Danger",
+    "accent": "Accent",
+    "overlay": "Overlay"
   },
   "letters": {
     "openImage": "Open letter",

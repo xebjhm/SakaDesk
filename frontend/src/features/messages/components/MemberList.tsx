@@ -256,7 +256,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                                 <span className={cn(
                                     'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
                                     'transition-shadow duration-fast ease-standard',
-                                    isSelected ? 'ring-2 ring-white shadow-group-glow' : 'group-hover:shadow-card',
+                                    isSelected ? 'ring-2 ring-surface shadow-group-glow' : 'group-hover:shadow-card',
                                 )}>
                                     <Users className="h-6 w-6" />
                                 </span>

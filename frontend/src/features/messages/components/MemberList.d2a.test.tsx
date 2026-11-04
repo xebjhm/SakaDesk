@@ -37,7 +37,7 @@ describe('MemberList (D2a)', () => {
         expect(await screen.findByText('99+')).toHaveClass('bg-group-badge');
         const cell = screen.getByRole('button', { name: /石塚 瑶季/ });
         const avatar = cell.querySelector('.ring-2')!;
-        expect(avatar).toHaveClass('ring-2', 'ring-white', 'shadow-group-glow');
+        expect(avatar).toHaveClass('ring-2', 'ring-surface', 'shadow-group-glow');
     });
 
     it('announces each member once: the avatar is decorative beside the visible name', async () => {

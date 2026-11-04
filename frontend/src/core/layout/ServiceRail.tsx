@@ -184,10 +184,10 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 {/* Disconnected Warning Badge */}
                                 {isServiceDisconnected(service) && (
                                     <div
-                                        className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-orange-500 rounded-full border-2 border-gray-50 flex items-center justify-center"
+                                        className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-pill border-2 border-surface bg-status-attention"
                                         title={t('serviceRail.sessionExpiredRelogin')}
                                     >
-                                        <Unplug className="w-2.5 h-2.5 text-white" />
+                                        <Unplug className="h-2.5 w-2.5 text-inverse" />
                                     </div>
                                 )}
                             </button>

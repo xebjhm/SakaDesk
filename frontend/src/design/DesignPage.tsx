@@ -4,7 +4,7 @@
  * only behind `import.meta.env.DEV`.
  */
 import React, { useEffect, useState } from 'react';
-import { BookOpen, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
+import { BookOpen, ChevronDown, MessageCircle, Newspaper, Search, Settings, X } from 'lucide-react';
 import { SUPPORTED_LANGUAGES, useTranslation, type SupportedLanguage } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
 import { cn } from '../utils/classnames';
@@ -260,6 +260,12 @@ export const DesignPage: React.FC = () => {
                         <Button variant="primary">{t('designPage.primary')}</Button>
                         <Button>{t('designPage.secondary')}</Button>
                         <Button variant="ghost">{t('designPage.ghost')}</Button>
+                        <Button variant="danger">{t('designPage.danger')}</Button>
+                        <IconButton variant="accent" aria-label={t('designPage.accent')} icon={<ChevronDown />} />
+                        <span className="inline-flex items-center gap-2 rounded-card bg-viewer-stage p-2">
+                            <Button variant="overlay" size="sm">{t('designPage.overlay')}</Button>
+                            <IconButton variant="overlay" size="sm" aria-label={t('designPage.close')} icon={<X />} />
+                        </span>
                         <Button disabled>{t('designPage.disabled')}</Button>
                         <Button size="sm">{t('designPage.secondary')}</Button>
                         <IconButton aria-label={t('designPage.close')} icon={<X />} />

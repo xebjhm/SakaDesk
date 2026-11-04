@@ -639,7 +639,10 @@
     "railLogo": "選取的群組 logo（側欄）",
     "roles": "用途",
     "roleName": "用途",
-    "roleStep": "色階"
+    "roleStep": "色階",
+    "danger": "危險",
+    "accent": "強調",
+    "overlay": "浮層"
   },
   "letters": {
     "openImage": "開啟信件",

@@ -92,3 +92,23 @@ describe('Modal', () => {
         expect(onClose).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('D2c button variants', () => {
+    it('danger and overlay buttons use their tokens', () => {
+        render(<><Button variant="danger">削除</Button><Button variant="overlay">保存</Button></>);
+        expect(screen.getByRole('button', { name: '削除' })).toHaveClass('bg-status-danger', 'text-inverse');
+        expect(screen.getByRole('button', { name: '保存' })).toHaveClass('bg-viewer-control', 'text-viewer');
+    });
+
+    it('the accent icon button is today’s unread-arrow look', () => {
+        render(<IconButton variant="accent" aria-label="未読へ" icon={<X />} />);
+        const b = screen.getByRole('button', { name: '未読へ' });
+        expect(b).toHaveClass('bg-group-accent', 'text-inverse', 'shadow-card', 'hover:brightness-105');
+        expect(b).not.toHaveClass('bg-pill');
+    });
+
+    it('the overlay icon button is the viewer control', () => {
+        render(<IconButton variant="overlay" aria-label="閉じる" icon={<X />} />);
+        expect(screen.getByRole('button', { name: '閉じる' })).toHaveClass('bg-viewer-control', 'hover:bg-viewer-control-hover', 'text-viewer');
+    });
+});
