@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { ConfirmDialog } from './ConfirmDialog';
 
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../utils/clientLog';
+
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 function renderDialog(over: Partial<React.ComponentProps<typeof ConfirmDialog>> = {}) {
@@ -47,5 +50,22 @@ describe('ConfirmDialog', () => {
     it('a danger confirm uses the danger button', () => {
         renderDialog({ variant: 'danger' });
         expect(screen.getByRole('button', { name: 'はい' })).toHaveClass('bg-status-danger');
+    });
+
+    it('Enter on the focused Cancel cancels, never confirms', async () => {
+        const p = renderDialog();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(p.onCancel).toHaveBeenCalledTimes(1);
+        expect(p.onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('logs under "confirm" by default and under a given logId', () => {
+        vi.mocked(clientLog).mockClear();
+        renderDialog();
+        expect(clientLog).toHaveBeenCalledWith('dialog', { surface: 'confirm', phase: 'open' });
+        vi.mocked(clientLog).mockClear();
+        renderDialog({ logId: 'reveal_all', title: '全部' });
+        expect(clientLog).toHaveBeenCalledWith('dialog', { surface: 'reveal_all', phase: 'open' });
     });
 });

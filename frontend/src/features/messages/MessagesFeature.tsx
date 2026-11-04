@@ -15,7 +15,7 @@ import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
-import { Avatar, Button, IconButton, Modal } from '../../design/primitives';
+import { Avatar, IconButton } from '../../design/primitives';
 import { groupRoles } from '../../design/tokens';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
@@ -26,6 +26,7 @@ import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
+import { ConfirmDialog } from '../../shell/components/ConfirmDialog';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { memberImageUrl } from './profileImages';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
@@ -873,30 +874,20 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     />
                 )}
 
-                {/* Reveal All Confirmation Modal */}
-                <Modal
-                    isOpen={showRevealConfirm}
-                    onClose={() => setShowRevealConfirm(false)}
+                {/* Reveal all: an in-app confirm, focus starts on Cancel like every other confirm. */}
+                <ConfirmDialog
+                    open={showRevealConfirm}
                     title={t('messageList.revealAllTitle')}
+                    message={t('messageList.revealAllDescription', { count: displayUnreadCount })}
+                    confirmLabel={t('messageList.confirm')}
+                    variant="default"
                     logId="reveal_all"
-                    className="max-w-sm"
-                    footer={
-                        <>
-                            <Button variant="ghost" onClick={() => setShowRevealConfirm(false)}>{t('common.cancel')}</Button>
-                            <Button
-                                variant="primary"
-                                onClick={() => {
-                                    revealAllMessages();
-                                    setShowRevealConfirm(false);
-                                }}
-                            >
-                                {t('messageList.confirm')}
-                            </Button>
-                        </>
-                    }
-                >
-                    <p className="text-body text-secondary">{t('messageList.revealAllDescription', { count: displayUnreadCount })}</p>
-                </Modal>
+                    onCancel={() => setShowRevealConfirm(false)}
+                    onConfirm={() => {
+                        revealAllMessages();
+                        setShowRevealConfirm(false);
+                    }}
+                />
             </ContentSheet>
 
             {selectedGroupDir && (
