@@ -391,7 +391,9 @@ async def call_popup_deliver_heard(target: HeardTarget) -> str   # adds "error" 
 def call_popup_ensure() -> None                                     # fire-and-forget thread
 ```
 
-- The host methods block (`evaluate_js`, `Invoke`), so every async bridge function runs them with `asyncio.wait_for(asyncio.to_thread(...), timeout)`: `BRIDGE_TIMEOUT_S = 10`, except `call_popup_start`, which uses `BRIDGE_START_TIMEOUT_S = 20` because it may recreate a lost window (`POPUP_LOAD_TIMEOUT_S = 15`). The server loop never blocks on the GUI thread.
+- The host methods block (`evaluate_js`, `Invoke`), so every async bridge function runs them with `asyncio.wait_for(loop.run_in_executor(<host executor>, ...), timeout)`: `BRIDGE_TIMEOUT_S = 10`, except `call_popup_start`, which uses `BRIDGE_START_TIMEOUT_S = 20` because it may recreate a lost window (`POPUP_LOAD_TIMEOUT_S = 15`). The server loop never blocks on the GUI thread.
+- **Own executor.** Host calls run on a dedicated `ThreadPoolExecutor(max_workers=HOST_EXECUTOR_WORKERS=2, thread_name_prefix="call_popup_host")`, created on first use, never on the loop's default executor. A timed-out call is abandoned but its thread stays blocked on the GUI (pywebview's `evaluate_js` / `Invoke` have no timeout); on the shared default pool a wedged popup would slowly starve the backend's many `to_thread` users (sync, read-state I/O). On its own pool it can hold at most two threads, and later calls queue and time out. The lifespan shutdown calls `shutdown_call_popup_executor()` after `controller.shutdown()`: `shutdown(wait=False, cancel_futures=True)`, so app exit never waits on a blocked call.
+- **Timeout breaker.** `MAX_HOST_TIMEOUTS = 2` host calls in a row that time out (any call that completes, even by raising, resets the count) mark the popup unavailable for the rest of the process: `call_popup_unavailable reason=host_timeouts` (warning, with `timeouts`). `call_popup_available()` stays a flag read and then returns `False`, so the gate skips with `unavailable` and the chat gets its normal toast. `set_call_popup_host` re-arms the breaker (the desktop registers its host once per process).
 - They never raise:
   - with no host, `call_popup_unavailable` (`reason=no_host`) is logged once;
   - a timeout or an exception logs `call_popup_bridge_failed` (`op`, `error_type` or `reason=timeout`) and returns `False` / `"error"`.
@@ -583,7 +585,7 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_cancel` | call_id, reason (`foreground`/`disabled`/`app_exit`), phase |
 | `call_popup_watchdog` | call_id, phase (`reserved`/`starting`/`ringing`/`connected`) |
 | `call_popup_abandon_failed` | call_id, reason, error_type |
-| `call_popup_unavailable` | reason (`no_host`), once |
+| `call_popup_unavailable` | reason (`no_host`, once; `host_timeouts`, once, with timeouts) |
 | `call_popup_bridge_failed` | op, error_type or reason (`timeout`) |
 | `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`/`start_refused`/`preload_skipped`; debug `destroy_skipped`), error_type, reason |
 | `call_popup_app_exit_failed` | error_type (the `Application.Exit` fallback itself raised) |
@@ -673,7 +675,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
 - **Settings:** `call_popup_enabled` defaults to on and round-trips; on → `call_popup_ensure`; off → `cancel(disabled)`.
 - **Client-log:** the new events and fields are accepted, and the old rules still reject.
 - **i18n:** the `call_popup` section exists in all five locales.
-- **Bridge:** no host → logs once and returns False/`no_host`; a raising or hanging host → `call_popup_bridge_failed` (timeout injected).
+- **Bridge:** no host → logs once and returns False/`no_host`; a raising or hanging host → `call_popup_bridge_failed` (timeout injected); host calls run on `call_popup_host` threads (at most two); two timeouts in a row → `available()` False without asking the host and `call_popup_unavailable reason=host_timeouts`; a completed call resets the count; `shutdown_call_popup_executor` does not wait for a blocked call and a later call gets a fresh pool.
 
 ### 11.2 Desktop (pytest, fakes for webview/user32/dwmapi)
 

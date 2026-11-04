@@ -6,7 +6,8 @@ never raise. The backend pushes the tray tooltip with :func:`set_tray_tooltip`,
 and desktop threads (the tray) schedule coroutines on the uvicorn event loop
 with :func:`run_on_server_loop`. The call popup host
 (``set_call_popup_host``) runs blocking GUI calls; every async ``call_popup_*``
-wrapper runs them in a worker thread with a timeout and never raises.
+wrapper runs them on a dedicated two-thread executor with a timeout and never
+raises.
 """
 
 from __future__ import annotations
@@ -155,6 +156,12 @@ def run_on_server_loop(
 BRIDGE_TIMEOUT_S = 10.0
 # start may recreate a lost popup window (POPUP_LOAD_TIMEOUT_S = 15 in the host).
 BRIDGE_START_TIMEOUT_S = 20.0
+# Host calls run on their own small pool, never the loop's default executor: a
+# timed-out call leaves its thread blocked on the GUI, and the backend's many
+# ``to_thread`` users must not be starved by a wedged popup.
+HOST_EXECUTOR_WORKERS = 2
+# This many timeouts in a row mark the popup unavailable for the process.
+MAX_HOST_TIMEOUTS = 2
 
 _T = TypeVar("_T")
 
@@ -187,16 +194,62 @@ class CallPopupHost(Protocol):
 
 _call_popup_host: CallPopupHost | None = None
 _call_popup_unavailable_logged = False
+_host_executor: concurrent.futures.ThreadPoolExecutor | None = None
+_host_executor_lock = threading.Lock()
+_host_timeouts = 0  # consecutive timed-out host calls
+_host_timed_out = False  # MAX_HOST_TIMEOUTS reached: unavailable for the process
 
 
 def set_call_popup_host(host: CallPopupHost | None) -> None:
     """Register (or clear, with ``None``) the desktop popup window host.
 
-    Also re-arms the once-only ``call_popup_unavailable`` log.
+    Also re-arms the once-only ``call_popup_unavailable`` log and the timeout
+    breaker (the desktop registers its host once per process).
     """
     global _call_popup_host, _call_popup_unavailable_logged
+    global _host_timeouts, _host_timed_out
     _call_popup_host = host
     _call_popup_unavailable_logged = False
+    _host_timeouts, _host_timed_out = 0, False
+
+
+def _executor() -> concurrent.futures.ThreadPoolExecutor:
+    """The popup host's own executor, created on first use."""
+    global _host_executor
+    with _host_executor_lock:
+        if _host_executor is None:
+            _host_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=HOST_EXECUTOR_WORKERS, thread_name_prefix="call_popup_host"
+            )
+        return _host_executor
+
+
+def shutdown_call_popup_executor() -> None:
+    """App exit: stop the host executor without waiting for blocked calls.
+
+    Queued calls are cancelled. A later host call creates a fresh executor.
+    Never raises.
+    """
+    global _host_executor
+    with _host_executor_lock:
+        executor, _host_executor = _host_executor, None
+    if executor is not None:
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.warning(
+                "call_popup_bridge_failed", op="shutdown", error_type=type(e).__name__
+            )
+
+
+def _note_timeout() -> None:
+    global _host_timeouts, _host_timed_out
+    _host_timeouts += 1
+    if _host_timeouts >= MAX_HOST_TIMEOUTS and not _host_timed_out:
+        _host_timed_out = True
+        logger.warning(
+            "call_popup_unavailable", reason="host_timeouts", timeouts=_host_timeouts
+        )
 
 
 def _host_or_log() -> CallPopupHost | None:
@@ -209,7 +262,14 @@ def _host_or_log() -> CallPopupHost | None:
 
 
 def call_popup_available() -> bool:
-    """True when a host is registered and reports itself available. Never raises."""
+    """True when a host is registered and reports itself available. Never raises.
+
+    False for the rest of the process once ``MAX_HOST_TIMEOUTS`` host calls in
+    a row timed out (``call_popup_unavailable reason=host_timeouts``). A flag
+    read: it never blocks.
+    """
+    if _host_timed_out:
+        return False
     host = _host_or_log()
     if host is None:
         return False
@@ -230,22 +290,32 @@ async def _run_host(
     no_host: _T,
     timeout: float,
 ) -> _T:
-    """Run ``call(host)`` in a worker thread with ``timeout``. Never raises.
+    """Run ``call(host)`` on the host executor with ``timeout``. Never raises.
 
     Returns ``no_host`` when no host is registered and ``failed`` on a timeout
     (``call_popup_bridge_failed`` ``reason=timeout``) or an exception
-    (``error_type`` only).
+    (``error_type`` only). Timeouts in a row are counted (any call that
+    completes resets the count); see :func:`call_popup_available`.
     """
+    global _host_timeouts
     host = _host_or_log()
     if host is None:
         return no_host
     try:
-        return await asyncio.wait_for(asyncio.to_thread(call, host), timeout)
+        loop = asyncio.get_running_loop()
+        result = await asyncio.wait_for(
+            loop.run_in_executor(_executor(), call, host), timeout
+        )
     except asyncio.TimeoutError:
         logger.warning("call_popup_bridge_failed", op=op, reason="timeout")
+        _note_timeout()
+        return failed
     except Exception as e:
+        _host_timeouts = 0
         logger.warning("call_popup_bridge_failed", op=op, error_type=type(e).__name__)
-    return failed
+        return failed
+    _host_timeouts = 0
+    return result
 
 
 async def call_popup_start(call_id: int) -> bool:

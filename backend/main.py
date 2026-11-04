@@ -251,6 +251,9 @@ async def lifespan(app: FastAPI):
     from backend.services.call_popup import get_call_popup_controller
 
     await get_call_popup_controller().shutdown()
+    # Its host calls run on their own pool: stop it without waiting on a
+    # thread a wedged popup may still hold.
+    desktop_bridge.shutdown_call_popup_executor()
 
     # Stop the auto-sync scheduler before the write barrier so it cannot launch
     # a sync while writers are being drained (launch_sync also refuses once

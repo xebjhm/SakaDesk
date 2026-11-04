@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import time
 
 import pytest
 from structlog.testing import capture_logs
@@ -49,6 +50,7 @@ def _clear():
     db.set_call_popup_host(None)
     yield
     db.set_call_popup_host(None)
+    db.shutdown_call_popup_executor()
 
 
 def test_no_host_logs_once_and_returns_safe_values():
@@ -154,3 +156,100 @@ def test_ensure_runs_on_a_thread_and_survives_errors():
 def test_available_false_when_host_raises():
     db.set_call_popup_host(Host(raise_on="available"))
     assert db.call_popup_available() is False
+
+
+def test_host_calls_run_on_their_own_executor():
+    names: list[str] = []
+
+    class Named(Host):
+        def reveal(self, call_id):
+            names.append(threading.current_thread().name)
+            return True
+
+    db.set_call_popup_host(Named())
+
+    async def run():
+        await asyncio.gather(*(db.call_popup_reveal(i) for i in range(6)))
+
+    asyncio.run(run())
+    assert names and all(n.startswith("call_popup_host") for n in names)
+    assert len(set(names)) <= db.HOST_EXECUTOR_WORKERS
+
+
+def test_two_timeouts_in_a_row_make_the_popup_unavailable(monkeypatch):
+    class Blocking(Host):
+        def available(self):  # a flag read, as the contract requires
+            self.calls.append(("available",))
+            return True
+
+    gate = threading.Event()
+    host = Blocking(block=gate)
+    db.set_call_popup_host(host)
+    monkeypatch.setattr(db, "BRIDGE_START_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(db, "BRIDGE_TIMEOUT_S", 0.05)
+    assert db.call_popup_available() is True
+
+    async def run():
+        try:
+            assert await db.call_popup_start(1) is False
+            assert db.call_popup_available() is True  # one timeout is not enough
+            assert await db.call_popup_cancel(1) is None
+        finally:
+            gate.set()
+
+    with capture_logs() as logs:
+        asyncio.run(run())
+    calls_before = len(host.calls)
+    assert db.call_popup_available() is False  # a flag read: the host is not asked
+    assert len(host.calls) == calls_before
+    assert [e for e in logs if e["event"] == "call_popup_unavailable"] == [
+        {
+            "event": "call_popup_unavailable",
+            "log_level": "warning",
+            "reason": "host_timeouts",
+            "timeouts": 2,
+        }
+    ]
+
+
+def test_a_completed_call_resets_the_timeout_count(monkeypatch):
+    gate = threading.Event()
+    host = Host()
+    db.set_call_popup_host(host)
+    monkeypatch.setattr(db, "BRIDGE_TIMEOUT_S", 0.05)
+
+    async def run():
+        try:
+            host.block = gate
+            await db.call_popup_hide(1)
+            host.block = None
+            # The blocked worker still holds one of the two threads.
+            assert await db.call_popup_reveal(1) is True
+            host.block = gate
+            await db.call_popup_hide(1)
+        finally:
+            gate.set()
+
+    asyncio.run(run())
+    assert db.call_popup_available() is True
+
+
+def test_shutdown_does_not_wait_for_a_blocked_call(monkeypatch):
+    gate = threading.Event()
+    db.set_call_popup_host(Host(block=gate))
+    monkeypatch.setattr(db, "BRIDGE_TIMEOUT_S", 0.05)
+
+    async def run():
+        await db.call_popup_hide(1)
+
+    try:
+        asyncio.run(run())
+        t0 = time.monotonic()
+        db.shutdown_call_popup_executor()
+        assert time.monotonic() - t0 < 1.0
+        db.shutdown_call_popup_executor()  # idempotent
+    finally:
+        gate.set()
+    # A later call gets a fresh executor.
+    db.set_call_popup_host(Host())
+    assert asyncio.run(db.call_popup_reveal(2)) is True
