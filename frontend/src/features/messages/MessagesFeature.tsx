@@ -553,7 +553,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const isLightHeader = theme.messages.headerStyle === 'light';
     // Streak from the session cache (one official request per room per local day), shared by the header and the profile popup.
     // It is a 1:1 subscription: a group chat (or a path without a numeric id) makes no request.
-    const groupId = selectedGroupDir?.split('/')[2]?.split(' ')[0];
     const { streak, retry: retryStreak } = useMemberStreak(streakGroupId(selectedGroupDir, isGroupChat), activeService ?? undefined);
 
     const getSenderInfo = useCallback((msg: GroupMessage) => {
@@ -584,6 +583,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     const jumpToTargetMessage = useCallback((id: number) => {
         void jumpTo({ kind: 'message', id, align: 'start' });
+    }, [jumpTo]);
+
+    const jumpToLetter = useCallback((id: number) => {
+        void jumpTo({ kind: 'letter', id });
     }, [jumpTo]);
 
     // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
@@ -763,7 +766,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             messages={messages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
-                            groupId={groupId}
+                            letters={roomLetters.letters}
+                            onJumpToLetter={jumpToLetter}
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}

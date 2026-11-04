@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
 import { cn } from '../../../utils/classnames';
 import type { Message, BackgroundSettings } from '../../../types';
+import type { Letter } from '../letters';
 import { SentLettersModal } from '../../../core/modals/SentLettersModal';
 import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
@@ -19,13 +20,16 @@ interface ChatHeaderMenuProps {
     messages: Message[];
     memberName: string;
     memberAvatar?: string;
-    groupId?: string;
     activeService?: string; // Service ID for API calls
     /** Opens the date-search calendar (owned by MessagesFeature; the date pills open it too). */
     onOpenCalendar: () => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
     /** Icon color for header (used in light header style) */
     iconColor?: string;
+    /** The room's sent letters (the timeline's list), for the overview. */
+    letters: readonly Letter[];
+    /** Jumps the chat to a letter chosen in the overview. */
+    onJumpToLetter: (id: number) => void;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -36,7 +40,8 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     messages,
     memberName,
     memberAvatar,
-    groupId,
+    letters,
+    onJumpToLetter,
     activeService,
     onOpenCalendar,
     onBackgroundChange,
@@ -128,10 +133,8 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <SentLettersModal
                 isOpen={activeModal === 'letters'}
                 onClose={() => setActiveModal(null)}
-                conversationPath={conversationPath}
-                memberName={memberName}
-                groupId={groupId}
-                activeService={activeService}
+                letters={letters}
+                onSelectLetter={onJumpToLetter}
             />
 
             <MediaGalleryModal

@@ -176,4 +176,13 @@ test.describe('timeline scroll', () => {
     await expect(page.locator('#letter-9001')).toBeAttached({ timeout: 2000 })
     await expect(page.locator('#letter-9001 img').first()).toHaveAttribute('src', /letters\/9001\.jpg$/)
   })
+
+  test('the sent-letters overview jumps to a letter and highlights it', async ({ page }) => {
+    await openBigRoom(page)
+    await page.getByTitle('More options').click()
+    await page.getByText('Sent Letters', { exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: /2023/ }).click()
+    await expect.poll(() => isRowInViewport(page, 'letter-100'), { timeout: 1000, intervals: [50] }).toBe(true)
+    await expect(page.locator('#letter-100')).toHaveClass(/animate-landing/)
+  })
 })
