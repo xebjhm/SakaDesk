@@ -131,4 +131,31 @@ describe('bezierEasing', () => {
     it('decelerates', () => {
         expect(f(0.5)).toBeGreaterThan(0.5);
     });
+    it('the linear curve is the identity', () => {
+        const lin = bezierEasing([0, 0, 1, 1]);
+        for (const x of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]) expect(lin(x)).toBeCloseTo(x, 6);
+    });
+    it('matches an independent evaluation of the standard curve', () => {
+        // Independent method: bisect the parametric form with the expanded polynomial.
+        const [x1, y1, x2, y2] = motion.easing.standard;
+        const poly = (a: number, b: number, t: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t ** 2 * (1 - t) + t ** 3;
+        const expected = (x: number) => {
+            let lo = 0;
+            let hi = 1;
+            while (hi - lo > 1e-12) {
+                const mid = (lo + hi) / 2;
+                if (poly(x1, x2, mid) < x) lo = mid;
+                else hi = mid;
+            }
+            return poly(y1, y2, lo);
+        };
+        expect(Math.abs(f(0.5) - expected(0.5))).toBeLessThan(1e-3);
+        // Hand-checked: x(t) = 0.5 at t of about 0.78, where y(t) is about 0.878.
+        expect(f(0.5)).toBeCloseTo(0.878, 3);
+    });
+    it('rejects x control points outside [0, 1]', () => {
+        expect(() => bezierEasing([-0.1, 0, 0.5, 1])).toThrow(RangeError);
+        expect(() => bezierEasing([0.2, 0, 1.2, 1])).toThrow(RangeError);
+        expect(() => bezierEasing([0.2, -2, 0.5, 3])).not.toThrow();
+    });
 });
