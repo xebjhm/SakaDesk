@@ -52,3 +52,9 @@ export function formatDatePillLabel(
   if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
   return new Intl.DateTimeFormat(locale, options).format(date);
 }
+
+/** Local midnight of a "YYYY-MM-DD" from toLocalDateStr; null for anything else. */
+export function fromLocalDateStr(date: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}

@@ -306,7 +306,8 @@
     "revealAllDescription": "咁樣會將所有 {{count}} 個未讀訊息標做已讀。",
     "confirm": "確認",
     "noContent": "(冇內容)",
-    "attachment": "附件"
+    "attachment": "附件",
+    "openCalendar": "跳去某一日"
   },
   "calendar": {
     "title": "日子搜尋",

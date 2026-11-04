@@ -15,9 +15,17 @@ interface FlatProps {
     rangeChanged?: (range: ListRange) => void;
 }
 
+interface GroupedProps {
+    groupCounts: number[];
+    groupContent: (groupIndex: number) => React.ReactNode;
+    itemContent: (index: number, groupIndex: number) => React.ReactNode;
+    rangeChanged?: (range: ListRange) => void;
+}
+
 /**
- * jsdom has no layout, so the real list renders no rows. This stand-in renders every row,
- * captures `rangeChanged` and exposes stub `scrollToIndex` / `scrollTo` / `scrollBy` on its ref.
+ * jsdom has no layout, so the real list renders no rows. These stand-ins (`Virtuoso`, and
+ * `GroupedVirtuoso`, which renders each group header before its rows) render every row,
+ * capture `rangeChanged` and expose stub `scrollToIndex` / `scrollTo` / `scrollBy` on their ref.
  *
  * It does NOT simulate `followOutput`, `initialTopMostItemIndex`, `scrollerRef` or row heights
  * (so no virtualisation, measurement or scroll position). Those are locked by the e2e specs
@@ -37,4 +45,21 @@ const Virtuoso = React.forwardRef<unknown, FlatProps>(({ data, itemContent, rang
 });
 Virtuoso.displayName = 'VirtuosoMock';
 
-export const virtuosoMock = { Virtuoso };
+const GroupedVirtuoso = React.forwardRef<unknown, GroupedProps>(({ groupCounts, groupContent, itemContent, rangeChanged }, ref) => {
+    virtuosoCapture.rangeChanged = rangeChanged;
+    React.useImperativeHandle(ref, () => ({
+        scrollToIndex: () => {},
+        scrollTo: () => {},
+        scrollBy: () => {},
+    }));
+    const rows: React.ReactNode[] = [];
+    let index = 0;
+    groupCounts.forEach((count, g) => {
+        rows.push(<div key={`group-${g}`}>{groupContent(g)}</div>);
+        for (let k = 0; k < count; k += 1, index += 1) rows.push(<div key={`item-${index}`}>{itemContent(index, g)}</div>);
+    });
+    return <div>{rows}</div>;
+});
+GroupedVirtuoso.displayName = 'GroupedVirtuosoMock';
+
+export const virtuosoMock = { Virtuoso, GroupedVirtuoso };

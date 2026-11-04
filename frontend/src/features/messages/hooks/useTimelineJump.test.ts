@@ -155,7 +155,7 @@ describe('useTimelineJump', () => {
     it('a date jump to an existing day lands and highlights', async () => {
         const { jumpTo, scrollToIndex, onLanded } = setup([0]);
         await expect(jumpTo({ kind: 'date', date: toLocalDateStr(messages[2].timestamp) })).resolves.toBe('landed');
-        expect(scrollToIndex).toHaveBeenCalledWith({ index: 2, align: 'start', behavior: 'auto' });
+        expect(scrollToIndex).toHaveBeenCalledWith({ groupIndex: 2, align: 'start', behavior: 'auto' });
         expect(onLanded).toHaveBeenCalledWith('msg-3');
     });
 
@@ -288,6 +288,15 @@ describe('useTimelineJump glide', () => {
     const many = Array.from({ length: 200 }, (_, i) => msg(i + 1, new Date(Date.UTC(2024, 0, 1) + i * 3_600_000).toISOString()));
     const below = { startIndex: 0, endIndex: 9 }; // far above row 150 (id 151)
     const above = { startIndex: 150, endIndex: 159 }; // far below row 0 (id 1)
+
+    it('a far date jump leads in to the day\'s group with an offset', async () => {
+        const scroller = fakeScroller();
+        const date = toLocalDateStr(many[150].timestamp);
+        const group = buildTimeline(many, []).groupIndexOfDate(date);
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: 20000 } });
+        await expect(s.jumpTo({ kind: 'date', date })).resolves.toBe('landed');
+        expect(s.scrollToIndex.mock.calls[0][0]).toEqual({ groupIndex: group, align: 'start', behavior: 'auto', offset: -LEAD });
+    });
 
     it('far downward: lands a lead short above the target, then glides down into place', async () => {
         const scroller = fakeScroller();

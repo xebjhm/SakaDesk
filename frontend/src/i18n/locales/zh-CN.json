@@ -306,7 +306,8 @@
     "revealAllDescription": "这将把所有 {{count}} 条未读消息标记为已读。",
     "confirm": "确认",
     "noContent": "(无内容)",
-    "attachment": "附件"
+    "attachment": "附件",
+    "openCalendar": "跳转到日期"
   },
   "calendar": {
     "title": "日期搜索",

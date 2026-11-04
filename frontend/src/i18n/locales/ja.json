@@ -306,7 +306,8 @@
     "revealAllDescription": "{{count}}件のメッセージを一括で既読にします。",
     "confirm": "確認",
     "noContent": "(内容なし)",
-    "attachment": "添付ファイル"
+    "attachment": "添付ファイル",
+    "openCalendar": "日付を選んで移動"
   },
   "calendar": {
     "title": "日付検索",

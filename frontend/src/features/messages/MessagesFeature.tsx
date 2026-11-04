@@ -6,7 +6,8 @@ import { MessageList } from './components/MessageList';
 import { ConversationMenu } from './components/ConversationMenu';
 import { MemberProfilePopup } from './components/MemberProfilePopup';
 import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
-import { VirtuosoHandle } from 'react-virtuoso';
+import type { GroupedVirtuosoHandle } from 'react-virtuoso';
+import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
@@ -174,6 +175,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Media viewer modal state
     const [mediaViewerIndex, setMediaViewerIndex] = useState<number | null>(null);
+    // Date-search calendar: opened from the ⋯ menu and from the sticky date pills.
+    const [calendarOpen, setCalendarOpen] = useState(false);
+    const openCalendar = useCallback(() => setCalendarOpen(true), []);
 
     // Compute unread count from messages and readState (single source of truth)
     const displayUnreadCount = useMemo(() => {
@@ -181,7 +185,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [messages, readState.lastReadId, readState.revealedIds]);
 
     // Scroll ref
-    const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const virtuosoRef = useRef<GroupedVirtuosoHandle>(null);
     const visibleRangeRef = useRef<{ startIndex: number; endIndex: number } | null>(null);
     // Virtuoso's scroll element, which the timeline jump glides.
     const chatScrollerRef = useRef<HTMLElement | null>(null);
@@ -725,7 +729,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             memberAvatar={memberImageUrl(Object.values(membersMap)[0], 'thumbnail') || Object.values(membersMap)[0]?.portrait}
                             groupId={selectedGroupDir.split('/')[2]?.split(' ')[0]}
                             activeService={activeService || undefined}
-                            onSelectDate={scrollToDate}
+                            onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
                             iconColor={theme.messages.headerStyle === 'light' ? theme.messages.headerTextColor : undefined}
                         />
@@ -799,6 +803,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onJumpToMessage={jumpToTargetMessage}
                             highlightedRowKey={highlightedRowKey}
                             getMemberPath={getMemberPath}
+                            onOpenCalendar={openCalendar}
                         />
                     )}
                     <CallOverlay
@@ -868,6 +873,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     </div>
                 )}
             </div>
+
+            {selectedGroupDir && (
+                <CalendarModal
+                    isOpen={calendarOpen}
+                    onClose={() => setCalendarOpen(false)}
+                    conversationPath={selectedGroupDir}
+                    onSelectDate={(date) => {
+                        setCalendarOpen(false);
+                        scrollToDate(date);
+                    }}
+                />
+            )}
 
             {/* Member Profile Popup */}
             <MemberProfilePopup

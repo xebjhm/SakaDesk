@@ -22,7 +22,7 @@ export interface ResolvedJump {
     highlight: boolean;
     /** Measure and correct after landing (skipped for top/bottom, which Virtuoso lands exactly). */
     verify: boolean;
-    /** Set for date jumps once the list is grouped: scroll to the day's group (GroupedVirtuoso `groupIndex`). */
+    /** Set for date jumps: scroll to the day's group (GroupedVirtuoso `groupIndex`). */
     groupIndex?: number;
 }
 
@@ -47,8 +47,12 @@ export function resolveJump(
             return at(timeline, timeline.indexOfMessage(target.id), target.align ?? 'start', true, true);
         case 'letter':
             return at(timeline, timeline.indexOfLetter(target.id), 'start', true, true);
-        case 'date':
-            return at(timeline, timeline.indexOfDate(target.date), 'start', true, true);
+        case 'date': {
+            // Scroll to the day's group, so its date pill lands at the top (probe fact 4).
+            const group = timeline.groupIndexOfDate(target.date);
+            const jump = group < 0 ? null : at(timeline, timeline.groupStarts[group], 'start', true, true);
+            return jump && { ...jump, groupIndex: group };
+        }
         case 'firstUnread':
             return at(timeline, firstUnreadIndex(timeline, isUnread), 'center', false, true);
         case 'top':

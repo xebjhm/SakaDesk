@@ -46,6 +46,7 @@ describe('resolveJump', () => {
         expect(r?.index).toBe(expected);
         expect(r?.rowKey).toBe(timeline.rowKeyAt(expected));
         expect(r?.highlight).toBe(true);
+        expect(r?.groupIndex).toBe(timeline.groupIndexOfDate(date));
     });
 
     it('returns null for a date without rows', () => {

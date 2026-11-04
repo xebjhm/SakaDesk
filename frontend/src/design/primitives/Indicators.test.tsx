@@ -76,4 +76,15 @@ describe('DatePill', () => {
         expect(container.firstChild).toHaveClass('sticky', 'top-0');
         expect(screen.getByText(/2025/)).toBeInTheDocument();
     });
+
+    it('becomes a button with a tooltip when it has an action', async () => {
+        const onClick = vi.fn();
+        render(<DatePill date={new Date(2026, 10, 4, 9, 0)} onClick={onClick} actionLabel="Jump to a date" />);
+        const button = screen.getByRole('button', { name: 'Today' });
+        expect(button).toHaveAttribute('title', 'Jump to a date');
+        expect(button).toHaveClass('rounded-pill', 'focus-visible:ring-group');
+        expect(screen.getByText('Today').tagName).toBe('TIME');
+        fireEvent.click(button);
+        expect(onClick).toHaveBeenCalledOnce();
+    });
 });

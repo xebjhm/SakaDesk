@@ -306,7 +306,8 @@
     "revealAllDescription": "This will mark all {{count}} unread messages as read.",
     "confirm": "Confirm",
     "noContent": "(No content)",
-    "attachment": "Attachment"
+    "attachment": "Attachment",
+    "openCalendar": "Jump to a date"
   },
   "calendar": {
     "title": "Date Search",

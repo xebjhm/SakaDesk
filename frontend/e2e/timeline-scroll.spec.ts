@@ -135,4 +135,17 @@ test.describe('timeline scroll', () => {
     await arrow.click()
     await expect.poll(() => isRowInViewport(page, 2501), { timeout: 1000, intervals: [50] }).toBe(true)
   })
+
+  test('a date jump puts that day\'s date pill at the top', async ({ page }) => {
+    await openBigRoom(page)
+    const dialog = await openCalendarAt(page, 'January 2022')
+    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await expect(page.locator('[data-testid="virtuoso-top-item-list"] time')).toHaveAttribute('datetime', '2022-01-15', { timeout: 1000 })
+  })
+
+  test('clicking the sticky date pill opens the calendar', async ({ page }) => {
+    await openBigRoom(page)
+    await page.locator('[data-testid="virtuoso-top-item-list"] button').click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+  })
 })

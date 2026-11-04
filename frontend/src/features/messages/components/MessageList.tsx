@@ -1,5 +1,5 @@
 import React, { useRef, useCallback, useMemo, useEffect } from 'react';
-import { Virtuoso, VirtuosoHandle, type ListRange } from 'react-virtuoso';
+import { GroupedVirtuoso, type GroupedVirtuosoHandle, type ListRange } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
 import { useMessagesTheme } from '../hooks/useMessagesTheme';
@@ -7,6 +7,8 @@ import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
 import { useTranslation } from '../../../i18n';
+import { DatePill } from '../../../design/primitives';
+import { fromLocalDateStr } from '../../../utils/dateFormatters';
 import { rowKeyOf, type RowKey, type Timeline, type TimelineItem } from '../timeline/buildTimeline';
 import { topVisibleRowIndex } from '../timeline/landing';
 import type { Letter } from '../letters';
@@ -36,7 +38,7 @@ interface ChatListProps {
     /** Callback when the rendered item range changes (for unread navigation) */
     onRangeChanged?: (range: { startIndex: number; endIndex: number }) => void;
     /** Ref to expose the list handle for external scroll control */
-    virtuosoRef?: React.RefObject<VirtuosoHandle>;
+    virtuosoRef?: React.RefObject<GroupedVirtuosoHandle>;
     /** Receives Virtuoso's scroll element (the timeline jump glides it) */
     scrollerRef?: (el: HTMLElement | Window | null) => void;
     /** User's nickname (for translations of %%% messages) */
@@ -61,7 +63,18 @@ interface ChatListProps {
     getMemberPath?: (msg: Message) => string | undefined;
     /** Renders the content of a sent-letter row */
     renderLetter?: (letter: Letter) => React.ReactNode;
+    /** Opens the date-search calendar (clicking a date pill) */
+    onOpenCalendar?: () => void;
 }
+
+/** Sticky day header of the timeline: a DatePill that opens the calendar. */
+const TimelineDateHeader: React.FC<{ date: string; onOpenCalendar?: () => void }> = ({ date, onOpenCalendar }) => {
+    const { t } = useTranslation();
+    const day = fromLocalDateStr(date);
+    // A message without a valid timestamp lands in an undated group: keep a 1 px header.
+    if (!day) return <div className="h-px" />;
+    return <DatePill date={day} onClick={onOpenCalendar} actionLabel={t('messageList.openCalendar')} />;
+};
 
 const DEFAULT_ITEM_HEIGHT = 80;
 
@@ -86,10 +99,11 @@ export const MessageList: React.FC<ChatListProps> = ({
     onMediaClick,
     getMemberPath,
     renderLetter,
+    onOpenCalendar,
 }) => {
     const { t } = useTranslation();
     const virtuosoKey = `virtuoso-${memberId}`;
-    const internalRef = useRef<VirtuosoHandle>(null);
+    const internalRef = useRef<GroupedVirtuosoHandle>(null);
     const virtuosoRef = externalRef || internalRef;
     const scrollerElRef = useRef<HTMLElement | null>(null);
     const setScroller = useCallback((el: HTMLElement | Window | null) => {
@@ -185,18 +199,23 @@ export const MessageList: React.FC<ChatListProps> = ({
         );
     }
 
+    // One group per local day; GroupedVirtuoso keeps the current day's header stuck on top and
+    // lets the next one push it away. Indices passed around are item indices (probe fact 3).
     return (
-        <Virtuoso
+        <GroupedVirtuoso
             key={virtuosoKey}
             ref={virtuosoRef}
             scrollerRef={setScroller}
             style={{ height: '100%' }}
-            data={timeline.items}
+            groupCounts={timeline.groupCounts}
+            groupContent={(groupIndex) => (
+                <TimelineDateHeader date={timeline.groupDates[groupIndex]} onOpenCalendar={onOpenCalendar} />
+            )}
             initialTopMostItemIndex={initialTopMostItemIndex}
             defaultItemHeight={DEFAULT_ITEM_HEIGHT}
             followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
             rangeChanged={onRangeChange}
-            itemContent={(_index, item) => renderItem(item)}
+            itemContent={(index) => renderItem(timeline.items[index])}
         />
     );
 };
