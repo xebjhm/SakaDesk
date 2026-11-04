@@ -4,6 +4,7 @@ import { afterEach, afterAll, beforeAll, vi } from 'vitest'
 import { server } from './mocks/server'
 import { resetDialogStack } from '../design/dialog/dialogStack'
 import { resetMenuStack } from '../design/primitives/menuStack'
+import { resetLoginLock } from '../shell/components/loginLock'
 
 // findBy* / waitFor: 1 s by default, too short for a full App mount on a loaded machine.
 configure({ asyncUtilTimeout: 3000 })
@@ -18,6 +19,8 @@ afterEach(() => {
   // A test that ends with a dialog or menu still registered must not leak it into the next one.
   resetDialogStack()
   resetMenuStack()
+  // A login left pending by a test must not lock the next test's login dialog.
+  resetLoginLock()
 })
 
 // Clean up after all tests

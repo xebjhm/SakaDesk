@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
@@ -232,8 +232,11 @@ describe('login lock across the Yodel geo check (D2d)', () => {
         const { settle, calls } = pendingGeo();
         render(<LoginModal serviceId="yodel" {...props} />);
         const connect = screen.getByRole('button', { name: 'Connect Account' });
-        await userEvent.click(connect);
-        await userEvent.click(connect);
+        // Same tick: the button is not disabled yet, so only the lock can stop the second click.
+        act(() => {
+            fireEvent.click(connect);
+            fireEvent.click(connect);
+        });
         expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
         settle();
         await screen.findByRole('alert');
@@ -280,5 +283,73 @@ describe('login holds its lock until onSuccess settles (D2d)', () => {
         expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
         finish();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
+    });
+});
+
+describe('one login per app (D2d review)', () => {
+    const props = { featureId: 'messages' as const, onClose: vi.fn(), onSuccess: vi.fn(), isFreshPrompt: true };
+    const primary = () => screen.getByRole('button', { name: /^(Connect Account|Connecting\.\.\.)$/ });
+
+    it('a dialog unmounted during its geo check never logs in', async () => {
+        let settle!: () => void;
+        const gate = new Promise<void>((resolve) => { settle = resolve; });
+        const logins: string[] = [];
+        server.use(
+            http.get('/api/auth/geo-availability', async () => { await gate; return HttpResponse.json({ blocked: false }); }),
+            http.post('/api/auth/login', ({ request }) => {
+                logins.push(new URL(request.url).searchParams.get('service') ?? '');
+                return new HttpResponse(null, { status: 500 });
+            }),
+        );
+        const { unmount } = render(<LoginModal serviceId="yodel" {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
+        unmount();
+        settle();
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'skipped' }));
+        expect(logins).toEqual([]);
+    });
+
+    it('a second dialog mounted while the first login is in flight cannot log in', async () => {
+        let settle!: () => void;
+        const gate = new Promise<void>((resolve) => { settle = resolve; });
+        const logins: string[] = [];
+        server.use(http.post('/api/auth/login', async ({ request }) => {
+            logins.push(new URL(request.url).searchParams.get('service') ?? '');
+            await gate;
+            return new HttpResponse(null, { status: 500 });
+        }));
+        const first = render(<LoginModal serviceId="hinatazaka46" {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
+        await waitFor(() => expect(logins).toEqual(['hinatazaka46']));
+        first.unmount();
+
+        render(<LoginModal serviceId="sakurazaka46" {...props} isFreshPrompt={false} isDisconnected />);
+        expect(primary()).toBeDisabled();
+        act(() => { fireEvent.click(primary()); });
+        expect(logins).toEqual(['hinatazaka46']);
+
+        settle();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Login' })).toBeEnabled());
+        expect(logins).toEqual(['hinatazaka46']);
+    });
+
+    it('a failing onSuccess is not reported as a failed login', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            server.use(http.post('/api/auth/login', () => HttpResponse.json({})));
+            const onSuccess = vi.fn(() => Promise.reject(new Error('auth refresh failed')));
+            const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+            render(<LoginModal serviceId="hinatazaka46" {...props} onSuccess={onSuccess} />);
+            await user.click(screen.getByRole('button', { name: 'Connect Account' }));
+            await screen.findByRole('button', { name: 'Connecting...' });
+            await vi.advanceTimersByTimeAsync(1500);
+            await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'error', reason: 'after_login' }));
+            expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'ok' });
+            expect(clientLog).not.toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'error', reason: 'failed' });
+            expect(screen.queryByRole('alert')).toBeNull();
+            await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

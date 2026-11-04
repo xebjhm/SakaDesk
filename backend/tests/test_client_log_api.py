@@ -460,3 +460,22 @@ def test_call_layer_focus_breadcrumb_is_accepted(outcome):
     events = _client_events(logs)
     assert events[0]["phase"] == "focus"
     assert events[0]["outcome"] == outcome
+
+
+def test_login_after_login_error_breadcrumb_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "dialog_load",
+                "fields": {
+                    "surface": "login",
+                    "outcome": "error",
+                    "reason": "after_login",
+                },
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["surface"] == "login"
+    assert events[0]["reason"] == "after_login"

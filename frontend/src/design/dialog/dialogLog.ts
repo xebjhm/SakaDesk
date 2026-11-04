@@ -22,9 +22,11 @@ export type DialogLoadSurface =
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skipped';
 /**
  * Code for why a load failed or was skipped (the AI connection test's backend codes, the
- * background upload's rejections, an empty result). Never message text.
+ * background upload's rejections, an empty result, a login whose follow-up step failed). Never
+ * message text.
  */
-export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty' | 'blocked';
+export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty' | 'blocked'
+    | 'after_login';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */

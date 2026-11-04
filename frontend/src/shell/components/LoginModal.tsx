@@ -1,4 +1,4 @@
-import React, { useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { AlertCircle, Loader2, LogIn, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button, IconButton, Modal } from '../../design/primitives';
@@ -11,6 +11,7 @@ import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
+import { isLoginBusy, subscribeLoginLock, tryLockLogin, unlockLogin } from './loginLock';
 
 interface LoginModalProps {
     serviceId: string;
@@ -36,7 +37,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const titleId = useId();
-    const [isLoading, setIsLoading] = useState(false);
+    // App-wide (loginLock): a dialog mounted while another one's login is in flight shows it as busy.
+    const isLoading = useSyncExternalStore(subscribeLoginLock, isLoginBusy);
     const [error, setError] = useState<string | null>(null);
     const [showGeoWarning, setShowGeoWarning] = useState(false);
 
@@ -45,8 +47,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     currentServiceRef.current = serviceId;
 
     // The dialog is reused across services (login carousel): a new service starts clean, so a
-    // failed login's error never shows on the next service's dialog. `isLoading` is kept: a login
-    // still in flight must block a second one (single-session token).
+    // failed login's error never shows on the next service's dialog. The login lock is app-wide
+    // (loginLock), so a login still in flight keeps blocking a second one (single-session token).
     const [shownService, setShownService] = useState(serviceId);
     if (shownService !== serviceId) {
         setShownService(serviceId);
@@ -59,22 +61,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const groupId = serviceIdToGroupId(serviceId);
     const isLight = groupTokens[groupId].official.headerStyle === 'light';
 
-    // One login at a time (single-session token): set synchronously on the first click, before the
-    // Yodel geo check, so a second click during that check cannot start a second login.
-    const busyRef = useRef(false);
+    // A Yodel geo check that resolves after this dialog unmounted must not log in.
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
 
-    /** Takes the login lock; false when a login (or its geo check) is already in flight. */
-    const lock = (): boolean => {
-        if (busyRef.current) return false;
-        busyRef.current = true;
-        setIsLoading(true);
-        return true;
-    };
-
-    const unlock = () => {
-        busyRef.current = false;
-        setIsLoading(false);
-    };
+    // One login at a time for the whole app (single-session token): the lock is taken
+    // synchronously on the first click, before the Yodel geo check, so a second click (in this
+    // dialog or in one mounted later) cannot start a second login.
 
     /** Logs in for `loginService`; the caller holds the lock, which this releases when done. */
     const doLogin = async (loginService: string) => {
@@ -97,7 +93,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             if (currentServiceRef.current === loginService) {
                 logDialogLoad('login', 'ok');
                 // Hold the lock until the caller has moved on (e.g. App's auth check has advanced).
-                await onSuccess();
+                // The login itself worked: a failure here is not a failed login, so the user is
+                // never asked to sign in again on a single-session token.
+                try {
+                    await onSuccess();
+                } catch {
+                    logDialogLoad('login', 'error', undefined, 'after_login');
+                }
             } else {
                 logDialogLoad('login', 'skipped');
             }
@@ -107,12 +109,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 setError(err instanceof Error ? err.message : t('login.loginFailed'));
             }
         } finally {
-            unlock();
+            unlockLogin();
         }
     };
 
     const handleLogin = async () => {
-        if (!lock()) return;
+        if (!tryLockLogin()) return;
         const loginService = serviceId;
         // Yodel's web service is Japan-only. Warn before a login attempt from
         // another region, since the login/data servers reject non-JP connections.
@@ -131,17 +133,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 // Check failed (offline, etc.) — don't block the user; let login proceed.
                 logDialogLoad('login_geo', 'error', undefined, 'unreachable');
             }
-            // The dialog moved to another service while the check was pending: never log in
-            // (or warn) for the old one.
-            if (currentServiceRef.current !== loginService) {
+            // The dialog closed, or moved to another service, while the check was pending: never
+            // log in (or warn) for the old one.
+            if (!mountedRef.current || currentServiceRef.current !== loginService) {
                 logDialogLoad('login', 'skipped');
-                unlock();
+                unlockLogin();
                 return;
             }
             if (blocked) {
                 logDialogLoad('login_geo', 'skipped', undefined, 'blocked');
                 setShowGeoWarning(true);
-                unlock();
+                unlockLogin();
                 return;
             }
         }
@@ -150,7 +152,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     const confirmGeoWarning = () => {
         setShowGeoWarning(false);
-        if (!lock()) return;
+        if (!tryLockLogin()) return;
         void doLogin(serviceId);
     };
 
