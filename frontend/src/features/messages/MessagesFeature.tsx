@@ -28,6 +28,10 @@ import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 import { useTimelineJump } from './hooks/useTimelineJump';
 import { useLandingHighlight } from './hooks/useLandingHighlight';
+import { buildTimeline } from './timeline/buildTimeline';
+import { firstUnreadIndex } from './timeline/jumpTarget';
+import { applyNickname } from './utils/nickname';
+import type { Letter } from './letters';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -88,6 +92,8 @@ export interface AppSettings {
 }
 
 const MAX_CACHED_CHATS = 20;
+/** No letters yet: Task 11 replaces this with the room's letters from the local archive. */
+const NO_LETTERS: readonly Letter[] = [];
 
 
 interface MessageCacheEntry {
@@ -411,14 +417,19 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
     }, [readState.lastReadId, readState.revealedIds]);
 
-    const { highlightedMessageId, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
+    // One timeline for the list, the jumps, the restore and the unread arrows.
+    const userNickname = messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined;
+    const displayMessages = useMemo(() => applyNickname(messages, userNickname), [messages, userNickname]);
+    const timeline = useMemo(() => buildTimeline(displayMessages, NO_LETTERS), [displayMessages]);
+
+    const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
     // The old room's rendered range says nothing about the new one: unknown until Virtuoso reports it.
     useEffect(() => {
         visibleRangeRef.current = null;
     }, [selectedGroupDir]);
 
     const jumpTo = useTimelineJump({
-        virtuosoRef, messages, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
+        virtuosoRef, timeline, isUnread, onLanded: flashLanded, resetKey: selectedGroupDir,
         getScroller: () => chatScrollerRef.current,
         visibleRange: () => visibleRangeRef.current,
     });
@@ -427,17 +438,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         const currentRange = range || visibleRangeRef.current || { startIndex: 0, endIndex: 0 };
         if (range) visibleRangeRef.current = range;
 
-        const firstUnreadIndex = messages.findIndex(m => isUnread(m.id));
+        const firstUnread = firstUnreadIndex(timeline, isUnread);
         let above = false;
         let below = false;
 
-        if (firstUnreadIndex !== -1) {
-            if (firstUnreadIndex < currentRange.startIndex) above = true;
-            else if (firstUnreadIndex > currentRange.endIndex) below = true;
+        if (firstUnread !== -1) {
+            if (firstUnread < currentRange.startIndex) above = true;
+            else if (firstUnread > currentRange.endIndex) below = true;
         }
         setHasUnreadAbove(above);
         setHasUnreadBelow(below);
-    }, [messages, isUnread]);
+    }, [timeline, isUnread]);
 
     useEffect(() => {
         updateUnreadNavState();
@@ -770,7 +781,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && (
                         <MessageList
                             memberId={selectedGroupDir}
-                            messages={messages}
+                            timeline={timeline}
                             getSenderInfo={getSenderInfo}
                             isUnread={isUnread}
                             onReveal={revealMessage}
@@ -778,9 +789,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
                             scrollerRef={setChatScroller}
-                            userNickname={
-                                messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined
-                            }
+                            userNickname={userNickname}
                             onToggleFavorite={handleToggleFavorite}
                             onAvatarClick={() => setShowMemberProfile(true)}
                             onMediaClick={handleMediaClick}
@@ -788,7 +797,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             targetMessageId={targetMessageId}
                             onTargetMessageConsumed={() => setTargetMessageId(null)}
                             onJumpToMessage={jumpToTargetMessage}
-                            highlightedMessageId={highlightedMessageId}
+                            highlightedRowKey={highlightedRowKey}
                             getMemberPath={getMemberPath}
                         />
                     )}
