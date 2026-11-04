@@ -322,6 +322,7 @@
     "title": "日期搜索",
     "today": "今天",
     "availableOnDays": "有 {{count}} 天可用",
+    "itemCount": "{{count}} 项",
     "tapToJump": "点击日期跳转",
     "weekdays": {
       "sun": "日",
@@ -408,7 +409,6 @@
     "title": "搜索",
     "filters": "筛选",
     "removeFilter": "移除筛选：{{name}}",
-    "building": "正在构建搜索索引...",
     "exactMatchOnly": "仅完全相符",
     "includeUnread": "包含未读",
     "filterByMember": "按成员或服务筛选...",
@@ -475,7 +475,6 @@
     "addMembersHint": "添加我的推即可在此查看更新",
     "selectServiceHint": "选择服务并同步以加载 Blog",
     "noMembersFound": "未找到成员",
-    "tapOutsideToClose": "点击外部关闭",
     "publishedRecently": "24小时内发布",
     "cached": "已缓存",
     "mascot": "吉祥物",

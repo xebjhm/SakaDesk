@@ -322,6 +322,7 @@
     "title": "日子搜尋",
     "today": "今日",
     "availableOnDays": "有 {{count}} 日有嘢",
+    "itemCount": "{{count}} 項",
     "tapToJump": "撳個日子跳過去",
     "weekdays": {
       "sun": "日",
@@ -408,7 +409,6 @@
     "title": "搜尋",
     "filters": "篩選",
     "removeFilter": "移除篩選：{{name}}",
-    "building": "建緊搜尋索引...",
     "exactMatchOnly": "淨係完全相符",
     "includeUnread": "包含未讀",
     "filterByMember": "按成員或服務篩選...",
@@ -475,7 +475,6 @@
     "addMembersHint": "加返啲我推嘅成員就可以喺度睇到",
     "selectServiceHint": "揀服務再同步嚟載入 Blog",
     "noMembersFound": "搵唔到成員",
-    "tapOutsideToClose": "撳外面閂返",
     "publishedRecently": "24小時內出",
     "cached": "已 Cache",
     "mascot": "吉祥物",

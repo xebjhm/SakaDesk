@@ -1,5 +1,0 @@
-// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
-
-exports[`CalendarModal component > Snapshots > should match snapshot in API mode 1`] = `null`;
-
-exports[`CalendarModal component > Snapshots > should match snapshot in Messages mode 1`] = `null`;

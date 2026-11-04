@@ -322,6 +322,7 @@
     "title": "日付検索",
     "today": "今日",
     "availableOnDays": "{{count}}日分利用可能",
+    "itemCount": "{{count}}件",
     "tapToJump": "日付を選択して移動",
     "weekdays": {
       "sun": "日",
@@ -408,7 +409,6 @@
     "title": "検索",
     "filters": "絞り込み",
     "removeFilter": "フィルターを外す：{{name}}",
-    "building": "検索インデックスを構築中...",
     "exactMatchOnly": "完全一致のみ",
     "includeUnread": "未読も含む",
     "filterByMember": "メンバー・サービスで絞り込み...",
@@ -475,7 +475,6 @@
     "addMembersHint": "推しメンを設定すると、最新記事がここに表示されます",
     "selectServiceHint": "サービスを選択して同期してください",
     "noMembersFound": "メンバーが見つかりません",
-    "tapOutsideToClose": "画面外をタップして閉じる",
     "publishedRecently": "24時間以内に公開",
     "cached": "保存済み",
     "mascot": "マスコット",

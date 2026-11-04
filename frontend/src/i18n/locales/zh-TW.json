@@ -322,6 +322,7 @@
     "title": "日期搜尋",
     "today": "今天",
     "availableOnDays": "有 {{count}} 天可用",
+    "itemCount": "{{count}} 項",
     "tapToJump": "點擊日期跳轉",
     "weekdays": {
       "sun": "日",
@@ -408,7 +409,6 @@
     "title": "搜尋",
     "filters": "篩選",
     "removeFilter": "移除篩選：{{name}}",
-    "building": "正在建立搜尋索引...",
     "exactMatchOnly": "僅完全相符",
     "includeUnread": "包含未讀",
     "filterByMember": "依成員或服務篩選...",
@@ -475,7 +475,6 @@
     "addMembersHint": "將成員設為我的推即可在此查看更新",
     "selectServiceHint": "選擇服務並同步以載入文章",
     "noMembersFound": "找不到成員",
-    "tapOutsideToClose": "點擊外部關閉",
     "publishedRecently": "24小時內發佈",
     "cached": "已快取",
     "mascot": "吉祥物",

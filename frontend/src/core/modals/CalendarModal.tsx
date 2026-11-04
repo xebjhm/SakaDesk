@@ -78,7 +78,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [apiDates, setApiDates] = useState<DateCount[]>([]);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [loadFailed, setLoadFailed] = useState(false);
 
     // Determine mode
     const isMessagesMode = 'messages' in props && props.messages !== undefined;
@@ -111,19 +111,16 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         if (!conversationPath) return;
 
         setLoading(true);
-        setError(null);
+        setLoadFailed(false);
 
         try {
             const res = await fetch(`/api/chat/message_dates/${encodeURIComponent(conversationPath)}`);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.detail || 'Failed to fetch dates');
-            }
+            if (!res.ok) throw new Error('message_dates');
             const data = await res.json();
             setApiDates(data.dates || []);
             logDialogLoad('calendar', 'ok', (data.dates || []).length);
         } catch {
-            setError('load_failed');
+            setLoadFailed(true);
             logDialogLoad('calendar', 'error');
         } finally {
             setLoading(false);
@@ -256,7 +253,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
 
             {loading ? (
                 <DialogStatus kind="loading" />
-            ) : error ? (
+            ) : loadFailed ? (
                 <DialogStatus kind="error" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
             ) : (
                 <>
@@ -277,7 +274,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                     type="button"
                                     onClick={() => handleDateClick(dateStr, date)}
                                     disabled={!hasMessages}
-                                    title={hasMessages ? `${getMessageCount(dateStr)} items` : undefined}
+                                    title={hasMessages ? t('calendar.itemCount', { count: getMessageCount(dateStr) }) : undefined}
                                     className={cn(
                                         'relative flex aspect-square flex-col items-center justify-center rounded-pill text-small',
                                         'transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
