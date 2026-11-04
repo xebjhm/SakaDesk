@@ -1,4 +1,4 @@
-import React, { useId, useState } from 'react';
+import React, { useId, useRef, useState } from 'react';
 import { AlertCircle, Loader2, LogIn, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button, IconButton, Modal } from '../../design/primitives';
@@ -39,12 +39,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [showGeoWarning, setShowGeoWarning] = useState(false);
 
+    // The service this dialog currently shows; a login that finishes for another one is stale.
+    const currentServiceRef = useRef(serviceId);
+    currentServiceRef.current = serviceId;
+
     // The dialog is reused across services (login carousel): a new service starts clean, so a
-    // failed login's error never shows on the next service's dialog.
+    // failed login's error never shows on the next service's dialog. `isLoading` is kept: a login
+    // still in flight must block a second one (single-session token).
     const [shownService, setShownService] = useState(serviceId);
     if (shownService !== serviceId) {
         setShownService(serviceId);
-        setIsLoading(false);
         setError(null);
         setShowGeoWarning(false);
     }
@@ -55,6 +59,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const isLight = groupTokens[groupId].official.headerStyle === 'light';
 
     const doLogin = async () => {
+        const loginService = serviceId;
         setIsLoading(true);
         setError(null);
         try {
@@ -73,10 +78,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             // Brief delay before advancing to prevent concurrent browser launches
             await new Promise(resolve => setTimeout(resolve, 1500));
             logDialogLoad('login', 'ok');
-            onSuccess();
+            if (currentServiceRef.current === loginService) onSuccess();
+            else logDialogLoad('login', 'skipped');
         } catch (err: unknown) {
             logDialogLoad('login', 'error', undefined, 'failed');
-            setError(err instanceof Error ? err.message : t('login.loginFailed'));
+            if (currentServiceRef.current === loginService) {
+                setError(err instanceof Error ? err.message : t('login.loginFailed'));
+            }
         } finally {
             setIsLoading(false);
         }
@@ -124,7 +132,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     return (
         <>
-            <Modal isOpen onClose={onClose} layout="bare" labelledBy={titleId} logId="login" className="max-w-md">
+            <Modal isOpen onClose={onClose} dismissible={!isLoading} layout="bare" labelledBy={titleId} logId="login" className="max-w-md">
                 <div className="flex min-h-0 flex-col" style={groupScopeStyle(groupId)}>
                     {/* The service's official banner, drawn like its chat header. */}
                     <div
@@ -145,6 +153,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                             size="sm"
                             variant={isLight ? 'ghost' : 'overlay'}
                             aria-label={t('common.close')}
+                            disabled={isLoading}
                             icon={<X />}
                             onClick={onClose}
                         />
