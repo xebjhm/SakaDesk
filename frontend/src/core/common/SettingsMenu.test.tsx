@@ -19,4 +19,13 @@ describe('SettingsMenu', () => {
         expect(handlers[prop]).toHaveBeenCalledTimes(1);
         expect(screen.queryByText('About', { exact: true })).toBeNull();
     });
+
+    it('the trigger is a named menu button and the items are menuitems', async () => {
+        render(<SettingsMenu onOpenSettings={vi.fn()} onReportIssue={vi.fn()} onOpenAbout={vi.fn()} />);
+        const trigger = screen.getByRole('button', { name: 'Settings' });
+        expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+        await userEvent.click(trigger);
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        expect(screen.getAllByRole('menuitem')).toHaveLength(4);
+    });
 });

@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, X } from 'lucide-react';
-import { Portal } from '../../../core/common/Portal';
-import { Z_CLASS } from '../../../constants/zIndex';
+import React, { useState, useEffect } from 'react';
+import { Loader2, X } from 'lucide-react';
 import type { BaseModalProps } from '../../../types/modal';
-import { getServiceTheme } from '../../../config/serviceThemes';
+import { groupTokens } from '../../../design/tokens';
+import { serviceGroupId } from '../../../config/serviceGroup';
+import { Modal, IconButton, Button } from '../../../design/primitives';
+import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { useTranslation, Trans } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
 import { fetchProfileImages, type ProfileImageKind, type ProfileImagesByKind } from '../profileImages';
@@ -45,22 +46,21 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         const controller = new AbortController();
         setImages({});
         fetchProfileImages(memberPath, controller.signal)
-            .then(k => { if (!controller.signal.aborted) setImages(k); })
-            .catch(() => { if (!controller.signal.aborted) setImages({}); });
+            .then(k => {
+                if (controller.signal.aborted) return;
+                setImages(k);
+                logDialogLoad('profile_images', 'ok', Object.values(k).reduce((n, v) => n + (v?.length ?? 0), 0));
+            })
+            .catch(() => {
+                if (controller.signal.aborted) return;
+                setImages({});
+                logDialogLoad('profile_images', 'error');
+            });
         return () => controller.abort();
     }, [isOpen, memberPath]);
 
-    // Get theme for the active service
-    const theme = useMemo(() => getServiceTheme(activeService ?? null), [activeService]);
-
-    // Use the same header style as the chat room
-    // 'gradient' = filled gradient background (Hinatazaka, Nogizaka)
-    // 'light' = white/light background (Sakurazaka)
-    const isLightHeader = theme.messages.headerStyle === 'light';
-    const gradientStyle = useMemo(() => {
-        const { from, via, to } = theme.messages.headerGradient;
-        return `linear-gradient(to right, ${from}, ${via}, ${to})`;
-    }, [theme]);
+    // The chat header's style: 'gradient' (filled title gradient) or 'light' (white + thin title bar).
+    const isLightHeader = groupTokens[serviceGroupId(activeService ?? null)].official.headerStyle === 'light';
 
     // Reset when closed
     useEffect(() => {
@@ -69,144 +69,74 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
         }
     }, [isOpen]);
 
-    // Handle ESC key
-    useEffect(() => {
-        if (!isOpen) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // The image viewer handles its own Escape and calls preventDefault. React may
-            // already have committed the viewer close (re-registering this listener with
-            // viewerKind null) before the native event reaches document, so the
-            // defaultPrevented check is what keeps one Escape from closing both.
-            if (e.key === 'Escape' && !viewerKind && !e.defaultPrevented) {
-                // Claim the key so the incoming-call overlay doesn't also decline.
-                e.preventDefault();
-                onClose();
-            }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        document.body.style.overflow = 'hidden';
-
-        return () => {
-            document.removeEventListener('keydown', handleKeyDown);
-            document.body.style.overflow = '';
-        };
-    }, [isOpen, onClose, viewerKind]);
-
-    if (!isOpen) return null;
-
-    // Handle backdrop click
-    const handleBackdropClick = (e: React.MouseEvent) => {
-        if (e.target === e.currentTarget) {
-            onClose();
-        }
-    };
-
     return (
-        <Portal>
-            <div
-                className={`fixed inset-0 bg-black/40 flex items-center justify-center p-4 ${Z_CLASS.MODAL}`}
-                onClick={handleBackdropClick}
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="profile-title"
+        <>
+            <Modal
+                isOpen={isOpen}
+                onClose={onClose}
+                layout="bare"
+                labelledBy="profile-title"
+                logId="member_profile"
+                className="relative max-w-sm"
             >
-                <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden relative">
-                    {/* Close button - dark for light header, white for gradient header */}
+                <IconButton
+                    variant={isLightHeader ? 'ghost' : 'overlay'}
+                    size="sm"
+                    className="absolute right-4 top-4 z-10"
+                    aria-label={t('common.close')}
+                    icon={<X />}
+                    onClick={onClose}
+                />
+                {/* Official title banner, as the chat header: gradient, or white + the thin title bar. */}
+                <div className={cn('h-32 shrink-0', isLightHeader ? 'bg-sheet' : 'bg-group-title')} />
+                {isLightHeader && <div className="-mt-1 h-1 shrink-0 bg-group-title-bar" />}
+
+                <div className="-mt-24 flex justify-center">
                     <button
-                        onClick={onClose}
-                        className={`absolute top-4 right-4 transition-colors z-10 ${
-                            isLightHeader
-                                ? 'text-gray-400 hover:text-gray-600'
-                                : 'text-white/80 hover:text-white'
-                        }`}
-                        aria-label="Close"
+                        type="button"
+                        disabled={!images.thumbnail?.length}
+                        onClick={() => setViewerKind('thumbnail')}
+                        aria-label={memberName}
+                        className={cn(
+                            'h-48 w-48 overflow-hidden rounded-pill bg-sunken shadow-sheet ring-4 ring-surface',
+                            'focus-visible:outline-none focus-visible:ring-group',
+                            images.thumbnail?.length ? 'cursor-zoom-in' : 'cursor-default',
+                        )}
                     >
-                        <X className="w-6 h-6" />
+                        {memberAvatar ? (
+                            <img src={memberAvatar} alt={memberName} className="h-full w-full object-cover" />
+                        ) : (
+                            <span className="flex h-full w-full items-center justify-center text-heading font-semibold text-muted">{memberName.substring(0, 2)}</span>
+                        )}
                     </button>
-
-                    {/* Header - gradient or light style based on theme */}
-                    <div
-                        className="h-32"
-                        style={{
-                            background: isLightHeader ? theme.surface.background : gradientStyle,
-                        }}
-                    />
-                    {/* Bottom gradient bar for light header style */}
-                    {isLightHeader && (
-                        <div
-                            className="h-1 -mt-1"
-                            style={{ background: theme.messages.headerBarGradient }}
-                        />
-                    )}
-
-                    {/* Large Avatar - overlapping header and content */}
-                    <div className="flex justify-center -mt-24">
-                        <button
-                            type="button"
-                            disabled={!images.thumbnail?.length}
-                            onClick={() => setViewerKind('thumbnail')}
-                            className={cn('w-48 h-48 rounded-full bg-white shadow-xl overflow-hidden border-4 border-white', images.thumbnail?.length ? 'cursor-zoom-in' : 'cursor-default')}
-                            aria-label={memberName}
-                        >
-                            {memberAvatar ? (
-                                <img
-                                    src={memberAvatar}
-                                    alt={memberName}
-                                    className="w-full h-full object-cover"
-                                />
-                            ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-4xl font-medium bg-gray-100">
-                                    {memberName.substring(0, 2)}
-                                </div>
-                            )}
-                        </button>
-                    </div>
-
-                    {/* Content */}
-                    <div className="px-6 pt-4 pb-8 text-center">
-                        {/* Name */}
-                        <h3 id="profile-title" className="text-xl font-bold text-gray-900 mb-2">
-                            {memberName}
-                        </h3>
-
-                        <ProfileImagePills images={images} onOpen={setViewerKind} />
-
-                        {/* Streak Display */}
-                        {streak.status === 'loading' ? (
-                            <div className="flex items-center justify-center py-4">
-                                <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
-                            </div>
-                        ) : streak.status === 'error' ? (
-                            <div className="text-center text-red-600 py-2">
-                                <p className="text-sm">{streak.message}</p>
-                                <button
-                                    onClick={onRetryStreak}
-                                    className="text-xs text-red-500 hover:underline mt-1"
-                                >
-                                    {t('memberProfile.retry')}
-                                </button>
-                            </div>
-                        ) : streak.status === 'ready' && streak.days > 0 ? (
-                            <p className="text-lg text-gray-700">
-                                <Trans
-                                    i18nKey="memberProfile.subscribedDays"
-                                    values={{ days: streak.days }}
-                                    components={{ num: <span className="font-bold text-2xl text-gray-900" /> }}
-                                />
-                            </p>
-                        ) : streak.status === 'ready' ? (
-                            <p className="text-lg text-gray-500">
-                                {t('memberProfile.startSubscription')}
-                            </p>
-                        ) : null}
-                    </div>
                 </div>
-            </div>
-            {viewerKind && (
+
+                <div className="flex flex-col items-center gap-4 px-6 pb-8 pt-4 text-center">
+                    <h2 id="profile-title" className="text-heading font-semibold text-primary">{memberName}</h2>
+                    <ProfileImagePills images={images} onOpen={setViewerKind} />
+                    {streak.status === 'loading' ? (
+                        <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted motion-reduce:animate-none" />
+                    ) : streak.status === 'error' ? (
+                        <div role="alert" className="flex flex-col items-center gap-2">
+                            <p className="text-small text-status-danger">{streak.message}</p>
+                            <Button variant="secondary" size="sm" onClick={onRetryStreak}>{t('memberProfile.retry')}</Button>
+                        </div>
+                    ) : streak.status === 'ready' && streak.days > 0 ? (
+                        <p className="text-title text-secondary">
+                            <Trans
+                                i18nKey="memberProfile.subscribedDays"
+                                values={{ days: streak.days }}
+                                components={{ num: <span className="text-heading font-semibold text-primary" /> }}
+                            />
+                        </p>
+                    ) : streak.status === 'ready' ? (
+                        <p className="text-title text-muted">{t('memberProfile.startSubscription')}</p>
+                    ) : null}
+                </div>
+            </Modal>
+            {isOpen && viewerKind && (
                 <ProfileImageViewer images={images} initialKind={viewerKind} onClose={() => setViewerKind(null)} />
             )}
-        </Portal>
+        </>
     );
 };

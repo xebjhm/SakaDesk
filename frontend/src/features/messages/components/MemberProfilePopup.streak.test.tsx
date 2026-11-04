@@ -26,7 +26,8 @@ describe('MemberProfilePopup streak', () => {
     it('never fetches the streak itself', () => {
         const spy = vi.spyOn(globalThis, 'fetch');
         render(<MemberProfilePopup isOpen onClose={vi.fn()} memberName="A" />);
-        expect(spy).not.toHaveBeenCalled();
+        // The dialog's own breadcrumb goes to client-log; nothing else may be fetched.
+        expect(spy.mock.calls.filter(([url]) => String(url) !== '/api/client-log')).toEqual([]);
         spy.mockRestore();
     });
 });

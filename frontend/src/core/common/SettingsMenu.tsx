@@ -1,8 +1,8 @@
 // frontend/src/core/common/SettingsMenu.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { Settings, Bug, Info, Lightbulb } from 'lucide-react';
-import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
+import { IconButton, Menu, MenuItem, MenuSeparator } from '../../design/primitives';
 
 declare const __APP_VERSION__: string;
 
@@ -64,79 +64,39 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
 }) => {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-
-        if (isOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [isOpen]);
-
-    const handleMenuAction = (action: () => void) => {
-        setIsOpen(false);
-        action();
-    };
+    const triggerRef = useRef<HTMLButtonElement>(null);
+    const close = () => setIsOpen(false);
+    const run = (action: () => void) => { close(); action(); };
 
     return (
-        <div className="relative" ref={menuRef}>
-            {/* Settings Button */}
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="group w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
+        <div className="relative">
+            <IconButton
+                ref={triggerRef}
+                variant="secondary"
+                className="h-11 w-11"
+                aria-label={t('common.settings')}
                 title={t('common.settings')}
-            >
-                <div className={cn(
-                    "w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 transition-all duration-200 group-hover:bg-gray-300 group-hover:text-gray-700",
-                    isOpen && "bg-gray-300 text-gray-700"
-                )}>
-                    <Settings className="w-5 h-5" />
-                </div>
-            </button>
-
-            {/* Dropdown Menu - Opens to the right */}
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+                icon={<Settings className="h-5 w-5" />}
+                onClick={() => setIsOpen((o) => !o)}
+            />
             {isOpen && (
-                <div className="absolute left-full bottom-0 ml-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1.5 z-50">
-                    <button
-                        onClick={() => handleMenuAction(onOpenSettings)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
-                    >
-                        <Settings className="w-4 h-4 text-gray-500" />
-                        {t('common.settings')}
-                    </button>
-                    <button
-                        onClick={() => handleMenuAction(onReportIssue)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
-                    >
-                        <Bug className="w-4 h-4 text-gray-500" />
-                        {t('common.reportIssue')}
-                    </button>
-                    <button
-                        onClick={() => {
-                            setIsOpen(false);
-                            window.open(buildFeatureRequestUrl(), '_blank');
-                        }}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
-                    >
-                        <Lightbulb className="w-4 h-4 text-gray-500" />
+                <Menu
+                    aria-label={t('common.settings')}
+                    onClose={close}
+                    returnFocusRef={triggerRef}
+                    ignoreRefs={[triggerRef]}
+                    className="absolute bottom-0 left-full ml-2 w-48"
+                >
+                    <MenuItem icon={<Settings className="h-4 w-4" />} onClick={() => run(onOpenSettings)}>{t('common.settings')}</MenuItem>
+                    <MenuItem icon={<Bug className="h-4 w-4" />} onClick={() => run(onReportIssue)}>{t('common.reportIssue')}</MenuItem>
+                    <MenuItem icon={<Lightbulb className="h-4 w-4" />} onClick={() => run(() => window.open(buildFeatureRequestUrl(), '_blank'))}>
                         {t('common.featureRequest')}
-                    </button>
-                    <div className="h-px bg-gray-200 my-1" />
-                    <button
-                        onClick={() => handleMenuAction(onOpenAbout)}
-                        className="w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2.5 transition-colors"
-                    >
-                        <Info className="w-4 h-4 text-gray-500" />
-                        {t('common.about')}
-                    </button>
-                </div>
+                    </MenuItem>
+                    <MenuSeparator />
+                    <MenuItem icon={<Info className="h-4 w-4" />} onClick={() => run(onOpenAbout)}>{t('common.about')}</MenuItem>
+                </Menu>
             )}
         </div>
     );

@@ -9,7 +9,7 @@ import { AddServiceModal } from './AddServiceModal';
 import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
-import { IconButton } from '../../design/primitives';
+import { IconButton, Menu, MenuItem } from '../../design/primitives';
 
 export interface ServiceRailProps {
     services: string[];
@@ -203,18 +203,9 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
             {/* Context Menu for removing service */}
             {contextMenu && (
-                <div
-                    className="fixed bg-white rounded-lg shadow-xl py-1 z-50 min-w-[140px] border border-gray-200"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <button
-                        onClick={handleRemoveService}
-                        className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                        {t('common.removeService')}
-                    </button>
-                </div>
+                <Menu aria-label={t('common.removeService')} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 48 }}>
+                    <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
+                </Menu>
             )}
 
             {/* Bottom actions */}

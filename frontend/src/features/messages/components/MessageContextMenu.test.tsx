@@ -27,4 +27,11 @@ describe('MessageContextMenu', () => {
         fireEvent.mouseDown(document.body);
         expect(onClose).toHaveBeenCalledTimes(2);
     });
+
+    it('is a point menu; a favourite shows the strong filled star', () => {
+        render(<MessageContextMenu x={10} y={10} isFavorite onToggleFavorite={vi.fn()} onClose={vi.fn()} />);
+        const item = screen.getByRole('menuitem', { name: 'Remove from favorites' });
+        expect(item.querySelector('svg')).toHaveClass('fill-current');
+        expect(screen.getByRole('menu').parentElement).toBe(document.body);
+    });
 });

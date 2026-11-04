@@ -25,6 +25,12 @@ const FILES = [
     '../features/blogs/components/MemberSelectModal.tsx',
     '../features/blogs/components/MemberTimelineModal.tsx',
     '../features/blogs/components/BlogPhotoGalleryModal.tsx',
+    '../features/messages/components/ConversationMenu.tsx',
+    '../features/messages/components/MessageContextMenu.tsx',
+    '../features/messages/components/MemberContextMenu.tsx',
+    '../features/messages/components/MemberProfilePopup.tsx',
+    '../features/messages/components/ProfileImagePills.tsx',
+    'common/SettingsMenu.tsx',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;

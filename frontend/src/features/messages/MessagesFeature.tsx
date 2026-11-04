@@ -765,7 +765,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
-                            iconColor={isLightHeader ? theme.messages.headerTextColor : undefined}
                         />
                     )}
                 </header>
