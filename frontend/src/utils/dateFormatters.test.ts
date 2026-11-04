@@ -56,13 +56,13 @@ describe('formatDatePillLabel', () => {
 
     it('shows month, day and weekday without the year in the same year', () => {
         expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'ja', t)).toBe('11月2日(月)');
-        expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'zh-TW', t)).toBe('11月2日 週一');
+        expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'zh-TW', t)).toMatch(/^11月2日\s?週一$/); // ICU versions differ on the space before the weekday
         expect(formatDatePillLabel(new Date(2026, 10, 2), now, 'en', t)).toBe('Mon, November 2');
     });
 
     it('always shows the year for an earlier year', () => {
         expect(formatDatePillLabel(new Date(2025, 10, 2), now, 'ja', t)).toBe('2025年11月2日(日)');
-        expect(formatDatePillLabel(new Date(2025, 10, 2), now, 'zh-TW', t)).toBe('2025年11月2日 週日');
+        expect(formatDatePillLabel(new Date(2025, 10, 2), now, 'zh-TW', t)).toMatch(/^2025年11月2日\s?週日$/);
     });
 
     it('handles the year boundary', () => {
