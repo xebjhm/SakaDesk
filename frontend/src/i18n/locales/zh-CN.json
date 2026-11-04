@@ -39,7 +39,8 @@
     "featureRequest": "功能请求",
     "moreOptions": "更多选项",
     "removeService": "移除服务",
-    "on": "开"
+    "on": "开",
+    "unreadCount": "{{count}} 条未读"
   },
   "settings": {
     "title": "设置",
@@ -564,5 +565,9 @@
     "viewImages": "查看图片",
     "current": "目前",
     "versions": "{{count}} 个版本"
+  },
+  "date": {
+    "today": "今天",
+    "yesterday": "昨天"
   }
 }

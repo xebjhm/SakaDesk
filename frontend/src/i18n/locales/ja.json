@@ -39,7 +39,8 @@
     "featureRequest": "機能リクエスト",
     "moreOptions": "その他のオプション",
     "removeService": "サービスを削除",
-    "on": "ON"
+    "on": "ON",
+    "unreadCount": "未読 {{count}} 件"
   },
   "settings": {
     "title": "設定",
@@ -564,5 +565,9 @@
     "viewImages": "画像を見る",
     "current": "現在",
     "versions": "{{count}} 件"
+  },
+  "date": {
+    "today": "今日",
+    "yesterday": "昨日"
   }
 }

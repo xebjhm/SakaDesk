@@ -39,7 +39,8 @@
     "featureRequest": "Feature Request",
     "moreOptions": "More options",
     "removeService": "Remove Service",
-    "on": "ON"
+    "on": "ON",
+    "unreadCount": "{{count}} unread"
   },
   "settings": {
     "title": "Settings",
@@ -564,5 +565,9 @@
     "viewImages": "View images",
     "current": "Now",
     "versions": "{{count}} versions"
+  },
+  "date": {
+    "today": "Today",
+    "yesterday": "Yesterday"
   }
 }
