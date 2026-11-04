@@ -155,6 +155,10 @@ async function pinData(page: Page) {
       },
     }),
   )
+  // D2a: letters, account profile and streak are pinned so the shots do not depend on the machine.
+  await page.route('**/api/chat/letters_local*', (route) => route.fulfill({ json: { letters: [] } }))
+  await page.route('**/api/account/profile*', (route) => route.fulfill({ json: { name: null, avatars: [] } }))
+  await page.route('**/api/chat/streak/**', (route) => route.fulfill({ json: { days: 0, is_active: false } }))
 }
 
 test.describe('zero-pixel regression', () => {
@@ -175,6 +179,8 @@ test.describe('zero-pixel regression', () => {
     await page.goto('/')
     await page.getByText('Test Member').click()
     await expect(page.getByText('Hello! This is a test message.')).toBeVisible()
+    // The click leaves the pointer on the member cell (hover lift); park it away so the shot is stable.
+    await page.mouse.move(1000, 700)
     await page.waitForLoadState('networkidle')
     await expect(page).toHaveScreenshot('chat-member.png', { fullPage: true })
   })
@@ -183,6 +189,8 @@ test.describe('zero-pixel regression', () => {
     await page.goto('/')
     await page.getByText('Test Group Chat').click()
     await expect(page.getByText('Hello! This is a test message.')).toBeVisible()
+    // The click leaves the pointer on the member cell (hover lift); park it away so the shot is stable.
+    await page.mouse.move(1000, 700)
     await page.waitForLoadState('networkidle')
     await expect(page).toHaveScreenshot('chat-group.png', { fullPage: true })
   })

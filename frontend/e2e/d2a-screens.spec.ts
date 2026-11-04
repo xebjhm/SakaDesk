@@ -18,10 +18,10 @@ for (const service of SERVICES) {
     await pinBigRoom(page, { messages: { current: buildBigRoom() }, service, lastReadId: COUNT - 3 })
     await page.goto('/')
     await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
-    await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-home.png` })
+    await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-home.png`, animations: 'disabled' })
     await page.getByText('Big Room', { exact: true }).click()
     // The chat lands on the first unread row (COUNT - 2); the rows above it may be scrolled away.
     await expect(page.locator(`#msg-${COUNT - 2}`)).toBeVisible({ timeout: 10000 })
-    await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-chat.png` })
+    await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-chat.png`, animations: 'disabled' })
   })
 }
