@@ -25,15 +25,20 @@ A level sits on the level below it. Do not put a sheet on a card.
 
 ## Where group colour may appear
 
-Group colour comes from `groupTokens` and follows the active service
-automatically through CSS variables. A primitive never takes a group id.
+Group colour is used ONLY through the official layer (title gradient, title
+bar and text, canvas, unread shelters) and the roles in the Colour system
+table (`text-group-strong`, `bg-group-subtle`, `border-group-subtle`,
+`decoration-group`, `bg-group-accent`, `ring-group`, `shadow-group-glow`, ...).
+It is read via `groupTokens[id].official` or `groupRoles(id)` and follows the
+active service automatically through CSS variables. It is never hard-coded,
+and a primitive never takes a group id.
 
-1. **Title gradient:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`
-2. **Selection glow:** `Avatar selected` draws a white ring plus the group-colour
-   glow (`shadow-group-glow`); `ring-group` is the keyboard focus ring: `Pill`, `Button`, `IconButton` and `RailItem` use
-   `focus-visible:ring-2 focus-visible:ring-group`.
-3. **Bubble border:** `border-group-bubble`
-4. **Badge:** `Badge`, `bg-group-badge` (the action colour)
+- **Official layer:** `bg-group-title-bar`, `text-group-title`, `--ds-group-title-*`,
+  the canvas and the shelters.
+- **Roles:** the Colour system table; for example `Avatar selected` draws a white
+  ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
+  focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
+  (`focus-visible:ring-2 focus-visible:ring-group`).
 
 **Exception:** at most **one** `Button variant="primary"` per screen. It
 uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
@@ -121,7 +126,7 @@ are composed from these in the feature folder. They are not primitives.
 | Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
 | Use token classes (`rounded-card`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
 | Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
-| Keep group colour in the four places, plus one primary button | Colour any other element with the group colour |
+| Take group colour from the official layer and the Colour system roles (`groupTokens` / `groupRoles`) | Hard-code a group colour, or colour any other element with it |
 | Translate every visible string (`t('…')`) | Put text in primitives; callers pass translated labels |
 | Use role names for new tokens (`surface.x`) | Name tokens after hues (`lightBlue`) — dark mode will reuse the names |
 

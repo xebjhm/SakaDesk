@@ -6,8 +6,9 @@
  *   and pinned by tests: title gradient/bar/text, canvas, unread shelters and
  *   styles.
  * - System: `logo` plus a 10-step `scale` (OKLCH, logo colour snapped into its
- *   nearest step). Every other colour is a role from `roles.ts`, never a hex
- *   written here.
+ *   nearest step). Every other colour is a role from `roles.ts`. The only
+ *   other hex written here are the per-group `bubbleBorder` and `glow` values
+ *   listed in the D1.5 spec.
  * `legacyNeutral` holds today's per-group neutral tints, which D2 replaces
  * with shared neutrals.
  */
@@ -18,8 +19,8 @@ export const GROUP_IDS: readonly GroupId[] = ['hinatazaka', 'sakurazaka', 'nogiz
 /** Groups whose logos carry the shared Sakamichi purple. */
 export const SAKAMICHI_GROUPS: readonly GroupId[] = ['hinatazaka', 'sakurazaka', 'nogizaka'];
 
-/** The purple shared by every Sakamichi logo, and its tint used by the ambient orbs. */
-export const SAKAMICHI_PURPLE = { base: '#7f1083', 100: '#fce4fc' } as const;
+/** The tint of the Sakamichi purple used by the ambient orbs. */
+export const SAKAMICHI_PURPLE = { 100: '#fce4fc' } as const;
 
 export type ScaleStep = 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
 
@@ -48,7 +49,10 @@ export interface GroupTokens {
     /** The logo colour; it is also one step of `scale`. */
     logo: string;
     scale: Record<ScaleStep, string>;
-    /** Message bubble border: the logo colour, or step 600 when the logo is too dark. */
+    /**
+     * Message bubble border: the logo colour, or step 600 when the logo is too dark.
+     * The default group uses a neutral border (`#E5E7EB`).
+     */
     bubbleBorder: string;
     /** Selection glow: the logo colour at the group's alpha. */
     glow: string;

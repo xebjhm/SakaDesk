@@ -36,7 +36,7 @@ All three Sakamichi logos share the Sakamichi purple `#7F1083`.
 | 5 | Hinatazaka step 600 is `#389DD1` (white text 3.0:1). The user rejected `#0A88B0` as too far from sky blue, and preferred `#389DD1` to the logo colour with white text. |
 | 6 | Unused legacy fields are deleted. Off-logo colours (teal `#5dc2b5`, sunlight yellow `#fffacd`, grey-blue `#8B9DC3`, Sakurazaka voice purple `#d695ec`, …) are replaced by scale steps. |
 | 7 | Dark mode is still reserved, not built. |
-| 8 | Out of scope: the ~200 hard-coded *neutral* values in components (those are D2, watched by the guard). The 8 hard-coded *group* colours in 5 files are in scope. |
+| 8 | Out of scope: the ~200 hard-coded *neutral* values in components (those are D2, watched by the guard). The 6 hard-coded *group* colours (`#6da0d4`) in 5 files are in scope. |
 
 ## The model
 
@@ -156,7 +156,7 @@ Neutral fields that are still used stay unchanged in this step: `surface.backgro
 - **`config/serviceThemes.ts`** keeps its public shape minus the deleted fields. Every colour field reads `groupRoles` or `official`, so the 23 existing consumers change colour without code changes.
 - **Hard-coded group colours** are switched to the theme or tokens:
   - `features/messages/components/MessageBubble.tsx` (2)
-  - `core/media/VoicePlayer.tsx` (2)
+  - `core/media/VoicePlayer.tsx` (1)
   - `core/media/TranscriptPanel.tsx`
   - `core/media/TranscribeButton.tsx`
   - `core/common/TranslateButton.tsx`
