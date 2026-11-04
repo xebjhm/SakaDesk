@@ -58,12 +58,14 @@ uses `bg-group-accent` (the action colour, step 600), e.g. the call screen's
 current member's two penlight colours from member data (`getMemberPenlightHex`), never a
 literal. `memberWashStyle()` (`features/blogs/memberWash.ts`) sets `--ds-member-wash-1/2` on
 the wash element, and the `bg-member-wash` utility mixes them at `--ds-member-wash-alpha`
-(`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for the mascot or an unknown
-member). No other element uses member colours.
+(`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for the mascot or an
+unknown member). No other element uses member colours (until D2c: `MemberSelectModal`).
 
 The level-0 background (`Canvas`, `bg-group-canvas`) is the official sidebar
 gradient. Everything else is neutral: `bg-sheet/card/pill/elevated/sunken`,
-`bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`. Search matches inside text use the neutral mark tokens `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline` (`color.mark`).
+`bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`. Search
+matches inside text use the neutral mark tokens `bg-mark-exact`, `bg-mark-reading` and
+`border-mark-underline` (`color.mark`).
 Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
 `bg-black/NN`: the token carries its own alpha.
 
@@ -160,7 +162,8 @@ are composed from these in the feature folder. They are not primitives.
 1. Edit the right file in `frontend/src/design/tokens/`.
 2. Expose it in `frontend/src/design/cssVars.ts`, and in `tailwind.config.js`
    if it needs a utility (and in `utils/classnames.ts` if the utility uses a
-   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or `ease-` prefix).
+   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or
+   `ease-` prefix).
 3. Show it on `DesignPage.tsx`.
 4. Document it here.
 5. Changing a pre-D1 value changes pixels on existing screens. Update
