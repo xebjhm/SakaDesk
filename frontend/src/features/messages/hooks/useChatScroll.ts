@@ -57,16 +57,18 @@ export function useChatScroll(
 
   /**
    * Turn the last reported range into the top visible message id (needs THIS room's DOM).
-   * A range reported by another room is dropped: an old room's frame can fire after the new
-   * room has rendered but before the room-switch effect runs, and resolving it on the new
-   * timeline would save a new-room id under the old room's key.
+   * Between the new room's render and the passive room-switch effect, the rendered room
+   * (`latest`) and the room writes go to (`keyRef`) differ. A range is only resolved when it
+   * was reported for both: an old room's range resolved on the new timeline, or a new room's
+   * range resolved early (pagehide flush, a lagging frame), would otherwise save a new-room
+   * id under the old room's key.
    */
   const resolvePending = useCallback(() => {
     const pending = pendingRangeRef.current;
     pendingRangeRef.current = null;
     if (!pending) return;
     const { storageKey: currentKey, timeline: current, topVisibleIndex: resolve } = latest.current;
-    if (pending.key !== currentKey) return;
+    if (pending.key !== currentKey || pending.key !== keyRef.current) return;
     const { range } = pending;
     const id = current.messageIdNear(resolve ? resolve(range) : range.startIndex);
     if (id !== null) topIdRef.current = id;

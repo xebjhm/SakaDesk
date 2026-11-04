@@ -141,6 +141,31 @@ describe('useChatScroll', () => {
     expect(persisted.setConv).toHaveBeenCalledWith('sakadesk_scroll_room-1', { value: '102' })
   })
 
+  it.each([
+    ['a pagehide flush', () => { window.dispatchEvent(new Event('pagehide')) }],
+    ['a lagging frame', () => { vi.advanceTimersToNextFrame() }],
+  ])('a new-room range resolved by %s before the room-switch effect is not saved under the old key', (_name, resolve) => {
+    // After the new room commits, its list can report a range (stamped with the new key) and
+    // have it resolved before the passive room-switch effect has moved keyRef to the new key.
+    const { result, rerender } = renderHook(({ id, t }) => {
+      const r = useChatScroll(id, t)
+      useLayoutEffect(() => {
+        if (id !== 'room-2') return
+        r.handleRangeChanged({ startIndex: 2, endIndex: 2 })
+        resolve()
+      }, [id, r])
+      return r
+    }, { initialProps: { id: 'room-1', t: timelineOf([101, 102, 103]) } })
+    act(() => result.current.handleRangeChanged({ startIndex: 1, endIndex: 2 }))
+    act(() => { vi.advanceTimersToNextFrame() })
+    rerender({ id: 'room-2', t: timelineOf([201, 202, 203]) })
+    act(() => { vi.advanceTimersByTime(1000) })
+    const writes = [...vi.mocked(persisted.setConv).mock.calls, ...vi.mocked(persisted.setConvBeacon).mock.calls]
+    const room1 = writes.filter(([key]) => key === 'sakadesk_scroll_room-1').map(([, value]) => value)
+    expect(room1).not.toHaveLength(0)
+    expect(room1).toEqual(room1.map(() => ({ value: '102' })))
+  })
+
   it('saves on unmount instead of dropping a pending save', () => {
     const { result, unmount } = renderHook(() => useChatScroll('room-1', timelineOf([101, 102, 103])))
     act(() => result.current.handleRangeChanged({ startIndex: 1, endIndex: 2 }))
