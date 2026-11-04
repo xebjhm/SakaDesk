@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
@@ -21,7 +21,9 @@ const CONTENT = {
     images: [],
 };
 
+const realScrollIntoView = Element.prototype.scrollIntoView;
 beforeAll(async () => { await i18n.changeLanguage('en'); });
+afterAll(() => { Element.prototype.scrollIntoView = realScrollIntoView; });
 
 beforeEach(() => {
     vi.resetAllMocks(); // call counts and queued once-values do not leak between tests

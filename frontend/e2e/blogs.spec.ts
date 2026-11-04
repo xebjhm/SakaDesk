@@ -55,7 +55,7 @@ test('a click near the bottom of the timeline rail opens the oldest post', async
   await expect(page.getByText('#1', { exact: true })).toBeVisible()
   await page.mouse.click(x, y)
   await expect(postTitle(page, '春の日記 01 🌸')).toBeVisible()
-  await expect(rail.getByText('1/42')).toBeVisible()
+  await expect(rail.getByText('1/42', { exact: true })).toBeVisible()
 })
 
 test('back returns from the reader to the recent feed', async ({ page }) => {

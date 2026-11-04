@@ -37,10 +37,16 @@ for (const service of SERVICES) {
     await expect(page.getByRole('button', { name: /春の日記 41/ })).toBeVisible()
     await shot(page, `${service}-blogs-reader`)
 
-    const box = (await page.getByTestId('timeline-rail').boundingBox())!
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await expect(page.getByText(/^#\d+$/)).toBeVisible()
-    await page.waitForLoadState('networkidle')
+    const rail = page.getByTestId('timeline-rail')
+    const box = (await rail.boundingBox())!
+    // 30% down the usable track (30 px padding each end): index round(0.3 * 41) = 12 → post #30.
+    await page.mouse.move(box.x + box.width / 2, box.y + 30 + 0.3 * (box.height - 60))
+    await expect(page.getByText('#30', { exact: true })).toBeVisible()
+    // The dwell zoom (800 ms) widens the track from 2 px to 3 px; capture only once it applied.
+    const track = rail.locator(':scope > div').first()
+    await expect
+      .poll(() => track.evaluate((el) => getComputedStyle(el).width))
+      .toBe('3px')
     await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-blogs-rail.png`, animations: 'disabled' })
   })
 }
