@@ -9,6 +9,7 @@ import { clientLog } from '../utils/clientLog'
 import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
+import { isTimelineProbeView } from '../features/messages/timeline/probeRoute'
 import { applyStaticTokens } from '../design/applyTokens'
 
 // Design tokens must exist before the first paint of any entry point.
@@ -27,6 +28,11 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
             </React.StrictMode>,
         )
     }).catch(() => clientLog('app_load_failed', { error_type: 'design_page' }))
+} else if (import.meta.env.DEV && isTimelineProbeView(window.location.search)) {
+    // Dev-only GroupedVirtuoso probe (e2e/probe). Dropped from production builds like the design page.
+    import('../features/messages/timeline/TimelineProbe').then(({ TimelineProbe }) => {
+        root.render(<TimelineProbe />)
+    }).catch(() => clientLog('app_load_failed', { error_type: 'timeline_probe' }))
 } else if (isCallPopupView(window.location.search)) {
     // Loaded on demand so the popup never evaluates App's module graph (and the main window
     // never loads the popup's).
