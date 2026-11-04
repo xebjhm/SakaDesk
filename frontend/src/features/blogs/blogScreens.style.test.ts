@@ -14,6 +14,10 @@ const FILES = [
     'components/RecentPostsFeed.tsx',
     'components/BlogCard.tsx',
     '../../core/common/DynamicBackground.tsx',
+    'components/BlogReader.tsx',
+    'components/blogProse.ts',
+    'memberWash.ts',
+    'hooks/useInlineBlogTranslations.ts',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;
