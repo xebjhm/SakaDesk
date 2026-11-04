@@ -41,8 +41,11 @@ function setup(measures: Array<number | null>, opts: SetupOpts = {}) {
     const queue = [...measures];
     const measure = vi.fn((): number | null => {
         if (glide?.targetTop !== undefined) {
-            const d = glide.targetTop - glide.scroller.scrollTop;
-            return d > -50 && d < glide.scroller.clientHeight ? d : null;
+            const sc = glide.scroller;
+            const d = glide.targetTop - sc.scrollTop;
+            if (d <= -50 || d >= sc.clientHeight) return null;
+            // As landingError does: a row below its aligned spot is as close as it gets at the bottom.
+            return d > 0 && sc.scrollTop >= sc.scrollHeight - sc.clientHeight - 1 ? 0 : d;
         }
         return queue.length > 1 ? queue.shift()! : queue[0];
     });
@@ -488,14 +491,25 @@ describe('useTimelineJump glide', () => {
     });
 
     it('far jump at the bottom edge: the clamped lead-in is shorter, yet the jump still lands', async () => {
-        // Virtuoso clamps the offset scroll to the scroll range: only 100 px lie below the target.
-        const scroller = { scrollTop: 5000, scrollHeight: 20700, clientHeight: 600 };
+        // The target sits in the last screen: its aligned position lies 100 px past the
+        // scroll range, so Virtuoso clamps the lead-in and the glide covers only 380 px.
+        // Like a real element, the scroller clamps writes to its scroll range.
+        let top = 5000;
+        const scroller = {
+            scrollHeight: 20700, clientHeight: 600,
+            get scrollTop() { return top; },
+            set scrollTop(v: number) { top = Math.min(20700 - 600, Math.max(0, v)); },
+        };
         const maxTop = scroller.scrollHeight - scroller.clientHeight;
-        const s = setup([], { list: many, glide: { scroller, range: below, targetTop: maxTop } });
+        const targetTop = maxTop + 100;
+        const s = setup([], { list: many, glide: { scroller, range: below, targetTop } });
+        const leadIns: number[] = [];
         s.scrollToIndex.mockImplementation((loc: { offset?: number }) => {
-            scroller.scrollTop = Math.min(maxTop, maxTop + (loc.offset ?? 0));
+            scroller.scrollTop = Math.min(maxTop, targetTop + (loc.offset ?? 0));
+            leadIns.push(scroller.scrollTop);
         });
         await expect(s.jumpTo({ kind: 'message', id: 151 })).resolves.toBe('landed');
+        expect(leadIns[0]).toBe(maxTop - 380);
         expect(scroller.scrollTop).toBe(maxTop);
         expect(pathLogged()).toBe('far');
         expect(clientLog).toHaveBeenCalledTimes(1);
