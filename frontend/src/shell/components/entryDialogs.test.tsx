@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -148,15 +148,25 @@ describe('login in flight and breadcrumbs (D2d)', () => {
         settle();
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'skipped' }), { timeout: 4000 });
         expect(onSuccess).not.toHaveBeenCalled();
+        // A stale success is only a skip, never also an ok.
+        expect(clientLog).not.toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'ok' });
     });
 
     it('logs a successful login', async () => {
-        server.use(http.post('/api/auth/login', () => HttpResponse.json({})));
-        const onSuccess = vi.fn();
-        render(<LoginModal serviceId="hinatazaka46" {...props} onSuccess={onSuccess} />);
-        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
-        await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce(), { timeout: 4000 });
-        expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'ok' });
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            server.use(http.post('/api/auth/login', () => HttpResponse.json({})));
+            const onSuccess = vi.fn();
+            const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+            render(<LoginModal serviceId="hinatazaka46" {...props} onSuccess={onSuccess} />);
+            await user.click(screen.getByRole('button', { name: 'Connect Account' }));
+            await screen.findByRole('button', { name: 'Connecting...' });
+            await vi.advanceTimersByTimeAsync(1500);
+            await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+            expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'ok' });
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('logs the Yodel geo check as ok, failed and unreachable', async () => {
@@ -187,5 +197,78 @@ describe('login in flight and breadcrumbs (D2d)', () => {
         await userEvent.click(within(warning).getByRole('button', { name: 'Log in anyway' }));
         await waitFor(() => expect(logins).toBe(1));
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'error', reason: 'failed' });
+    });
+});
+
+describe('login lock across the Yodel geo check (D2d)', () => {
+    const props = { featureId: 'messages' as const, onClose: vi.fn(), onSuccess: vi.fn(), isFreshPrompt: true };
+
+    /** A geo check that stays pending until `settle` is called; counts geo and login calls. */
+    function pendingGeo(blocked = false) {
+        let settle!: () => void;
+        const gate = new Promise<void>((resolve) => { settle = resolve; });
+        const calls = { geo: 0, login: [] as string[] };
+        server.use(
+            http.get('/api/auth/geo-availability', async () => { calls.geo += 1; await gate; return HttpResponse.json({ blocked }); }),
+            http.post('/api/auth/login', ({ request }) => {
+                calls.login.push(new URL(request.url).searchParams.get('service') ?? '');
+                return new HttpResponse(null, { status: 500 });
+            }),
+        );
+        return { settle, calls };
+    }
+
+    it('a double click during a pending geo check logs in once', async () => {
+        const { settle, calls } = pendingGeo();
+        render(<LoginModal serviceId="yodel" {...props} />);
+        const connect = screen.getByRole('button', { name: 'Connect Account' });
+        await userEvent.click(connect);
+        await userEvent.click(connect);
+        expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
+        settle();
+        await screen.findByRole('alert');
+        expect(calls.geo).toBe(1);
+        expect(calls.login).toEqual(['yodel']);
+    });
+
+    it('does not log in when the service changed during the geo check', async () => {
+        const { settle, calls } = pendingGeo();
+        const { rerender } = render(<LoginModal serviceId="yodel" {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
+        rerender(<LoginModal serviceId="hinatazaka46" {...props} />);
+        settle();
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'skipped' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
+        expect(calls.login).toEqual([]);
+    });
+
+    it('releases the lock when the geo warning shows', async () => {
+        const { settle } = pendingGeo(true);
+        render(<LoginModal serviceId="yodel" {...props} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
+        settle();
+        const warning = await screen.findByRole('dialog', { name: 'Yodel is available in Japan only' });
+        await userEvent.click(within(warning).getByRole('button', { name: 'Close' }));
+        expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled();
+    });
+});
+
+describe('login holds its lock until onSuccess settles (D2d)', () => {
+    beforeEach(() => { vi.useFakeTimers({ shouldAdvanceTime: true }); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('keeps Connect locked while onSuccess is pending', async () => {
+        server.use(http.post('/api/auth/login', () => HttpResponse.json({})));
+        let finish!: () => void;
+        const onSuccess = vi.fn(() => new Promise<void>((resolve) => { finish = resolve; }));
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        render(<LoginModal serviceId="hinatazaka46" featureId="messages" onClose={vi.fn()} onSuccess={onSuccess} isFreshPrompt />);
+        await user.click(screen.getByRole('button', { name: 'Connect Account' }));
+        await screen.findByRole('button', { name: 'Connecting...' });
+        await vi.advanceTimersByTimeAsync(1500);
+        await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+        expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
+        finish();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
     });
 });

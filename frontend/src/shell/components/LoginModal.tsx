@@ -16,7 +16,8 @@ interface LoginModalProps {
     serviceId: string;
     featureId: FeatureId;
     onClose: () => void;
-    onSuccess: () => void;
+    /** Awaited: the login stays locked until a returned promise settles. */
+    onSuccess: () => void | Promise<void>;
     isDisconnected?: boolean;  // true if session expired (vs never connected)
     isFreshPrompt?: boolean;   // true for gentle "connect your account?" prompt after adding service
 }
@@ -58,50 +59,71 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const groupId = serviceIdToGroupId(serviceId);
     const isLight = groupTokens[groupId].official.headerStyle === 'light';
 
-    const doLogin = async () => {
-        const loginService = serviceId;
+    // One login at a time (single-session token): set synchronously on the first click, before the
+    // Yodel geo check, so a second click during that check cannot start a second login.
+    const busyRef = useRef(false);
+
+    /** Takes the login lock; false when a login (or its geo check) is already in flight. */
+    const lock = (): boolean => {
+        if (busyRef.current) return false;
+        busyRef.current = true;
         setIsLoading(true);
+        return true;
+    };
+
+    const unlock = () => {
+        busyRef.current = false;
+        setIsLoading(false);
+    };
+
+    /** Logs in for `loginService`; the caller holds the lock, which this releases when done. */
+    const doLogin = async (loginService: string) => {
         setError(null);
         try {
             const res = await fetch(
-                `/api/auth/login?service=${encodeURIComponent(serviceId)}`,
+                `/api/auth/login?service=${encodeURIComponent(loginService)}`,
                 { method: 'POST' }
             );
             if (!res.ok) throw new Error(t('login.loginFailed'));
 
             // Initialize service settings entry
             await fetch(
-                `/api/settings/service/${encodeURIComponent(serviceId)}/init`,
+                `/api/settings/service/${encodeURIComponent(loginService)}/init`,
                 { method: 'POST' }
             );
 
             // Brief delay before advancing to prevent concurrent browser launches
             await new Promise(resolve => setTimeout(resolve, 1500));
-            logDialogLoad('login', 'ok');
-            if (currentServiceRef.current === loginService) onSuccess();
-            else logDialogLoad('login', 'skipped');
+            if (currentServiceRef.current === loginService) {
+                logDialogLoad('login', 'ok');
+                // Hold the lock until the caller has moved on (e.g. App's auth check has advanced).
+                await onSuccess();
+            } else {
+                logDialogLoad('login', 'skipped');
+            }
         } catch (err: unknown) {
             logDialogLoad('login', 'error', undefined, 'failed');
             if (currentServiceRef.current === loginService) {
                 setError(err instanceof Error ? err.message : t('login.loginFailed'));
             }
         } finally {
-            setIsLoading(false);
+            unlock();
         }
     };
 
     const handleLogin = async () => {
+        if (!lock()) return;
+        const loginService = serviceId;
         // Yodel's web service is Japan-only. Warn before a login attempt from
         // another region, since the login/data servers reject non-JP connections.
-        if (serviceId === 'yodel') {
+        if (loginService === 'yodel') {
+            let blocked = false;
             try {
                 const res = await fetch('/api/auth/geo-availability?service=yodel', { cache: 'no-store' });
                 if (!res.ok) {
                     logDialogLoad('login_geo', 'error', undefined, 'failed');
                 } else if ((await res.json()).blocked) {
-                    logDialogLoad('login_geo', 'skipped', undefined, 'blocked');
-                    setShowGeoWarning(true);
-                    return;
+                    blocked = true;
                 } else {
                     logDialogLoad('login_geo', 'ok');
                 }
@@ -109,8 +131,27 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 // Check failed (offline, etc.) — don't block the user; let login proceed.
                 logDialogLoad('login_geo', 'error', undefined, 'unreachable');
             }
+            // The dialog moved to another service while the check was pending: never log in
+            // (or warn) for the old one.
+            if (currentServiceRef.current !== loginService) {
+                logDialogLoad('login', 'skipped');
+                unlock();
+                return;
+            }
+            if (blocked) {
+                logDialogLoad('login_geo', 'skipped', undefined, 'blocked');
+                setShowGeoWarning(true);
+                unlock();
+                return;
+            }
         }
-        await doLogin();
+        await doLogin(loginService);
+    };
+
+    const confirmGeoWarning = () => {
+        setShowGeoWarning(false);
+        if (!lock()) return;
+        void doLogin(serviceId);
     };
 
     const title = isFreshPrompt
@@ -197,7 +238,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 confirmLabel={t('login.loginAnyway')}
                 cancelLabel={t('common.close')}
                 variant="warning"
-                onConfirm={() => { setShowGeoWarning(false); doLogin(); }}
+                onConfirm={confirmGeoWarning}
                 onCancel={() => { logDialogLoad('login', 'cancelled'); setShowGeoWarning(false); }}
             />
         </>

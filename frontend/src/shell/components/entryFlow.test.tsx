@@ -122,15 +122,24 @@ describe('login dialog', () => {
     });
 
     it('signs in: logs in, initialises the service settings, then reports success', async () => {
-        const calls = pinLogin();
-        const onSuccess = vi.fn();
-        render(<LoginModal serviceId="hinatazaka46" featureId="messages" onClose={vi.fn()} onSuccess={onSuccess} isFreshPrompt />);
-        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
-        expect(await screen.findByText('Connecting...')).toBeInTheDocument();
-        await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce(), { timeout: 3000 });
-        expect(calls.login).toEqual(['hinatazaka46']);
-        expect(calls.init).toEqual(['hinatazaka46']);
-        expect(calls.geo).toBe(0);
+        // Fake timers skip the dialog's 1.5 s settle delay instead of waiting for it.
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            const calls = pinLogin();
+            const onSuccess = vi.fn();
+            const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+            render(<LoginModal serviceId="hinatazaka46" featureId="messages" onClose={vi.fn()} onSuccess={onSuccess} isFreshPrompt />);
+            await user.click(screen.getByRole('button', { name: 'Connect Account' }));
+            expect(await screen.findByText('Connecting...')).toBeInTheDocument();
+            await waitFor(() => expect(calls.init).toEqual(['hinatazaka46']));
+            expect(onSuccess).not.toHaveBeenCalled();
+            await vi.advanceTimersByTimeAsync(1500);
+            await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
+            expect(calls.login).toEqual(['hinatazaka46']);
+            expect(calls.geo).toBe(0);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('a failed login shows the error, never succeeds and re-enables both buttons', async () => {
