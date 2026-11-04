@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Incoming calls while SakaDesk is in the background.** When a member sends
+  a voice message while the app is hidden, minimised or behind other windows,
+  a small call window rings at the bottom right of the screen; answer to play
+  it there, or miss it and get a missed-call notification instead. It stays
+  out of the way during fullscreen apps, presentations and Focus Assist, and
+  you can turn it off in Settings.
 - **SakaDesk keeps running in the system tray.** Closing the window now hides
   it to the tray and keeps syncing in the background, so notifications still
   arrive; use the tray icon to open the app, sync now, or quit. You can also

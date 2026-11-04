@@ -16,6 +16,7 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 - **Unread message management** with read state persistence
 - **Virtual scrolling** for efficient display of 10k+ messages
 - **Voice message playback** for audio content
+- **Incoming calls** — an unheard voice message rings like a phone call in the chat, or in a small bottom-right window while the app is in the background
 - **Favorites and sent letters** management
 - **Calendar navigation** for browsing messages by date
 - **Notifications** panel for service alerts
@@ -139,6 +140,7 @@ SakaDesk/
 │   ├── api/                 # API route handlers
 │   │   ├── auth.py          # Authentication endpoints
 │   │   ├── blogs.py         # Blog browsing/backup
+│   │   ├── call_popup.py    # Background call popup API
 │   │   ├── chat_features.py # Letters, calendar, etc.
 │   │   ├── content.py       # Message/group content
 │   │   ├── diagnostics.py   # Debug utilities
@@ -156,9 +158,11 @@ SakaDesk/
 │       ├── adaptive_sync.py # Adaptive sync scheduling
 │       ├── auth_service.py  # Authentication logic
 │       ├── blog_service.py  # Blog backup engine
+│       ├── call_popup.py    # Call popup decisions and controller
 │       ├── notification_service.py # Native Windows toast delivery
 │       ├── path_resolver.py # Data path resolution
 │       ├── platform.py      # Cross-platform utilities
+│       ├── quiet_state.py   # Fullscreen / Focus Assist detection
 │       ├── search_service.py # Search index & query
 │       ├── service_utils.py # Shared service helpers
 │       ├── settings_store.py # Persistent settings
@@ -185,6 +189,7 @@ SakaDesk/
 ├── scripts/                 # Development/CI scripts
 │   ├── verify_build.py      # Build verification
 │   └── build_windows.bat    # Windows build script
+├── call_popup_window.py     # Bottom-right call popup window (Windows)
 ├── desktop.py               # Desktop app entry point
 └── pyproject.toml           # Python project configuration
 ```
