@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { AlertCircle, Loader2 } from 'lucide-react'
-import { Button } from '../design/primitives'
+import { AlertCircle, Loader2, X } from 'lucide-react'
+import { Button, IconButton } from '../design/primitives'
 import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
@@ -55,7 +55,8 @@ function App() {
         setAppSettings,
         outputDirInput,
         setOutputDirInput,
-        settingsError,
+        settingsErrorKey,
+        clearSettingsError,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,
@@ -383,7 +384,7 @@ function App() {
                 />
 
                 {/* ERROR TOAST: a status card on the toast layer, so it shows over an open Settings dialog. */}
-                {settingsError && (
+                {settingsErrorKey && (
                     <div
                         data-testid="settings-error-toast"
                         role="alert"
@@ -393,11 +394,18 @@ function App() {
                         <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-status-danger" />
                         <div className="min-w-0 flex-1">
                             <p className="text-small font-semibold text-primary">{t('common.error')}</p>
-                            <p className="text-caption text-secondary">{settingsError}</p>
+                            <p className="text-caption text-secondary">{t(settingsErrorKey)}</p>
                         </div>
                         <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics(true)}>
                             {t('common.debug')}
                         </Button>
+                        <IconButton
+                            size="sm"
+                            variant="ghost"
+                            aria-label={t('common.close')}
+                            icon={<X />}
+                            onClick={clearSettingsError}
+                        />
                     </div>
                 )}
 
