@@ -91,6 +91,9 @@ export const Menu: React.FC<MenuProps> = ({
     }, [point]);
 
     const onKeyDown = (e: React.KeyboardEvent) => {
+        // The menu is portaled, but React events bubble through the component tree: keep the keys
+        // it handles away from a dialog around its trigger (viewer ← / → / ↑ / ↓).
+        if (['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'Escape', 'Tab', 'Enter', ' '].includes(e.key)) e.stopPropagation();
         if (e.key === 'Tab') { e.preventDefault(); onCloseRef.current(); return; } // focus goes back to the trigger; the next Tab moves on from there
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
         e.preventDefault();

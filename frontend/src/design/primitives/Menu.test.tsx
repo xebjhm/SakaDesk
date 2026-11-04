@@ -225,3 +225,23 @@ describe('Menu inside a Modal', () => {
         expect(screen.getByRole('dialog')).not.toHaveFocus();
     });
 });
+
+describe('Menu key propagation', () => {
+    it('keeps arrow keys from bubbling to an ancestor in the component tree', () => {
+        const outer = vi.fn();
+        render(
+            <div onKeyDown={outer}>
+                <Menu aria-label="m" onClose={vi.fn()}>
+                    <MenuItem>One</MenuItem>
+                    <MenuItem>Two</MenuItem>
+                </Menu>
+            </div>,
+        );
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowRight' });
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' });
+        fireEvent.keyDown(screen.getByRole('menuitem', { name: 'One' }), { key: 'Enter' });
+        expect(outer).not.toHaveBeenCalled();
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'a' });
+        expect(outer).toHaveBeenCalledTimes(1);
+    });
+});

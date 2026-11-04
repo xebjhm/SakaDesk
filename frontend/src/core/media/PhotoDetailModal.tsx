@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
@@ -61,6 +61,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
 
     const [zoom, setZoom] = useState(1);
+    const stageRef = useRef<HTMLDivElement>(null);
 
     const item = mediaItems[currentIndex];
 
@@ -74,6 +75,13 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     // state is owned by the player components themselves via messageId.)
     useEffect(() => {
         setZoom(1);
+    }, [currentIndex]);
+
+    // Navigating can unmount the focused control (Download, a play button), which drops focus to
+    // the body and silences ← / →: put it back on the dialog frame.
+    useEffect(() => {
+        const frame = stageRef.current?.closest<HTMLElement>('[role="dialog"]');
+        if (frame && !frame.contains(document.activeElement)) frame.focus({ preventScroll: true });
     }, [currentIndex]);
 
     const handleDownload = useCallback(() => {
@@ -123,7 +131,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
             {headerSlot && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2">{headerSlot}</div>}
 
-            <div className="relative flex max-h-[90vh] max-w-[90vw] items-center justify-center">
+            <div ref={stageRef} className="relative flex max-h-[90vh] max-w-[90vw] items-center justify-center">
                 {item.type === 'picture' && <PhotoPlayer variant="fullscreen" src={item.src} alt={t('common.mediaViewer')} zoom={zoom} />}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">

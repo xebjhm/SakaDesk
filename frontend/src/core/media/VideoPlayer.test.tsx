@@ -46,3 +46,27 @@ describe('VideoPlayer menu Escape', () => {
         expect(screen.getByText('Loop')).toBeInTheDocument();
     });
 });
+
+describe('VideoPlayer shortcuts', () => {
+    beforeEach(() => {
+        window.HTMLMediaElement.prototype.play = (() => Promise.resolve()) as never;
+        window.HTMLMediaElement.prototype.pause = (() => undefined) as never;
+        window.HTMLMediaElement.prototype.load = (() => undefined) as never;
+    });
+
+    it('does not run player shortcuts for keys pressed inside its menu', () => {
+        const { container } = render(<VideoPlayer src="/api/media/v.mp4" viewerMode />);
+        openMenu(container);
+        const item = screen.getByRole('menuitemradio', { name: '1x' });
+        const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+        act(() => { item.dispatchEvent(ev); });
+        expect(ev.defaultPrevented).toBe(false);
+    });
+
+    it('still runs the shortcut outside the menu', () => {
+        render(<VideoPlayer src="/api/media/v.mp4" viewerMode />);
+        const ev = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+        act(() => { document.body.dispatchEvent(ev); });
+        expect(ev.defaultPrevented).toBe(true);
+    });
+});

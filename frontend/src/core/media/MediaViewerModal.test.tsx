@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { MediaViewerModal, type MediaViewerItem } from './PhotoDetailModal';
+import { useAppStore } from '../../store/appStore';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -39,5 +40,27 @@ describe('MediaViewerModal', () => {
         render(<MediaViewerModal mediaItems={items} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
         await userEvent.click(screen.getByRole('button', { name: '春の日記 🌸' }));
         expect(items[0].onSourceJump).toHaveBeenCalled();
+    });
+
+    it('keeps ← / → working after navigating away from the focused Download button', async () => {
+        useAppStore.setState({ goldenFingerActive: true });
+        try {
+            const pics: MediaViewerItem[] = [
+                { src: '/a.jpg', type: 'picture', timestamp: '2026-11-01T00:00:00Z' },
+                { src: '/b.mp3', type: 'voice', timestamp: '2026-11-02T00:00:00Z' },
+                { src: '/c.jpg', type: 'picture', timestamp: '2026-11-03T00:00:00Z' },
+            ];
+            const onNavigate = vi.fn();
+            const { rerender } = render(<MediaViewerModal mediaItems={pics} currentIndex={0} onClose={vi.fn()} onNavigate={onNavigate} />);
+            screen.getByRole('button', { name: 'Download' }).focus();
+            await userEvent.keyboard('{ArrowRight}');
+            expect(onNavigate).toHaveBeenLastCalledWith(1);
+            rerender(<MediaViewerModal mediaItems={pics} currentIndex={1} onClose={vi.fn()} onNavigate={onNavigate} />);
+            expect(screen.queryByRole('button', { name: 'Download' })).toBeNull();
+            await userEvent.keyboard('{ArrowRight}');
+            expect(onNavigate).toHaveBeenLastCalledWith(2);
+        } finally {
+            useAppStore.setState({ goldenFingerActive: false });
+        }
     });
 });

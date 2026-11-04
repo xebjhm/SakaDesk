@@ -293,6 +293,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     // Keyboard shortcuts - must be after handler definitions
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // A menu, field or already-handled key is not a player shortcut.
+            if (e.defaultPrevented) return;
+            const el = e.target instanceof HTMLElement ? e.target : null;
+            if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
             // In viewer mode: listen globally (no focus check), skip Left/Right (reserved for modal nav)
             // In normal mode: only when container is focused
             if (!viewerMode) {
@@ -587,29 +591,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                 {/* Menu portal */}
                 {showMenu && createPortal(
-                <Menu
-                    aria-label={t('common.moreOptions')}
-                    onClose={() => setShowMenu(false)}
-                    layer="popover"
-                    style={menuStyle}
-                    ignoreRefs={[menuButtonRef]}
-                    returnFocusRef={menuButtonRef}
-                    className="w-max whitespace-nowrap"
-                >
-                    {goldenFingerActive && (
-                        <>
-                            <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
-                            <MenuSeparator />
-                        </>
-                    )}
-                    <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
-                    {[0.5, 1, 1.5, 2].map((rate) => (
-                        <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
-                            {rate}x
-                        </MenuItem>
-                    ))}
-                </Menu>,
-                document.body,
+                    <Menu
+                        aria-label={t('common.moreOptions')}
+                        onClose={() => setShowMenu(false)}
+                        layer="popover"
+                        style={menuStyle}
+                        ignoreRefs={[menuButtonRef]}
+                        returnFocusRef={menuButtonRef}
+                        className="w-max whitespace-nowrap"
+                    >
+                        {goldenFingerActive && (
+                            <>
+                                <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                                <MenuSeparator />
+                            </>
+                        )}
+                        <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                        {[0.5, 1, 1.5, 2].map((rate) => (
+                            <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
+                                {rate}x
+                            </MenuItem>
+                        ))}
+                    </Menu>,
+                    document.body,
                 )}
             </div>
         );
@@ -772,29 +776,29 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
             {/* Menu portal */}
             {showMenu && createPortal(
-            <Menu
-                aria-label={t('common.moreOptions')}
-                onClose={() => setShowMenu(false)}
-                layer="popover"
-                style={menuStyle}
-                ignoreRefs={[menuButtonRef]}
-                returnFocusRef={menuButtonRef}
-                className="w-max whitespace-nowrap"
-            >
-                {goldenFingerActive && (
-                    <>
-                        <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
-                        <MenuSeparator />
-                    </>
-                )}
-                <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
-                {[0.5, 1, 1.5, 2].map((rate) => (
-                    <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
-                        {rate}x
-                    </MenuItem>
-                ))}
-            </Menu>,
-            document.body,
+                <Menu
+                    aria-label={t('common.moreOptions')}
+                    onClose={() => setShowMenu(false)}
+                    layer="popover"
+                    style={menuStyle}
+                    ignoreRefs={[menuButtonRef]}
+                    returnFocusRef={menuButtonRef}
+                    className="w-max whitespace-nowrap"
+                >
+                    {goldenFingerActive && (
+                        <>
+                            <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                            <MenuSeparator />
+                        </>
+                    )}
+                    <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                    {[0.5, 1, 1.5, 2].map((rate) => (
+                        <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
+                            {rate}x
+                        </MenuItem>
+                    ))}
+                </Menu>,
+                document.body,
             )}
         </div>
     );

@@ -320,6 +320,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (!effectiveViewerMode) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            // A menu, field or already-handled key is not a player shortcut.
+            if (e.defaultPrevented) return;
+            const el = e.target instanceof HTMLElement ? e.target : null;
+            if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
             switch (e.key) {
                 case ' ':
                     e.preventDefault();
