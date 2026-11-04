@@ -106,6 +106,7 @@ export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocus
                 return;
             }
             if (e.key !== 'Tab' || e.defaultPrevented) return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return; // not focus navigation (Ctrl+Tab, Alt+Tab)
             const frame = frameRef.current;
             if (!frame) return;
             const active = document.activeElement;

@@ -1,4 +1,4 @@
-import { topDialog, type DialogEntry } from './dialogStack';
+import { isLayerFrame, topDialog, type DialogEntry } from './dialogStack';
 
 /** A dialog that closed in the current commit, with the frame it had (refs are cleared on unmount). */
 interface Closed {
@@ -24,6 +24,14 @@ function resolve(target: HTMLElement | null, closed: Closed[]): HTMLElement | nu
     return current;
 }
 
+/** True when `el` sits inside the frame of a dialog on the layer. */
+function inLayerFrame(el: Element): boolean {
+    for (let node: Element | null = el; node; node = node.parentElement) {
+        if (isLayerFrame(node)) return true;
+    }
+    return false;
+}
+
 /** True when focus was lost (its element was removed with a dialog) rather than moved by the app. */
 function focusIsLost(): boolean {
     const active = document.activeElement;
@@ -42,6 +50,8 @@ function flush(): void {
         if (!frame) return;
         const active = document.activeElement;
         if (active && frame.contains(active)) return;
+        // A portaled menu (the player menus) belongs to the top-most dialog: the only one in use.
+        if (active?.closest('[role="menu"]') && !inLayerFrame(active)) return;
         for (const c of closed) {
             const target = resolve(c.entry.restoreTo, closed);
             if (target?.isConnected && frame.contains(target)) {

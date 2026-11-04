@@ -929,4 +929,49 @@ describe('Modal: focus restore and trap (fix wave 2)', () => {
         ]);
         warn.mockRestore();
     });
+
+    it('the first Tab goes to the first element in DOM order (input before button)', async () => {
+        render(<Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare"><input aria-label="名前" /><button>送信</button></Modal>);
+        await userEvent.tab();
+        expect(screen.getByRole('textbox', { name: '名前' })).toHaveFocus();
+    });
+
+    it('the first Tab goes to the first element in DOM order (radio group before button)', async () => {
+        render(
+            <Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare">
+                <input type="radio" name="kind" aria-label="写真" /><input type="radio" name="kind" aria-label="動画" /><button>次へ</button>
+            </Modal>,
+        );
+        await userEvent.tab();
+        expect(screen.getByRole('radio', { name: '写真' })).toHaveFocus();
+    });
+
+    it('leaves Tab with Ctrl, Alt or Meta alone', () => {
+        render(<Modal isOpen onClose={vi.fn()} aria-label="d" layout="bare"><button>一</button><button>二</button></Modal>);
+        const last = screen.getByRole('button', { name: '二' });
+        act(() => last.focus());
+        for (const mod of ['ctrlKey', 'altKey', 'metaKey'] as const) {
+            const e = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true, [mod]: true });
+            act(() => { last.dispatchEvent(e); });
+            expect(e.defaultPrevented).toBe(false);
+            expect(last).toHaveFocus();
+        }
+    });
+
+    it('a lower dialog closing leaves focus in a portaled menu of the top-most dialog', async () => {
+        const Harness = ({ lower }: { lower: boolean }) => (
+            <>
+                <Modal isOpen={lower} onClose={vi.fn()} title="下"><button>下のボタン</button></Modal>
+                <Modal isOpen onClose={vi.fn()} title="上">x</Modal>
+                <div role="menu"><button role="menuitem">速度</button></div>
+            </>
+        );
+        const { rerender } = render(<Harness lower />);
+        const item = screen.getByRole('menuitem', { name: '速度', hidden: true });
+        act(() => item.focus());
+        expect(item).toHaveFocus();
+        rerender(<Harness lower={false} />);
+        await flush();
+        expect(item).toHaveFocus();
+    });
 });

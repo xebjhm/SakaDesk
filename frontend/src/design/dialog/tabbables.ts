@@ -31,6 +31,11 @@ function isHidden(el: HTMLElement, root: HTMLElement): boolean {
     return false;
 }
 
+function byDocumentOrder(a: Node, b: Node): number {
+    if (a === b) return 0;
+    return a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+}
+
 /**
  * The elements Tab visits inside `root`, in the browser's order: positive `tabindex` first (by
  * value), then the rest in DOM order. Leaves out `tabindex="-1"` on any element, disabled
@@ -39,7 +44,8 @@ function isHidden(el: HTMLElement, root: HTMLElement): boolean {
  */
 export function tabbables(root: HTMLElement): HTMLElement[] {
     const seenGroups = new Set<string>();
-    const found = Array.from(root.querySelectorAll<HTMLElement>(CANDIDATES)).filter((el) => {
+    // Sorted by document position: jsdom does not return a selector list in document order.
+    const found = Array.from(root.querySelectorAll<HTMLElement>(CANDIDATES)).sort(byDocumentOrder).filter((el) => {
         if (tabIndexOf(el) < 0) return false;
         if (el.matches(':disabled')) return false;
         if (isHidden(el, root)) return false;

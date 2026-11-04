@@ -44,4 +44,19 @@ describe('tabbables', () => {
         frame.innerHTML = `<button data-n="x"></button><button tabindex="2" data-n="two"></button><button tabindex="1" data-n="one"></button><button data-n="y"></button>`;
         expect(names()).toEqual(['one', 'two', 'x', 'y']);
     });
+
+    it('keeps DOM order: an input before a button, with a summary in the selector', () => {
+        frame.innerHTML = `<input data-n="i"><button data-n="b"></button><details><summary data-n="sum"></summary></details><textarea data-n="t"></textarea>`;
+        expect(names()).toEqual(['i', 'b', 'sum', 't']);
+    });
+
+    it('keeps DOM order: a radio group before a button', () => {
+        frame.innerHTML = `<input type="radio" name="g" data-n="r1"><input type="radio" name="g" data-n="r2"><button data-n="b"></button><a href="#" data-n="a"></a>`;
+        expect(names()).toEqual(['r1', 'b', 'a']);
+    });
+
+    it('keeps DOM order across nesting and mixed kinds', () => {
+        frame.innerHTML = `<div><select data-n="s"></select><span><button data-n="b"></button></span></div><a href="#" data-n="a"></a><div tabindex="0" data-n="d"><input data-n="i"></div>`;
+        expect(names()).toEqual(['s', 'b', 'a', 'd', 'i']);
+    });
 });
