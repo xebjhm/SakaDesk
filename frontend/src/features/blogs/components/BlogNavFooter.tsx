@@ -6,12 +6,15 @@ import type { BlogMeta } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { useTranslation } from '../../../i18n';
+import { ignoresPostKeys } from './arrowKeys';
 
 interface BlogNavFooterProps {
     prevBlog: BlogMeta | null;
     nextBlog: BlogMeta | null;
     onPrev: () => void;
     onNext: () => void;
+    /** False while a dialog or the photo viewer is open: ← / → then leave the post alone. */
+    keysEnabled?: boolean;
 }
 
 const SIDE = cn(
@@ -24,33 +27,19 @@ const CHEVRON = 'h-4 w-4 shrink-0 text-muted transition-colors duration-fast eas
 const truncateTitle = (title: string, maxLen: number = 18) =>
     title.length <= maxLen ? title : title.slice(0, maxLen) + '...';
 
-/** Where ← / → belong to something else: typing, a dialog, or a control that already handled them. */
-const NOT_POST_KEYS =
-    'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], dialog, [aria-modal="true"]';
-
-/**
- * True when an arrow key must not change the post: the event was already handled (the photo
- * viewer calls preventDefault on its arrows) or it comes from a text field, a content-editable
- * element or anything inside a dialog.
- */
-// eslint-disable-next-line react-refresh/only-export-components -- exported for tests; HMR reload of this file is harmless
-export function ignoresPostKeys(e: KeyboardEvent): boolean {
-    if (e.defaultPrevented) return true;
-    return e.target instanceof Element && e.target.closest(NOT_POST_KEYS) !== null;
-}
-
 export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
     prevBlog,
     nextBlog,
     onPrev,
     onNext,
+    keysEnabled = true,
 }) => {
     const { t, i18n } = useTranslation();
 
     // Keyboard navigation (window-wide, except where the keys belong to something else)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (ignoresPostKeys(e)) return;
+            if (!keysEnabled || ignoresPostKeys(e)) return;
             if (e.key === 'ArrowLeft' && prevBlog) {
                 onPrev();
             } else if (e.key === 'ArrowRight' && nextBlog) {
@@ -60,7 +49,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [prevBlog, nextBlog, onPrev, onNext]);
+    }, [prevBlog, nextBlog, onPrev, onNext, keysEnabled]);
 
     // Don't render if no navigation available
     if (!prevBlog && !nextBlog) return null;

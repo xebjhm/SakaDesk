@@ -25,7 +25,7 @@ export const BlogStatus: React.FC<BlogStatusProps> = ({ kind, title, hint, icon,
         className={cn('flex flex-col items-center justify-center gap-4 px-6 text-center', fill ? 'h-full min-h-96' : 'h-72')}
     >
         {kind === 'loading' ? (
-            <Loader2 aria-hidden="true" className={cn('animate-spin text-muted', fill ? 'h-10 w-10' : 'h-8 w-8')} />
+            <Loader2 aria-hidden="true" className={cn('animate-spin text-muted motion-reduce:animate-none', fill ? 'h-10 w-10' : 'h-8 w-8')} />
         ) : icon ? (
             <div aria-hidden="true" className="rounded-card bg-sunken p-5 text-muted">{icon}</div>
         ) : null}

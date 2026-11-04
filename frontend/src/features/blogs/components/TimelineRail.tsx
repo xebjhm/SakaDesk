@@ -259,7 +259,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 return (
                     <div
                         key={group.year}
-                        className="absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-base ease-standard"
+                        className="absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-base ease-standard motion-reduce:transition-none"
                         style={{ top: position }}
                     >
                         <span className="whitespace-nowrap text-caption font-medium text-muted">{group.year}</span>
@@ -270,7 +270,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
 
             {/* Current post */}
             <div
-                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-group-accent shadow-group-glow transition-[top] duration-base ease-standard"
+                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-group-accent shadow-group-glow transition-[top] duration-base ease-standard motion-reduce:transition-none"
                 style={{ top: getYFromIndex(currentIndex, railRef.current) }}
             />
 
@@ -280,7 +280,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                     <div
                         className={cn(
                             'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2 border-strong',
-                            'transition-opacity duration-base ease-standard',
+                            'transition-opacity duration-base ease-standard motion-reduce:transition-none',
                             isZoomed ? 'opacity-90' : 'opacity-60',
                         )}
                         style={{ top: hoverInfo.y }}

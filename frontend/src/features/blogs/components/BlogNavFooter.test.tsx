@@ -100,4 +100,49 @@ describe('BlogNavFooter arrow keys aimed elsewhere (D2b fix)', () => {
         fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
         expect(onPrev).toHaveBeenCalledTimes(1);
     });
+
+    it('ignores arrows while an aria-modal dialog is on the page', () => {
+        const { onPrev } = setup(<div aria-modal="true" role="presentation" />);
+        fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+        expect(onPrev).not.toHaveBeenCalled();
+    });
+
+    it('ignores arrows while an open <dialog> is on the page', () => {
+        const { onNext } = setup(<dialog open />);
+        fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+        expect(onNext).not.toHaveBeenCalled();
+    });
+
+    it('still navigates from a contenteditable="false" element', () => {
+        const { onPrev } = setup(<div contentEditable={false} data-testid="ro">x</div>);
+        fireEvent.keyDown(screen.getByTestId('ro'), { key: 'ArrowLeft' });
+        expect(onPrev).toHaveBeenCalledTimes(1);
+    });
+
+    it('still navigates for arrows pressed on a focused older or newer pill', () => {
+        const { onPrev, onNext } = setup(null);
+        fireEvent.keyDown(screen.getByRole('button', { name: /春の日記 41/ }), { key: 'ArrowLeft' });
+        fireEvent.keyDown(screen.getByRole('button', { name: /春の日記 43/ }), { key: 'ArrowRight' });
+        expect(onPrev).toHaveBeenCalledTimes(1);
+        expect(onNext).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores every arrow while keysEnabled is false', () => {
+        const onPrev = vi.fn();
+        const onNext = vi.fn();
+        render(<BlogNavFooter prevBlog={OLDER} nextBlog={NEWER} onPrev={onPrev} onNext={onNext} keysEnabled={false} />);
+        fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+        fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+        expect(onPrev).not.toHaveBeenCalled();
+        expect(onNext).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for ArrowLeft when there is no older post', () => {
+        const onPrev = vi.fn();
+        const onNext = vi.fn();
+        render(<BlogNavFooter prevBlog={null} nextBlog={NEWER} onPrev={onPrev} onNext={onNext} />);
+        fireEvent.keyDown(document.body, { key: 'ArrowLeft' });
+        expect(onPrev).not.toHaveBeenCalled();
+        expect(onNext).not.toHaveBeenCalled();
+    });
 });

@@ -37,6 +37,8 @@ export interface BlogReaderProps {
     onRetry: () => void;
     onNavigate: (blog: BlogMeta) => void;
     onMemberClick: () => void;
+    /** False while a blog dialog is open: ← / → must not change the post behind it. */
+    keysEnabled?: boolean;
     serviceId: string;
     searchQuery?: string;
     matchedTerms?: string[];
@@ -55,6 +57,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     onRetry,
     onNavigate,
     onMemberClick,
+    keysEnabled = true,
     serviceId,
     searchQuery,
     matchedTerms,
@@ -413,6 +416,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                         nextBlog={nextBlog}
                         onPrev={handlePrev}
                         onNext={handleNext}
+                        keysEnabled={keysEnabled}
                     />
                 </div>
 

@@ -220,7 +220,7 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
             })
             .catch(() => {
                 // Non-fatal: the user still sees the cached posts.
-                logBlogLoad('sync', 'error');
+                logBlogLoad('sync', cancelled ? 'cancelled' : 'error');
             })
             .finally(() => {
                 if (!cancelled) {
@@ -381,7 +381,10 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         }
 
         // Check if already fetching
-        if (fetchingContentRef.current.has(blogId)) return;
+        if (fetchingContentRef.current.has(blogId)) {
+            logBlogLoad('content', 'in_flight');
+            return;
+        }
         fetchingContentRef.current.add(blogId);
 
         setLoading(true);
@@ -627,6 +630,7 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                             onRetry={handleReaderRetry}
                             onNavigate={handleNavigateBlog}
                             onMemberClick={handleMemberClick}
+                            keysEnabled={!isTimelineModalOpen && !isPhotoGalleryOpen && !isMemberModalOpen}
                             serviceId={activeService ?? ''}
                             searchQuery={viewState.searchQuery}
                             matchedTerms={viewState.matchedTerms}

@@ -10,5 +10,7 @@ describe('logBlogLoad', () => {
         expect(clientLog).toHaveBeenLastCalledWith('blog_load', { target: 'recent', outcome: 'ok', count: 9 });
         logBlogLoad('content', 'cache_hit');
         expect(clientLog).toHaveBeenLastCalledWith('blog_load', { target: 'content', outcome: 'cache_hit' });
+        logBlogLoad('content', 'in_flight');
+        expect(clientLog).toHaveBeenLastCalledWith('blog_load', { target: 'content', outcome: 'in_flight' });
     });
 });

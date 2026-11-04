@@ -118,3 +118,27 @@ describe('BlogsFeature retry', () => {
         expect(screen.queryByRole('heading', { name: 'Latest Blogs' })).toBeNull();
     });
 });
+
+describe('BlogsFeature arrow keys with a dialog open (D2b fix)', () => {
+    const meta = (id: string) => ({ id, title: `春の日記 ${id} 🌸`, published_at: `2026-11-0${Number(id) - 140}T09:00:00Z`, url: '', thumbnail: null, cached: true });
+    const post = { ...meta('142'), member_id: '9901', member_name: '春野 ひなた' };
+
+    it('← / → leave the post alone while the member timeline dialog is open', async () => {
+        vi.mocked(api.getRecentPosts).mockResolvedValue({ service: 'hinatazaka46', posts: [post] });
+        vi.mocked(api.getBlogList).mockResolvedValue({
+            member_id: '9901', member_name: '春野 ひなた', blogs: [meta('143'), meta('142'), meta('141')],
+        });
+        render(<BlogsFeature />);
+        fireEvent.click(await screen.findByRole('button', { name: /春の日記 142/ }));
+        expect(await screen.findByRole('heading', { level: 1, name: '春の日記 42 🌸' })).toBeInTheDocument();
+        // Both the older and the newer pill are there once the member's list has arrived.
+        await screen.findByRole('button', { name: /Older post/ });
+        const contentCalls = vi.mocked(api.getBlogContent).mock.calls.length;
+
+        fireEvent.click(screen.getAllByRole('button', { name: /春野/ })[0]);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(api.getBlogContent).toHaveBeenCalledTimes(contentCalls);
+        expect(screen.getByRole('heading', { level: 1, name: '春の日記 42 🌸' })).toBeInTheDocument();
+    });
+});

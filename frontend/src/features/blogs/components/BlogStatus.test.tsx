@@ -7,6 +7,7 @@ describe('BlogStatus', () => {
         const { container } = render(<BlogStatus kind="loading" title="Loading posts..." />);
         expect(screen.getByRole('status')).toHaveTextContent('Loading posts...');
         expect(container.querySelector('.animate-spin')).not.toBeNull();
+        expect(container.querySelector('.animate-spin')).toHaveClass('motion-reduce:animate-none');
         expect(screen.queryByRole('button')).toBeNull();
     });
 
