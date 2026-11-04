@@ -250,7 +250,7 @@ All ids follow C1's ui-state rules (`^[0-9]{1,12}$` strings, or `StrictInt` for 
 - **`GET /api/call-popup/calls/{call_id}`** → `200 {call_id, service, path, is_group_chat, group_id, member_id, message_id}` from `controller.info`, else `404`. `path` is `plan.target.path`, the frontend's chat path. It is returned to the popup page and never logged.
 - **`POST /api/call-popup/calls/{call_id}/events`**, body `{event: "ringing"|"skipped"|"answered"|"declined"|"timeout"|"ended"|"cancelled"|"error", reason?: code, error_type?: code, message_id?: int}` → `204`, or `409` when `on_event` returns `False`.
 - **`GET /api/call-popup/active?service=&group_id=&member_id=&message_id=`** → `200 {active: bool}`: true when the controller is not `idle` and its candidate matches. B in the main window calls it before ringing (§7.3).
-- **`POST /api/ui-state`** (C1): after storing the state, when `focused` is true it calls `await controller.on_foreground()`.
+- **`POST /api/ui-state`** (C1): after storing the state, when `focused` is true it runs `controller.on_foreground()` as a tracked background task (`call_popup_foreground`) and answers 204 at once: the cancel waits on the popup host (up to `BRIDGE_TIMEOUT_S`), and the report must stay fast. An exception there logs `call_popup_foreground_failed` (`error_type`).
 - **`POST /api/client-log`** (B): whitelist additions in §9.2.
 
 ---
@@ -588,6 +588,7 @@ Every event carries ids, codes, counts, durations or physical pixel sizes only. 
 | `call_popup_unavailable` | reason (`no_host`, once; `host_timeouts`, once, with timeouts) |
 | `call_popup_bridge_failed` | op, error_type or reason (`timeout`) |
 | `call_popup_window` | action (`created`/`reused`/`create_failed`/`disabled_after_failures`/`lost`/`destroyed`/`destroy_failed`/`start_refused`/`preload_skipped`; debug `destroy_skipped`), error_type, reason |
+| `call_popup_foreground_failed` | error_type |
 | `call_popup_app_exit_failed` | error_type (the `Application.Exit` fallback itself raised) |
 | `call_popup_corner_skipped` (debug) | hresult or error_type (no DWM rounded corners, e.g. Windows 10) |
 | `call_popup_foreground_kept` (debug) | call_id (an answered call is not cut off by the main window gaining focus) |
@@ -671,7 +672,7 @@ C1's `notify_skip reason=diverted`, `notify_sent` and `notify_failed` cover the 
   - call info 200/404;
   - event 204/409/422 (unknown event, bad code, float, a string with a space or CJK);
   - `active` true/false;
-  - `ui-state` focused calls `on_foreground`.
+  - `ui-state` focused calls `on_foreground` as a background task: the 204 does not wait for a slow cancel, and a raising one logs `call_popup_foreground_failed`;
 - **Settings:** `call_popup_enabled` defaults to on and round-trips; on → `call_popup_ensure`; off → `cancel(disabled)`.
 - **Client-log:** the new events and fields are accepted, and the old rules still reject.
 - **i18n:** the `call_popup` section exists in all five locales.
