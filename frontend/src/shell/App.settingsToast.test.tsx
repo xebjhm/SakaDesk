@@ -38,5 +38,11 @@ describe('App settings error toast', () => {
     expect(Number(toast.style.zIndex)).toBeGreaterThan(Number(backdrop.style.zIndex))
     // The row says it too.
     expect(within(dialog).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument()
+    // D2d: a translated status card with a Debug action.
+    expect(toast).toHaveAttribute('role', 'alert')
+    expect(within(toast).getByText(i18n.t('common.error'))).toBeInTheDocument()
+    expect(within(toast).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument()
+    expect(within(toast).getByRole('button', { name: i18n.t('common.debug') })).toBeInTheDocument()
+    expect(toast).toHaveClass('bg-card', 'rounded-card')
   })
 })

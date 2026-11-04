@@ -8,7 +8,5 @@
   "core/media/VoicePlayer.tsx": 6,
   "data/memberData.ts": 2,
   "features/messages/components/MessageBubble.tsx": 2,
-  "pages/LandingPage.tsx": 4,
-  "shell/App.tsx": 2,
   "utils/backgroundSettings.ts": 1
 }

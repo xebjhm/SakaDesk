@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2 } from 'lucide-react'
+import { Button } from '../design/primitives'
+import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
@@ -26,6 +28,7 @@ import { useSettings } from './hooks/useSettings'
 import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
 
 function App() {
+    const { t } = useTranslation()
     const {
         activeService,
         setActiveService,
@@ -259,7 +262,11 @@ function App() {
     // the backend, not the empty mount-time cache). Gating on ToS before
     // hydration would bounce those users back into the dialog.
     if (!authCheckComplete || !prefsHydrated) {
-        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
+        return (
+            <div className="flex h-screen items-center justify-center bg-window">
+                <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted motion-reduce:animate-none" />
+            </div>
+        );
     }
 
     // Show ToS dialog on first launch (blocks all other content until accepted)
@@ -321,7 +328,7 @@ function App() {
     const isOnboarding = loginCarousel !== null || showSetupWizard;
 
     return (
-        <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+        <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
 
             <div className="flex flex-1 overflow-hidden">
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
@@ -375,26 +382,22 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST: on the toast layer, so it shows over an open Settings dialog. */}
+                {/* ERROR TOAST: a status card on the toast layer, so it shows over an open Settings dialog. */}
                 {settingsError && (
                     <div
                         data-testid="settings-error-toast"
+                        role="alert"
                         style={{ zIndex: Z_INDEX.TOAST }}
-                        className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3"
+                        className="fixed bottom-4 right-4 flex max-w-sm items-center gap-3 rounded-card bg-card p-4 shadow-card animate-reveal motion-reduce:animate-none"
                     >
-                        <div className="bg-red-100 p-2 rounded-full">
-                            <Loader2 className="w-4 h-4 text-red-600" />
+                        <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-status-danger" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-small font-semibold text-primary">{t('common.error')}</p>
+                            <p className="text-caption text-secondary">{settingsError}</p>
                         </div>
-                        <div>
-                            <p className="font-semibold text-sm">Error</p>
-                            <p className="text-xs opacity-90">{settingsError}</p>
-                        </div>
-                        <button
-                            onClick={() => setShowDiagnostics(true)}
-                            className="ml-2 bg-white/50 hover:bg-white text-red-700 p-1.5 rounded-lg transition-colors text-xs font-medium"
-                        >
-                            Debug
-                        </button>
+                        <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics(true)}>
+                            {t('common.debug')}
+                        </Button>
                     </div>
                 )}
 

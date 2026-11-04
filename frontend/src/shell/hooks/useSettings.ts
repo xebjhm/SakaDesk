@@ -30,6 +30,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 import { SERVICE_FEATURES } from '../../config/features';
+import i18n from '../../i18n';
 
 /** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
@@ -132,7 +133,7 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             return true;
         } catch (e) {
             console.error('Failed to save settings:', e);
-            setSettingsError("Failed to save settings");
+            setSettingsError(i18n.t('settings.saveFailed'));
             return false;
         }
     }, []);
