@@ -42,11 +42,11 @@ for (const service of SERVICES) {
     // 30% down the usable track (30 px padding each end): index round(0.3 * 41) = 12 → post #30.
     await page.mouse.move(box.x + box.width / 2, box.y + 30 + 0.3 * (box.height - 60))
     await expect(page.getByText('#30', { exact: true })).toBeVisible()
-    // The dwell zoom (800 ms) widens the track from 2 px to 3 px; capture only once it applied.
-    const track = rail.locator(':scope > div').first()
+    // The dwell zoom (800 ms) firms up the hover ring (opacity 0.6 -> 0.9); capture only once it applied.
+    const ring = rail.locator('.border-2')
     await expect
-      .poll(() => track.evaluate((el) => getComputedStyle(el).width))
-      .toBe('3px')
+      .poll(() => ring.evaluate((el) => getComputedStyle(el).opacity))
+      .toBe('0.9')
     await page.screenshot({ path: `e2e-shots/${LABEL}/${service}-blogs-rail.png`, animations: 'disabled' })
   })
 }

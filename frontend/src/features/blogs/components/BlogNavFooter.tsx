@@ -1,6 +1,11 @@
 // frontend/src/features/blogs/components/BlogNavFooter.tsx
+// Older / newer post as two floating pills over the bottom of the post (← / → work too).
 import React, { useEffect } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { BlogMeta } from '../../../types';
+import { cn } from '../../../utils/classnames';
+import { formatBlogDate } from '../../../utils/dateFormatters';
+import { useTranslation } from '../../../i18n';
 
 interface BlogNavFooterProps {
     prevBlog: BlogMeta | null;
@@ -9,15 +14,43 @@ interface BlogNavFooterProps {
     onNext: () => void;
 }
 
+const SIDE = cn(
+    'pointer-events-auto group flex max-w-[45%] items-center gap-2 rounded-pill bg-pill py-2 shadow-pill',
+    'transition-colors duration-fast ease-standard hover:bg-sunken',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+);
+const CHEVRON = 'h-4 w-4 shrink-0 text-muted transition-colors duration-fast ease-standard group-hover:text-primary';
+
+const truncateTitle = (title: string, maxLen: number = 18) =>
+    title.length <= maxLen ? title : title.slice(0, maxLen) + '...';
+
+/** Where ← / → belong to something else: typing, a dialog, or a control that already handled them. */
+const NOT_POST_KEYS =
+    'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="dialog"], dialog, [aria-modal="true"]';
+
+/**
+ * True when an arrow key must not change the post: the event was already handled (the photo
+ * viewer calls preventDefault on its arrows) or it comes from a text field, a content-editable
+ * element or anything inside a dialog.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for tests; HMR reload of this file is harmless
+export function ignoresPostKeys(e: KeyboardEvent): boolean {
+    if (e.defaultPrevented) return true;
+    return e.target instanceof Element && e.target.closest(NOT_POST_KEYS) !== null;
+}
+
 export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
     prevBlog,
     nextBlog,
     onPrev,
     onNext,
 }) => {
-    // Keyboard navigation
+    const { t, i18n } = useTranslation();
+
+    // Keyboard navigation (window-wide, except where the keys belong to something else)
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (ignoresPostKeys(e)) return;
             if (e.key === 'ArrowLeft' && prevBlog) {
                 onPrev();
             } else if (e.key === 'ArrowRight' && nextBlog) {
@@ -32,94 +65,40 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
     // Don't render if no navigation available
     if (!prevBlog && !nextBlog) return null;
 
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    };
-
-    const truncateTitle = (title: string, maxLen: number = 18) => {
-        if (title.length <= maxLen) return title;
-        return title.slice(0, maxLen) + '...';
-    };
+    const label = (blog: BlogMeta, prefix: string) => (
+        <span className="min-w-0">
+            <span className="block max-w-[160px] truncate text-small font-semibold text-primary">
+                <span className="sr-only">{prefix}:</span>{' '}
+                {truncateTitle(blog.title)}
+            </span>
+            <span className="block text-caption text-muted">
+                {formatBlogDate(new Date(blog.published_at), i18n.language, 'short')}
+            </span>
+        </span>
+    );
 
     return (
-        <div
-            className="absolute bottom-0 left-0 right-12 flex items-center justify-between px-3 py-1.5 z-10"
-            style={{
-                background: 'linear-gradient(to top, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.8) 100%)',
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
-            }}
+        <nav
+            aria-label={t('blogs.postNavigation')}
+            className="pointer-events-none absolute inset-x-6 bottom-4 z-10 flex items-center justify-between gap-4"
         >
-            {/* Previous Blog */}
             {prevBlog ? (
-                <button
-                    onClick={onPrev}
-                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100/80 transition-colors group text-left"
-                >
-                    <svg
-                        className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 19l-7-7 7-7"
-                        />
-                    </svg>
-                    <div className="min-w-0">
-                        <div
-                            className="text-sm font-medium text-gray-700 truncate"
-                            style={{ maxWidth: '150px' }}
-                        >
-                            {truncateTitle(prevBlog.title)}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            {formatDate(prevBlog.published_at)}
-                        </div>
-                    </div>
+                <button type="button" onClick={onPrev} className={cn(SIDE, 'pl-3 pr-4 text-left')}>
+                    <ChevronLeft aria-hidden="true" className={CHEVRON} />
+                    {label(prevBlog, t('blogs.olderPost'))}
                 </button>
             ) : (
-                <div /> // Spacer
+                <span />
             )}
 
-            {/* Next Blog */}
             {nextBlog ? (
-                <button
-                    onClick={onNext}
-                    className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-gray-100/80 transition-colors group text-right"
-                >
-                    <div className="min-w-0">
-                        <div
-                            className="text-sm font-medium text-gray-700 truncate"
-                            style={{ maxWidth: '150px' }}
-                        >
-                            {truncateTitle(nextBlog.title)}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            {formatDate(nextBlog.published_at)}
-                        </div>
-                    </div>
-                    <svg
-                        className="w-4 h-4 text-gray-400 group-hover:text-gray-600 transition-colors flex-shrink-0"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5l7 7-7 7"
-                        />
-                    </svg>
+                <button type="button" onClick={onNext} className={cn(SIDE, 'pl-4 pr-3 text-right')}>
+                    {label(nextBlog, t('blogs.newerPost'))}
+                    <ChevronRight aria-hidden="true" className={CHEVRON} />
                 </button>
             ) : (
-                <div /> // Spacer
+                <span />
             )}
-        </div>
+        </nav>
     );
 };

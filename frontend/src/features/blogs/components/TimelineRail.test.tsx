@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { TimelineRail } from './TimelineRail';
 import type { BlogMeta } from '../../../types';
+import { formatBlogDate } from '../../../utils/dateFormatters';
+import i18n from '../../../i18n';
 
 const DAY = 24 * 60 * 60 * 1000;
 const blogs: BlogMeta[] = Array.from({ length: 42 }, (_, i) => ({
@@ -28,6 +30,8 @@ const pick = (rail: HTMLElement, clientY: number) => {
     fireEvent.mouseMove(rail, { clientY });
     fireEvent.click(rail);
 };
+
+beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 afterEach(() => vi.useRealTimers());
 
@@ -62,5 +66,26 @@ describe('TimelineRail', () => {
     it('renders nothing without posts', () => {
         const { container } = render(<TimelineRail blogs={[]} currentIndex={-1} onSelect={vi.fn()} />);
         expect(container.firstChild).toBeNull();
+    });
+});
+
+describe('TimelineRail look (D2b)', () => {
+    it('marks the current post with the group action colour and glow', () => {
+        const { rail } = setup(3);
+        expect(rail.querySelector('.bg-group-accent')).toHaveClass('rounded-pill', 'shadow-group-glow');
+    });
+
+    it('fills its column and is hidden from assistive technology', () => {
+        const { rail } = setup();
+        expect(rail).toHaveClass('inset-x-0');
+        expect(rail).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('shows a hover card with the date in the app language and the post number', () => {
+        const { rail } = setup();
+        fireEvent.mouseMove(rail, { clientY: 30 });
+        expect(screen.getByText(formatBlogDate(new Date(blogs[0].published_at), 'en', 'medium'))).toBeInTheDocument();
+        expect(screen.getByText('#42').closest('.rounded-card')).toHaveClass('shadow-card');
+        expect(screen.getByText(blogs[0].title)).toHaveClass('font-reading');
     });
 });
