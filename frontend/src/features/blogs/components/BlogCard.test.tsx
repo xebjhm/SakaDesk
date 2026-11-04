@@ -1,7 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { BlogCard } from './BlogCard';
 import type { RecentPost } from '../../../types';
+import i18n from '../../../i18n';
 
 // The kanji lookup is static data; stub to a stable value.
 vi.mock('../../../data/memberData', () => ({
@@ -56,5 +57,19 @@ describe('BlogCard image state reset on post change (SD-FE-GAP-B-10)', () => {
     const imgB = container.querySelector('img');
     expect(imgB).toBeTruthy();
     expect(imgB!.getAttribute('src')).toBe('https://example.com/b.jpg');
+  });
+});
+
+beforeAll(async () => { await i18n.changeLanguage('en'); });
+
+describe('BlogCard caption (D2b)', () => {
+  it('is a card whose name is the date, title and member; the photo is decorative', () => {
+    render(<BlogCard post={makePost({ title: '春の日記 🌸', published_at: '2026-07-07T12:00:00Z' })} onClick={() => {}} />);
+    const button = screen.getByRole('button');
+    expect(button).toHaveClass('rounded-card', 'bg-card', 'shadow-card');
+    expect(button).toHaveAccessibleName(/Jul 7.*春の日記 🌸.*佐々木 久美/);
+    expect(button.querySelector('img')).toHaveAttribute('alt', '');
+    expect(screen.getByText('佐々木 久美')).toHaveClass('text-group-strong');
+    expect(screen.getByText('春の日記 🌸')).toHaveClass('font-reading');
   });
 });
