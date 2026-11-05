@@ -34,6 +34,15 @@ export default {
                 'brand-blue': '#6da0d4',
             },
             backgroundImage: {
+                'accent-gradient': 'var(--ds-accent-gradient)',
+                'accent-tonal': 'var(--ds-accent-tonal)',
+                'expressive-soft': 'var(--ds-expressive-soft)',
+                'expressive-header': 'var(--ds-expressive-header)',
+                'expressive-header-bar': 'var(--ds-expressive-header-bar)',
+                'expressive-orb-1': 'var(--ds-expressive-orb-1)',
+                'expressive-orb-2': 'var(--ds-expressive-orb-2)',
+                'expressive-orb-3': 'var(--ds-expressive-orb-3)',
+                aurora: 'var(--ds-aurora)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
@@ -53,6 +62,8 @@ export default {
             // Values are CSS variables written by design/applyTokens.ts.
             // Opacity modifiers (bg-sheet/50) do not work with these; add a token instead.
             backgroundColor: {
+                accent: 'var(--ds-accent)',
+                'accent-subtle': 'var(--ds-accent-subtle)',
                 sheet: 'var(--ds-surface-sheet)',
                 card: 'var(--ds-surface-card)',
                 pill: 'var(--ds-surface-pill)',
@@ -77,6 +88,10 @@ export default {
                 'group-marker': 'var(--ds-group-marker)',
             },
             textColor: {
+                accent: 'var(--ds-accent)',
+                'accent-strong': 'var(--ds-accent-strong)',
+                'accent-tonal': 'var(--ds-accent-tonal-text)',
+                'expressive-header': 'var(--ds-expressive-header-text)',
                 primary: 'var(--ds-text-primary)',
                 secondary: 'var(--ds-text-secondary)',
                 muted: 'var(--ds-text-muted)',
@@ -92,6 +107,8 @@ export default {
                 heart: 'var(--ds-decor-heart)',
             },
             borderColor: {
+                'accent-border': 'var(--ds-accent-border)',
+                accent: 'var(--ds-accent)',
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
                 'mark-underline': 'var(--ds-mark-underline)',
@@ -100,6 +117,7 @@ export default {
                 surface: 'var(--ds-surface-sheet)',
             },
             ringColor: {
+                accent: 'var(--ds-accent)',
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
                 surface: 'var(--ds-surface-sheet)',
@@ -113,6 +131,7 @@ export default {
                 viewer: 'var(--ds-viewer-underline)',
             },
             accentColor: {
+                accent: 'var(--ds-accent)',
                 group: 'var(--ds-group-accent)',
             },
             borderRadius: {
@@ -122,6 +141,9 @@ export default {
                 pill: 'var(--ds-radius-pill)',
             },
             boxShadow: {
+                'accent-glow': 'var(--ds-shadow-accent-glow)',
+                'accent-glow-hover': 'var(--ds-shadow-accent-glow-hover)',
+                'accent-unread': 'var(--ds-shadow-accent-unread)',
                 pill: 'var(--ds-shadow-pill)',
                 card: 'var(--ds-shadow-card)',
                 sheet: 'var(--ds-shadow-sheet)',
@@ -184,6 +206,9 @@ export default {
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
                 'heart-float': 'heart-float 800ms ease-out forwards',
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
+            },
+            scale: {
+                97: '0.97',
             },
             transitionDuration: {
                 fast: 'var(--ds-duration-fast)',
