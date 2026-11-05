@@ -17,7 +17,6 @@ export type TypeStep = keyof typeof typeScale;
 export const fontFamily = {
     /** Blog titles only (feed, cards, post, rail tooltip); post bodies stay in the sans. */
     reading: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
-    /** Per-language sans / serif stacks; see design/fonts.ts. Values are set at runtime. */
-    sansVar: 'var(--ds-font-family-sans)',
-    serifVar: 'var(--ds-font-family-serif)',
+    /** Japanese sans stack: the default UI sans and the fallback of every per-language stack (design/fonts.ts). */
+    sansJp: '"Noto Sans JP", system-ui, -apple-system, sans-serif',
 } as const;

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
-import { applyLanguageFonts, fontStacks } from './fonts';
+import i18n from '../i18n';
+import { applyLanguageFonts, fontStacks, installLanguageFonts } from './fonts';
 import { typeScale } from './tokens';
 
 describe('language-aware fonts', () => {
@@ -40,5 +41,23 @@ describe('language-aware fonts', () => {
     });
     it('adds the display step', () => {
         expect(typeScale.display).toEqual({ size: '32px', leading: '40px' });
+    });
+    it('installLanguageFonts applies the current language now and re-applies on change', async () => {
+        const original = i18n.language;
+        const sans = () => document.documentElement.style.getPropertyValue('--ds-font-family-sans');
+        const onSpy = vi.spyOn(i18n, 'on');
+        try {
+            await i18n.changeLanguage('ja');
+            installLanguageFonts();
+            expect(sans().startsWith('"Noto Sans JP"')).toBe(true);
+            expect(document.documentElement.lang).toBe('ja');
+            await i18n.changeLanguage('zh-TW');
+            expect(sans().startsWith('"Noto Sans TC"')).toBe(true);
+            expect(document.documentElement.lang).toBe('zh-TW');
+        } finally {
+            for (const [event, handler] of onSpy.mock.calls) i18n.off(event, handler as never);
+            onSpy.mockRestore();
+            await i18n.changeLanguage(original);
+        }
     });
 });

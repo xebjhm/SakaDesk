@@ -35,7 +35,7 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-ease-standard'] = easingCss(motion.easing.standard);
     vars['--ds-font-family-reading'] = fontFamily.reading;
     // First-paint defaults; installLanguageFonts() overrides them per UI language.
-    vars['--ds-font-family-sans'] = '"Noto Sans JP", system-ui, -apple-system, sans-serif';
+    vars['--ds-font-family-sans'] = fontFamily.sansJp;
     vars['--ds-font-family-serif'] = fontFamily.reading;
     // Member penlight wash: the colours are set per member on the wash element; none by default.
     vars['--ds-member-wash-alpha'] = memberWash.alpha;

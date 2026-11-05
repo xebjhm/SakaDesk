@@ -1,15 +1,16 @@
 /**
  * Language-aware font stacks (spec §6). The UI language picks the glyph set
  * (JP / TC / HK / SC / Latin); Japanese content keeps JP glyphs through
- * `:lang(ja)` in index.css. Only the active language's family is loaded.
+ * `[lang="ja"]` content rules in index.css. Only the active language's family is loaded.
  */
 import i18n from '../i18n';
 import type { SupportedLanguage } from '../i18n';
+import { fontFamily } from './tokens/type';
 import { clientLog } from '../utils/clientLog';
 
 interface FontStack { sans: string; serif: string; google: string }
 
-const JP_FALLBACK = '"Noto Sans JP", system-ui, -apple-system, sans-serif';
+const JP_FALLBACK = fontFamily.sansJp;
 const SERIF_FALLBACK = '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif';
 const W = 'wght@400;500;600;700';
 
