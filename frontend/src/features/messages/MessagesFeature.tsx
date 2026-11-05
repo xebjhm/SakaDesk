@@ -13,10 +13,10 @@ import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../ut
 import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
-import { useMessagesTheme } from './hooks/useMessagesTheme';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, IconButton } from '../../design/primitives';
-import { groupRoles } from '../../design/tokens';
+import { groupTokens } from '../../design/tokens';
+import { serviceGroupId } from '../../config/serviceGroup';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
@@ -129,9 +129,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Get active service and conversation persistence from Zustand store
     const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
-
-    // Get theme for current service
-    const theme = useMessagesTheme();
 
     // Chat state
     const [selectedGroupDir, setSelectedGroupDir] = useState<string | undefined>();
@@ -548,7 +545,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // The 1:1 room's member: header avatar, the ⋯ menu and the profile popup.
     const headerMember = Object.values(membersMap)[0];
     const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
-    const isLightHeader = theme.messages.headerStyle === 'light';
+    const isLightHeader = groupTokens[serviceGroupId(activeService)].official.headerStyle === 'light';
 
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
@@ -730,7 +727,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-surface" />
                     )}
                     <div className="min-w-0 flex-1">
-                        <h2 className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
+                        <h2 lang={selectedName ? 'ja' : undefined} className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>
                         {isGroupChat ? (
                             <p className="text-caption">{t('messageList.groupChat')}</p>
                         ) : streak.status === 'ready' && streak.days > 0 ? (
@@ -749,7 +746,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </ChatHeaderPill>
                     )}
                     {syncProgress.state === 'running' && (
-                        <ChatHeaderPill light={isLightHeader}>
+                        <ChatHeaderPill light={isLightHeader} tone="status">
                             <Loader2 className="h-3 w-3 animate-spin" />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
                         </ChatHeaderPill>
@@ -809,7 +806,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <div className="p-10 text-center text-secondary">{t('messageList.loadingMessages')}</div>
                     )}
                     {error && (
-                        <div className="p-10 text-center text-feedback-error">
+                        <div className="p-10 text-center text-status-danger">
                             <p className="font-semibold">{t('common.error')}</p>
                             <p>{error}</p>
                         </div>
@@ -842,9 +839,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                     <CallOverlay
                         call={incomingCall}
-                        // The accent is the group action colour (step 600); light-style services (櫻坂) get a white answer button.
-                        accentColor={groupRoles(theme.id).action}
-                        answerStyle={theme.messages.headerStyle === 'light' ? 'light' : 'solid'}
+                        // The accent follows the chat's group context (--ds-accent); light-style services (櫻坂) get a white answer button.
+                        answerStyle={isLightHeader ? 'light' : 'solid'}
                         groupLabel={messagesService ? getServiceDisplayName(messagesService) : ''}
                     />
                 </div>

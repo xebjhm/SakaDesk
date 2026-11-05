@@ -16,5 +16,6 @@ test('the chat header shows the member and the subscription streak', async ({ pa
   await expect(page.locator(`#msg-${COUNT}`)).toBeVisible({ timeout: 10000 })
   const header = page.locator('header').first()
   await expect(header.getByRole('heading', { name: 'Big Room' })).toBeVisible()
+  await expect(header.getByRole('heading', { name: 'Big Room' })).toHaveAttribute('lang', 'ja')
   await expect(header.getByText(/Subscribed for\s*128\s*days/)).toBeVisible()
 })

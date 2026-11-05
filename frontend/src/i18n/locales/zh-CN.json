@@ -298,7 +298,8 @@
     "favorites": "收藏",
     "media": "媒体",
     "background": "背景",
-    "sentLetters": "已发送的信件"
+    "sentLetters": "已发送的信件",
+    "sentLettersGroupChat": "群聊没有已发送的信件"
   },
   "messageList": {
     "noMessages": "没有消息",

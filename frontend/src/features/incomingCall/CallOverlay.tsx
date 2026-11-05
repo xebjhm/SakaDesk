@@ -5,6 +5,7 @@ import {
     interleavedZIndex, nextDialogOrder, openDialogCount, subscribeDialogStack, topDialog,
 } from '../../design/dialog/dialogStack';
 import { clientLog } from '../../utils/clientLog';
+import { ACCENT } from '../../design/colorMix';
 import { CallAudio } from './CallAudio';
 import { CallScreen } from './CallScreen';
 import type { AnswerStyle } from './CallScreen';
@@ -14,7 +15,8 @@ import { useAnchorRect } from './useAnchorRect';
 interface CallOverlayProps {
     call: IncomingCall;
     /** Group colour for the halo, the eyebrow dot and the answer button. */
-    accentColor: string;
+    /** Overrides the call accent; defaults to the surrounding context (--ds-accent). */
+    accentColor?: string;
     answerStyle: AnswerStyle;
     /** Service display name shown above the member's name. */
     groupLabel: string;
@@ -44,7 +46,7 @@ function decideLayer(messageId: number): CallLayer {
  * A call that starts while a dialog is open is lifted: portaled over the chat area's rectangle,
  * above the dialogs that were open (interleavedZIndex) and below any opened later.
  */
-export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor, answerStyle, groupLabel }) => {
+export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor = ACCENT, answerStyle, groupLabel }) => {
     const { t } = useTranslation();
     const overlayRef = useRef<HTMLDivElement | null>(null);
     const anchorRef = useRef<HTMLDivElement | null>(null);

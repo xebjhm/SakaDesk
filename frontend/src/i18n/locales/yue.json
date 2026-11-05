@@ -298,7 +298,8 @@
     "favorites": "收藏",
     "media": "媒體",
     "background": "背景",
-    "sentLetters": "寄咗嘅信"
+    "sentLetters": "寄咗嘅信",
+    "sentLettersGroupChat": "群組傾偈冇寄出嘅信"
   },
   "messageList": {
     "noMessages": "冇訊息",
