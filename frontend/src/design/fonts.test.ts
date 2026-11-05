@@ -5,6 +5,7 @@ vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import i18n from '../i18n';
 import { applyLanguageFonts, fontStacks, installLanguageFonts } from './fonts';
 import { typeScale } from './tokens';
+import { clientLog } from '../utils/clientLog';
 
 describe('language-aware fonts', () => {
     beforeEach(() => {
@@ -38,6 +39,15 @@ describe('language-aware fonts', () => {
     it('falls back to English stacks for an unknown language', () => {
         applyLanguageFonts('xx');
         expect(document.documentElement.style.getPropertyValue('--ds-font-family-sans').startsWith('"Noto Sans"')).toBe(true);
+    });
+    it('logs a code-safe breadcrumb and a fallback breadcrumb when the stylesheet fails', () => {
+        vi.mocked(clientLog).mockClear();
+        applyLanguageFonts('zh-TW');
+        expect(clientLog).toHaveBeenCalledWith('design_fonts_applied', { target: 'zh_tw' });
+        document.getElementById('ds-fonts')!.dispatchEvent(new Event('error'));
+        expect(clientLog).toHaveBeenCalledWith('design_fonts_fallback', { target: 'zh_tw' });
+        applyLanguageFonts('xx');
+        expect(clientLog).toHaveBeenCalledWith('design_fonts_applied', { target: 'fallback_en' });
     });
     it('adds the display step', () => {
         expect(typeScale.display).toEqual({ size: '32px', leading: '40px' });

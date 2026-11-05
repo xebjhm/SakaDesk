@@ -11,7 +11,7 @@ import { clientLog } from '../utils/clientLog';
 interface FontStack { sans: string; serif: string; google: string }
 
 const JP_FALLBACK = fontFamily.sansJp;
-const SERIF_FALLBACK = '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif';
+const SERIF_FALLBACK = fontFamily.reading;
 const W = 'wght@400;500;600;700';
 
 export const fontStacks: Record<SupportedLanguage, FontStack> = {
@@ -39,8 +39,11 @@ export function applyLanguageFonts(lang: string, doc: Document = document): void
         link.rel = 'stylesheet';
         doc.head.appendChild(link);
     }
+    // Code-safe breadcrumb value (client-log values match ^[a-z0-9_]{1,40}$).
+    const target = (lang in fontStacks) ? lang.toLowerCase().replace(/-/g, '_') : 'fallback_en';
+    link.onerror = () => clientLog('design_fonts_fallback', { target });
     link.href = `https://fonts.googleapis.com/css2?${stack.google}&display=swap`;
-    clientLog('design_fonts_applied', { target: (lang in fontStacks) ? lang : 'fallback_en' });
+    clientLog('design_fonts_applied', { target });
 }
 
 /** Applies the current language now and on every change. Call once per entry point. */
