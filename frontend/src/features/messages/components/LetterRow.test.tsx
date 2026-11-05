@@ -42,4 +42,11 @@ describe('LetterRow', () => {
         const [a, b] = screen.getAllByRole('button', { name: /^Open letter sent/ });
         expect(a.getAttribute('aria-label')).not.toBe(b.getAttribute('aria-label'));
     });
+
+    it('marks the letter text as Japanese content (not the UI fallback)', () => {
+        const { rerender } = render(<LetterRow letter={{ ...base, image_url: null }} avatarUrl={null} userName="ゆき" onOpenImage={vi.fn()} />);
+        expect(screen.getByText('いつもありがとう🌸')).toHaveAttribute('lang', 'ja');
+        rerender(<LetterRow letter={{ ...base, image_url: null, text: '' }} avatarUrl={null} userName="ゆき" onOpenImage={vi.fn()} />);
+        expect(screen.getByText(i18n.t('sentLetters.noTextContent'))).not.toHaveAttribute('lang');
+    });
 });

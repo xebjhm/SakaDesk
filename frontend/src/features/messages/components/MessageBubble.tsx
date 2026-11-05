@@ -6,7 +6,6 @@ import { VideoPlayer } from '../../../core/media/VideoPlayer';
 import { PhotoPlayer } from '../../../core/media/PhotoPlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
-import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
 import { TranscribeButton } from '../../../core/media/TranscribeButton';
 import { TranscriptPanel } from '../../../core/media/TranscriptPanel';
@@ -15,28 +14,12 @@ import { useMessageTranslation } from '../../../hooks/useMessageTranslation';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
-import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
-import { FALLBACK_ACTION_COLOR } from '../../../design/tokens';
+import { groupTokens } from '../../../design/tokens';
+import { serviceGroupId } from '../../../config/serviceGroup';
+import { ACCENT_LOGO } from '../../../design/colorMix';
 import { Avatar } from '../../../design/primitives';
-
-interface ShelterColors {
-    picture: string;
-    video: string;
-    voice: string;
-    text: string;
-}
-
-type ShelterStyle = 'classic' | 'light';
-
-interface MessageBubbleTheme {
-    voicePlayerAccent: string;
-    favoriteColor?: string;
-    linkColor?: string;
-    shelterColors?: ShelterColors;
-    shelterStyle?: ShelterStyle;
-}
 
 interface MessageBubbleProps {
     message: Message;
@@ -49,7 +32,6 @@ interface MessageBubbleProps {
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
-    theme?: MessageBubbleTheme;
     service?: string;
     /** Relative path from output_dir to the member directory (for transcription API) */
     memberPath?: string;
@@ -65,6 +47,17 @@ const SHELTER_ICONS = {
     voice: Volume2,
     picture: ImageIcon,
 };
+
+type ShelterKind = 'picture' | 'video' | 'voice' | 'text';
+/** Official unread shelters: `classic` = filled with a white icon, `light` = white with a coloured border and icon. */
+const SHELTER_CLASSES: Record<ShelterKind, { classic: string; light: string }> = {
+    picture: { classic: 'bg-group-shelter-picture text-inverse', light: 'border-2 border-group-shelter-picture bg-card text-group-shelter-picture' },
+    video: { classic: 'bg-group-shelter-video text-inverse', light: 'border-2 border-group-shelter-video bg-card text-group-shelter-video' },
+    voice: { classic: 'bg-group-shelter-voice text-inverse', light: 'border-2 border-group-shelter-voice bg-card text-group-shelter-voice' },
+    text: { classic: 'bg-group-shelter-text text-inverse', light: 'border-2 border-group-shelter-text bg-card text-group-shelter-text' },
+};
+const shelterKind = (type: string): ShelterKind =>
+    type === 'picture' || type === 'video' || type === 'voice' ? type : 'text';
 
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
@@ -113,7 +106,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
         <div
             className={cn(
                 "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
-                isVideo ? "bg-black" : "bg-gray-50"
+                isVideo ? "bg-viewer-stage" : "bg-elevated"
             )}
             style={containerStyle}
         >
@@ -123,7 +116,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 };
 
 // Component to render text with clickable URLs
-const LinkifiedText: React.FC<{ text: string; linkColor?: string }> = ({ text, linkColor }) => {
+const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(URL_REGEX);
 
     return (
@@ -138,8 +131,7 @@ const LinkifiedText: React.FC<{ text: string; linkColor?: string }> = ({ text, l
                             href={part}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:underline break-all"
-                            style={{ color: linkColor || '#2563eb' }}
+                            className="break-all text-accent hover:underline"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {part}
@@ -163,7 +155,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onToggleFavorite,
     onAvatarClick,
     onMediaClick,
-    theme,
     service,
     memberPath,
     userNickname,
@@ -275,23 +266,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, []);
 
     const ShelterOverlay = () => {
-        const type = message.type;
-        const shelterColors = theme?.shelterColors || DEFAULT_SHELTER_COLORS;
-        const shelterStyle = theme?.shelterStyle || 'classic';
-        const themeColor = shelterColors[type as keyof ShelterColors] || shelterColors.text;
-        const Icon = SHELTER_ICONS[type] || MessageSquare;
-
-        // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
-        // 'light' = white background with colored border and icon (Sakurazaka)
-        const isLightStyle = shelterStyle === 'light';
-        const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
-        const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
-
+        const Icon = SHELTER_ICONS[message.type] || MessageSquare;
+        const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
         return (
             <div
                 data-testid="unread-shelter"
-                className={cn('absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors', bubbleCorners, isLightStyle && 'bg-card')}
-                style={{ backgroundColor: isLightStyle ? undefined : themeColor, border: borderStyle }}
+                className={cn(
+                    'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
+                    bubbleCorners,
+                    SHELTER_CLASSES[shelterKind(message.type)][look],
+                )}
                 onClick={(e) => {
                     e.stopPropagation();
                     onReveal?.();
@@ -301,16 +285,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <Icon className="w-8 h-8" style={{ color: iconColor }} />
+                <Icon className={cn('h-8 w-8', look === 'classic' && 'opacity-90')} />
             </div>
         );
     };
 
     const favoriteStar = message.is_favorite && (
-        <Star
-            className="w-3.5 h-3.5 shrink-0"
-            style={{ color: theme?.favoriteColor || FALLBACK_ACTION_COLOR, fill: theme?.favoriteColor || FALLBACK_ACTION_COLOR }}
-        />
+        <Star className="h-3.5 w-3.5 shrink-0 fill-current text-accent" />
     );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
         <div className={cn(
@@ -321,7 +302,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 state={translationState}
                 onClick={triggerTranslation}
                 error={translationError}
-                accentColor={service ? getServiceTheme(service).primaryColor : undefined}
+                accentColor={ACCENT_LOGO}
             />
         </div>
     );
@@ -359,7 +340,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         className={cn(
                             'block rounded-pill',
                             onAvatarClick
-                                ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:shadow-card'
+                                ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border'
                                 : 'cursor-default',
                         )}
                     >
@@ -372,7 +353,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Name, time, favorite star and translate button: once per run */}
                 {runStart && (
                     <div className="mb-1 flex items-center gap-2">
-                        <span className="text-small font-semibold text-group-strong">{member_name}</span>
+                        <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
                         <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
                         {translateButton && <div className="ml-auto">{translateButton}</div>}
@@ -424,7 +405,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {message.type === 'voice' && mediaUrl && (
                             <VoicePlayer
                                 src={mediaUrl}
-                                accentColor={theme?.voicePlayerAccent}
                                 messageTimestamp={message.timestamp}
                                 onTimeUpdate={setPlayerTime}
                                 seekTo={seekTarget}
@@ -433,11 +413,11 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Text */}
                         {message.content && (
-                            <div className={cn(
+                            <div lang="ja" className={cn(
                                 'whitespace-pre-wrap text-body text-primary',
                                 message.type === 'voice' && 'p-3 pt-2',
                             )}>
-                                <LinkifiedText text={message.content} linkColor={theme?.linkColor} />
+                                <LinkifiedText text={message.content} />
                             </div>
                         )}
 
@@ -464,18 +444,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
                 {transcriptionEnabled && isTranscribable && !isUnread && (
                     <div
-                        className="rounded-b-md border-t-0 border px-3 py-1.5 -mt-1"
-                        style={{
-                            borderColor: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}30`,
-                            background: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}05`,
-                        }}
+                        className="-mt-1 rounded-b-md border border-t-0 border-accent-border bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (
                             <TranscribeButton
                                 state={transcriptionState}
                                 onClick={triggerTranscription}
                                 error={transcriptionError}
-                                accentColor={theme?.voicePlayerAccent}
                                 variant="dark"
                             />
                         ) : (
@@ -486,7 +461,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     currentTime={playerTime}
                                     onSeek={setSeekTarget}
                                     onRerun={retriggerTranscription}
-                                    accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
                                     defaultExpanded={transcriptionJustCompleted}
                                     messageId={message.id}

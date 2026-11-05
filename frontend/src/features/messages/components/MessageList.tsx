@@ -2,7 +2,6 @@ import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import { GroupedVirtuoso, type GroupedVirtuosoHandle, type GroupedVirtuosoProps, type ListRange, type TopItemListProps } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
-import { useMessagesTheme } from '../hooks/useMessagesTheme';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
@@ -122,16 +121,6 @@ export const MessageList: React.FC<ChatListProps> = ({
         scrollerRef?.(el);
     }, [scrollerRef]);
 
-    // Get theme colors for message bubbles
-    const theme = useMessagesTheme();
-    const bubbleTheme = useMemo(() => ({
-        voicePlayerAccent: theme.voicePlayerAccent,
-        favoriteColor: theme.favoriteColor,
-        linkColor: theme.linkColor,
-        shelterColors: theme.shelterColors,
-        shelterStyle: theme.shelterStyle,
-    }), [theme.voicePlayerAccent, theme.favoriteColor, theme.linkColor, theme.shelterColors, theme.shelterStyle]);
-
     // The first row the user can see; rows hidden behind a sticky date header do not count.
     const topVisibleIndex = useCallback((range: ListRange) =>
         topVisibleRowIndex(scrollerElRef.current, range, (i) => timeline.rowKeyAt(i)), [timeline]);
@@ -214,7 +203,6 @@ export const MessageList: React.FC<ChatListProps> = ({
                     onToggleFavorite={onToggleFavorite}
                     onAvatarClick={avatarClickFor(msg, onAvatarClick)}
                     onMediaClick={onMediaClick}
-                    theme={bubbleTheme}
                     service={service}
                     memberPath={getMemberPath?.(msg)}
                     userNickname={userNickname}

@@ -9,7 +9,6 @@ const FILES = [
     'core/media/TranscribeButton.tsx',
     'core/media/TranscriptPanel.tsx',
     'core/common/TranslateButton.tsx',
-    'features/messages/components/MessageBubble.tsx',
 ];
 
 describe('media accent fallback', () => {

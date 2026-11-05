@@ -31,7 +31,7 @@ describe('MessageContextMenu', () => {
     it('is a point menu; a favourite shows the strong filled star', () => {
         render(<MessageContextMenu x={10} y={10} isFavorite onToggleFavorite={vi.fn()} onClose={vi.fn()} />);
         const item = screen.getByRole('menuitem', { name: 'Remove from favorites' });
-        expect(item.querySelector('svg')).toHaveClass('fill-current');
+        expect(item.querySelector('svg')).toHaveClass('fill-current', 'text-accent');
         expect(screen.getByRole('menu').parentElement).toBe(document.body);
     });
 
