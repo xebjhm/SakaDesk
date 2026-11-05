@@ -175,3 +175,37 @@ describe('cn with design-system classes', () => {
         expect(cn('bg-group-subtle', 'bg-sheet')).toBe('bg-sheet');
     });
 });
+
+describe('cn with v2 token utilities', () => {
+  it('keeps font size and token text colour', () => {
+    expect(cn('text-display', 'text-accent-strong')).toBe('text-display text-accent-strong')
+    expect(cn('text-body', 'text-accent-tonal')).toBe('text-body text-accent-tonal')
+  })
+
+  it('keeps bg image and bg colour', () => {
+    expect(cn('bg-accent-gradient', 'bg-accent-subtle')).toBe('bg-accent-gradient bg-accent-subtle')
+  })
+
+  it('merges accent glow with other box shadows', () => {
+    expect(cn('shadow-accent-glow', 'shadow-pill')).toBe('shadow-pill')
+  })
+
+  it('keeps font family and font size', () => {
+    expect(cn('font-display', 'text-display')).toBe('font-display text-display')
+  })
+
+  it('merges rounded aliases with the standard scale', () => {
+    expect(cn('rounded-md', 'rounded-pill')).toBe('rounded-pill')
+  })
+
+  it('handles numeric brightness and scale tokens', () => {
+    expect(cn('brightness-94', 'brightness-106')).toBe('brightness-106')
+    expect(cn('scale-97', 'scale-100')).toBe('scale-100')
+    expect(cn('brightness-94', 'scale-97')).toBe('brightness-94 scale-97')
+  })
+
+  it('keeps border/ring accent colours distinct from widths', () => {
+    expect(cn('border-2', 'border-accent')).toBe('border-2 border-accent')
+    expect(cn('ring-2', 'ring-accent')).toBe('ring-2 ring-accent')
+  })
+})
