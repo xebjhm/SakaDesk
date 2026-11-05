@@ -34,6 +34,8 @@ const FILES = [
     '../features/messages/components/MemberContextMenu.tsx',
     '../features/messages/components/MemberProfilePopup.tsx',
     '../features/messages/components/ProfileImagePills.tsx',
+    '../features/callPopup/PopupCall.tsx',
+    '../features/incomingCall/CallScreen.tsx',
     'common/SettingsMenu.tsx',
     '../features/search/SearchModal.tsx',
     '../features/search/components/SearchInput.tsx',

@@ -36,8 +36,9 @@ describe('PopupCall', () => {
             />,
         );
         const el = container.querySelector('.sd-call-popup') as HTMLElement;
-        expect(el.style.getPropertyValue('--sd-accent')).toBe(groupRoles('sakurazaka').action);
-        expect(groupRoles('sakurazaka').action).toBe('#c84575');
-        expect(screen.getAllByText('山下 瞳月').length).toBeGreaterThan(0);
+        // The popup window has no active group: it scopes itself to the member's group (spec §4).
+        expect(el.style.getPropertyValue('--sd-accent')).toBe('var(--ds-accent)');
+        expect(el.style.getPropertyValue('--ds-accent')).toBe(groupRoles('sakurazaka').action);
+        expect(screen.getAllByText('山下 瞳月')[0]).toHaveAttribute('lang', 'ja');
     });
 });
