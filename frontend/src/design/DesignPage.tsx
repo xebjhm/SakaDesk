@@ -78,10 +78,13 @@ export const DesignPage: React.FC = () => {
     }, [i18n]);
 
     const r = groupRoles(group);
-    const neutral = Object.entries(color).flatMap(([role, values]) =>
-        Object.entries(values).map(([name, value]) => [`${role}.${name}`, value] as const),
-    );
-    const groupSwatches = [
+    const neutral: Array<[string, string]> = Object.entries(color).flatMap(([role, values]) =>
+        Object.entries(values as Record<string, string | Record<string, string>>).flatMap(([name, value]): Array<[string, string]> =>
+            typeof value === 'string'
+                ? [[`${role}.${name}`, value]]
+                : Object.entries(value).map(([step, v]): [string, string] => [`${role}.${name}.${step}`, v]),
+        ),
+    );    const groupSwatches = [
         ['logo', r.logo], ['action (600)', r.action], ['strong (700)', r.strong], ['subtle (50)', r.subtle],
         ['subtleBorder (200)', r.subtleBorder], ['highlight (100)', r.highlight], ['linkUnderline (300)', r.linkUnderline],
         ['bubbleBorder', r.bubbleBorder], ['glow', r.glow],

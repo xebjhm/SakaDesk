@@ -16,10 +16,12 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.text)) vars[`--ds-text-${name}`] = value;
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
     for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
-    for (const [name, value] of Object.entries(color.feedback)) vars[`--ds-feedback-${name}`] = value;
     for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
-    for (const group of ['status', 'viewer', 'decor'] as const) {
+    for (const group of ['viewer', 'decor'] as const) {
         for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
+    }
+    for (const [kind, steps] of Object.entries(color.semantic)) {
+        for (const [step, value] of Object.entries(steps)) vars[`--ds-semantic-${kind}-${step}`] = value;
     }
     // Cross-group search dots: set per element by groupMarkerStyle(); none by default.
     vars['--ds-group-marker'] = 'transparent';

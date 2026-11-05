@@ -6,6 +6,8 @@ import { GROUP_IDS, groupRoles, groupTokens } from '../../design/tokens';
 import { serviceThemes } from '../serviceThemes';
 import { generateThemeCSSVariables, UI_TOKENS } from './index';
 
+// v2 harmonized the feedback colours on purpose; the pre-D1 values no longer apply.
+const FEEDBACK_VARS = ['--color-success', '--color-warning', '--color-error'];
 const GROUP_VARS = ['--color-primary', '--color-secondary', '--color-accent', '--color-gradient-from', '--color-gradient-to'];
 
 describe('legacy theme is a view of the design tokens', () => {
@@ -13,7 +15,7 @@ describe('legacy theme is a view of the design tokens', () => {
         const vars = generateThemeCSSVariables(id);
         const want = legacy.cssVars[id] as Record<string, string>;
         for (const [name, value] of Object.entries(want)) {
-            if (!GROUP_VARS.includes(name)) expect(vars[name]).toBe(value);
+            if (!GROUP_VARS.includes(name) && !FEEDBACK_VARS.includes(name)) expect(vars[name]).toBe(value);
         }
     });
 

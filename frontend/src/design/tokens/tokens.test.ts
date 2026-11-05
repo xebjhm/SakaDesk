@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { generateThemeCSSVariables } from '../../config/colors';
 import legacy from '../__fixtures__/legacy-theme-values.json';
 import { contrastRatio } from '../contrast';
 import {
-    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
+    GROUP_IDS, SCALE_STEPS, brandInk, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
 } from './index';
 
 const SHELTERS = {
@@ -93,9 +94,6 @@ describe('neutral colour tokens', () => {
         expect(color.text.secondary).toBe(vars['--color-text-secondary']);
         expect(color.text.muted).toBe(vars['--color-text-muted']);
         expect(color.text.inverse).toBe(vars['--color-text-inverse']);
-        expect(color.feedback.success).toBe(vars['--color-success']);
-        expect(color.feedback.warning).toBe(vars['--color-warning']);
-        expect(color.feedback.error).toBe(vars['--color-error']);
     });
 
     it('use role names, never hue names (dark-mode ready)', () => {
@@ -156,5 +154,26 @@ describe('bezierEasing', () => {
         expect(() => bezierEasing([-0.1, 0, 0.5, 1])).toThrow(RangeError);
         expect(() => bezierEasing([0.2, 0, 1.2, 1])).toThrow(RangeError);
         expect(() => bezierEasing([0.2, -2, 0.5, 3])).not.toThrow();
+    });
+});
+
+describe('semantic colours (v2 harmonized)', () => {
+    it('match the spec table', () => {
+        expect(color.semantic.success).toEqual({ subtle: '#f0fbf4', icon: '#e3f6ea', border: '#cae8d7', solid: '#2e805a', text: '#216a49' });
+        expect(color.semantic.warning).toEqual({ subtle: '#fff5ed', icon: '#feedde', border: '#f6dac3', solid: '#9b5e1e', text: '#824c13' });
+        expect(color.semantic.danger).toEqual({ subtle: '#fff3f1', icon: '#ffe7e4', border: '#ffd1cd', solid: '#b44543', text: '#963635' });
+    });
+    it('info is the brand ink', () => {
+        expect(color.semantic.info).toEqual({ subtle: brandInk[50], icon: brandInk[100], border: brandInk[200], solid: brandInk[600], text: brandInk[700] });
+    });
+    it.each(['success', 'warning', 'danger', 'info'] as const)('%s: white on solid >= 4.5 and text on white >= 4.5', (k) => {
+        expect(contrastRatio(color.semantic[k].solid, '#ffffff')!).toBeGreaterThanOrEqual(4.5);
+        expect(contrastRatio(color.semantic[k].text, '#ffffff')!).toBeGreaterThanOrEqual(4.5);
+    });
+    it('legacy feedback CSS variables follow the semantic solids', () => {
+        const vars = generateThemeCSSVariables('hinatazaka');
+        expect(vars['--color-success']).toBe(color.semantic.success.solid);
+        expect(vars['--color-warning']).toBe(color.semantic.warning.solid);
+        expect(vars['--color-error']).toBe(color.semantic.danger.solid);
     });
 });

@@ -21,7 +21,7 @@ describe('cssVars', () => {
         expect(vars['--ds-ease-standard']).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(Object.keys(vars).every((k) => k.startsWith('--ds-'))).toBe(true);
         expect(vars['--ds-overlay-scrim']).toBe('rgba(0, 0, 0, 0.4)');
-        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1);
+        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1 - 3 - 4 + 20); // semantic (4 kinds x 5 steps) replaces feedback (3) and status (4)
         expect(vars['--ds-duration-glide']).toBe('400ms');
         expect(vars['--ds-duration-landing']).toBe('1400ms');
     });
@@ -58,7 +58,7 @@ describe('applyGroupTokens', () => {
         for (const [name, value] of Object.entries(groupTokenVars(id))) {
             expect(style().getPropertyValue(name)).toBe(value);
         }
-        const changed = ['--color-primary', '--color-secondary', '--color-accent', '--color-gradient-from', '--color-gradient-to'];
+        const changed = ['--color-success', '--color-warning', '--color-error', '--color-primary', '--color-secondary', '--color-accent', '--color-gradient-from', '--color-gradient-to'];
         for (const [name, value] of Object.entries(legacy.cssVars[id])) {
             if (!changed.includes(name)) expect(style().getPropertyValue(name)).toBe(value);
         }

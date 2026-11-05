@@ -12,10 +12,9 @@ const config = readFileSync(resolve(__dirname, '../../tailwind.config.js'), 'utf
 describe('D2c tokens', () => {
     it('write the status, viewer, decor and toast variables', () => {
         const v = staticTokenVars();
-        expect(v['--ds-status-danger']).toBe('#DC2626');
-        expect(v['--ds-status-success']).toBe('#15803D');
-        expect(v['--ds-status-warning']).toBe('#B45309');
-        expect(v['--ds-status-attention']).toBe('#F97316');
+        expect(v['--ds-semantic-danger-solid']).toBe('#b44543');
+        expect(v['--ds-semantic-success-text']).toBe('#216a49');
+        expect(v['--ds-semantic-warning-text']).toBe('#824c13');
         expect(v['--ds-viewer-scrim']).toBe('rgba(0, 0, 0, 0.9)');
         expect(v['--ds-viewer-stage']).toBe('#000000');
         expect(v['--ds-viewer-control']).toBe('rgba(255, 255, 255, 0.2)');
@@ -30,7 +29,7 @@ describe('D2c tokens', () => {
     });
 
     it('keep status text readable on white (≥ 4.5:1)', () => {
-        for (const c of [color.status.danger, color.status.success, color.status.warning]) {
+        for (const c of [color.semantic.danger.text, color.semantic.success.text, color.semantic.warning.text]) {
             expect(contrastRatio(c, color.surface.sheet)!).toBeGreaterThanOrEqual(4.5);
         }
     });
@@ -38,8 +37,8 @@ describe('D2c tokens', () => {
     it('expose the utilities in tailwind.config.js', () => {
         for (const needle of [
             "toast: 'var(--ds-overlay-toast)'",
-            "'status-danger': 'var(--ds-status-danger)'",
-            "'status-attention': 'var(--ds-status-attention)'",
+            "'status-danger': 'var(--ds-semantic-danger-solid)'",
+            "'status-attention': 'var(--ds-semantic-warning-solid)'",
             "'viewer-scrim': 'var(--ds-viewer-scrim)'",
             "'viewer-muted': 'var(--ds-viewer-text-muted)'",
             "sunday: 'var(--ds-decor-sunday)'",

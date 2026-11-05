@@ -21,4 +21,8 @@ export const NEUTRAL_COLORS = {
     },
 } as const;
 
-export const FEEDBACK_COLORS = color.feedback;
+export const FEEDBACK_COLORS = {
+    success: color.semantic.success.solid,
+    warning: color.semantic.warning.solid,
+    error: color.semantic.danger.solid,
+} as const;
