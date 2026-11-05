@@ -7,7 +7,8 @@ export default {
     theme: {
         extend: {
             fontFamily: {
-                sans: ['"Noto Sans JP"', 'system-ui', '-apple-system', 'sans-serif'],
+                sans: 'var(--ds-font-family-sans)',
+                display: 'var(--ds-font-family-serif)',
                 reading: 'var(--ds-font-family-reading)',
             },
             colors: {
@@ -178,6 +179,7 @@ export default {
                 body: ['var(--ds-font-body-size)', { lineHeight: 'var(--ds-font-body-leading)' }],
                 title: ['var(--ds-font-title-size)', { lineHeight: 'var(--ds-font-title-leading)' }],
                 heading: ['var(--ds-font-heading-size)', { lineHeight: 'var(--ds-font-heading-leading)' }],
+                display: ['var(--ds-font-display-size)', { lineHeight: 'var(--ds-font-display-leading)' }],
                 reading: ['var(--ds-font-reading-size)', { lineHeight: 'var(--ds-font-reading-leading)' }],
             },
             keyframes: {

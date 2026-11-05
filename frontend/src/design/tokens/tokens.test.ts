@@ -105,7 +105,7 @@ describe('neutral colour tokens', () => {
 describe('scales', () => {
     it('shadow, type, motion and spacing are unchanged', () => {
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
-        expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading', 'reading']);
+        expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading', 'display', 'reading']);
         expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });
         expect(easingCss(motion.easing.standard)).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(SPACE_UNIT_PX).toBe(4);

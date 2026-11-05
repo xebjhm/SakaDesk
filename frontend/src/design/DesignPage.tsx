@@ -25,7 +25,7 @@ const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
 };
 const TYPE_CLASS: Record<TypeStep, string> = {
-    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', reading: 'text-reading',
+    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', display: 'font-display text-display', reading: 'text-reading',
 };
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (

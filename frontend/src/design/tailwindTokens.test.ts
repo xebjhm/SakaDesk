@@ -73,6 +73,8 @@ describe('accent and expressive utilities', () => {
         ['borderRadius', 'card', '--ds-radius-card'],
         ['borderRadius', 'sheet', '--ds-radius-sheet'],
         ['borderRadius', 'pill', '--ds-radius-pill'],
+        ['fontFamily', 'sans', '--ds-font-family-sans'],
+        ['fontFamily', 'display', '--ds-font-family-serif'],
     ];
     const sectionBody = (name: string) => {
         const start = config.indexOf(`${name}: {`);
@@ -81,6 +83,12 @@ describe('accent and expressive utilities', () => {
 
     it.each(expected)('%s.%s maps to var(%s)', (section, key, variable) => {
         expect(sectionBody(section)).toContain(`${key}: 'var(${variable})'`);
+    });
+
+    it('fontSize.display uses the display size and leading variables', () => {
+        const body = sectionBody('fontSize');
+        expect(body).toContain('var(--ds-font-display-size)');
+        expect(body).toContain('var(--ds-font-display-leading)');
     });
 
     it('every accent variable is written by the token maps', () => {

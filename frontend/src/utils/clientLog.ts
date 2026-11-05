@@ -10,7 +10,7 @@ export type ClientLogEvent =
     | 'call_popup_start' | 'call_popup_error'
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'
-    | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback'
+    | 'design_tokens_applied' | 'design_tokens_fallback' | 'avatar_fallback' | 'design_fonts_applied'
     | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load'
     | 'blog_load' | 'dialog' | 'dialog_load' | 'call_layer' | 'sync_start_skipped';
 

@@ -36,3 +36,6 @@
     background-color: #F0F2F5;
   }
 }
+
+/* Japanese content keeps Japanese glyphs whatever the UI language (spec §6). */
+:lang(ja) { font-family: "Noto Sans JP", system-ui, -apple-system, sans-serif; }
