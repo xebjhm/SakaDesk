@@ -5,7 +5,6 @@
   "core/common/TranslateButton.tsx": 16,
   "core/layout/AddServiceModal.tsx": 1,
   "core/layout/InlineSyncView.tsx": 1,
-  "core/layout/ServiceRail.tsx": 2,
   "core/media/LazyVideo.tsx": 1,
   "core/media/MediaGalleryModal.tsx": 8,
   "core/media/PhotoDetailModal.tsx": 1,

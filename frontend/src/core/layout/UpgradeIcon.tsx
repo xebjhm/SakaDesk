@@ -238,24 +238,25 @@ export function UpgradeIcon() {
                     if (stage === 'available') handleDismiss(e);
                 }}
                 className={cn(
-                    "w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200",
+                    'flex h-11 w-11 items-center justify-center rounded-full transition duration-fast ease-standard hover:brightness-94',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                     stage === 'error'
-                        ? "bg-red-100 text-red-600 hover:bg-red-200"
+                        ? 'bg-semantic-danger-icon text-semantic-danger'
                         : stage === 'ready'
-                        ? "bg-green-100 text-green-600 hover:bg-green-200"
-                        : "bg-blue-100 text-blue-600 hover:bg-blue-200"
+                        ? 'bg-semantic-success-icon text-semantic-success'
+                        : 'bg-semantic-info-icon text-semantic-info',
                 )}
                 title={tooltip}
             >
                 {/* Progress ring for downloading state */}
                 {stage === 'downloading' && (
-                    <svg className="absolute inset-0 w-11 h-11 -rotate-90" viewBox="0 0 44 44">
+                    <svg className="absolute inset-0 h-11 w-11 -rotate-90" viewBox="0 0 44 44">
                         <circle
                             cx="22" cy="22" r={RING_RADIUS}
                             fill="none" stroke="currentColor" strokeWidth="2.5"
                             strokeDasharray={RING_CIRCUMFERENCE}
                             strokeDashoffset={ringOffset}
-                            className="text-blue-500 transition-[stroke-dashoffset] duration-300"
+                            className="text-accent transition-[stroke-dashoffset] duration-base ease-standard"
                             strokeLinecap="round"
                         />
                     </svg>
@@ -263,20 +264,20 @@ export function UpgradeIcon() {
 
                 {/* Icon */}
                 {stage === 'error' ? (
-                    <AlertCircle className="w-5 h-5" />
+                    <AlertCircle className="h-5 w-5" />
                 ) : stage === 'launching' ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                 ) : stage === 'ready' ? (
-                    <ArrowUpCircle className="w-5 h-5" />
+                    <ArrowUpCircle className="h-5 w-5" />
                 ) : (
-                    <Download className="w-5 h-5" />
+                    <Download className="h-5 w-5" />
                 )}
 
                 {/* Notification dot */}
                 {(stage === 'available' || stage === 'ready') && (
                     <span className={cn(
-                        "absolute top-0 right-0 w-3 h-3 rounded-full border-2 border-gray-50",
-                        stage === 'available' ? "bg-blue-500" : "bg-green-500"
+                        'absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-surface',
+                        stage === 'available' ? 'bg-accent' : 'bg-status-success',
                     )} />
                 )}
             </button>
@@ -285,10 +286,10 @@ export function UpgradeIcon() {
             {(stage === 'available' || stage === 'error') && (
                 <button
                     onClick={handleDismiss}
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gray-400 text-white items-center justify-center hidden group-hover:flex hover:bg-gray-500 transition-colors"
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-control-off text-primary transition-colors duration-fast ease-standard hover:bg-sunken group-hover:flex"
                     title={stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
                 >
-                    <X className="w-2.5 h-2.5" />
+                    <X className="h-2.5 w-2.5" />
                 </button>
             )}
         </div>

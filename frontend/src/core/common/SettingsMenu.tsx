@@ -72,7 +72,8 @@ export const SettingsMenu: React.FC<SettingsMenuProps> = ({
         <div className="relative">
             <IconButton
                 ref={triggerRef}
-                variant="secondary"
+                variant="soft"
+                shape="circle"
                 className="h-11 w-11"
                 aria-label={t('common.settings')}
                 title={t('common.settings')}
