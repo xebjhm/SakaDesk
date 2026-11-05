@@ -9,7 +9,7 @@ const SHELTERS = {
     hinatazaka: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
     sakurazaka: { picture: '#ec9595', video: '#edc094', voice: '#d695ec', text: '#eb95ae' },
     nogizaka: { picture: '#c4a8d8', video: '#9B59B6', voice: '#b8a8d8', text: '#d8c8e8' },
-    yodel: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
+    yodel: { picture: '#b5c0ff', video: '#98a2ff', voice: '#7e85ff', text: '#6060e0' },
     default: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
 } as const;
 
@@ -17,7 +17,7 @@ const ROLES = {
     hinatazaka: ['#7cc7e8', '#389dd1', '#0d7aab', '#eff9fd', '#bbe4f7', '#7cc7e8', '#7cc7e8', 'rgba(124, 199, 232, 0.35)'],
     sakurazaka: ['#f19db5', '#c84575', '#a72f5d', '#fff3f6', '#fecdda', '#feacc3', '#f19db5', 'rgba(241, 157, 181, 0.35)'],
     nogizaka: ['#7f1083', '#b24ab5', '#943397', '#fef3fe', '#f9cbf8', '#f1abf1', '#b24ab5', 'rgba(127, 16, 131, 0.28)'],
-    yodel: ['#5a8a6a', '#5a8a6a', '#416f51', '#f3f8f4', '#cde3d3', '#afd1b9', '#5a8a6a', 'rgba(90, 138, 106, 0.3)'],
+    yodel: ['#6060e0', '#6060e0', '#4c4bbb', '#f3f6ff', '#d2daff', '#b5c0ff', '#6060e0', 'rgba(96, 96, 224, 0.3)'],
     default: ['#6b7280', '#4b5563', '#374151', '#f9fafb', '#e5e7eb', '#d1d5db', '#E5E7EB', 'rgba(107, 114, 128, 0.25)'],
 } as const;
 
@@ -78,7 +78,7 @@ describe('group tokens — system layer', () => {
         expect(h.ambient.orb1).toBe('radial-gradient(circle, #bbe4f7 0%, #dbf1fb 30%, transparent 70%)');
         expect(h.ambient.orb2).toBe('radial-gradient(circle, #fce4fc 0%, #eff9fd 40%, transparent 70%)');
         expect(h.ambient.orb3).toBe('radial-gradient(circle, #dbf1fb 0%, transparent 70%)');
-        expect(groupRoles('yodel').ambient.orb2).toBe('radial-gradient(circle, #e5f0e8 0%, #f3f8f4 40%, transparent 70%)');
+        expect(groupRoles('yodel').ambient.orb2).toBe('radial-gradient(circle, #e7ecff 0%, #f3f6ff 40%, transparent 70%)');
     });
 });
 

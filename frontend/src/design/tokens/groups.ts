@@ -3,7 +3,7 @@
  *
  * Two layers (docs/design/DESIGN_SYSTEM.md, "Colour system"):
  * - `official`: colours copied from the official apps. They are kept verbatim
- *   and pinned by tests: title gradient/bar/text, canvas, unread shelters and
+ *   and pinned by tests (Yodel's are system-derived since v2): title gradient/bar/text, canvas, unread shelters and
  *   styles.
  * - System: `logo` plus a 10-step `scale` (OKLCH, logo colour snapped into its
  *   nearest step). Every other colour is a role from `roles.ts`. The only
@@ -119,21 +119,24 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
         },
     },
     yodel: {
-        logo: '#5a8a6a',
+        // Design language v2: the logo periwinkle. The old green (#5a8a6a) was one OG's page colour.
+        // Official fields are SYSTEM-DERIVED from this scale (no official periwinkle data); a
+        // per-OG layer is reserved (spec §3.2).
+        logo: '#6060e0',
         scale: {
-            50: '#f3f8f4', 100: '#e5f0e8', 200: '#cde3d3', 300: '#afd1b9', 400: '#90bc9e',
-            500: '#74a684', 600: '#5a8a6a', 700: '#416f51', 800: '#30573e', 900: '#21402c',
+            50: '#f3f6ff', 100: '#e7ecff', 200: '#d2daff', 300: '#b5c0ff', 400: '#98a2ff',
+            500: '#7e85ff', 600: '#6060e0', 700: '#4c4bbb', 800: '#393992', 900: '#28286b',
         },
-        bubbleBorder: '#5a8a6a',
-        glow: 'rgba(90, 138, 106, 0.3)',
+        bubbleBorder: '#6060e0',
+        glow: 'rgba(96, 96, 224, 0.3)',
         official: {
             title: {
-                gradient: { from: '#b8d8c8', via: '#8ab89a', to: '#5a8a6a' },
-                bar: 'linear-gradient(to right, #b8d8c8, #5a8a6a)',
-                text: '#4a7a5a',
+                gradient: { from: '#d2daff', via: '#98a2ff', to: '#6060e0' },
+                bar: 'linear-gradient(to right, #d2daff, #6060e0)',
+                text: '#4c4bbb',
             },
-            canvas: ['#d4ebe0', '#e5f2eb', '#f0f8f4'],
-            shelter: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
+            canvas: ['#e7ecff', '#f3f6ff', '#f8f9ff'],
+            shelter: { picture: '#b5c0ff', video: '#98a2ff', voice: '#7e85ff', text: '#6060e0' },
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },

@@ -60,17 +60,17 @@
     "yodel": {
       "accent": "#5a8a6a",
       "canvas": [
-        "#d4ebe0",
-        "#e5f2eb",
-        "#f0f8f4"
+        "#e7ecff",
+        "#f3f6ff",
+        "#f8f9ff"
       ],
       "titleGradient": {
-        "from": "#b8d8c8",
-        "via": "#8ab89a",
-        "to": "#5a8a6a"
+        "from": "#d2daff",
+        "via": "#98a2ff",
+        "to": "#6060e0"
       },
-      "titleBar": "linear-gradient(to right, #b8d8c8, #5a8a6a)",
-      "titleText": "#4a7a5a",
+      "titleBar": "linear-gradient(to right, #d2daff, #6060e0)",
+      "titleText": "#4c4bbb",
       "ring": "#5a8a6a",
       "glow": "rgba(90, 138, 106, 0.3)",
       "bubbleBorder": "#5a8a6a",
