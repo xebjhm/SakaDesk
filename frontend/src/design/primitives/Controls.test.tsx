@@ -127,7 +127,11 @@ describe('Button v2', () => {
         const b = screen.getByRole('button', { name: 'Save' });
         expect(b.className).toContain('relative');
         expect(b).toHaveAttribute('data-loading', 'true');
-        expect(b.querySelector('[data-spinner]')?.className).toContain('absolute');
+        const spinner = b.querySelector('[data-spinner]')?.className ?? '';
+        expect(spinner).toContain('absolute');
+        expect(spinner).toContain('inset-0');
+        expect(spinner).toContain('m-auto');
+        expect(spinner).not.toContain('-translate-x-1/2');
         expect(screen.getByText('Save').className).toContain('opacity-0');
     });
     it('blocks form submit when disabledReason is set', () => {

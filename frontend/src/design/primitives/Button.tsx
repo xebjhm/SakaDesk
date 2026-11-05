@@ -90,7 +90,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 onClick={blocked ? (e) => e.preventDefault() : onClick}
             >
                 {loading && (
-                    <span data-spinner aria-hidden="true" className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
+                    <span data-spinner aria-hidden="true" className="absolute inset-0 m-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
                 )}
                 {/* Stays in the a11y tree while loading (opacity, not visibility) so width and name are unchanged. */}
                 <span className={cn('inline-flex items-center justify-center gap-2', loading && 'opacity-0')}>{children}</span>
