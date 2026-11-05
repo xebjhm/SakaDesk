@@ -8,12 +8,13 @@ import { BookOpen, ChevronDown, MessageCircle, Newspaper, Search, Settings, X } 
 import { SUPPORTED_LANGUAGES, useTranslation, type SupportedLanguage } from '../i18n';
 import { serviceThemes } from '../config/serviceThemes';
 import { cn } from '../utils/classnames';
+import { BrandScope } from './brandScope';
 import { applyGroupTokens } from './applyTokens';
 import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
-import { GROUP_IDS, SCALE_STEPS, color, groupRoles, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
+import { GROUP_IDS, SCALE_STEPS, brandInk, color, groupRoles, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
-    Avatar, Badge, Button, Canvas, Card, DatePill, IconButton, Input, Menu, MenuItem, MenuSeparator, Modal, Pill, RailItem, Select, Sheet, Switch,
+    Atmosphere, Avatar, Badge, Button, Canvas, Card, CelebrationToast, EmptyState, MilestoneCard, DatePill, IconButton, Input, Menu, MenuItem, MenuSeparator, Modal, Pill, RailItem, Select, Sheet, Switch,
 } from './primitives';
 
 // Full class names so Tailwind's scanner generates them.
@@ -25,8 +26,28 @@ const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
 };
 const TYPE_CLASS: Record<TypeStep, string> = {
-    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', display: 'font-display text-display', reading: 'text-reading',
+    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', display: 'text-display', reading: 'text-reading',
 };
+
+const SEMANTIC_BANNER = {
+    success: 'flex items-center gap-3 rounded-md border border-semantic-success bg-semantic-success-subtle px-4 py-2',
+    warning: 'flex items-center gap-3 rounded-md border border-semantic-warning bg-semantic-warning-subtle px-4 py-2',
+    danger: 'flex items-center gap-3 rounded-md border border-semantic-danger bg-semantic-danger-subtle px-4 py-2',
+    info: 'flex items-center gap-3 rounded-md border border-semantic-info bg-semantic-info-subtle px-4 py-2',
+} as const;
+const SEMANTIC_ICON = {
+    success: 'flex h-6 w-6 items-center justify-center rounded-full border border-semantic-success bg-semantic-success-icon text-caption font-bold text-semantic-success',
+    warning: 'flex h-6 w-6 items-center justify-center rounded-full border border-semantic-warning bg-semantic-warning-icon text-caption font-bold text-semantic-warning',
+    danger: 'flex h-6 w-6 items-center justify-center rounded-full border border-semantic-danger bg-semantic-danger-icon text-caption font-bold text-semantic-danger',
+    info: 'flex h-6 w-6 items-center justify-center rounded-full border border-semantic-info bg-semantic-info-icon text-caption font-bold text-semantic-info',
+} as const;
+const SEMANTIC_TEXT = {
+    success: 'text-small font-semibold text-semantic-success',
+    warning: 'text-small font-semibold text-semantic-warning',
+    danger: 'text-small font-semibold text-semantic-danger',
+    info: 'text-small font-semibold text-semantic-info',
+} as const;
+const CONTEXTS = ['brand', ...GROUP_IDS] as const;
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
     <section className="flex flex-col gap-4">
@@ -60,7 +81,9 @@ function daysAgo(n: number): Date {
 
 export const DesignPage: React.FC = () => {
     const { t, i18n } = useTranslation();
-    const [group, setGroup] = useState<GroupId>('hinatazaka');
+    const [context, setContext] = useState<'brand' | GroupId>('hinatazaka');
+    const group: GroupId = context === 'brand' ? 'hinatazaka' : context;
+    const [replay, setReplay] = useState(0);
     const [filter, setFilter] = useState<'all' | 'unread'>('all');
     const [rail, setRail] = useState<'talk' | 'blog' | 'news'>('talk');
     const [moved, setMoved] = useState(false);
@@ -79,7 +102,7 @@ export const DesignPage: React.FC = () => {
     }, [i18n]);
 
     const r = groupRoles(group);
-    const neutral: Array<[string, string]> = Object.entries(color).flatMap(([role, values]) =>
+    const neutral: Array<[string, string]> = Object.entries(color).filter(([role]) => role !== 'semantic').flatMap(([role, values]) =>
         Object.entries(values as Record<string, string | Record<string, string>>).flatMap(([name, value]): Array<[string, string]> =>
             typeof value === 'string'
                 ? [[`${role}.${name}`, value]]
@@ -98,30 +121,8 @@ export const DesignPage: React.FC = () => {
         ['ambient.orb3', groupTokenVars(group)['--ds-group-ambient-3']],
     ] as const;
 
-    return (
-        <Canvas data-testid="design-page" className="min-h-screen p-6">
-            <Sheet className="mx-auto flex max-w-5xl flex-col gap-10 p-8">
-                <header className="flex flex-col gap-3">
-                    <h1 className="text-heading font-semibold text-primary">{t('designPage.title')}</h1>
-                    <p className="text-body text-secondary">{t('designPage.subtitle')}</p>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-small text-muted">{t('designPage.group')}</span>
-                        {GROUP_IDS.map((id) => (
-                            <Pill key={id} selected={id === group} onClick={() => setGroup(id)}>
-                                {serviceThemes[id].name || id}
-                            </Pill>
-                        ))}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-small text-muted">{t('settings.language')}</span>
-                        {(Object.keys(SUPPORTED_LANGUAGES) as SupportedLanguage[]).map((code) => (
-                            <Pill key={code} selected={i18n.language === code} onClick={() => void i18n.changeLanguage(code)}>
-                                {SUPPORTED_LANGUAGES[code].nativeName}
-                            </Pill>
-                        ))}
-                    </div>
-                </header>
-
+    const body = (
+        <>
                 <Section title={t('designPage.colors')}>
                     <h3 className="text-title text-secondary">{t('designPage.neutral')}</h3>
                     <div className="flex flex-wrap gap-3">
@@ -175,6 +176,74 @@ export const DesignPage: React.FC = () => {
                     </div>
                 </Section>
 
+                <Section title={t('designPage.brand')}>
+                    <div className="flex flex-wrap gap-3">
+                        {SCALE_STEPS.map((step) => <Swatch key={step} name={`ink ${step}`} value={brandInk[step]} />)}
+                    </div>
+                    <div className="h-24 rounded-xl bg-aurora" />
+                </Section>
+
+                <Section title={t('designPage.semantic')}>
+                    {(['success', 'warning', 'danger', 'info'] as const).map((k) => (
+                        <div key={k} className="flex flex-col gap-2">
+                            <div className="flex flex-wrap gap-3">
+                                {(['subtle', 'icon', 'border', 'solid', 'text'] as const).map((step) => (
+                                    <Swatch key={step} name={`${k} ${step}`} value={color.semantic[k][step]} />
+                                ))}
+                            </div>
+                            <div className={SEMANTIC_BANNER[k]}>
+                                <span className={SEMANTIC_ICON[k]}>!</span>
+                                <span className={SEMANTIC_TEXT[k]}>{k}</span>
+                            </div>
+                        </div>
+                    ))}
+                </Section>
+
+                <Section title={t('designPage.buttons')}>
+                    <div className="flex flex-wrap items-center gap-3">
+                        {(['primary', 'tonal', 'secondary', 'ghost', 'danger'] as const).map((v) => <Button key={v} variant={v}>{v}</Button>)}
+                        <Button variant="primary" loading>loading</Button>
+                        <Button variant="primary" disabledReason={t('designPage.sampleDisabledReason')}>disabled</Button>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+<Button variant="primary">{t('designPage.primary')}</Button>
+                        <Button>{t('designPage.secondary')}</Button>
+                        <Button variant="ghost">{t('designPage.ghost')}</Button>
+                        <Button variant="danger">{t('designPage.danger')}</Button>
+                        <IconButton variant="accent" aria-label={t('designPage.accent')} icon={<ChevronDown />} />
+                        <span className="inline-flex items-center gap-2 rounded-card bg-viewer-stage p-2">
+                            <Button variant="overlay" size="sm">{t('designPage.overlay')}</Button>
+                            <IconButton variant="overlay" size="sm" aria-label={t('designPage.close')} icon={<X />} />
+                        </span>
+                        <Button disabled>{t('designPage.disabled')}</Button>
+                        <Button size="sm">{t('designPage.secondary')}</Button>
+                        <IconButton aria-label={t('designPage.close')} icon={<X />} />
+                        <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.tiers')}>
+                    <div className="grid grid-cols-3 gap-4">
+                        <Card className="p-4"><p className="text-caption text-muted">{t('designPage.tierQuiet')}</p>
+                            <div className="mt-2 rounded-sm bg-accent-subtle px-3 py-2 text-small font-semibold text-accent-strong">Selected</div>
+                            <div className="px-3 py-2 text-small text-secondary">Item</div></Card>
+                        <Card className="p-4 shadow-accent-glow"><p className="text-caption text-muted">{t('designPage.tierInteractive')}</p>
+                            <div className="mt-3 flex gap-2"><Button variant="primary" size="sm">primary</Button><Button variant="tonal" size="sm">tonal</Button></div></Card>
+                        <Atmosphere className="h-40 rounded-lg bg-sheet">
+                            <div className="m-6 rounded-lg bg-sheet p-4 shadow-card"><p className="text-caption text-muted">{t('designPage.tierAtmosphere')}</p></div>
+                        </Atmosphere>
+                    </div>
+                </Section>
+
+                <Section title={t('designPage.moments')}>
+                    <div className="grid grid-cols-3 items-start gap-4">
+                        <Card><EmptyState icon={<BookOpen />} title={t('designPage.sampleEmptyTitle')} description={t('designPage.sampleEmptyBody')} /></Card>
+                        <CelebrationToast key={`t${replay}`} title={t('designPage.sampleToastTitle')} description={t('designPage.sampleToastBody')} />
+                        <MilestoneCard key={`m${replay}`} value="365" label={t('designPage.sampleMilestone')} />
+                    </div>
+                    <div><Button size="sm" onClick={() => setReplay((n) => n + 1)}>{t('designPage.replay')}</Button></div>
+                </Section>
+
                 <Section title={t('designPage.radius')}>
                     <div className="flex flex-wrap gap-4">
                         {(Object.keys(radius) as RadiusStep[]).map((step) => (
@@ -205,6 +274,9 @@ export const DesignPage: React.FC = () => {
                             </div>
                         ))}
                     </div>
+                    {(['ja', 'zh-TW', 'yue', 'zh-CN', 'en'] as const).map((lng) => (
+                        <p key={lng} lang={lng} className="font-display text-display text-primary">{lng} · {t('designPage.displaySample', { lng })}</p>
+                    ))}
                 </Section>
 
                 <Section title={t('designPage.motion')}>
@@ -260,23 +332,6 @@ export const DesignPage: React.FC = () => {
                     <h3 className="text-title text-secondary">{t('designPage.datePills')}</h3>
                     <div className="flex flex-wrap gap-2">
                         {[0, 1, 10, 400].map((n) => <DatePill key={n} date={daysAgo(n)} />)}
-                    </div>
-
-                    <h3 className="text-title text-secondary">{t('designPage.buttons')}</h3>
-                    <div className="flex flex-wrap items-center gap-2">
-                        <Button variant="primary">{t('designPage.primary')}</Button>
-                        <Button>{t('designPage.secondary')}</Button>
-                        <Button variant="ghost">{t('designPage.ghost')}</Button>
-                        <Button variant="danger">{t('designPage.danger')}</Button>
-                        <IconButton variant="accent" aria-label={t('designPage.accent')} icon={<ChevronDown />} />
-                        <span className="inline-flex items-center gap-2 rounded-card bg-viewer-stage p-2">
-                            <Button variant="overlay" size="sm">{t('designPage.overlay')}</Button>
-                            <IconButton variant="overlay" size="sm" aria-label={t('designPage.close')} icon={<X />} />
-                        </span>
-                        <Button disabled>{t('designPage.disabled')}</Button>
-                        <Button size="sm">{t('designPage.secondary')}</Button>
-                        <IconButton aria-label={t('designPage.close')} icon={<X />} />
-                        <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
                     </div>
 
                     <h3 className="text-title text-secondary">{t('designPage.forms')}</h3>
@@ -345,6 +400,34 @@ export const DesignPage: React.FC = () => {
                         ))}
                     </div>
                 </Section>
+        </>
+    );
+
+    return (
+        <Canvas data-testid="design-page" className="min-h-screen p-6">
+            <Sheet className="mx-auto flex max-w-5xl flex-col gap-10 p-8">
+                <header className="flex flex-col gap-3">
+                    <h1 className="text-heading font-semibold text-primary">{t('designPage.title')}</h1>
+                    <p className="text-body text-secondary">{t('designPage.subtitle')}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-small text-muted">{t('designPage.context')}</span>
+                        {CONTEXTS.map((option) => (
+                            <Pill key={option} selected={context === option} onClick={() => setContext(option)}>
+                                {option === 'brand' ? t('designPage.contextBrand') : serviceThemes[option].name || option}
+                            </Pill>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-small text-muted">{t('settings.language')}</span>
+                        {(Object.keys(SUPPORTED_LANGUAGES) as SupportedLanguage[]).map((code) => (
+                            <Pill key={code} selected={i18n.language === code} onClick={() => void i18n.changeLanguage(code)}>
+                                {SUPPORTED_LANGUAGES[code].nativeName}
+                            </Pill>
+                        ))}
+                    </div>
+                </header>
+
+{context === 'brand' ? <BrandScope className="contents">{body}</BrandScope> : body}
             </Sheet>
         </Canvas>
     );
