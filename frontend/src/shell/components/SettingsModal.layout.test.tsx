@@ -35,7 +35,7 @@ describe('SettingsModal layout', () => {
 
     it('has one primary button (Save) and the close button closes', async () => {
         const { onClose } = renderModal();
-        const primaries = screen.getAllByRole('button').filter((b) => b.className.includes('bg-group-accent') && !b.getAttribute('role'));
+        const primaries = screen.getAllByRole('button').filter((b) => b.className.includes('bg-accent-gradient') && !b.getAttribute('role'));
         expect(primaries.map((b) => b.textContent)).toEqual(['Save']);
         await userEvent.click(screen.getByRole('button', { name: 'Close' }));
         expect(onClose).toHaveBeenCalled();
@@ -47,7 +47,7 @@ describe('SettingsModal layout', () => {
             renderModal();
             await userEvent.click(within(screen.getByRole('navigation', { name: 'Settings sections' })).getByRole('button', { name: tab }));
             const primaries = screen.getAllByRole('button')
-                .filter((b) => /\b(?:bg-group-accent|bg-status-danger)\b/.test(b.className) && !b.getAttribute('role'));
+                .filter((b) => /\b(?:bg-accent-gradient|bg-status-danger)\b/.test(b.className) && !b.getAttribute('role'));
             expect(primaries.map((b) => b.textContent)).toEqual(expected);
         },
     );

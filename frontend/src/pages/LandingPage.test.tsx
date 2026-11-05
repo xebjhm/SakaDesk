@@ -22,7 +22,7 @@ describe('LandingPage (D2d)', () => {
         expect(card).toHaveAttribute('aria-pressed', 'true');
         expect(card).toHaveClass('bg-group-subtle', 'border-group-subtle');
         expect(card.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-group-accent', 'text-inverse');
-        expect(screen.getByRole('button', { name: 'Get Started' })).toHaveClass('bg-group-accent');
+        expect(screen.getByRole('button', { name: 'Get Started' })).toHaveClass('bg-accent-gradient');
     });
 
     it('keeps the feature chips visible when an unselected card is hovered', () => {

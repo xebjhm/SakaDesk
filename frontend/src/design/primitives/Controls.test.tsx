@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { X, MessageCircle } from 'lucide-react';
 import { Button, IconButton, RailItem } from './index';
@@ -9,10 +9,10 @@ describe('Button', () => {
         render(<Button>保存</Button>);
         const b = screen.getByRole('button', { name: '保存' });
         expect(b).toHaveAttribute('type', 'button');
-        expect(b).toHaveClass('bg-pill', 'h-10', 'rounded-pill');
+        expect(b).toHaveClass('bg-pill', 'h-10', 'rounded-md');
     });
 
-    it('primary uses the group accent; ghost and secondary do not', () => {
+    it('primary uses the accent gradient; ghost and secondary do not', () => {
         render(
             <>
                 <Button variant="primary">answer</Button>
@@ -20,9 +20,9 @@ describe('Button', () => {
                 <Button variant="secondary">later</Button>
             </>,
         );
-        expect(screen.getByRole('button', { name: 'answer' })).toHaveClass('bg-group-accent', 'text-inverse');
-        expect(screen.getByRole('button', { name: 'cancel' }).className).not.toMatch(/group-accent/);
-        expect(screen.getByRole('button', { name: 'later' }).className).not.toMatch(/group-accent/);
+        expect(screen.getByRole('button', { name: 'answer' })).toHaveClass('bg-accent-gradient', 'text-inverse');
+        expect(screen.getByRole('button', { name: 'cancel' }).className).not.toMatch(/accent-gradient/);
+        expect(screen.getByRole('button', { name: 'later' }).className).not.toMatch(/accent-gradient/);
     });
 
     it('does not fire when disabled', async () => {
@@ -68,15 +68,58 @@ describe('D2c button variants', () => {
         expect(screen.getByRole('button', { name: '保存' })).toHaveClass('bg-viewer-control', 'text-viewer');
     });
 
-    it('the accent icon button is today’s unread-arrow look', () => {
+    it('the accent icon button is the gradient floating look', () => {
         render(<IconButton variant="accent" aria-label="未読へ" icon={<X />} />);
         const b = screen.getByRole('button', { name: '未読へ' });
-        expect(b).toHaveClass('bg-group-accent', 'text-inverse', 'shadow-card', 'hover:brightness-105');
+        expect(b).toHaveClass('bg-accent-gradient', 'text-inverse', 'shadow-accent-glow', 'hover:brightness-105');
         expect(b).not.toHaveClass('bg-pill');
     });
 
     it('the overlay icon button is the viewer control', () => {
         render(<IconButton variant="overlay" aria-label="閉じる" icon={<X />} />);
         expect(screen.getByRole('button', { name: '閉じる' })).toHaveClass('bg-viewer-control', 'hover:bg-viewer-control-hover', 'text-viewer');
+    });
+});
+
+describe('Button v2', () => {
+    it('primary uses the accent gradient, glow and 12px radius', () => {
+        render(<Button variant="primary">Save</Button>);
+        const b = screen.getByRole('button', { name: 'Save' });
+        expect(b.className).toContain('bg-accent-gradient');
+        expect(b.className).toContain('shadow-accent-glow');
+        expect(b.className).toContain('rounded-md');
+        expect(b.className).not.toContain('rounded-pill');
+    });
+    it('tonal uses the tonal fill and text', () => {
+        render(<Button variant="tonal">Mark all read</Button>);
+        const b = screen.getByRole('button', { name: 'Mark all read' });
+        expect(b.className).toContain('bg-accent-tonal');
+        expect(b.className).toContain('text-accent-tonal');
+    });
+    it('danger stays semantic in every context', () => {
+        render(<Button variant="danger">Delete</Button>);
+        expect(screen.getByRole('button', { name: 'Delete' }).className).toContain('bg-status-danger');
+    });
+    it('disabledReason keeps the button focusable, blocks clicks and exposes the reason', () => {
+        const onClick = vi.fn();
+        render(<Button variant="primary" disabledReason="Choose a group first" onClick={onClick}>Start</Button>);
+        const b = screen.getByRole('button', { name: 'Start' });
+        expect(b).toHaveAttribute('aria-disabled', 'true');
+        expect(b).not.toBeDisabled();
+        expect(b).toHaveAttribute('title', 'Choose a group first');
+        expect(b).toHaveAccessibleDescription('Choose a group first');
+        fireEvent.click(b);
+        expect(onClick).not.toHaveBeenCalled();
+        expect(b.className).toContain('aria-disabled:opacity-40');
+        expect(b.className).not.toContain('grayscale');
+    });
+    it('loading shows a spinner, sets aria-busy and swallows clicks', () => {
+        const onClick = vi.fn();
+        render(<Button variant="primary" loading onClick={onClick}>Save</Button>);
+        const b = screen.getByRole('button', { name: /Save/ });
+        expect(b).toHaveAttribute('aria-busy', 'true');
+        expect(b.querySelector('[data-spinner]')).not.toBeNull();
+        fireEvent.click(b);
+        expect(onClick).not.toHaveBeenCalled();
     });
 });
