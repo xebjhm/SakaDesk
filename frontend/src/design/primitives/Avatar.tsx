@@ -16,7 +16,7 @@ export interface AvatarProps {
     /** Used as alt text and for the fallback initial. */
     name: string;
     size?: AvatarSize;
-    /** Selected member: white ring + group-colour glow. */
+    /** Selected member: accent ring with a white gap + the accent halo. */
     selected?: boolean;
     /** Hidden from assistive tech (empty alt) when a visible label with the name follows. */
     decorative?: boolean;
@@ -37,7 +37,7 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected
                 'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill',
                 'bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard',
                 SIZE[size],
-                selected && 'ring-2 ring-surface shadow-accent-halo',
+                selected && 'ring-2 ring-accent ring-offset-2 ring-offset-surface shadow-accent-halo',
                 className,
             )}
         >

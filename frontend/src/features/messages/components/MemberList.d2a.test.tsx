@@ -31,13 +31,22 @@ function serve() {
 }
 
 describe('MemberList (D2a)', () => {
+    it('marks member names as Japanese content and colours the selected one', async () => {
+        serve();
+        render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
+        const cell = await screen.findByRole('button', { name: /石塚 瑶季/ });
+        const name = cell.querySelector('[lang="ja"]');
+        expect(name).not.toBeNull();
+        expect(name).toHaveClass('font-semibold', 'text-accent-strong');
+    });
+
     it('selects with a white ring and the group glow, and caps the badge at 99+', async () => {
         serve();
         render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
         expect(await screen.findByText('99+')).toHaveClass('bg-accent');
         const cell = screen.getByRole('button', { name: /石塚 瑶季/ });
         const avatar = cell.querySelector('.ring-2')!;
-        expect(avatar).toHaveClass('ring-2', 'ring-surface', 'shadow-accent-halo');
+        expect(avatar).toHaveClass('ring-2', 'ring-accent', 'ring-offset-2', 'shadow-accent-halo');
     });
 
     it('announces each member once: the avatar is decorative beside the visible name', async () => {

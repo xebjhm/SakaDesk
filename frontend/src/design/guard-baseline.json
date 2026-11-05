@@ -28,7 +28,6 @@
   "features/blogs/components/MemberTimelineModal.tsx": 7,
   "features/blogs/components/TimelineRail.tsx": 2,
   "features/messages/components/LetterRow.tsx": 1,
-  "features/messages/components/MemberList.tsx": 3,
   "features/messages/components/MemberProfilePopup.tsx": 1,
   "features/messages/components/MessageBubble.tsx": 3,
   "features/messages/components/MessageContextMenu.tsx": 1,

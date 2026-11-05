@@ -27,6 +27,7 @@ describe('Badge', () => {
         const badge = screen.getByText(text);
         expect(badge).toHaveAttribute('aria-label', `${count} unread`);
         expect(badge).toHaveClass('bg-accent', 'rounded-pill');
+        expect(badge).toHaveClass('shadow-accent-unread'); // pending D7
     });
 });
 
@@ -60,9 +61,9 @@ describe('Avatar', () => {
         expect(screen.getByText('小')).toHaveAttribute('aria-hidden', 'true');
     });
 
-    it('adds the white ring and group glow when selected', () => {
+    it('adds the accent ring with a white gap and the halo when selected (pending D3)', () => {
         const { container } = render(<Avatar name="A" selected />);
-        expect(container.firstChild).toHaveClass('ring-2', 'ring-surface', 'shadow-accent-halo');
+        expect(container.firstChild).toHaveClass('ring-2', 'ring-accent', 'ring-offset-2', 'ring-offset-surface', 'shadow-accent-halo');
     });
 });
 

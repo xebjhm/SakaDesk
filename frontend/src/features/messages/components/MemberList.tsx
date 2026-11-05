@@ -246,7 +246,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             e.preventDefault();
                             setMenu({ x: e.clientX, y: e.clientY, path: info.path });
                         }}
-                        className="group relative flex flex-col items-center gap-1 rounded-card py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        className="group relative flex flex-col items-center gap-1 rounded-card py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
                         {/* Hover: the avatar lifts slightly. Graduated / inactive members keep their muted look. */}
@@ -260,7 +260,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                                 <span className={cn(
                                     'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
                                     'transition-shadow duration-fast ease-standard',
-                                    isSelected ? 'ring-2 ring-surface shadow-group-glow' : 'group-hover:shadow-card',
+                                    isSelected ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface shadow-accent-halo' : 'group-hover:shadow-card',
                                 )}>
                                     <Users className="h-6 w-6" />
                                 </span>
@@ -278,9 +278,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
 
                         <Badge count={unreadCount} className="absolute right-1 top-0 z-10" />
 
-                        <span className={cn(
+                        <span lang="ja" className={cn(
                             'line-clamp-2 max-w-full text-center text-caption transition-colors duration-fast ease-standard',
-                            isSelected ? 'font-semibold text-group-strong' : 'text-secondary group-hover:text-primary',
+                            isSelected ? 'font-semibold text-accent-strong' : 'text-secondary group-hover:text-primary',
                         )}>
                             {info.displayName}
                         </span>
@@ -296,7 +296,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="relative flex items-center justify-center px-4 py-3">
                 <h1 className="text-title font-semibold text-primary">{t('memberList.title')}</h1>
                 <div className="absolute right-4 flex items-center gap-2">
-                    {isSyncing && <RefreshCw className="h-4 w-4 animate-spin text-secondary" />}
+                    {isSyncing && <RefreshCw className="h-4 w-4 animate-spin text-accent" />}
                 </div>
             </div>
 
@@ -304,7 +304,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="flex-1 overflow-y-auto px-2 pb-16">
                 {loading ? (
                     <div className="flex flex-col items-center gap-2 p-6 text-center text-small text-secondary">
-                        <RefreshCw className="h-5 w-5 animate-spin" />
+                        <RefreshCw className="h-5 w-5 animate-spin text-accent" />
                         <span>{t('memberList.loadingConversations')}</span>
                     </div>
                 ) : groups.length === 0 ? (
@@ -340,7 +340,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
                 <div className="pointer-events-auto inline-flex items-center gap-1 rounded-pill bg-pill py-1 pl-3 pr-1 text-caption text-secondary shadow-pill">
                     {isSyncing ? (
-                        <span className="flex items-center gap-1 py-1 pr-2 font-semibold">
+                        <span className="flex items-center gap-1 py-1 pr-2 font-semibold text-accent">
                             <RefreshCw className="h-3 w-3 animate-spin" />
                             {t('sync.syncing')}
                         </span>
@@ -354,6 +354,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             {onSyncNow && (
                                 <IconButton
                                     size="sm"
+                                    shape="circle"
                                     className="h-6 w-6"
                                     aria-label={t('sync.syncNow')}
                                     title={t('sync.syncNow')}
