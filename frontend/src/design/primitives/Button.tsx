@@ -7,19 +7,24 @@ export type ButtonSize = 'sm' | 'md';
 
 /** States per spec §8: hover brighten + lift + glow, pressed shrink, focus ring, disabled keeps colour. */
 const BASE = cn(
-    'inline-flex items-center justify-center gap-2 rounded-md font-semibold',
+    'relative inline-flex items-center justify-center gap-2 rounded-md font-semibold',
     'transition duration-fast ease-standard',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-    'active:scale-97',
+    'active:scale-97 active:brightness-94',
     'disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none',
+    'disabled:hover:translate-y-0 disabled:hover:brightness-100 disabled:hover:shadow-none disabled:active:scale-100 disabled:active:brightness-100 disabled:active:shadow-none',
     'aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:shadow-none',
+    'aria-disabled:hover:translate-y-0 aria-disabled:hover:brightness-100 aria-disabled:hover:shadow-none aria-disabled:active:scale-100 aria-disabled:active:brightness-100 aria-disabled:active:shadow-none',
+    // Loading looks blocked: no lift/press feedback (clicks are swallowed in the handler).
+    'data-[loading=true]:cursor-wait data-[loading=true]:hover:translate-y-0 data-[loading=true]:hover:brightness-100 data-[loading=true]:active:scale-100 data-[loading=true]:active:brightness-100',
 );
 
-const LIFT = 'hover:brightness-105 hover:-translate-y-px aria-disabled:hover:translate-y-0 aria-disabled:hover:brightness-100';
+const LIFT = 'hover:brightness-106 hover:-translate-y-px';
+const GLOW = 'shadow-accent-glow hover:shadow-accent-glow-hover active:shadow-pill';
 
 const VARIANT: Record<ButtonVariant, string> = {
     /** L1: logo → accent gradient + glow. At most ONE primary or danger per screen and per dialog. */
-    primary: cn('bg-accent-gradient text-inverse shadow-accent-glow hover:shadow-accent-glow-hover', LIFT),
+    primary: cn('bg-accent-gradient text-inverse', GLOW, LIFT),
     /** Secondary emphasis (e.g. "mark all read"): soft tonal gradient, dark accent text. */
     tonal: cn('bg-accent-tonal text-accent-tonal', LIFT),
     secondary: 'bg-pill text-primary border border-strong hover:bg-sunken',
@@ -35,7 +40,7 @@ const ICON_VARIANT: Record<IconButtonVariant, string> = {
     ghost: 'bg-transparent text-secondary hover:bg-sunken hover:text-primary',
     overlay: VARIANT.overlay,
     /** Floating accent button (the chat's unread arrows). */
-    accent: cn('bg-accent-gradient text-inverse shadow-accent-glow', LIFT),
+    accent: cn('bg-accent-gradient text-inverse', GLOW, LIFT),
 };
 
 const SIZE: Record<ButtonSize, string> = {
@@ -67,26 +72,29 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     ({ variant = 'secondary', size = 'md', type = 'button', className, loading = false, disabledReason, disabled, onClick, children, ...rest }, ref) => {
         const reasonId = useId();
-        if (disabled && !disabledReason) warnNoReason();
-        const blocked = loading || disabledReason !== undefined;
+        const reason = disabledReason || undefined;
+        if (disabled && !reason) warnNoReason();
+        const blocked = loading || reason !== undefined;
         return (
             <button
+                {...rest}
                 ref={ref}
                 type={type}
-                disabled={disabled && !disabledReason}
-                aria-disabled={disabledReason !== undefined ? true : undefined}
+                disabled={disabled && !reason}
+                aria-disabled={reason !== undefined ? true : undefined}
                 aria-busy={loading || undefined}
-                aria-describedby={disabledReason !== undefined ? reasonId : undefined}
-                title={disabledReason}
+                aria-describedby={reason !== undefined ? reasonId : undefined}
+                data-loading={loading || undefined}
+                title={reason}
                 className={cn(BASE, VARIANT[variant], SIZE[size], className)}
                 onClick={blocked ? (e) => e.preventDefault() : onClick}
-                {...rest}
             >
                 {loading && (
-                    <span data-spinner aria-hidden="true" className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
+                    <span data-spinner aria-hidden="true" className="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
                 )}
-                {children}
-                {disabledReason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{disabledReason}</span>}
+                {/* Stays in the a11y tree while loading (opacity, not visibility) so width and name are unchanged. */}
+                <span className={cn('inline-flex items-center justify-center gap-2', loading && 'opacity-0')}>{children}</span>
+                {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
             </button>
         );
     },
@@ -104,7 +112,7 @@ export interface IconButtonProps
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
     ({ icon, variant = 'ghost', size = 'md', type = 'button', className, ...rest }, ref) => (
-        <button ref={ref} type={type} className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], className)} {...rest}>
+        <button {...rest} ref={ref} type={type} className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], className)}>
             <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
         </button>
     ),

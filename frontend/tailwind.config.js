@@ -6,6 +6,7 @@ export default {
     ],
     theme: {
         extend: {
+            brightness: { 94: '.94', 106: '1.06' },
             fontFamily: {
                 sans: 'var(--ds-font-family-sans)',
                 display: 'var(--ds-font-family-serif)',

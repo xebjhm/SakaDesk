@@ -71,7 +71,7 @@ describe('D2c button variants', () => {
     it('the accent icon button is the gradient floating look', () => {
         render(<IconButton variant="accent" aria-label="未読へ" icon={<X />} />);
         const b = screen.getByRole('button', { name: '未読へ' });
-        expect(b).toHaveClass('bg-accent-gradient', 'text-inverse', 'shadow-accent-glow', 'hover:brightness-105');
+        expect(b).toHaveClass('bg-accent-gradient', 'text-inverse', 'shadow-accent-glow', 'hover:brightness-106');
         expect(b).not.toHaveClass('bg-pill');
     });
 
@@ -121,5 +121,31 @@ describe('Button v2', () => {
         expect(b.querySelector('[data-spinner]')).not.toBeNull();
         fireEvent.click(b);
         expect(onClick).not.toHaveBeenCalled();
+    });
+    it('loading keeps the label in the a11y tree and overlays the spinner absolutely', () => {
+        render(<Button variant="primary" loading>Save</Button>);
+        const b = screen.getByRole('button', { name: 'Save' });
+        expect(b.className).toContain('relative');
+        expect(b).toHaveAttribute('data-loading', 'true');
+        expect(b.querySelector('[data-spinner]')?.className).toContain('absolute');
+        expect(screen.getByText('Save').className).toContain('opacity-0');
+    });
+    it('blocks form submit when disabledReason is set', () => {
+        const submit = vi.fn((e: React.FormEvent) => e.preventDefault());
+        render(<form onSubmit={submit}><Button type="submit" disabledReason="Fill the form">Go</Button></form>);
+        fireEvent.click(screen.getByRole('button', { name: 'Go' }));
+        expect(submit).not.toHaveBeenCalled();
+    });
+    it('treats an empty disabledReason as no reason', () => {
+        render(<Button disabled disabledReason="">x</Button>);
+        const b = screen.getByRole('button', { name: 'x' });
+        expect(b).toBeDisabled();
+        expect(b).not.toHaveAttribute('aria-disabled');
+    });
+    it('native disabled renders the disabled attribute and mutes hover/press', () => {
+        render(<Button disabled>x</Button>);
+        const b = screen.getByRole('button', { name: 'x' });
+        expect(b).toBeDisabled();
+        expect(b.className).toContain('disabled:active:scale-100');
     });
 });
