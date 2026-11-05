@@ -195,6 +195,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                         <IconButton
                             size="sm"
                             variant={isLight ? 'ghost' : 'overlay'}
+                            shape="rounded"
                             aria-label={t('common.close')}
                             disabled={isLoading}
                             icon={<X />}

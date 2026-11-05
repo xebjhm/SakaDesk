@@ -30,6 +30,7 @@ describe('MemberProfilePopup banner per group', () => {
             expect(screen.queryByTestId('profile-title-bar')).toBeNull();
             expect(close).toHaveClass('bg-viewer-control'); // an overlay close on the gradient
         }
+        expect(close).toHaveAttribute('data-shape', 'rounded'); // dialog close stays an inline 12px radius, never a circle
         expect(screen.getByRole('dialog', { name: /森田 ひかる/ })).toBeInTheDocument();
     });
 });

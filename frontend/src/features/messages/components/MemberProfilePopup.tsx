@@ -81,6 +81,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
             >
                 <IconButton
                     variant={isLightHeader ? 'ghost' : 'overlay'}
+                    shape="rounded"
                     size="sm"
                     className="absolute right-4 top-4 z-10"
                     aria-label={t('common.close')}
