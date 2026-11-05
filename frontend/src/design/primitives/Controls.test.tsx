@@ -59,6 +59,19 @@ describe('RailItem', () => {
         expect(screen.getByRole('button', { name: 'トーク' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'ブログ' })).not.toHaveAttribute('aria-current');
     });
+    it('the selected entry is a white card with the accent icon, label and bar (pending D2)', () => {
+        render(
+            <>
+                <RailItem icon={<MessageCircle />} label="トーク" selected />
+                <RailItem icon={<MessageCircle />} label="ブログ" />
+            </>,
+        );
+        const on = screen.getByRole('button', { name: 'トーク' });
+        expect(on).toHaveClass('bg-sheet', 'shadow-card', 'text-accent-strong');
+        expect(on.querySelector('[data-rail-bar]')).toHaveClass('bg-accent');
+        expect(on.querySelector('[aria-hidden="true"]:not([data-rail-bar])')).toHaveClass('text-accent');
+        expect(screen.getByRole('button', { name: 'ブログ' }).querySelector('[data-rail-bar]')).toBeNull();
+    });
 });
 
 describe('D2c button variants', () => {

@@ -13,7 +13,8 @@ export interface FeatureRailProps {
 
 /**
  * Feature rail (D-5): icon + label entries on the group canvas, in the same level-0 block as
- * the feature's sidebar. The selected entry is a white card (RailItem); no group colour.
+ * the feature's sidebar. The selected entry is a white card (RailItem) with the group accent on
+ * its icon, label and left bar (the pre-D2 colour cues).
  */
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const { t } = useTranslation();

@@ -16,6 +16,7 @@ const FILES = [
     'modals/ReportIssueModal.tsx',
     'modals/DiagnosticsModal.tsx',
     'layout/AddServiceModal.tsx',
+    'layout/FeatureRail.tsx',
     '../shell/components/ConfirmDialog.tsx',
     'media/PhotoDetailModal.tsx',
     'media/MediaGalleryModal.tsx',
