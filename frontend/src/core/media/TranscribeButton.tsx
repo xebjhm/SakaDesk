@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranscribeButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
@@ -22,7 +22,7 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = FALLBACK_ACTION_COLOR,
+    accentColor = ACCENT,
     variant = 'dark',
 }) => {
     const { t } = useTranslation();
@@ -51,10 +51,10 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
                         : (isLight ? 'rgba(255,255,255,0.7)' : accentColor),
                     borderColor: state === 'error'
                         ? (isLight ? 'rgba(239,68,68,0.3)' : '#fca5a540')
-                        : (isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`),
+                        : (isLight ? 'rgba(255,255,255,0.15)' : withAlpha(accentColor, 25)),
                     background: state === 'error'
                         ? (isLight ? 'rgba(239,68,68,0.08)' : '#fef2f208')
-                        : (isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`),
+                        : (isLight ? 'rgba(255,255,255,0.06)' : withAlpha(accentColor, 3)),
                 }}
                 type="button"
             >

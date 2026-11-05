@@ -71,7 +71,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                 ref={anchorRef}
                 type="button"
                 onClick={onClick}
-                className={cn('relative aspect-square cursor-pointer bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group', className)}
+                className={cn('relative aspect-square cursor-pointer bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent', className)}
             >
                 {hasError ? (
                     fallback('w-full h-full')

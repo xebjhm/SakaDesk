@@ -2,7 +2,7 @@
 
 exports[`LazyVideo component > Snapshots > should match snapshot after intersection but before load 1`] = `
 <button
-  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
@@ -59,7 +59,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot after intersect
 
 exports[`LazyVideo component > Snapshots > should match snapshot before intersection 1`] = `
 <button
-  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
@@ -111,7 +111,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot before intersec
 
 exports[`LazyVideo component > Snapshots > should match snapshot when fully loaded 1`] = `
 <button
-  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-0"
@@ -168,7 +168,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot when fully load
 
 exports[`LazyVideo component > Snapshots > should match snapshot with children overlay 1`] = `
 <button
-  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group w-48 h-36"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent w-48 h-36"
 >
   <div
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"

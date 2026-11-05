@@ -62,7 +62,7 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
         <button
             ref={containerRef}
             onClick={onClick}
-            className={cn("relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group", className)}
+            className={cn("relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent", className)}
         >
             {/* Placeholder - visible until video loads */}
             <div

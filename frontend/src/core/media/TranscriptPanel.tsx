@@ -3,7 +3,7 @@ import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
-import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -48,7 +48,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     currentTime = 0,
     onSeek,
     onRerun,
-    accentColor = FALLBACK_ACTION_COLOR,
+    accentColor = ACCENT,
     variant = 'dark',
     defaultExpanded = false,
     messageId,
@@ -184,7 +184,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                                 ref={isActive ? activeRef : undefined}
                                 className="py-0.5 px-1 rounded cursor-pointer transition-colors"
                                 style={isActive ? {
-                                    background: isLight ? `rgba(255,255,255,0.08)` : `${accentColor}15`,
+                                    background: isLight ? `rgba(255,255,255,0.08)` : withAlpha(accentColor, 8),
                                 } : undefined}
                                 onClick={() => onSeek?.(seg.start)}
                             >
@@ -198,7 +198,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                                 >
                                     {formatTimestamp(seg.start)}
                                 </span>
-                                <span
+                                <span lang="ja"
                                     style={{
                                         color: isActive
                                             ? (isLight ? 'rgba(255,255,255,0.9)' : '#333')

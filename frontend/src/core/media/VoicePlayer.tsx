@@ -11,7 +11,7 @@ import { useTranscription } from '../../hooks/useTranscription';
 import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
-import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
 export const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
@@ -99,7 +99,7 @@ const SkipButton: React.FC<{
     );
 };
 
-const DEFAULT_ACCENT_COLOR = FALLBACK_ACTION_COLOR; // neutral action colour when no group theme is given
+const DEFAULT_ACCENT_COLOR = ACCENT; // the context's accent (group in a chat, ink in a brand scope)
 
 export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     src,
@@ -423,9 +423,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 tabIndex={0}
                 className="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
                 style={{
-                    '--tw-ring-color': `${accentColor}80`,
+                    '--tw-ring-color': withAlpha(accentColor, 50),
                     borderWidth: '1px',
-                    borderColor: `${accentColor}33`,
+                    borderColor: withAlpha(accentColor, 20),
                 } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
@@ -436,7 +436,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Avatar with accent ring */}
                     <div
                         className="w-10 h-10 rounded-full p-0.5 shrink-0"
-                        style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${accentColor}cc)` }}
+                        style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${withAlpha(accentColor, 80)})` }}
                     >
                         <div className="w-full h-full rounded-full overflow-hidden bg-white">
                             {avatarUrl ? (
@@ -451,7 +451,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Name and timestamp */}
                     <div className="flex-1 min-w-0">
                         {memberName && (
-                            <p className="text-sm font-semibold text-gray-800 truncate">{memberName}</p>
+                            <p lang="ja" className="text-sm font-semibold text-gray-800 truncate">{memberName}</p>
                         )}
                         {(timestamp || durationText) && (
                             <p className="text-xs text-gray-500">
@@ -548,7 +548,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                     style={{
                                         accentColor: accentColor,
-                                        background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                        background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, var(--ds-border-strong) ${volume * 100}%)`
                                     }}
                                 />
                             </div>
@@ -671,8 +671,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className="bg-[#F3F4F6] rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
-            style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
+            className="bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
+            style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
             {/* Hidden audio element */}
             <audio ref={audioRef} src={src} preload="metadata" />
@@ -734,7 +734,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                 className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                 style={{
                                     accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                    background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, var(--ds-border-strong) ${volume * 100}%)`
                                 }}
                             />
                         </div>

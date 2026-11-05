@@ -17,9 +17,9 @@ describe('media accent fallback', () => {
         expect(FALLBACK_ACTION_COLOR).toMatch(/^#[0-9a-f]{6}$/);
     });
 
-    it.each(FILES)('%s no longer hard-codes the old Hinatazaka accent', (rel) => {
+    it.each(FILES)('%s no longer hard-codes the old Hinatazaka accent or the neutral fallback', (rel) => {
         const source = readFileSync(path.join(SRC, rel), 'utf-8');
         expect(source.toLowerCase()).not.toContain('#6da0d4');
-        expect(source).toContain('FALLBACK_ACTION_COLOR');
+        expect(source).not.toContain('FALLBACK_ACTION_COLOR'); // now follows var(--ds-accent)
     });
 });

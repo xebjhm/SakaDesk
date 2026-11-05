@@ -1,7 +1,7 @@
 import React from 'react';
 import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { FALLBACK_ACTION_COLOR } from '../../design/tokens';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranslateButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
@@ -33,7 +33,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = FALLBACK_ACTION_COLOR,
+    accentColor = ACCENT,
     variant = 'dark',
     doneLabel,
     onToggleExpanded,
@@ -45,9 +45,9 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     if (state === 'done') {
         if (!doneLabel) return null;
         const pillStyle = {
-            borderColor: isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`,
+            borderColor: isLight ? 'rgba(255,255,255,0.15)' : withAlpha(accentColor, 25),
             color: isLight ? 'rgba(255,255,255,0.6)' : '#6b7280',
-            background: isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`,
+            background: isLight ? 'rgba(255,255,255,0.06)' : withAlpha(accentColor, 3),
         };
         if (onToggleExpanded) {
             const Chevron = expanded ? ChevronDown : ChevronRight;
@@ -124,5 +124,5 @@ function buttonPalette(isError: boolean, isLight: boolean, accentColor: string) 
     }
     return isLight
         ? { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' }
-        : { border: `${accentColor}40`,        text: accentColor,            background: `${accentColor}08` };
+        : { border: withAlpha(accentColor, 25), text: accentColor, background: withAlpha(accentColor, 3) };
 }
