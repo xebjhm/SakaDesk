@@ -14,8 +14,7 @@ import { useAnchorRect } from './useAnchorRect';
 
 interface CallOverlayProps {
     call: IncomingCall;
-    /** Group colour for the halo, the eyebrow dot and the answer button. */
-    /** Overrides the call accent; defaults to the surrounding context (--ds-accent). */
+    /** Overrides the call accent (halo, eyebrow dot, answer button); defaults to the context's `--ds-accent`. */
     accentColor?: string;
     answerStyle: AnswerStyle;
     /** Service display name shown above the member's name. */

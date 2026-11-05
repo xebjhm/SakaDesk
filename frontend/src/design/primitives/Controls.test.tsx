@@ -59,7 +59,7 @@ describe('RailItem', () => {
         expect(screen.getByRole('button', { name: 'トーク' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'ブログ' })).not.toHaveAttribute('aria-current');
     });
-    it('the selected entry is a white card with the accent icon, label and bar (pending D2)', () => {
+    it('the selected entry is a white card with the accent icon, label and bar', () => {
         render(
             <>
                 <RailItem icon={<MessageCircle />} label="トーク" selected />

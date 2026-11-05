@@ -40,7 +40,7 @@ describe('MemberList (D2a)', () => {
         expect(name).toHaveClass('font-semibold', 'text-accent-strong');
     });
 
-    it('selects with a white ring and the group glow, and caps the badge at 99+', async () => {
+    it('selects with an accent ring, a white gap and the accent halo, and caps the badge at 99+', async () => {
         serve();
         render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
         expect(await screen.findByText('99+')).toHaveClass('bg-accent');

@@ -30,7 +30,7 @@ describe('ProfileImagePills', () => {
         expect(container).toBeEmptyDOMElement();
     });
 
-    it('hovers in the accent and shows the version count on the accent (pending D5)', () => {
+    it('hovers in the accent and shows the version count on the accent', () => {
         render(
             <ProfileImagePills
                 images={{ thumbnail: [{ url: 'a', first_seen: null, current: true }, { url: 'b', first_seen: null, current: false }] }}

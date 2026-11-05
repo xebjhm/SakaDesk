@@ -37,6 +37,20 @@ describe('Menu', () => {
         expect(screen.getByRole('separator')).not.toHaveClass('border-t');
     });
 
+    it('Enter and Space on an item with a disabledReason do not call its onClick', async () => {
+        const onClick = vi.fn();
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem disabledReason="使えません" onClick={onClick}>一</MenuItem>
+            </Menu>,
+        );
+        await userEvent.keyboard('{ArrowDown}');
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        await userEvent.keyboard(' ');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
     it('arrow keys, Home and End move between enabled items', async () => {
         render(
             <Menu aria-label="m" onClose={vi.fn()}>

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ChatHeaderPill } from './ChatHeaderPill';
 
-// The pre-D2 header pills, through tokens (pending D8).
+// The pre-D2 header pills, through tokens.
 describe('ChatHeaderPill', () => {
     it('on a gradient header the count is white glass and the status a dark shade, both white text', () => {
         render(<><ChatHeaderPill light={false}>3 unread</ChatHeaderPill><ChatHeaderPill light={false} tone="status">同期中</ChatHeaderPill></>);

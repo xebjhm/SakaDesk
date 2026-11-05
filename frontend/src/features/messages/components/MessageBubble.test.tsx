@@ -217,6 +217,13 @@ describe('MessageBubble component', () => {
     expect(shelter.getAttribute('style')).toBeNull()
   })
 
+  it('a light-shelter group (Sakurazaka) shows the unread shelter as a bordered white card', () => {
+    render(<MessageBubble {...defaultProps} service="sakurazaka46" isUnread message={createMessage({ type: 'voice', content: null })} />)
+    expect(screen.getByTestId('unread-shelter')).toHaveClass(
+      'border-2', 'border-group-shelter-voice', 'bg-card', 'text-group-shelter-voice',
+    )
+  })
+
   it('names the sender with the strong accent role', () => {
     render(<MessageBubble {...defaultProps} />)
     expect(screen.getByText('Test User')).toHaveClass('text-accent-strong')

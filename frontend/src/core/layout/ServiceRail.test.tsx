@@ -37,7 +37,7 @@ describe('ServiceRail', () => {
         expect(styled[0]).toHaveAttribute('data-scope', 'brand');
     });
 
-    it('puts add and search in the brand scope as soft ink circles (pending D1)', () => {
+    it('puts add and search in the brand scope as soft ink circles', () => {
         const { container } = renderRail();
         const scope = container.querySelector('[data-scope="brand"]') as HTMLElement;
         for (const name of [/^Search/, 'Add Service']) {

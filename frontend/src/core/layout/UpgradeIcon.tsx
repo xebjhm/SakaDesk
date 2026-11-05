@@ -286,7 +286,7 @@ export function UpgradeIcon() {
             {(stage === 'available' || stage === 'error') && (
                 <button
                     onClick={handleDismiss}
-                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-control-off text-primary transition-colors duration-fast ease-standard hover:bg-sunken group-hover:flex"
+                    className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-control-off text-primary transition-colors duration-fast ease-standard hover:brightness-94 group-hover:flex"
                     title={stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
                 >
                     <X className="h-2.5 w-2.5" />
