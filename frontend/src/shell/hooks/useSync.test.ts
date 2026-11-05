@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
+import { clientLog } from '../../utils/clientLog'
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }))
 
 // Mock appStore
 const { mockRemoveInitialSyncService } = vi.hoisted(() => ({
@@ -394,6 +397,68 @@ describe('useSync', () => {
             await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
             expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle')
             expect(result.current.showSyncModal).toBe(false)
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+
+        it('starts the same service once when two starts overlap', async () => {
+            const { resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let first: Promise<void> = Promise.resolve()
+            let second: Promise<void> = Promise.resolve()
+            act(() => { first = result.current.startSync(false, 'hinatazaka46') })
+            act(() => { second = result.current.startSync(true, 'hinatazaka46') })
+            // The skipped blocking start still asks for the modal.
+            expect(result.current.showSyncModal).toBe(true)
+            expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting' })
+
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
+                await Promise.all([first, second])
+            })
+            const posts = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/sync/start'))
+            expect(posts).toHaveLength(1)
+        })
+
+        it('a skipped blocking start does not outlive a failed first start', async () => {
+            const { progress, resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let first: Promise<void> = Promise.resolve()
+            act(() => { first = result.current.startSync(false, 'hinatazaka46') })
+            act(() => { void result.current.startSync(true, 'hinatazaka46') })
+            expect(result.current.showSyncModal).toBe(true)
+
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
+                await first
+            })
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('error')
+
+            // A later non-blocking follow must not act as the failed start's modal owner.
+            progress.state = 'idle'
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle'))
+            expect(result.current.showSyncModal).toBe(true)
+        })
+
+        it('keeps the start marked in flight while a refused start reads its answer', async () => {
+            const { resolvePost } = stubStartAndProgress()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+
+            let first: Promise<void> = Promise.resolve()
+            act(() => { first = result.current.startSync(false, 'hinatazaka46') })
+            let readBody!: (v: unknown) => void
+            await act(async () => {
+                resolvePost({ ok: false, status: 500, json: () => new Promise(resolve => { readBody = resolve }) })
+            })
+            // The POST has answered but its body is still being read: a second start is skipped.
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+            await act(async () => { await result.current.startSync(false, 'hinatazaka46') })
+            const posts = vi.mocked(fetch).mock.calls.filter(([url]) => String(url).includes('/api/sync/start'))
+            expect(posts).toHaveLength(1)
+
+            await act(async () => { readBody({ detail: 'boom' }); await first })
             expect(result.current.isPolling('hinatazaka46')).toBe(false)
         })
     })

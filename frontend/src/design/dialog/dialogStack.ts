@@ -97,6 +97,16 @@ export function dialogZIndex(entry: DialogEntry): number {
     return Z_INDEX.DIALOG + depth * Z_INDEX.DIALOG_STEP;
 }
 
+/**
+ * z-index of a layer that sits between dialogs by opening order (the lifted incoming call,
+ * spec D2d decision 20): half a DIALOG_STEP above the open dialogs opened before `order`, so
+ * dialogs opened later stay above it. Recompute on every stack change.
+ */
+export function interleavedZIndex(order: number): number {
+    const below = stack.filter((e) => e.order < order).length;
+    return Z_INDEX.DIALOG + below * Z_INDEX.DIALOG_STEP - Z_INDEX.DIALOG_STEP / 2;
+}
+
 export function openDialogCount(): number {
     return stack.length;
 }

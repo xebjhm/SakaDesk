@@ -34,6 +34,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import type { SyncProgress, AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 import i18n from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 
 // Debug flag - set localStorage.setItem('DEBUG_SYNC', 'true') to enable
 const SYNC_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_SYNC') === 'true';
@@ -424,9 +425,16 @@ export function useSync({
             return;
         }
 
-        // Skip if already polling this service (prevents duplicate poll chains)
-        if (isPollingRef.current[targetService]) {
-            log(`${targetService}: already polling, skipping startSync`);
+        // Skip if this service is already polling or its start POST is in flight: a second start
+        // would hit the official API twice on a single-session token. A blocking caller still
+        // gets the modal, and the live poller closes it (blockingRef is read at completion).
+        if (isPollingRef.current[targetService] || startingRef.current[targetService]) {
+            if (blocking) {
+                blockingRef.current[targetService] = true;
+                if (targetService === activeServiceRef.current) setShowSyncModal(true);
+            }
+            clientLog('sync_start_skipped', { reason: isPollingRef.current[targetService] ? 'polling' : 'starting' });
+            log(`${targetService}: already polling or starting, skipping startSync`);
             return;
         }
 
@@ -446,15 +454,12 @@ export function useSync({
             }
         }
 
+        // In flight until the poll-or-error decision is made (not only during the POST), so a second
+        // start that lands while a refused answer is still being read is skipped too.
+        startingRef.current[targetService] = true;
         try {
             const startUrl = `/api/sync/start?service=${encodeURIComponent(targetService)}${forceResync ? '&force_resync=true' : ''}`;
-            let response: Response;
-            startingRef.current[targetService] = true;
-            try {
-                response = await fetch(startUrl, { method: 'POST' });
-            } finally {
-                startingRef.current[targetService] = false;
-            }
+            const response = await fetch(startUrl, { method: 'POST' });
             if (response.ok) {
                 // Sync started successfully
                 pollSyncProgress(targetService, blocking);
@@ -469,6 +474,8 @@ export function useSync({
                     pollSyncProgress(targetService, blocking);
                 } else {
                     log(`${targetService}: failed to start`, data.detail);
+                    // No poller owns this start: a modal request from a skipped start ends here.
+                    blockingRef.current[targetService] = false;
                     if (currentProgress?.state !== 'running') {
                         const errorProgress: SyncProgress = { state: 'error', detail: data.detail || i18n.t('sync.failedToStart') };
                         setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -479,6 +486,7 @@ export function useSync({
                 }
             }
         } catch {
+            blockingRef.current[targetService] = false;
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -486,6 +494,8 @@ export function useSync({
                     setSyncProgress(errorProgress);
                 }
             }
+        } finally {
+            startingRef.current[targetService] = false;
         }
     }, [pollSyncProgress]);
 

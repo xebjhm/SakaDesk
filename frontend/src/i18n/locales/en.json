@@ -42,7 +42,8 @@
     "unreadCount": "{{count}} unread",
     "retry": "Retry",
     "confirm": "Confirm",
-    "mediaViewer": "Media viewer"
+    "mediaViewer": "Media viewer",
+    "debug": "Debug"
   },
   "settings": {
     "title": "Settings",
@@ -158,10 +159,7 @@
     "sessionExpiredDesc": "Your session for {{service}} has expired. Please re-login to continue using {{feature}}.",
     "premiumFeatureDesc": "{{feature}} is a premium feature that requires logging in with your {{service}} account.",
     "credentialsSaved": "Your credentials will be securely stored on your device.",
-    "waitingForBrowser": "Waiting for browser...",
-    "launchBrowserLogin": "Launch Browser Login",
     "connectAccount": "Connect Account",
-    "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
     "loginFailed": "Login failed or cancelled",
     "yodelJpOnlyTitle": "Yodel is available in Japan only",
     "yodelJpOnlyMessage": "Yodel's service is offered only within Japan, so it can't be reached from where you are now. To log in, please connect to the internet from Japan, then try again.",
@@ -229,7 +227,11 @@
     "unknownError": "Unknown error",
     "sessionExpired": "Authentication session has expired. Please log in again to continue using the service.",
     "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.",
-    "cancelled": "Sync cancelled"
+    "cancelled": "Sync cancelled",
+    "progress": "Sync progress",
+    "stepDone": "Done",
+    "stepCurrent": "Current step",
+    "stepPending": "Pending"
   },
   "about": {
     "title": "About",

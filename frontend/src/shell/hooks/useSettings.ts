@@ -53,8 +53,10 @@ export interface UseSettingsReturn {
     outputDirInput: string;
     /** Update output directory input */
     setOutputDirInput: (dir: string) => void;
-    /** Error message if settings operation failed */
-    settingsError: string | null;
+    /** i18n key of the last failed save's message (translated at display time), or null */
+    settingsErrorKey: string | null;
+    /** Dismiss the save error */
+    clearSettingsError: () => void;
     /** Whether settings modal is visible */
     showSettingsModal: boolean;
     /** Toggle settings modal */
@@ -85,7 +87,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     const allServiceSettingsRef = useRef(allServiceSettings);
     allServiceSettingsRef.current = allServiceSettings;
     const [outputDirInput, setOutputDirInput] = useState('');
-    const [settingsError, setSettingsError] = useState<string | null>(null);
+    const [settingsErrorKey, setSettingsErrorKey] = useState<string | null>(null);
+    const clearSettingsError = useCallback(() => setSettingsErrorKey(null), []);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showSetupWizard, setShowSetupWizard] = useState(false);
     const [setupBlogFullBackup, setSetupBlogFullBackup] = useState(false);
@@ -103,6 +106,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     }, []);
 
     const saveSettings = useCallback(async (updates: Partial<AppSettings>): Promise<boolean> => {
+        // A new save replaces the last error: a success leaves none.
+        setSettingsErrorKey(null);
         try {
             const res = await fetch('/api/settings', {
                 method: 'POST',
@@ -132,7 +137,7 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             return true;
         } catch (e) {
             console.error('Failed to save settings:', e);
-            setSettingsError("Failed to save settings");
+            setSettingsErrorKey('settings.saveFailed');
             return false;
         }
     }, []);
@@ -209,7 +214,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
         connectedServices: selectedServices,
         outputDirInput,
         setOutputDirInput,
-        settingsError,
+        settingsErrorKey,
+        clearSettingsError,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,

@@ -38,6 +38,7 @@ export interface UseDialogOptions {
  * (see `focusRestore.ts`). Tab cycles over the frame's tabbable elements in browser order
  * (`tabbables.ts`), and focus that lands outside the top-most frame is pulled back to it,
  * except in a menu or in a dialog outside the layer (legacy modals, the call overlay).
+ * Keys whose target is inside a dialog outside the layer (the lifted call) are left to it.
  */
 export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocusRef, logId }: UseDialogOptions) {
     const [zIndex, setZIndex] = useState<number>(Z_INDEX.DIALOG);
@@ -100,6 +101,12 @@ export function useDialog({ isOpen, onClose, dismissible, frameRef, initialFocus
         const onKey = (e: KeyboardEvent) => {
             const entry = entryRef.current;
             if (!entry || !isTopDialog(entry)) return;
+            // A key from inside a dialog that is not on the layer (the lifted call overlay) is its own.
+            const target = e.target;
+            if (target instanceof Element && !frameRef.current?.contains(target)) {
+                const host = target.closest(ANY_DIALOG);
+                if (host !== null && !isLayerFrame(host)) return;
+            }
             if (e.key === 'Escape') {
                 // Not dismissible: no close and no claim (see the doc comment above).
                 if (!dismissible || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;

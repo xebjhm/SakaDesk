@@ -5,7 +5,8 @@
  *   once, synchronously, before the first render of every entry point.
  * - applyGroupTokens(): --ds-group-* variables plus the legacy --color-*
  *   variables (identical values) so pre-D1 Tailwind classes keep working.
- *   App.tsx calls it whenever the active service changes.
+ *   App.tsx calls it with the active service's group, or with the neutral
+ *   `default` group until ToS is accepted and a group is chosen.
  */
 import { generateThemeCSSVariables } from '../config/colors/css-variables';
 import { clientLog } from '../utils/clientLog';

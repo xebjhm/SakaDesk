@@ -11,6 +11,9 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    // A file's first render can take several seconds when many workers share the CPU (a full
+    // run beside other runs): a 5 s default timed out tests that take ~0.3 s on their own.
+    testTimeout: 15000,
     include: ['src/**/*.{test,spec}.{js,ts,jsx,tsx}'],
     coverage: {
       provider: 'v8',

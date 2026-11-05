@@ -1,6 +1,6 @@
 # E clean-up list
 
-Items found during D2a, D2b and D2c that were left on purpose. Pick them up in E (or D2d where noted).
+Items found during D2a, D2b, D2c and D2d that were left on purpose. Pick them up in E.
 
 - **Live letters endpoint unused.** `GET /api/chat/letters/{group_id}` (`backend/api/chat_features.py`) is no longer called by the UI (letters come from `letters_local`); remove it and its model, or keep it only if something else needs it.
 - **Visible range resolved twice per frame.** `MessageList.resolveVisibleRange` (`frontend/src/features/messages/components/MessageList.tsx`) and `useChatScroll.resolvePending` (`frontend/src/features/messages/hooks/useChatScroll.ts`) both resolve the visible range on each frame; share one result.
@@ -29,7 +29,6 @@ Items found during D2a, D2b and D2c that were left on purpose. Pick them up in E
 ## From D2c
 
 - **Player internals on tokens.** `VideoPlayer`'s control bar, the `VoicePlayer` cards, `TranscriptPanel`, `TranscribeButton` and `SubtitleOverlay` (`frontend/src/core/media/`) still take the group colour as a hex prop and use palette classes; move them to tokens together with `TranslateButton` (D2c spec decision 15).
-- **App error toast.** The settings error toast in `frontend/src/shell/App.tsx` (now on `Z_INDEX.TOAST`) still has a hard-coded English "Error" title and "Debug" button and palette classes; restyle it on tokens (`bg-toast` or a status card) and translate its strings.
 - **`UpgradeIcon` ring.** `frontend/src/core/layout/UpgradeIcon.tsx` uses `text-blue-500` and palette classes for its progress ring.
 - **Search autocomplete keys.** The member autocomplete in `frontend/src/features/search/components/SearchFilterBar.tsx` has no ↑ / ↓ selection.
 - **`BlogsFeature` `keysEnabled`.** Now that the blog dialogs are `aria-modal`, `arrowKeys.ts` alone covers them; the `keysEnabled` prop through `BlogReader` to `BlogNavFooter` can go.
@@ -49,11 +48,11 @@ Items found during D2a, D2b and D2c that were left on purpose. Pick them up in E
 - **Inline settings error announcement.** `frontend/src/shell/components/SettingRow.tsx` mounts its `role="status"` paragraph together with its text, so some screen readers may not announce it. Keep the region mounted empty, as the AI tab does.
 - **Leftover `z-50` classes.** The DESIGN_SYSTEM "Layering" rule says use `Z_INDEX` only, but `frontend/src/features/blogs/components/TimelineRail.tsx` (rail tooltip) and `frontend/src/core/media/VideoPlayer.tsx` (player toast) still use `z-50`.
 
-## D2d notes
+## From D2d
 
-- **Short window clips the ToS card.** The `bare` frame of `TosDialog` clips the tall card in a short window; let it scroll inside the frame.
-- **Entry-shell indentation and fixed title ids.** `LoginModal`, `SyncModal`, `SetupWizard` and `TosDialog` (`frontend/src/shell/components/`) kept their old indentation, and name the dialog through fixed ids (`login-title`, `sync-title`, `setup-title`, `tos-title`); re-indent them and use `useId`.
-- **AddService lock is thin.** The Add service lock only asserts the heading; also lock adding and removing a service.
-- **LoginModal flow test.** Add a test for the `LoginModal` flow (open, sign in, success and failure paths).
-- **Call overlay under dialogs.** The incoming-call overlay (`frontend/src/features/incomingCall/CallOverlay.tsx`, `z-30` inside the frame) sits under any open dialog; add a `Z_INDEX` entry between `DIALOG` and `POPOVER` for it.
-- **Entry-shell contents still use palette classes or hex.** `InlineSyncView` (`frontend/src/core/layout/InlineSyncView.tsx`), `SetupWizard` and `LandingPage` (`frontend/src/pages/LandingPage.tsx`) keep palette classes and hex values inside the D2c shells.
+- **A lifted call stays lifted.** A call that started over a dialog (`frontend/src/features/incomingCall/CallOverlay.tsx`) keeps its portaled layer after that dialog closes, so for the rest of the call it is above menus anchored in the frame (`Z_INDEX.DROPDOWN`), e.g. the chat ⋯ menu; consider dropping back into the frame when no earlier dialog is left (without remounting the audio).
+- **Call focus under a lifted call.** When a call is lifted above a dialog, focus stays in the dialog (the call never takes focus from a dialog), so Escape closes the dialog before it declines the call; decide whether a lifted call should take focus.
+- **`/init` failure after a successful login.** In `frontend/src/shell/components/LoginModal.tsx` (`doLogin`), the login POST succeeds but a thrown `/api/settings/service/…/init` request lands in the same `catch`, so the dialog shows "failed" (or the raw error text) and the user retries a login that already worked (single-session token); a non-OK `/init` answer is not checked at all.
+- **Sync speed unit is not translated.** The stat tile's unit (`frontend/src/utils/syncFormatters.ts`, `formatSyncSpeedParts`) is the backend's `speed_unit` code plus "/s" (e.g. `groups/s`), shown as is in every language (pre-existing).
+- **A second login dialog cannot be closed while another login runs.** `LoginModal` (`frontend/src/shell/components/LoginModal.tsx`) bases `dismissible` and its Close and Cancel buttons on the app-wide login lock (`loginLock.ts`), so a dialog App mounts while another dialog's login is in flight stays open for up to the 300 s browser-login timeout, with no reason shown. Track lock ownership per dialog: keep the primary disabled on the global lock, but let a dialog that does not own the lock close.
+- **A refused start can clear a verify's modal flag.** In `frontend/src/shell/hooks/useSync.ts`, the refused and failed branches of `startSync` clear `blockingRef` for the service, and `verifyAndFix` does not check `startingRef`, so a verify started while a start POST is in flight can lose its modal flag (very unlikely).

@@ -50,6 +50,8 @@ ClientEvent = Literal[
     "blog_load",
     "dialog",
     "dialog_load",
+    "call_layer",
+    "sync_start_skipped",
 ]
 
 ALLOWED_FIELDS = frozenset(

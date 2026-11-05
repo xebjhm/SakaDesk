@@ -42,7 +42,8 @@
     "unreadCount": "{{count}} 則未讀",
     "retry": "再試",
     "confirm": "確認",
-    "mediaViewer": "媒體檢視器"
+    "mediaViewer": "媒體檢視器",
+    "debug": "除錯"
   },
   "settings": {
     "title": "設定",
@@ -158,10 +159,7 @@
     "sessionExpiredDesc": "你嘅 {{service}} Session 過咗期。請重新登入繼續用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 係收費功能，需要登入你嘅 {{service}} 帳戶。",
     "credentialsSaved": "你嘅登入資料會安全咁儲存喺你部機度。",
-    "waitingForBrowser": "等待瀏覽器操作...",
-    "launchBrowserLogin": "開瀏覽器登入",
     "connectAccount": "連接帳戶",
-    "browserPrompt": "請登入你嘅 {{service}} Message 帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
     "loginFailed": "登入失敗或者取消咗",
     "yodelJpOnlyTitle": "yodel 只限日本境內使用",
     "yodelJpOnlyMessage": "yodel 嘅服務只喺日本境內提供，所以喺你而家嘅位置連唔到。想登入嘅話，請先切換到日本嘅網絡連線，然後再試多次。",
@@ -229,7 +227,11 @@
     "unknownError": "唔知咩錯誤",
     "sessionExpired": "認證過咗期。請重新登入繼續使用服務。",
     "refreshFailed": "認證失敗咗。請重新登入繼續使用服務。如果問題持續，請報告。",
-    "cancelled": "已經取消同步"
+    "cancelled": "已經取消同步",
+    "progress": "同步進度",
+    "stepDone": "已完成",
+    "stepCurrent": "目前步驟",
+    "stepPending": "待處理"
   },
   "about": {
     "title": "關於",

@@ -15,15 +15,18 @@ export type DialogLoadSurface =
     | 'settings_ai_cache_clear' | 'settings_ai_test' | 'settings_app_save'
     | 'report_issue'
     | 'search_status' | 'search_backup_status' | 'search_more' | 'search_members'
-    | 'background_upload';
+    | 'background_upload'
+    | 'login' | 'login_geo';
 
 /** `skipped`: nothing to do (no images, a rejected file); `cancelled`: aborted or superseded. */
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skipped';
 /**
  * Code for why a load failed or was skipped (the AI connection test's backend codes, the
- * background upload's rejections, an empty result). Never message text.
+ * background upload's rejections, an empty result, a login whose follow-up step failed). Never
+ * message text.
  */
-export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty';
+export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty' | 'blocked'
+    | 'after_login';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */

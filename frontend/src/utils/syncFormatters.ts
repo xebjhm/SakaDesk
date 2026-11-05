@@ -14,9 +14,18 @@ export const formatSyncTime = (seconds: number | undefined): string => {
 
 /** Format sync speed as "X.XX unit/s". */
 export const formatSyncSpeed = (speed: number | null | undefined, unit: string): string => {
-    if (!speed || speed <= 0) return '';
+    const parts = formatSyncSpeedParts(speed, unit);
+    return parts.value ? `${parts.value} ${parts.unit}` : '';
+};
+
+/** The speed split into its number and its unit ("files/s"), for a tile that stacks them. */
+export const formatSyncSpeedParts = (
+    speed: number | null | undefined,
+    unit: string,
+): { value: string; unit: string } => {
+    if (!speed || speed <= 0) return { value: '', unit: '' };
     const decimals = speed >= 10 ? 1 : 2;
-    return `${speed.toFixed(decimals)} ${unit}/s`;
+    return { value: speed.toFixed(decimals), unit: `${unit}/s` };
 };
 
 /** Get the localized phase name for a sync progress state. */

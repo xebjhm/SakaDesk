@@ -82,6 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Confirmations appear inside the app.** Resetting settings, deleting the
   blog backup, a deep re-sync and revealing all unread messages now ask in a
   SakaDesk window instead of a browser pop-up, with Cancel selected first.
+- **The first-launch screens match the new look.** The terms, the group
+  picker, sign-in, the data folder setup and the sync progress now share the
+  app's calm design, and each group's sign-in shows that group's own colours.
+  In a small window the terms now scroll instead of cutting off the Accept
+  button, and the settings error message appears in your language and can be
+  closed.
 
 ### Fixed
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
@@ -129,6 +135,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Settings that fail to save now say so.** If a setting cannot be saved, a
   message appears under it and an error notice shows above the Settings
   window, instead of the change seeming to work.
+- **Adding a group could start its first sync twice.** It now starts once.
+- **A call could ring behind an open window.** If a voice call started while
+  a dialog such as Settings was open, it was hidden under that dialog; it now
+  shows above it so you can answer or decline it.
 
 ## [0.3.4] - 2026-11-03
 

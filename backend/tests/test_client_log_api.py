@@ -418,3 +418,64 @@ def test_dialog_breadcrumb_rejects_free_text():
         },
     )
     assert res.status_code == 422
+
+
+def test_call_layer_breadcrumb_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "call_layer", "fields": {"phase": "lifted", "count": 1}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["event"] == "call_layer"
+    assert events[0]["phase"] == "lifted"
+    assert events[0]["count"] == 1
+
+
+@pytest.mark.parametrize("reason", ["polling", "starting"])
+def test_sync_start_skipped_breadcrumb_is_accepted(reason):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "sync_start_skipped", "fields": {"reason": reason}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["event"] == "sync_start_skipped"
+    assert events[0]["reason"] == reason
+
+
+@pytest.mark.parametrize("outcome", ["restored", "kept", "dropped"])
+def test_call_layer_focus_breadcrumb_is_accepted(outcome):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "call_layer",
+                "fields": {"phase": "focus", "outcome": outcome},
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["phase"] == "focus"
+    assert events[0]["outcome"] == outcome
+
+
+def test_login_after_login_error_breadcrumb_is_accepted():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "dialog_load",
+                "fields": {
+                    "surface": "login",
+                    "outcome": "error",
+                    "reason": "after_login",
+                },
+            },
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["surface"] == "login"
+    assert events[0]["reason"] == "after_login"

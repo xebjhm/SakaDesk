@@ -6,6 +6,7 @@ import { useIncomingCall } from './useIncomingCall';
 import { CallOverlay } from './CallOverlay';
 import { Modal } from '../../design/primitives/Modal';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
+import { clientLog } from '../../utils/clientLog';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
@@ -73,6 +74,44 @@ describe('incoming call wiring', () => {
         // the next Esc, with nothing else open, declines
         fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
         expect(screen.queryByTestId('call-overlay')).toBeNull();
+    });
+
+    it('a call with no dialog open stays in the chat frame', async () => {
+        vi.mocked(clientLog).mockClear();
+        const { container } = render(<Harness />);
+        await settle();
+        const overlay = screen.getByTestId('call-overlay');
+        expect(overlay).toHaveAttribute('data-layer', 'frame');
+        expect(container).toContainElement(overlay);
+        expect(clientLog).toHaveBeenCalledWith('call_layer', { phase: 'in_frame', count: 0 });
+    });
+
+    it('a call that rings over an open dialog is lifted above it; a dialog opened later goes above the call', async () => {
+        resetDialogStack();
+        vi.mocked(clientLog).mockClear();
+        const { container, rerender } = render(<><Harness /><DialogHarness /></>);
+        await settle();
+        const overlay = screen.getByTestId('call-overlay');
+        expect(overlay).toHaveAttribute('data-layer', 'lifted');
+        expect(container).not.toContainElement(overlay);
+        expect(clientLog).toHaveBeenCalledWith('call_layer', { phase: 'lifted', count: 1 });
+        const below = screen.getByRole('dialog', { name: '設定' }).closest('[data-testid="modal-backdrop"]') as HTMLElement;
+        expect(Number(overlay.style.zIndex)).toBeGreaterThan(Number(below.style.zIndex));
+
+        rerender(<><Harness /><DialogHarness /><Modal isOpen onClose={vi.fn()} title="確認">z</Modal></>);
+        const above = screen.getByRole('dialog', { name: '確認' }).closest('[data-testid="modal-backdrop"]') as HTMLElement;
+        expect(Number(above.style.zIndex)).toBeGreaterThan(Number(overlay.style.zIndex));
+    });
+
+    it('Escape pressed inside a lifted call declines it and leaves the dialog below open', async () => {
+        resetDialogStack();
+        render(<><Harness /><DialogHarness /></>);
+        await settle();
+        const decline = screen.getByRole('button', { name: 'Decline' });
+        act(() => decline.focus());
+        fireEvent.keyDown(decline, { key: 'Escape' });
+        expect(screen.queryByTestId('call-overlay')).toBeNull();
+        expect(screen.getByRole('dialog', { name: '設定' })).toBeInTheDocument();
     });
 
     it('a fresh fetch for another chat never rings (freshFetch.dir !== chatDir)', async () => {
