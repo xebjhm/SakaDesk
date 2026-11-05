@@ -1,6 +1,7 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '../../utils/classnames';
+import { clientLog } from '../../utils/clientLog';
 import { Z_INDEX } from '../../constants/zIndex';
 import { clampToViewport } from './menuPosition';
 import { isTopMenu, popMenu, pushMenu } from './menuStack';
@@ -127,33 +128,57 @@ export interface MenuItemProps extends Omit<React.ButtonHTMLAttributes<HTMLButto
     destructive?: boolean;
     /** One of a set of options: `menuitemradio` with `aria-checked`. */
     radio?: boolean;
+    /**
+     * Translated reason the item cannot be used now (spec §8: never grey out without a reason).
+     * The item stays focusable (`aria-disabled`), shows the reason as tooltip and description,
+     * keeps its colour at 40 %, and swallows clicks (logged as `menu_item_blocked`).
+     */
+    disabledReason?: string;
+    /** `target` of the `menu_item_blocked` breadcrumb; `^[a-z0-9_]{1,40}$`. */
+    logTarget?: string;
 }
 
 export const MenuItem = React.forwardRef<HTMLButtonElement, MenuItemProps>(
-    ({ icon, selected = false, destructive = false, radio = false, className, children, type = 'button', ...rest }, ref) => (
-        <button
-            ref={ref}
-            type={type}
-            role={radio ? 'menuitemradio' : 'menuitem'}
-            aria-checked={radio ? selected : undefined}
-            tabIndex={-1}
-            className={cn(
-                'flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small',
-                'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',
-                'disabled:pointer-events-none disabled:text-muted',
-                destructive ? 'text-status-danger' : selected ? 'font-semibold text-accent-strong' : 'text-primary',
-                className,
-            )}
-            {...rest}
-        >
-            {icon && (
-                <span aria-hidden="true" className={cn('flex h-4 w-4 shrink-0 items-center justify-center', !destructive && !selected && 'text-secondary')}>
-                    {icon}
-                </span>
-            )}
-            {children}
-        </button>
-    ),
+    ({ icon, selected = false, destructive = false, radio = false, disabledReason, logTarget, className, children, onClick, title, type = 'button', ...rest }, ref) => {
+        const reasonId = useId();
+        const reason = disabledReason || undefined;
+        return (
+            <button
+                {...rest}
+                ref={ref}
+                type={type}
+                role={radio ? 'menuitemradio' : 'menuitem'}
+                aria-checked={radio ? selected : undefined}
+                aria-disabled={reason !== undefined ? true : undefined}
+                aria-describedby={reason !== undefined ? reasonId : undefined}
+                title={reason ?? title}
+                tabIndex={-1}
+                className={cn(
+                    'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-small',
+                    'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',
+                    'disabled:pointer-events-none disabled:opacity-40',
+                    'aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent',
+                    destructive ? 'text-status-danger' : selected ? 'font-semibold text-accent-strong' : 'text-primary',
+                    className,
+                )}
+                onClick={reason !== undefined
+                    ? (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        clientLog('menu_item_blocked', { target: logTarget ?? 'unknown' });
+                    }
+                    : onClick}
+            >
+                {icon && (
+                    <span aria-hidden="true" className={cn('flex h-4 w-4 shrink-0 items-center justify-center', !destructive && !selected && 'text-secondary')}>
+                        {icon}
+                    </span>
+                )}
+                {children}
+                {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
+            </button>
+        );
+    },
 );
 MenuItem.displayName = 'MenuItem';
 

@@ -54,6 +54,7 @@ ClientEvent = Literal[
     "dialog_load",
     "call_layer",
     "sync_start_skipped",
+    "menu_item_blocked",
 ]
 
 ALLOWED_FIELDS = frozenset(
