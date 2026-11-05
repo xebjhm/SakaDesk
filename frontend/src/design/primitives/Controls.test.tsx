@@ -159,3 +159,39 @@ describe('Button v2', () => {
         expect(b.className).toContain('disabled:active:scale-100');
     });
 });
+
+describe('IconButton shape (floating = circle, inline = 12 px)', () => {
+    it.each(['overlay', 'accent'] as const)('%s is a circle by default (floating)', (variant) => {
+        render(<IconButton variant={variant} aria-label="浮動" icon={<X />} />);
+        const b = screen.getByRole('button', { name: '浮動' });
+        expect(b).toHaveClass('rounded-full');
+        expect(b).not.toHaveClass('rounded-md');
+        expect(b).toHaveAttribute('data-shape', 'circle');
+    });
+
+    it.each(['ghost', 'secondary', 'soft'] as const)('%s keeps the button radius by default (inline)', (variant) => {
+        render(<IconButton variant={variant} aria-label="閉じる" icon={<X />} />);
+        const b = screen.getByRole('button', { name: '閉じる' });
+        expect(b).toHaveClass('rounded-md');
+        expect(b).not.toHaveClass('rounded-full');
+        expect(b).toHaveAttribute('data-shape', 'rounded');
+    });
+
+    it('shape overrides the default both ways', () => {
+        render(
+            <>
+                <IconButton variant="ghost" shape="circle" aria-label="丸" icon={<X />} />
+                <IconButton variant="overlay" shape="rounded" aria-label="角" icon={<X />} />
+            </>,
+        );
+        expect(screen.getByRole('button', { name: '丸' })).toHaveClass('rounded-full');
+        expect(screen.getByRole('button', { name: '角' })).toHaveClass('rounded-md');
+    });
+
+    it('soft is the accent on a subtle tint and fills on hover', () => {
+        render(<IconButton variant="soft" aria-label="検索" icon={<X />} />);
+        expect(screen.getByRole('button', { name: '検索' })).toHaveClass(
+            'bg-accent-subtle', 'text-accent', 'hover:bg-accent', 'hover:text-inverse',
+        );
+    });
+});

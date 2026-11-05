@@ -215,6 +215,8 @@ export const DesignPage: React.FC = () => {
                         <Button size="sm">{t('designPage.secondary')}</Button>
                         <IconButton aria-label={t('designPage.close')} icon={<X />} />
                         <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
+                        <IconButton aria-label={t('designPage.accent')} icon={<Settings />} variant="soft" shape="circle" />
+                        <IconButton aria-label={t('designPage.accent')} icon={<Settings />} variant="soft" />
                     </div>
                 </Section>
 
