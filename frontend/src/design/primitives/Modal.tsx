@@ -5,6 +5,7 @@ import { cn } from '../../utils/classnames';
 import { useDialog } from '../dialog/useDialog';
 import type { DialogLogId } from '../dialog/dialogLog';
 import { IconButton } from './Button';
+import { brandScopeStyle } from '../brandScope';
 
 export interface ModalProps {
     isOpen: boolean;
@@ -19,6 +20,10 @@ export interface ModalProps {
     closeLabel?: string;
     /** Header content between the title and the close button. */
     headerExtra?: React.ReactNode;
+    /** 'brand': the dialog is a brand-context surface (settings, search, about...). Default inherits the opener's context. */
+    scope?: 'inherit' | 'brand';
+    /** 'expressive' (default): context gradient header (L1). 'plain': quiet header for small confirms. */
+    header?: 'expressive' | 'plain';
     children: React.ReactNode;
     footer?: React.ReactNode;
     /** 'sheet': light level-1 dialog. 'viewer': dark full-screen photo/video viewer. */
@@ -57,7 +62,7 @@ export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal
 const OpenModal: React.FC<ModalProps> = ({
     onClose, title, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
-    initialFocusRef, className, bodyClassName, logId, onKeyDown,
+    initialFocusRef, className, bodyClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
     const frameRef = useRef<HTMLDivElement>(null);
     const titleId = useId();
@@ -105,12 +110,14 @@ const OpenModal: React.FC<ModalProps> = ({
                 aria-labelledby={named}
                 aria-label={named ? undefined : ariaLabel}
                 tabIndex={-1}
+                data-scope={scope === 'brand' ? 'brand' : undefined}
+                style={scope === 'brand' ? brandScopeStyle() : undefined}
                 onKeyDown={onKeyDown}
                 className={cn(
                     'outline-none',
                     tone === 'viewer'
                         ? 'relative flex h-full w-full items-center justify-center'
-                        : 'flex max-h-full w-full max-w-lg flex-col overflow-hidden bg-sheet rounded-sheet shadow-sheet animate-reveal motion-reduce:animate-none',
+                        : 'flex max-h-full w-full max-w-lg flex-col overflow-hidden bg-sheet rounded-xl shadow-sheet animate-reveal motion-reduce:animate-none',
                     className,
                 )}
                 onMouseDown={tone === 'viewer' ? startPress : undefined}
@@ -118,16 +125,29 @@ const OpenModal: React.FC<ModalProps> = ({
             >
                 {layout === 'bare' ? children : (
                     <>
-                        <div className="flex shrink-0 items-center gap-3 px-6 pb-2 pt-5">
+                        <div
+                            data-testid="modal-header"
+                            className={cn(
+                                'flex shrink-0 items-center gap-3 px-6',
+                                header === 'expressive' ? 'bg-expressive-header py-4 text-expressive-header' : 'pb-2 pt-5 text-primary',
+                            )}
+                        >
                             {title !== undefined && (
-                                <h2 id={titleId} className="min-w-0 flex-1 truncate text-title font-semibold text-primary">{title}</h2>
+                                <h2 id={titleId} className="min-w-0 flex-1 truncate text-title font-semibold">{title}</h2>
                             )}
                             {headerExtra}
                             {dismissible && closeLabel && (
-                                <IconButton size="sm" aria-label={closeLabel} icon={<X />} onClick={() => requestClose('button')} />
+                                <IconButton
+                                    size="sm"
+                                    aria-label={closeLabel}
+                                    icon={<X />}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-accent-subtle hover:text-accent-strong' : undefined}
+                                    onClick={() => requestClose('button')}
+                                />
                             )}
                         </div>
-                        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 text-body text-primary', bodyClassName)}>{children}</div>
+                        {header === 'expressive' && <div data-testid="modal-header-bar" aria-hidden="true" className="h-[3px] shrink-0 bg-expressive-header-bar" />}
+                        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
                         {footer && <div className="flex shrink-0 items-center justify-end gap-2 px-6 pb-6">{footer}</div>}
                     </>
                 )}
