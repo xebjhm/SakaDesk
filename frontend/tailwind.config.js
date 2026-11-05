@@ -97,6 +97,16 @@ export default {
                 'viewer-control-hover': 'var(--ds-viewer-control-hover)',
                 'control-off': 'var(--ds-border-strong)',
                 'group-marker': 'var(--ds-group-marker)',
+                // Chat header pills (pre-D2 look): glass / shade on the title gradient, title-text tints on a light header.
+                'header-glass': 'var(--ds-overlay-glass)',
+                'header-shade': 'var(--ds-overlay-shade)',
+                'group-title-tint': 'color-mix(in srgb, var(--ds-group-title-text) 12.5%, transparent)',
+                'group-title-wash': 'color-mix(in srgb, var(--ds-group-title-text) 8%, transparent)',
+                // Official unread shelters.
+                'group-shelter-picture': 'var(--ds-group-shelter-picture)',
+                'group-shelter-video': 'var(--ds-group-shelter-video)',
+                'group-shelter-voice': 'var(--ds-group-shelter-voice)',
+                'group-shelter-text': 'var(--ds-group-shelter-text)',
             },
             textColor: {
                 accent: 'var(--ds-accent)',
@@ -120,6 +130,10 @@ export default {
                 'viewer-muted': 'var(--ds-viewer-text-muted)',
                 sunday: 'var(--ds-decor-sunday)',
                 heart: 'var(--ds-decor-heart)',
+                'group-shelter-picture': 'var(--ds-group-shelter-picture)',
+                'group-shelter-video': 'var(--ds-group-shelter-video)',
+                'group-shelter-voice': 'var(--ds-group-shelter-voice)',
+                'group-shelter-text': 'var(--ds-group-shelter-text)',
             },
             borderColor: {
                 'accent-border': 'var(--ds-accent-border)',
@@ -134,9 +148,14 @@ export default {
                 'group-bubble': 'var(--ds-group-bubble-border)',
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
+                'group-shelter-picture': 'var(--ds-group-shelter-picture)',
+                'group-shelter-video': 'var(--ds-group-shelter-video)',
+                'group-shelter-voice': 'var(--ds-group-shelter-voice)',
+                'group-shelter-text': 'var(--ds-group-shelter-text)',
             },
             ringColor: {
                 accent: 'var(--ds-accent)',
+                'accent-border': 'var(--ds-accent-border)',
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
                 surface: 'var(--ds-surface-sheet)',
