@@ -14,6 +14,8 @@ Spec (governs): `docs/superpowers/specs/2026-11-05-design-language-v2-design.md`
 
 ## Decisions needed from the user
 
+> **Resolved 2026-11-05:** the user accepted every recommendation below (D1–D8). Steps marked `(pending decision Dn)` are decided as recommended.
+
 The user's rule: any change to the original design (`e4e4118` / `0725cc3`) that the spec has not already decided is asked first. These came up while mapping R-a. The tasks assume the **recommendation**; steps that depend on one are marked `(pending decision D<n>)`. If the user picks another option, only those steps change.
 
 **D1 — Group rail actions (add service, search, settings): colour and shape.** `core/layout/ServiceRail.tsx`, `core/common/SettingsMenu.tsx`.
