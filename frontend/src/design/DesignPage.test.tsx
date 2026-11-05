@@ -114,6 +114,17 @@ describe('DesignPage v2', () => {
         await userEvent.click(screen.getByRole('button', { name: /SakaDesk brand/ }));
         expect(document.querySelector('[data-scope="brand"]')).not.toBeNull();
     });
+    it('scopes the sample dialog to the brand context', async () => {
+        render(<DesignPage />);
+        await userEvent.click(screen.getByRole('button', { name: /SakaDesk brand/ }));
+        await userEvent.click(screen.getByRole('button', { name: 'Open modal' }));
+        expect(await screen.findByRole('dialog')).toHaveAttribute('data-scope', 'brand');
+    });
+    it('leaves the sample dialog unscoped in a group context', async () => {
+        render(<DesignPage />);
+        await userEvent.click(screen.getByRole('button', { name: 'Open modal' }));
+        expect(await screen.findByRole('dialog')).not.toHaveAttribute('data-scope');
+    });
     it('shows the v2 sections', () => {
         render(<DesignPage />);
         for (const name of ['Brand', 'Semantic colours', 'Buttons', 'Expression tiers', 'Brand moments']) {

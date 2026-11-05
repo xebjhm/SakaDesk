@@ -26,7 +26,7 @@ const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',
 };
 const TYPE_CLASS: Record<TypeStep, string> = {
-    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', display: 'text-display', reading: 'text-reading',
+    caption: 'text-caption', small: 'text-small', body: 'text-body', title: 'text-title', heading: 'text-heading', display: 'font-display text-display', reading: 'text-reading',
 };
 
 const SEMANTIC_BANNER = {
@@ -206,16 +206,11 @@ export const DesignPage: React.FC = () => {
                         <Button variant="primary" disabledReason={t('designPage.sampleDisabledReason')}>disabled</Button>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-<Button variant="primary">{t('designPage.primary')}</Button>
-                        <Button>{t('designPage.secondary')}</Button>
-                        <Button variant="ghost">{t('designPage.ghost')}</Button>
-                        <Button variant="danger">{t('designPage.danger')}</Button>
                         <IconButton variant="accent" aria-label={t('designPage.accent')} icon={<ChevronDown />} />
                         <span className="inline-flex items-center gap-2 rounded-card bg-viewer-stage p-2">
                             <Button variant="overlay" size="sm">{t('designPage.overlay')}</Button>
                             <IconButton variant="overlay" size="sm" aria-label={t('designPage.close')} icon={<X />} />
                         </span>
-                        <Button disabled>{t('designPage.disabled')}</Button>
                         <Button size="sm">{t('designPage.secondary')}</Button>
                         <IconButton aria-label={t('designPage.close')} icon={<X />} />
                         <IconButton aria-label={t('designPage.close')} icon={<Settings />} variant="secondary" size="sm" />
@@ -375,6 +370,7 @@ export const DesignPage: React.FC = () => {
                         <Button onClick={() => setModalOpen(true)}>{t('designPage.openModal')}</Button>
                     </div>
                     <Modal
+                        scope={context === 'brand' ? 'brand' : 'inherit'}
                         isOpen={modalOpen}
                         onClose={() => setModalOpen(false)}
                         title={t('designPage.modalTitle')}
@@ -427,7 +423,7 @@ export const DesignPage: React.FC = () => {
                     </div>
                 </header>
 
-{context === 'brand' ? <BrandScope className="contents">{body}</BrandScope> : body}
+                {context === 'brand' ? <BrandScope className="contents">{body}</BrandScope> : body}
             </Sheet>
         </Canvas>
     );
