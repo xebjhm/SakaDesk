@@ -11,9 +11,11 @@ import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
 import { isTimelineProbeView } from '../features/messages/timeline/probeRoute'
 import { applyStaticTokens } from '../design/applyTokens'
+import { installLanguageFonts } from '../design/fonts'
 
 // Design tokens must exist before the first paint of any entry point.
 applyStaticTokens()
+installLanguageFonts()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 

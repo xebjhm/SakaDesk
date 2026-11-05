@@ -1,3 +1,5 @@
+import { brandInk } from './brand';
+
 /**
  * Neutral colour tokens, named by role (never by hue) so a dark set can be
  * added later as a second value map. Values are copied verbatim from the
@@ -34,23 +36,22 @@ export const color = {
         /** Toasts (viewer clipboard, About). The pre-D2c `bg-black/80`. */
         toast: 'rgba(0, 0, 0, 0.8)',
     },
-    feedback: {
-        success: '#10B981',
-        warning: '#F59E0B',
-        error: '#EF4444',
+    /**
+     * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow
+     * context. subtle = banner bg, icon = icon circle bg, border = outline, solid = destructive
+     * fill (white text >= 4.5:1), text = text and glyphs (>= 4.5:1 on white). Info is the brand ink.
+     */
+    semantic: {
+        success: { subtle: '#f0fbf4', icon: '#e3f6ea', border: '#cae8d7', solid: '#2e805a', text: '#216a49' },
+        warning: { subtle: '#fff5ed', icon: '#feedde', border: '#f6dac3', solid: '#9b5e1e', text: '#824c13' },
+        danger: { subtle: '#fff3f1', icon: '#ffe7e4', border: '#ffd1cd', solid: '#b44543', text: '#963635' },
+        info: { subtle: brandInk[50], icon: brandInk[100], border: brandInk[200], solid: brandInk[600], text: brandInk[700] },
     },
     /** Search matches inside text (blog reader): exact match, match by reading, and its dashed underline. Values from the pre-D2b reader. */
     mark: {
         exact: '#FEF08A',
         reading: '#DBEAFE',
         underline: '#60A5FA',
-    },
-    /** Status by role, readable as small text on white (≥ 4.5:1); `attention` is the rail's disconnected badge fill (pre-D2c orange-500). */
-    status: {
-        danger: '#DC2626',
-        success: '#15803D',
-        warning: '#B45309',
-        attention: '#F97316',
     },
     /** The dark photo/video viewer's chrome (D2c). Values are the pre-D2c viewer's. */
     viewer: {

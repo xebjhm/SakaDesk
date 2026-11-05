@@ -1,8 +1,9 @@
 /**
  * Ratchet against hard-coded style values outside the design tokens.
  *
- * Counted per file: hex colours, rgb()/hsl() literals, and Tailwind arbitrary
- * values for radius, shadow, text and spacing. Width/height/position arbitrary
+ * Counted per file: hex colours, rgb()/hsl() literals, Tailwind arbitrary
+ * values for radius, shadow, text and spacing, and the D1 group role utilities
+ * superseded by `*-accent-*`. Width/height/position arbitrary
  * values are allowed (fixed layout sizes are legitimate). Comments are
  * stripped first. guard.test.ts compares the counts with guard-baseline.json:
  * new files must be clean, and existing counts may only go down.
@@ -14,6 +15,7 @@ const PATTERNS: readonly RegExp[] = [
     /#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b/g,
     /\b(?:rgba?|hsla?)\(/g,
     /(?<![\w-])-?(?:rounded(?:-[a-z]{1,2})?|shadow|text|[pm][trblxyse]?|gap(?:-[xy])?|space-[xy])-\[/g,
+    /(?<![\w-])(?:bg-group-(?:accent|badge|subtle)|text-group-strong|border-group-subtle|ring-group(?![\w-])|accent-group|shadow-group-glow)(?![\w-])/g,
 ];
 
 const EXCLUDED_PREFIXES = ['design/tokens/', 'config/colors/', '__tests__/'];

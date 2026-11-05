@@ -272,6 +272,8 @@ def test_notify_open_chat_accepts_has_target():
     [
         ("design_tokens_applied", {"theme": "sakurazaka"}, "info"),
         ("design_tokens_fallback", {"reason": "unknown_service"}, "warning"),
+        ("design_fonts_applied", {"target": "zh_tw"}, "info"),
+        ("design_fonts_fallback", {"target": "zh_tw"}, "info"),
         ("avatar_fallback", {"size": "md"}, "info"),
     ],
 )

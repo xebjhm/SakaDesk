@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Yodel now uses its own periwinkle colours.** The old green came from one
+  member's page; Yodel screens now follow the Yodel logo colour.
 - **A cleaner main window.** The group list on the left is now neutral, the
   feature list shows names under its icons and shares the group's background
   with the member list, and chats and blogs sit on one rounded page. The

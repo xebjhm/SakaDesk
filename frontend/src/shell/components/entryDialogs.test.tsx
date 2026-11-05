@@ -24,7 +24,7 @@ describe('ToS (D2d)', () => {
         expect(screen.getByRole('dialog', { name: 'Terms of Service' })).toContainElement(heading);
         expect(document.getElementById('tos-title')).toBeNull();
         const accept = screen.getByRole('button', { name: 'Accept and Continue' });
-        expect(accept).toHaveClass('bg-group-accent');
+        expect(accept).toHaveClass('bg-accent-gradient');
         expect(accept.closest('.overflow-y-auto')).toBeNull();
         expect(screen.getByRole('checkbox')).toHaveClass('accent-group');
     });
@@ -44,7 +44,7 @@ describe('setup (D2d)', () => {
         expect(screen.getByLabelText('Output Folder Path')).toHaveAttribute('placeholder', i18n.t('setup.outputFolderPlaceholder'));
         expect(screen.getByRole('heading', { level: 2, name: 'Welcome to SakaDesk' })).toBeInTheDocument();
         expect(document.getElementById('setup-title')).toBeNull();
-        expect(screen.getByRole('button', { name: 'Start Using SakaDesk' })).toHaveClass('bg-group-accent');
+        expect(screen.getByRole('button', { name: 'Start Using SakaDesk' })).toHaveClass('bg-accent-gradient');
     });
 });
 
@@ -60,7 +60,7 @@ describe('login (D2d)', () => {
         const scope = banner.parentElement as HTMLElement;
         expect(scope.style.getPropertyValue('--ds-group-accent')).toBe(groupRoles(group).action);
         expect(document.getElementById('login-title')).toBeNull();
-        expect(screen.getByRole('button', { name: 'Connect Account' })).toHaveClass('bg-group-accent');
+        expect(screen.getByRole('button', { name: 'Connect Account' })).toHaveClass('bg-accent-gradient');
         await userEvent.click(within(banner).getByRole('button', { name: 'Close' }));
         expect(onClose).toHaveBeenCalledOnce();
     });

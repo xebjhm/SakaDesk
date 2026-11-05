@@ -4,7 +4,7 @@
  */
 import {
     color, groupRoles, groupTokens, radius, shadow, typeScale, fontFamily, motion, easingCss,
-    ambientLayout, memberWash, type GroupId,
+    ambientLayout, memberWash, aurora, groupAccent, type AccentRoles, type GroupId,
 } from './tokens';
 
 /** camelCase token name → kebab-case CSS variable segment (controlHover → control-hover). */
@@ -16,10 +16,12 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.text)) vars[`--ds-text-${name}`] = value;
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
     for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
-    for (const [name, value] of Object.entries(color.feedback)) vars[`--ds-feedback-${name}`] = value;
     for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
-    for (const group of ['status', 'viewer', 'decor'] as const) {
+    for (const group of ['viewer', 'decor'] as const) {
         for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
+    }
+    for (const [kind, steps] of Object.entries(color.semantic)) {
+        for (const [step, value] of Object.entries(steps)) vars[`--ds-semantic-${kind}-${step}`] = value;
     }
     // Cross-group search dots: set per element by groupMarkerStyle(); none by default.
     vars['--ds-group-marker'] = 'transparent';
@@ -32,11 +34,41 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, ms] of Object.entries(motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-standard'] = easingCss(motion.easing.standard);
     vars['--ds-font-family-reading'] = fontFamily.reading;
+    // First-paint defaults; installLanguageFonts() overrides them per UI language.
+    vars['--ds-font-family-sans'] = fontFamily.sansJp;
+    vars['--ds-font-family-serif'] = fontFamily.reading;
     // Member penlight wash: the colours are set per member on the wash element; none by default.
     vars['--ds-member-wash-alpha'] = memberWash.alpha;
     vars['--ds-member-wash-1'] = 'transparent';
     vars['--ds-member-wash-2'] = 'transparent';
+    vars['--ds-aurora'] = aurora.gradient;
     return vars;
+}
+
+/** Context-neutral accent and expressive variables (spec §3.5). */
+export function accentTokenVars(a: AccentRoles): Record<string, string> {
+    return {
+        '--ds-accent': a.accent,
+        '--ds-accent-strong': a.strong,
+        '--ds-accent-subtle': a.subtle,
+        '--ds-accent-border': a.border,
+        '--ds-accent-logo': a.logo,
+        '--ds-accent-glow': a.glow,
+        '--ds-accent-gradient': a.gradient,
+        '--ds-accent-tonal': a.tonal,
+        '--ds-accent-tonal-text': a.tonalText,
+        '--ds-shadow-accent-glow': `0 4px 14px ${a.glow}`,
+        '--ds-shadow-accent-halo': `0 0 12px 2px ${a.glow}`,
+        '--ds-shadow-accent-glow-hover': `0 6px 22px ${a.glow}`,
+        '--ds-shadow-accent-unread': a.unread,
+        '--ds-expressive-soft': a.soft,
+        '--ds-expressive-header': a.header,
+        '--ds-expressive-header-text': a.headerText,
+        '--ds-expressive-header-bar': a.headerBar,
+        '--ds-expressive-orb-1': a.orb1,
+        '--ds-expressive-orb-2': a.orb2,
+        '--ds-expressive-orb-3': a.orb3,
+    };
 }
 
 export function groupTokenVars(groupId: GroupId): Record<string, string> {
@@ -44,6 +76,7 @@ export function groupTokenVars(groupId: GroupId): Record<string, string> {
     const r = groupRoles(groupId);
     const a = ambientLayout[groupId];
     return {
+        ...accentTokenVars(groupAccent(groupId)),
         '--ds-group-accent': r.action,
         '--ds-group-logo': r.logo,
         '--ds-group-canvas': `linear-gradient(to bottom, ${o.canvas[0]}, ${o.canvas[1]}, ${o.canvas[2]})`,

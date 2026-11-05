@@ -34,10 +34,10 @@ describe('MemberList (D2a)', () => {
     it('selects with a white ring and the group glow, and caps the badge at 99+', async () => {
         serve();
         render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
-        expect(await screen.findByText('99+')).toHaveClass('bg-group-badge');
+        expect(await screen.findByText('99+')).toHaveClass('bg-accent');
         const cell = screen.getByRole('button', { name: /石塚 瑶季/ });
         const avatar = cell.querySelector('.ring-2')!;
-        expect(avatar).toHaveClass('ring-2', 'ring-surface', 'shadow-group-glow');
+        expect(avatar).toHaveClass('ring-2', 'ring-surface', 'shadow-accent-halo');
     });
 
     it('announces each member once: the avatar is decorative beside the visible name', async () => {

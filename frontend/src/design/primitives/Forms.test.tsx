@@ -19,7 +19,7 @@ describe('Switch', () => {
     it('is the group action colour when on, and can be disabled', () => {
         render(<Switch checked onCheckedChange={vi.fn()} aria-label="a" disabled />);
         const sw = screen.getByRole('switch', { name: 'a' });
-        expect(sw).toHaveClass('bg-group-accent');
+        expect(sw).toHaveClass('bg-accent');
         expect(sw).toBeDisabled();
     });
 });
@@ -61,7 +61,7 @@ describe('Input and Select', () => {
             </>,
         );
         for (const el of [screen.getByRole('textbox', { name: 'フォルダ' }), screen.getByRole('combobox', { name: '言語' })]) {
-            expect(el).toHaveClass('rounded-pill', 'bg-sunken', 'focus-visible:ring-group');
+            expect(el).toHaveClass('rounded-pill', 'bg-sunken', 'focus-visible:ring-accent');
         }
     });
 

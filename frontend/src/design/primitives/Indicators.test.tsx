@@ -26,7 +26,7 @@ describe('Badge', () => {
         render(<Badge count={count} />);
         const badge = screen.getByText(text);
         expect(badge).toHaveAttribute('aria-label', `${count} unread`);
-        expect(badge).toHaveClass('bg-group-badge', 'rounded-pill');
+        expect(badge).toHaveClass('bg-accent', 'rounded-pill');
     });
 });
 
@@ -62,7 +62,7 @@ describe('Avatar', () => {
 
     it('adds the white ring and group glow when selected', () => {
         const { container } = render(<Avatar name="A" selected />);
-        expect(container.firstChild).toHaveClass('ring-2', 'ring-surface', 'shadow-group-glow');
+        expect(container.firstChild).toHaveClass('ring-2', 'ring-surface', 'shadow-accent-halo');
     });
 });
 
@@ -91,7 +91,7 @@ describe('DatePill', () => {
         render(<DatePill date={new Date(2026, 10, 4, 9, 0)} onClick={onClick} actionLabel="Jump to a date" />);
         const button = screen.getByRole('button', { name: 'Today' });
         expect(button).toHaveAttribute('title', 'Jump to a date');
-        expect(button).toHaveClass('rounded-pill', 'focus-visible:ring-group');
+        expect(button).toHaveClass('rounded-pill', 'focus-visible:ring-accent');
         expect(screen.getByText('Today').tagName).toBe('TIME');
         fireEvent.click(button);
         expect(onClick).toHaveBeenCalledOnce();

@@ -24,6 +24,12 @@ describe('ConfirmDialog', () => {
         expect(screen.queryByText('確認 ✅')).toBeNull();
     });
 
+    it('renders the plain header', () => {
+        renderDialog();
+        expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+    });
+
     it('shows title, message and the two buttons; confirm and cancel call back', async () => {
         const p = renderDialog();
         expect(screen.getByRole('heading', { name: '確認 ✅' })).toBeInTheDocument();

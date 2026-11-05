@@ -6,6 +6,8 @@ import userEvent from '@testing-library/user-event';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../utils/clientLog';
 import { Modal } from './Modal';
+import { BrandScope } from '../brandScope';
+import { brandAccent } from '../tokens';
 import { Button } from './Button';
 import { openDialogCount, resetDialogStack } from '../dialog/dialogStack';
 import { Z_INDEX } from '../../constants/zIndex';
@@ -26,7 +28,7 @@ describe('Modal', () => {
         render(<Modal isOpen onClose={vi.fn()} title="設定 ⚙️" closeLabel="閉じる" footer={<Button>OK</Button>}>本文</Modal>);
         const dialog = screen.getByRole('dialog', { name: '設定 ⚙️' });
         expect(dialog).toHaveAttribute('aria-modal', 'true');
-        expect(dialog).toHaveClass('bg-sheet', 'rounded-sheet', 'shadow-sheet', 'animate-reveal');
+        expect(dialog).toHaveClass('bg-sheet', 'rounded-xl', 'shadow-sheet', 'animate-reveal');
         expect(screen.getByTestId('modal-backdrop')).toHaveClass('bg-scrim');
         expect(screen.getByRole('button', { name: '閉じる' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
@@ -973,5 +975,54 @@ describe('Modal: focus restore and trap (fix wave 2)', () => {
         rerender(<Harness lower={false} />);
         await flush();
         expect(item).toHaveFocus();
+    });
+});
+
+describe('Modal v2 header and scope', () => {
+    it('standard layout draws the expressive header by default', () => {
+        render(<Modal isOpen onClose={() => {}} title="Favourites" closeLabel="Close">body</Modal>);
+        const header = screen.getByTestId('modal-header');
+        expect(header.className).toContain('bg-expressive-header');
+        expect(header.className).toContain('text-expressive-header');
+        expect(screen.getByTestId('modal-header-bar').className).toContain('bg-expressive-header-bar');
+    });
+    it('header="plain" keeps the quiet header', () => {
+        render(<Modal isOpen onClose={() => {}} title="Confirm" header="plain">body</Modal>);
+        expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+    });
+    it('scope="brand" sets the brand accent variables on the frame', () => {
+        render(<Modal isOpen onClose={() => {}} title="Settings" scope="brand">body</Modal>);
+        const frame = screen.getByRole('dialog');
+        expect(frame.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
+        expect(frame.dataset.scope).toBe('brand');
+    });
+    it('an inherit Modal inside a BrandScope is brand', () => {
+        render(<BrandScope><Modal isOpen onClose={() => {}} title="Confirm">body</Modal></BrandScope>);
+        const frame = screen.getByRole('dialog');
+        expect(frame.dataset.scope).toBe('brand');
+        expect(frame.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
+    });
+    it('a Modal nested in a brand Modal inherits brand', () => {
+        render(
+            <Modal isOpen onClose={() => {}} title="Settings" scope="brand">
+                <Modal isOpen onClose={() => {}} title="Confirm">inner</Modal>
+            </Modal>,
+        );
+        const inner = screen.getByRole('dialog', { name: 'Confirm' });
+        expect(inner.dataset.scope).toBe('brand');
+        expect(inner.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
+    });
+    it('a Modal outside any scope has no data-scope', () => {
+        render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
+        expect(screen.getByRole('dialog').dataset.scope).toBeUndefined();
+    });
+    it('the expressive close button takes the header text colour', () => {
+        render(<Modal isOpen onClose={() => {}} title="X" closeLabel="Close">body</Modal>);
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header');
+    });
+    it('frame uses the xl radius', () => {
+        render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
+        expect(screen.getByRole('dialog').className).toContain('rounded-xl');
     });
 });

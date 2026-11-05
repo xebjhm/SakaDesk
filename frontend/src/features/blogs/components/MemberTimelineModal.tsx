@@ -103,7 +103,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                             {t('blogGallery.button')}
                         </Button>
                     )}
-                    {blogs.length > 0 && <span className="text-small text-muted">{t('blogs.post', { count: blogs.length })}</span>}
+                    {blogs.length > 0 && <span className="text-small opacity-80">{t('blogs.post', { count: blogs.length })}</span>}
                 </>
             }
         >

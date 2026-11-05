@@ -20,9 +20,9 @@ export const Switch = React.forwardRef<HTMLButtonElement, SwitchProps>(
             onClick={() => onCheckedChange(!checked)}
             className={cn(
                 'relative inline-flex h-6 w-11 shrink-0 rounded-pill transition-colors duration-fast ease-standard',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-group focus-visible:ring-offset-surface',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-accent focus-visible:ring-offset-surface',
                 'disabled:pointer-events-none disabled:opacity-50',
-                checked ? 'bg-group-accent' : 'bg-control-off',
+                checked ? 'bg-accent' : 'bg-control-off',
                 className,
             )}
         >

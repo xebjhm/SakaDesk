@@ -15,3 +15,89 @@ describe('tailwind.config.js token utilities', () => {
         expect(referenced.filter((name) => !written.has(name))).toEqual([]);
     });
 });
+
+describe('accent and expressive utilities', () => {
+    const expected: Array<[section: string, key: string, variable: string]> = [
+        ['backgroundColor', 'accent', '--ds-accent'],
+        ['backgroundColor', "'accent-subtle'", '--ds-accent-subtle'],
+        ['backgroundImage', "'accent-gradient'", '--ds-accent-gradient'],
+        ['backgroundImage', "'accent-tonal'", '--ds-accent-tonal'],
+        ['backgroundImage', "'expressive-soft'", '--ds-expressive-soft'],
+        ['backgroundImage', "'expressive-header'", '--ds-expressive-header'],
+        ['backgroundImage', "'expressive-header-bar'", '--ds-expressive-header-bar'],
+        ['backgroundImage', "'expressive-orb-1'", '--ds-expressive-orb-1'],
+        ['backgroundImage', "'expressive-orb-2'", '--ds-expressive-orb-2'],
+        ['backgroundImage', "'expressive-orb-3'", '--ds-expressive-orb-3'],
+        ['backgroundImage', 'aurora', '--ds-aurora'],
+        ['textColor', 'accent', '--ds-accent'],
+        ['textColor', "'accent-strong'", '--ds-accent-strong'],
+        ['textColor', "'accent-tonal'", '--ds-accent-tonal-text'],
+        ['textColor', "'expressive-header'", '--ds-expressive-header-text'],
+        ['borderColor', "'accent-border'", '--ds-accent-border'],
+        ['borderColor', 'accent', '--ds-accent'],
+        ['ringColor', 'accent', '--ds-accent'],
+        ['backgroundColor', "'semantic-success-subtle'", '--ds-semantic-success-subtle'],
+        ['backgroundColor', "'semantic-success-icon'", '--ds-semantic-success-icon'],
+        ['textColor', "'semantic-success'", '--ds-semantic-success-text'],
+        ['borderColor', "'semantic-success'", '--ds-semantic-success-border'],
+        ['backgroundColor', "'semantic-warning-subtle'", '--ds-semantic-warning-subtle'],
+        ['backgroundColor', "'semantic-warning-icon'", '--ds-semantic-warning-icon'],
+        ['textColor', "'semantic-warning'", '--ds-semantic-warning-text'],
+        ['borderColor', "'semantic-warning'", '--ds-semantic-warning-border'],
+        ['backgroundColor', "'semantic-danger-subtle'", '--ds-semantic-danger-subtle'],
+        ['backgroundColor', "'semantic-danger-icon'", '--ds-semantic-danger-icon'],
+        ['textColor', "'semantic-danger'", '--ds-semantic-danger-text'],
+        ['borderColor', "'semantic-danger'", '--ds-semantic-danger-border'],
+        ['backgroundColor', "'semantic-info-subtle'", '--ds-semantic-info-subtle'],
+        ['backgroundColor', "'semantic-info-icon'", '--ds-semantic-info-icon'],
+        ['textColor', "'semantic-info'", '--ds-semantic-info-text'],
+        ['borderColor', "'semantic-info'", '--ds-semantic-info-border'],
+        ['backgroundColor', "'status-danger'", '--ds-semantic-danger-solid'],
+        ['backgroundColor', "'status-success'", '--ds-semantic-success-solid'],
+        ['backgroundColor', "'status-attention'", '--ds-semantic-warning-solid'],
+        ['textColor', "'status-danger'", '--ds-semantic-danger-text'],
+        ['textColor', "'status-success'", '--ds-semantic-success-text'],
+        ['textColor', "'status-warning'", '--ds-semantic-warning-text'],
+        ['boxShadow', "'accent-glow'", '--ds-shadow-accent-glow'],
+        ['boxShadow', "'accent-halo'", '--ds-shadow-accent-halo'],
+        ['boxShadow', "'accent-glow-hover'", '--ds-shadow-accent-glow-hover'],
+        ['boxShadow', "'accent-unread'", '--ds-shadow-accent-unread'],
+        ['accentColor', 'accent', '--ds-accent'],
+        ['borderRadius', 'none', '--ds-radius-none'],
+        ['borderRadius', 'xs', '--ds-radius-xs'],
+        ['borderRadius', 'sm', '--ds-radius-sm'],
+        ['borderRadius', 'md', '--ds-radius-md'],
+        ['borderRadius', 'lg', '--ds-radius-lg'],
+        ['borderRadius', 'xl', '--ds-radius-xl'],
+        ['borderRadius', 'full', '--ds-radius-full'],
+        ['borderRadius', 'tail', '--ds-radius-tail'],
+        ['borderRadius', 'card', '--ds-radius-card'],
+        ['borderRadius', 'sheet', '--ds-radius-sheet'],
+        ['borderRadius', 'pill', '--ds-radius-pill'],
+        ['fontFamily', 'sans', '--ds-font-family-sans'],
+        ['fontFamily', 'display', '--ds-font-family-serif'],
+    ];
+    const sectionBody = (name: string) => {
+        const start = config.indexOf(`${name}: {`);
+        return config.slice(start, config.indexOf('\n            },', start));
+    };
+
+    it.each(expected)('%s.%s maps to var(%s)', (section, key, variable) => {
+        expect(sectionBody(section)).toContain(`${key}: 'var(${variable})'`);
+    });
+
+    it('fontSize.display uses the display size and leading variables', () => {
+        const body = sectionBody('fontSize');
+        expect(body).toContain('var(--ds-font-display-size)');
+        expect(body).toContain('var(--ds-font-display-leading)');
+    });
+
+    it('every accent variable is written by the token maps', () => {
+        const written = new Set([...Object.keys(staticTokenVars()), ...Object.keys(groupTokenVars(GROUP_IDS[0]))]);
+        expect(expected.filter(([, , v]) => !written.has(v))).toEqual([]);
+    });
+
+    it('defines the 0.97 press scale', () => {
+        expect(config).toMatch(/scale: \{\s*97: '0\.97',/);
+    });
+});

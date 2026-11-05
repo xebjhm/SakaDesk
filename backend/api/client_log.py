@@ -41,6 +41,8 @@ ClientEvent = Literal[
     "backend_sync_skipped",
     "design_tokens_applied",
     "design_tokens_fallback",
+    "design_fonts_applied",
+    "design_fonts_fallback",
     "avatar_fallback",
     "timeline_jump",
     "letters_load",

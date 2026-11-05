@@ -11,3 +11,5 @@ export { SPACE_UNIT_PX } from './space';
 export { motion, easingCss, bezierEasing, type DurationStep } from './motion';
 export { ambientLayout, type AmbientLayout, type OrbLayout } from './ambient';
 export { memberWash } from './member';
+export { brandInk, aurora, brandGlow } from './brand';
+export { brandAccent, groupAccent, mixHex, type AccentRoles } from './accent';

@@ -36,3 +36,14 @@
     background-color: #F0F2F5;
   }
 }
+
+@layer base {
+  /* Japanese content keeps Japanese glyphs whatever the UI language (spec §6). Scoped to marked
+     content, not <html>, so the UI's own stacks and the serif/display utilities keep working. */
+  /* Literal copies of fontFamily.sansJp / .reading in design/tokens/type.ts (CSS cannot import them): keep in sync. */
+  [lang="ja"]:not(html) {
+    --ds-font-family-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
+    --ds-font-family-serif: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    font-family: var(--ds-font-family-sans);
+  }
+}

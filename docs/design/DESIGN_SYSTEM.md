@@ -1,7 +1,9 @@
-# SakaDesk design system
+# SakaDesk design system (language v2)
 
 Every screen uses one design language. This file says what it is and how to
 use it. **Read it before you add or change any UI.**
+
+## 1. How to use this file
 
 - Tokens live in `frontend/src/design/tokens/`. They are the only place
   design-system style values are defined. Pre-D1 code still reads the legacy
@@ -9,167 +11,396 @@ use it. **Read it before you add or change any UI.**
   those are not design tokens and are not scanned by the guard.
 - Primitives live in `frontend/src/design/primitives/`.
 - See everything live at `http://localhost:5173/?view=design` (dev server
-  only; `npm run dev` in `frontend/`). The page has a group switcher and
-  contrast labels.
+  only; `npm run dev` in `frontend/`). The page has a **context switcher**
+  (brand, or one of the groups), contrast labels, the brand ink and aurora,
+  every colour role, the expression tiers and every primitive state.
+- Components ask for a **role** (`accent`, `accent-strong`, ...), never a hue.
+  The surrounding context decides what the role resolves to.
+- Token colours are CSS variables, so Tailwind opacity modifiers such as
+  `bg-sheet/50` do not work. Add a token instead.
 
-## The four levels
+## 2. Brand personality
 
-| Level | Primitive | Corners | Shadow | Holds |
-|---|---|---|---|---|
-| 0 Background | `Canvas` | none | none | rails, the space around the sheet |
-| 1 Sheet | `Sheet`, `Modal` | `rounded-sheet` (20px) | `shadow-sheet` | the one content area: chat, blog, dialogs |
-| 2 Card | `Card` | `rounded-card` (14px) | `shadow-card` | bubbles, photos, info cards |
-| 3 Pill | `Pill`, `Badge`, `DatePill`, `Button` | `rounded-pill` | `shadow-pill` | tabs, filters, dates, badges, buttons |
+**A skeleton + C surface.**
 
-A level sits on the level below it. Do not put a sheet on a card.
+- **A, the archive:** calm, refined, trustworthy. Governs working screens:
+  stable layout, clear type hierarchy, few but well-made decorations.
+- **C, airy:** light, soft glow, frosted glass, pastel gradients. Governs
+  expressive moments.
+- Rejected: loud, saturated "cheering" styles. The frame must not fight the
+  four group colours.
 
-## Where group colour may appear
+**Doing vs. waiting/finishing.** While the user is **doing** something
+(reading, finding, configuring), use tiers L0 and L1. When the user is
+**waiting, starting, finishing or looking back**, L2 and celebrations are
+allowed. Why: a calm working surface is the product; expression is a reward at
+the edges.
 
-Group colour is used ONLY through the official layer (title gradient, title
-bar and text, canvas, unread shelters) and the roles in the Colour system
-table (`text-group-strong`, `bg-group-subtle`, `border-group-subtle`,
-`decoration-group`, `bg-group-accent`, `ring-group`, `shadow-group-glow`, ...).
-It is read via `groupTokens[id].official` or `groupRoles(id)` and follows the
-active service automatically through CSS variables. It is never hard-coded,
-and a primitive never takes a group id.
+## 3. Contexts
 
-- **Official layer:** `bg-group-title` (the title gradient), `bg-group-title-bar`,
-  `text-group-title`, `--ds-group-title-*`, the canvas and the shelters.
-- **Roles:** the Colour system table; for example `Avatar selected` draws a white
-  ring plus the group glow (`shadow-group-glow`), and `ring-group` is the keyboard
-  focus ring of `Pill`, `Button`, `IconButton` and `RailItem`
-  (`focus-visible:ring-2 focus-visible:ring-group`). The group rail's selected logo
-  has a selection ring: a 2 px white gap plus a 2 px ring in the group logo colour
-  (`ring-2 ring-offset-2 ring-group-logo`, from `--ds-group-logo`) and the group glow.
-  It is the only place the logo colour is used as a ring.
-- **Ambient orbs (decided in D2b):** the blog feed's slow-drifting background orbs,
-  `bg-group-ambient-1/2/3` (the D1.5 `ambient` role, `groupRoles(id).ambient`), with the
-  per-group size and opacity from `design/tokens/ambient.ts` (`--ds-group-ambient-N-size`,
-  `--ds-group-ambient-N-opacity`). Only `DynamicBackground` draws them, only behind the
-  recent-posts feed. Their 22–34 s drift (`animate-orb-drift-1/2`, `animate-orb-breathe`) is
-  the one exception to the 150–200 ms motion rule besides `duration-glide`; it stops with
-  reduced motion.
-- **Form control on state (decided in D2c):** a `Switch` that is on is `bg-group-accent`, and native
-  radios, checkboxes and range sliders use `accent-group` (`--ds-group-accent`, the action colour).
-  A switch that is off is `bg-control-off` (neutral).
-- **Profile card banner (decided in D2c):** the member profile card's banner is the official
-  layer, drawn like that group's chat header: `bg-group-title` (gradient groups) or `bg-sheet`
-  with the thin `bg-group-title-bar` under it (Sakurazaka's `light` header). It is an allowed
-  official-layer use, like the chat header itself.
-- **Cross-group markers (decided in D2c):** see [Cross-group markers](#cross-group-markers).
-- **Group scope (decided in D2d):** a surface that belongs to one specific service other than the
-  active one (that service's login dialog, its sync during the first-launch sync, its inline sync
-  view) sets that group's variables on itself with `groupScopeStyle(groupId)`
-  (`design/groupScope.ts`); every `*-group-*` utility inside then follows that group. It is the only
-  way to show a particular group's colours, and it is never used in lists that mix groups.
-- **Neutral before a group is chosen (decided in D2d):** until ToS is accepted and a group is
-  selected, `App` applies the `default` group's tokens, so the ToS and landing screens use neutral
-  greys through the same roles.
+The rule is **whose content is it?**
 
-**Exception:** at most **one** `primary` or `danger` Button per screen, and **one per
-dialog** (each dialog counts on its own). `primary` uses `bg-group-accent` (the action
-colour, step 600), e.g. the call screen's "answer", a dialog's "save"; `danger`
-(`bg-status-danger`) is a destructive confirm and takes the place of the primary.
+- Content of one group: **group context**.
+- The app, the user's account, or anything that spans groups: **brand
+  context**.
+- A dialog inherits its opener's context (`scope="inherit"`: the nearest `BrandScope` or brand `Modal`, else the active group). App-level dialogs are always brand (`scope="brand"`). Group-scoped surfaces (`groupScopeStyle`) are not propagated through the portal: pass their style to the dialog explicitly.
+- **Viewer mode** (dark, full screen) belongs to no context; only the content
+  shows.
+- **Group markers:** inside a brand screen, a piece that names one specific
+  group (a group card, a per-group settings row, a search result's source) uses
+  `groupScopeStyle(groupId)`.
 
-**Member penlight colours (data-driven exception).** The blog reader's corner wash uses the
-current member's two penlight colours from member data (`getMemberPenlightHex`), never a
-literal. `memberWashStyle()` (`features/blogs/memberWash.ts`) sets `--ds-member-wash-1/2` on
-the wash element, and the `bg-member-wash` utility mixes them at `--ds-member-wash-alpha`
-(`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for the mascot or an
-unknown member). No other element uses member colours.
+| Context | Screens |
+|---|---|
+| Brand | boot screen; ToS; setup wizard; landing; add service (group cards are markers); settings (per-group rows are markers); search, always, even when opened from a chat (each result carries a group marker); about; diagnostics; report issue; update prompt; sync progress and first sync (rows are markers); the group rail frame (search and settings icons use ink; logos keep their colours) |
+| Group | feature rail; member list; chat and letters; member profile card; member and message context menus; dialogs opened from a chat (calendar jump, favourites, media gallery, background, sent letters); blogs (feed, reader, member select, timeline); login dialog (that group); incoming call screen and call popup (the member's group); confirm dialog (inherits) |
+| Viewer | media viewer, photo detail, blog photo gallery, avatar viewer (stay dark; only the controls are restyled) |
 
-The level-0 background (`Canvas`, `bg-group-canvas`) is the official sidebar
-gradient. Everything else is neutral: `bg-sheet/card/pill/elevated/sunken`,
-`bg-scrim` (the modal backdrop) and `text-primary/secondary/muted/inverse`. Search
-matches inside text use the neutral mark tokens `bg-mark-exact`, `bg-mark-reading` and
-`border-mark-underline` (`color.mark`).
-Overlays use `bg-scrim` (`color.overlay.scrim`, `rgba(0, 0, 0, 0.4)`), never
-`bg-black/NN`: the token carries its own alpha.
+How a context is set:
 
-The neutral tokens D2c added (`design/tokens/color.ts`):
+- **Group context** is the default: `applyTokens` writes the active group's
+  variables on the document, and the `*-accent-*` / `*-expressive-*` utilities
+  read them.
+- **Brand context:** `brandScopeStyle()` (`design/brandScope.ts`) returns inline
+  custom properties that set every accent / expressive variable to the brand
+  values (ink and aurora) on one element. `<BrandScope>` is a `div` that applies
+  it (`data-scope="brand"`). `Modal scope="brand"` applies it to the dialog.
+  Brand screens and app-level dialogs apply it to themselves, so a brand dialog
+  is brand whichever group is active.
+- **Group scope:** `groupScopeStyle(groupId)` (`design/groupScope.ts`) sets one
+  specific group's variables on a surface that belongs to that service (its
+  login dialog, its sync during the first-launch sync, its inline sync view, a
+  group marker inside a brand screen). Every `*-group-*` utility, and the
+  official layer, inside then follows that group. It is never used in lists
+  that mix groups. A primitive never takes a group id.
 
-- **`status.*`:** status text and icons use `text-status-danger`, `text-status-success` and
-  `text-status-warning` (all ≥ 4.5:1 on white, pinned by `d2cTokens.test.ts`), and the
-  danger fill is `bg-status-danger` (the `danger` Button). `danger` is 4.8:1 on white only:
-  it falls under 4.5:1 on `bg-sunken`, so never put danger text on a sunken surface.
-  `bg-status-attention` is only the rail's disconnected badge.
-  `bg-status-success` (added in D2d) marks a finished step: the sync phase steps.
-- **`overlay.toast`:** toasts use `bg-toast` (with `text-viewer`).
-- **`viewer.*`:** the dark photo/video viewer: `bg-viewer-scrim` (its backdrop),
-  `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`, `text-viewer-muted`
-  and `decoration-viewer`.
-- **`decor.*`:** the calendar's Sundays use `text-sunday` and About's heart `text-heart`
-  (pre-D2c values kept).
-- **`mark.*`:** the search marks above (`bg-mark-exact`, `bg-mark-reading`,
-  `border-mark-underline`), shared by the blog reader and the search results.
-- **The surface ring:** `ring-surface` / `border-surface` are the white gap around avatars,
-  and `ring-offset-surface` (`ringOffsetColor.surface`) is the gap colour of a selection ring
-  with an offset (the background presets). All three are `--ds-surface-sheet`. There is no
-  `bg-surface`: use `bg-sheet`.
-- **`surface.window` (D2d):** `bg-window` (`#F0F2F5`) is the window base behind the app (the root
-  and the boot screen). It matches pywebview's `background_color` and the `body` colour in
-  `index.css`, which stays a literal because it paints before the tokens load.
+Status of the table: the mechanism above is built and shown on `?view=design`;
+switching each screen to it is the next plan (see
+[Migration note](#14-migration-note)).
 
-## Colour system
+## 4. Colour
+
+### Brand: ink and aurora
+
+The brand never takes a group's place; it hosts them (`design/tokens/brand.ts`).
+
+- **Ink scale** (`brandInk`, hue 262, chroma at most 0.06): 50 `#f4f7fc` ·
+  100 `#e9eef7` · 200 `#d5deee` · 300 `#bac8e0` · 400 `#9dafce` ·
+  500 `#8296b9` · 600 `#63769a` · 700 `#4d5e7d` · 800 `#3a4860` ·
+  900 `#293345`. Step 600 carries white text at 4.6:1. The solid ink sits next
+  to group logos on the rail and never competes with them.
+- **Aurora** (`aurora.gradient`, `bg-aurora`): `linear-gradient(120deg, #cfe6ff
+  0%, #e3dcff 38%, #ffdcea 72%, #fff0dc 100%)`, sky to lavender to pink to
+  peach. Text on it is always dark (`text-primary`), never white. Its orbs are
+  `#bfdcff`, `#ffd0e4`, `#e2d6ff`.
+- The aurora mixes the groups' hues on purpose: the app exists to serve the
+  Sakamichi groups.
+
+### Group colours
 
 Every group colour comes from `frontend/src/design/tokens/groups.ts` through
 one of two layers:
 
 - **Official layer** (`groupTokens[id].official`): title gradient, thin bar and
   title text, the canvas (sidebar) gradient, unread-shelter colours and the
-  `shelterStyle` / `headerStyle` switches. These were copied from the official
-  apps and are kept verbatim — tests pin them. Do not "fix" them to match the
-  scale.
-- **System layer**: each group has its logo colour and a 10-step scale
-  (50 lightest … 900 darkest, logo colour snapped into its step). Colours are
-  taken by **role**, never by step, through `groupRoles(id)` in
-  `design/tokens/roles.ts`:
+  `shelterStyle` / `headerStyle` switches. For Hinatazaka, Sakurazaka and
+  Nogizaka these were copied from the official apps and are kept verbatim;
+  tests pin them. Do not "fix" them to match the scale.
+- **System layer:** each group has its logo colour and a 10-step scale (50
+  lightest to 900 darkest, logo colour snapped into its step).
 
-| Role | Step | Used for | Utility |
+**Yodel** is based on its logo periwinkle `#6060e0` (step 600): 50 `#f3f6ff` ·
+100 `#e7ecff` · 200 `#d2daff` · 300 `#b5c0ff` · 400 `#98a2ff` · 500 `#7e85ff` ·
+600 `#6060e0` · 700 `#4c4bbb` · 800 `#393992` · 900 `#28286b`. The old green
+was the colour of one member's page. Yodel has no official periwinkle data, so
+its official fields are **system-derived** from the scale (title gradient
+200 → 400 → 600, bar 200 → 600, title text 700, canvas 100 → 50 → near white,
+shelters 300 / 400 / 500 / 600, bubble border and glow from the logo). They are
+labelled that way in `groups.ts`.
+
+**Reserved: per-OG layer.** A room-level Yodel override through
+`groupScopeStyle`, falling back to periwinkle. Not built.
+
+Group roles come from `groupRoles(id)` in `design/tokens/roles.ts`. Contrast
+floors are pinned by tests: the action colour with white text at 3:1 or better
+(Hinatazaka 600 `#389DD1`, 3.0:1, is an accepted deviation, see section 12).
+
+### Ink neutral and the "no tint on large surfaces" rule
+
+Surfaces, text and borders (`color.surface`, `color.text`, `color.border`) are
+the **ink neutral**: Tailwind grays at hue 257-264 and chroma at most 0.03, the
+same hue as the brand ink. They are the same in both contexts.
+
+**Large surfaces (sheet, card, bubble, chat background, dialog body) stay pure
+white or near-white with no tint. Tint lives only in text, borders and
+inputs.** A tinted, darker surface set was tried and rejected as too blue and
+dark.
+
+Neutral utilities: the level-0 background (`Canvas`, `bg-group-canvas`) is the
+official sidebar gradient; everything else is `bg-sheet`, `bg-card`, `bg-pill`,
+`bg-elevated`, `bg-sunken`, `bg-window` (the window base behind the app, the
+colour of pywebview's `background_color`), `bg-scrim` (the modal backdrop,
+carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
+`text-muted`, `text-inverse`, `border-subtle`, `border-strong`. Search matches
+use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
+gap around avatars and selection rings is `ring-surface` / `border-surface` /
+`ring-offset-surface` (there is no `bg-surface`: use `bg-sheet`). Toasts use
+`bg-toast` with `text-viewer`. The calendar's Sundays use `text-sunday` and
+About's heart `text-heart`. `bg-control-off` is an off switch.
+
+Viewer chrome (dark photo and video viewer): `bg-viewer-scrim`,
+`bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`,
+`text-viewer-muted`, `decoration-viewer`.
+
+### Semantic colours
+
+Global: they never follow context. Danger is always the same brick red, in
+brand and in group screens. They are harmonized (chroma about 35 % below signal
+colours) so they sit with the aurora. `color.semantic` has five steps per set:
+
+| | subtle (banner bg) | icon (icon circle bg) | border | solid (destructive fill) | text |
+|---|---|---|---|---|---|
+| success | `#f0fbf4` | `#e3f6ea` | `#cae8d7` | `#2e805a` | `#216a49` |
+| warning | `#fff5ed` | `#feedde` | `#f6dac3` | `#9b5e1e` | `#824c13` |
+| danger | `#fff3f1` | `#ffe7e4` | `#ffd1cd` | `#b44543` | `#963635` |
+| info | ink 50 | ink 100 | ink 200 | ink 600 | ink 700 |
+
+- Utilities: `bg-semantic-{success,warning,danger,info}-subtle`,
+  `bg-semantic-{...}-icon`, `border-semantic-{...}`, `text-semantic-{...}`
+  (the `text` step). The old names still work and map to the new steps:
+  `bg-status-danger`, `bg-status-success`, `bg-status-attention` (solid; attention
+  is warning) and `text-status-danger`, `text-status-success`,
+  `text-status-warning` (text).
+- Icons: an icon-step background, a border-step outline and a text-step glyph.
+  The solid step is only for destructive buttons and finished-step marks.
+- Danger is deliberately not pulled toward the brand, which would read as
+  Sakurazaka pink. Info uses the brand ink; there is no separate blue (it
+  would be confused with Hinatazaka).
+- Danger text is 4.8:1 on white only. Never put danger text on `bg-sunken`.
+
+### Accent roles (the context mechanism)
+
+Components ask for a role; the context decides the value
+(`design/tokens/accent.ts`, `AccentRoles`):
+
+| Role | Brand context | Group context | Utilities |
 |---|---|---|---|
-| `action` | 600 | badge, primary button, play / scroll buttons, progress fill | `bg-group-accent`, `bg-group-badge` |
-| `strong` | 700 | member names, links, selected text | `text-group-strong` |
-| `subtle` | 50 | selected / hover background | `bg-group-subtle` |
-| `highlight` | 100 | landed-row highlight | `animate-landing` |
-| `subtleBorder` | 200 | border of subtle selections | `border-group-subtle` |
-| `linkUnderline` | 300 | link underline | `decoration-group` |
-| `ring` | 600 | keyboard focus ring | `ring-group` |
-| `bubbleBorder` | logo (Nogizaka 600) | message bubble border | `border-group-bubble` |
-| `glow` | logo at alpha | selection glow | `shadow-group-glow` |
-| `ring-group-logo` | logo | group rail selection ring (with a white gap) | `ring-group-logo` |
+| `accent` (step 600) | ink 600 | group 600 | `bg-accent`, `text-accent`, `border-accent`, `ring-accent`, `accent-accent` (native controls) |
+| `strong` (700) | ink 700 | group 700 | `text-accent-strong` |
+| `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle` |
+| `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border` |
+| `logo` | ink 400 | group logo | the light end of the gradient |
+| `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
+| `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
+| `tonal`, `tonalText` | ink 200 → 400 mixed 35 % with white; ink 800 | the same from the group scale | `bg-accent-tonal`, `text-accent-tonal` |
+| `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
+| `soft` | aurora | group 50 → 100 | `bg-expressive-soft` |
+| `header`, `headerText`, `headerBar` | aurora, dark text, no bar | title gradient (Sakurazaka: white sheet, dark text, bar) | `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
+| `orb1`-`orb3` | aurora orbs | the group's ambient orbs | `bg-expressive-orb-1`, `-2`, `-3` |
 
-Contrast floors are enforced by tests: `action` with white text ≥ 3:1 and
-`strong` on white ≥ 4.5:1. Sakurazaka is the one stylistic exception: a white
-base with pink accents (`light` header and shelters). `--ds-group-accent` is
-the **action** colour; the logo colour itself is `--ds-group-logo`.
+The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
+(`design/cssVars.ts`). The `--ds-group-*` variables stay for the official layer
+(title, canvas, shelters) and the legacy group utilities.
 
-To add a colour, add a **role** in `roles.ts` (and a CSS variable and utility
-if components need it). Never add a new hex to a component or to
-`serviceThemes.ts` (a test fails if that file contains any colour literal).
+## 5. Expression tiers
 
-## Scales
+Expression is about intensity, not on or off.
 
-| Scale | Utilities | Values |
+| Tier | What | Where it is allowed |
 |---|---|---|
-| Text | `text-caption` `text-small` `text-body` `text-title` `text-heading` `text-reading` | 11/16, 13/20, 14/22, 16/24, 20/28 px; `text-reading` 16/28 px is for long-form reading (blog posts) only |
-| Font | `font-sans` (default) `font-reading` | Noto Sans JP; Noto Serif JP for blog titles only (`fontFamily.reading`); post bodies stay in the sans. Both load from Google Fonts in `index.html` |
-| Radius | `rounded-tail` `rounded-card` `rounded-sheet` `rounded-pill` (and Tailwind's built-in `rounded-none`) | 4px (only the first bubble's top-left corner, as `rounded-tl-tail`), 14px, 20px, full |
-| Shadow | `shadow-pill` `shadow-card` `shadow-sheet` | faint, small, large-soft |
-| Spacing | Tailwind default scale (`p-4` = 16px) | multiples of 4px only |
-| Motion | `duration-fast` `duration-base` `duration-glide` `animate-landing` `animate-reveal` `ease-standard` | 150ms, 200ms, 400ms, 1400ms, 200ms, `cubic-bezier(0.2, 0, 0, 1)` |
+| **L0 Quiet** | accent roles only: subtle selected background, selection bar, link colour | dense reading and work surfaces: lists, settings rows, message text, blog body |
+| **L1 Interactive** | primary button gradient; hover glow; selection glow; badge and unread glow; gradient dialog headers; modal accents (subtle background, border, selected states) | everything interactive, in both contexts |
+| **L2 Atmosphere** | slow drifting orbs and frosted glass (`Atmosphere`) | low-density screens only: blog feed, landing, empty states, about, incoming call, first launch |
 
-`duration-glide` (400 ms) is only for scroll glides and `animate-landing`
-(1400 ms, `--ds-group-highlight` fading in and out) only for the landed-row
-highlight. Every other animation stays at 150-200 ms. `animate-reveal` (fade in with an 8 px rise, `duration-base`) is for cards appearing in a feed; pair it with `motion-reduce:animate-none`. The ambient orbs' drift is the documented exception (see Where group colour may appear). `animate-reveal` is also how a sheet dialog enters (`Modal`, see [Dialogs](#dialogs)) and how a toast appears. About's easter egg (`animate-heart-float` 800 ms, `animate-heartbeat` 1.2 s) is the second documented exception; both stop with reduced motion. `bezierEasing` in
-`design/tokens/motion.ts` evaluates the standard curve in JS.
+The restore inventory: the expressive elements of the pre-D2 look, as tokens.
 
-framer-motion reads numbers from `design/tokens/motion.ts`:
-`transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
+| Element | Utility or primitive |
+|---|---|
+| Button gradient `linear-gradient(135deg, logo, 600)` | `bg-accent-gradient` (primary `Button`) |
+| Hover glow on interactive cards | `shadow-accent-glow-hover` (`hover:` on the card) |
+| Dialog gradient header (and the bar under a light header) | `Modal` expressive header: `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
+| Modal accents (selected row, border, tint) | `bg-accent-subtle`, `border-accent-border`, `text-accent-strong` |
+| Unread shadow | `shadow-accent-unread` |
+| Ambient orbs | `Atmosphere` (`bg-expressive-orb-*`); the blog feed's `DynamicBackground` keeps `bg-group-ambient-*` with the per-group size and opacity from `design/tokens/ambient.ts` |
+| Soft panels (empty-state circle, milestone card) | `bg-expressive-soft` |
+| Landing per-group cards, ToS gradient button | group markers + the primary `Button` |
 
-Token colours are CSS variables, so Tailwind opacity modifiers such as
-`bg-sheet/50` do not work. Add a token instead.
+## 6. The four levels
 
-## Which primitive when
+| Level | Primitive | Corners | Shadow | Holds |
+|---|---|---|---|---|
+| 0 Background | `Canvas` | none | none | rails, the space around the sheet |
+| 1 Sheet | `Sheet`, `Modal` | `rounded-xl` (24px) | `shadow-sheet` | the one content area: chat, blog, dialogs |
+| 2 Card | `Card` | `rounded-lg` (16px) | `shadow-card` | bubbles, photos, info cards |
+| 3 Tag-like | `Pill`, `Badge`, `DatePill` | `rounded-full` | `shadow-pill` | tabs, filters, dates, badges |
+
+A level sits on the level below it. Do not put a sheet on a card. `Button` is
+not a level-3 pill: it is `rounded-md`. The primitives still write the
+deprecated names (`rounded-sheet`, `rounded-card`, `rounded-pill`), which are
+aliases for the same values.
+
+## 7. Radius
+
+Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
+
+| Step | px | Use |
+|---|---|---|
+| `xs` | 4 | bubble tail corner (`rounded-tl-xs` is the target name; `MessageBubble` still uses `rounded-tl-tail` today), small inner chips |
+| `sm` | 8 | menu items, list items, tabs inside a container |
+| `md` | 12 | buttons, inputs, small cards, toasts |
+| `lg` | 16 | cards, bubbles, popovers, member cards |
+| `xl` | 24 | sheet, dialogs, heroes |
+| `full` | 9999 | tag-like items only: date pill, filter chips, badges, avatars, switches |
+
+`rounded-none` is also defined.
+
+- **Concentric rule:** a nested box has inner radius = outer radius minus
+  padding, never below `xs`.
+- **Deprecated aliases** still resolve: `rounded-tail` (= `xs`), `rounded-card`
+  (= `lg`), `rounded-sheet` (= `xl`), `rounded-pill` (= `full`). New code uses
+  the steps.
+
+## 8. Typography
+
+- **Faces:** `font-sans` (default, body and UI) and `font-display` (serif, for
+  brand-moment headings only: landing hero, empty-state titles, about,
+  celebration numbers). `font-reading` is the Japanese serif for blog titles
+  only; post bodies stay in the sans.
+- **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
+  the glyph set, and only that language's family is loaded from Google Fonts
+  (`unicode-range` slicing). `installLanguageFonts()` runs once in
+  `shell/main.tsx` and again on every language change.
+
+  | UI language | Sans | Serif |
+  |---|---|---|
+  | `ja` | Noto Sans JP | Noto Serif JP |
+  | `zh-TW` | Noto Sans TC | Noto Serif TC |
+  | `yue` | Noto Sans HK | Noto Serif HK |
+  | `zh-CN` | Noto Sans SC | Noto Serif SC |
+  | `en` | Noto Sans | Noto Serif |
+
+  Every stack falls back to the Japanese stack.
+- **Japanese content rule:** `[lang="ja"]:not(html)` in `@layer base`
+  (`frontend/src/index.css`) switches the font variables to the Japanese
+  families for any element marked `lang="ja"`, whatever the UI language. It is
+  scoped to marked content, not `<html>`, so the UI's stacks keep working.
+  Content components (messages, blogs, member names) are **not yet marked**
+  `lang="ja"`; marking them is part of the next plan.
+- `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
+  Japanese content always needs them.
+- **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
+  `text-small` 13/20, `text-body` 14/22, `text-title` 16/24,
+  `text-heading` 20/28, `text-display` 32/40 (brand moments only),
+  `text-reading` 16/28 (long-form reading, blog posts only).
+- Use Tailwind's `tabular-nums` for stats, times and counters.
+
+## 9. Buttons and states
+
+`Button` and `IconButton` (`design/primitives/Button.tsx`).
+
+| Variant | Look | Rule |
+|---|---|---|
+| `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary` or `danger` per screen and one per dialog (each dialog counts on its own) |
+| `tonal` | `bg-accent-tonal`, dark accent text | secondary emphasis (e.g. "mark all read"); never competes with primary |
+| `secondary` | white, neutral border, neutral text | cancel and so on |
+| `ghost` | text only, `text-accent-strong` | inline actions |
+| `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
+| `overlay` | `bg-viewer-control` | controls on the dark viewer |
+
+`IconButton` (an `aria-label` is required) has `secondary`, `ghost`, `overlay`
+and `accent` (a floating action, e.g. the chat's unread arrows). Sizes: `sm`
+(`h-8`) and `md` (`h-10`).
+
+| State | Rule |
+|---|---|
+| default | as specified per variant |
+| hover | `hover:brightness-106` and `hover:-translate-y-px`; the glow grows (`shadow-accent-glow-hover`) |
+| pressed | `active:scale-97` and `active:brightness-94`; the glow shrinks |
+| focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap |
+| loading | `loading` prop: a spinner is overlaid, the label stays so the width does not change, clicks are swallowed, `aria-busy` is set |
+| selected | `bg-accent-subtle` background + `border-accent-border` + `text-accent-strong` text |
+| **disabled** | **keeps its colour** at 40 % opacity, no shadow, `cursor-not-allowed`, and **always shows a reason** |
+
+- `disabledReason` (a translated string) makes the button `aria-disabled`: it
+  stays focusable, the reason is its `title` and its `aria-describedby` text,
+  and clicks do nothing. A native `disabled` **without** a reason logs a
+  development warning.
+- **Greying out is banned** (grey background, grey text): it looks broken.
+- **Forms never disable the submit button** (login, add service). They validate
+  on click and show what is missing.
+
+## 10. Brand moments
+
+Brand moments are for waiting, starting, finishing and looking back
+(`design/primitives/`).
+
+- **`EmptyState`** (`icon`, `title`, `description`, `action`): a fixed
+  pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
+  100 in group context) holding a line icon, a `font-display` title, one
+  sentence and one action.
+- **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
+  `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
+  Low-density screens only.
+- **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
+  sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
+  and ten sparkles (`animate-sparkle`). `role="status"`.
+- **`MilestoneCard`** (`value`, `label`): tier C. A card in the timeline
+  (`font-display` number with `tabular-nums`, `bg-expressive-soft`, glow,
+  `animate-pop`) with 26 pieces of short confetti (`animate-confetti`) in the
+  context accent colours.
+
+Celebration events (tiers B and C only; there is no full-screen tier):
+
+| Event | Context | Tier | Form |
+|---|---|---|---|
+| First complete sync | brand | B | toast + one shimmer + about 10 sparkles; once ever |
+| A member reaches 1,000 / 5,000 / 10,000 messages | group | C | the next time that chat opens, a milestone card in the timeline + confetti of at most 1.2 s in the group colours |
+| Subscription day 100, then every full year | group | C | the same card |
+| Member birthday | group | C | later, together with the Memories project |
+
+Rules: each event is celebrated once; a celebration never blocks input and
+never needs dismissing; with `prefers-reduced-motion` only the static card
+shows (the motion classes carry `motion-reduce:` variants). The primitives
+exist and are shown on `?view=design`; wiring the events into screens is the
+next plan.
+
+Other brand moments (applied by the next plan): first launch (boot, ToS,
+choose groups, first sync) on aurora with orbs and serif headings; About as an
+aurora hero with a serif wordmark and tabular-numeral stats.
+
+## 11. Motion and elevation
+
+- `motion.duration` (`design/tokens/motion.ts`): `fast` 150, `base` 200,
+  `glide` 400, `landing` 1400, `toast` 350 ms. Utilities: `duration-fast`,
+  `duration-base`, `duration-glide`, `ease-standard`
+  (`cubic-bezier(0.2, 0, 0, 1)`). framer-motion reads numbers:
+  `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
+- Every animation is 150-200 ms. The listed exceptions: `duration-glide`
+  (scroll glides only), `animate-landing` (1400 ms, the landed-row highlight),
+  the ambient orbs' 22-34 s drift (`animate-orb-drift-1/2`,
+  `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
+  `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
+  (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms. All stop or become static
+  with reduced motion (`motion-reduce:`).
+- `animate-reveal` (a fade in with an 8 px rise, `duration-base`) is for cards
+  appearing in a feed and for a sheet dialog entering; pair it with
+  `motion-reduce:animate-none`.
+- Three shadow levels, `shadow-pill`, `shadow-card`, `shadow-sheet`, stay
+  neutral. L1 glows are coloured through the accent `glow` role
+  (`shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-unread`).
+- `bezierEasing` in `design/tokens/motion.ts` evaluates the standard curve in JS.
+
+## Reference (kept from v1)
+
+### Scales
+
+| Scale | Utilities |
+|---|---|
+| Spacing | Tailwind default scale (`p-4` = 16px), multiples of 4px only |
+| Group-only roles | `bg-group-canvas`, `bg-group-title`, `bg-group-title-bar`, `text-group-title`, `border-group-bubble`, `decoration-group`, `ring-group-logo`, `animate-landing` |
+
+### Which primitive when
 
 | Need | Use |
 |---|---|
@@ -180,19 +411,22 @@ Token colours are CSS variables, so Tailwind opacity modifiers such as
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap) |
 | Person or member | `Avatar` (`selected` for the current member) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
-| Action | `Button`: `primary` or `danger` at most once per screen and per dialog, else `secondary` / `ghost`; `overlay` on the dark viewer |
-| Icon-only action | `IconButton` (`aria-label` is required): `secondary`, `ghost`, `overlay` (dark viewer) or `accent` (a floating action in the group action colour, e.g. the chat's unread arrows) |
+| Action | `Button` (variants in section 9) |
+| Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
 | Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos) |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
 | Loading, empty, error inside a dialog | `DialogStatus` |
+| Empty list or screen | `EmptyState` |
+| Low-density screen background | `Atmosphere` |
+| One-time celebration | `CelebrationToast` / `MilestoneCard` |
 
 Screen-specific components (message bubble, member grid cell, chat header)
 are composed from these in the feature folder. They are not primitives.
 
-## Dialogs
+### Dialogs
 
 Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dialog layer
 (`design/dialog/`). The frame is `role="dialog"` with `aria-modal`, and it is named by
@@ -200,8 +434,10 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 
 | Prop | Values |
 |---|---|
-| `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-sheet shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
+| `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
+| `scope` | `inherit` (default: brand when opened inside a `BrandScope` or a brand `Modal`, else the active group; `groupScopeStyle` surfaces are not propagated, pass their styles explicitly) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
+| `header` | `expressive` (default: the context's gradient header and bar, L1) or `plain` (a quiet title, for small confirms; `ConfirmDialog` uses it) |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
@@ -225,12 +461,11 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 - **Scrims:** `bg-scrim` behind sheet dialogs, `bg-viewer-scrim` behind the dark viewer.
   Never `bg-black/NN`.
 - **Motion:** a sheet dialog enters with `animate-reveal` (`motion-reduce:animate-none`).
-- **Content:** the header is neutral (the title on the sheet plus a ghost close button), a
-  dialog has at most one `primary` or `danger` Button, confirms are `ConfirmDialog` (focus
-  starts on Cancel) and never `window.confirm`, and loading, empty and error states are
-  `DialogStatus`.
+- **Content:** a dialog has at most one `primary` or `danger` Button, confirms are
+  `ConfirmDialog` (focus starts on Cancel) and never `window.confirm`, and loading, empty and
+  error states are `DialogStatus`.
 
-## Menus
+### Menus
 
 `Menu` (`design/primitives/Menu.tsx`) is a level-2 popover (`bg-card rounded-card shadow-card`)
 with `role="menu"` and an `aria-label`. Its parts:
@@ -254,7 +489,7 @@ menu stops its keys from bubbling to a dialog around its trigger (the viewer's a
 A text field's suggestion list is not a `Menu` (focus must stay in the field): give it the
 same surface classes and `role="listbox"`.
 
-## Cross-group markers
+### Cross-group markers
 
 In lists that mix groups (search results and their member filter chips), a 6–8 px dot shows
 each row's group in that group's logo colour. The colour is data:
@@ -262,7 +497,23 @@ each row's group in that group's logo colour. The colour is data:
 `--ds-group-marker` on the dot and `bg-group-marker` draws it (default `transparent`). No other
 element uses another group's colour.
 
-## Layering
+### Member penlight colours (data-driven exception)
+
+The blog reader's corner wash uses the current member's two penlight colours from member data
+(`getMemberPenlightHex`), never a literal. `memberWashStyle()` (`features/blogs/memberWash.ts`)
+sets `--ds-member-wash-1/2` on the wash element, and the `bg-member-wash` utility mixes them at
+`--ds-member-wash-alpha` (`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for
+the mascot or an unknown member). No other element uses member colours.
+
+### The group rail and the profile card
+
+The group rail's selected logo has a selection ring: a 2 px white gap plus a 2 px ring in the
+group logo colour (`ring-2 ring-offset-2 ring-group-logo`, from `--ds-group-logo`) and the group
+glow. It is the only place the logo colour is used as a ring. The member profile card's banner is
+the official layer, drawn like that group's chat header: `bg-group-title` (gradient groups) or
+`bg-sheet` with the thin `bg-group-title-bar` under it (Sakurazaka's `light` header).
+
+### Layering
 
 `Z_INDEX` (`frontend/src/constants/zIndex.ts`) is the only source of layering for
 overlays: `DROPDOWN` 50 (menus anchored in the frame), `DIALOG` 100 plus `DIALOG_STEP` 10 per
@@ -270,7 +521,7 @@ stacked dialog, `POPOVER` 1000 (portaled menus, above any dialog) and `TOAST` 11
 everything, e.g. the settings error toast). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
 `z-20` stay for stacking inside one frame (sticky headers, viewer chrome).
 
-**The incoming call (D2d).** A call that starts with no dialog open is drawn inside the chat
+**The incoming call.** A call that starts with no dialog open is drawn inside the chat
 frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is
 **lifted**: portaled over the chat area's rectangle at `interleavedZIndex(order)`
 (`dialogStack.ts`), half a `DIALOG_STEP` above the dialogs that were open when it rang, so a
@@ -279,48 +530,41 @@ leaves Escape and Tab pressed inside it to the call (`useDialog`), and focus the
 Because the layer does not track the call, a lifted call that goes away with focus inside it
 hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase` `focus`).
 
-## Do / Don't
-
-| Do | Don't |
-|---|---|
-| Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
-| Use token classes (`rounded-card`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
-| Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
-| Take group colour from the official layer and the Colour system roles (`groupTokens` / `groupRoles`) | Hard-code a group colour, or colour any other element with it |
-| Translate every visible string (`t('…')`) | Put text in primitives; callers pass translated labels |
-| Use role names for new tokens (`surface.x`) | Name tokens after hues (`lightBlue`) — dark mode will reuse the names |
-| Open dialogs with `Modal` and confirm with `ConfirmDialog` | Build a fixed overlay by hand, or call `window.confirm` / `alert` |
-| Layer with `Z_INDEX` | Use `z-[…]`, `z-40` or `z-50` classes |
-
-## Adding or changing a token
+### Adding or changing a token
 
 1. Edit the right file in `frontend/src/design/tokens/`.
 2. Expose it in `frontend/src/design/cssVars.ts`, and in `tailwind.config.js`
-   if it needs a utility (and in `utils/classnames.ts` if the utility uses a
-   `text-`, `bg-` (image/gradient utilities), `rounded-`, `shadow-`, `duration-` or
-   `ease-` prefix).
+   if it needs a utility. **Register every new token utility in
+   `frontend/src/utils/classnames.ts`** (`extendTailwindMerge`), or `cn()` will
+   treat it as a conflicting built-in class and drop one of them. All the v2
+   utilities (`accent`, `expressive`, `semantic`, `shimmer`, `toast-in`, ...)
+   are registered there.
 3. Show it on `DesignPage.tsx`.
 4. Document it here.
 5. Changing a pre-D1 value changes pixels on existing screens. Update
    `design/__fixtures__/legacy-theme-values.json` only when that change is
    intended, and say so in the PR.
 
-## The guard (ratchet)
+### The guard (ratchet)
 
 `frontend/src/design/guard.test.ts` counts hard-coded style values per file:
-hex colours, `rgb()`/`hsl()`, and arbitrary radius / shadow / text / spacing
-values. Width, height and position arbitrary values are allowed. Comments are
-ignored, but string contents are still scanned (hex colours live in strings).
-Named palette classes (e.g. `bg-gray-100`, `bg-black/40`) are not caught by the
-guard but are still forbidden by the rules above.
-Token files (`design/tokens/`), `config/colors/`, `config/serviceThemes.ts`,
-tests and `.d.ts` files are not scanned. The test compares the counts with
-`guard-baseline.json`:
+hex colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing
+values, and the D1 group role utilities superseded by `*-accent-*`
+(`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`, `text-group-strong`,
+`border-group-subtle`, `ring-group`, `accent-group`, `shadow-group-glow`; the
+official layer is not counted). Width, height and position arbitrary values are
+allowed. Comments are ignored, but string contents are still scanned (hex
+colours live in strings). Named palette classes (e.g. `bg-gray-100`,
+`bg-black/40`) are not caught by the guard but are still forbidden by the
+rules here. Token files (`design/tokens/`), `config/colors/`,
+`config/serviceThemes.ts`, tests and `.d.ts` files are not scanned. The test
+compares the counts with `guard-baseline.json`:
 
 - A new file must have 0.
 - An existing file may not go up.
 - When a file goes down, the test fails until you lower its number (or
   remove the entry at 0).
+- No file under `design/` may appear in the baseline.
 
 To rewrite the baseline after converting screens, from `frontend/`:
 
@@ -328,7 +572,11 @@ To rewrite the baseline after converting screens, from `frontend/`:
 
 Review the diff: numbers should only go down.
 
-### The dialog style ratchet
+The v2 foundation added the superseded group-role utilities to the ratchet, so
+the baseline lists the files that still use them; counts only go down from
+here.
+
+#### The dialog style ratchet
 
 `frontend/src/core/dialogs.style.test.ts` checks what the guard does not, for every file D2c
 moved onto the system (its `FILES` list; add a file when you restyle it). Each file must have:
@@ -340,7 +588,55 @@ moved onto the system (its `FILES` list; add a file when you restyle it). Each f
 - no `window.confirm` / `alert(`, no `z-[…]` / `z-40` / `z-50` classes and no old modal
   shells (`BaseModal`, `DetailModal`, `useModalClose`, the old modal state components).
 
-## Dark mode
+### Dark mode
 
 Not built yet. Token names are roles so a dark value set can be added
 later without renaming anything.
+
+## 12. Accepted deviations
+
+Do not "fix" these.
+
+- **Primary button gradient contrast.** It stays the original `logo → 600`.
+  White text at the gradient's middle is about Hinatazaka 2.4:1, Sakurazaka
+  3.1, brand 3.1, Yodel 3.3 and Nogizaka 6.6. The user compared four options
+  and chose the original: "I don't see any place where it is actually hard to
+  read."
+- **Hinatazaka 600 `#389DD1`** (white 3.0:1) stays the badge and action colour.
+- Sakurazaka keeps its white `light` header (official layer).
+
+## 13. Do / Don't
+
+| Do | Don't |
+|---|---|
+| Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
+| Use token classes (`rounded-lg`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
+| Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
+| Ask for a role (`bg-accent`, `text-accent-strong`, `bg-expressive-soft`) so the component follows its context | Hard-code a colour, or use group colour in brand screens |
+| Pick an expression tier (L0, L1, L2) for a place that needs life | Use neutral grey where the original design had colour: pick the tier instead |
+| Keep a disabled control's colour and give it a reason (`disabledReason`) | Grey out disabled controls, or disable a form's submit button |
+| Translate every visible string (`t('…')`) | Put text in primitives; callers pass translated labels |
+| Use role names for new tokens (`surface.x`) | Name tokens after hues (`lightBlue`): dark mode will reuse the names |
+| Open dialogs with `Modal` and confirm with `ConfirmDialog` | Build a fixed overlay by hand, or call `window.confirm` / `alert` |
+| Layer with `Z_INDEX` | Use `z-[…]`, `z-40` or `z-50` classes |
+| Use `groupScopeStyle(groupId)` for a marker that names one group | Put a primitive's group id in its props |
+
+## 14. Migration note
+
+The `*-group-accent`, `*-group-strong`, `*-group-subtle` and `*-group-badge`
+utilities (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`,
+`text-group-strong`, `border-group-subtle`, `ring-group`, `accent-group`,
+`shadow-group-glow`) still work and still read the group variables, so existing
+screens look the same. They are migrated to `*-accent-*` by the screen re-apply
+plan, which also:
+
+- applies `scope="brand"` / `<BrandScope>` to the brand screens of section 3
+  (ToS and landing included, which then stop using the `default` group; today
+  `App` still applies the `default` group's tokens before a group is chosen);
+- marks Japanese content `lang="ja"` so the content font rule of section 8
+  takes effect;
+- restores the expression inventory of section 5 per screen;
+- wires the celebration events and empty states into screens.
+
+The guard ratchets the old utilities: a file may not use more of them than its
+baseline entry. New code uses `*-accent-*` and `*-expressive-*`.

@@ -31,7 +31,7 @@ export const DatePill: React.FC<DatePillProps> = ({ date, sticky = false, onClic
                     className={cn(
                         PILL,
                         'transition-colors duration-fast ease-standard hover:text-primary',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                     )}
                 >
                     {time}

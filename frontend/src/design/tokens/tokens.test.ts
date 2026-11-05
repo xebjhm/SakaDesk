@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { generateThemeCSSVariables } from '../../config/colors';
 import legacy from '../__fixtures__/legacy-theme-values.json';
 import { contrastRatio } from '../contrast';
 import {
-    GROUP_IDS, SCALE_STEPS, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
+    GROUP_IDS, SCALE_STEPS, brandInk, groupTokens, groupRoles, color, radius, shadow, typeScale, motion, easingCss, bezierEasing, SPACE_UNIT_PX,
 } from './index';
 
 const SHELTERS = {
     hinatazaka: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
     sakurazaka: { picture: '#ec9595', video: '#edc094', voice: '#d695ec', text: '#eb95ae' },
     nogizaka: { picture: '#c4a8d8', video: '#9B59B6', voice: '#b8a8d8', text: '#d8c8e8' },
-    yodel: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
+    yodel: { picture: '#b5c0ff', video: '#98a2ff', voice: '#7e85ff', text: '#6060e0' },
     default: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
 } as const;
 
@@ -17,7 +18,7 @@ const ROLES = {
     hinatazaka: ['#7cc7e8', '#389dd1', '#0d7aab', '#eff9fd', '#bbe4f7', '#7cc7e8', '#7cc7e8', 'rgba(124, 199, 232, 0.35)'],
     sakurazaka: ['#f19db5', '#c84575', '#a72f5d', '#fff3f6', '#fecdda', '#feacc3', '#f19db5', 'rgba(241, 157, 181, 0.35)'],
     nogizaka: ['#7f1083', '#b24ab5', '#943397', '#fef3fe', '#f9cbf8', '#f1abf1', '#b24ab5', 'rgba(127, 16, 131, 0.28)'],
-    yodel: ['#5a8a6a', '#5a8a6a', '#416f51', '#f3f8f4', '#cde3d3', '#afd1b9', '#5a8a6a', 'rgba(90, 138, 106, 0.3)'],
+    yodel: ['#6060e0', '#6060e0', '#4c4bbb', '#f3f6ff', '#d2daff', '#b5c0ff', '#6060e0', 'rgba(96, 96, 224, 0.3)'],
     default: ['#6b7280', '#4b5563', '#374151', '#f9fafb', '#e5e7eb', '#d1d5db', '#E5E7EB', 'rgba(107, 114, 128, 0.25)'],
 } as const;
 
@@ -78,7 +79,7 @@ describe('group tokens — system layer', () => {
         expect(h.ambient.orb1).toBe('radial-gradient(circle, #bbe4f7 0%, #dbf1fb 30%, transparent 70%)');
         expect(h.ambient.orb2).toBe('radial-gradient(circle, #fce4fc 0%, #eff9fd 40%, transparent 70%)');
         expect(h.ambient.orb3).toBe('radial-gradient(circle, #dbf1fb 0%, transparent 70%)');
-        expect(groupRoles('yodel').ambient.orb2).toBe('radial-gradient(circle, #e5f0e8 0%, #f3f8f4 40%, transparent 70%)');
+        expect(groupRoles('yodel').ambient.orb2).toBe('radial-gradient(circle, #e7ecff 0%, #f3f6ff 40%, transparent 70%)');
     });
 });
 
@@ -93,9 +94,6 @@ describe('neutral colour tokens', () => {
         expect(color.text.secondary).toBe(vars['--color-text-secondary']);
         expect(color.text.muted).toBe(vars['--color-text-muted']);
         expect(color.text.inverse).toBe(vars['--color-text-inverse']);
-        expect(color.feedback.success).toBe(vars['--color-success']);
-        expect(color.feedback.warning).toBe(vars['--color-warning']);
-        expect(color.feedback.error).toBe(vars['--color-error']);
     });
 
     it('use role names, never hue names (dark-mode ready)', () => {
@@ -105,11 +103,10 @@ describe('neutral colour tokens', () => {
 });
 
 describe('scales', () => {
-    it('radius, shadow, type, motion and spacing are unchanged', () => {
-        expect(radius).toEqual({ none: '0px', tail: '4px', card: '14px', sheet: '20px', pill: '9999px' });
+    it('shadow, type, motion and spacing are unchanged', () => {
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
-        expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading', 'reading']);
-        expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });
+        expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading', 'display', 'reading']);
+        expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400, toast: 350 });
         expect(easingCss(motion.easing.standard)).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(SPACE_UNIT_PX).toBe(4);
     });
@@ -156,5 +153,38 @@ describe('bezierEasing', () => {
         expect(() => bezierEasing([-0.1, 0, 0.5, 1])).toThrow(RangeError);
         expect(() => bezierEasing([0.2, 0, 1.2, 1])).toThrow(RangeError);
         expect(() => bezierEasing([0.2, -2, 0.5, 3])).not.toThrow();
+    });
+});
+
+describe('semantic colours (v2 harmonized)', () => {
+    it('match the spec table', () => {
+        expect(color.semantic.success).toEqual({ subtle: '#f0fbf4', icon: '#e3f6ea', border: '#cae8d7', solid: '#2e805a', text: '#216a49' });
+        expect(color.semantic.warning).toEqual({ subtle: '#fff5ed', icon: '#feedde', border: '#f6dac3', solid: '#9b5e1e', text: '#824c13' });
+        expect(color.semantic.danger).toEqual({ subtle: '#fff3f1', icon: '#ffe7e4', border: '#ffd1cd', solid: '#b44543', text: '#963635' });
+    });
+    it('info is the brand ink', () => {
+        expect(color.semantic.info).toEqual({ subtle: brandInk[50], icon: brandInk[100], border: brandInk[200], solid: brandInk[600], text: brandInk[700] });
+    });
+    it.each(['success', 'warning', 'danger', 'info'] as const)('%s: white on solid >= 4.5 and text on white >= 4.5', (k) => {
+        expect(contrastRatio(color.semantic[k].solid, '#ffffff')!).toBeGreaterThanOrEqual(4.5);
+        expect(contrastRatio(color.semantic[k].text, '#ffffff')!).toBeGreaterThanOrEqual(4.5);
+    });
+    it('legacy feedback CSS variables follow the semantic solids', () => {
+        const vars = generateThemeCSSVariables('hinatazaka');
+        expect(vars['--color-success']).toBe(color.semantic.success.solid);
+        expect(vars['--color-warning']).toBe(color.semantic.warning.solid);
+        expect(vars['--color-error']).toBe(color.semantic.danger.solid);
+    });
+});
+
+describe('radius (v2, 6 steps)', () => {
+    it('defines the scale', () => {
+        expect(radius).toMatchObject({ none: '0px', xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', full: '9999px' });
+    });
+    it('keeps the D1 names as aliases of the new steps', () => {
+        expect(radius.tail).toBe(radius.xs);
+        expect(radius.card).toBe(radius.lg);
+        expect(radius.sheet).toBe(radius.xl);
+        expect(radius.pill).toBe(radius.full);
     });
 });

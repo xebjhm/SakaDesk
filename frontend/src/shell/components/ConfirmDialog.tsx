@@ -35,6 +35,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             isOpen={open}
             onClose={onCancel}
             title={<span className="flex items-center gap-2"><AlertTriangle aria-hidden="true" className={cn('h-5 w-5 shrink-0', ICON_TONE[variant])} />{title}</span>}
+            header="plain"
             logId={logId}
             initialFocusRef={cancelRef}
             className="max-w-md"

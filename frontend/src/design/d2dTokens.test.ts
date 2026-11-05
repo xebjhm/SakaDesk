@@ -12,6 +12,6 @@ describe('D2d tokens', () => {
 
     it('expose bg-window and bg-status-success', () => {
         expect(config).toContain("window: 'var(--ds-surface-window)'");
-        expect(config).toContain("'status-success': 'var(--ds-status-success)'");
+        expect(config).toContain("'status-success': 'var(--ds-semantic-success-solid)'");
     });
 });

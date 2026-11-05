@@ -1,11 +1,12 @@
 /**
- * Motion: every animation is 150-200 ms with one easing curve, except two
- * special cases: `glide` (400 ms, scroll glides only) and `landing`
- * (1400 ms, the landed-row highlight only).
+ * Motion: every animation is 150-200 ms with one easing curve, except three
+ * special cases: `glide` (400 ms, scroll glides only), `landing`
+ * (1400 ms, the landed-row highlight only) and `toast` (350 ms, the
+ * celebration toast entrance only).
  */
 export const motion = {
     /** Milliseconds. framer-motion wants seconds: `motion.duration.base / 1000`. */
-    duration: { fast: 150, base: 200, glide: 400, landing: 1400 },
+    duration: { fast: 150, base: 200, glide: 400, landing: 1400, toast: 350 },
     /** Cubic-bezier control points; pass directly to framer-motion `ease`. */
     easing: { standard: [0.2, 0, 0, 1] },
 } as const;

@@ -37,7 +37,7 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected
                 'relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill',
                 'bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard',
                 SIZE[size],
-                selected && 'ring-2 ring-surface shadow-group-glow',
+                selected && 'ring-2 ring-surface shadow-accent-halo',
                 className,
             )}
         >

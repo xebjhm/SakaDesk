@@ -19,7 +19,7 @@ describe('groupScopeStyle', () => {
         expect(keys('sakurazaka')).toEqual(keys('hinatazaka'));
         expect(keys('default')).toEqual(keys('hinatazaka'));
         expect(keys('hinatazaka')).toEqual(expect.arrayContaining(['--ds-group-accent', '--ds-group-subtle', '--ds-group-title-from', '--ds-shadow-group-glow']));
-        for (const key of keys('hinatazaka')) expect(key).toMatch(/^--ds-(?:shadow-)?group-/);
+        for (const key of keys('hinatazaka')) expect(key).toMatch(/^--ds-(?:shadow-)?(?:group|accent|expressive)-|^--ds-accent$/);
     });
 
     it('differs per group', () => {

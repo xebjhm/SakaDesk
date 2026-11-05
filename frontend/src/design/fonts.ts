@@ -1,0 +1,53 @@
+/**
+ * Language-aware font stacks (spec §6). The UI language picks the glyph set
+ * (JP / TC / HK / SC / Latin); Japanese content keeps JP glyphs through
+ * `[lang="ja"]` content rules in index.css. Only the active language's family is loaded.
+ */
+import i18n from '../i18n';
+import type { SupportedLanguage } from '../i18n';
+import { fontFamily } from './tokens/type';
+import { clientLog } from '../utils/clientLog';
+
+interface FontStack { sans: string; serif: string; google: string }
+
+const JP_FALLBACK = fontFamily.sansJp;
+const SERIF_FALLBACK = fontFamily.reading;
+const W = 'wght@400;500;600;700';
+
+export const fontStacks: Record<SupportedLanguage, FontStack> = {
+    ja: { sans: JP_FALLBACK, serif: SERIF_FALLBACK, google: `family=Noto+Sans+JP:${W}&family=Noto+Serif+JP:${W}` },
+    'zh-TW': { sans: `"Noto Sans TC", ${JP_FALLBACK}`, serif: `"Noto Serif TC", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+TC:${W}&family=Noto+Serif+TC:${W}` },
+    yue: { sans: `"Noto Sans HK", ${JP_FALLBACK}`, serif: `"Noto Serif HK", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+HK:${W}&family=Noto+Serif+HK:${W}` },
+    'zh-CN': { sans: `"Noto Sans SC", ${JP_FALLBACK}`, serif: `"Noto Serif SC", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+SC:${W}&family=Noto+Serif+SC:${W}` },
+    en: { sans: `"Noto Sans", ${JP_FALLBACK}`, serif: `"Noto Serif", ${SERIF_FALLBACK}`, google: `family=Noto+Sans:${W}&family=Noto+Serif:${W}` },
+};
+
+function stackFor(lang: string): FontStack {
+    return (fontStacks as Record<string, FontStack>)[lang] ?? fontStacks.en;
+}
+
+export function applyLanguageFonts(lang: string, doc: Document = document): void {
+    const stack = stackFor(lang);
+    const root = doc.documentElement;
+    root.style.setProperty('--ds-font-family-sans', stack.sans);
+    root.style.setProperty('--ds-font-family-serif', stack.serif);
+    root.lang = lang;
+    let link = doc.getElementById('ds-fonts') as HTMLLinkElement | null;
+    if (!link) {
+        link = doc.createElement('link');
+        link.id = 'ds-fonts';
+        link.rel = 'stylesheet';
+        doc.head.appendChild(link);
+    }
+    // Code-safe breadcrumb value (client-log values match ^[a-z0-9_]{1,40}$).
+    const target = (lang in fontStacks) ? lang.toLowerCase().replace(/-/g, '_') : 'fallback_en';
+    link.onerror = () => clientLog('design_fonts_fallback', { target });
+    link.href = `https://fonts.googleapis.com/css2?${stack.google}&display=swap`;
+    clientLog('design_fonts_applied', { target });
+}
+
+/** Applies the current language now and on every change. Call once per entry point. */
+export function installLanguageFonts(): void {
+    applyLanguageFonts(i18n.language);
+    i18n.on('languageChanged', (lng: string) => applyLanguageFonts(lng));
+}
