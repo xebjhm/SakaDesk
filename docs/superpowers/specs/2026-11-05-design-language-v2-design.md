@@ -69,7 +69,7 @@ one OG (松田好花). The official Yodel app switches colours per OG page.
   are labelled that way in `groups.ts`:
   - title gradient 200 → 400 → 600, bar 200 → 600, title text 700, header style `gradient`;
   - canvas `['#e7ecff', '#f3f6ff', '#f8f9ff']` (100 → 50 → near white);
-  - shelters: picture 300, video 400, voice 500, text 200, style `classic`;
+  - shelters: picture 300, video 400, voice 500, text 600, style `classic`;
   - bubble border and glow = logo `#6060e0` (glow alpha 0.3).
 - **Reserved: per-OG layer.** A room-level override through `groupScopeStyle`, falling back to Yodel
   periwinkle. Not built in v2. TODO: read a raw Yodel API response (Windows side, reuse the existing
