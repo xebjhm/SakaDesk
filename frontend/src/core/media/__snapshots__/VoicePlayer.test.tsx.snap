@@ -2,7 +2,7 @@
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for compact variant 1`] = `
 <div
-  class="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
+  class="bg-[#F3F4F6] rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
   style="--ring-color: #4b556380;"
   tabindex="0"
 >
@@ -156,7 +156,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
   style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
   tabindex="0"
 >
@@ -420,7 +420,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
   style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
   tabindex="0"
 >

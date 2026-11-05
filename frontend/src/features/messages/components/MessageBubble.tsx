@@ -112,7 +112,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
     return (
         <div
             className={cn(
-                "rounded-lg overflow-hidden mb-2 flex items-center justify-center",
+                "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
                 isVideo ? "bg-black" : "bg-gray-50"
             )}
             style={containerStyle}
@@ -464,7 +464,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
                 {transcriptionEnabled && isTranscribable && !isUnread && (
                     <div
-                        className="rounded-b-xl border-t-0 border px-3 py-1.5 -mt-1"
+                        className="rounded-b-md border-t-0 border px-3 py-1.5 -mt-1"
                         style={{
                             borderColor: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}30`,
                             background: `${theme?.voicePlayerAccent || FALLBACK_ACTION_COLOR}05`,

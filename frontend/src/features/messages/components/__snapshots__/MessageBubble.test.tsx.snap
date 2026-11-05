@@ -48,7 +48,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
+          class="rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
           style="width: 320px; height: 240px;"
         >
           <img

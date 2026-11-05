@@ -421,7 +421,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             <div
                 ref={containerRef}
                 tabIndex={0}
-                className="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+                className="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
                 style={{
                     '--tw-ring-color': `${accentColor}80`,
                     borderWidth: '1px',
@@ -671,7 +671,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
+            className="bg-[#F3F4F6] rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
             style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
         >
             {/* Hidden audio element */}

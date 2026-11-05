@@ -44,7 +44,7 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
         <div>
             <button
                 onClick={onClick}
-                className="text-xs py-1 px-2 rounded-md border transition-colors flex items-center gap-1"
+                className="text-xs py-1 px-2 rounded-sm border transition-colors flex items-center gap-1"
                 style={{
                     color: state === 'error'
                         ? (isLight ? '#fca5a5' : '#ef4444')

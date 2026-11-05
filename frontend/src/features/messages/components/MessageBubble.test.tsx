@@ -164,7 +164,7 @@ describe('MessageBubble component', () => {
 
     // VoicePlayer component should be rendered
     // It contains playback controls
-    const voiceContainer = container.querySelector('.rounded-2xl')
+    const voiceContainer = container.querySelector('.rounded-lg')
     expect(voiceContainer).toBeInTheDocument()
   })
 

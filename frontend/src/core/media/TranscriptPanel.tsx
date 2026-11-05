@@ -166,7 +166,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                     ref={containerRef}
                     className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
                         withBackdrop
-                            ? ` rounded-md px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
+                            ? ` rounded-sm px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
                             : ''
                     }`}
                     // Mark "user scrolled" only on real input (wheel/touch), not on
