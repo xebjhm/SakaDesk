@@ -19,6 +19,7 @@ describe('brand-moment primitives', () => {
         orbs.forEach((o, i) => {
             expect(o.className).toContain(`bg-expressive-orb-${i + 1}`);
             expect(o.className).toContain('motion-reduce:animate-none');
+            expect(o.className).toContain('pointer-events-none');
         });
         expect(screen.getByText('content')).toBeInTheDocument();
     });
@@ -28,13 +29,25 @@ describe('brand-moment primitives', () => {
         expect(toast).toHaveAttribute('aria-live', 'polite');
         const sparkles = toast.querySelectorAll('[data-sparkle]');
         expect(sparkles).toHaveLength(10);
-        sparkles.forEach((s) => expect(s.className).toContain('motion-reduce:hidden'));
+        sparkles.forEach((s) => {
+            expect(s.className).toContain('motion-reduce:hidden');
+            expect(s.className).toContain('pointer-events-none');
+        });
+        expect(toast.className).toContain('animate-toast-in');
+        expect(toast.className).toContain('motion-reduce:animate-none');
+        expect(toast.className).not.toContain('overflow-hidden');
     });
     it('MilestoneCard shows the number in the display face with tabular numerals and 26 confetti', () => {
         render(<MilestoneCard value="365" label="days" />);
         const n = screen.getByText('365');
         expect(n.className).toContain('font-display');
         expect(n.className).toContain('tabular-nums');
-        expect(document.querySelectorAll('[data-confetti]')).toHaveLength(26);
+        const confetti = document.querySelectorAll('[data-confetti]');
+        expect(confetti).toHaveLength(26);
+        confetti.forEach((c) => {
+            expect(c.className).toContain('motion-reduce:hidden');
+            expect(c.className).toContain('pointer-events-none');
+        });
+        expect(confetti[0].parentElement!.className).toContain('motion-reduce:animate-none');
     });
 });

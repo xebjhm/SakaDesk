@@ -223,6 +223,11 @@ export default {
                     '0%': { opacity: '1', transform: 'translate(0, 0) rotate(0deg)' },
                     '100%': { opacity: '0', transform: 'translate(var(--dx), var(--dy)) rotate(540deg)' },
                 },
+                'sparkle-burst': {
+                    '0%': { opacity: '0', transform: 'translate(0, 0) rotate(0deg)' },
+                    '10%': { opacity: '1' },
+                    '100%': { opacity: '0', transform: 'translate(var(--dx), var(--dy)) rotate(540deg)' },
+                },
                 heartbeat: {
                     '0%, 100%': { transform: 'scale(1)' },
                     '15%': { transform: 'scale(1.3)' },
@@ -234,6 +239,7 @@ export default {
             animation: {
                 landing: 'landing var(--ds-duration-landing) var(--ds-ease-standard) both',
                 reveal: 'reveal var(--ds-duration-base) var(--ds-ease-standard) backwards',
+                'toast-in': 'reveal var(--ds-duration-toast) var(--ds-ease-standard) backwards',
                 'orb-drift-1': 'orb-drift-1 28s ease-in-out infinite',
                 'orb-drift-2': 'orb-drift-2 34s ease-in-out infinite',
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
@@ -242,7 +248,7 @@ export default {
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',
                 confetti: 'burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both',
-                sparkle: 'burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',
+                sparkle: 'sparkle-burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',
             },
             scale: {
                 97: '0.97',

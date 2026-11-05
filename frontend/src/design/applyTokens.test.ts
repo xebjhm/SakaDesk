@@ -22,9 +22,10 @@ describe('cssVars', () => {
         expect(vars['--ds-ease-standard']).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(Object.keys(vars).every((k) => k.startsWith('--ds-'))).toBe(true);
         expect(vars['--ds-overlay-scrim']).toBe('rgba(0, 0, 0, 0.4)');
-        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1 - 3 - 4 + 20 + 6 + 2 + 2); // radius 11 (was 5); semantic (4 kinds x 5 steps) replaces feedback (3) and status (4); display step (+2 vars) and sans/serif family defaults (+2)
+        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1 - 3 - 4 + 20 + 6 + 2 + 2 + 1); // toast duration (+1); radius 11 (was 5); semantic (4 kinds x 5 steps) replaces feedback (3) and status (4); display step (+2 vars) and sans/serif family defaults (+2)
         expect(vars['--ds-duration-glide']).toBe('400ms');
         expect(vars['--ds-duration-landing']).toBe('1400ms');
+        expect(vars['--ds-duration-toast']).toBe('350ms');
     });
 
     it.each(GROUP_IDS)('maps every %s group token', (id) => {

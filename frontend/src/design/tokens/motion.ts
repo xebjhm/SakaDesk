@@ -5,7 +5,7 @@
  */
 export const motion = {
     /** Milliseconds. framer-motion wants seconds: `motion.duration.base / 1000`. */
-    duration: { fast: 150, base: 200, glide: 400, landing: 1400 },
+    duration: { fast: 150, base: 200, glide: 400, landing: 1400, toast: 350 },
     /** Cubic-bezier control points; pass directly to framer-motion `ease`. */
     easing: { standard: [0.2, 0, 0, 1] },
 } as const;

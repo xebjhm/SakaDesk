@@ -18,7 +18,7 @@ const twMerge = extendTailwindMerge({
             'rounded-tl': [{ 'rounded-tl': ['tail'] }],
             shadow: [{ shadow: ['accent-glow', 'accent-glow-hover', 'accent-unread', 'pill', 'card', 'sheet', 'group-glow'] }],
             duration: [{ duration: ['fast', 'base', 'glide'] }],
-            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle'] }],
+            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
             ease: [{ ease: ['standard'] }],
         },
     },

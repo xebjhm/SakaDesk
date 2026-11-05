@@ -16,8 +16,10 @@ export interface CelebrationToastProps { title: string; description?: string; ic
 
 /** Tier B celebration (spec §9): glass toast + one aurora shimmer + sparkles. Never blocks input. */
 export const CelebrationToast: React.FC<CelebrationToastProps> = ({ title, description, icon }) => (
-    <div role="status" aria-live="polite" className="relative flex items-center gap-3 overflow-hidden rounded-lg bg-sheet px-4 py-3 shadow-sheet animate-reveal motion-reduce:animate-none">
-        <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-aurora opacity-60 animate-shimmer motion-reduce:hidden" />
+    <div role="status" aria-live="polite" className="relative flex items-center gap-3 rounded-lg bg-sheet px-4 py-3 shadow-sheet animate-toast-in motion-reduce:animate-none">
+        <span aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
+            <span className="absolute inset-0 bg-aurora opacity-60 animate-shimmer motion-reduce:hidden" />
+        </span>
         <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-aurora text-accent-strong">
             {icon ?? <Check className="h-4 w-4" aria-hidden="true" />}
         </span>

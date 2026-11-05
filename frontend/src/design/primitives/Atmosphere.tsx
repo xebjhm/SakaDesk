@@ -13,6 +13,6 @@ export const Atmosphere: React.FC<{ children: React.ReactNode; className?: strin
         {ORBS.map((orb) => (
             <div key={orb} data-testid="atmosphere-orb" aria-hidden="true" className={cn('pointer-events-none absolute rounded-full motion-reduce:animate-none', orb)} />
         ))}
-        <div className="relative">{children}</div>
+        <div className="relative h-full">{children}</div>
     </div>
 );
