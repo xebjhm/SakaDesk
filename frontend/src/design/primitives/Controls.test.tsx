@@ -100,6 +100,12 @@ describe('Button v2', () => {
         render(<Button variant="danger">Delete</Button>);
         expect(screen.getByRole('button', { name: 'Delete' }).className).toContain('bg-status-danger');
     });
+    it('a blocked click does not reach a parent handler', () => {
+        const parent = vi.fn();
+        render(<div onClick={parent}><Button disabledReason="Not yet">Go</Button></div>);
+        fireEvent.click(screen.getByRole('button', { name: /Go/ }));
+        expect(parent).not.toHaveBeenCalled();
+    });
     it('disabledReason keeps the button focusable, blocks clicks and exposes the reason', () => {
         const onClick = vi.fn();
         render(<Button variant="primary" disabledReason="Choose a group first" onClick={onClick}>Start</Button>);

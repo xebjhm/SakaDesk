@@ -27,7 +27,7 @@ const VARIANT: Record<ButtonVariant, string> = {
     primary: cn('bg-accent-gradient text-inverse', GLOW, LIFT),
     /** Secondary emphasis (e.g. "mark all read"): soft tonal gradient, dark accent text. */
     tonal: cn('bg-accent-tonal text-accent-tonal', LIFT),
-    secondary: 'bg-pill text-primary border border-strong hover:bg-sunken',
+    secondary: 'bg-pill text-primary border border-strong hover:bg-sunken disabled:hover:bg-pill aria-disabled:hover:bg-pill',
     ghost: 'bg-transparent text-accent-strong hover:bg-accent-subtle',
     /** Destructive confirm (semantic, never follows context). Counts as the screen's one primary. */
     danger: cn('bg-status-danger text-inverse shadow-pill', LIFT),
@@ -65,7 +65,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     size?: ButtonSize;
     /** Shows a spinner, keeps the width and swallows clicks. */
     loading?: boolean;
-    /** Translated reason the action is unavailable. Renders an aria-disabled, focusable button. */
+    /** Translated reason the action is unavailable. Alone (without `disabled`) it blocks the button: aria-disabled, focusable, clicks swallowed. */
     disabledReason?: string;
 }
 
@@ -87,7 +87,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 data-loading={loading || undefined}
                 title={reason}
                 className={cn(BASE, VARIANT[variant], SIZE[size], className)}
-                onClick={blocked ? (e) => e.preventDefault() : onClick}
+                onClick={blocked ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
             >
                 {loading && (
                     <span data-spinner aria-hidden="true" className="absolute inset-0 m-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />

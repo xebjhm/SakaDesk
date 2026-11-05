@@ -108,7 +108,8 @@ export const DesignPage: React.FC = () => {
                 ? [[`${role}.${name}`, value]]
                 : Object.entries(value).map(([step, v]): [string, string] => [`${role}.${name}.${step}`, v]),
         ),
-    );    const groupSwatches = [
+    );
+    const groupSwatches = [
         ['logo', r.logo], ['action (600)', r.action], ['strong (700)', r.strong], ['subtle (50)', r.subtle],
         ['subtleBorder (200)', r.subtleBorder], ['highlight (100)', r.highlight], ['linkUnderline (300)', r.linkUnderline],
         ['bubbleBorder', r.bubbleBorder], ['glow', r.glow],

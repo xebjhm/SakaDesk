@@ -43,7 +43,7 @@ export interface AccentRoles {
     orb3: string;
 }
 
-/** Linear sRGB-space mix of two #rrggbb colours; t = 0 → a, t = 1 → b. */
+/** sRGB-space mix (gamma-encoded channels, not linear light) of two #rrggbb colours; t = 0 → a, t = 1 → b. */
 export function mixHex(a: string, b: string, t: number): string {
     const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
     const pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));

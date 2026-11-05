@@ -43,7 +43,7 @@ The rule is **whose content is it?**
 - Content of one group: **group context**.
 - The app, the user's account, or anything that spans groups: **brand
   context**.
-- A dialog inherits its opener's context. App-level dialogs are always brand.
+- A dialog inherits its opener's context (`scope="inherit"`: the nearest `BrandScope` or brand `Modal`, else the active group). App-level dialogs are always brand (`scope="brand"`). Group-scoped surfaces (`groupScopeStyle`) are not propagated through the portal: pass their style to the dialog explicitly.
 - **Viewer mode** (dark, full screen) belongs to no context; only the content
   shows.
 - **Group markers:** inside a brand screen, a piece that names one specific
@@ -245,7 +245,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 
 | Step | px | Use |
 |---|---|---|
-| `xs` | 4 | bubble tail corner (`rounded-tl-xs`), small inner chips |
+| `xs` | 4 | bubble tail corner (`rounded-tl-xs` is the target name; `MessageBubble` still uses `rounded-tl-tail` today), small inner chips |
 | `sm` | 8 | menu items, list items, tabs inside a container |
 | `md` | 12 | buttons, inputs, small cards, toasts |
 | `lg` | 16 | cards, bubbles, popovers, member cards |
@@ -341,8 +341,8 @@ Brand moments are for waiting, starting, finishing and looking back
 - **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Low-density screens only.
-- **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A bottom-right
-  glass toast (`animate-toast-in`) with one aurora shimmer (`animate-shimmer`)
+- **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
+  sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
 - **`MilestoneCard`** (`value`, `label`): tier C. A card in the timeline
   (`font-display` number with `tabular-nums`, `bg-expressive-soft`, glow,
@@ -436,7 +436,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 |---|---|
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
-| `scope` | `inherit` (default: the opener's context) or `brand` (applies `brandScopeStyle()` to the dialog) |
+| `scope` | `inherit` (default: brand when opened inside a `BrandScope` or a brand `Modal`, else the active group; `groupScopeStyle` surfaces are not propagated, pass their styles explicitly) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
 | `header` | `expressive` (default: the context's gradient header and bar, L1) or `plain` (a quiet title, for small confirms; `ConfirmDialog` uses it) |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |

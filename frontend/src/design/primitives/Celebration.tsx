@@ -10,7 +10,7 @@ function burstStyle(i: number, scale: number): React.CSSProperties {
 }
 
 const SPARKLE_FILL = ['bg-expressive-orb-1', 'bg-expressive-orb-2', 'bg-expressive-orb-3'] as const;
-const CONFETTI_FILL = ['bg-accent', 'bg-accent-subtle', 'bg-accent-border', 'bg-sheet'] as const;
+const CONFETTI_FILL = ['bg-accent', 'bg-accent-subtle', 'bg-accent-border', 'bg-accent-gradient'] as const;
 
 export interface CelebrationToastProps { title: string; description?: string; icon?: React.ReactNode }
 
