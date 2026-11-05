@@ -37,7 +37,7 @@ describe('cssVars', () => {
         );
         expect(vars['--ds-group-badge']).toBe(r.action);
         expect(vars['--ds-group-bubble-border']).toBe(r.bubbleBorder);
-        expect(Object.keys(vars)).toHaveLength(27 + 19);
+        expect(Object.keys(vars)).toHaveLength(27 + 19 + 1); // accent halo (+1)
         expect(vars['--ds-group-highlight']).toBe(r.highlight);
         expect(vars['--ds-shadow-group-glow']).toBe(`0 0 12px 2px ${r.glow}`);
     });
@@ -86,6 +86,7 @@ describe('accent CSS variables', () => {
         expect(v['--ds-accent-tonal']).toBe(a.tonal);
         expect(v['--ds-accent-tonal-text']).toBe(a.tonalText);
         expect(v['--ds-shadow-accent-glow']).toBe(`0 4px 14px ${a.glow}`);
+        expect(v['--ds-shadow-accent-halo']).toBe(`0 0 12px 2px ${a.glow}`);
         expect(v['--ds-shadow-accent-glow-hover']).toBe(`0 6px 22px ${a.glow}`);
         expect(v['--ds-shadow-accent-unread']).toBe(a.unread);
         expect(v['--ds-expressive-soft']).toBe(a.soft);

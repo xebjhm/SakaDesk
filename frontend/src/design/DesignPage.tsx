@@ -169,7 +169,7 @@ export const DesignPage: React.FC = () => {
                     </Card>
                     <h3 className="text-title text-secondary">{t('designPage.railLogo')}</h3>
                     <div className="flex items-center gap-4 p-2">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-pill bg-card ring-2 ring-group-logo ring-offset-2 shadow-accent-glow">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-pill bg-card ring-2 ring-group-logo ring-offset-2 shadow-accent-halo">
                             <span className="text-small font-semibold text-accent-strong">{(serviceThemes[group].name || group).slice(0, 1)}</span>
                         </div>
                         <span className="text-small text-muted">ring-group-logo</span>

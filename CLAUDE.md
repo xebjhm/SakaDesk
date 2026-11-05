@@ -23,13 +23,13 @@ content per `docs/DOC_FORMATS.md` and re-run it.
 
 New or changed UI must use the design-system tokens and primitives in
 `frontend/src/design/`. Read `docs/design/DESIGN_SYSTEM.md` before touching UI:
-it defines the
-contexts (brand vs group), the colour roles, the three expression tiers, the
-four levels and the Do/Don't list. Use `*-accent-*` / `*-expressive-*`
-utilities so components follow their context; brand screens and app-level
-dialogs use `brandScopeStyle()` / `Modal scope="brand"`. Never hard-code colours or arbitrary radius / shadow / text /
-spacing values. `frontend/src/design/guard.test.ts` fails the build on new hex /
-`rgb()` / `hsl()` literals, arbitrary radius / shadow / text / spacing values and
-more uses of the superseded `*-group-*` role utilities;
-named palette classes (e.g. `bg-gray-100`, `bg-black/40`) are not caught by the
-guard but are still forbidden. Preview tokens and primitives at `?view=design` on the dev server.
+it defines the contexts (brand vs group), the colour roles, the three expression
+tiers, the four levels and the Do/Don't list. Use `*-accent-*` /
+`*-expressive-*` utilities so components follow their context; brand screens and
+app-level dialogs use `brandScopeStyle()` / `Modal scope="brand"`. Never
+hard-code colours or arbitrary radius / shadow / text / spacing values.
+`frontend/src/design/guard.test.ts` fails the build on new hex / `rgb()` /
+`hsl()` literals, arbitrary radius / shadow / text / spacing values and more
+uses of the superseded `*-group-*` role utilities; named palette classes (e.g.
+`bg-gray-100`, `bg-black/40`) are not caught by the guard but are still
+forbidden. Preview tokens and primitives at `?view=design` on the dev server.

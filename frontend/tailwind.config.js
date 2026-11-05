@@ -168,6 +168,7 @@ export default {
             },
             boxShadow: {
                 'accent-glow': 'var(--ds-shadow-accent-glow)',
+                'accent-halo': 'var(--ds-shadow-accent-halo)',
                 'accent-glow-hover': 'var(--ds-shadow-accent-glow-hover)',
                 'accent-unread': 'var(--ds-shadow-accent-unread)',
                 pill: 'var(--ds-shadow-pill)',

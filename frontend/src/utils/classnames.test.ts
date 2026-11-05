@@ -190,6 +190,10 @@ describe('cn with v2 token utilities', () => {
     expect(cn('shadow-accent-glow', 'shadow-pill')).toBe('shadow-pill')
   })
 
+  it('merges accent halo with other box shadows', () => {
+    expect(cn('shadow-accent-halo', 'shadow-card')).toBe('shadow-card')
+  })
+
   it('keeps font family and font size', () => {
     expect(cn('font-display', 'text-display')).toBe('font-display text-display')
   })

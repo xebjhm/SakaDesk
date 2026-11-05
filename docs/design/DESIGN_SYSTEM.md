@@ -190,7 +190,7 @@ Components ask for a role; the context decides the value
 | `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle` |
 | `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border` |
 | `logo` | ink 400 | group logo | the light end of the gradient |
-| `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover` |
+| `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
 | `tonal`, `tonalText` | ink 200 → 400 mixed 35 % with white; ink 800 | the same from the group scale | `bg-accent-tonal`, `text-accent-tonal` |
 | `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
@@ -571,6 +571,10 @@ To rewrite the baseline after converting screens, from `frontend/`:
     UPDATE_GUARD_BASELINE=1 npx vitest run src/design/guard.test.ts
 
 Review the diff: numbers should only go down.
+
+The v2 foundation added the superseded group-role utilities to the ratchet, so
+the baseline lists the files that still use them; counts only go down from
+here.
 
 #### The dialog style ratchet
 

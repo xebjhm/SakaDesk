@@ -59,6 +59,7 @@ describe('accent and expressive utilities', () => {
         ['textColor', "'status-success'", '--ds-semantic-success-text'],
         ['textColor', "'status-warning'", '--ds-semantic-warning-text'],
         ['boxShadow', "'accent-glow'", '--ds-shadow-accent-glow'],
+        ['boxShadow', "'accent-halo'", '--ds-shadow-accent-halo'],
         ['boxShadow', "'accent-glow-hover'", '--ds-shadow-accent-glow-hover'],
         ['boxShadow', "'accent-unread'", '--ds-shadow-accent-unread'],
         ['accentColor', 'accent', '--ds-accent'],

@@ -58,6 +58,7 @@ export function accentTokenVars(a: AccentRoles): Record<string, string> {
         '--ds-accent-tonal': a.tonal,
         '--ds-accent-tonal-text': a.tonalText,
         '--ds-shadow-accent-glow': `0 4px 14px ${a.glow}`,
+        '--ds-shadow-accent-halo': `0 0 12px 2px ${a.glow}`,
         '--ds-shadow-accent-glow-hover': `0 6px 22px ${a.glow}`,
         '--ds-shadow-accent-unread': a.unread,
         '--ds-expressive-soft': a.soft,
