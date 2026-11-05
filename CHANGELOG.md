@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Chats have their group colours back.** The member list, the chat
+  header, menus, links, favourites and the feature buttons show each
+  group's own colour again, and Japanese names and messages always use
+  Japanese letter shapes, whatever language the app is in.
 - **Yodel now uses its own periwinkle colours.** The old green came from one
   member's page; Yodel screens now follow the Yodel logo colour.
 - **A cleaner main window.** The group list on the left is now neutral, the

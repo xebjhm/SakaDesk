@@ -74,8 +74,9 @@ How a context is set:
   official layer, inside then follows that group. It is never used in lists
   that mix groups. A primitive never takes a group id.
 
-Status of the table: the mechanism above is built and shown on `?view=design`;
-switching each screen to it is the next plan (see
+Status: the frame and chat screens (group rail, feature rail, member list, chat,
+letters, profile card, chat menus, call popup) apply this table. Blogs, the other
+dialogs and the entry screens follow in the next parts of the re-apply (see
 [Migration note](#14-migration-note)).
 
 ## 4. Colour
@@ -148,6 +149,13 @@ gap around avatars and selection rings is `ring-surface` / `border-surface` /
 `bg-toast` with `text-viewer`. The calendar's Sundays use `text-sunday` and
 About's heart `text-heart`. `bg-control-off` is an off switch.
 
+Chat header pills: `bg-header-glass` (unread) and `bg-header-shade` (sync) on a
+title gradient; on a light header `bg-group-title-tint` / `bg-group-title-wash`
+with `text-group-title` (official layer).
+
+Unread shelters: `bg-` / `border-` / `text-group-shelter-{picture,video,voice,text}`
+(official layer, `--ds-group-shelter-*`).
+
 Viewer chrome (dark photo and video viewer): `bg-viewer-scrim`,
 `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`,
 `text-viewer-muted`, `decoration-viewer`.
@@ -188,7 +196,7 @@ Components ask for a role; the context decides the value
 | `accent` (step 600) | ink 600 | group 600 | `bg-accent`, `text-accent`, `border-accent`, `ring-accent`, `accent-accent` (native controls) |
 | `strong` (700) | ink 700 | group 700 | `text-accent-strong` |
 | `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle` |
-| `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border` |
+| `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border`, `ring-accent-border` |
 | `logo` | ink 400 | group logo | the light end of the gradient |
 | `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
@@ -201,6 +209,11 @@ Components ask for a role; the context decides the value
 The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
 (`design/cssVars.ts`). The `--ds-group-*` variables stay for the official layer
 (title, canvas, shelters) and the legacy group utilities.
+
+**Pre-token media parts** (voice player, transcript, translate and transcribe
+buttons) mix their accent in inline styles: they default to `ACCENT`
+(`var(--ds-accent)`) and mix through `withAlpha(colour, percent)`
+(`design/colorMix.ts`). New components use utilities.
 
 ## 5. Expression tiers
 
@@ -259,6 +272,8 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 - **Deprecated aliases** still resolve: `rounded-tail` (= `xs`), `rounded-card`
   (= `lg`), `rounded-sheet` (= `xl`), `rounded-pill` (= `full`). New code uses
   the steps.
+- `rounded-2xl` / `rounded-3xl` are banned (the guard counts them): Tailwind's
+  2xl (16 px) reads larger than the token `xl` (24 px). Use `lg` / `xl`.
 
 ## 8. Typography
 
@@ -284,8 +299,9 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   (`frontend/src/index.css`) switches the font variables to the Japanese
   families for any element marked `lang="ja"`, whatever the UI language. It is
   scoped to marked content, not `<html>`, so the UI's stacks keep working.
-  Content components (messages, blogs, member names) are **not yet marked**
-  `lang="ja"`; marking them is part of the next plan.
+  Marked so far: message text, member names (member list, chat header,
+  bubbles, profile card, call screen), letter text and voice transcripts. Blog
+  content is marked in the blog part of the re-apply. UI chrome is never marked.
 - `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
@@ -307,9 +323,11 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
 
-`IconButton` (an `aria-label` is required) has `secondary`, `ghost`, `overlay`
-and `accent` (a floating action, e.g. the chat's unread arrows). Sizes: `sm`
-(`h-8`) and `md` (`h-10`).
+`IconButton` (an `aria-label` is required) has `secondary`, `ghost`, `overlay`,
+`accent` (a floating action, e.g. the chat's unread arrows) and `soft` (the
+accent on its subtle tint, filled on hover: the group rail's actions). `shape`
+is `circle` for floating buttons (`overlay` and `accent` by default) and
+`rounded` (12 px) for inline ones. Sizes: `sm` (`h-8`) and `md` (`h-10`).
 
 | State | Rule |
 |---|---|
@@ -408,8 +426,8 @@ aurora hero with a serif wordmark and tabular-numeral stats.
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
 | Tab or filter | `Pill` (`selected` is neutral, never group colour) |
-| Unread count | `Badge count={n}` (hidden at 0, `99+` cap) |
-| Person or member | `Avatar` (`selected` for the current member) |
+| Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
+| Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
@@ -470,8 +488,11 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 `Menu` (`design/primitives/Menu.tsx`) is a level-2 popover (`bg-card rounded-card shadow-card`)
 with `role="menu"` and an `aria-label`. Its parts:
 
-- `MenuItem`: a `rounded-pill` row with an optional icon; `radio` + `selected` for one-of
-  options (`menuitemradio`), `destructive` for a danger action.
+- `MenuItem`: a `rounded-sm` row with an optional icon; `radio` + `selected` for one-of
+  options (`menuitemradio`), `destructive` for a danger action. `disabledReason` keeps the
+  item focusable (`aria-disabled`) at 40 % with the reason as tooltip and description; a
+  click is swallowed and logged (`menu_item_blocked`). A plain `disabled` item also keeps
+  its colour at 40 %.
 - `MenuLabel`: a small heading over a group of items.
 - `MenuSeparator`: space between groups, never a line.
 
@@ -513,6 +534,13 @@ glow. It is the only place the logo colour is used as a ring. The member profile
 the official layer, drawn like that group's chat header: `bg-group-title` (gradient groups) or
 `bg-sheet` with the thin `bg-group-title-bar` under it (Sakurazaka's `light` header).
 
+The rail's bottom actions (add service, search, settings, update) sit in a `BrandScope`:
+`soft` ink circles; the update icon uses the semantic info / success / danger colours. The
+selected logo's halo is `shadow-accent-halo` in the active group's context.
+
+The feature rail's selected `RailItem` is a white card with `text-accent` icon,
+`text-accent-strong` label and a `bg-accent` bar on the left.
+
 ### Layering
 
 `Z_INDEX` (`frontend/src/constants/zIndex.ts`) is the only source of layering for
@@ -552,7 +580,7 @@ hex colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing
 values, and the D1 group role utilities superseded by `*-accent-*`
 (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`, `text-group-strong`,
 `border-group-subtle`, `ring-group`, `accent-group`, `shadow-group-glow`; the
-official layer is not counted). Width, height and position arbitrary values are
+official layer is not counted) and Tailwind's `rounded-2xl` / `rounded-3xl`. Width, height and position arbitrary values are
 allowed. Comments are ignored, but string contents are still scanned (hex
 colours live in strings). Named palette classes (e.g. `bg-gray-100`,
 `bg-black/40`) are not caught by the guard but are still forbidden by the
@@ -604,6 +632,9 @@ Do not "fix" these.
   read."
 - **Hinatazaka 600 `#389DD1`** (white 3.0:1) stays the badge and action colour.
 - Sakurazaka keeps its white `light` header (official layer).
+- **Chat header pills** keep the pre-D2 white glass / title-text tint: on light
+  parts of the title gradient and on Sakurazaka's white header their caption text
+  is below 4.5:1, like the official title beside them.
 
 ## 13. Do / Don't
 
@@ -622,6 +653,9 @@ Do not "fix" these.
 | Use `groupScopeStyle(groupId)` for a marker that names one group | Put a primitive's group id in its props |
 
 ## 14. Migration note
+
+R-a (frame and chat) is done; the list below applies to blogs, the remaining
+dialogs and the entry screens.
 
 The `*-group-accent`, `*-group-strong`, `*-group-subtle` and `*-group-badge`
 utilities (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`,
