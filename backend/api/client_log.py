@@ -84,7 +84,9 @@ ALLOWED_FIELDS = frozenset(
         "fallback",
     }
 )
-WARNING_EVENTS = frozenset({"call_error", "app_load_failed", "design_tokens_fallback"})
+WARNING_EVENTS = frozenset(
+    {"call_error", "app_load_failed", "design_tokens_fallback", "design_fonts_fallback"}
+)
 
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]
