@@ -151,6 +151,13 @@ export default {
                 group: 'var(--ds-group-accent)',
             },
             borderRadius: {
+                none: 'var(--ds-radius-none)',
+                xs: 'var(--ds-radius-xs)',
+                sm: 'var(--ds-radius-sm)',
+                md: 'var(--ds-radius-md)',
+                lg: 'var(--ds-radius-lg)',
+                xl: 'var(--ds-radius-xl)',
+                full: 'var(--ds-radius-full)',
                 tail: 'var(--ds-radius-tail)',
                 card: 'var(--ds-radius-card)',
                 sheet: 'var(--ds-radius-sheet)',

@@ -62,6 +62,17 @@ describe('accent and expressive utilities', () => {
         ['boxShadow', "'accent-glow-hover'", '--ds-shadow-accent-glow-hover'],
         ['boxShadow', "'accent-unread'", '--ds-shadow-accent-unread'],
         ['accentColor', 'accent', '--ds-accent'],
+        ['borderRadius', 'none', '--ds-radius-none'],
+        ['borderRadius', 'xs', '--ds-radius-xs'],
+        ['borderRadius', 'sm', '--ds-radius-sm'],
+        ['borderRadius', 'md', '--ds-radius-md'],
+        ['borderRadius', 'lg', '--ds-radius-lg'],
+        ['borderRadius', 'xl', '--ds-radius-xl'],
+        ['borderRadius', 'full', '--ds-radius-full'],
+        ['borderRadius', 'tail', '--ds-radius-tail'],
+        ['borderRadius', 'card', '--ds-radius-card'],
+        ['borderRadius', 'sheet', '--ds-radius-sheet'],
+        ['borderRadius', 'pill', '--ds-radius-pill'],
     ];
     const sectionBody = (name: string) => {
         const start = config.indexOf(`${name}: {`);

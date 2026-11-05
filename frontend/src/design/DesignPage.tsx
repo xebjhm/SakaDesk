@@ -18,7 +18,8 @@ import {
 
 // Full class names so Tailwind's scanner generates them.
 const RADIUS_CLASS: Record<RadiusStep, string> = {
-    none: 'rounded-none', tail: 'rounded-tail', card: 'rounded-card', sheet: 'rounded-sheet', pill: 'rounded-pill',
+    none: 'rounded-none', xs: 'rounded-xs', sm: 'rounded-sm', md: 'rounded-md', lg: 'rounded-lg', xl: 'rounded-xl', full: 'rounded-full',
+    tail: 'rounded-tail', card: 'rounded-card', sheet: 'rounded-sheet', pill: 'rounded-pill',
 };
 const SHADOW_CLASS: Record<ShadowStep, string> = {
     none: 'shadow-none', pill: 'shadow-pill', card: 'shadow-card', sheet: 'shadow-sheet',

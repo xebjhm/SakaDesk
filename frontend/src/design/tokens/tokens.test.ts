@@ -103,8 +103,7 @@ describe('neutral colour tokens', () => {
 });
 
 describe('scales', () => {
-    it('radius, shadow, type, motion and spacing are unchanged', () => {
-        expect(radius).toEqual({ none: '0px', tail: '4px', card: '14px', sheet: '20px', pill: '9999px' });
+    it('shadow, type, motion and spacing are unchanged', () => {
         expect(Object.keys(shadow)).toEqual(['none', 'pill', 'card', 'sheet']);
         expect(Object.keys(typeScale)).toEqual(['caption', 'small', 'body', 'title', 'heading', 'reading']);
         expect(motion.duration).toEqual({ fast: 150, base: 200, glide: 400, landing: 1400 });
@@ -175,5 +174,17 @@ describe('semantic colours (v2 harmonized)', () => {
         expect(vars['--color-success']).toBe(color.semantic.success.solid);
         expect(vars['--color-warning']).toBe(color.semantic.warning.solid);
         expect(vars['--color-error']).toBe(color.semantic.danger.solid);
+    });
+});
+
+describe('radius (v2, 6 steps)', () => {
+    it('defines the scale', () => {
+        expect(radius).toMatchObject({ none: '0px', xs: '4px', sm: '8px', md: '12px', lg: '16px', xl: '24px', full: '9999px' });
+    });
+    it('keeps the D1 names as aliases of the new steps', () => {
+        expect(radius.tail).toBe(radius.xs);
+        expect(radius.card).toBe(radius.lg);
+        expect(radius.sheet).toBe(radius.xl);
+        expect(radius.pill).toBe(radius.full);
     });
 });
