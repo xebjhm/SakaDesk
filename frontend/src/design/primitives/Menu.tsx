@@ -122,7 +122,7 @@ export const Menu: React.FC<MenuProps> = ({
 
 export interface MenuItemProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'role'> {
     icon?: React.ReactNode;
-    /** Selected option (speed, loop): `text-group-strong`, the selected-text role. */
+    /** Selected option (speed, loop): `text-accent-strong`, the selected-text role. */
     selected?: boolean;
     destructive?: boolean;
     /** One of a set of options: `menuitemradio` with `aria-checked`. */
@@ -141,7 +141,7 @@ export const MenuItem = React.forwardRef<HTMLButtonElement, MenuItemProps>(
                 'flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small',
                 'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',
                 'disabled:pointer-events-none disabled:text-muted',
-                destructive ? 'text-status-danger' : selected ? 'font-semibold text-group-strong' : 'text-primary',
+                destructive ? 'text-status-danger' : selected ? 'font-semibold text-accent-strong' : 'text-primary',
                 className,
             )}
             {...rest}

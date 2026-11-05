@@ -5,7 +5,7 @@ import { cn } from '../../utils/classnames';
 export const FIELD_CLASS = cn(
     'h-10 w-full rounded-pill bg-sunken px-4 text-body text-primary placeholder:text-muted',
     'transition-shadow duration-fast ease-standard',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
     'disabled:opacity-50',
 );
 

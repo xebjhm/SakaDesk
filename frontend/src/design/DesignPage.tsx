@@ -138,7 +138,7 @@ export const DesignPage: React.FC = () => {
                             const value = groupTokens[group].scale[step];
                             const isLogo = value.toLowerCase() === groupTokens[group].logo.toLowerCase();
                             return (
-                                <Card key={step} className={cn('flex w-20 flex-col overflow-hidden', isLogo && 'ring-2 ring-group')}>
+                                <Card key={step} className={cn('flex w-20 flex-col overflow-hidden', isLogo && 'ring-2 ring-accent')}>
                                     <div className="h-10" style={{ background: value }} />
                                     <div className="flex flex-col p-2">
                                         <span className="text-caption font-semibold text-primary">{step}</span>
@@ -169,8 +169,8 @@ export const DesignPage: React.FC = () => {
                     </Card>
                     <h3 className="text-title text-secondary">{t('designPage.railLogo')}</h3>
                     <div className="flex items-center gap-4 p-2">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-pill bg-card ring-2 ring-group-logo ring-offset-2 shadow-group-glow">
-                            <span className="text-small font-semibold text-group-strong">{(serviceThemes[group].name || group).slice(0, 1)}</span>
+                        <div className="flex h-11 w-11 items-center justify-center rounded-pill bg-card ring-2 ring-group-logo ring-offset-2 shadow-accent-glow">
+                            <span className="text-small font-semibold text-accent-strong">{(serviceThemes[group].name || group).slice(0, 1)}</span>
                         </div>
                         <span className="text-small text-muted">ring-group-logo</span>
                     </div>
@@ -281,7 +281,7 @@ export const DesignPage: React.FC = () => {
                             <div key={d} className="flex w-48 flex-col gap-1">
                                 <span className="text-caption text-muted">{d}</span>
                                 <div className="h-8 bg-sunken rounded-pill">
-                                    <div className={cn('h-8 w-8 bg-group-accent rounded-pill transition-transform ease-standard', d, moved && 'translate-x-40')} />
+                                    <div className={cn('h-8 w-8 bg-accent rounded-pill transition-transform ease-standard', d, moved && 'translate-x-40')} />
                                 </div>
                             </div>
                         ))}

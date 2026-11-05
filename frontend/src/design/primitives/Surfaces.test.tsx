@@ -45,6 +45,6 @@ describe('Pill', () => {
         render(<Pill selected>x</Pill>);
         const btn = screen.getByRole('button');
         expect(btn.className).not.toMatch(/\b(bg|text)-group-/);
-        expect(btn).toHaveClass('focus-visible:ring-group');
+        expect(btn).toHaveClass('focus-visible:ring-accent');
     });
 });

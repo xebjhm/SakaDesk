@@ -19,7 +19,7 @@ export const RailItem: React.FC<RailItemProps> = ({ icon, label, selected = fals
         className={cn(
             'flex w-full flex-col items-center gap-1 rounded-card px-2 py-2 text-caption',
             'transition-colors duration-fast ease-standard',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             selected ? 'bg-sheet font-semibold text-primary shadow-card' : 'text-secondary hover:bg-elevated hover:text-primary',
             className,
         )}

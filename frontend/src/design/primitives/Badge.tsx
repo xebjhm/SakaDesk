@@ -15,7 +15,7 @@ export const Badge: React.FC<BadgeProps> = ({ count, className }) => {
         <span
             aria-label={t('common.unreadCount', { count })}
             className={cn(
-                'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-group-badge px-1.5',
+                'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-accent px-1.5',
                 'text-caption font-semibold text-inverse shadow-pill',
                 className,
             )}

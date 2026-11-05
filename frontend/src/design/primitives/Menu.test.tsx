@@ -29,7 +29,7 @@ describe('Menu', () => {
         expect(menu).toHaveFocus();
         expect(menu).toHaveClass('bg-card', 'rounded-card', 'shadow-card');
         expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveAttribute('aria-checked', 'true');
-        expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveClass('text-group-strong');
+        expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveClass('text-accent-strong');
         expect(screen.getByRole('menuitem', { name: '削除 🗑️' })).toHaveClass('text-status-danger');
         expect(screen.getByRole('separator')).not.toHaveClass('border-t');
     });

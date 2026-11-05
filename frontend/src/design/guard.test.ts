@@ -36,6 +36,14 @@ describe('countViolations', () => {
     });
 });
 
+describe('superseded group role utilities', () => {
+    it('counts superseded group role utilities but not the official layer', () => {
+        expect(countViolations('className="bg-group-accent text-group-strong ring-group"')).toBe(3);
+        expect(countViolations('className="bg-group-title text-group-title bg-group-canvas ring-group-logo"')).toBe(0);
+        expect(countViolations('className="bg-accent text-accent-strong ring-accent"')).toBe(0);
+    });
+});
+
 describe('isScanned', () => {
     it.each([
         ['features/messages/components/MessageBubble.tsx', true],
