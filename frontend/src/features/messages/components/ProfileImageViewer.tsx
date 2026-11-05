@@ -52,7 +52,7 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
                     onClick={() => { setKind(k); setIndex(0); }}
                     className={cn(
                         'rounded-pill px-3 py-1 text-caption transition-colors duration-fast ease-standard',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                         k === kind ? 'bg-pill font-semibold text-primary' : 'bg-viewer-control text-viewer-muted hover:bg-viewer-control-hover',
                     )}
                 >

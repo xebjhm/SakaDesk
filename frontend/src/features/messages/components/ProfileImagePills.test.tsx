@@ -29,4 +29,16 @@ describe('ProfileImagePills', () => {
         const { container } = render(<ProfileImagePills images={{}} onOpen={vi.fn()} />);
         expect(container).toBeEmptyDOMElement();
     });
+
+    it('hovers in the accent and shows the version count on the accent (pending D5)', () => {
+        render(
+            <ProfileImagePills
+                images={{ thumbnail: [{ url: 'a', first_seen: null, current: true }, { url: 'b', first_seen: null, current: false }] }}
+                onOpen={vi.fn()}
+            />,
+        );
+        const pill = screen.getByRole('button', { name: /Chat icon/ });
+        expect(pill).toHaveClass('hover:bg-accent-subtle', 'hover:text-accent-strong', 'focus-visible:ring-accent');
+        expect(screen.getByText('2')).toHaveClass('bg-accent', 'text-inverse');
+    });
 });

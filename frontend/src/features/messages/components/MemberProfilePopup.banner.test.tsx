@@ -34,3 +34,10 @@ describe('MemberProfilePopup banner per group', () => {
         expect(screen.getByRole('dialog', { name: /森田 ひかる/ })).toBeInTheDocument();
     });
 });
+
+describe('MemberProfilePopup content', () => {
+    it('marks the member name as Japanese content', () => {
+        render(<MemberProfilePopup isOpen onClose={vi.fn()} memberName="森田 ひかる 🌸" activeService="sakurazaka46" />);
+        expect(screen.getByRole('heading', { name: '森田 ひかる 🌸' })).toHaveAttribute('lang', 'ja');
+    });
+});

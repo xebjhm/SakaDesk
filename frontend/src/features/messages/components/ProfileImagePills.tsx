@@ -31,12 +31,12 @@ export const ProfileImagePills: React.FC<ProfileImagePillsProps> = ({ images, on
                         onClick={() => onOpen(k)}
                         title={t(`profileImages.${KIND_I18N_KEY[k]}Hint`)}
                         aria-label={t(`profileImages.${KIND_I18N_KEY[k]}`)}
-                        className="inline-flex items-center gap-1 rounded-pill bg-pill px-3 py-1 text-caption text-secondary shadow-pill transition-colors duration-fast ease-standard hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        className="inline-flex items-center gap-1 rounded-pill bg-pill px-3 py-1 text-caption text-secondary shadow-pill transition-colors duration-fast ease-standard hover:bg-accent-subtle hover:text-accent-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
                         <Icon className="h-3 w-3" />
                         {t(`profileImages.${KIND_I18N_KEY[k]}`)}
                         {count > 1 && (
-                            <span className="rounded-pill bg-sunken px-1 tabular-nums text-secondary" title={t('profileImages.versions', { count })}>{count}</span>
+                            <span className="rounded-pill bg-accent px-1 tabular-nums text-inverse" title={t('profileImages.versions', { count })}>{count}</span>
                         )}
                     </button>
                 );
