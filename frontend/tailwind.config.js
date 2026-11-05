@@ -66,6 +66,7 @@ export default {
             backgroundColor: {
                 accent: 'var(--ds-accent)',
                 'accent-subtle': 'var(--ds-accent-subtle)',
+                'accent-border': 'var(--ds-accent-border)',
                 sheet: 'var(--ds-surface-sheet)',
                 card: 'var(--ds-surface-card)',
                 pill: 'var(--ds-surface-pill)',
@@ -216,6 +217,12 @@ export default {
                     '0%': { opacity: '1', transform: 'translateX(-50%) translateY(0) scale(1)' },
                     '100%': { opacity: '0', transform: 'translateX(-50%) translateY(-30px) scale(1.3)' },
                 },
+                shimmer: { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
+                pop: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
+                burst: {
+                    '0%': { opacity: '1', transform: 'translate(0, 0) rotate(0deg)' },
+                    '100%': { opacity: '0', transform: 'translate(var(--dx), var(--dy)) rotate(540deg)' },
+                },
                 heartbeat: {
                     '0%, 100%': { transform: 'scale(1)' },
                     '15%': { transform: 'scale(1.3)' },
@@ -232,6 +239,10 @@ export default {
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
                 'heart-float': 'heart-float 800ms ease-out forwards',
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
+                shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
+                pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',
+                confetti: 'burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both',
+                sparkle: 'burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',
             },
             scale: {
                 97: '0.97',
