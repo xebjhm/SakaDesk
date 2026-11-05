@@ -1,6 +1,7 @@
 import React, { type CSSProperties } from 'react';
 import { accentTokenVars } from './cssVars';
 import { brandAccent } from './tokens';
+import { ScopeContext } from './scopeContext';
 
 /**
  * Inline custom properties that make every accent / expressive utility inside an element use
@@ -11,5 +12,11 @@ export function brandScopeStyle(): CSSProperties {
     return accentTokenVars(brandAccent()) as CSSProperties;
 }
 
-export const BrandScope: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) =>
-    React.createElement('div', { 'data-scope': 'brand', className, style: brandScopeStyle() }, children);
+export const BrandScope: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => {
+    const style = brandScopeStyle();
+    return React.createElement(
+        ScopeContext.Provider,
+        { value: { scope: 'brand', style } },
+        React.createElement('div', { 'data-scope': 'brand', className, style }, children),
+    );
+};

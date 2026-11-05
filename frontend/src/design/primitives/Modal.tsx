@@ -6,6 +6,7 @@ import { useDialog } from '../dialog/useDialog';
 import type { DialogLogId } from '../dialog/dialogLog';
 import { IconButton } from './Button';
 import { brandScopeStyle } from '../brandScope';
+import { ScopeContext, useScope } from '../scopeContext';
 
 export interface ModalProps {
     isOpen: boolean;
@@ -18,9 +19,12 @@ export interface ModalProps {
     labelledBy?: string;
     /** Translated label of the header close button; no close button without it. */
     closeLabel?: string;
-    /** Header content between the title and the close button. */
+    /** Header content between the title and the close button. It sits on the expressive header, so it should inherit the header text colour (no text-muted). */
     headerExtra?: React.ReactNode;
-    /** 'brand': the dialog is a brand-context surface (settings, search, about...). Default inherits the opener's context. */
+    /**
+     * 'brand': the dialog is a brand-context surface (settings, search, about...) and its children inherit brand.
+     * 'inherit' (default): brand when opened inside a BrandScope or a brand Modal, else the active group.
+     */
     scope?: 'inherit' | 'brand';
     /** 'expressive' (default): context gradient header (L1). 'plain': quiet header for small confirms. */
     header?: 'expressive' | 'plain';
@@ -64,6 +68,8 @@ const OpenModal: React.FC<ModalProps> = ({
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
     initialFocusRef, className, bodyClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
+    const inherited = useScope();
+    const scopeValue = scope === 'brand' ? { scope: 'brand' as const, style: brandScopeStyle() } : inherited;
     const frameRef = useRef<HTMLDivElement>(null);
     const titleId = useId();
     const { zIndex, requestClose } = useDialog({ isOpen: true, onClose, dismissible, frameRef, initialFocusRef, logId });
@@ -110,8 +116,8 @@ const OpenModal: React.FC<ModalProps> = ({
                 aria-labelledby={named}
                 aria-label={named ? undefined : ariaLabel}
                 tabIndex={-1}
-                data-scope={scope === 'brand' ? 'brand' : undefined}
-                style={scope === 'brand' ? brandScopeStyle() : undefined}
+                data-scope={scopeValue?.scope}
+                style={scopeValue?.style}
                 onKeyDown={onKeyDown}
                 className={cn(
                     'outline-none',
@@ -123,6 +129,7 @@ const OpenModal: React.FC<ModalProps> = ({
                 onMouseDown={tone === 'viewer' ? startPress : undefined}
                 onClick={tone === 'viewer' ? clickOutside : undefined}
             >
+                <ScopeContext.Provider value={scopeValue}>
                 {layout === 'bare' ? children : (
                     <>
                         <div
@@ -151,6 +158,7 @@ const OpenModal: React.FC<ModalProps> = ({
                         {footer && <div className="flex shrink-0 items-center justify-end gap-2 px-6 pb-6">{footer}</div>}
                     </>
                 )}
+                </ScopeContext.Provider>
             </div>
         </div>,
         document.body,

@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../utils/clientLog';
 import { Modal } from './Modal';
+import { BrandScope } from '../brandScope';
 import { brandAccent } from '../tokens';
 import { Button } from './Button';
 import { openDialogCount, resetDialogStack } from '../dialog/dialogStack';
@@ -995,6 +996,30 @@ describe('Modal v2 header and scope', () => {
         const frame = screen.getByRole('dialog');
         expect(frame.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
         expect(frame.dataset.scope).toBe('brand');
+    });
+    it('an inherit Modal inside a BrandScope is brand', () => {
+        render(<BrandScope><Modal isOpen onClose={() => {}} title="Confirm">body</Modal></BrandScope>);
+        const frame = screen.getByRole('dialog');
+        expect(frame.dataset.scope).toBe('brand');
+        expect(frame.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
+    });
+    it('a Modal nested in a brand Modal inherits brand', () => {
+        render(
+            <Modal isOpen onClose={() => {}} title="Settings" scope="brand">
+                <Modal isOpen onClose={() => {}} title="Confirm">inner</Modal>
+            </Modal>,
+        );
+        const inner = screen.getByRole('dialog', { name: 'Confirm' });
+        expect(inner.dataset.scope).toBe('brand');
+        expect(inner.style.getPropertyValue('--ds-accent')).toBe(brandAccent().accent);
+    });
+    it('a Modal outside any scope has no data-scope', () => {
+        render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
+        expect(screen.getByRole('dialog').dataset.scope).toBeUndefined();
+    });
+    it('the expressive close button takes the header text colour', () => {
+        render(<Modal isOpen onClose={() => {}} title="X" closeLabel="Close">body</Modal>);
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header');
     });
     it('frame uses the xl radius', () => {
         render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
