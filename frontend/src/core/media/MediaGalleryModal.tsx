@@ -12,8 +12,6 @@ import { DialogStatus } from '../common/DialogStatus';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
-import { groupRoles } from '../../design/tokens';
-import { serviceGroupId } from '../../config/serviceGroup';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -72,22 +70,22 @@ const VoiceRow: React.FC<VoiceRowProps> = ({
             aria-pressed={isSelected}
             className={cn(
                 'flex w-full items-center gap-3 rounded-card px-4 py-4 text-left transition-colors duration-fast ease-standard',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group',
-                isSelected ? 'bg-group-subtle' : 'hover:bg-sunken',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                isSelected ? 'bg-accent-subtle' : 'hover:bg-sunken',
             )}
         >
             <Avatar src={memberAvatar} name={memberName} size="md" className="h-12 w-12" decorative />
             <span className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className={cn('text-small font-semibold', isSelected ? 'text-group-strong' : 'text-primary')}>{memberName}</span>
+                <span lang="ja" className={cn('text-small font-semibold', isSelected ? 'text-accent-strong' : 'text-primary')}>{memberName}</span>
                 {previewText ? (
-                    <span className="truncate text-caption text-muted">{previewText}</span>
+                    <span lang="ja" className="truncate text-caption text-muted">{previewText}</span>
                 ) : isSelected ? (
                     <span className="text-caption italic text-muted">{t('transcription.noTranscript')}</span>
                 ) : null}
             </span>
             <span className="flex shrink-0 flex-col items-end gap-1 text-small">
                 <span className="text-muted">{formatDateTime(item.timestamp)}</span>
-                <span className={cn('tabular-nums', isSelected ? 'text-group-strong' : 'text-muted')}>{formatDuration(item.media_duration)}</span>
+                <span className={cn('tabular-nums', isSelected ? 'text-accent-strong' : 'text-muted')}>{formatDuration(item.media_duration)}</span>
             </span>
         </button>
     );
@@ -117,10 +115,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     memberPath,
     onSourceJump,
 }) => {
-    // Get per-service theme colors
-    const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const voiceAccent = groupRoles(serviceGroupId(activeService)).action;
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
@@ -317,13 +312,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </div>
                     <div className="flex w-full items-center justify-between text-small text-viewer-muted">
                         <div>
-                            <span>{memberName}</span>
+                            <span lang="ja">{memberName}</span>
                             <span aria-hidden="true" className="mx-2">•</span>
                             {handleSourceJump ? (
                                 <button
                                     type="button"
                                     onClick={() => handleSourceJump(selectedMedia.id)}
-                                    className="rounded-pill underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                                    className="rounded-pill underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                     title={t('media.jumpToMessage')}
                                 >
                                     {formatDateTime(selectedMedia.timestamp)}
@@ -379,12 +374,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         onClick={() => setActiveTab(tab.id)}
                         className={cn(
                             'relative flex flex-1 items-center justify-center py-3 transition-colors duration-fast ease-standard',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group',
-                            selected ? 'text-group-strong' : 'text-muted hover:text-secondary',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                            selected ? 'text-accent-strong' : 'text-muted hover:text-secondary',
                         )}
                     >
                         <tab.icon className="h-6 w-6" />
-                        {selected && <span aria-hidden="true" className="absolute bottom-0 left-4 right-4 h-1 rounded-pill bg-group-accent" />}
+                        {selected && <span aria-hidden="true" className="absolute bottom-0 left-4 right-4 h-1 rounded-pill bg-accent-border" />}
                     </button>
                 );
             })}
@@ -553,7 +548,6 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 memberName={memberName}
                                 timestamp={currentVoice ? formatDateTime(currentVoice.timestamp) : undefined}
                                 durationText={currentVoice ? formatDuration(currentVoice.media_duration) : undefined}
-                                accentColor={voiceAccent}
                                 messageTimestamp={currentVoice?.timestamp}
                                 viewerMode
                                 onTimestampClick={currentVoice && handleSourceJump ? () => handleSourceJump(currentVoice.id) : undefined}
@@ -582,6 +576,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('media.title')}
+                icon={<ImageIcon />}
                 closeLabel={t('common.close')}
                 logId="media_gallery"
                 className="h-[80vh] max-w-4xl"

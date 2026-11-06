@@ -4,7 +4,6 @@
   "core/common/SyncProgressPanel.tsx": 5,
   "core/common/TranslateButton.tsx": 16,
   "core/layout/InlineSyncView.tsx": 1,
-  "core/media/MediaGalleryModal.tsx": 8,
   "core/media/TranscribeButton.tsx": 13,
   "core/media/TranscriptPanel.tsx": 19,
   "core/media/VideoPlayer.tsx": 1,
