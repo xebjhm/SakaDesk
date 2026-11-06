@@ -16,6 +16,8 @@ Colour mapping used throughout (from `e4e4118` `config/serviceThemes.ts` `buildT
 
 ## Decisions needed from the user
 
+> **Resolved (user, 2026-11-06): every decision D1–D13 takes its recommendation.** D13 (VoicePlayer opaque `bg-sheet` + card shadow) is provisional: the user will judge it on the acceptance build, so the after shots must include the voice player. Steps marked "pending decision" are final as written.
+
 The user's rule: any change to the original design (`e4e4118` / `0725cc3`) that the spec has not decided, any off-logo colour without a semantic meaning, any colour whose meaning is unclear and any contrast problem not already accepted is asked first. The tasks assume the **recommendation**; steps that depend on one are marked `(pending decision D<n>)`. If the user picks another option, only those steps change. Every `e4e4118` value below was read with `git show e4e4118:<path>`.
 
 **D1 — Header icons of the entry dialogs (ToS, setup, sync).** `TosDialog.tsx`, `SetupWizard.tsx`, `SyncModal.tsx`.
