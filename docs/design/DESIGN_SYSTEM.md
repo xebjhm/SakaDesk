@@ -142,7 +142,8 @@ Neutral utilities: the level-0 background (`Canvas`, `bg-group-canvas`) is the
 official sidebar gradient; everything else is `bg-sheet`, `bg-card`, `bg-pill`,
 `bg-elevated`, `bg-sunken`, `bg-window` (the window base behind the app, the
 colour of pywebview's `background_color`), `bg-frost` (the frosted bar over the blog
-feed's orbs: `--ds-overlay-frost`, white at 72 %, paired with `backdrop-blur-lg`), `bg-scrim` (the modal backdrop,
+feed's orbs: `--ds-overlay-frost`, white at 72 %, paired with `backdrop-blur-frost` (20 px), `backdrop-saturate-180` and
+`border-b border-frost`, the white hairline at 40 %: `--ds-overlay-frost-border`), `bg-scrim` (the modal backdrop,
 carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
 `text-muted`, `text-inverse`, `border-subtle`, `border-strong`. Search matches
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
@@ -198,7 +199,8 @@ group accent says where you are; a meaning colour says what a thing is.
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
   subtle). Utilities: `text-semantic-oshi`, `bg-semantic-oshi-subtle`,
   `bg-semantic-oshi-solid`, `border-semantic-oshi`, `ring-semantic-oshi`,
-  `fill-semantic-oshi`. `Pill tone="oshi"` is the Favorite filter.
+  `fill-semantic-oshi`. `Pill tone="oshi"` is the Favorite filter. An unselected
+  heart outline uses `text-semantic-oshi-solid` (the vivid pink, 3:1 for an icon).
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
   shadow for definition on white), the same in every group.
@@ -220,6 +222,7 @@ Components ask for a role; the context decides the value
 | `logo` | ink 400 | group logo | the light end of the gradient |
 | `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
+| `wash` / `wash-border` | logo 8 % → accent 6 % at 135°; logo 19 % hairline | same | `bg-accent-wash` / `border-accent-wash` (a quiet accent control at rest: Select Member, Photo Album; hover fills with the gradient or `bg-accent-subtle`) |
 | `tonal`, `tonalText` | ink 200 → 400 mixed 35 % with white; ink 800 | the same from the group scale | `bg-accent-tonal`, `text-accent-tonal` |
 | `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
 | `soft` | aurora | group 50 → 100 | `bg-expressive-soft` |
@@ -319,6 +322,9 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   (`frontend/src/index.css`) switches the font variables to the Japanese
   families for any element marked `lang="ja"`, whatever the UI language. It is
   scoped to marked content, not `<html>`, so the UI's stacks keep working.
+  Companion rules `[lang="ja"]:not(html).font-reading` and `.font-display` keep
+  the serif reading and display faces on marked titles (the base rule would
+  otherwise win on the same element and render them sans).
   Marked so far: message text, member names (member list, chat header,
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
   content (post titles, bodies, member names on cards, in the reader, in the member
@@ -380,7 +386,8 @@ Brand moments are for waiting, starting, finishing and looking back
 - **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
-  (L2: orbs + frosted glass); the reader is L0 and has no glass.
+  (L2: orbs + frosted glass); the reader is L0 and has no glass. The feed's
+  All / Favorite pills sit on a grey track (`rounded-full bg-sunken p-0.5`).
 - **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
@@ -666,8 +673,6 @@ Do not "fix" these.
 - **Chat header pills** keep the pre-D2 white glass / title-text tint: on light
   parts of the title gradient and on Sakurazaka's white header their caption text
   is below 4.5:1, like the official title beside them.
-- **Blog feed title** keeps the official title colour on the white sheet
-  (Sakurazaka 2.4:1), like the chat header title (user decision D5, R-b).
 
 ## 13. Do / Don't
 
