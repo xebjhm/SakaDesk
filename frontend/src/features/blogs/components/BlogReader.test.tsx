@@ -3,6 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogReader, type BlogReaderProps } from './BlogReader';
 import { formatBlogDate } from '../../../utils/dateFormatters';
+import { clientLog } from '../../../utils/clientLog';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 vi.mock('../../../data/memberData', () => ({
     toGroupId: () => 'hinatazaka',
@@ -37,6 +40,23 @@ const props = (over: Partial<BlogReaderProps> = {}): BlogReaderProps => ({
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 describe('BlogReader', () => {
+    it('marks the post title, member names and body as Japanese and uses the accent roles', () => {
+        const { container } = render(<BlogReader {...props()} />);
+        const title = screen.getByRole('heading', { level: 1 });
+        expect(title).toHaveAttribute('lang', 'ja');
+        for (const name of screen.getAllByRole('button', { name: '春野 ひなた' })) {
+            expect(name).toHaveAttribute('lang', 'ja');
+            expect(name).toHaveClass('text-accent-strong');
+        }
+        expect(container.querySelector('article > div[lang="ja"]')).not.toBeNull();
+        expect(container.innerHTML).not.toMatch(/-group-(subtle|strong|accent)|ring-group\b/);
+    });
+
+    it('breadcrumbs a post that has no member wash', () => {
+        render(<BlogReader {...props({ member: { id: '000', name: 'ポカ' } })} />);
+        expect(clientLog).toHaveBeenCalledWith('blog_fallback', { target: 'wash', reason: 'mascot' });
+    });
+
     it('sets the post in the reading type at a readable width', () => {
         const { container } = render(<BlogReader {...props()} />);
         expect(container.querySelector('article')).toHaveClass('max-w-2xl', 'px-8');

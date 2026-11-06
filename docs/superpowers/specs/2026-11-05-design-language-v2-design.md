@@ -104,6 +104,7 @@ the aurora.
 - Icons: a 100 background with a 200 outline and a 700 glyph. Solid 600 is only for destructive
   buttons.
 - Info uses the brand ink. There is no separate blue, because it would be confused with Hinatazaka.
+- **Semantic over context.** An element with a fixed meaning keeps its meaning colour in every context. 推 (oshi) hearts and the Favorite filter use the global oshi pink `color.semantic.oshi` (50 `#fff0f8`, 200 `#ffcbe1`, solid `#de5f99`, text `#aa376f`; text 6.0:1 on white). The chat favourite star uses the original yellow `color.semantic.star` `#facc15`. Not oshi: About's "made with love" heart (`decor.heart`) and anything merely pink.
 - Clean-up: the duplicate `color.feedback` (`#10B981/#F59E0B/#EF4444`) and `color.status` sets merge
   into this one `semantic` set. `status.attention` (rail disconnected badge) maps to warning 600.
 

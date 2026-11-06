@@ -145,4 +145,11 @@ describe('BlogNavFooter arrow keys aimed elsewhere (D2b fix)', () => {
         expect(onPrev).not.toHaveBeenCalled();
         expect(onNext).not.toHaveBeenCalled();
     });
+
+    it('glows with the accent on hover, focuses with the accent ring and marks titles as Japanese', () => {
+        render(<BlogNavFooter prevBlog={OLDER} nextBlog={NEWER} onPrev={() => {}} onNext={() => {}} />);
+        const older = screen.getByRole('button', { name: /春の日記 41/ });
+        expect(older).toHaveClass('hover:shadow-accent-glow', 'focus-visible:ring-accent');
+        expect(older.querySelector('[lang="ja"]')).not.toBeNull();
+    });
 });

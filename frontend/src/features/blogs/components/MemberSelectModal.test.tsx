@@ -60,4 +60,29 @@ describe('MemberSelectModal', () => {
         expect(screen.getByRole('button', { name: /^春野 日向$/ })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Add 春野 日向 to favorites' })).toBeInTheDocument();
     });
+
+    it('uses the accent roles for focus, placeholder and hover name; the unset heart is the oshi outline (D4)', () => {
+        renderModal();
+        const cell = screen.getAllByRole('button', { name: /春野/ })[0];
+        expect(cell).toHaveClass('focus-visible:ring-accent');
+        expect(cell.querySelector('.group-hover\\:text-accent-strong')).not.toBeNull();
+        const heart = screen.getByRole('button', { name: /Add 春野 ひなた to favorites/ });
+        expect(heart).toHaveClass('focus-visible:ring-accent');
+        expect(heart.querySelector('svg')).toHaveClass('text-semantic-oshi-solid');
+        expect(heart.querySelector('svg')).not.toHaveClass('fill-current');
+    });
+
+    it('marks member names as Japanese', () => {
+        renderModal();
+        expect(screen.getAllByText(/春野/)[0].closest('[lang="ja"]')).not.toBeNull();
+    });
+
+    it('draws a set favourite as a white heart on the solid oshi badge', () => {
+        useAppStore.setState({ favorites: { hinatazaka46: ['9901'] } });
+        renderModal();
+        const heart = screen.getByRole('button', { pressed: true });
+        expect(heart).toHaveClass('bg-semantic-oshi-solid');
+        expect(heart.querySelector('svg')).toHaveClass('fill-current', 'text-inverse');
+        expect(heart.querySelector('svg')).not.toHaveClass('text-accent');
+    });
 });

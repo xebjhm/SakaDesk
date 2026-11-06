@@ -17,13 +17,26 @@ function safeHex(value: unknown): string {
  * A colour that is not a #rrggbb hex becomes `transparent`.
  * The lookup is the pre-D2b one: name, name without spaces, then blog id.
  */
-export function memberWashStyle(member: BlogMember, groupId: GroupId): CSSProperties | undefined {
-    if (isMascot(member)) return undefined;
+export type WashFallback = 'mascot' | 'no_member_data';
+
+/** The wash style plus, when there is none, why (for the `blog_fallback` breadcrumb). */
+export function resolveWash(
+    member: BlogMember,
+    groupId: GroupId,
+): { style: CSSProperties | undefined; fallback: WashFallback | null } {
+    if (isMascot(member)) return { style: undefined, fallback: 'mascot' };
     const data =
         getMemberByName(member.name, groupId) ??
         getMemberByName(member.name.replace(/\s+/g, ''), groupId) ??
         getMemberByBlogId(member.id, groupId);
-    if (!data) return undefined;
+    if (!data) return { style: undefined, fallback: 'no_member_data' };
     const [first, second] = getMemberPenlightHex(data, groupId);
-    return { '--ds-member-wash-1': safeHex(first), '--ds-member-wash-2': safeHex(second) } as CSSProperties;
+    return {
+        style: { '--ds-member-wash-1': safeHex(first), '--ds-member-wash-2': safeHex(second) } as CSSProperties,
+        fallback: null,
+    };
+}
+
+export function memberWashStyle(member: BlogMember, groupId: GroupId): CSSProperties | undefined {
+    return resolveWash(member, groupId).style;
 }

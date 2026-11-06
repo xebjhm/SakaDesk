@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Blogs have their group colours back.** The blog feed shows soft group
+  colour glows behind a frosted header, cards glow when you point at them,
+  and the member picker, the member's post list and the post reader use the
+  group's colour again. Japanese titles and member names always use
+  Japanese letter shapes, whatever language the app is in.
+- **Favourites (推) hearts are pink in every group.** The heart on a member
+  and the Favorite filter keep the same pink whichever group you are in.
+- **The chat favourite star is yellow again.** A starred message shows the
+  familiar yellow star in every group.
 - **Chats have their group colours back.** The member list, the chat
   header, menus, links, favourites and the feature buttons show each
   group's own colour again, and Japanese names and messages always use

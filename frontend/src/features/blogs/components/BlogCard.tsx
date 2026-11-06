@@ -6,6 +6,7 @@ import { getMemberNameKanji } from '../../../data/memberData';
 import { cn } from '../../../utils/classnames';
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { useTranslation } from '../../../i18n';
+import { clientLog } from '../../../utils/clientLog';
 
 interface BlogCardProps {
     post: RecentPost;
@@ -37,18 +38,21 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
             onClick={onClick}
             className={cn(
                 'group flex aspect-[3/4] w-full flex-col overflow-hidden rounded-card bg-card text-left shadow-card',
-                'transition-transform duration-base ease-standard hover:-translate-y-1 motion-reduce:transform-none',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                'transition duration-base ease-standard hover:-translate-y-1 hover:shadow-accent-glow-hover motion-reduce:transform-none',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             )}
         >
-            <span className="relative block min-h-0 flex-1 overflow-hidden bg-sunken">
+            <span className="relative block min-h-0 flex-1 overflow-hidden bg-expressive-soft">
                 {post.thumbnail && !imageError && (
                     <img
                         src={post.thumbnail}
                         alt=""
                         loading="lazy"
                         onLoad={() => setImageLoaded(true)}
-                        onError={() => setImageError(true)}
+                        onError={() => {
+                            setImageError(true);
+                            clientLog('blog_fallback', { target: 'card_thumb', reason: 'image_error' });
+                        }}
                         className={cn(
                             'absolute inset-0 h-full w-full object-cover object-top',
                             'transition duration-base ease-standard group-hover:scale-105 motion-reduce:transform-none',
@@ -61,10 +65,10 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                 <span className="text-caption text-muted">
                     {formatBlogDate(new Date(post.published_at), i18n.language, 'short')}
                 </span>
-                <span className={cn('line-clamp-2 font-reading font-semibold text-primary', isFeatured ? 'text-title' : 'text-small')}>
+                <span lang="ja" className={cn('line-clamp-2 font-reading font-semibold text-primary', isFeatured ? 'text-title' : 'text-small')}>
                     {post.title}
                 </span>
-                <span className="truncate text-caption font-semibold text-group-strong">
+                <span lang="ja" className="truncate text-caption font-semibold text-accent-strong">
                     {getMemberNameKanji(post.member_name)}
                 </span>
             </span>

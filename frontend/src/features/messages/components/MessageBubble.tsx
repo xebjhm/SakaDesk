@@ -291,7 +291,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     };
 
     const favoriteStar = message.is_favorite && (
-        <Star className="h-3.5 w-3.5 shrink-0 fill-current text-accent" />
+        <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
     );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
         <div className={cn(

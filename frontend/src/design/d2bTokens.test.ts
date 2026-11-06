@@ -40,8 +40,15 @@ describe('D2b tokens', () => {
     });
 
     it('keeps the pre-D2b orb layout', () => {
-        expect(ambientLayout.hinatazaka.orb1).toEqual({ position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.5 });
+        expect(ambientLayout.hinatazaka.orb1).toEqual({ position: 'top: -20%; left: -10%;', size: '70vw', opacity: 0.4 });
         expect(ambientLayout.sakurazaka.orb3).toEqual({ position: 'bottom: -20%; right: 20%;', size: '45vw', opacity: 0.35 });
+    });
+
+    it('orb 1 is back at its pre-D2 strength now that the feed header is frosted glass again (D1)', () => {
+        expect([
+            ambientLayout.hinatazaka.orb1.opacity, ambientLayout.sakurazaka.orb1.opacity,
+            ambientLayout.nogizaka.orb1.opacity, ambientLayout.yodel.orb1.opacity, ambientLayout.default.orb1.opacity,
+        ]).toEqual([0.4, 0.5, 0.5, 0.45, 0.4]);
     });
 
     it('default the member wash to transparent at the alpha token', () => {

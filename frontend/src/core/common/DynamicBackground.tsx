@@ -1,7 +1,7 @@
 // frontend/src/core/common/DynamicBackground.tsx
-// Ambient orbs behind the blog feed ("living air"). Colours are the group's ambient role and
-// size / opacity the per-group orb layout, both through --ds-group-ambient-* variables written
-// by applyGroupTokens (docs/design/DESIGN_SYSTEM.md, "Ambient orbs").
+// Ambient orbs behind the blog feed (L2 atmosphere, spec section 5): the context's `expressive`
+// orb colours, with the per-group size and opacity from `--ds-group-ambient-N-*`
+// (`design/tokens/ambient.ts`).
 import React from 'react';
 import { cn } from '../../utils/classnames';
 
@@ -13,9 +13,9 @@ const NOISE =
 // The `orb-breathe` keyframes read `--orb-opacity`, while the tokens expose
 // `--ds-group-ambient-N-opacity`: the third orb maps one onto the other explicitly.
 const ORBS = [
-    'bg-group-ambient-1 w-[var(--ds-group-ambient-1-size)] h-[var(--ds-group-ambient-1-size)] opacity-[var(--ds-group-ambient-1-opacity)] max-h-[850px] max-w-[850px] -left-[12%] -top-[18%] animate-orb-drift-1',
-    'bg-group-ambient-2 w-[var(--ds-group-ambient-2-size)] h-[var(--ds-group-ambient-2-size)] opacity-[var(--ds-group-ambient-2-opacity)] max-h-[750px] max-w-[750px] -right-[15%] top-[18%] animate-orb-drift-2 [animation-delay:-8s]',
-    'bg-group-ambient-3 w-[var(--ds-group-ambient-3-size)] h-[var(--ds-group-ambient-3-size)] opacity-[var(--ds-group-ambient-3-opacity)] [--orb-opacity:var(--ds-group-ambient-3-opacity)] max-h-[650px] max-w-[650px] -bottom-[22%] left-[28%] animate-orb-breathe [animation-delay:-15s]',
+    'bg-expressive-orb-1 w-[var(--ds-group-ambient-1-size)] h-[var(--ds-group-ambient-1-size)] opacity-[var(--ds-group-ambient-1-opacity)] max-h-[850px] max-w-[850px] -left-[12%] -top-[18%] animate-orb-drift-1',
+    'bg-expressive-orb-2 w-[var(--ds-group-ambient-2-size)] h-[var(--ds-group-ambient-2-size)] opacity-[var(--ds-group-ambient-2-opacity)] max-h-[750px] max-w-[750px] -right-[15%] top-[18%] animate-orb-drift-2 [animation-delay:-8s]',
+    'bg-expressive-orb-3 w-[var(--ds-group-ambient-3-size)] h-[var(--ds-group-ambient-3-size)] opacity-[var(--ds-group-ambient-3-opacity)] [--orb-opacity:var(--ds-group-ambient-3-opacity)] max-h-[650px] max-w-[650px] -bottom-[22%] left-[28%] animate-orb-breathe [animation-delay:-15s]',
 ] as const;
 
 export const DynamicBackground: React.FC<{ className?: string }> = ({ className }) => (

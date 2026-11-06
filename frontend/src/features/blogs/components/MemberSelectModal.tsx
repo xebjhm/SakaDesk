@@ -184,7 +184,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             <div className="mx-auto max-w-full" style={{ width: modalWidth - 48 }}>
             {loading && <DialogStatus kind="loading" title={t('blogs.loadingMembers')} />}
             {error && !loading && (
-                <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} />
+                <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />
             )}
             {!loading && !error && filteredMembers.length === 0 && (
                 <DialogStatus kind="empty" icon={<Users />} title={t('blogs.noMembersFound')} />
@@ -211,18 +211,18 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => onSelectMember(member)}
-                                                    className="group flex flex-col items-center gap-3 rounded-card p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                                                    className="group flex flex-col items-center gap-3 rounded-card p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                                 >
-                                                    <span className="block h-20 w-20 overflow-hidden rounded-pill bg-sunken transition-transform duration-base ease-standard group-hover:scale-105 motion-reduce:transform-none">
+                                                    <span className="block h-20 w-20 overflow-hidden rounded-pill bg-accent-subtle transition duration-base ease-standard group-hover:scale-105 group-hover:shadow-accent-glow motion-reduce:transform-none">
                                                         {thumbnailUrl ? (
                                                             <img src={thumbnailUrl} alt="" loading="lazy" className="h-full w-full scale-[1.15] object-cover object-top" />
                                                         ) : (
-                                                            <span aria-hidden="true" className="flex h-full w-full items-center justify-center text-title font-semibold text-muted">
+                                                            <span aria-hidden="true" lang="ja" className="flex h-full w-full items-center justify-center text-title font-semibold text-accent-strong">
                                                                 {member.nameJp.substring(0, 1)}
                                                             </span>
                                                         )}
                                                     </span>
-                                                    <span className="text-center text-small tracking-wide text-secondary transition-colors duration-fast ease-standard group-hover:text-primary">
+                                                    <span lang="ja" className="text-center text-small tracking-wide text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">
                                                         {formatName(member.nameJp)}
                                                     </span>
                                                 </button>
@@ -233,9 +233,9 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                         ? t('blogs.removeFavorite', { name: formatName(member.nameJp) })
                                                         : t('blogs.addFavorite', { name: formatName(member.nameJp) })}
                                                     aria-pressed={isFavorited}
-                                                    className="absolute right-3 top-16 flex rounded-pill bg-pill p-1 shadow-pill transition-transform duration-fast ease-standard hover:scale-110 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                                                    className={cn('absolute right-3 top-16 flex rounded-pill p-1 shadow-pill transition-transform duration-fast ease-standard hover:scale-110 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', isFavorited ? 'bg-semantic-oshi-solid' : 'bg-pill')}
                                                 >
-                                                    <Heart className={cn('h-4 w-4', isFavorited ? 'fill-current text-primary' : 'text-muted')} />
+                                                    <Heart className={cn('h-4 w-4', isFavorited ? 'fill-current text-inverse' : 'text-semantic-oshi-solid')} />
                                                 </button>
                                             </div>
                                         );

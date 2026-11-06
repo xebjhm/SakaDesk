@@ -29,4 +29,18 @@ describe('BlogStatus', () => {
         expect(status).toHaveClass('h-full', 'min-h-96');
         expect(status).toHaveTextContent('This may take a moment');
     });
+
+    it('tints the loading spinner with the accent, the error tile with danger and the empty tile softly', () => {
+        const { container, rerender } = render(<BlogStatus kind="loading" title="Loading" />);
+        expect(container.querySelector('.animate-spin')).toHaveClass('text-accent');
+        rerender(<BlogStatus kind="error" title="Failed" icon={<svg data-testid="i" />} />);
+        expect(screen.getByTestId('i').parentElement).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
+        rerender(<BlogStatus kind="empty" title="None" icon={<svg data-testid="i" />} />);
+        expect(screen.getByTestId('i').parentElement).toHaveClass('bg-expressive-soft', 'text-accent-strong');
+    });
+
+    it('draws the retry as the gradient primary button', () => {
+        render(<BlogStatus kind="error" title="Failed" onRetry={() => {}} retryLabel="Retry" />);
+        expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('bg-accent-gradient');
+    });
 });

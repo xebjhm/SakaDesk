@@ -39,6 +39,10 @@ export const color = {
         glass: 'rgba(255, 255, 255, 0.2)',
         /** Sync pill on a gradient chat header: the pre-D2 dark shade. */
         shade: 'rgba(0, 0, 0, 0.2)',
+        /** Frosted bar over the blog feed's orbs (L2): the pre-D2 white at 72 %. */
+        frost: 'rgba(255, 255, 255, 0.72)',
+        /** Hairline under the frosted feed header: the pre-D2 white at 40 %. */
+        frostBorder: 'rgba(255, 255, 255, 0.4)',
     },
     /**
      * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow
@@ -50,6 +54,14 @@ export const color = {
         warning: { subtle: '#fff5ed', icon: '#feedde', border: '#f6dac3', solid: '#9b5e1e', text: '#824c13' },
         danger: { subtle: '#fff3f1', icon: '#ffe7e4', border: '#ffd1cd', solid: '#b44543', text: '#963635' },
         info: { subtle: brandInk[50], icon: brandInk[100], border: brandInk[200], solid: brandInk[600], text: brandInk[700] },
+        /**
+         * Oshi (推): hearts and the Favorite filter. A fixed meaning, so it never follows the group
+         * accent ("semantic over context"). Hot pink harmonized from the original #ff69b4; solid is
+         * for icon fills (white glyph 3.4:1), text is >= 4.5:1 on white and on subtle.
+         */
+        oshi: { subtle: '#fff0f8', border: '#ffcbe1', solid: '#de5f99', text: '#aa376f' },
+        /** The bookmarked-message star: the original yellow-400, the same in every group. */
+        star: '#facc15',
     },
     /** Search matches inside text (blog reader): exact match, match by reading, and its dashed underline. Values from the pre-D2b reader. */
     mark: {

@@ -32,6 +32,14 @@ test('a card in the recent feed opens that post in the reader', async ({ page })
   await expect(page.getByText(/最後まで読んでくれてありがとう/)).toBeVisible()
 })
 
+test('the reader title keeps the serif reading face although it is marked lang="ja"', async ({ page }) => {
+  await openNewest(page)
+  const title = postTitle(page, '春の日記 42 🌸')
+  await expect(title).toHaveAttribute('lang', 'ja')
+  const family = await title.evaluate((el) => getComputedStyle(el).fontFamily)
+  expect(family).toContain('Noto Serif JP')
+})
+
 test('the older/newer buttons and the arrow keys walk the member posts', async ({ page }) => {
   await openNewest(page)
   await page.getByRole('button', { name: /春の日記 41/ }).click()

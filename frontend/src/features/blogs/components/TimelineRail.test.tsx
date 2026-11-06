@@ -70,9 +70,22 @@ describe('TimelineRail', () => {
 });
 
 describe('TimelineRail look (D2b)', () => {
-    it('marks the current post with the group action colour and glow', () => {
-        const { rail } = setup(3);
-        expect(rail.querySelector('.bg-group-accent')).toHaveClass('rounded-pill', 'shadow-group-glow');
+    it('uses the accent for the current dot and no superseded group roles', () => {
+        const { container, rail } = setup(3);
+        expect(rail.querySelector('.bg-accent.shadow-accent-glow')).toHaveClass('rounded-pill');
+        expect(container.innerHTML).not.toMatch(/-group-(accent|glow|subtle|strong)/);
+    });
+
+    it('rings the hover in the accent once zoomed and glows the tooltip', () => {
+        vi.useFakeTimers();
+        const { rail } = setup();
+        fireEvent.mouseMove(rail, { clientY: 230 });
+        expect(rail.querySelector('.border-2')).toHaveClass('border-strong');
+        expect(screen.getByText('#' + (42 - 21)).closest('.rounded-card')).toHaveClass('shadow-accent-glow');
+        act(() => { vi.advanceTimersByTime(800); });
+        expect(rail.querySelector('.border-2')).toHaveClass('border-accent');
+        expect(rail.querySelector('.border-2')).toHaveClass('transition-[opacity,border-color]');
+        expect(screen.getByText(blogs[21].title)).toHaveAttribute('lang', 'ja');
     });
 
     it('fills its column and is hidden from assistive technology', () => {
@@ -85,7 +98,7 @@ describe('TimelineRail look (D2b)', () => {
         const { rail } = setup();
         fireEvent.mouseMove(rail, { clientY: 30 });
         expect(screen.getByText(formatBlogDate(new Date(blogs[0].published_at), 'en', 'medium'))).toBeInTheDocument();
-        expect(screen.getByText('#42').closest('.rounded-card')).toHaveClass('shadow-card');
+        expect(screen.getByText('#42').closest('.rounded-card')).toHaveClass('shadow-accent-glow');
         expect(screen.getByText(blogs[0].title)).toHaveClass('font-reading');
     });
 });

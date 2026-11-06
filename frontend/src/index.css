@@ -46,4 +46,12 @@
     --ds-font-family-serif: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
     font-family: var(--ds-font-family-sans);
   }
+  /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
+     marked blog titles would fall back to sans: restore their faces with a higher specificity (0,2,1). */
+  [lang="ja"]:not(html).font-reading {
+    font-family: var(--ds-font-family-reading);
+  }
+  [lang="ja"]:not(html).font-display {
+    font-family: var(--ds-font-family-serif);
+  }
 }

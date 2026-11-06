@@ -7,6 +7,8 @@ export default {
     theme: {
         extend: {
             brightness: { 94: '.94', 106: '1.06' },
+            backdropBlur: { frost: '20px' },
+            backdropSaturate: { 180: '1.8' },
             fontFamily: {
                 sans: 'var(--ds-font-family-sans)',
                 display: 'var(--ds-font-family-serif)',
@@ -37,6 +39,7 @@ export default {
             },
             backgroundImage: {
                 'accent-gradient': 'var(--ds-accent-gradient)',
+                'accent-wash': 'var(--ds-accent-wash)',
                 'accent-tonal': 'var(--ds-accent-tonal)',
                 'expressive-soft': 'var(--ds-expressive-soft)',
                 'expressive-header': 'var(--ds-expressive-header)',
@@ -91,6 +94,8 @@ export default {
                 'semantic-warning-icon': 'var(--ds-semantic-warning-icon)',
                 'semantic-danger-icon': 'var(--ds-semantic-danger-icon)',
                 'semantic-info-icon': 'var(--ds-semantic-info-icon)',
+                'semantic-oshi-subtle': 'var(--ds-semantic-oshi-subtle)',
+                'semantic-oshi-solid': 'var(--ds-semantic-oshi-solid)',
                 'viewer-scrim': 'var(--ds-viewer-scrim)',
                 'viewer-stage': 'var(--ds-viewer-stage)',
                 'viewer-control': 'var(--ds-viewer-control)',
@@ -100,6 +105,7 @@ export default {
                 // Chat header pills (pre-D2 look): glass / shade on the title gradient, title-text tints on a light header.
                 'header-glass': 'var(--ds-overlay-glass)',
                 'header-shade': 'var(--ds-overlay-shade)',
+                'frost': 'var(--ds-overlay-frost)',
                 'group-title-tint': 'color-mix(in srgb, var(--ds-group-title-text) 12.5%, transparent)',
                 'group-title-wash': 'color-mix(in srgb, var(--ds-group-title-text) 8%, transparent)',
                 // Official unread shelters.
@@ -126,6 +132,9 @@ export default {
                 'semantic-warning': 'var(--ds-semantic-warning-text)',
                 'semantic-danger': 'var(--ds-semantic-danger-text)',
                 'semantic-info': 'var(--ds-semantic-info-text)',
+                'semantic-oshi': 'var(--ds-semantic-oshi-text)',
+                'semantic-oshi-solid': 'var(--ds-semantic-oshi-solid)',
+                'semantic-star': 'var(--ds-semantic-star)',
                 viewer: 'var(--ds-viewer-text)',
                 'viewer-muted': 'var(--ds-viewer-text-muted)',
                 sunday: 'var(--ds-decor-sunday)',
@@ -137,7 +146,9 @@ export default {
             },
             borderColor: {
                 'accent-border': 'var(--ds-accent-border)',
+                'accent-wash': 'var(--ds-accent-wash-border)',
                 accent: 'var(--ds-accent)',
+                'frost': 'var(--ds-overlay-frost-border)',
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
                 'mark-underline': 'var(--ds-mark-underline)',
@@ -145,6 +156,7 @@ export default {
                 'semantic-warning': 'var(--ds-semantic-warning-border)',
                 'semantic-danger': 'var(--ds-semantic-danger-border)',
                 'semantic-info': 'var(--ds-semantic-info-border)',
+                'semantic-oshi': 'var(--ds-semantic-oshi-border)',
                 'group-bubble': 'var(--ds-group-bubble-border)',
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
@@ -156,10 +168,14 @@ export default {
             ringColor: {
                 accent: 'var(--ds-accent)',
                 'accent-border': 'var(--ds-accent-border)',
+                'semantic-oshi': 'var(--ds-semantic-oshi-border)',
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
                 surface: 'var(--ds-surface-sheet)',
                 strong: 'var(--ds-border-strong)',
+            },
+            fill: {
+                'semantic-oshi': 'var(--ds-semantic-oshi-solid)',
             },
             ringOffsetColor: {
                 surface: 'var(--ds-surface-sheet)',

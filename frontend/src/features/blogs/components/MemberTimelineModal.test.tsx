@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { clientLog } from '../../../utils/clientLog';
 import { render, screen, fireEvent } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { MemberTimelineModal } from './MemberTimelineModal';
 import type { BlogMeta } from '../../../types';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -40,6 +43,24 @@ describe('MemberTimelineModal', () => {
         expect(p.onOpenPhotoGallery).toHaveBeenCalled();
     });
 
+    it('draws the Photo Album button on the accent wash in the accent text, hovering to the subtle tint', () => {
+        renderModal();
+        const button = screen.getByRole('button', { name: 'Photo Album' });
+        expect(button).toHaveClass('bg-accent-wash', 'text-accent-strong', 'hover:bg-accent-subtle');
+        expect(button).not.toHaveClass('text-secondary', 'text-primary');
+    });
+
+    it('breadcrumbs a broken row thumbnail', () => {
+        const withThumb = [{ ...blogs[0], thumbnail: '/broken.jpg' }] as unknown as BlogMeta[];
+        const props = {
+            isOpen: true, onClose: vi.fn(), member: { id: '9901', name: '春野 ひなた' }, blogs: withThumb,
+            loading: false, error: null, onSelectBlog: vi.fn(), onRetry: vi.fn(), onOpenPhotoGallery: vi.fn(),
+        };
+        const { baseElement } = render(<MemberTimelineModal {...(props as React.ComponentProps<typeof MemberTimelineModal>)} />);
+        fireEvent.error(baseElement.querySelector('img')!);
+        expect(clientLog).toHaveBeenCalledWith('blog_fallback', { target: 'timeline_thumb', reason: 'image_error' });
+    });
+
     it('closes on Escape', () => {
         const p = renderModal();
         fireEvent.keyDown(document.body, { key: 'Escape' });
@@ -51,5 +72,27 @@ describe('MemberTimelineModal', () => {
         expect(screen.getByRole('dialog', { name: /春野/ })).toBeInTheDocument();
         const open = screen.getAllByRole('button', { expanded: true });
         expect(open.length).toBeGreaterThan(0);
+    });
+
+    it('shows the expanded month in the accent, rows hover in accent-subtle and marks titles as Japanese', () => {
+        renderModal();
+        const month = screen.getAllByRole('button', { expanded: true })[0];
+        expect(month.querySelector('.text-accent-strong')).not.toBeNull();
+        expect(month.querySelector('.bg-accent')).not.toBeNull();
+        const row = screen.getByRole('button', { name: /今日の日記/ });
+        expect(row).toHaveClass('hover:bg-accent-subtle', 'focus-visible:ring-accent');
+        expect(screen.getByText('今日の日記 🌸')).toHaveAttribute('lang', 'ja');
+    });
+
+    it('titles the dialog with the Japanese member name', () => {
+        renderModal();
+        const heading = screen.getByRole('heading', { name: /春野/ });
+        expect(heading.querySelector('[lang="ja"]')).not.toBeNull();
+    });
+
+    it('lets the post count inherit the header colour', () => {
+        renderModal();
+        const count = screen.getAllByText('2 posts')[0];
+        expect(count).not.toHaveClass('text-muted');
     });
 });
