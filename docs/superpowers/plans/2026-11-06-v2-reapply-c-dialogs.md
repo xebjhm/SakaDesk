@@ -16,6 +16,8 @@ Colour mapping used throughout (from `e4e4118` `config/serviceThemes.ts` `buildT
 
 ## Decisions needed from the user
 
+> **Resolved (user, 2026-11-06): every decision takes its recommendation** — D1 (a) bold title in the header text colour, contrast recorded in §12; D2 (a) header icons restored in the header text colour; D3 (a) expressive inherited header + semantic tile + secondary Cancel; D4 (a) white card + accent hover; D5 (a) group-marker scope + chip; D6 (a) ghost `text-semantic-warning`; D7 (a) brand scope + serif bold wordmark, hero/stats in R-d. Steps marked "pending decision" are therefore final as written.
+
 The user's rule: any change to the original design (`e4e4118`) that the spec has not decided, any D2c structural decision, any off-logo colour without a semantic meaning, any colour whose meaning is unclear and any contrast problem not already accepted is asked first. The tasks assume the **recommendation**; steps that depend on one are marked `(pending decision D<n>)`. If the user picks another option, only those steps change.
 
 **D1 — Dialog title weight and colour (affects every dialog through `Modal`, plus `LoginModal`'s banner).** `design/primitives/Modal.tsx`, `shell/components/LoginModal.tsx`.
