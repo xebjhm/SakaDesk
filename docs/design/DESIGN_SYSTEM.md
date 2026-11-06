@@ -43,7 +43,7 @@ The rule is **whose content is it?**
 - Content of one group: **group context**.
 - The app, the user's account, or anything that spans groups: **brand
   context**.
-- A dialog inherits its opener's context (`scope="inherit"`: the nearest `BrandScope` or brand `Modal`, else the active group). App-level dialogs are always brand (`scope="brand"`). Group-scoped surfaces (`groupScopeStyle`) are not propagated through the portal: pass their style to the dialog explicitly.
+- A dialog inherits its opener's context (`scope="inherit"`: the scope in `ScopeContext`, which a `BrandScope` or a brand `Modal` provides as brand, else the active group). App-level dialogs are always brand (`scope="brand"`). A group-scoped surface hands its scope to a portalled child dialog with `<ScopeContext.Provider value={{ scope: 'group', style }}>` (`design/scopeContext.ts`); the login dialog does this for the Yodel location warning.
 - **Viewer mode** (dark, full screen) belongs to no context; only the content
   shows.
 - **Group markers:** inside a brand screen, a piece that names one specific
@@ -68,25 +68,22 @@ How a context is set:
   Brand screens and app-level dialogs apply it to themselves, so a brand dialog
   is brand whichever group is active.
 - **Group scope:** `groupScopeStyle(groupId)` (`design/groupScope.ts`) sets one
-  specific group's variables on a surface that belongs to that service (its
-  login dialog, its sync during the first-launch sync, its inline sync view, a
-  group marker inside a brand screen). Every `*-group-*` utility, and the
+  specific group's variables on a surface that belongs to that service (its login dialog, its inline sync view, a group marker inside a brand screen). Every `*-group-*` utility, and the
   official layer, inside then follows that group. It is never used in lists
   that mix groups. A primitive never takes a group id.
 - **Group markers in a brand dialog** use `useGroupMarker(serviceId, target)`
   (`design/useGroupMarker.ts`): it returns `groupScopeStyle` for that service's
-  group, so the `*-accent-*` utilities inside follow it (the add-service cards,
-  the per-group rows in Settings' Sync tab with a chip naming the group). An
+  group, so the `*-accent-*` utilities inside follow it (the add-service cards, the per-group rows in Settings' Sync tab with a chip naming the group, the landing cards, the ToS links, each step of a sequential sync and its chip). An
   unknown service leaves the piece in brand and logs `group_marker_fallback`
-  (`target`: `add_service` or `settings_row`; `reason`: `unknown_service`).
+  (`target`: `add_service`, `settings_row`, `landing`, `tos_link` or `sync_row`; `reason`: `unknown_service`).
+  It is a hook: call it in a small per-item component, never inside a `.map` callback.
 
 Status: the frame and chat screens (group rail, feature rail, member list, chat,
 letters, profile card, chat menus, call popup) and the blog screens (feed, reader,
 rail, member select, member timeline) and the dialogs (settings, search, about,
 diagnostics, report issue, add service, confirm, login, and the chat dialogs:
 calendar, favourites, media gallery, background, sent letters) apply this table.
-The entry screens (ToS, landing, setup, sync) follow in the last part of the
-re-apply (see [Migration note](#14-migration-note)).
+The entry screens (boot, ToS, landing, setup, sync) apply it too: the screen re-apply is complete.
 
 ## 4. Colour
 
@@ -226,9 +223,9 @@ Components ask for a role; the context decides the value
 |---|---|---|---|
 | `accent` (step 600) | ink 600 | group 600 | `bg-accent`, `text-accent`, `border-accent`, `ring-accent`, `accent-accent` (native controls) |
 | `strong` (700) | ink 700 | group 700 | `text-accent-strong` |
-| `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle` |
+| `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle`, `ring-accent-subtle` (the running sync step's halo) |
 | `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border`, `ring-accent-border` |
-| `logo` | ink 400 | group logo | the light end of the gradient |
+| `logo` | ink 400 | group logo | the light end of the gradient; `ring-accent-logo` (the landing card selection ring) |
 | `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
 | `wash` / `wash-border` | logo 8 % → accent 6 % at 135°; logo 19 % hairline | same | `bg-accent-wash` / `border-accent-wash` (a quiet accent control at rest: Select Member, Photo Album; hover fills with the gradient or `bg-accent-subtle`) |
@@ -236,6 +233,7 @@ Components ask for a role; the context decides the value
 | `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
 | `soft` | aurora | group 50 → 100 | `bg-expressive-soft` |
 | `header`, `headerText`, `headerBar` | aurora, dark text, no bar | title gradient (Sakurazaka: white sheet, dark text, bar) | `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
+| `progress` | aurora | the title gradient (a light header: the official bar) | `bg-expressive-progress` (the sync progress fill) |
 | `orb1`-`orb3` | aurora orbs | the group's ambient orbs | `bg-expressive-orb-1`, `-2`, `-3` |
 
 The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
@@ -268,7 +266,10 @@ The restore inventory: the expressive elements of the pre-D2 look, as tokens.
 | Unread shadow | `shadow-accent-unread` |
 | Ambient orbs | `Atmosphere` (`bg-expressive-orb-*`); the blog feed's `DynamicBackground` draws `bg-expressive-orb-*` with the per-group size and opacity from `design/tokens/ambient.ts` (orb 1 at its pre-D2 strength under the frosted header) |
 | Soft panels (empty-state circle, milestone card) | `bg-expressive-soft` |
-| Landing per-group cards, ToS gradient button | group markers + the primary `Button` |
+| Landing per-group cards, ToS gradient button | group markers (`useGroupMarker(…, 'landing')`, selected ring `ring-accent-logo`, check disc `bg-accent`) + the primary `Button` |
+| ToS per-group links | group markers (`'tos_link'`), `text-accent-strong`, underline on hover |
+| ToS amber disclaimer, sync media warning and unresolved list | `bg-semantic-warning-subtle`, `border-semantic-warning`, `text-semantic-warning` |
+| Sync progress bar (pastel in the dialog, title gradient inline) | `bg-expressive-progress` |
 
 ## 6. The four levels
 
@@ -340,7 +341,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   select and the timeline) is marked too. Dialogs mark member names and message text
   in favourites and the media gallery (lists and their viewer captions), letter text, search results
   (member, room, blog title, snippet) and filter chips, and group names shown as data
-  (add service, the settings marker chip). UI chrome is never marked.
+  (add service, the settings marker chip). Entry screens mark the ToS article quotes, group names on the landing cards and the sync chip, and member names in the sync's unresolved list. UI chrome is never marked.
 - `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
@@ -384,8 +385,8 @@ is `circle` for floating buttons (`overlay` and `accent` by default) and
   and clicks do nothing. A native `disabled` **without** a reason logs a
   development warning.
 - **Greying out is banned** (grey background, grey text): it looks broken.
-- **Forms never disable the submit button** (login, add service). They validate
-  on click and show what is missing.
+- **Forms never disable the submit button** (login, add service, setup). They validate
+  on click and show what is missing. Setup logs a missing folder as `entry_validation` (`surface` `setup`, `reason` `missing_folder`).
 
 ## 10. Brand moments
 
@@ -394,8 +395,8 @@ Brand moments are for waiting, starting, finishing and looking back
 
 - **`EmptyState`** (`icon`, `title`, `description`, `action`): a fixed
   pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
-  100 in group context) holding a line icon, a `font-display` title, one
-  sentence and one action.
+  100 in group context) holding a line icon in `text-muted` (the pre-D2 grey), a `font-display` title, one
+  sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too. A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
 - **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
@@ -421,12 +422,29 @@ Celebration events (tiers B and C only; there is no full-screen tier):
 Rules: each event is celebrated once; a celebration never blocks input and
 never needs dismissing; with `prefers-reduced-motion` only the static card
 shows (the motion classes carry `motion-reduce:` variants). The primitives
-exist and are shown on `?view=design`; wiring the events into screens is the
-next plan.
+exist and are shown on `?view=design`.
 
-Other brand moments (applied by the next plan): first launch (boot, ToS,
-choose groups, first sync) on aurora with orbs and serif headings; About as an
-aurora hero with a serif wordmark and tabular-numeral stats.
+Wiring:
+
+- **First complete sync:** `FirstSyncToast` (`shell/components/FirstSyncToast.tsx`) at the
+  bottom right on the toast layer for 6 s, `pointer-events-none`, in brand scope, with the
+  saved message count from `GET /api/archive/stats` when known. Shown once, after the
+  first-launch sequential sync when every service finished (`shell/firstSyncCelebration.ts`,
+  pref `first_sync_celebrated_at`). Breadcrumb `celebration` (`target` `first_sync`,
+  `outcome` `shown`, or `skipped` with `reason` `already_celebrated` / `sync_cancelled` /
+  `sync_failed`). The sequence itself logs `sync_sequence` (`outcome` `all_complete` /
+  `partial` / `none` / `cancelled`, `count` of finished services); Cancel ends the whole
+  first-launch sync, not just the running step.
+- **Milestones:** `useMilestone` (`features/messages/milestones.ts`) decides once per chat
+  open for member chats (not group chats); pref `celebrated_milestones`. The first time a
+  chat is seen its already-reached milestones are recorded silently; then at most one card
+  per open (a messages milestone first, else a days one). A milestone not shown waits for a
+  later open, and an empty room seeds nothing. `MilestoneFooter` shows the card in
+  `MessageList`'s `footer` slot, after the newest message. Breadcrumb `celebration`
+  (`target` `milestone_messages` / `milestone_days`, `outcome` `shown` with `count`, or
+  `seeded`, or `skipped` with `reason` `no_messages`).
+
+Other brand moments: first launch (ToS, the login carousel, setup and the first sync) sits on `EntryBackdrop` (`shell/components/EntryBackdrop.tsx`: the brand orbs over `bg-window`, also behind a blocking sync); the boot screen is brand with an ink spinner and no orbs (it shows on every launch); the landing page is a brand sheet on the orbs with a serif `text-display` heading. About opens on a hero of brand orbs under its aurora header (logo, `text-display` serif wordmark, version) and a "your archive" row (messages, photos, days; `font-display` `tabular-nums`) from `GET /api/archive/stats` (`core/modals/archiveStats.ts`; breadcrumb `archive_stats_load`, `outcome` `ok` / `failed`; hidden on failure).
 
 ## 11. Motion and elevation
 
@@ -496,13 +514,14 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 |---|---|
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
-| `scope` | `inherit` (default: brand when opened inside a `BrandScope` or a brand `Modal`, else the active group; `groupScopeStyle` surfaces are not propagated, pass their styles explicitly) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
+| `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
 | `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) or `plain` (a quiet title; no dialog uses it today) |
 | `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
+| `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 
 - **Escape** goes to the **top-most** dialog only, which closes and claims it
@@ -695,7 +714,9 @@ Do not "fix" these.
 - **Dialog header titles** keep the header text colour: white on the title
   gradients (about 1.8:1 at Hinatazaka's light end) and the official `#d892aa` on
   Sakurazaka's white header (2.4:1), as the pre-D2 dialogs and the chat header
-  beside them (user decision D1, R-c).
+    beside them (user decision D1, R-c).
+- **Sync progress fill** is the aurora (brand) or the official title gradient (inline sync) on a grey track, about 1.0–1.2:1, as the pre-D2 pastel bar; the count and percent above it carry the value (user decision D5, R-d).
+
 
 ## 13. Do / Don't
 
@@ -716,24 +737,12 @@ Do not "fix" these.
 
 ## 14. Migration note
 
-R-a (frame and chat), R-b (blogs) and R-c (dialogs) are done; the list below
-applies to the entry screens (ToS, landing, setup, sync, boot) and the brand
-moments (empty states, celebrations, the About hero).
+The screen re-apply (R-a frame and chat, R-b blogs, R-c dialogs, R-d entry screens and brand moments) is done. No screen applies the `default` group's roles any more; it remains only as the document-level fallback before a group is chosen (its accent roles equal the brand).
 
 The `*-group-accent`, `*-group-strong`, `*-group-subtle` and `*-group-badge`
 utilities (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`,
 `text-group-strong`, `border-group-subtle`, `ring-group`, `accent-group`,
-`shadow-group-glow`) still work and still read the group variables, so existing
-screens look the same. They are migrated to `*-accent-*` by the screen re-apply
-plan, which also:
-
-- applies `scope="brand"` / `<BrandScope>` to the brand screens of section 3
-  (ToS and landing included, which then stop using the `default` group; today
-  `App` still applies the `default` group's tokens before a group is chosen);
-- marks Japanese content `lang="ja"` so the content font rule of section 8
-  takes effect;
-- restores the expression inventory of section 5 per screen;
-- wires the celebration events and empty states into screens.
+`shadow-group-glow`) still work and still read the group variables. No re-applied screen uses them; `guard-baseline.json` lists the files that still carry ratcheted literals (pre-token media parts and data files).
 
 The guard ratchets the old utilities: a file may not use more of them than its
 baseline entry. New code uses `*-accent-*` and `*-expressive-*`.

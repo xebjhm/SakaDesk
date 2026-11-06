@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Your archive at a glance.** About now shows how many messages and photos
+  you have saved and how many days your archive spans.
+- **Small celebrations.** Your first complete sync ends with a short
+  celebration, and a chat shows a card when a member passes 1,000, 5,000 or
+  10,000 messages, or when your subscription reaches day 100 and each full
+  year. Nothing needs to be closed, and reduced motion keeps them still.
 - **Incoming calls while SakaDesk is in the background.** When a member sends
   a voice message while the app is hidden, minimised or behind other windows,
   a small call window rings at the bottom right of the screen; answer to play
@@ -48,6 +54,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **First launch has its colours back.** The welcome, terms, group picker,
+  folder setup and first sync use SakaDesk's soft aurora again, each group
+  card and terms link in its own group colour, and the disclaimer in its
+  original amber.
+- **Empty screens are friendlier.** An empty list now shows a soft circle, a
+  short title and a hint instead of grey text.
 - **Blogs have their group colours back.** The blog feed shows soft group
   colour glows behind a frosted header, cards glow when you point at them,
   and the member picker, the member's post list and the post reader use the
@@ -111,9 +123,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync repair rows in Settings say which group they act on.
 
 ### Fixed
-- **Cancel works during the first sync.** Pressing Cancel while SakaDesk
-  downloads your groups for the first time now stops the sync and closes the
-  dialog, instead of leaving it stuck; your blog backup choice is still kept.
+- **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
+  downloads your groups for the first time used to skip only the running
+  group, so the rest of the first sync never ran and your blog backup choice
+  was lost. It now stops the sync and closes the dialog, and your blog backup
+  choice is kept.
+- **Yodel's location warning uses Yodel's colours** instead of those of the
+  screen behind it.
+- **The member count in the search filter is translated** into your app
+  language.
+- **The Diagnostics buttons no longer look overlapped.** A line now separates
+  the buttons from the report scrolling beneath them.
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
   goes straight there instead of scrolling through every message in between,
   then glides the last stretch into place and gently highlights the message you

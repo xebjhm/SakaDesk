@@ -290,6 +290,7 @@ Two separate plans:
 - Sakurazaka keeps its white `light` header (official layer).
 - **Chat header pills** keep the pre-D2 white glass / title-text tint: on light parts of the title gradient and on Sakurazaka's white header their caption text is below 4.5:1 (about 2.4–3.4:1), like the official title beside them (user decision D8, 2026-11-05).
 - **Dialog header titles** keep the header text colour: white on the title gradients (about 1.8:1 at Hinatazaka's light end) and the official `#d892aa` on Sakurazaka's white header (2.4:1), as the pre-D2 dialogs and the chat header beside them (user decision D1, R-c).
+- **Sync progress fill** is the aurora (brand) or the official title gradient (inline sync) on a grey track, about 1.0–1.2:1, as the pre-D2 pastel bar; the count and percent above it carry the value (user decision D5, R-d).
 
 ## 13. Out of scope / TODO
 
