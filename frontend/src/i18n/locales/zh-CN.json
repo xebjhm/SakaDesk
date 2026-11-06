@@ -406,6 +406,7 @@
     "addService": "添加服务"
   },
   "search": {
+    "memberCount": "{{count}} 位成员",
     "placeholder": "搜索消息和 Blog...",
     "placeholderMessages": "搜索消息...",
     "placeholderBlogs": "搜索 Blog...",

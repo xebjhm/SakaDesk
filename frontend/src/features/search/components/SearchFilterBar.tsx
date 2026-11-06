@@ -96,7 +96,6 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   const serviceOrder = useAppStore((s) => s.getServiceOrder());
 
   // Filter dropdown items based on query and already-selected chips
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredItems = useMemo(() => {
     if (!membersData) return [];
     const q = mentionQuery.toLowerCase().replace(/^@/, '');
@@ -116,7 +115,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           type: 'service',
           id,
           label: name,
-          sublabel: `${svc.member_count} members`,
+          sublabel: t('search.memberCount', { count: svc.member_count }),
           color,
         });
       }
@@ -158,7 +157,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     }
 
     return items;
-  }, [membersData, mentionQuery, selectedFilters, serviceOrder]);
+  }, [membersData, mentionQuery, selectedFilters, serviceOrder, t]);
 
   const handleSelectItem = useCallback((item: typeof filteredItems[number]) => {
     onFiltersChange([...selectedFilters, { type: item.type, id: item.id, label: item.label, color: item.color }]);

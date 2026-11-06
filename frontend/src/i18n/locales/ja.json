@@ -406,6 +406,7 @@
     "addService": "サービスを追加"
   },
   "search": {
+    "memberCount": "{{count}}人のメンバー",
     "placeholder": "メッセージとブログを検索...",
     "placeholderMessages": "メッセージを検索...",
     "placeholderBlogs": "ブログを検索...",

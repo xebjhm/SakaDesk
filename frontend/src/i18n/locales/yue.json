@@ -406,6 +406,7 @@
     "addService": "加服務"
   },
   "search": {
+    "memberCount": "{{count}} 位成員",
     "placeholder": "搜尋訊息同 Blog...",
     "placeholderMessages": "搜尋訊息...",
     "placeholderBlogs": "搜尋 Blog...",
