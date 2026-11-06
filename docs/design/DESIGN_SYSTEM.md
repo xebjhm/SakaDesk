@@ -243,7 +243,9 @@ The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
 **Pre-token media parts** (voice player, transcript, translate and transcribe
 buttons) mix their accent in inline styles: they default to `ACCENT`
 (`var(--ds-accent)`) and mix through `withAlpha(colour, percent)`
-(`design/colorMix.ts`). New components use utilities.
+(`design/colorMix.ts`). New components use utilities. On the compact voice
+player's `bg-sunken` card, the mute and menu buttons hover one step darker
+(`hover:bg-sunken hover:brightness-94`), never lighter.
 
 ## 5. Expression tiers
 

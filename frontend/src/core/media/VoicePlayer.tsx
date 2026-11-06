@@ -706,7 +706,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     >
                         <button
                             onClick={handleMuteToggle}
-                            className="p-1.5 hover:bg-sheet rounded-full transition-colors"
+                            className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                             title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
@@ -766,7 +766,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         aria-label={t('common.moreOptions')}
                         aria-haspopup="menu"
                         aria-expanded={showMenu}
-                        className="p-1.5 hover:bg-sheet rounded-full transition-colors"
+                        className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                         type="button"
                     >
                         <MoreVertical className="w-4 h-4 text-secondary" />

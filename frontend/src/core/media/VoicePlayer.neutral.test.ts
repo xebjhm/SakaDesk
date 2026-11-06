@@ -19,4 +19,9 @@ describe('VoicePlayer neutrals (R-d)', () => {
         expect(source).toContain('bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card');
         expect(source).not.toMatch(/backdrop-blur-xl|\bshadow-(?:md|lg|xl)\b/);
     });
+
+    it('darkens the compact mute and menu buttons on hover instead of turning them white', () => {
+        expect(source).not.toContain('hover:bg-sheet');
+        expect(source.match(/p-1\.5 hover:bg-sunken hover:brightness-94 rounded-full/g)).toHaveLength(2);
+    });
 });

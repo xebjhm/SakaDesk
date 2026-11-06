@@ -39,7 +39,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         class="relative flex items-center"
       >
         <button
-          class="p-1.5 hover:bg-sheet rounded-full transition-colors"
+          class="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
@@ -117,7 +117,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         aria-expanded="false"
         aria-haspopup="menu"
         aria-label="More options"
-        class="p-1.5 hover:bg-sheet rounded-full transition-colors"
+        class="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
         type="button"
       >
         <svg
