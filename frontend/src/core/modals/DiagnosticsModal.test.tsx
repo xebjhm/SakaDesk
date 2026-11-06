@@ -34,6 +34,12 @@ describe('DiagnosticsModal', () => {
         expect(screen.getByText('Hidden Panel')).toHaveClass('bg-sheet', 'text-secondary');
     });
 
+    it('draws the terminal icon in the header', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
+        expect(screen.getByTestId('modal-header-icon')).toBeInTheDocument();
+    });
+
     it('loads the diagnostics and shows the system block and logs', async () => {
         render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
         expect(await screen.findByText('Developer Diagnostics')).toBeInTheDocument();

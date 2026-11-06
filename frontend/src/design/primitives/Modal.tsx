@@ -13,7 +13,7 @@ export interface ModalProps {
     onClose: () => void;
     /** Visible title (h2, standard layout); also names the dialog. */
     title?: React.ReactNode;
-    /** Decorative icon before the title (standard layout). It takes the header text colour; pass an unsized lucide icon (drawn at 20 px). */
+    /** Decorative icon before the title (standard layout). It takes the header text colour; pass an unsized lucide icon (plain dialog icons are drawn at 20 px; ConfirmDialog passes its own 32 px semantic tile, drawn as given). Ignored without a title or in the bare layout. */
     icon?: React.ReactNode;
     /** Name when there is no visible title (search, viewer). */
     'aria-label'?: string;

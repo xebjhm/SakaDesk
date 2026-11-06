@@ -212,7 +212,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
                 >
                   <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(item.color)} />
                   <span lang="ja" className="truncate font-semibold text-primary">{item.label}</span>
-                  {item.sublabel && <span className="ml-auto truncate text-muted">{item.sublabel}</span>}
+                  {item.sublabel && <span lang={item.type === 'member' ? 'ja' : undefined} className="ml-auto truncate text-muted">{item.sublabel}</span>}
                 </button>
               ))}
             </div>

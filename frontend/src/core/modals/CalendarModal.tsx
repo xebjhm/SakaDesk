@@ -282,7 +282,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                         !isCurrentMonth && 'opacity-30',
                                         hasMessages ? 'cursor-pointer text-primary hover:bg-accent-subtle' : 'text-muted',
                                         isCurrentMonth && date.getDay() === 0 && 'text-sunday',
-                                        today && 'font-semibold ring-2 ring-inset ring-accent',
+                                        today ? 'font-semibold border-2 border-accent' : 'border-2 border-transparent',
                                     )}
                                 >
                                     <span>{date.getDate()}</span>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Copy, RefreshCw, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight } from 'lucide-react';
+import { Copy, RefreshCw, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight, Terminal } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
@@ -214,7 +214,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     };
 
     return (
-        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
+        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" icon={<Terminal />} closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
             headerExtra={<span className="rounded-pill bg-sheet px-2 py-1 text-caption text-secondary">Hidden Panel</span>}
             bodyClassName="flex flex-col gap-4"
             footer={

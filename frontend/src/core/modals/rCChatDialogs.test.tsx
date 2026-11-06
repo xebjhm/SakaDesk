@@ -30,8 +30,11 @@ describe('CalendarModal (R-c)', () => {
         render(<CalendarModal isOpen onClose={vi.fn()} messages={[msg({ media_file: 'p/1.jpg', type: 'picture' })]} onSelectDate={vi.fn()} />);
         expect(screen.getByTestId('modal-header-icon')).toBeInTheDocument();
         const today = screen.getAllByRole('button', { name: '10' })[0];
-        expect(today).toHaveClass('ring-2', 'ring-inset', 'ring-accent', 'hover:bg-accent-subtle', 'focus-visible:ring-accent');
-        expect(today).not.toHaveClass('bg-sunken');
+        expect(today).toHaveClass('border-2', 'border-accent', 'hover:bg-accent-subtle', 'focus-visible:ring-accent');
+        expect(today).not.toHaveClass('bg-sunken', 'ring-inset');
+        // Focus keeps its own ring and offset on top of the today border.
+        expect(today).toHaveClass('focus-visible:ring-2', 'focus-visible:ring-offset-2');
+        expect(screen.getAllByRole('button', { name: '11' })[0]).toHaveClass('border-transparent');
         expect(today.querySelector('span[aria-hidden="true"]')).toHaveClass('h-1.5', 'w-1.5', 'bg-accent');
     });
 });

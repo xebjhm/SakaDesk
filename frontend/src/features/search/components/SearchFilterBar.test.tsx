@@ -34,6 +34,19 @@ describe('SearchFilterBar', () => {
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'search_members', outcome: 'ok' }));
     });
 
+    it('marks the member sublabel (a Japanese group name) as ja, not the member count', async () => {
+        server.use(http.get('/api/search/members', () => HttpResponse.json({
+            members: [{ service: 'hinatazaka46', member_id: 1, member_name: '山下 瞳月', member_ids: [1], blog_member_id: 1 }],
+            services: [{ service: 'hinatazaka46', member_count: 3 }],
+        })));
+        renderBar();
+        fireEvent.focus(screen.getByRole('textbox', { name: i18n.t('search.filterByMember') }));
+        const member = await screen.findByRole('option', { name: /山下 瞳月/ });
+        const sub = member.querySelectorAll('span')[2];
+        expect(sub).toHaveAttribute('lang', 'ja');
+        expect(screen.getByText('3 members')).not.toHaveAttribute('lang');
+    });
+
     it('logs a failed member list load as an error', async () => {
         server.use(http.get('/api/search/members', () => HttpResponse.error()));
         renderBar();
