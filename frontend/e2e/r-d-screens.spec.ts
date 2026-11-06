@@ -179,7 +179,7 @@ for (const service of ['hinatazaka46', 'sakurazaka46'] as const) {
         json: {
           tos_accepted_at: '2026-01-01T00:00:00Z',
           language: 'en',
-          celebrated_milestones: { [`${service}|${dir}`]: { messages: [1000], days: [] } },
+          celebrated_milestones: { [`${service}|${dir}`]: { messages: [1000], days: [100] } },
           'sakadesk-app-state': JSON.stringify({ state: { selectedServices: [service], activeService: service, activeFeatures: { [service]: 'messages' } }, version: 4 }),
         },
       })

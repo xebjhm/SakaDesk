@@ -29,12 +29,15 @@ export function reachedDayMilestones(days: number): number[] {
  * first time in a room is seeded silently: only milestones reached from then on are celebrated.
  * At most one card per open: a new messages milestone first, else a new days one; the highest
  * new value of that kind shows and every lower new value is recorded with it. A kind given as
- * `null` (its data is not known yet) is left alone.
+ * `null` (its data is not known yet) is left alone. With `canShow` false (a card was already
+ * shown for this open) new milestones are neither shown nor recorded, so a later open
+ * celebrates them; seeding still happens.
  */
 export function decideMilestone(
     roomKey: string,
     reached: Record<MilestoneKind, number[] | null>,
     store: MilestoneStore,
+    canShow = true,
 ): { show: Milestone | null; seeded: MilestoneKind[]; next: MilestoneStore } {
     const room: Partial<Record<MilestoneKind, number[]>> = { ...(store[roomKey] ?? {}) };
     const seeded: MilestoneKind[] = [];
@@ -49,7 +52,7 @@ export function decideMilestone(
             continue;
         }
         const fresh = values.filter((v) => !seen.includes(v));
-        if (fresh.length === 0 || show) continue;
+        if (fresh.length === 0 || show || !canShow) continue;
         show = { kind, value: Math.max(...fresh) };
         room[kind] = [...seen, ...fresh].sort((a, b) => a - b);
     }
@@ -59,7 +62,7 @@ export function decideMilestone(
 interface UseMilestoneArgs {
     /** `<service>|<room dir>` of a member chat; null for a group chat or no chat. */
     roomKey: string | null;
-    /** The room's message count once loaded for this room, else null. */
+    /** The room's message count once loaded for this room, else null (0 is treated as not known: an empty room is not seeded). */
     totalMessages: number | null;
     /** The subscription day count once loaded for this room, else null. */
     streakDays: number | null;
@@ -72,17 +75,20 @@ interface UseMilestoneArgs {
 export function useMilestone({ roomKey, totalMessages, streakDays }: UseMilestoneArgs): Milestone | null {
     const [shown, setShown] = useState<{ roomKey: string; milestone: Milestone } | null>(null);
     const evaluated = useRef(new Set<string>());
+    // Room keys that already showed a card during the current open.
+    const shownThisOpen = useRef(new Set<string>());
 
     // Leaving a room ends its open: the next open decides again.
     useEffect(() => () => {
         if (!roomKey) return;
         evaluated.current.delete(`${roomKey}|messages`);
         evaluated.current.delete(`${roomKey}|days`);
+        shownThisOpen.current.delete(roomKey);
     }, [roomKey]);
 
     useEffect(() => {
         if (!roomKey) return;
-        const messagesDue = totalMessages !== null && !evaluated.current.has(`${roomKey}|messages`);
+        const messagesDue = totalMessages !== null && totalMessages > 0 && !evaluated.current.has(`${roomKey}|messages`);
         const daysDue = streakDays !== null && !evaluated.current.has(`${roomKey}|days`);
         if (!messagesDue && !daysDue) return;
         if (messagesDue) evaluated.current.add(`${roomKey}|messages`);
@@ -94,10 +100,12 @@ export function useMilestone({ roomKey, totalMessages, streakDays }: UseMileston
                 days: daysDue ? reachedDayMilestones(streakDays as number) : null,
             },
             persisted.getPref<MilestoneStore>(MILESTONES_PREF, {}),
+            !shownThisOpen.current.has(roomKey),
         );
-        persisted.setPref(MILESTONES_PREF, next);
+        if (show || seeded.length > 0) persisted.setPref(MILESTONES_PREF, next);
         for (const kind of seeded) clientLog('celebration', { target: `milestone_${kind}`, outcome: 'seeded' });
         if (show) {
+            shownThisOpen.current.add(roomKey);
             setShown({ roomKey, milestone: show });
             clientLog('celebration', { target: `milestone_${show.kind}`, outcome: 'shown', count: show.value });
         }

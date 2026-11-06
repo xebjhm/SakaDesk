@@ -75,6 +75,38 @@ describe('useMilestone', () => {
         expect(later.result.current).toBeNull();
     });
 
+    it('shows one card per open when messages and days both have a new milestone (streak arrives later)', () => {
+        stored[MILESTONES_PREF] = { 'h|room': { messages: [1000], days: [] } };
+        const { result, rerender, unmount } = renderHook((p) => useMilestone(p), { initialProps: { roomKey: 'h|room', totalMessages: 5001 as number | null, streakDays: null as number | null } });
+        expect(result.current).toEqual({ kind: 'messages', value: 5000 });
+        rerender({ roomKey: 'h|room', totalMessages: 5001, streakDays: 128 });
+        expect(result.current).toEqual({ kind: 'messages', value: 5000 });
+        const shownLogs = vi.mocked(clientLog).mock.calls.filter((c) => (c[1] as { outcome?: string }).outcome === 'shown');
+        expect(shownLogs).toHaveLength(1);
+        // The days milestone stays unrecorded, so a later open celebrates it.
+        expect((stored[MILESTONES_PREF] as MilestoneStore)['h|room'].days).toEqual([]);
+        unmount();
+        const next = renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 5001, streakDays: 128 }));
+        expect(next.result.current).toEqual({ kind: 'days', value: 100 });
+    });
+
+    it('does not seed an empty room, so the first open with real data seeds silently', () => {
+        const empty = renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 0, streakDays: null }));
+        expect(empty.result.current).toBeNull();
+        expect(persisted.setPref).not.toHaveBeenCalled();
+        empty.unmount();
+        const synced = renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 12000, streakDays: null }));
+        expect(synced.result.current).toBeNull();
+        expect((stored[MILESTONES_PREF] as MilestoneStore)['h|room'].messages).toEqual([1000, 5000, 10000]);
+    });
+
+    it('does not write the store when nothing was seeded or shown', () => {
+        stored[MILESTONES_PREF] = { 'h|room': { messages: [1000], days: [100] } };
+        const { result } = renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 2000, streakDays: 128 }));
+        expect(result.current).toBeNull();
+        expect(persisted.setPref).not.toHaveBeenCalled();
+    });
+
     it('does nothing for a group chat (no room key) or before the counts are known', () => {
         const { result } = renderHook(() => useMilestone({ roomKey: null, totalMessages: 20000, streakDays: 800 }));
         expect(result.current).toBeNull();
