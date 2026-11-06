@@ -63,6 +63,7 @@ const FILES = [
     // R-d
     '../shell/components/FirstSyncToast.tsx',
     '../shell/components/EntryBackdrop.tsx',
+    '../features/messages/components/MilestoneFooter.tsx',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;

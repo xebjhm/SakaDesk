@@ -702,6 +702,10 @@
   "celebration": {
     "firstSyncTitle": "Your archive is ready",
     "firstSyncBody": "{{value}} message saved",
-    "firstSyncBody_other": "{{value}} messages saved"
+    "firstSyncBody_other": "{{value}} messages saved",
+    "milestoneMessages": "messages in this chat",
+    "milestoneDays": "days subscribed",
+    "milestoneYears": "year subscribed",
+    "milestoneYears_other": "years subscribed"
   }
 }

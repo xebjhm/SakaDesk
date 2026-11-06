@@ -700,6 +700,9 @@
   },
   "celebration": {
     "firstSyncTitle": "アーカイブの準備ができました",
-    "firstSyncBody": "{{value}}件のメッセージを保存しました"
+    "firstSyncBody": "{{value}}件のメッセージを保存しました",
+    "milestoneMessages": "通のメッセージ",
+    "milestoneDays": "日間の購読",
+    "milestoneYears": "年間の購読"
   }
 }

@@ -1,5 +1,7 @@
 // frontend/src/features/messages/MessagesFeature.tsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useMilestone } from './milestones';
+import { MilestoneFooter } from './components/MilestoneFooter';
 import type { Message, MemberInfo, BackgroundSettings } from '../../types';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
@@ -435,6 +437,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // local day) is shared by the header and the profile popup.
     const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
     const { streak, retryStreak } = roomExtras;
+    // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
+    const milestone = useMilestone({
+        roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
+        totalMessages: selectedGroupDir && messagesForDir === selectedGroupDir ? totalMessages : null,
+        streakDays: streak.status === 'ready' ? streak.days : null,
+    });
     const timeline = useMemo(() => buildTimeline(displayMessages, roomExtras.letters), [displayMessages, roomExtras.letters]);
     const letterAvatar = useMemo(
         () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
@@ -832,6 +840,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getMemberPath={getMemberPath}
                             onOpenCalendar={openCalendar}
                             renderLetter={renderLetter}
+                            footer={milestone ? <MilestoneFooter milestone={milestone} /> : undefined}
                         />
                     )}
                     <CallOverlay

@@ -700,6 +700,9 @@
   },
   "celebration": {
     "firstSyncTitle": "你的存档已准备就绪",
-    "firstSyncBody": "已保存 {{value}} 条消息"
+    "firstSyncBody": "已保存 {{value}} 条消息",
+    "milestoneMessages": "条消息",
+    "milestoneDays": "天的订阅",
+    "milestoneYears": "年的订阅"
   }
 }
