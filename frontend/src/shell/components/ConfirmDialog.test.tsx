@@ -48,6 +48,25 @@ describe('ConfirmDialog', () => {
         expect(screen.getByTestId('modal-header-icon').firstElementChild).toHaveClass('bg-semantic-info-icon', 'text-semantic-info');
     });
 
+    it('a warning confirm stays amber inside a brand scope, a default one takes the primary', () => {
+        const { unmount } = render(
+            <BrandScope>
+                <ConfirmDialog open title="警告" message="m" confirmLabel="続行" variant="warning" onConfirm={vi.fn()} onCancel={vi.fn()} />
+            </BrandScope>,
+        );
+        const warn = screen.getByRole('button', { name: '続行' });
+        expect(warn).toHaveClass('bg-status-attention');
+        expect(warn).not.toHaveClass('bg-accent-gradient');
+        unmount();
+        renderDialog();
+        expect(screen.getByRole('button', { name: 'はい' })).toHaveClass('bg-accent-gradient');
+    });
+
+    it('outside a brand scope the dialog has no brand data-scope', () => {
+        renderDialog();
+        expect(screen.getByRole('dialog', { name: '確認 ✅' })).not.toHaveAttribute('data-scope', 'brand');
+    });
+
     it('shows title, message and the two buttons; confirm and cancel call back', async () => {
         const p = renderDialog();
         expect(screen.getByRole('heading', { name: '確認 ✅' })).toBeInTheDocument();

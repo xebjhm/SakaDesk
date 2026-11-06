@@ -25,6 +25,8 @@ const ICON_TILE: Record<NonNullable<ConfirmDialogProps['variant']>, string> = {
     default: 'bg-semantic-info-icon border-semantic-info text-semantic-info',
 };
 
+const CONFIRM_BUTTON = { warning: 'warning', danger: 'danger', default: 'primary' } as const;
+
 /** In-app confirmation dialog. Escape cancels; at most one emphasised button. The header follows the opener's context. */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     open, title, message, confirmLabel, cancelLabel, variant = 'default', onConfirm, onCancel, logId = 'confirm',
@@ -47,7 +49,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             footer={
                 <>
                     <Button ref={cancelRef} variant="secondary" onClick={onCancel}>{cancelLabel ?? t('common.cancel')}</Button>
-                    <Button variant={variant === 'danger' ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
+                    <Button variant={CONFIRM_BUTTON[variant]} onClick={onConfirm}>{confirmLabel}</Button>
                 </>
             }
         >

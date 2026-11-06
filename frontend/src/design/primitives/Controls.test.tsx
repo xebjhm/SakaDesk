@@ -113,6 +113,10 @@ describe('Button v2', () => {
         render(<Button variant="danger">Delete</Button>);
         expect(screen.getByRole('button', { name: 'Delete' }).className).toContain('bg-status-danger');
     });
+    it('warning stays semantic in every context', () => {
+        render(<Button variant="warning">Careful</Button>);
+        expect(screen.getByRole('button', { name: 'Careful' })).toHaveClass('bg-status-attention', 'text-inverse');
+    });
     it('a blocked click does not reach a parent handler', () => {
         const parent = vi.fn();
         render(<div onClick={parent}><Button disabledReason="Not yet">Go</Button></div>);
