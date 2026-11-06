@@ -108,4 +108,11 @@ describe('App Integration Tests', () => {
       expect(within(header).getByText('Test Member')).toBeInTheDocument()
     })
   })
+
+  it('shows the no-conversation screen as the empty-state pattern (R-d, pending decision D6)', async () => {
+    renderApp()
+    const title = await screen.findByRole('heading', { name: 'Welcome to SakaDesk' })
+    expect(title).toHaveClass('font-display')
+    expect(title.parentElement?.querySelector('[data-testid="empty-state-circle"]')).not.toBeNull()
+  })
 })

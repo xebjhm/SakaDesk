@@ -42,7 +42,16 @@ describe('DialogStatus', () => {
         expect(container.querySelector('span[aria-hidden]')).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
         expect(screen.getByRole('button', { name: 'Retry' })).not.toHaveClass('bg-accent-gradient');
         rerender(<DialogStatus kind="empty" icon={<Star />} onRetry={vi.fn()} retryLabel="Retry" retryVariant="primary" />);
-        expect(container.querySelector('span[aria-hidden]')).toHaveClass('bg-expressive-soft', 'text-accent-strong');
+        expect(screen.getByTestId('empty-state-circle')).toHaveClass('bg-expressive-soft', 'text-muted');
         expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('bg-accent-gradient');
+    });
+
+    it('draws an empty dialog as the brand-moment pattern: soft circle, serif title, hint (R-d)', () => {
+        render(<DialogStatus kind="empty" icon={<Star />} title="お気に入りなし" hint="長押しで追加 ⭐" className="py-8" />);
+        const status = screen.getByRole('status');
+        expect(status).toHaveClass('py-8');
+        expect(screen.getByRole('heading', { name: 'お気に入りなし' })).toHaveClass('font-display');
+        expect(status).toContainElement(screen.getByTestId('empty-state-circle'));
+        expect(screen.getByText('長押しで追加 ⭐')).toHaveClass('text-secondary');
     });
 });
