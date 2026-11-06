@@ -169,7 +169,7 @@ test('inline sync of 櫻坂46 added to 日向坂46', async ({ page }) => {
 })
 
 for (const service of ['hinatazaka46', 'sakurazaka46'] as const) {
-  test(`${service}: about, diagnostics, empty states, milestone, voice`, async ({ page }) => {
+  test(`${service}: about, diagnostics, empty states, milestone, voice, gallery voice`, async ({ page }) => {
     await pinBigRoom(page, { messages: { current: voiceRoom() }, service })
     // A seen chat that has passed 1,000 messages before: 5,000 and day 100 are new (R-d builds only).
     const dir = roomDir(service)
@@ -219,6 +219,19 @@ for (const service of ['hinatazaka46', 'sakurazaka46'] as const) {
     await page.keyboard.press('Escape')
 
     await shot(page, `${service}-chat-end`)
+
+    // Decision D13: the gallery's voice tab draws the premium voice card (the opaque sheet card
+    // on R-d; the glass card before), fed by voiceRoom()'s voice message.
+    await page.getByTitle('More options').click()
+    await page.getByRole('menu').first().getByText('Media', { exact: true }).click()
+    const gallery = page.getByRole('dialog').first()
+    await settled(page, gallery)
+    await gallery.getByRole('tab', { name: 'Voice messages' }).click()
+    await expect(gallery.getByRole('tab', { name: 'Voice messages' })).toHaveAttribute('aria-selected', 'true')
+    // The card's own menu button: present only once the gallery player has rendered.
+    await settled(page, gallery.getByRole('button', { name: 'More options' }).last())
+    await shot(page, `${service}-gallery-voice`)
+    await page.keyboard.press('Escape')
   })
 }
 
