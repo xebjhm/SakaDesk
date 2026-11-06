@@ -56,6 +56,7 @@ ClientEvent = Literal[
     "sync_start_skipped",
     "menu_item_blocked",
     "blog_fallback",
+    "group_marker_fallback",
 ]
 
 ALLOWED_FIELDS = frozenset(
