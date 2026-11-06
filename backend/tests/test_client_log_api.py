@@ -287,6 +287,26 @@ def test_notify_open_chat_accepts_has_target():
             {"target": "add_service", "reason": "unknown_service"},
             "info",
         ),
+        (
+            "group_marker_fallback",
+            {"target": "sync_row", "reason": "unknown_service"},
+            "info",
+        ),
+        ("entry_validation", {"surface": "setup", "reason": "missing_folder"}, "info"),
+        ("archive_stats_load", {"outcome": "ok"}, "info"),
+        ("archive_stats_load", {"outcome": "failed"}, "info"),
+        ("celebration", {"target": "first_sync", "outcome": "shown"}, "info"),
+        (
+            "celebration",
+            {"target": "first_sync", "outcome": "skipped", "reason": "sync_failed"},
+            "info",
+        ),
+        (
+            "celebration",
+            {"target": "milestone_messages", "outcome": "shown", "count": 5000},
+            "info",
+        ),
+        ("celebration", {"target": "milestone_days", "outcome": "seeded"}, "info"),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):

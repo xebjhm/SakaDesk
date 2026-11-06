@@ -4,12 +4,12 @@ import { serviceGroupId } from '../config/serviceGroup';
 import { clientLog } from '../utils/clientLog';
 
 /** Where a group marker sits; logged when its service is unknown. */
-export type GroupMarkerTarget = 'add_service' | 'settings_row';
+export type GroupMarkerTarget = 'add_service' | 'settings_row' | 'landing' | 'tos_link' | 'sync_row';
 
 /**
  * Group scope for one piece of a brand dialog that names one service (a group card, a per-group
- * settings row: docs/design/DESIGN_SYSTEM.md, "Contexts"). Inside it every `*-accent-*` and
- * `*-group-*` utility follows that service's group. An unknown service has no group: the piece
+ * settings row, a ToS link, a landing card, a sync step: docs/design/DESIGN_SYSTEM.md, "Contexts").
+ * Inside it every `*-accent-*` and `*-group-*` utility follows that service's group. An unknown service has no group: the piece
  * stays in the surrounding (brand) context and one `group_marker_fallback` breadcrumb is logged.
  */
 export function useGroupMarker(serviceId: string | null, target: GroupMarkerTarget): CSSProperties | undefined {

@@ -44,6 +44,7 @@ export default {
                 'expressive-soft': 'var(--ds-expressive-soft)',
                 'expressive-header': 'var(--ds-expressive-header)',
                 'expressive-header-bar': 'var(--ds-expressive-header-bar)',
+                'expressive-progress': 'var(--ds-expressive-progress)',
                 'expressive-orb-1': 'var(--ds-expressive-orb-1)',
                 'expressive-orb-2': 'var(--ds-expressive-orb-2)',
                 'expressive-orb-3': 'var(--ds-expressive-orb-3)',
@@ -168,6 +169,8 @@ export default {
             ringColor: {
                 accent: 'var(--ds-accent)',
                 'accent-border': 'var(--ds-accent-border)',
+                'accent-logo': 'var(--ds-accent-logo)',
+                'accent-subtle': 'var(--ds-accent-subtle)',
                 'semantic-oshi': 'var(--ds-semantic-oshi-border)',
                 group: 'var(--ds-group-ring)',
                 'group-logo': 'var(--ds-group-logo)',
