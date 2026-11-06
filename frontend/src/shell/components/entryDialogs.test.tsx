@@ -98,6 +98,13 @@ describe('login banner text (D2d)', () => {
         render(<LoginModal serviceId="hinatazaka46" featureId="messages" onClose={vi.fn()} onSuccess={vi.fn()} isFreshPrompt />);
         expect(within(screen.getByTestId('login-banner')).getByText('日向坂46')).not.toHaveClass('text-secondary');
     });
+
+    it('draws the banner title bold and the light-header icon disc in the accent tint (R-c)', () => {
+        render(<LoginModal serviceId="sakurazaka46" featureId="messages" onClose={vi.fn()} onSuccess={vi.fn()} isFreshPrompt />);
+        const banner = screen.getByTestId('login-banner');
+        expect(within(banner).getByRole('heading', { level: 2 })).toHaveClass('font-bold');
+        expect(banner.querySelector('span[aria-hidden="true"]')).toHaveClass('bg-accent-subtle');
+    });
 });
 
 describe('login stale state (D2d)', () => {

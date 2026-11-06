@@ -18,13 +18,16 @@ interface ConfirmDialogProps {
     logId?: DialogLogId;
 }
 
-const ICON_TONE: Record<NonNullable<ConfirmDialogProps['variant']>, string> = {
-    warning: 'text-status-warning',
-    danger: 'text-status-danger',
-    default: 'text-secondary',
+/** The meaning stays semantic on any header (spec 3.4 icon rule: icon-step fill, border-step outline, text-step glyph). */
+const ICON_TILE: Record<NonNullable<ConfirmDialogProps['variant']>, string> = {
+    warning: 'bg-semantic-warning-icon border-semantic-warning text-semantic-warning',
+    danger: 'bg-semantic-danger-icon border-semantic-danger text-semantic-danger',
+    default: 'bg-semantic-info-icon border-semantic-info text-semantic-info',
 };
 
-/** In-app confirmation dialog. Escape cancels; at most one emphasised button. */
+const CONFIRM_BUTTON = { warning: 'warning', danger: 'danger', default: 'primary' } as const;
+
+/** In-app confirmation dialog. Escape cancels; at most one emphasised button. The header follows the opener's context. */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     open, title, message, confirmLabel, cancelLabel, variant = 'default', onConfirm, onCancel, logId = 'confirm',
 }) => {
@@ -34,15 +37,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <Modal
             isOpen={open}
             onClose={onCancel}
-            title={<span className="flex items-center gap-2"><AlertTriangle aria-hidden="true" className={cn('h-5 w-5 shrink-0', ICON_TONE[variant])} />{title}</span>}
-            header="plain"
+            title={title}
+            icon={
+                <span className={cn('flex h-8 w-8 items-center justify-center rounded-full border', ICON_TILE[variant])}>
+                    <AlertTriangle className="h-4 w-4" />
+                </span>
+            }
             logId={logId}
             initialFocusRef={cancelRef}
             className="max-w-md"
             footer={
                 <>
-                    <Button ref={cancelRef} variant="ghost" onClick={onCancel}>{cancelLabel ?? t('common.cancel')}</Button>
-                    <Button variant={variant === 'danger' ? 'danger' : 'primary'} onClick={onConfirm}>{confirmLabel}</Button>
+                    <Button ref={cancelRef} variant="secondary" onClick={onCancel}>{cancelLabel ?? t('common.cancel')}</Button>
+                    <Button variant={CONFIRM_BUTTON[variant]} onClick={onConfirm}>{confirmLabel}</Button>
                 </>
             }
         >

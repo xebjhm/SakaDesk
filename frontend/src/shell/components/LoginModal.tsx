@@ -184,12 +184,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     >
                         <span
                             aria-hidden="true"
-                            className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-pill', isLight ? 'bg-group-subtle' : 'bg-viewer-control')}
+                            className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-pill', isLight ? 'bg-accent-subtle' : 'bg-viewer-control')}
                         >
                             <LogIn className="h-5 w-5" />
                         </span>
                         <div className="min-w-0 flex-1">
-                            <h2 id={titleId} className="truncate text-title font-semibold">{title}</h2>
+                            <h2 id={titleId} className="truncate text-title font-bold">{title}</h2>
                             <p className={cn('truncate text-small', isLight && 'text-secondary')}>{service?.displayName ?? serviceId}</p>
                         </div>
                         <IconButton

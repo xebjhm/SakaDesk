@@ -10,6 +10,17 @@ import { clientLog } from '../../utils/clientLog';
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 describe('ReportIssueModal', () => {
+    it('is a brand dialog with the bug icon, and the chosen category uses the accent roles', async () => {
+        render(<ReportIssueModal isOpen onClose={vi.fn()} currentScreen="Home" />);
+        expect(screen.getByRole('dialog', { name: 'Report an Issue' })).toHaveAttribute('data-scope', 'brand');
+        expect(screen.getByTestId('modal-header-icon')).toBeInTheDocument();
+        const sync = screen.getByRole('button', { name: /Sync \/ Data/ });
+        await userEvent.click(sync);
+        expect(sync).toHaveAttribute('aria-pressed', 'true');
+        expect(sync).toHaveClass('border-accent', 'bg-accent-subtle');
+        expect(screen.getByText('Sync / Data')).toHaveClass('text-accent-strong');
+    });
+
     it('creating an issue needs a category', async () => {
         render(<ReportIssueModal isOpen onClose={vi.fn()} currentScreen="Home" />);
         const create = screen.getByRole('button', { name: /Create GitHub Issue/ });

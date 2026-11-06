@@ -282,6 +282,11 @@ def test_notify_open_chat_accepts_has_target():
             {"target": "timeline_thumb", "reason": "image_error"},
             "info",
         ),
+        (
+            "group_marker_fallback",
+            {"target": "add_service", "reason": "unknown_service"},
+            "info",
+        ),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):

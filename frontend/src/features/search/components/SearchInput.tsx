@@ -63,7 +63,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
           aria-label={t('search.filters')}
           title={t('search.filters')}
           aria-pressed={filtersActive}
-          className={cn(filtersActive && 'bg-sunken text-primary')}
+          className={cn(filtersActive && 'bg-accent-subtle text-accent-strong')}
           icon={<SlidersHorizontal className="h-4 w-4" />}
           onClick={onFilterToggle}
         />

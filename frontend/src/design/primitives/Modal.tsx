@@ -13,6 +13,8 @@ export interface ModalProps {
     onClose: () => void;
     /** Visible title (h2, standard layout); also names the dialog. */
     title?: React.ReactNode;
+    /** Decorative icon before the title (standard layout). It takes the header text colour; pass an unsized lucide icon (plain dialog icons are drawn at 20 px; ConfirmDialog passes its own 32 px semantic tile, drawn as given). Ignored without a title or in the bare layout. */
+    icon?: React.ReactNode;
     /** Name when there is no visible title (search, viewer). */
     'aria-label'?: string;
     /** Id of an element inside a bare dialog that names it. */
@@ -64,7 +66,7 @@ function warnOnce(message: string): void {
 export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal {...props} /> : null);
 
 const OpenModal: React.FC<ModalProps> = ({
-    onClose, title, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer,
+    onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
     initialFocusRef, className, bodyClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
@@ -139,8 +141,11 @@ const OpenModal: React.FC<ModalProps> = ({
                                 header === 'expressive' ? 'bg-expressive-header py-4 text-expressive-header' : 'pb-2 pt-5 text-primary',
                             )}
                         >
+                            {title !== undefined && icon && (
+                                <span data-testid="modal-header-icon" aria-hidden="true" className="flex shrink-0 items-center [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
+                            )}
                             {title !== undefined && (
-                                <h2 id={titleId} className="min-w-0 flex-1 truncate text-title font-semibold">{title}</h2>
+                                <h2 id={titleId} className="min-w-0 flex-1 truncate text-title font-bold">{title}</h2>
                             )}
                             {headerExtra}
                             {dismissible && closeLabel && (

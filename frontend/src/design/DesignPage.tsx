@@ -208,7 +208,7 @@ export const DesignPage: React.FC = () => {
 
                 <Section title={t('designPage.buttons')}>
                     <div className="flex flex-wrap items-center gap-3">
-                        {(['primary', 'tonal', 'secondary', 'ghost', 'danger'] as const).map((v) => <Button key={v} variant={v}>{v}</Button>)}
+                        {(['primary', 'tonal', 'secondary', 'ghost', 'warning', 'danger'] as const).map((v) => <Button key={v} variant={v}>{v}</Button>)}
                         <Button variant="primary" loading>loading</Button>
                         <Button variant="primary" disabledReason={t('designPage.sampleDisabledReason')}>disabled</Button>
                     </div>

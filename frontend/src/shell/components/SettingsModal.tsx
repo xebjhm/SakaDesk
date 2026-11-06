@@ -11,6 +11,8 @@ import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { clearTranslationCache } from '../../hooks/useMessageTranslation';
 import { apiKeyStatus } from './apiKeyStatus';
 import { persisted } from '../../core/persistence/persisted';
+import { useGroupMarker } from '../../design/useGroupMarker';
+import { getServiceDisplayName } from '../../data/services';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -56,6 +58,14 @@ function logBatch(surface: DialogLoadSurface, failed: number, total: number): vo
     const [outcome, count] = batchOutcome(failed, total);
     logDialogLoad(surface, outcome, count);
 }
+
+/** The group a per-group row acts on (spec section 4 marker): a dot in the group colour and its name (data). */
+const GroupChip: React.FC<{ serviceId: string }> = ({ serviceId }) => (
+    <span data-testid="settings-group-chip" lang="ja" className="inline-flex items-center gap-1 rounded-pill bg-accent-subtle px-2 py-0.5 text-caption font-semibold text-accent-strong">
+        <span aria-hidden="true" className="h-1.5 w-1.5 rounded-pill bg-accent" />
+        {getServiceDisplayName(serviceId)}
+    </span>
+);
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
@@ -255,11 +265,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
 
     const syncModeLabelId = useId();
+    const groupMarker = useGroupMarker(activeService, 'settings_row');
     const syncMode = !appSettings.auto_sync_enabled ? 'off' : appSettings.adaptive_sync_enabled ? 'smart' : 'fixed';
 
     return (
         <Modal
             isOpen
+            scope="brand"
             onClose={onClose}
             title={t('settings.title')}
             closeLabel={t('common.close')}
@@ -277,8 +289,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         onClick={() => setActiveTab(id)}
                         className={cn(
                             'flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
-                            activeTab === id ? 'bg-sunken font-semibold text-primary' : 'text-secondary hover:bg-sunken hover:text-primary',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                            activeTab === id ? 'bg-accent-subtle font-semibold text-accent-strong' : 'text-secondary hover:bg-sunken hover:text-primary',
                         )}
                     >
                         <Icon className="h-4 w-4 shrink-0" />
@@ -387,7 +399,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     name="syncMode"
                                     checked={syncMode === 'off'}
                                     onChange={() => save('syncMode', { auto_sync_enabled: false, adaptive_sync_enabled: false })}
-                                    className="h-4 w-4 accent-group"
+                                    className="h-4 w-4 accent-accent"
                                 />
                                 <div>
                                     <span className="text-body text-primary">{t('settings.syncOff')}</span>
@@ -401,7 +413,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     name="syncMode"
                                     checked={syncMode === 'fixed'}
                                     onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: false })}
-                                    className="h-4 w-4 accent-group"
+                                    className="h-4 w-4 accent-accent"
                                 />
                                 <div>
                                     <span className="text-body text-primary">{t('settings.syncFixed')}</span>
@@ -432,7 +444,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     name="syncMode"
                                     checked={syncMode === 'smart'}
                                     onChange={() => save('syncMode', { auto_sync_enabled: true, adaptive_sync_enabled: true })}
-                                    className="h-4 w-4 accent-group"
+                                    className="h-4 w-4 accent-accent"
                                 />
                                 <div>
                                     <span className="text-body text-primary">{t('settings.syncSmart')}</span>
@@ -484,37 +496,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         )}
                     </SettingRow>
 
-                    <SettingRow
-                        label={t('settings.verifyFixMedia')}
-                        description={t('settings.verifyFixMediaDesc')}
-                        control={
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => {
-                                    // Close settings so the verify progress/result
-                                    // (shown in the sync modal) is in focus.
-                                    onVerifyAndFix(activeService);
-                                    onClose();
-                                }}
-                            >
-                                {t('settings.verifyFixButton')}
-                            </Button>
-                        }
-                    />
+                    <div data-testid="settings-group-rows" style={groupMarker} className="flex flex-col gap-6">
+                        <SettingRow
+                            label={<>{t('settings.verifyFixMedia')}<GroupChip serviceId={activeService} /></>}
+                            description={t('settings.verifyFixMediaDesc')}
+                            control={
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-accent-strong"
+                                    onClick={() => {
+                                        // Close settings so the verify progress/result
+                                        // (shown in the sync modal) is in focus.
+                                        onVerifyAndFix(activeService);
+                                        onClose();
+                                    }}
+                                >
+                                    {t('settings.verifyFixButton')}
+                                </Button>
+                            }
+                        />
 
-                    {/* Deep re-verify: full re-sync (re-paginates every member from
-                        scratch, skipping already-downloaded assets). Catches gaps the
-                        media-only check can't (e.g. entirely-missing messages). */}
-                    <SettingRow
-                        label={t('settings.deepResync')}
-                        description={t('settings.deepResyncDesc')}
-                        control={
-                            <Button variant="secondary" size="sm" onClick={() => setConfirm('deep')}>
-                                {t('settings.deepResyncButton')}
-                            </Button>
-                        }
-                    />
+                        {/* Deep re-verify: full re-sync (re-paginates every member from
+                            scratch, skipping already-downloaded assets). Catches gaps the
+                            media-only check can't (e.g. entirely-missing messages). */}
+                        <SettingRow
+                            label={<>{t('settings.deepResync')}<GroupChip serviceId={activeService} /></>}
+                            description={t('settings.deepResyncDesc')}
+                            control={
+                                <Button variant="ghost" size="sm" className="text-semantic-warning hover:bg-semantic-warning-subtle" onClick={() => setConfirm('deep')}>
+                                    {t('settings.deepResyncButton')}
+                                </Button>
+                            }
+                        />
+                    </div>
 
                     <SettingRow
                         label={t('settings.syncReadToPhone')}
@@ -607,7 +622,7 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
             error={saveError}
         >
             <div className="mt-2 flex items-center gap-3">
-                <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>
+                <Button variant="secondary" size="sm" className="border-accent-wash bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={handleCheckNow} disabled={checking}>
                     {checking
                         ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                         : <RefreshCw className="h-4 w-4" />

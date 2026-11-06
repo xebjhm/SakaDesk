@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 import { cn, MONTH_NAMES } from '../../utils/classnames';
 import { IconButton, Button, Modal } from '../../design/primitives';
 import { DialogStatus } from '../common/DialogStatus';
@@ -228,6 +228,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             isOpen={isOpen}
             onClose={onClose}
             title={modalTitle}
+            icon={<CalendarIcon />}
             closeLabel={t('common.close')}
             logId="calendar"
             className="max-w-md"
@@ -277,15 +278,15 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                     title={hasMessages ? t('calendar.itemCount', { count: getMessageCount(dateStr) }) : undefined}
                                     className={cn(
                                         'relative flex aspect-square flex-col items-center justify-center rounded-pill text-small',
-                                        'transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+                                        'transition-colors duration-fast ease-standard focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
                                         !isCurrentMonth && 'opacity-30',
-                                        hasMessages ? 'cursor-pointer text-primary hover:bg-group-subtle' : 'text-muted',
+                                        hasMessages ? 'cursor-pointer text-primary hover:bg-accent-subtle' : 'text-muted',
                                         isCurrentMonth && date.getDay() === 0 && 'text-sunday',
-                                        today && 'bg-sunken font-semibold',
+                                        today ? 'font-semibold border-2 border-accent' : 'border-2 border-transparent',
                                     )}
                                 >
                                     <span>{date.getDate()}</span>
-                                    {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1 w-1 rounded-pill bg-group-accent" />}
+                                    {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1.5 w-1.5 rounded-pill bg-accent" />}
                                 </button>
                             );
                         })}

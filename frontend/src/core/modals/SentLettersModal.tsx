@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { Mail } from 'lucide-react';
 import { Card, Modal } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
 import type { Letter } from '../../features/messages/letters';
@@ -62,18 +63,18 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onCl
                             onClose();
                             onSelectLetter(letter.id);
                         }}
-                        className="group flex flex-col gap-2 rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        className="group flex flex-col gap-2 rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                        <Card className="aspect-[3/4] overflow-hidden transition-shadow duration-fast ease-standard group-hover:shadow-sheet">
+                        <Card className="aspect-[3/4] overflow-hidden ring-1 ring-transparent transition-shadow duration-fast ease-standard group-hover:ring-accent-border group-hover:shadow-accent-glow-hover">
                             {letter.image_url ? (
                                 <img src={letter.image_url} alt="" draggable={false} className="h-full w-full object-cover" />
+                            ) : letter.text ? (
+                                <p lang="ja" className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{letter.text}</p>
                             ) : (
-                                <p className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">
-                                    {letter.text || t('sentLetters.noContent')}
-                                </p>
+                                <p className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{t('sentLetters.noContent')}</p>
                             )}
                         </Card>
-                        <time dateTime={letter.created_at} className="text-caption text-secondary">
+                        <time dateTime={letter.created_at} className="text-caption text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">
                             {dateFormat.format(date)}
                         </time>
                     </button>
@@ -83,7 +84,7 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onCl
     }
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={t('sentLetters.title')} closeLabel={t('common.close')} logId="sent_letters" className="max-w-2xl">
+        <Modal isOpen={isOpen} onClose={onClose} title={t('sentLetters.title')} icon={<Mail />} closeLabel={t('common.close')} logId="sent_letters" className="max-w-2xl">
             {body}
         </Modal>
     );

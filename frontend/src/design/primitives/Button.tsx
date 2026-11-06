@@ -1,7 +1,7 @@
 import React, { useId } from 'react';
 import { cn } from '../../utils/classnames';
 
-export type ButtonVariant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger' | 'overlay';
+export type ButtonVariant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger' | 'warning' | 'overlay';
 export type IconButtonVariant = 'secondary' | 'ghost' | 'overlay' | 'accent' | 'soft';
 /** `circle` for floating buttons (over content or the viewer), `rounded` (12 px) for inline ones. */
 export type IconButtonShape = 'rounded' | 'circle';
@@ -25,7 +25,7 @@ const LIFT = 'hover:brightness-106 hover:-translate-y-px';
 const GLOW = 'shadow-accent-glow hover:shadow-accent-glow-hover active:shadow-pill';
 
 const VARIANT: Record<ButtonVariant, string> = {
-    /** L1: logo → accent gradient + glow. At most ONE primary or danger per screen and per dialog. */
+    /** L1: logo → accent gradient + glow. At most ONE primary, warning or danger per screen and per dialog. */
     primary: cn('bg-accent-gradient text-inverse', GLOW, LIFT),
     /** Secondary emphasis (e.g. "mark all read"): soft tonal gradient, dark accent text. */
     tonal: cn('bg-accent-tonal text-accent-tonal', LIFT),
@@ -33,6 +33,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     ghost: 'bg-transparent text-accent-strong hover:bg-accent-subtle',
     /** Destructive confirm (semantic, never follows context). Counts as the screen's one primary. */
     danger: cn('bg-status-danger text-inverse shadow-pill', LIFT),
+    /** Cautionary confirm (semantic warning, never follows context; restores `e4e4118`'s amber solid as warning solid `#9b5e1e`, white text >= 4.5:1, already pinned in `tokens.test.ts`). Counts as the screen's one primary. */
+    warning: cn('bg-status-attention text-inverse shadow-pill', LIFT),
     /** Controls on the dark photo/video viewer. */
     overlay: 'bg-viewer-control text-viewer hover:bg-viewer-control-hover',
 };

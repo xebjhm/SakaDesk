@@ -177,8 +177,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
         {selectedFilters.map((chip) => (
           <span key={`${chip.type}-${chip.id}`} className="inline-flex items-center gap-1 rounded-pill bg-pill px-2 py-1 text-caption font-semibold text-primary shadow-pill">
             <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(chip.color)} />
-            {chip.label}
-            <button type="button" onClick={() => handleRemoveChip(chip.id)} aria-label={t('search.removeFilter', { name: chip.label })} className="rounded-pill text-muted transition-colors duration-fast ease-standard hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group">
+            <span lang="ja">{chip.label}</span>
+            <button type="button" onClick={() => handleRemoveChip(chip.id)} aria-label={t('search.removeFilter', { name: chip.label })} className="rounded-pill text-muted transition-colors duration-fast ease-standard hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
               <X className="h-3 w-3" />
             </button>
           </span>
@@ -211,8 +211,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
                   className="flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
                 >
                   <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(item.color)} />
-                  <span className="truncate font-semibold text-primary">{item.label}</span>
-                  {item.sublabel && <span className="ml-auto truncate text-muted">{item.sublabel}</span>}
+                  <span lang="ja" className="truncate font-semibold text-primary">{item.label}</span>
+                  {item.sublabel && <span lang={item.type === 'member' ? 'ja' : undefined} className="ml-auto truncate text-muted">{item.sublabel}</span>}
                 </button>
               ))}
             </div>
@@ -225,12 +225,12 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
             NOT Levenshtein fuzzy search. When OFF (default), search includes
             pronunciation/reading-based matches via pykakasi-normalized kana. */}
         <label className="flex cursor-pointer select-none items-center gap-2 hover:text-primary">
-          <input type="checkbox" checked={exactOnly} onChange={(e) => onExactOnlyChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-group" />
+          <input type="checkbox" checked={exactOnly} onChange={(e) => onExactOnlyChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
           {t('search.exactMatchOnly')}
         </label>
 
         <label className="flex cursor-pointer select-none items-center gap-2 hover:text-primary">
-          <input type="checkbox" checked={includeUnread} onChange={(e) => onIncludeUnreadChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-group" />
+          <input type="checkbox" checked={includeUnread} onChange={(e) => onIncludeUnreadChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
           {t('search.includeUnread')}
         </label>
 
@@ -272,7 +272,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-status-warning" />
           <span>{t('search.blogSearchLimited')}</span>
           {onOpenBlogSettings && (
-            <button type="button" onClick={onOpenBlogSettings} className="whitespace-nowrap font-semibold text-group-strong underline decoration-group underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group">
+            <button type="button" onClick={onOpenBlogSettings} className="whitespace-nowrap font-semibold text-accent-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
               {t('search.enableFullBackup')}
             </button>
           )}
