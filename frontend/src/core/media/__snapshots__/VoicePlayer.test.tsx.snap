@@ -14,7 +14,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     class="mb-3"
   >
     <div
-      class="relative h-1 bg-gray-300 rounded-full overflow-hidden"
+      class="relative h-1 bg-control-off rounded-full overflow-hidden"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
@@ -39,12 +39,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         class="relative flex items-center"
       >
         <button
-          class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+          class="p-1.5 hover:bg-sheet rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
-            class="w-4 h-4 text-gray-500"
+            class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
             stroke="currentColor"
@@ -82,12 +82,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
       </div>
     </div>
     <button
-      class="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
+      class="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
       style="background-color: var(--ds-accent);"
       type="button"
     >
       <svg
-        class="w-5 h-5 text-white fill-current ml-0.5"
+        class="w-5 h-5 text-inverse fill-current ml-0.5"
         fill="none"
         height="24"
         stroke="currentColor"
@@ -107,7 +107,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
       class="flex-1 flex items-center justify-end gap-1"
     >
       <div
-        class="text-xs text-gray-500 whitespace-nowrap"
+        class="text-xs text-secondary whitespace-nowrap"
       >
         0:00
          / 
@@ -117,11 +117,11 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         aria-expanded="false"
         aria-haspopup="menu"
         aria-label="More options"
-        class="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+        class="p-1.5 hover:bg-sheet rounded-full transition-colors"
         type="button"
       >
         <svg
-          class="w-4 h-4 text-gray-500"
+          class="w-4 h-4 text-secondary"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -156,7 +156,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
+  class="bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card"
   style="--tw-ring-color: color-mix(in srgb, var(--ds-accent) 50%, transparent); border-width: 1px; border-color: color-mix(in srgb, var(--ds-accent) 20%, transparent);"
   tabindex="0"
 >
@@ -172,7 +172,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       style="background: linear-gradient(to bottom right, var(--ds-accent), color-mix(in srgb, var(--ds-accent) 80%, transparent));"
     >
       <div
-        class="w-full h-full rounded-full overflow-hidden bg-white"
+        class="w-full h-full rounded-full overflow-hidden bg-sheet"
       >
         <img
           alt=""
@@ -185,19 +185,19 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex-1 min-w-0"
     >
       <p
-        class="text-sm font-semibold text-gray-800 truncate"
+        class="text-sm font-semibold text-primary truncate"
         lang="ja"
       >
         Test User
       </p>
       <p
-        class="text-xs text-gray-500"
+        class="text-xs text-secondary"
       >
         <span>
           2024/06/15 14:30
         </span>
         <span
-          class="mx-1 text-gray-300"
+          class="mx-1 text-muted"
         >
           •
         </span>
@@ -208,11 +208,11 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       aria-expanded="false"
       aria-haspopup="menu"
       aria-label="More options"
-      class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+      class="p-1.5 hover:bg-sunken rounded-full transition-colors"
       type="button"
     >
       <svg
-        class="w-4 h-4 text-gray-500"
+        class="w-4 h-4 text-secondary"
         fill="none"
         height="24"
         stroke="currentColor"
@@ -245,7 +245,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="mb-2"
   >
     <div
-      class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
+      class="relative h-1 bg-sunken rounded-full overflow-hidden"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
@@ -263,12 +263,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex justify-between mt-1"
     >
       <span
-        class="text-[10px] text-gray-500"
+        class="text-caption text-secondary"
       >
         0:00
       </span>
       <span
-        class="text-[10px] text-gray-500"
+        class="text-caption text-secondary"
       >
         0:00
       </span>
@@ -284,12 +284,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         class="relative flex items-center"
       >
         <button
-          class="p-1 hover:bg-white/50 rounded-full transition-colors"
+          class="p-1 hover:bg-sunken rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
-            class="w-4 h-4 text-gray-500"
+            class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
             stroke="currentColor"
@@ -330,12 +330,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex items-center gap-2"
     >
       <button
-        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Back 5 seconds (←)"
       >
         <svg
-          class="w-6 h-6 text-gray-600"
+          class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -354,18 +354,18 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
-          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
       </button>
       <button
-        class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+        class="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
         style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg
-          class="w-6 h-6 text-white fill-current ml-0.5"
+          class="w-6 h-6 text-inverse fill-current ml-0.5"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -382,12 +382,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </svg>
       </button>
       <button
-        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Forward 5 seconds (→)"
       >
         <svg
-          class="w-6 h-6 text-gray-600"
+          class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -406,7 +406,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
-          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
@@ -421,7 +421,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
+  class="bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card"
   style="--tw-ring-color: color-mix(in srgb, var(--ds-accent) 50%, transparent); border-width: 1px; border-color: color-mix(in srgb, var(--ds-accent) 20%, transparent);"
   tabindex="0"
 >
@@ -437,10 +437,10 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       style="background: linear-gradient(to bottom right, var(--ds-accent), color-mix(in srgb, var(--ds-accent) 80%, transparent));"
     >
       <div
-        class="w-full h-full rounded-full overflow-hidden bg-white"
+        class="w-full h-full rounded-full overflow-hidden bg-sheet"
       >
         <div
-          class="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium bg-gray-100"
+          class="w-full h-full flex items-center justify-center text-muted text-sm font-medium bg-sunken"
         >
           T
         </div>
@@ -450,13 +450,13 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex-1 min-w-0"
     >
       <p
-        class="text-sm font-semibold text-gray-800 truncate"
+        class="text-sm font-semibold text-primary truncate"
         lang="ja"
       >
         Test User
       </p>
       <p
-        class="text-xs text-gray-500"
+        class="text-xs text-secondary"
       >
         <span>
           2024/06/15 14:30
@@ -467,11 +467,11 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       aria-expanded="false"
       aria-haspopup="menu"
       aria-label="More options"
-      class="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+      class="p-1.5 hover:bg-sunken rounded-full transition-colors"
       type="button"
     >
       <svg
-        class="w-4 h-4 text-gray-500"
+        class="w-4 h-4 text-secondary"
         fill="none"
         height="24"
         stroke="currentColor"
@@ -504,7 +504,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="mb-2"
   >
     <div
-      class="relative h-1 bg-gray-200/60 rounded-full overflow-hidden"
+      class="relative h-1 bg-sunken rounded-full overflow-hidden"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
@@ -522,12 +522,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex justify-between mt-1"
     >
       <span
-        class="text-[10px] text-gray-500"
+        class="text-caption text-secondary"
       >
         0:00
       </span>
       <span
-        class="text-[10px] text-gray-500"
+        class="text-caption text-secondary"
       >
         0:00
       </span>
@@ -543,12 +543,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         class="relative flex items-center"
       >
         <button
-          class="p-1 hover:bg-white/50 rounded-full transition-colors"
+          class="p-1 hover:bg-sunken rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
-            class="w-4 h-4 text-gray-500"
+            class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
             stroke="currentColor"
@@ -589,12 +589,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex items-center gap-2"
     >
       <button
-        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Back 5 seconds (←)"
       >
         <svg
-          class="w-6 h-6 text-gray-600"
+          class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -613,18 +613,18 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
-          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
       </button>
       <button
-        class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+        class="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
         style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg
-          class="w-6 h-6 text-white fill-current ml-0.5"
+          class="w-6 h-6 text-inverse fill-current ml-0.5"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -641,12 +641,12 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </svg>
       </button>
       <button
-        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 active:bg-gray-200 opacity-50 cursor-not-allowed"
+        class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Forward 5 seconds (→)"
       >
         <svg
-          class="w-6 h-6 text-gray-600"
+          class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
           stroke="currentColor"
@@ -665,7 +665,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
-          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5"
+          class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
