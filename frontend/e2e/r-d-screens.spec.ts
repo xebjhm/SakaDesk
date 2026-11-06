@@ -112,6 +112,10 @@ test('login over the entry backdrop and the Yodel warning', async ({ page }) => 
 
 test('setup, a sequential first sync and the first-sync toast', async ({ page }) => {
   const state = await pinEntry(page, { tosAccepted: true })
+  // The toast's count line reads the archive stats (pinned here, not only in beforeEach).
+  await page.route((url) => url.pathname === '/api/archive/stats', (route) =>
+    route.fulfill({ json: { messages: 12846, photos: 0, first_message_at: null } }),
+  )
   state.progress.hinatazaka46 = RUNNING
   state.progress.sakurazaka46 = RUNNING
   await page.goto('/')
@@ -141,9 +145,15 @@ test('setup, a sequential first sync and the first-sync toast', async ({ page })
   state.progress.hinatazaka46 = COMPLETE
   await expect(page.getByRole('dialog', { name: 'Complete' })).toBeVisible({ timeout: 30000 })
   await shot(page, 'sync-complete')
-  // The toast exists only on builds with R-d; base and dev skip the shot.
+  // The toast exists only on builds with R-d; base and dev skip the shot. It mounts after the
+  // last poll settles the sequence, so wait for it (well under its 6 s lifetime) instead of
+  // counting once.
   const toast = page.getByRole('status').filter({ hasText: 'Your archive is ready' })
-  if (await toast.count()) await shot(page, 'first-sync-toast')
+  const hasToast = await toast.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false)
+  if (hasToast) {
+    await expect(toast).toContainText('12,846 messages saved', { timeout: 5000 })
+    await shot(page, 'first-sync-toast')
+  }
 })
 
 test('inline sync of 櫻坂46 added to 日向坂46', async ({ page }) => {
