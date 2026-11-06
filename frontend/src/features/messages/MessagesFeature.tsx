@@ -1,11 +1,13 @@
 // frontend/src/features/messages/MessagesFeature.tsx
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useMilestone } from './milestones';
+import { MilestoneFooter } from './components/MilestoneFooter';
 import type { Message, MemberInfo, BackgroundSettings } from '../../types';
 import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { ConversationMenu } from './components/ConversationMenu';
 import { MemberProfilePopup } from './components/MemberProfilePopup';
-import { Menu, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Menu, MessageCircle, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
 import type { GroupedVirtuosoHandle } from 'react-virtuoso';
 import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
@@ -14,7 +16,7 @@ import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useTranslation, Trans } from '../../i18n';
-import { Avatar, IconButton } from '../../design/primitives';
+import { Avatar, EmptyState, IconButton } from '../../design/primitives';
 import { groupTokens } from '../../design/tokens';
 import { serviceGroupId } from '../../config/serviceGroup';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
@@ -435,6 +437,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // local day) is shared by the header and the profile popup.
     const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
     const { streak, retryStreak } = roomExtras;
+    // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
+    const milestone = useMilestone({
+        roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
+        totalMessages: selectedGroupDir && messagesForDir === selectedGroupDir ? totalMessages : null,
+        streakDays: streak.status === 'ready' ? streak.days : null,
+    });
     const timeline = useMemo(() => buildTimeline(displayMessages, roomExtras.letters), [displayMessages, roomExtras.letters]);
     const letterAvatar = useMemo(
         () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
@@ -794,11 +802,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         }}
                     />
                     {!selectedGroupDir && (
-                        <div className="absolute inset-0 flex items-center justify-center text-muted">
-                            <div className="text-center">
-                                <p className="mb-2 text-title">{t('messageList.welcomeTitle')}</p>
-                                <p className="text-small">{t('messageList.welcomeSubtitle')}</p>
-                            </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <EmptyState icon={<MessageCircle />} title={t('messageList.welcomeTitle')} description={t('messageList.welcomeSubtitle')} />
                         </div>
                     )}
 
@@ -835,6 +840,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getMemberPath={getMemberPath}
                             onOpenCalendar={openCalendar}
                             renderLetter={renderLetter}
+                            footer={milestone ? <MilestoneFooter milestone={milestone} /> : undefined}
                         />
                     )}
                     <CallOverlay

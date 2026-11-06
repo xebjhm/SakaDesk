@@ -25,13 +25,16 @@ export interface ModalProps {
     headerExtra?: React.ReactNode;
     /**
      * 'brand': the dialog is a brand-context surface (settings, search, about...) and its children inherit brand.
-     * 'inherit' (default): brand when opened inside a BrandScope or a brand Modal, else the active group.
+     * 'inherit' (default): the scope provided by ScopeContext (brand from a BrandScope or a brand Modal, or a group scope a
+     * parent hands over, as the login does for its geo warning), else the active group.
      */
     scope?: 'inherit' | 'brand';
     /** 'expressive' (default): context gradient header (L1). 'plain': quiet header for small confirms. */
     header?: 'expressive' | 'plain';
     children: React.ReactNode;
     footer?: React.ReactNode;
+    /** A hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics). */
+    footerDivider?: boolean;
     /** 'sheet': light level-1 dialog. 'viewer': dark full-screen photo/video viewer. */
     tone?: 'sheet' | 'viewer';
     /** 'standard': header, body, footer. 'bare': children directly in the frame. */
@@ -66,7 +69,7 @@ function warnOnce(message: string): void {
 export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal {...props} /> : null);
 
 const OpenModal: React.FC<ModalProps> = ({
-    onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer,
+    onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer, footerDivider = false,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
     initialFocusRef, className, bodyClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
@@ -160,7 +163,11 @@ const OpenModal: React.FC<ModalProps> = ({
                         </div>
                         {header === 'expressive' && <div data-testid="modal-header-bar" aria-hidden="true" className="h-[3px] shrink-0 bg-expressive-header-bar" />}
                         <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
-                        {footer && <div className="flex shrink-0 items-center justify-end gap-2 px-6 pb-6">{footer}</div>}
+                        {footer && (
+                            <div data-testid="modal-footer" className={cn('flex shrink-0 items-center justify-end gap-2 px-6 pb-6', footerDivider && 'border-t border-subtle pt-4')}>
+                                {footer}
+                            </div>
+                        )}
                     </>
                 )}
                 </ScopeContext.Provider>

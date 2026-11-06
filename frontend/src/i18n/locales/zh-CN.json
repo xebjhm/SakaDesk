@@ -182,6 +182,7 @@
     "articleIpTitle": "第3条（知识产权）",
     "articleProhibitedTitle": "第8条（禁止事项）",
     "acceptCheckbox": "我理解并接受这些条款，并且我已经阅读了我所使用的服务的官方服务条款。",
+    "acceptRequired": "请先勾选上方的复选框",
     "acceptAndContinue": "接受并继续"
   },
   "setup": {
@@ -190,6 +191,7 @@
     "outputFolderPath": "输出文件夹路径",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
+    "folderRequired": "请先输入或选择文件夹",
     "downloadBlogsOffline": "下载 Blog 以供搜索",
     "downloadBlogsHint": "下载所有 Blog 文章以启用全文搜索。每个服务约使用 5-15 GB。",
     "startUsing": "开始使用 SakaDesk"
@@ -244,7 +246,11 @@
     "goldenFingerEnabled": "下载按钮已启用 ✨",
     "goldenFingerDisabled": "下载按钮已停用",
     "goldenFingerCopied": "已复制到剪贴板",
-    "goldenFingerCopyFailed": "复制失败"
+    "goldenFingerCopyFailed": "复制失败",
+    "archiveTitle": "你的存档",
+    "statMessages": "消息",
+    "statPhotos": "照片",
+    "statDays": "天"
   },
   "report": {
     "title": "报告问题",
@@ -400,6 +406,7 @@
     "addService": "添加服务"
   },
   "search": {
+    "memberCount": "{{count}} 位成员",
     "placeholder": "搜索消息和 Blog...",
     "placeholderMessages": "搜索消息...",
     "placeholderBlogs": "搜索 Blog...",
@@ -691,5 +698,12 @@
     "openImage": "打开信件",
     "you": "你",
     "openImageAt": "打开 {{date}} 发送的信件"
+  },
+  "celebration": {
+    "firstSyncTitle": "你的存档已准备就绪",
+    "firstSyncBody": "已保存 {{value}} 条消息",
+    "milestoneMessages": "条消息",
+    "milestoneDays": "天的订阅",
+    "milestoneYears": "年的订阅"
   }
 }

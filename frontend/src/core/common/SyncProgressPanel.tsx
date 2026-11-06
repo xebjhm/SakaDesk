@@ -13,9 +13,10 @@ export interface SyncProgressPanelProps {
 }
 
 /**
- * The shared body of the sync dialog and the inline sync view
- * (docs/superpowers/specs/2026-11-05-d2d-entry-design.md, decisions 9–11): count and percent,
- * the progress bar, three stat tiles, the detail row while running, and the phase steps.
+ * The shared body of the sync dialog (brand) and the inline sync view (its group): count and
+ * percent, the progress bar (`bg-expressive-progress`: aurora in brand, the title gradient in a
+ * group, as `e4e4118`), three stat tiles, the detail row (accent) or the media warning (semantic
+ * warning) while running, and the phase steps.
  */
 export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }) => {
     const { t } = useTranslation();
@@ -45,6 +46,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     </span>
                     <span className="text-primary">{`${percent}%`}</span>
                 </div>
+                {/* e4e4118: a 16 px light-grey track; fill = the pastel (dialog) or the title gradient (inline). */}
                 <div
                     role="progressbar"
                     aria-label={t('sync.progress')}
@@ -52,10 +54,11 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     aria-valuemax={100}
                     aria-valuenow={percent}
                     aria-valuetext={`${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
-                    className="h-2 overflow-hidden rounded-pill bg-sunken"
+                    className="h-4 overflow-hidden rounded-full bg-sunken"
                 >
                     <div
-                        className="h-full rounded-pill bg-group-accent transition-all duration-base ease-standard motion-reduce:transition-none"
+                        data-testid="sync-progress-fill"
+                        className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
                         style={{ width: `${ratio * 100}%` }}
                     />
                 </div>
@@ -63,7 +66,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
 
             <div className="grid grid-cols-3 gap-4">
                 {stats.map((s) => (
-                    <div key={s.key} className="flex flex-col gap-1 rounded-card bg-sunken p-3 text-center">
+                    <div key={s.key} className="flex flex-col gap-1 rounded-lg bg-elevated p-3 text-center">
                         <span className="text-caption text-secondary">{s.label}</span>
                         <span className="font-mono text-title font-semibold tabular-nums text-primary">{s.value}</span>
                         <span className="min-h-4 text-caption text-secondary">{s.unit}</span>
@@ -74,13 +77,16 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
             {/* Only while running: on completion the backend leaves phase_number at 3, and the
                 "do not close" line (and the spinner) would make a finished sync look stuck. */}
             {progress.state === 'running' && (progress.phase_number === 3 ? (
-                <div className="flex items-center justify-center gap-2 rounded-card bg-sunken px-4 py-3">
-                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-status-warning motion-reduce:animate-none" />
-                    <span className="text-small font-semibold text-primary">{t('sync.downloadingMedia')}</span>
+                <div
+                    data-testid="sync-media-warning"
+                    className="flex items-center justify-center gap-2 rounded-lg border border-semantic-warning bg-semantic-warning-subtle px-4 py-3 text-semantic-warning"
+                >
+                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />
+                    <span className="text-small font-semibold">{t('sync.downloadingMedia')}</span>
                 </div>
             ) : (
-                <div className="flex items-center gap-2 rounded-card bg-group-subtle px-4 py-3">
-                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-secondary motion-reduce:animate-none" />
+                <div data-testid="sync-detail" className="flex items-center gap-2 rounded-lg bg-accent-subtle px-4 py-3">
+                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-accent motion-reduce:animate-none" />
                     <span className="truncate text-small font-semibold text-primary">
                         {getSyncDetail(progress, t, t('sync.processing'))}
                         {progress.detail_extra && ` ${progress.detail_extra}`}
@@ -95,15 +101,16 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     return (
                         <li key={step.phase} aria-current={isActive ? 'step' : undefined} className="flex flex-col items-center gap-1">
                             <span
+                                data-testid={`sync-step-dot-${step.phase}`}
                                 aria-hidden="true"
                                 className={cn(
-                                    'flex h-3 w-3 items-center justify-center rounded-pill transition-colors duration-fast ease-standard',
-                                    isActive ? 'bg-group-accent shadow-group-glow' : isComplete ? 'bg-status-success' : 'bg-control-off',
+                                    'flex h-3 w-3 items-center justify-center rounded-full transition-colors duration-fast ease-standard',
+                                    isActive ? 'bg-accent ring-4 ring-accent-subtle' : isComplete ? 'bg-status-success' : 'bg-control-off',
                                 )}
                             >
                                 {isComplete && !isActive && <Check className="h-2 w-2 text-inverse" strokeWidth={4} />}
                             </span>
-                            <span className={cn('text-caption', isActive ? 'font-semibold text-group-strong' : 'text-secondary')}>{step.label}</span>
+                            <span className={cn('text-caption', isActive ? 'font-semibold text-accent-strong' : 'text-secondary')}>{step.label}</span>
                             <span className="sr-only">{isActive ? t('sync.stepCurrent') : isComplete ? t('sync.stepDone') : t('sync.stepPending')}</span>
                         </li>
                     );

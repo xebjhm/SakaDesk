@@ -23,7 +23,7 @@ interface VoicePlayerProps {
      *  - `premium`    — standalone premium card, no transcription.
      *  - `gallery`    — premium card anchored at the bottom of the media
      *                   gallery voice tab; internal transcription above
-     *                   with a translucent backdrop so it stays readable
+     *                   on an opaque sheet surface so it stays readable
      *                   over the blurred player bar.
      *  - `fullscreen` — premium card inside MediaViewerModal; internal
      *                   transcription below.
@@ -85,14 +85,14 @@ const SkipButton: React.FC<{
             disabled={disabled}
             className={cn(
                 "relative w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                "hover:bg-gray-100 active:bg-gray-200",
+                "hover:bg-sunken active:brightness-94",
                 disabled && "opacity-50 cursor-not-allowed"
             )}
             title={title}
         >
-            <Icon className="w-6 h-6 text-gray-600" strokeWidth={2} />
+            <Icon className="w-6 h-6 text-secondary" strokeWidth={2} />
             {/* Number "5" inside the circle */}
-            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5">
+            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5">
                 5
             </span>
         </button>
@@ -414,14 +414,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         setShowVolume(false);
     }, []);
 
-    // Premium-family variants share the same glassmorphism card. `gallery`
+    // Premium-family variants share the same opaque sheet card. `gallery`
     // and `fullscreen` wrap it with internal transcription UI (above/below).
     if (variant === 'premium' || variant === 'gallery' || variant === 'fullscreen') {
         const premiumCard = (
             <div
                 ref={containerRef}
                 tabIndex={0}
-                className="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
+                className="bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card"
                 style={{
                     '--tw-ring-color': withAlpha(accentColor, 50),
                     borderWidth: '1px',
@@ -438,11 +438,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         className="w-10 h-10 rounded-full p-0.5 shrink-0"
                         style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${withAlpha(accentColor, 80)})` }}
                     >
-                        <div className="w-full h-full rounded-full overflow-hidden bg-white">
+                        <div className="w-full h-full rounded-full overflow-hidden bg-sheet">
                             {avatarUrl ? (
                                 <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium bg-gray-100">
+                                <div className="w-full h-full flex items-center justify-center text-muted text-sm font-medium bg-sunken">
                                     {memberName?.charAt(0) || '?'}
                                 </div>
                             )}
@@ -451,16 +451,16 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Name and timestamp */}
                     <div className="flex-1 min-w-0">
                         {memberName && (
-                            <p lang="ja" className="text-sm font-semibold text-gray-800 truncate">{memberName}</p>
+                            <p lang="ja" className="text-sm font-semibold text-primary truncate">{memberName}</p>
                         )}
                         {(timestamp || durationText) && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-secondary">
                                 {timestamp && (
                                     onTimestampClick ? (
                                         <button
                                             type="button"
                                             onClick={onTimestampClick}
-                                            className="hover:text-gray-700 underline underline-offset-2 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+                                            className="underline decoration-current underline-offset-2 transition-colors hover:text-primary"
                                         >
                                             {timestamp}
                                         </button>
@@ -468,7 +468,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                         <span>{timestamp}</span>
                                     )
                                 )}
-                                {timestamp && durationText && <span className="mx-1 text-gray-300">•</span>}
+                                {timestamp && durationText && <span className="mx-1 text-muted">•</span>}
                                 {durationText}
                             </p>
                         )}
@@ -480,16 +480,16 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         aria-label={t('common.moreOptions')}
                         aria-haspopup="menu"
                         aria-expanded={showMenu}
-                        className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                        className="p-1.5 hover:bg-sunken rounded-full transition-colors"
                         type="button"
                     >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                        <MoreVertical className="w-4 h-4 text-secondary" />
                     </button>
                 </div>
 
                 {/* Row 2: Progress Bar */}
                 <div className="mb-2">
-                    <div className="relative h-1 bg-gray-200/60 rounded-full overflow-hidden">
+                    <div className="relative h-1 bg-sunken rounded-full overflow-hidden">
                         <div
                             className="absolute inset-y-0 left-0 rounded-full"
                             style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -504,8 +504,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         />
                     </div>
                     <div className="flex justify-between mt-1">
-                        <span className="text-[10px] text-gray-500">{formatTime(currentTime)}</span>
-                        <span className="text-[10px] text-gray-500">{formatTime(duration)}</span>
+                        <span className="text-caption text-secondary">{formatTime(currentTime)}</span>
+                        <span className="text-caption text-secondary">{formatTime(duration)}</span>
                     </div>
                 </div>
 
@@ -520,14 +520,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         >
                             <button
                                 onClick={handleMuteToggle}
-                                className="p-1 hover:bg-white/50 rounded-full transition-colors"
+                                className="p-1 hover:bg-sunken rounded-full transition-colors"
                                 title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                                 type="button"
                             >
                                 {isMuted ? (
-                                    <VolumeX className="w-4 h-4 text-gray-500" />
+                                    <VolumeX className="w-4 h-4 text-secondary" />
                                 ) : (
-                                    <Volume2 className="w-4 h-4 text-gray-500" />
+                                    <Volume2 className="w-4 h-4 text-secondary" />
                                 )}
                             </button>
                             <div
@@ -566,14 +566,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                         <button
                             onClick={togglePlay}
-                            className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+                            className="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
                             style={{ backgroundColor: accentColor }}
                             type="button"
                         >
                             {isPlaying ? (
-                                <Pause className="w-6 h-6 text-white fill-current" />
+                                <Pause className="w-6 h-6 text-inverse fill-current" />
                             ) : (
-                                <Play className="w-6 h-6 text-white fill-current ml-0.5" />
+                                <Play className="w-6 h-6 text-inverse fill-current ml-0.5" />
                             )}
                         </button>
 
@@ -679,7 +679,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">
-                <div className="relative h-1 bg-gray-300 rounded-full overflow-hidden">
+                <div className="relative h-1 bg-control-off rounded-full overflow-hidden">
                     <div
                         className="absolute inset-y-0 left-0 rounded-full"
                         style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -706,14 +706,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     >
                         <button
                             onClick={handleMuteToggle}
-                            className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                            className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                             title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
                             {isMuted ? (
-                                <VolumeX className="w-4 h-4 text-gray-500" />
+                                <VolumeX className="w-4 h-4 text-secondary" />
                             ) : (
-                                <Volume2 className="w-4 h-4 text-gray-500" />
+                                <Volume2 className="w-4 h-4 text-secondary" />
                             )}
                         </button>
                         <div
@@ -744,20 +744,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 {/* Center: Play Button */}
                 <button
                     onClick={togglePlay}
-                    className="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
+                    className="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
                     style={{ backgroundColor: accentColor }}
                     type="button"
                 >
                     {isPlaying ? (
-                        <Pause className="w-5 h-5 text-white fill-current" />
+                        <Pause className="w-5 h-5 text-inverse fill-current" />
                     ) : (
-                        <Play className="w-5 h-5 text-white fill-current ml-0.5" />
+                        <Play className="w-5 h-5 text-inverse fill-current ml-0.5" />
                     )}
                 </button>
 
                 {/* Right: Time display + Options */}
                 <div className="flex-1 flex items-center justify-end gap-1">
-                    <div className="text-xs text-gray-500 whitespace-nowrap">
+                    <div className="text-xs text-secondary whitespace-nowrap">
                         {formatTime(currentTime)} / {formatTime(duration)}
                     </div>
                     <button
@@ -766,10 +766,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         aria-label={t('common.moreOptions')}
                         aria-haspopup="menu"
                         aria-expanded={showMenu}
-                        className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                        className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                         type="button"
                     >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                        <MoreVertical className="w-4 h-4 text-secondary" />
                     </button>
                 </div>
             </div>

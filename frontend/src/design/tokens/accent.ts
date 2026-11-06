@@ -37,6 +37,8 @@ export interface AccentRoles {
     headerText: string;
     /** Bar under a light header, or 'none'. */
     headerBar: string;
+    /** Sync progress fill: the aurora (brand); the title gradient, or the official bar under a light header (group). */
+    progress: string;
     /** L2 orb fills (radial gradients). */
     orb1: string;
     orb2: string;
@@ -65,6 +67,7 @@ export function brandAccent(): AccentRoles {
         header: aurora.gradient,
         headerText: color.text.primary,
         headerBar: 'none',
+        progress: aurora.gradient,
         orb1: orb(aurora.orbs[0]), orb2: orb(aurora.orbs[1]), orb3: orb(aurora.orbs[2]),
     };
 }
@@ -75,6 +78,7 @@ export function groupAccent(id: GroupId): AccentRoles {
     const r = groupRoles(id);
     const t = g.official.title;
     const light = g.official.headerStyle === 'light';
+    const titleGradient = `linear-gradient(to right, ${t.gradient.from}, ${t.gradient.via}, ${t.gradient.to})`;
     return {
         accent: r.action, strong: r.strong, subtle: r.subtle, border: r.subtleBorder, logo: r.logo,
         glow: r.glow,
@@ -83,9 +87,10 @@ export function groupAccent(id: GroupId): AccentRoles {
         tonalText: g.scale[800],
         unread: r.unreadShadow,
         soft: `linear-gradient(135deg, ${r.subtle} 0%, ${r.highlight} 100%)`,
-        header: light ? color.surface.sheet : `linear-gradient(to right, ${t.gradient.from}, ${t.gradient.via}, ${t.gradient.to})`,
+        header: light ? color.surface.sheet : titleGradient,
         headerText: light ? t.text : color.text.inverse,
         headerBar: light ? t.bar : 'none',
+        progress: light ? t.bar : titleGradient,
         orb1: r.ambient.orb1, orb2: r.ambient.orb2, orb3: r.ambient.orb3,
     };
 }

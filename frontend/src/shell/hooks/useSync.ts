@@ -73,6 +73,18 @@ export function friendlySyncDetail(detail: unknown, fallback: string): string | 
     return detail;
 }
 
+/**
+ * How a sequential sync ended. `completed` counts services that reached `complete`;
+ * `failed` counts the rest (error, idle, failed start, and, after a cancel, the
+ * cancelled service plus every service the cancel skipped). `cancelled` is true
+ * when the user's Cancel ended the sequence early.
+ */
+export interface SequentialSyncOutcome {
+    completed: number;
+    failed: number;
+    cancelled: boolean;
+}
+
 /** Info about an ongoing sequential (multi-service) sync */
 export interface SequentialSyncInfo {
     /** Total number of services being synced */
@@ -81,6 +93,8 @@ export interface SequentialSyncInfo {
     currentIndex: number;
     /** Service ID currently being synced */
     currentService: string;
+    /** Every service of the sequence, in sync order (the dialog's step row shows one marker each). */
+    services: string[];
 }
 
 /** Return type for the useSync hook. */
@@ -99,12 +113,16 @@ export interface UseSyncReturn {
     startSync: (blocking: boolean, service?: string, forceResync?: boolean) => Promise<void>;
     /** Verify downloaded media and re-download any missing files (or active service if not specified) */
     verifyAndFix: (service?: string) => Promise<void>;
-    /** Cancel a running sync/verify and make the modal dismissible (SD-FE-GAP-B-08) */
+    /**
+     * Cancel a running sync/verify and make the modal dismissible (SD-FE-GAP-B-08).
+     * Without a service it targets the sequential sync's current service, else the
+     * active service. During a sequential sync it also ends the whole sequence.
+     */
     cancelSync: (service?: string) => Promise<void>;
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
     /** Start sequential sync for a list of services (one at a time, with blocking modal) */
-    startSequentialSync: (services: string[]) => Promise<void>;
+    startSequentialSync: (services: string[]) => Promise<SequentialSyncOutcome>;
     /** Info about the current sequential sync (null if not running) */
     sequentialSyncInfo: SequentialSyncInfo | null;
     /** Ref tracking whether initial sync has started */
@@ -176,8 +194,10 @@ export function useSync({
     // Sequential sync state (for onboarding multi-service sync)
     const [sequentialSyncInfo, setSequentialSyncInfo] = useState<SequentialSyncInfo | null>(null);
     const sequentialSyncServiceRef = useRef<string | null>(null);
+    // Set by cancelSync during a sequential sync: the loop stops before the next service.
+    const sequenceCancelledRef = useRef(false);
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
-    const syncCompleteCallbacks = useRef<Record<string, () => void>>({});
+    const syncCompleteCallbacks = useRef<Record<string, (completed: boolean) => void>>({});
 
     const isPollingRef = useRef<Record<string, boolean>>({});
     // Per-service "a blocking modal owns this poll": set (never cleared) by any
@@ -245,9 +265,9 @@ export function useSync({
     }, [onSyncComplete]);
 
     // Helper: resolve any pending sequential-sync callback for a service
-    const resolveSyncCallback = useCallback((service: string) => {
+    const resolveSyncCallback = useCallback((service: string, completed: boolean) => {
         if (syncCompleteCallbacks.current[service]) {
-            syncCompleteCallbacks.current[service]();
+            syncCompleteCallbacks.current[service](completed);
             delete syncCompleteCallbacks.current[service];
         }
     }, []);
@@ -283,7 +303,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
@@ -306,7 +326,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, true);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
                     // Auto-close only normal syncs. A verify/validation carries a
@@ -380,14 +400,14 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 } else {
                     updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.unknownError') });
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             } catch {
@@ -407,7 +427,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             }
@@ -433,6 +453,9 @@ export function useSync({
                 blockingRef.current[targetService] = true;
                 if (targetService === activeServiceRef.current) setShowSyncModal(true);
             }
+            // A pending sequential callback is not settled here: the owner settles it. A live
+            // poller resolves it on its terminal state, and an in-flight start resolves it on a
+            // refused or failed start, or hands it to the poller it attaches.
             clientLog('sync_start_skipped', { reason: isPollingRef.current[targetService] ? 'polling' : 'starting' });
             log(`${targetService}: already polling or starting, skipping startSync`);
             return;
@@ -474,6 +497,7 @@ export function useSync({
                     pollSyncProgress(targetService, blocking);
                 } else {
                     log(`${targetService}: failed to start`, data.detail);
+                    resolveSyncCallback(targetService, false);
                     // No poller owns this start: a modal request from a skipped start ends here.
                     blockingRef.current[targetService] = false;
                     if (currentProgress?.state !== 'running') {
@@ -487,6 +511,7 @@ export function useSync({
             }
         } catch {
             blockingRef.current[targetService] = false;
+            resolveSyncCallback(targetService, false);
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -497,7 +522,7 @@ export function useSync({
         } finally {
             startingRef.current[targetService] = false;
         }
-    }, [pollSyncProgress]);
+    }, [pollSyncProgress, resolveSyncCallback]);
 
     // verifyAndFix: scans downloaded messages for missing media and re-downloads
     // any gaps. Reuses the same sync progress modal + poller as startSync.
@@ -551,8 +576,17 @@ export function useSync({
     // state so the user can always leave the modal even if the cancel request
     // fails or races the poller, rather than being locked to a spinner.
     const cancelSync = useCallback(async (service?: string) => {
-        const targetService = service || activeServiceRef.current;
+        const sequenceService = sequentialSyncServiceRef.current;
+        const targetService = service || sequenceService || activeServiceRef.current;
         if (!targetService) return;
+
+        // Cancel during a sequential (first-launch) sync ends the whole sequence:
+        // settle the waiting step now so the loop stops and the remaining services
+        // never start.
+        if (sequenceService !== null && targetService === sequenceService) {
+            sequenceCancelledRef.current = true;
+            resolveSyncCallback(targetService, false);
+        }
 
         // Stop the local poller so it can't overwrite the terminal state below.
         isPollingRef.current[targetService] = false;
@@ -563,7 +597,7 @@ export function useSync({
         // button even if the cancel request fails or races the poller.
         const cancelledProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.cancelled') };
         setSyncProgressByService(prev => ({ ...prev, [targetService]: cancelledProgress }));
-        if (targetService === activeServiceRef.current) setSyncProgress(cancelledProgress);
+        if (targetService === activeServiceRef.current || targetService === sequenceService) setSyncProgress(cancelledProgress);
 
         // Fire-and-forget the real cancel; failures don't block dismissal.
         try {
@@ -571,7 +605,7 @@ export function useSync({
         } catch {
             /* the modal is already dismissible; a failed cancel is non-fatal */
         }
-    }, []);
+    }, [resolveSyncCallback]);
 
     const startSyncAllServices = useCallback(async (blocking: boolean) => {
         if (connectedServices.length === 0) return;
@@ -585,19 +619,21 @@ export function useSync({
         );
     }, [connectedServices, startSync]);
 
-    const startSequentialSync = useCallback(async (services: string[]) => {
-        if (services.length === 0) return;
+    const startSequentialSync = useCallback(async (services: string[]): Promise<SequentialSyncOutcome> => {
+        if (services.length === 0) return { completed: 0, failed: 0, cancelled: false };
 
         // Prevent startup sync effect from also triggering these services
         services.forEach(s => syncedServicesRef.current.add(s));
         hasStartedSyncRef.current = true;
 
         setShowSyncModal(true);
+        sequenceCancelledRef.current = false;
 
+        let completed = 0;
         for (let i = 0; i < services.length; i++) {
             const service = services[i];
             sequentialSyncServiceRef.current = service;
-            setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service });
+            setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service, services });
 
             // Force clear any stale polling state from previous syncs
             isPollingRef.current[service] = false;
@@ -612,15 +648,27 @@ export function useSync({
             setSyncProgressByService(prev => ({ ...prev, [service]: initialProgress }));
             setSyncProgress(initialProgress);
 
-            await new Promise<void>((resolve) => {
+            const ok = await new Promise<boolean>((resolve) => {
                 syncCompleteCallbacks.current[service] = resolve;
                 startSync(false, service);
             });
+            if (ok) completed += 1;
+            if (sequenceCancelledRef.current) break;
         }
 
+        const cancelled = sequenceCancelledRef.current;
+        sequenceCancelledRef.current = false;
         sequentialSyncServiceRef.current = null;
         setSequentialSyncInfo(null);
-        setTimeout(() => setShowSyncModal(false), 2000);
+        // The user asked to stop: leave the dialog now. Otherwise show the result briefly.
+        if (cancelled) setShowSyncModal(false);
+        else setTimeout(() => setShowSyncModal(false), 2000);
+        const failed = services.length - completed;
+        clientLog('sync_sequence', {
+            outcome: cancelled ? 'cancelled' : failed === 0 ? 'all_complete' : completed === 0 ? 'none' : 'partial',
+            count: completed,
+        });
+        return { completed, failed, cancelled };
     }, [startSync]);
 
     // Stable ref for startSync so effects can call it without depending on it.

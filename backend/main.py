@@ -74,6 +74,7 @@ from backend.api import (  # noqa: E402
     transcription,
     translation,
     app_state as app_state_api,
+    archive,
 )
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
@@ -413,6 +414,7 @@ app.include_router(favorites.router)
 app.include_router(chat_features.router)
 app.include_router(account.router)
 app.include_router(client_log.router)
+app.include_router(archive.router)
 app.include_router(ui_state.router)
 app.include_router(call_popup.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])

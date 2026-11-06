@@ -25,7 +25,9 @@ import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
+import { BrandScope } from '../design/brandScope'
+import { celebrateFirstSync } from './firstSyncCelebration'
 
 function App() {
     const { t } = useTranslation()
@@ -173,6 +175,8 @@ function App() {
     const [showReportModal, setShowReportModal] = useState(false);
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
+    const [showFirstSyncToast, setShowFirstSyncToast] = useState(false);
+    const hideFirstSyncToast = useCallback(() => setShowFirstSyncToast(false), []);
 
     // Search modal
     const searchModalRef = useRef<SearchModalHandle>(null);
@@ -184,9 +188,9 @@ function App() {
         return persisted.getPref('tos_accepted_at', null) !== null;
     });
 
-    // Group design tokens (and the legacy theme variables): the active group's once ToS is
-    // accepted and a group is chosen, the neutral `default` group before that (the ToS and
-    // landing screens), so their group roles are defined and never a removed group's.
+    // Group design tokens on the document: the active group's once ToS is accepted and a group is
+    // chosen, the `default` group before that. Its accent roles equal the brand; the entry screens
+    // set brand scope on themselves (R-d), so no screen reads its group roles.
     const tokenGroup: GroupId = tosAccepted && selectedServices.length > 0 && activeService
         ? serviceIdToGroupId(activeService)
         : 'default';
@@ -264,15 +268,22 @@ function App() {
     // hydration would bounce those users back into the dialog.
     if (!authCheckComplete || !prefsHydrated) {
         return (
-            <div className="flex h-screen items-center justify-center bg-window">
-                <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted motion-reduce:animate-none" />
-            </div>
+            <BrandScope className="flex h-screen items-center justify-center bg-window">
+                <span data-testid="boot-screen" role="status" aria-label={t('common.loading')}>
+                    <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-accent motion-reduce:animate-none" />
+                </span>
+            </BrandScope>
         );
     }
 
     // Show ToS dialog on first launch (blocks all other content until accepted)
     if (!tosAccepted) {
-        return <TosDialog onAccept={() => setTosAccepted(true)} />;
+        return (
+            <>
+                <EntryBackdrop />
+                <TosDialog onAccept={() => setTosAccepted(true)} />
+            </>
+        );
     }
 
     // Show LandingPage if no services selected (new user or all services removed)
@@ -313,10 +324,14 @@ function App() {
                     ? connectedServices
                     : [];
                 if (servicesToSync.length > 0) {
-                    await startSequentialSync(servicesToSync);
+                    const outcome = await startSequentialSync(servicesToSync);
+                    // Tier-B celebration of the first complete sync (spec §9, decision D11).
+                    if (celebrateFirstSync(outcome)) setShowFirstSyncToast(true);
                 }
                 // Now save blogs_full_backup — the useSettings hook will
-                // auto-start blog backup via /api/blogs/backup/start.
+                // auto-start blog backup via /api/blogs/backup/start. Saved after a
+                // cancelled sync too: Cancel stops the message sync, it does not undo
+                // the blog backup the user chose in the wizard.
                 if (setupBlogFullBackup) {
                     await saveSettings({ blogs_full_backup: true });
                 }
@@ -332,6 +347,8 @@ function App() {
         <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
 
             <div className="flex flex-1 overflow-hidden">
+                {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}
+                {(isOnboarding || showSyncModal) && <EntryBackdrop />}
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
                 {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
@@ -408,6 +425,7 @@ function App() {
                         />
                     </div>
                 )}
+                {showFirstSyncToast && <FirstSyncToast onDone={hideFirstSyncToast} />}
 
                 {/* Settings Modal */}
                 {showSettingsModal && appSettings && (

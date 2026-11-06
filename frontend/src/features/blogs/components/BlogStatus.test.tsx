@@ -36,11 +36,19 @@ describe('BlogStatus', () => {
         rerender(<BlogStatus kind="error" title="Failed" icon={<svg data-testid="i" />} />);
         expect(screen.getByTestId('i').parentElement).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
         rerender(<BlogStatus kind="empty" title="None" icon={<svg data-testid="i" />} />);
-        expect(screen.getByTestId('i').parentElement).toHaveClass('bg-expressive-soft', 'text-accent-strong');
+        expect(screen.getByTestId('empty-state-circle')).toHaveClass('bg-expressive-soft', 'text-muted');
+        expect(screen.getByRole('heading', { name: 'None' })).toHaveClass('font-display');
     });
 
     it('draws the retry as the gradient primary button', () => {
         render(<BlogStatus kind="error" title="Failed" onRetry={() => {}} retryLabel="Retry" />);
         expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('bg-accent-gradient');
+    });
+
+    it('keeps the empty block height and fills the area for the first sync (R-d)', () => {
+        const { rerender } = render(<BlogStatus kind="empty" title="記事がありません 📰" icon={<svg data-testid="i" />} />);
+        expect(screen.getByRole('status')).toHaveClass('h-72');
+        rerender(<BlogStatus kind="empty" fill title="記事がありません 📰" icon={<svg data-testid="i" />} />);
+        expect(screen.getByRole('status')).toHaveClass('h-full', 'min-h-96');
     });
 });

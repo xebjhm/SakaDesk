@@ -287,6 +287,26 @@ def test_notify_open_chat_accepts_has_target():
             {"target": "add_service", "reason": "unknown_service"},
             "info",
         ),
+        (
+            "group_marker_fallback",
+            {"target": "sync_row", "reason": "unknown_service"},
+            "info",
+        ),
+        ("entry_validation", {"surface": "setup", "reason": "missing_folder"}, "info"),
+        ("archive_stats_load", {"outcome": "ok"}, "info"),
+        ("archive_stats_load", {"outcome": "failed"}, "info"),
+        ("celebration", {"target": "first_sync", "outcome": "shown"}, "info"),
+        (
+            "celebration",
+            {"target": "first_sync", "outcome": "skipped", "reason": "sync_failed"},
+            "info",
+        ),
+        (
+            "celebration",
+            {"target": "milestone_messages", "outcome": "shown", "count": 5000},
+            "info",
+        ),
+        ("celebration", {"target": "milestone_days", "outcome": "seeded"}, "info"),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):
@@ -493,3 +513,17 @@ def test_login_after_login_error_breadcrumb_is_accepted():
     events = _client_events(logs)
     assert events[0]["surface"] == "login"
     assert events[0]["reason"] == "after_login"
+
+
+@pytest.mark.parametrize("outcome", ["all_complete", "partial", "none", "cancelled"])
+def test_sync_sequence_breadcrumb_is_accepted(outcome):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "sync_sequence", "fields": {"outcome": outcome, "count": 1}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["event"] == "sync_sequence"
+    assert events[0]["outcome"] == outcome
+    assert events[0]["count"] == 1

@@ -4,16 +4,17 @@ import { extendTailwindMerge } from "tailwind-merge"
 // Teach tailwind-merge the design-system classes (tailwind.config.js) so a token
 // text size and a token text colour are not treated as conflicting `text-*` classes,
 // and the group gradient (a background-image) is not treated as a `bg-` colour.
-const twMerge = extendTailwindMerge({
+// `mask-image` is a design-system group tailwind-merge does not know (the `mask-fade-y` utility).
+const twMerge = extendTailwindMerge<'mask-image'>({
     extend: {
         classGroups: {
             'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'display', 'reading'] }],
             'font-family': [{ font: ['sans', 'display', 'reading'] }],
             'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'accent', 'accent-strong', 'accent-tonal', 'expressive-header', 'group-title', 'group-strong', 'status-danger', 'status-success', 'status-warning', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'viewer', 'viewer-muted', 'sunday', 'heart', 'semantic-oshi', 'semantic-oshi-solid', 'semantic-star', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
             'bg-color': [{ bg: ['accent', 'accent-subtle', 'accent-border', 'status-attention', 'semantic-success-subtle', 'semantic-warning-subtle', 'semantic-danger-subtle', 'semantic-info-subtle', 'semantic-success-icon', 'semantic-warning-icon', 'semantic-danger-icon', 'semantic-info-icon', 'semantic-oshi-subtle', 'semantic-oshi-solid', 'header-glass', 'header-shade', 'frost', 'group-title-tint', 'group-title-wash', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
-            'bg-image': [{ bg: ['accent-gradient', 'accent-wash', 'accent-tonal', 'expressive-soft', 'expressive-header', 'expressive-header-bar', 'expressive-orb-1', 'expressive-orb-2', 'expressive-orb-3', 'aurora', 'group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash'] }],
+            'bg-image': [{ bg: ['accent-gradient', 'accent-wash', 'accent-tonal', 'expressive-soft', 'expressive-header', 'expressive-header-bar', 'expressive-progress', 'expressive-orb-1', 'expressive-orb-2', 'expressive-orb-3', 'aurora', 'group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash'] }],
             'border-color': [{ border: ['accent', 'accent-border', 'accent-wash', 'frost', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'semantic-oshi', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
-            'ring-color': [{ ring: ['accent', 'accent-border', 'semantic-oshi'] }],
+            'ring-color': [{ ring: ['accent', 'accent-border', 'accent-logo', 'accent-subtle', 'semantic-oshi'] }],
             fill: [{ fill: ['semantic-oshi'] }],
             rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
             'rounded-tl': [{ 'rounded-tl': ['tail'] }],
@@ -21,6 +22,7 @@ const twMerge = extendTailwindMerge({
             duration: [{ duration: ['fast', 'base', 'glide'] }],
             animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
             ease: [{ ease: ['standard'] }],
+            'mask-image': [{ mask: ['fade-y'] }],
         },
     },
 })

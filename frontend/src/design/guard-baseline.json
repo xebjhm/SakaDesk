@@ -1,17 +1,11 @@
 {
   "config/uiConstants.ts": 8,
   "core/common/InlineTranslation.tsx": 6,
-  "core/common/SyncProgressPanel.tsx": 5,
   "core/common/TranslateButton.tsx": 16,
-  "core/layout/InlineSyncView.tsx": 1,
   "core/media/TranscribeButton.tsx": 13,
   "core/media/TranscriptPanel.tsx": 19,
   "core/media/VideoPlayer.tsx": 1,
-  "core/media/VoicePlayer.tsx": 3,
+  "core/media/VoicePlayer.tsx": 1,
   "data/memberData.ts": 2,
-  "pages/LandingPage.tsx": 4,
-  "shell/components/SetupWizard.tsx": 1,
-  "shell/components/SyncModal.tsx": 2,
-  "shell/components/TosDialog.tsx": 3,
   "utils/backgroundSettings.ts": 1
 }

@@ -22,6 +22,8 @@ export const avatarClickFor = (msg: Message, onAvatarClick?: () => void) =>
     String(msg.member_id) === '0' ? undefined : onAvatarClick;
 
 interface ChatListProps {
+    /** Shown after the newest message (the milestone card, spec §9). */
+    footer?: React.ReactNode;
     /** Unique identifier for the current room/member */
     memberId: string;
     /** The room's timeline (nickname already applied, letters merged): the only index source */
@@ -84,11 +86,20 @@ const StickyHeaderBand: React.FC<TopItemListProps> = ({ style, children }) => (
     <div style={style} className="pointer-events-none">{children}</div>
 );
 
-const LIST_COMPONENTS: GroupedVirtuosoProps<unknown, unknown>['components'] = { TopItemList: StickyHeaderBand };
+/** What the list shows after the newest message (a milestone card); read by Virtuoso's Footer slot. */
+const TimelineFooterContext = React.createContext<React.ReactNode>(null);
+
+const TimelineFooter: React.FC = () => {
+    const node = React.useContext(TimelineFooterContext);
+    return node ? <>{node}</> : null;
+};
+
+const LIST_COMPONENTS: GroupedVirtuosoProps<unknown, unknown>['components'] = { TopItemList: StickyHeaderBand, Footer: TimelineFooter };
 
 const DEFAULT_ITEM_HEIGHT = 80;
 
 export const MessageList: React.FC<ChatListProps> = ({
+    footer,
     memberId,
     timeline,
     getSenderInfo,
@@ -223,21 +234,23 @@ export const MessageList: React.FC<ChatListProps> = ({
     // One group per local day; GroupedVirtuoso keeps the current day's header stuck on top and
     // lets the next one push it away. Indices passed around are item indices (probe fact 3).
     return (
-        <GroupedVirtuoso
-            key={virtuosoKey}
-            ref={virtuosoRef}
-            scrollerRef={setScroller}
-            style={{ height: '100%' }}
-            groupCounts={timeline.groupCounts}
-            components={LIST_COMPONENTS}
-            groupContent={(groupIndex) => (
-                <TimelineDateHeader date={timeline.groupDates[groupIndex]} onOpenCalendar={onOpenCalendar} />
-            )}
-            initialTopMostItemIndex={initialTopMostItemIndex}
-            defaultItemHeight={DEFAULT_ITEM_HEIGHT}
-            followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
-            rangeChanged={onRangeChange}
-            itemContent={(index) => renderItem(timeline.items[index])}
-        />
+        <TimelineFooterContext.Provider value={footer ?? null}>
+            <GroupedVirtuoso
+                key={virtuosoKey}
+                ref={virtuosoRef}
+                scrollerRef={setScroller}
+                style={{ height: '100%' }}
+                groupCounts={timeline.groupCounts}
+                components={LIST_COMPONENTS}
+                groupContent={(groupIndex) => (
+                    <TimelineDateHeader date={timeline.groupDates[groupIndex]} onOpenCalendar={onOpenCalendar} />
+                )}
+                initialTopMostItemIndex={initialTopMostItemIndex}
+                defaultItemHeight={DEFAULT_ITEM_HEIGHT}
+                followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
+                rangeChanged={onRangeChange}
+                itemContent={(index) => renderItem(timeline.items[index])}
+            />
+        </TimelineFooterContext.Provider>
     );
 };

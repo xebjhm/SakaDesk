@@ -43,9 +43,9 @@ describe('ToS', () => {
         const onAccept = vi.fn();
         render(<TosDialog onAccept={onAccept} />);
         const accept = screen.getByRole('button', { name: 'Accept and Continue' });
-        expect(accept).toBeDisabled();
+        expect(accept).toHaveAttribute('aria-disabled', 'true');
         await userEvent.click(screen.getByRole('checkbox', { name: /I understand and accept/ }));
-        expect(accept).toBeEnabled();
+        expect(accept).not.toHaveAttribute('aria-disabled');
         await userEvent.click(accept);
         expect(setPref).toHaveBeenCalledWith('tos_accepted_at', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
         expect(onAccept).toHaveBeenCalledOnce();
@@ -75,7 +75,9 @@ describe('setup wizard', () => {
         expect(p.onSelectFolder).toHaveBeenCalledOnce();
         await userEvent.click(screen.getByRole('checkbox', { name: /Download blogs for search/ }));
         expect(p.setSetupBlogFullBackup).toHaveBeenCalledWith(true);
-        expect(screen.getByRole('button', { name: 'Start Using SakaDesk' })).toBeDisabled();
+        await userEvent.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
+        expect(p.onComplete).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setup.folderRequired'));
     });
 
     it('Start completes the setup when the folder is valid', async () => {
@@ -188,7 +190,7 @@ describe('login dialog', () => {
 
 describe('sync dialog', () => {
     it('a sequential sync names the service and its place, with the progress', () => {
-        render(<SyncModal syncProgress={RUNNING} sequentialSyncInfo={{ total: 3, currentIndex: 1, currentService: 'hinatazaka46' }} />);
+        render(<SyncModal syncProgress={RUNNING} sequentialSyncInfo={{ total: 3, currentIndex: 1, currentService: 'hinatazaka46', services: ['sakurazaka46', 'hinatazaka46', 'nogizaka46'] }} />);
         expect(screen.getByRole('dialog', { name: 'Phase 1: Scanning Groups' })).toBeInTheDocument();
         expect(screen.getByText('日向坂46 (2/3)')).toBeInTheDocument();
         expect(screen.getByText('5 / 20')).toBeInTheDocument();
@@ -235,7 +237,7 @@ describe('landing page', () => {
     it('picks groups, counts them and starts with them in click order', async () => {
         const onComplete = vi.fn();
         render(<LandingPage onComplete={onComplete} />);
-        expect(screen.getByRole('button', { name: 'Select at least one group' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Select at least one group' })).toHaveAttribute('aria-disabled', 'true');
 
         await userEvent.click(screen.getByRole('button', { name: /日向坂46/ }));
         expect(screen.getByRole('button', { name: 'Get Started' })).toBeEnabled();

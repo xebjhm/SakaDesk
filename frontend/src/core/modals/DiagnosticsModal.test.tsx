@@ -27,6 +27,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('DiagnosticsModal', () => {
+    it('keeps the last scrolled row clear of the footer (R-d)', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
+        expect(screen.getByTestId('modal-footer')).toHaveClass('border-t', 'pt-4');
+    });
+
     it('is a brand dialog whose header note sits on a white pill', async () => {
         render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
         const dialog = await screen.findByRole('dialog', { name: 'Developer Diagnostics' });

@@ -86,7 +86,7 @@ test.describe('app dialogs', () => {
     await openHome(page)
     await openRailMenu(page, 'About')
     await expect(page.getByRole('heading', { name: 'About' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'SakaDesk' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'SakaDesk', exact: true })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'About' })).toHaveCount(0)
   })

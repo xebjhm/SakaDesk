@@ -34,6 +34,9 @@ const TEST_MESSAGES = [
 
 export const handlers = [
   // Auth status - always authenticated for integration tests (multi-service format)
+  http.get('/api/archive/stats', () => {
+    return HttpResponse.json({ messages: 0, photos: 0, first_message_at: null })
+  }),
   http.get('/api/auth/status', () => {
     return HttpResponse.json({
       services: {

@@ -47,6 +47,22 @@ describe('SearchFilterBar', () => {
         expect(screen.getByText('3 members')).not.toHaveAttribute('lang');
     });
 
+    it.each([
+        ['en', 1, '1 member'],
+        ['en', 3, '3 members'],
+        ['ja', 3, '3人のメンバー'],
+        ['zh-TW', 3, '3 位成員'],
+    ] as const)('%s: counts a group’s %i member(s) in the UI language (R-d)', async (lang, count, text) => {
+        await i18n.changeLanguage(lang);
+        server.use(http.get('/api/search/members', () => HttpResponse.json({
+            members: [], services: [{ service: 'hinatazaka46', member_count: count }],
+        })));
+        renderBar();
+        fireEvent.focus(screen.getByRole('textbox', { name: i18n.t('search.filterByMember') }));
+        expect(await screen.findByText(text)).not.toHaveAttribute('lang');
+        await i18n.changeLanguage('en');
+    });
+
     it('logs a failed member list load as an error', async () => {
         server.use(http.get('/api/search/members', () => HttpResponse.error()));
         renderBar();

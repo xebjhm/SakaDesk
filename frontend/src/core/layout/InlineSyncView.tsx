@@ -17,8 +17,9 @@ interface InlineSyncViewProps {
 }
 
 /**
- * A newly added service's first sync, inside the content sheet (spec D2d decision 13): a card
- * scoped to the service with its official banner (like the chat header) and the shared panel.
+ * A newly added service's first sync, inside the content sheet: a card scoped to the service
+ * (its group context, D2d decision 13) with its official banner (like the chat header) and the
+ * shared panel, whose bar is that group's title gradient (`e4e4118`).
  */
 export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncProgress }) => {
     const { t } = useTranslation();
@@ -43,7 +44,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
                 >
                     <span
                         aria-hidden="true"
-                        className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-pill', isLight ? 'bg-group-subtle' : 'bg-viewer-control')}
+                        className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-pill', isLight ? 'bg-accent-subtle' : 'bg-viewer-control')}
                     >
                         <Download className="h-5 w-5" />
                     </span>
