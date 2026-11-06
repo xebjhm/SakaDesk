@@ -246,7 +246,11 @@
     "goldenFingerEnabled": "ダウンロードボタン有効 ✨",
     "goldenFingerDisabled": "ダウンロードボタン無効",
     "goldenFingerCopied": "クリップボードにコピーしました",
-    "goldenFingerCopyFailed": "コピーに失敗しました"
+    "goldenFingerCopyFailed": "コピーに失敗しました",
+    "archiveTitle": "あなたのアーカイブ",
+    "statMessages": "メッセージ",
+    "statPhotos": "写真",
+    "statDays": "日間"
   },
   "report": {
     "title": "不具合報告",

@@ -246,7 +246,11 @@
     "goldenFingerEnabled": "Download button enabled ✨",
     "goldenFingerDisabled": "Download button disabled",
     "goldenFingerCopied": "Copied to clipboard",
-    "goldenFingerCopyFailed": "Failed to copy"
+    "goldenFingerCopyFailed": "Failed to copy",
+    "archiveTitle": "Your archive",
+    "statMessages": "Messages",
+    "statPhotos": "Photos",
+    "statDays": "Days"
   },
   "report": {
     "title": "Report an Issue",
