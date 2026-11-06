@@ -3,6 +3,9 @@ import { render, fireEvent, screen } from '@testing-library/react';
 import { BlogCard } from './BlogCard';
 import type { RecentPost } from '../../../types';
 import i18n from '../../../i18n';
+import { clientLog } from '../../../utils/clientLog';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 // The kanji lookup is static data; stub to a stable value.
 vi.mock('../../../data/memberData', () => ({
@@ -69,7 +72,30 @@ describe('BlogCard caption (D2b)', () => {
     expect(button).toHaveClass('rounded-card', 'bg-card', 'shadow-card');
     expect(button).toHaveAccessibleName(/Jul 7.*春の日記 🌸.*佐々木 久美/);
     expect(button.querySelector('img')).toHaveAttribute('alt', '');
-    expect(screen.getByText('佐々木 久美')).toHaveClass('text-group-strong');
+    expect(screen.getByText('佐々木 久美')).toHaveClass('text-accent-strong');
     expect(screen.getByText('春の日記 🌸')).toHaveClass('font-reading');
+  });
+});
+
+describe('BlogCard v2 look', () => {
+  it('glows on hover with the accent, focuses with the accent ring and rests on a soft tint', () => {
+    const { container } = render(<BlogCard post={makePost({ thumbnail: null })} onClick={() => {}} />);
+    const card = screen.getByRole('button');
+    expect(card).toHaveClass('hover:shadow-accent-glow-hover', 'focus-visible:ring-accent');
+    expect(container.querySelector('.bg-expressive-soft')).not.toBeNull();
+  });
+
+  it('marks the Japanese title and member name, not the date', () => {
+    render(<BlogCard post={makePost({ title: '春の日記', member_name: '佐々木 久美' })} onClick={() => {}} />);
+    expect(screen.getByText('春の日記')).toHaveAttribute('lang', 'ja');
+    expect(screen.getByText('佐々木 久美')).toHaveAttribute('lang', 'ja');
+    expect(screen.getByText('佐々木 久美')).toHaveClass('text-accent-strong');
+    expect(document.querySelector('.text-caption.text-muted')).not.toHaveAttribute('lang');
+  });
+
+  it('breadcrumbs a broken thumbnail', () => {
+    const { container } = render(<BlogCard post={makePost({})} onClick={() => {}} />);
+    fireEvent.error(container.querySelector('img')!);
+    expect(clientLog).toHaveBeenCalledWith('blog_fallback', { target: 'card_thumb', reason: 'image_error' });
   });
 });

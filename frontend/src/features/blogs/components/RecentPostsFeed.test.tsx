@@ -75,7 +75,28 @@ describe('RecentPostsFeed', () => {
     it('keeps the ambient orbs, drawn from group tokens, and has no inline stylesheet', () => {
         const { container } = render(<RecentPostsFeed {...props()} />);
         expect(container.querySelector('style')).toBeNull();
-        expect(container.querySelectorAll('.bg-group-ambient-1, .bg-group-ambient-2, .bg-group-ambient-3')).toHaveLength(3);
+        expect(container.querySelectorAll('.bg-expressive-orb-1, .bg-expressive-orb-2, .bg-expressive-orb-3')).toHaveLength(3);
         expect(screen.getByRole('heading', { name: 'Latest Blogs' })).toHaveClass('font-reading', 'text-group-title');
+    });
+
+    it('puts the header on frosted glass and draws the select-member button as the tonal gradient with a hover glow', () => {
+        render(<RecentPostsFeed {...props()} />);
+        const header = screen.getByRole('banner');
+        expect(header).toHaveClass('bg-frost', 'backdrop-blur-lg');
+        const button = screen.getByRole('button', { name: 'Select Member' });
+        expect(button).toHaveClass('bg-accent-tonal', 'hover:bg-accent-gradient', 'hover:shadow-accent-glow-hover');
+    });
+
+    it('shows the selected All pill in the accent roles and the selected Favorite pill in the oshi roles', () => {
+        render(<RecentPostsFeed {...props()} />);
+        expect(screen.getByRole('button', { name: 'All' })).toHaveClass('bg-accent-subtle', 'text-accent-strong');
+        fireEvent.click(screen.getByRole('button', { name: 'Favorite' }));
+        expect(screen.getByRole('button', { name: 'Favorite' })).toHaveClass('bg-semantic-oshi-subtle', 'text-semantic-oshi');
+    });
+
+    it('draws the favourites empty-state heart in the oshi colour', () => {
+        useAppStore.setState({ blogSelectionModes: { hinatazaka46: 'favorite' } });
+        const { container } = render(<RecentPostsFeed {...props({ posts: [] })} />);
+        expect(container.querySelector('svg.text-semantic-oshi')).not.toBeNull();
     });
 });

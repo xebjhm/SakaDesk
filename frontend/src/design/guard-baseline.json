@@ -17,7 +17,6 @@
   "core/modals/ReportIssueModal.tsx": 4,
   "core/modals/SentLettersModal.tsx": 1,
   "data/memberData.ts": 2,
-  "features/blogs/components/BlogCard.tsx": 2,
   "features/blogs/components/BlogNavFooter.tsx": 1,
   "features/blogs/components/blogProse.ts": 1,
   "features/blogs/components/BlogReader.tsx": 5,

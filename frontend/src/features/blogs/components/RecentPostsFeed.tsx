@@ -1,5 +1,5 @@
 // frontend/src/features/blogs/components/RecentPostsFeed.tsx
-// Latest posts of the active service: the group's ambient orbs behind a header and a card grid.
+// Latest posts of the active service: the group's expressive orbs behind a frosted header and a card grid.
 import React, { useMemo } from 'react';
 import { AlertCircle, Heart, Newspaper, RefreshCw, Users } from 'lucide-react';
 import type { RecentPost } from '../../../types';
@@ -58,10 +58,10 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
     return (
         <section aria-labelledby="blogs-feed-title" className="relative flex h-full min-h-0 flex-col">
-            {/* Ambient orbs (group ambient role, DESIGN_SYSTEM.md); header and grid sit above them */}
+            {/* Expressive orbs (L2 atmosphere); the frosted header and the grid sit above them */}
             <DynamicBackground />
 
-            <header className="relative flex shrink-0 items-center justify-between gap-4 px-6 pb-3 pt-5">
+            <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 bg-frost px-6 pb-3 pt-5 backdrop-blur-lg">
                 <div className="flex min-w-0 items-baseline gap-3">
                     <h2 id="blogs-feed-title" className="font-reading text-heading font-semibold text-group-title">
                         {t('blogs.latestBlogs')}
@@ -79,12 +79,17 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                         <Pill selected={selectionMode === 'all'} onClick={() => handleModeChange('all')}>
                             {t('blogs.all')}
                         </Pill>
-                        <Pill selected={selectionMode === 'favorite'} onClick={() => handleModeChange('favorite')}>
+                        <Pill tone="oshi" selected={selectionMode === 'favorite'} onClick={() => handleModeChange('favorite')}>
                             <Heart aria-hidden="true" className="h-3 w-3" fill="currentColor" />
                             {t('blogs.favorite')}
                         </Pill>
                     </div>
-                    <Button variant="secondary" size="sm" onClick={onMemberSelect}>
+                    <Button
+                        variant="tonal"
+                        size="sm"
+                        className="hover:bg-accent-gradient hover:text-inverse hover:shadow-accent-glow-hover"
+                        onClick={onMemberSelect}
+                    >
                         <Users aria-hidden="true" className="h-4 w-4" />
                         {t('blogs.selectMember')}
                     </Button>
@@ -137,7 +142,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                 {!loading && !error && posts.length === 0 && !syncing && (
                     <BlogStatus
                         kind="empty"
-                        icon={selectionMode === 'favorite' ? <Heart className="h-10 w-10" /> : <Newspaper className="h-10 w-10" />}
+                        icon={selectionMode === 'favorite' ? <Heart className="h-10 w-10 text-semantic-oshi" /> : <Newspaper className="h-10 w-10" />}
                         title={selectionMode === 'favorite' ? t('blogs.noPostsFromFavorites') : t('blogs.noBlogPostsFound')}
                         hint={selectionMode === 'favorite' ? t('blogs.addMembersHint') : t('blogs.selectServiceHint')}
                     />
