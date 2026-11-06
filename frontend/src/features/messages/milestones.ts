@@ -77,6 +77,8 @@ export function useMilestone({ roomKey, totalMessages, streakDays }: UseMileston
     const evaluated = useRef(new Set<string>());
     // Room keys that already showed a card during the current open.
     const shownThisOpen = useRef(new Set<string>());
+    // Room keys whose empty-room skip was already logged during the current open.
+    const skipLogged = useRef(new Set<string>());
 
     // Leaving a room ends its open: the next open decides again.
     useEffect(() => () => {
@@ -84,10 +86,16 @@ export function useMilestone({ roomKey, totalMessages, streakDays }: UseMileston
         evaluated.current.delete(`${roomKey}|messages`);
         evaluated.current.delete(`${roomKey}|days`);
         shownThisOpen.current.delete(roomKey);
+        skipLogged.current.delete(roomKey);
+        setShown(null);
     }, [roomKey]);
 
     useEffect(() => {
         if (!roomKey) return;
+        if (totalMessages === 0 && !skipLogged.current.has(roomKey)) {
+            skipLogged.current.add(roomKey);
+            clientLog('celebration', { target: 'milestone_messages', outcome: 'skipped', reason: 'no_messages' });
+        }
         const messagesDue = totalMessages !== null && totalMessages > 0 && !evaluated.current.has(`${roomKey}|messages`);
         const daysDue = streakDays !== null && !evaluated.current.has(`${roomKey}|days`);
         if (!messagesDue && !daysDue) return;

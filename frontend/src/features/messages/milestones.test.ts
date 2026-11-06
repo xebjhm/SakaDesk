@@ -100,6 +100,29 @@ describe('useMilestone', () => {
         expect((stored[MILESTONES_PREF] as MilestoneStore)['h|room'].messages).toEqual([1000, 5000, 10000]);
     });
 
+    it('drops the card when the room changes and does not re-show it on return', () => {
+        stored[MILESTONES_PREF] = { 'h|a': { messages: [1000], days: [] } };
+        const { result, rerender } = renderHook((p) => useMilestone(p), { initialProps: { roomKey: 'h|a', totalMessages: 5001 as number | null, streakDays: null as number | null } });
+        expect(result.current).toEqual({ kind: 'messages', value: 5000 });
+        rerender({ roomKey: 'h|b', totalMessages: null, streakDays: null });
+        expect(result.current).toBeNull();
+        rerender({ roomKey: 'h|a', totalMessages: 5001, streakDays: null });
+        expect(result.current).toBeNull();
+        const shownLogs = vi.mocked(clientLog).mock.calls.filter((c) => (c[1] as { outcome?: string }).outcome === 'shown');
+        expect(shownLogs).toHaveLength(1);
+    });
+
+    it('logs once per open that an empty room is skipped', () => {
+        const { rerender, unmount } = renderHook((p) => useMilestone(p), { initialProps: { roomKey: 'h|room', totalMessages: 0 as number | null, streakDays: null as number | null } });
+        rerender({ roomKey: 'h|room', totalMessages: 0, streakDays: 5 });
+        const skipped = () => vi.mocked(clientLog).mock.calls.filter((c) => (c[1] as { outcome?: string }).outcome === 'skipped');
+        expect(skipped()).toHaveLength(1);
+        expect(skipped()[0]).toEqual(['celebration', { target: 'milestone_messages', outcome: 'skipped', reason: 'no_messages' }]);
+        unmount();
+        renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 0, streakDays: null }));
+        expect(skipped()).toHaveLength(2);
+    });
+
     it('does not write the store when nothing was seeded or shown', () => {
         stored[MILESTONES_PREF] = { 'h|room': { messages: [1000], days: [100] } };
         const { result } = renderHook(() => useMilestone({ roomKey: 'h|room', totalMessages: 2000, streakDays: 128 }));
