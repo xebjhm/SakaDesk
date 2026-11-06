@@ -61,9 +61,9 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
             {/* Expressive orbs (L2 atmosphere); the frosted header and the grid sit above them */}
             <DynamicBackground />
 
-            <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 bg-frost px-6 pb-3 pt-5 backdrop-blur-lg">
+            <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-frost bg-frost px-6 pb-3 pt-5 backdrop-blur-frost backdrop-saturate-180">
                 <div className="flex min-w-0 items-baseline gap-3">
-                    <h2 id="blogs-feed-title" className="font-reading text-heading font-semibold text-group-title">
+                    <h2 id="blogs-feed-title" className="font-reading text-heading font-semibold text-accent-strong">
                         {t('blogs.latestBlogs')}
                     </h2>
                     {syncing && (
@@ -75,7 +75,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-3">
-                    <div role="group" aria-label={t('blogs.postsFrom')} className="flex items-center gap-1">
+                    <div role="group" aria-label={t('blogs.postsFrom')} className="inline-flex items-center gap-0.5 rounded-full bg-sunken p-0.5">
                         <Pill selected={selectionMode === 'all'} onClick={() => handleModeChange('all')}>
                             {t('blogs.all')}
                         </Pill>
@@ -85,9 +85,9 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                         </Pill>
                     </div>
                     <Button
-                        variant="tonal"
+                        variant="ghost"
                         size="sm"
-                        className="hover:bg-accent-gradient hover:text-inverse hover:shadow-accent-glow-hover"
+                        className="border border-accent-wash bg-accent-wash text-secondary hover:bg-accent-gradient hover:text-inverse hover:shadow-accent-glow-hover"
                         onClick={onMemberSelect}
                     >
                         <Users aria-hidden="true" className="h-4 w-4" />

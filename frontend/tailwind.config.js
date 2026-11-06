@@ -7,6 +7,8 @@ export default {
     theme: {
         extend: {
             brightness: { 94: '.94', 106: '1.06' },
+            backdropBlur: { frost: '20px' },
+            backdropSaturate: { 180: '1.8' },
             fontFamily: {
                 sans: 'var(--ds-font-family-sans)',
                 display: 'var(--ds-font-family-serif)',
@@ -37,6 +39,7 @@ export default {
             },
             backgroundImage: {
                 'accent-gradient': 'var(--ds-accent-gradient)',
+                'accent-wash': 'var(--ds-accent-wash)',
                 'accent-tonal': 'var(--ds-accent-tonal)',
                 'expressive-soft': 'var(--ds-expressive-soft)',
                 'expressive-header': 'var(--ds-expressive-header)',
@@ -130,6 +133,7 @@ export default {
                 'semantic-danger': 'var(--ds-semantic-danger-text)',
                 'semantic-info': 'var(--ds-semantic-info-text)',
                 'semantic-oshi': 'var(--ds-semantic-oshi-text)',
+                'semantic-oshi-solid': 'var(--ds-semantic-oshi-solid)',
                 'semantic-star': 'var(--ds-semantic-star)',
                 viewer: 'var(--ds-viewer-text)',
                 'viewer-muted': 'var(--ds-viewer-text-muted)',
@@ -142,7 +146,9 @@ export default {
             },
             borderColor: {
                 'accent-border': 'var(--ds-accent-border)',
+                'accent-wash': 'var(--ds-accent-wash-border)',
                 accent: 'var(--ds-accent)',
+                'frost': 'var(--ds-overlay-frost-border)',
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
                 'mark-underline': 'var(--ds-mark-underline)',

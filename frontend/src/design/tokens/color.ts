@@ -41,6 +41,8 @@ export const color = {
         shade: 'rgba(0, 0, 0, 0.2)',
         /** Frosted bar over the blog feed's orbs (L2): the pre-D2 white at 72 %. */
         frost: 'rgba(255, 255, 255, 0.72)',
+        /** Hairline under the frosted feed header: the pre-D2 white at 40 %. */
+        frostBorder: 'rgba(255, 255, 255, 0.4)',
     },
     /**
      * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow

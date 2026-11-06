@@ -277,6 +277,11 @@ def test_notify_open_chat_accepts_has_target():
         ("avatar_fallback", {"size": "md"}, "info"),
         ("menu_item_blocked", {"target": "sent_letters"}, "info"),
         ("blog_fallback", {"target": "card_thumb", "reason": "image_error"}, "info"),
+        (
+            "blog_fallback",
+            {"target": "timeline_thumb", "reason": "image_error"},
+            "info",
+        ),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):

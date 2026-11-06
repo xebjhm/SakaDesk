@@ -84,6 +84,7 @@ describe('TimelineRail look (D2b)', () => {
         expect(screen.getByText('#' + (42 - 21)).closest('.rounded-card')).toHaveClass('shadow-accent-glow');
         act(() => { vi.advanceTimersByTime(800); });
         expect(rail.querySelector('.border-2')).toHaveClass('border-accent');
+        expect(rail.querySelector('.border-2')).toHaveClass('transition-[opacity,border-color]');
         expect(screen.getByText(blogs[21].title)).toHaveAttribute('lang', 'ja');
     });
 

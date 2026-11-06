@@ -86,11 +86,11 @@ describe('BlogCard v2 look', () => {
   });
 
   it('marks the Japanese title and member name, not the date', () => {
-    render(<BlogCard post={makePost({ title: '春の日記', member_name: '佐々木 久美' })} onClick={() => {}} />);
+    const { container } = render(<BlogCard post={makePost({ title: '春の日記', member_name: '佐々木 久美' })} onClick={() => {}} />);
     expect(screen.getByText('春の日記')).toHaveAttribute('lang', 'ja');
     expect(screen.getByText('佐々木 久美')).toHaveAttribute('lang', 'ja');
     expect(screen.getByText('佐々木 久美')).toHaveClass('text-accent-strong');
-    expect(document.querySelector('.text-caption.text-muted')).not.toHaveAttribute('lang');
+    expect(container.querySelector('.text-caption.text-muted')).not.toHaveAttribute('lang');
   });
 
   it('breadcrumbs a broken thumbnail', () => {

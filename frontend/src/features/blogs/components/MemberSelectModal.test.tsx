@@ -68,7 +68,7 @@ describe('MemberSelectModal', () => {
         expect(cell.querySelector('.group-hover\\:text-accent-strong')).not.toBeNull();
         const heart = screen.getByRole('button', { name: /Add 春野 ひなた to favorites/ });
         expect(heart).toHaveClass('focus-visible:ring-accent');
-        expect(heart.querySelector('svg')).toHaveClass('text-semantic-oshi');
+        expect(heart.querySelector('svg')).toHaveClass('text-semantic-oshi-solid');
         expect(heart.querySelector('svg')).not.toHaveClass('fill-current');
     });
 

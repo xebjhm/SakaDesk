@@ -15,7 +15,7 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.surface)) vars[`--ds-surface-${name}`] = value;
     for (const [name, value] of Object.entries(color.text)) vars[`--ds-text-${name}`] = value;
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
-    for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${name}`] = value;
+    for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${kebab(name)}`] = value;
     for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
     for (const group of ['viewer', 'decor'] as const) {
         for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
@@ -59,6 +59,9 @@ export function accentTokenVars(a: AccentRoles): Record<string, string> {
         '--ds-accent-logo': a.logo,
         '--ds-accent-glow': a.glow,
         '--ds-accent-gradient': a.gradient,
+        // Pre-D2 resting look of a quiet accent control: logo 8 % -> accent 6 % wash, logo 19 % hairline.
+        '--ds-accent-wash': `linear-gradient(135deg, color-mix(in srgb, ${a.logo} 8%, transparent), color-mix(in srgb, ${a.accent} 6%, transparent))`,
+        '--ds-accent-wash-border': `color-mix(in srgb, ${a.logo} 19%, transparent)`,
         '--ds-accent-tonal': a.tonal,
         '--ds-accent-tonal-text': a.tonalText,
         '--ds-shadow-accent-glow': `0 4px 14px ${a.glow}`,

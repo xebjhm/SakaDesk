@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { clientLog } from '../../../utils/clientLog';
 import { render, screen, fireEvent } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { MemberTimelineModal } from './MemberTimelineModal';
 import type { BlogMeta } from '../../../types';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -38,6 +41,24 @@ describe('MemberTimelineModal', () => {
         expect(p.onSelectBlog).toHaveBeenCalledWith(blogs[0]);
         fireEvent.click(screen.getByRole('button', { name: 'Photo Album' }));
         expect(p.onOpenPhotoGallery).toHaveBeenCalled();
+    });
+
+    it('draws the Photo Album button on the accent wash in the accent text, hovering to the subtle tint', () => {
+        renderModal();
+        const button = screen.getByRole('button', { name: 'Photo Album' });
+        expect(button).toHaveClass('bg-accent-wash', 'text-accent-strong', 'hover:bg-accent-subtle');
+        expect(button).not.toHaveClass('text-secondary', 'text-primary');
+    });
+
+    it('breadcrumbs a broken row thumbnail', () => {
+        const withThumb = [{ ...blogs[0], thumbnail: '/broken.jpg' }] as unknown as BlogMeta[];
+        const props = {
+            isOpen: true, onClose: vi.fn(), member: { id: '9901', name: '春野 ひなた' }, blogs: withThumb,
+            loading: false, error: null, onSelectBlog: vi.fn(), onRetry: vi.fn(), onOpenPhotoGallery: vi.fn(),
+        };
+        const { baseElement } = render(<MemberTimelineModal {...(props as React.ComponentProps<typeof MemberTimelineModal>)} />);
+        fireEvent.error(baseElement.querySelector('img')!);
+        expect(clientLog).toHaveBeenCalledWith('blog_fallback', { target: 'timeline_thumb', reason: 'image_error' });
     });
 
     it('closes on Escape', () => {

@@ -7,6 +7,7 @@ import { cn, formatMonthYear, formatShortDate } from '../../../utils/classnames'
 import { Modal, Card, Button } from '../../../design/primitives';
 import { DialogStatus } from '../../../core/common/DialogStatus';
 import { useTranslation } from '../../../i18n';
+import { clientLog } from '../../../utils/clientLog';
 
 interface MemberTimelineModalProps {
     isOpen: boolean;
@@ -98,7 +99,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             headerExtra={
                 <>
                     {onOpenPhotoGallery && (
-                        <Button variant="secondary" size="sm" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
+                        <Button variant="ghost" size="sm" className="bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
                             <Image className="h-4 w-4" />
                             {t('blogGallery.button')}
                         </Button>
@@ -213,7 +214,10 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick }) =>
                         src={blog.thumbnail}
                         alt=""
                         loading="lazy"
-                        onError={() => setImageError(true)}
+                        onError={() => {
+                            setImageError(true);
+                            clientLog('blog_fallback', { target: 'timeline_thumb', reason: 'image_error' });
+                        }}
                         className="h-full w-full object-cover transition-transform duration-base ease-standard group-hover:scale-105 motion-reduce:transform-none"
                     />
                 ) : (

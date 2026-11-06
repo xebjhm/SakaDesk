@@ -235,7 +235,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                     aria-pressed={isFavorited}
                                                     className={cn('absolute right-3 top-16 flex rounded-pill p-1 shadow-pill transition-transform duration-fast ease-standard hover:scale-110 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', isFavorited ? 'bg-semantic-oshi-solid' : 'bg-pill')}
                                                 >
-                                                    <Heart className={cn('h-4 w-4', isFavorited ? 'fill-current text-inverse' : 'text-semantic-oshi')} />
+                                                    <Heart className={cn('h-4 w-4', isFavorited ? 'fill-current text-inverse' : 'text-semantic-oshi-solid')} />
                                                 </button>
                                             </div>
                                         );

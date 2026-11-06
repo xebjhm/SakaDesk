@@ -281,7 +281,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                         className={cn(
                             'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2',
                             isZoomed ? 'border-accent' : 'border-strong',
-                            'transition-opacity duration-base ease-standard motion-reduce:transition-none',
+                            'transition-[opacity,border-color] duration-base ease-standard motion-reduce:transition-none',
                             isZoomed ? 'opacity-90' : 'opacity-60',
                         )}
                         style={{ top: hoverInfo.y }}
