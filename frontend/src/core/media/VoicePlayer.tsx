@@ -414,7 +414,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         setShowVolume(false);
     }, []);
 
-    // Premium-family variants share the same glassmorphism card. `gallery`
+    // Premium-family variants share the same opaque sheet card. `gallery`
     // and `fullscreen` wrap it with internal transcription UI (above/below).
     if (variant === 'premium' || variant === 'gallery' || variant === 'fullscreen') {
         const premiumCard = (

@@ -78,7 +78,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
         >
             <p className="text-small text-muted">{t('tos.subtitle')}</p>
 
-            {/* e4e4118: amber box, border and text → the semantic warning colours (spec §9). */}
+            {/* e4e4118: an amber 50 fill, amber 200 border, amber 800 heading and amber 700 text, no icon → the semantic warning colours (spec §9). */}
             <section data-testid="tos-disclaimer" className="flex gap-3 rounded-lg border border-semantic-warning bg-semantic-warning-subtle p-4">
                 <AlertTriangle aria-hidden="true" className="h-5 w-5 shrink-0 text-semantic-warning" />
                 <div className="flex flex-col gap-1">
@@ -108,7 +108,7 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
                 </div>
             </details>
 
-            {/* e4e4118: light-gray box → the near-white elevated surface (also keeps Hinatazaka 700 links at 4.6:1). */}
+            {/* e4e4118: a gray 50 box → the near-white elevated surface (also keeps Hinatazaka 700 links at 4.6:1). */}
             <section className="flex flex-col gap-3 rounded-lg bg-elevated p-4">
                 <p className="text-small text-secondary">{t('tos.reviewOfficialTos')}</p>
                 <ul className="flex flex-wrap gap-x-4 gap-y-2">

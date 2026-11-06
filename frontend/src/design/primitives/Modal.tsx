@@ -25,7 +25,8 @@ export interface ModalProps {
     headerExtra?: React.ReactNode;
     /**
      * 'brand': the dialog is a brand-context surface (settings, search, about...) and its children inherit brand.
-     * 'inherit' (default): brand when opened inside a BrandScope or a brand Modal, else the active group.
+     * 'inherit' (default): the scope provided by ScopeContext (brand from a BrandScope or a brand Modal, or a group scope a
+     * parent hands over, as the login does for its geo warning), else the active group.
      */
     scope?: 'inherit' | 'brand';
     /** 'expressive' (default): context gradient header (L1). 'plain': quiet header for small confirms. */
