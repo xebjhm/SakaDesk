@@ -104,6 +104,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   In a small window the terms now scroll instead of cutting off the Accept
   button, and the settings error message appears in your language and can be
   closed.
+- **Dialogs have their colours back.** Settings, search, About and the other
+  app windows use SakaDesk's own soft colours, whichever group is open, while
+  the calendar, favourites, media and background windows of a chat use that
+  group's colours again. Bookmarked messages show the yellow star, and the
+  sync repair rows in Settings say which group they act on.
 
 ### Fixed
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now

@@ -73,12 +73,20 @@ How a context is set:
   group marker inside a brand screen). Every `*-group-*` utility, and the
   official layer, inside then follows that group. It is never used in lists
   that mix groups. A primitive never takes a group id.
+- **Group markers in a brand dialog** use `useGroupMarker(serviceId, target)`
+  (`design/useGroupMarker.ts`): it returns `groupScopeStyle` for that service's
+  group, so the `*-accent-*` utilities inside follow it (the add-service cards,
+  the per-group rows in Settings' Sync tab with a chip naming the group). An
+  unknown service leaves the piece in brand and logs `group_marker_fallback`
+  (`target`: `add_service` or `settings_row`; `reason`: `unknown_service`).
 
 Status: the frame and chat screens (group rail, feature rail, member list, chat,
 letters, profile card, chat menus, call popup) and the blog screens (feed, reader,
-rail, member select, member timeline) apply this table. The other dialogs and the
-entry screens follow in the next parts of the re-apply (see
-[Migration note](#14-migration-note)).
+rail, member select, member timeline) and the dialogs (settings, search, about,
+diagnostics, report issue, add service, confirm, login, and the chat dialogs:
+calendar, favourites, media gallery, background, sent letters) apply this table.
+The entry screens (ToS, landing, setup, sync) follow in the last part of the
+re-apply (see [Migration note](#14-migration-note)).
 
 ## 4. Colour
 
@@ -203,7 +211,8 @@ group accent says where you are; a meaning colour says what a thing is.
   heart outline uses `text-semantic-oshi-solid` (the vivid pink, 3:1 for an icon).
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
-  shadow for definition on white), the same in every group.
+  shadow for definition on white), the same in every group. Favourites shows the
+  same yellow star on each bookmarked message.
 - Danger and success stay semantic as above.
 - Not oshi: About's "made with love" heart (`text-heart`, `decor.heart`) and
   anything else that is merely pink.
@@ -328,7 +337,10 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   Marked so far: message text, member names (member list, chat header,
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
   content (post titles, bodies, member names on cards, in the reader, in the member
-  select and the timeline) is marked too. UI chrome is never marked.
+  select and the timeline) is marked too. Dialogs mark member names and message text
+  in favourites, the media gallery and the viewers, letter text, search results
+  (member, room, blog title, snippet) and filter chips, and group names shown as data
+  (add service, the settings marker chip). UI chrome is never marked.
 - `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
@@ -484,7 +496,8 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: brand when opened inside a `BrandScope` or a brand `Modal`, else the active group; `groupScopeStyle` surfaces are not propagated, pass their styles explicitly) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
-| `header` | `expressive` (default: the context's gradient header and bar, L1) or `plain` (a quiet title, for small confirms; `ConfirmDialog` uses it) |
+| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) or `plain` (a quiet title; no dialog uses it today) |
+| `icon` | A decorative lucide icon before the title, drawn at 20 px in the header text colour. Only the standard layout with a title draws it (`Modal` ignores it otherwise). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image) and Report issue (bug); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
@@ -508,8 +521,13 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 - **Scrims:** `bg-scrim` behind sheet dialogs, `bg-viewer-scrim` behind the dark viewer.
   Never `bg-black/NN`.
 - **Motion:** a sheet dialog enters with `animate-reveal` (`motion-reduce:animate-none`).
+- **Header title:** `text-title font-bold` in the header text colour (white on a title
+  gradient, the official title colour on Sakurazaka's white header, dark on the brand
+  aurora), as the pre-D2 dialog header.
 - **Content:** a dialog has at most one `primary` or `danger` Button, confirms are
-  `ConfirmDialog` (focus starts on Cancel) and never `window.confirm`, and loading, empty and
+  `ConfirmDialog` (expressive header of its opener's context, the warning / danger / info
+  meaning in a semantic icon tile, a `secondary` Cancel where focus starts, then `primary`
+  or `danger`) and never `window.confirm`, and loading, empty and
   error states are `DialogStatus` (spinner `text-accent`; the error tile is
   `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
@@ -673,6 +691,10 @@ Do not "fix" these.
 - **Chat header pills** keep the pre-D2 white glass / title-text tint: on light
   parts of the title gradient and on Sakurazaka's white header their caption text
   is below 4.5:1, like the official title beside them.
+- **Dialog header titles** keep the header text colour: white on the title
+  gradients (about 1.7:1 at Hinatazaka's light end) and the official `#d892aa` on
+  Sakurazaka's white header (2.4:1), as the pre-D2 dialogs and the chat header
+  beside them (user decision D1, R-c).
 
 ## 13. Do / Don't
 
@@ -693,8 +715,9 @@ Do not "fix" these.
 
 ## 14. Migration note
 
-R-a (frame and chat) and R-b (blogs) are done; the list below applies to the
-remaining dialogs and the entry screens.
+R-a (frame and chat), R-b (blogs) and R-c (dialogs) are done; the list below
+applies to the entry screens (ToS, landing, setup, sync, boot) and the brand
+moments (empty states, celebrations, the About hero).
 
 The `*-group-accent`, `*-group-strong`, `*-group-subtle` and `*-group-badge`
 utilities (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`,
