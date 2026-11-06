@@ -6,7 +6,8 @@ import { fromLocalDateStr, toLocalDateStr } from '../../utils/dateFormatters';
 export interface ArchiveStats {
     messages: number;
     photos: number;
-    days: number;
+    /** Calendar days the archive spans; `null` when the earliest message time is unknown (shown as "—"). */
+    days: number | null;
 }
 
 export type ArchiveStatsState = { status: 'loading' } | { status: 'error' } | { status: 'ready'; stats: ArchiveStats };
@@ -15,13 +16,14 @@ const DAY_MS = 86_400_000;
 
 /**
  * Calendar days from the earliest archived message to today, both counted (local dates, so the
- * number changes at the user's midnight); 0 for an empty archive or an unreadable time.
+ * number changes at the user's midnight); `null` when the earliest time is missing or unreadable
+ * (an empty archive, or messages without a readable time), so the caller shows "—", not 0.
  */
-export function archiveDays(firstMessageAt: string | null, now: Date): number {
-    if (!firstMessageAt) return 0;
+export function archiveDays(firstMessageAt: string | null, now: Date): number | null {
+    if (!firstMessageAt) return null;
     const first = fromLocalDateStr(toLocalDateStr(firstMessageAt));
     const today = fromLocalDateStr(toLocalDateStr(now));
-    if (!first || !today) return 0;
+    if (!first || !today) return null;
     // Rounded: a daylight-saving day is 23 or 25 hours long.
     return Math.max(1, Math.round((today.getTime() - first.getTime()) / DAY_MS) + 1);
 }

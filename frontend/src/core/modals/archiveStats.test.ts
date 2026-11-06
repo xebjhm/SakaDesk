@@ -15,9 +15,9 @@ describe('archiveDays (decision D9)', () => {
         expect(archiveDays(new Date(2026, 10, 6, 0, 30).toISOString(), new Date(2026, 10, 6, 23))).toBe(1);
     });
 
-    it('is 0 for an empty archive or an unreadable time', () => {
-        expect(archiveDays(null, new Date(2026, 10, 6))).toBe(0);
-        expect(archiveDays('not a date', new Date(2026, 10, 6))).toBe(0);
+    it('is null (unknown, not 0) for a missing or unreadable earliest time', () => {
+        expect(archiveDays(null, new Date(2026, 10, 6))).toBeNull();
+        expect(archiveDays('not a date', new Date(2026, 10, 6))).toBeNull();
     });
 });
 
@@ -27,7 +27,7 @@ describe('useArchiveStats', () => {
         const { result, rerender } = renderHook(({ open }) => useArchiveStats(open), { initialProps: { open: false } });
         expect(result.current).toEqual({ status: 'loading' });
         rerender({ open: true });
-        await waitFor(() => expect(result.current).toEqual({ status: 'ready', stats: { messages: 12846, photos: 2301, days: 0 } }));
+        await waitFor(() => expect(result.current).toEqual({ status: 'ready', stats: { messages: 12846, photos: 2301, days: null } }));
         expect(clientLog).toHaveBeenCalledWith('archive_stats_load', { outcome: 'ok' });
     });
 

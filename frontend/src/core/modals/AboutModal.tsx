@@ -36,7 +36,8 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     const archive = useArchiveStats(isOpen);
     const statsId = useId();
     const totals = archive.status === 'ready' ? archive.stats : null;
-    const statValue = (n: number | undefined) => (totals && n !== undefined ? n.toLocaleString(i18n.language) : '—');
+    // "—" while loading, and for a count the archive cannot give (days without a readable first time).
+    const statValue = (n: number | null | undefined) => (totals && n != null ? n.toLocaleString(i18n.language) : '—');
     const statItems = [
         { key: 'messages', label: t('about.statMessages'), value: statValue(totals?.messages) },
         { key: 'photos', label: t('about.statPhotos'), value: statValue(totals?.photos) },

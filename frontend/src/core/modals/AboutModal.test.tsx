@@ -54,6 +54,24 @@ describe('AboutModal', () => {
         vi.useRealTimers();
     });
 
+    it('shows "—" days, not 0, when messages exist but the earliest time is missing', async () => {
+        server.use(http.get('/api/archive/stats', () => HttpResponse.json({ messages: 12846, photos: 2301, first_message_at: null })));
+        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
+        const stats = screen.getByTestId('about-stats');
+        await within(stats).findByText('12,846');
+        const days = within(stats).getByText('Days').parentElement as HTMLElement;
+        expect(within(days).getByText('—')).toBeInTheDocument();
+        expect(within(stats).queryByText('0')).toBeNull();
+    });
+
+    it('shows 0 / 0 / — for an empty archive', async () => {
+        server.use(http.get('/api/archive/stats', () => HttpResponse.json({ messages: 0, photos: 0, first_message_at: null })));
+        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
+        const stats = screen.getByTestId('about-stats');
+        await waitFor(() => expect(within(stats).getAllByText('0')).toHaveLength(2));
+        expect(within(within(stats).getByText('Days').parentElement as HTMLElement).getByText('—')).toBeInTheDocument();
+    });
+
     it('hides the stats when they cannot be loaded', async () => {
         server.use(http.get('/api/archive/stats', () => new HttpResponse(null, { status: 500 })));
         render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
