@@ -138,7 +138,11 @@ for (const service of BRAND_CHECK) {
     await shot(page, `${service}-about`)
     const version = page.getByRole('dialog').first().getByText(/^Version /).first()
     for (let i = 0; i < 5; i++) await version.click()
-    await settled(page, page.getByRole('dialog', { name: 'Developer Diagnostics' }))
+    const diagnostics = page.getByRole('dialog', { name: 'Developer Diagnostics' })
+    await settled(page, diagnostics)
+    await expect(diagnostics.getByRole('heading', { name: 'SYSTEM' })).toBeVisible({ timeout: 30000 })
+    await expect(diagnostics.locator('.animate-spin')).toHaveCount(0, { timeout: 30000 })
+    await settled(page, diagnostics.getByRole('heading', { name: 'SYSTEM' }))
     await shot(page, `${service}-diagnostics`)
     await closeAll(page)
 
