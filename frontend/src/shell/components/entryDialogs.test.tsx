@@ -26,12 +26,57 @@ describe('ToS (D2d)', () => {
         const accept = screen.getByRole('button', { name: 'Accept and Continue' });
         expect(accept).toHaveClass('bg-accent-gradient');
         expect(accept.closest('.overflow-y-auto')).toBeNull();
-        expect(screen.getByRole('checkbox')).toHaveClass('accent-group');
+        expect(screen.getByRole('checkbox')).toHaveClass('accent-accent');
+    });
+});
+
+describe('ToS (R-d)', () => {
+    it('is a brand dialog with the document icon on the dark aurora header (pending decision D1)', () => {
+        render(<TosDialog onAccept={vi.fn()} />);
+        expect(screen.getByRole('dialog', { name: 'Terms of Service' })).toHaveAttribute('data-scope', 'brand');
+        expect(screen.getByTestId('modal-header')).toHaveClass('bg-expressive-header', 'text-expressive-header');
+        expect(screen.getByTestId('modal-header-icon').querySelector('svg.lucide-file-text')).not.toBeNull();
     });
 
-    it('links the official terms with the neutral link role', () => {
+    it('restores the amber disclaimer in the semantic warning colours (pending decision D2)', () => {
         render(<TosDialog onAccept={vi.fn()} />);
-        expect(screen.getByRole('link', { name: 'Yodel ToS' })).toHaveClass('text-group-strong', 'decoration-group');
+        const box = screen.getByTestId('tos-disclaimer');
+        expect(box).toHaveClass('bg-semantic-warning-subtle', 'border', 'border-semantic-warning');
+        expect(within(box).getByRole('heading', { name: 'Important Disclaimer' })).toHaveClass('text-semantic-warning');
+        expect(within(box).getByText(i18n.t('tos.disclaimerText'))).toHaveClass('text-semantic-warning');
+        expect(box.querySelector('svg')).toHaveClass('text-semantic-warning');
+    });
+
+    it('draws each official link in its own group colour on the near-white box (pending decision D3)', () => {
+        render(<TosDialog onAccept={vi.fn()} />);
+        const links = [
+            ['Nogizaka46 ToS', 'nogizaka'], ['Sakurazaka46 ToS', 'sakurazaka'],
+            ['Hinatazaka46 ToS', 'hinatazaka'], ['Yodel ToS', 'yodel'],
+        ] as const;
+        for (const [name, group] of links) {
+            const link = screen.getByRole('link', { name });
+            expect(link).toHaveClass('text-accent-strong', 'hover:underline');
+            expect(link).not.toHaveClass('underline');
+            const item = link.closest('li') as HTMLElement;
+            expect(item.style.getPropertyValue('--ds-accent-strong')).toBe(groupRoles(group).strong);
+            expect(item.closest('section')).toHaveClass('bg-elevated');
+        }
+    });
+
+    it('marks the quoted Japanese terms as ja, not the translated titles', () => {
+        render(<TosDialog onAccept={vi.fn()} />);
+        const quote = screen.getByText(/^当社が別に定める場合を除き/);
+        expect(quote.closest('[lang="ja"]')).not.toBeNull();
+        expect(screen.getByText(i18n.t('tos.articleIpTitle')).closest('[lang="ja"]')).toBeNull();
+    });
+
+    it('blocks Accept with a reason until the box is ticked', async () => {
+        render(<TosDialog onAccept={vi.fn()} />);
+        const accept = screen.getByRole('button', { name: 'Accept and Continue' });
+        expect(accept).toHaveAttribute('aria-disabled', 'true');
+        expect(accept).toHaveAttribute('title', i18n.t('tos.acceptRequired'));
+        await userEvent.click(screen.getByRole('checkbox'));
+        expect(accept).not.toHaveAttribute('aria-disabled');
     });
 });
 

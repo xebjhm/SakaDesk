@@ -8,7 +8,7 @@ import yue from './locales/yue.json';
 const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 
 /** Every string R-d adds (later tasks append). */
-const RD_KEYS: readonly string[] = [];
+const RD_KEYS: readonly string[] = ['tos.acceptRequired'];
 
 /** R-d keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
 const RD_EN_PLURALS: readonly string[] = [];

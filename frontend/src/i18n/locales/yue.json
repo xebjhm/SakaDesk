@@ -182,6 +182,7 @@
     "articleIpTitle": "第3條（知識產權）",
     "articleProhibitedTitle": "第8條（禁止事項）",
     "acceptCheckbox": "我明白同接受呢啲條款，同埋我已經睇咗我用緊嘅服務嘅官方服務條款。",
+    "acceptRequired": "請先剔咗上面個格",
     "acceptAndContinue": "接受並繼續"
   },
   "setup": {

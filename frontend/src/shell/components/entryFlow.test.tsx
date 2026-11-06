@@ -43,9 +43,9 @@ describe('ToS', () => {
         const onAccept = vi.fn();
         render(<TosDialog onAccept={onAccept} />);
         const accept = screen.getByRole('button', { name: 'Accept and Continue' });
-        expect(accept).toBeDisabled();
+        expect(accept).toHaveAttribute('aria-disabled', 'true');
         await userEvent.click(screen.getByRole('checkbox', { name: /I understand and accept/ }));
-        expect(accept).toBeEnabled();
+        expect(accept).not.toHaveAttribute('aria-disabled');
         await userEvent.click(accept);
         expect(setPref).toHaveBeenCalledWith('tos_accepted_at', expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/));
         expect(onAccept).toHaveBeenCalledOnce();

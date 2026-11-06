@@ -182,6 +182,7 @@
     "articleIpTitle": "Article 3 (Intellectual Property Rights)",
     "articleProhibitedTitle": "Article 8 (Prohibited Activities)",
     "acceptCheckbox": "I understand and accept these terms, and I have read the official Terms of Service for the services I use.",
+    "acceptRequired": "Tick the box above to continue",
     "acceptAndContinue": "Accept and Continue"
   },
   "setup": {
