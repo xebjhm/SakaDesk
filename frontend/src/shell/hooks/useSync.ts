@@ -81,6 +81,8 @@ export interface SequentialSyncInfo {
     currentIndex: number;
     /** Service ID currently being synced */
     currentService: string;
+    /** Every service of the sequence, in sync order (the dialog's step row shows one marker each). */
+    services: string[];
 }
 
 /** Return type for the useSync hook. */
@@ -597,7 +599,7 @@ export function useSync({
         for (let i = 0; i < services.length; i++) {
             const service = services[i];
             sequentialSyncServiceRef.current = service;
-            setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service });
+            setSequentialSyncInfo({ total: services.length, currentIndex: i, currentService: service, services });
 
             // Force clear any stale polling state from previous syncs
             isPollingRef.current[service] = false;

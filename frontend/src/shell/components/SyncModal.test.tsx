@@ -127,6 +127,7 @@ describe('SyncModal', () => {
                     currentService: 'hinatazaka46',
                     currentIndex: 0,
                     total: 2,
+                    services: ['hinatazaka46', 'sakurazaka46'],
                 }}
             />,
         );
@@ -144,6 +145,7 @@ describe('SyncModal', () => {
                     currentService: 'hinatazaka46',
                     currentIndex: 0,
                     total: 1,
+                    services: ['hinatazaka46'],
                 }}
             />,
         );

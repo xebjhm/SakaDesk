@@ -1,10 +1,9 @@
 // frontend/src/shell/components/SyncModal.tsx
-import React, { useState } from 'react';
-import { AlertTriangle, Image as ImageIcon, Mic, Video } from 'lucide-react';
+import React from 'react';
+import { AlertTriangle, Download, Image as ImageIcon, Mic, Video } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button, Modal } from '../../design/primitives';
-import { groupScopeStyle } from '../../design/groupScope';
-import { serviceIdToGroupId } from '../../config/colors';
+import { useGroupMarker } from '../../design/useGroupMarker';
 import { cn, formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
 import { getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
@@ -21,15 +20,39 @@ interface SyncModalProps {
     onCancel?: () => void;
 }
 
-/** The blocking sync dialog (spec D2d decisions 4, 6, 9–11, 17, 19): not dismissible; Done or Cancel. */
+/** One service's step in a sequential sync: a group marker (spec section 4 "rows are markers"; decision D5). */
+const SyncStepBar: React.FC<{ serviceId: string; state: 'done' | 'current' | 'pending' }> = ({ serviceId, state }) => {
+    const marker = useGroupMarker(serviceId, 'sync_row');
+    return (
+        <span
+            data-testid={`sync-step-${serviceId}`}
+            aria-hidden="true"
+            style={marker}
+            className={cn(
+                'h-1 rounded-full transition-all duration-base ease-standard motion-reduce:transition-none',
+                state === 'pending' ? 'w-6 bg-control-off' : state === 'current' ? 'w-10 bg-accent' : 'w-6 bg-accent',
+            )}
+        />
+    );
+};
+
+/** The service being synced and its place in the sequence, in that group's colour. */
+const SyncServiceChip: React.FC<{ serviceId: string; label: string }> = ({ serviceId, label }) => {
+    const marker = useGroupMarker(serviceId, 'sync_row');
+    return (
+        <span data-testid="sync-service-chip" style={marker} className="ml-2 inline-flex items-center gap-1 text-caption font-semibold">
+            <span aria-hidden="true" className="h-2 w-2 rounded-full bg-accent" />
+            <span lang="ja" className="text-accent-strong">{label}</span>
+        </span>
+    );
+};
+
+/**
+ * The blocking sync dialog: a brand dialog (spec section 4) whose sequential step row names each
+ * group as a marker (decision D5). Not dismissible; Done or Cancel (D2d decisions 4, 6, 9-11, 17, 19).
+ */
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose, onCancel }) => {
     const { t } = useTranslation();
-    // The service a sequential sync last scoped this dialog to. Kept until the dialog closes, so
-    // Complete stays in that service's colours after the sequence info is cleared.
-    const sequentialService = sequentialSyncInfo?.currentService ?? null;
-    const [lastScopedService, setLastScopedService] = useState(sequentialService);
-    if (sequentialService && sequentialService !== lastScopedService) setLastScopedService(sequentialService);
-    const scopedService = sequentialService ?? lastScopedService;
     const isComplete = syncProgress.phase === 'complete';
     const title = isComplete
         ? t('sync.complete')
@@ -56,33 +79,28 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
         <Modal
             isOpen
             onClose={onClose ?? (() => {})}
+            scope="brand"
             title={title}
+            icon={<Download />}
             dismissible={false}
             logId="sync"
             className="max-w-lg"
             footer={footer}
         >
-            <div
-                className="flex flex-col gap-5"
-                style={scopedService ? groupScopeStyle(serviceIdToGroupId(scopedService)) : undefined}
-            >
+            <div className="flex flex-col gap-5">
                 {sequentialSyncInfo && sequentialSyncInfo.total > 1 && (
                     <div className="flex items-center justify-center gap-2">
-                        {Array.from({ length: sequentialSyncInfo.total }, (_, i) => (
-                            <span
-                                key={i}
-                                aria-hidden="true"
-                                className={cn(
-                                    'h-1 rounded-pill transition-all duration-base ease-standard motion-reduce:transition-none',
-                                    i < sequentialSyncInfo.currentIndex ? 'w-6 bg-group-accent'
-                                        : i === sequentialSyncInfo.currentIndex ? 'w-10 bg-group-accent'
-                                            : 'w-6 bg-control-off',
-                                )}
+                        {sequentialSyncInfo.services.map((serviceId, i) => (
+                            <SyncStepBar
+                                key={serviceId}
+                                serviceId={serviceId}
+                                state={i < sequentialSyncInfo.currentIndex ? 'done' : i === sequentialSyncInfo.currentIndex ? 'current' : 'pending'}
                             />
                         ))}
-                        <span className="ml-2 text-caption font-semibold text-secondary">
-                            {serviceName} ({sequentialSyncInfo.currentIndex + 1}/{sequentialSyncInfo.total})
-                        </span>
+                        <SyncServiceChip
+                            serviceId={sequentialSyncInfo.currentService}
+                            label={`${serviceName} (${sequentialSyncInfo.currentIndex + 1}/${sequentialSyncInfo.total})`}
+                        />
                     </div>
                 )}
 
@@ -99,21 +117,22 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                                     stillMissing: result.still_missing,
                                 })}
                         </p>
+                        {/* e4e4118: warning-tinted border, heading bg and text, icons in the warning hue. */}
                         {unresolved > 0 && (
-                            <div className="flex flex-col rounded-card bg-sunken">
-                                <p className="flex items-center gap-2 px-4 py-3 font-semibold text-primary">
-                                    <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-status-warning" />
+                            <div data-testid="sync-unresolved" className="flex flex-col overflow-hidden rounded-lg border border-semantic-warning">
+                                <p className="flex items-center gap-2 bg-semantic-warning-subtle px-4 py-3 font-semibold text-semantic-warning">
+                                    <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />
                                     {t('settings.verifyUnresolved', { count: unresolved })}
                                 </p>
                                 {(result.unresolved_items?.length ?? 0) > 0 && (
-                                    <ul className="flex max-h-44 flex-col gap-1 overflow-y-auto px-2 pb-2">
+                                    <ul className="flex max-h-44 flex-col divide-y divide-subtle overflow-y-auto">
                                         {result.unresolved_items!.map((it, i) => {
                                             const Icon = it.media_type === 'video' ? Video : it.media_type === 'voice' ? Mic : ImageIcon;
                                             return (
-                                                <li key={i} className="flex items-center gap-2 rounded-pill px-2 py-1">
-                                                    <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-secondary" />
-                                                    <span className="flex-1 truncate text-primary">{it.member}</span>
-                                                    <span className="shrink-0 tabular-nums text-secondary">
+                                                <li key={i} className="flex items-center gap-2 px-4 py-2">
+                                                    <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-semantic-warning" />
+                                                    <span lang="ja" className="flex-1 truncate text-secondary">{it.member}</span>
+                                                    <span className="shrink-0 tabular-nums text-muted">
                                                         {it.timestamp ? formatDateTime(it.timestamp) : ''}
                                                     </span>
                                                 </li>

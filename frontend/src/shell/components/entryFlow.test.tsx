@@ -190,7 +190,7 @@ describe('login dialog', () => {
 
 describe('sync dialog', () => {
     it('a sequential sync names the service and its place, with the progress', () => {
-        render(<SyncModal syncProgress={RUNNING} sequentialSyncInfo={{ total: 3, currentIndex: 1, currentService: 'hinatazaka46' }} />);
+        render(<SyncModal syncProgress={RUNNING} sequentialSyncInfo={{ total: 3, currentIndex: 1, currentService: 'hinatazaka46', services: ['sakurazaka46', 'hinatazaka46', 'nogizaka46'] }} />);
         expect(screen.getByRole('dialog', { name: 'Phase 1: Scanning Groups' })).toBeInTheDocument();
         expect(screen.getByText('日向坂46 (2/3)')).toBeInTheDocument();
         expect(screen.getByText('5 / 20')).toBeInTheDocument();
