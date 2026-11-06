@@ -235,7 +235,7 @@ describe('landing page', () => {
     it('picks groups, counts them and starts with them in click order', async () => {
         const onComplete = vi.fn();
         render(<LandingPage onComplete={onComplete} />);
-        expect(screen.getByRole('button', { name: 'Select at least one group' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Select at least one group' })).toHaveAttribute('aria-disabled', 'true');
 
         await userEvent.click(screen.getByRole('button', { name: /日向坂46/ }));
         expect(screen.getByRole('button', { name: 'Get Started' })).toBeEnabled();
