@@ -78,6 +78,6 @@ describe('BackgroundModal', () => {
     it('marks the selected preset with a ring offset on the surface colour', () => {
         render(<BackgroundModal isOpen onClose={vi.fn()} conversationPath="p" onSettingsChange={vi.fn()} />);
         fireEvent.click(screen.getByTitle('#FEE2E2'));
-        expect(screen.getByTitle('#FEE2E2')).toHaveClass('ring-offset-2', 'ring-offset-surface');
+        expect(screen.getByTitle('#FEE2E2')).toHaveClass('ring-accent', 'ring-offset-2', 'ring-offset-surface');
     });
 });

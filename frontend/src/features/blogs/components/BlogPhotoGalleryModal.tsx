@@ -182,7 +182,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
 
     if (isOpen && !backupEnabled) {
         return (
-            <Modal isOpen onClose={onClose} title={t('blogGallery.title')} closeLabel={t('common.close')} logId="blog_gallery" className="h-[80vh] max-w-4xl">
+            <Modal isOpen onClose={onClose} title={t('blogGallery.title')} icon={<Image />} closeLabel={t('common.close')} logId="blog_gallery" className="h-[80vh] max-w-4xl">
                 <DialogStatus kind="empty" icon={<Image />} title={t('blogGallery.emptyNoBackup')} />
             </Modal>
         );
@@ -196,6 +196,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('blogGallery.title')}
+                icon={<Image />}
                 closeLabel={t('common.close')}
                 logId="blog_gallery"
                 className="h-[80vh] max-w-4xl"

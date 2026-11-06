@@ -7,8 +7,6 @@ import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
 import { DialogStatus } from '../common/DialogStatus';
-import { groupRoles } from '../../design/tokens';
-import { serviceGroupId } from '../../config/serviceGroup';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 
@@ -30,10 +28,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
 
-    const activeService = useAppStore((state) => state.activeService);
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    // The voice player still takes a hex accent (player internals are E).
-    const voiceAccent = groupRoles(serviceGroupId(activeService)).action;
 
     // Filter only favorite messages, sorted by timestamp (newest first)
     const favoriteMessages = useMemo(() => {
@@ -82,7 +77,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                         )}
                     </div>
                     <p className="text-small text-viewer-muted">
-                        <span>{memberName}</span>
+                        <span lang="ja">{memberName}</span>
                         <span aria-hidden="true" className="mx-2">•</span>
                         <span>{formatDateTime(selectedMedia.timestamp)}</span>
                     </p>
@@ -97,21 +92,21 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
             <Card key={message.id} className="flex flex-col gap-3 p-4">
                 <div className="flex items-center gap-3">
                     <Avatar src={memberAvatar} name={memberName} size="md" decorative />
-                    <span className="min-w-0 flex-1 truncate text-body font-semibold text-primary">{memberName}</span>
+                    <span lang="ja" className="min-w-0 flex-1 truncate text-body font-semibold text-primary">{memberName}</span>
                     <span className="flex shrink-0 items-center gap-1 text-small text-muted">
-                        <Star aria-hidden="true" className="h-4 w-4 fill-current text-group-strong" />
+                        <Star aria-hidden="true" className="h-4 w-4 fill-current text-semantic-star drop-shadow-sm" />
                         {formatDateTime(message.timestamp)}
                     </span>
                 </div>
                 <div className="pl-12">
                     {message.type === 'text' && (
-                        <p className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
+                        <p lang="ja" className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
                     )}
                     {message.type === 'picture' && mediaUrl && (
                         <button
                             type="button"
                             onClick={() => setSelectedMedia(message)}
-                            className="block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                            className="block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
                             <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-64 max-w-full object-contain" />
                         </button>
@@ -120,7 +115,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                         <button
                             type="button"
                             onClick={() => setSelectedMedia(message)}
-                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
                             <video src={mediaUrl} className="max-h-64 max-w-full object-contain" preload="metadata" />
                             <span className="absolute inset-0 flex items-center justify-center">
@@ -132,7 +127,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                     )}
                     {message.type === 'voice' && mediaUrl && (
                         <div className="max-w-md">
-                            <VoicePlayer src={mediaUrl} accentColor={voiceAccent} />
+                            <VoicePlayer src={mediaUrl} />
                         </div>
                     )}
                 </div>
@@ -146,6 +141,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('favorites.title')}
+                icon={<Star />}
                 closeLabel={t('common.close')}
                 logId="favorites"
                 className="h-[80vh] max-w-3xl"

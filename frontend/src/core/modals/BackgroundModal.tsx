@@ -114,6 +114,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
             isOpen={isOpen}
             onClose={onClose}
             title={t('background.title')}
+            icon={<Palette />}
             closeLabel={t('common.close')}
             logId="background"
             className="max-w-md"
@@ -148,7 +149,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                     {t('background.customImage')}
                 </h3>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>
+                <Button variant="secondary" className="border-2 border-dashed hover:border-accent-border hover:text-accent-strong" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-4 w-4" />
                     {t('background.uploadImage')}
                 </Button>
@@ -173,8 +174,8 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                                 title={color}
                                 className={cn(
                                     'h-10 w-10 rounded-card shadow-pill transition-shadow duration-fast ease-standard',
-                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
-                                    isSelected && 'ring-2 ring-strong ring-offset-2 ring-offset-surface',
+                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                                    isSelected && 'ring-2 ring-accent ring-offset-2 ring-offset-surface',
                                 )}
                                 style={{ backgroundColor: color }}
                             />
@@ -194,7 +195,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                     max="100"
                     value={settings.opacity}
                     onChange={(e) => handleOpacityChange(Number(e.target.value))}
-                    className="w-full cursor-pointer accent-group"
+                    className="w-full cursor-pointer accent-accent"
                 />
                 <div className="flex justify-between text-caption text-muted">
                     <span>20%</span>
