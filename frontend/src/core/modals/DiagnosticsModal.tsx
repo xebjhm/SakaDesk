@@ -214,8 +214,8 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
-            headerExtra={<span className="rounded-pill bg-sunken px-2 py-1 text-caption text-muted">Hidden Panel</span>}
+        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
+            headerExtra={<span className="rounded-pill bg-sheet px-2 py-1 text-caption text-secondary">Hidden Panel</span>}
             bodyClassName="flex flex-col gap-4"
             footer={
                 <>

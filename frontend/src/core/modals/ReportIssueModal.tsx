@@ -101,7 +101,7 @@ export function ReportIssueModal({
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={handleClose} title={t('report.title')} closeLabel={t('common.close')} logId="report_issue" className="max-w-lg"
+        <Modal scope="brand" icon={<Bug />} isOpen={isOpen} onClose={handleClose} title={t('report.title')} closeLabel={t('common.close')} logId="report_issue" className="max-w-lg"
             bodyClassName="flex flex-col gap-6"
             footer={
                 <>
@@ -127,13 +127,13 @@ export function ReportIssueModal({
                                 onClick={() => setCategory(cat.id)}
                                 className={cn(
                                     'flex flex-col gap-1 rounded-card border-2 p-4 text-left shadow-card transition-colors duration-fast ease-standard',
-                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
-                                    isSelected ? 'border-group-subtle bg-group-subtle' : 'border-transparent bg-card hover:bg-sunken',
+                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                                    isSelected ? 'border-accent bg-accent-subtle' : 'border-transparent bg-card hover:bg-sunken',
                                 )}
                             >
-                                <span className="flex items-center gap-2 text-body font-semibold text-primary">
-                                    <Icon className={cn('h-4 w-4', isSelected ? 'text-group-strong' : 'text-secondary')} />
-                                    {t(cat.labelKey)}
+                                <span className="flex items-center gap-2 text-body font-semibold">
+                                    <Icon className={cn('h-4 w-4', isSelected ? 'text-accent' : 'text-secondary')} />
+                                    <span className={isSelected ? 'text-accent-strong' : 'text-primary'}>{t(cat.labelKey)}</span>
                                 </span>
                                 <span className="text-caption text-muted">{t(cat.helpKey)}</span>
                             </button>

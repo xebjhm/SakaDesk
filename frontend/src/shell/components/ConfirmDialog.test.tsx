@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { ConfirmDialog } from './ConfirmDialog';
+import { BrandScope } from '../../design/brandScope';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../utils/clientLog';
@@ -24,10 +25,27 @@ describe('ConfirmDialog', () => {
         expect(screen.queryByText('確認 ✅')).toBeNull();
     });
 
-    it('renders the plain header', () => {
-        renderDialog();
-        expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
-        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+    it('renders the expressive header of its context with a semantic icon tile (D3)', () => {
+        renderDialog({ variant: 'warning' });
+        expect(screen.getByTestId('modal-header')).toHaveClass('bg-expressive-header');
+        expect(screen.getByTestId('modal-header-bar')).toBeInTheDocument();
+        expect(screen.getByTestId('modal-header-icon').firstElementChild).toHaveClass('bg-semantic-warning-icon', 'border-semantic-warning', 'text-semantic-warning');
+    });
+
+    it('uses the danger tile for a danger confirm and the info tile otherwise, and Cancel is secondary', () => {
+        renderDialog({ variant: 'danger' });
+        expect(screen.getByTestId('modal-header-icon').firstElementChild).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
+        expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('border-strong');
+    });
+
+    it('inherits the brand context inside a brand dialog', () => {
+        render(
+            <BrandScope>
+                <ConfirmDialog open title="確認" message="m" confirmLabel="OK" onConfirm={vi.fn()} onCancel={vi.fn()} />
+            </BrandScope>,
+        );
+        expect(screen.getByRole('dialog', { name: '確認' })).toHaveAttribute('data-scope', 'brand');
+        expect(screen.getByTestId('modal-header-icon').firstElementChild).toHaveClass('bg-semantic-info-icon', 'text-semantic-info');
     });
 
     it('shows title, message and the two buttons; confirm and cancel call back', async () => {

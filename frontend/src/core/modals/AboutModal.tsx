@@ -112,10 +112,10 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     };
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={t('about.title')} closeLabel={t('common.close')} logId="about" className="max-w-sm"
+        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title={t('about.title')} closeLabel={t('common.close')} logId="about" className="max-w-sm"
             footer={
                 <a href="https://github.com/xebjhm/SakaDesk" target="_blank" rel="noopener noreferrer"
-                    className="w-full rounded-pill py-2 text-center text-small text-secondary transition-colors duration-fast ease-standard hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group">
+                    className="w-full rounded-pill py-2 text-center text-small text-secondary transition-colors duration-fast ease-standard hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     github.com/xebjhm/SakaDesk
                 </a>
             }
@@ -124,7 +124,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 <div className="mb-4 h-20 w-20 overflow-hidden rounded-sheet shadow-card">
                     <img src="/logo-192.png" alt="SakaDesk" className="h-full w-full select-none" />
                 </div>
-                <h3 className="text-heading font-semibold text-primary">SakaDesk</h3>
+                <h3 className="font-display text-heading font-bold text-primary">SakaDesk</h3>
                 {/* Plain text that is secretly clickable (5 clicks: diagnostics). */}
                 <p onClick={handleVersionClick} className="mb-6 cursor-text select-none text-small text-muted">
                     {appVersion ? t('about.version', { version: appVersion }) : ' '}

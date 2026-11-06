@@ -27,6 +27,13 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('DiagnosticsModal', () => {
+    it('is a brand dialog whose header note sits on a white pill', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        const dialog = await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
+        expect(dialog).toHaveAttribute('data-scope', 'brand');
+        expect(screen.getByText('Hidden Panel')).toHaveClass('bg-sheet', 'text-secondary');
+    });
+
     it('loads the diagnostics and shows the system block and logs', async () => {
         render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
         expect(await screen.findByText('Developer Diagnostics')).toBeInTheDocument();
