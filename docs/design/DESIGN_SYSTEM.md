@@ -338,7 +338,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
   content (post titles, bodies, member names on cards, in the reader, in the member
   select and the timeline) is marked too. Dialogs mark member names and message text
-  in favourites, the media gallery and the viewers, letter text, search results
+  in favourites and the media gallery (lists and their viewer captions), letter text, search results
   (member, room, blog title, snippet) and filter chips, and group names shown as data
   (add service, the settings marker chip). UI chrome is never marked.
 - `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
@@ -355,10 +355,11 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 
 | Variant | Look | Rule |
 |---|---|---|
-| `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary` or `danger` per screen and one per dialog (each dialog counts on its own) |
+| `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary`, `warning` or `danger` per screen and one per dialog (each dialog counts on its own) |
 | `tonal` | `bg-accent-tonal`, dark accent text | secondary emphasis (e.g. "mark all read"); never competes with primary |
 | `secondary` | white, neutral border, neutral text | cancel and so on |
 | `ghost` | text only, `text-accent-strong` | inline actions |
+| `warning` | `bg-status-attention`, white text | a cautionary confirm; takes the place of the primary |
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
 
@@ -497,7 +498,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: brand when opened inside a `BrandScope` or a brand `Modal`, else the active group; `groupScopeStyle` surfaces are not propagated, pass their styles explicitly) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
 | `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) or `plain` (a quiet title; no dialog uses it today) |
-| `icon` | A decorative lucide icon before the title, drawn at 20 px in the header text colour. Only the standard layout with a title draws it (`Modal` ignores it otherwise). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image) and Report issue (bug); `ConfirmDialog` passes its icon tile |
+| `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
@@ -524,10 +525,10 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 - **Header title:** `text-title font-bold` in the header text colour (white on a title
   gradient, the official title colour on Sakurazaka's white header, dark on the brand
   aurora), as the pre-D2 dialog header.
-- **Content:** a dialog has at most one `primary` or `danger` Button, confirms are
+- **Content:** a dialog has at most one `primary`, `warning` or `danger` Button, confirms are
   `ConfirmDialog` (expressive header of its opener's context, the warning / danger / info
-  meaning in a semantic icon tile, a `secondary` Cancel where focus starts, then `primary`
-  or `danger`) and never `window.confirm`, and loading, empty and
+  meaning in a semantic icon tile, a `secondary` Cancel where focus starts, then `primary`,
+  `warning` or `danger`) and never `window.confirm`, and loading, empty and
   error states are `DialogStatus` (spinner `text-accent`; the error tile is
   `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
@@ -692,7 +693,7 @@ Do not "fix" these.
   parts of the title gradient and on Sakurazaka's white header their caption text
   is below 4.5:1, like the official title beside them.
 - **Dialog header titles** keep the header text colour: white on the title
-  gradients (about 1.7:1 at Hinatazaka's light end) and the official `#d892aa` on
+  gradients (about 1.8:1 at Hinatazaka's light end) and the official `#d892aa` on
   Sakurazaka's white header (2.4:1), as the pre-D2 dialogs and the chat header
   beside them (user decision D1, R-c).
 
