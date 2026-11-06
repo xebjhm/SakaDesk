@@ -298,7 +298,8 @@
     "favorites": "お気に入り",
     "media": "メディア",
     "background": "背景設定",
-    "sentLetters": "送信したレター"
+    "sentLetters": "送信したレター",
+    "sentLettersGroupChat": "グループトークにはレターがありません"
   },
   "messageList": {
     "noMessages": "メッセージがありません",

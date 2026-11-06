@@ -61,11 +61,14 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     };
 
     const menuItems = [
-        { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), enabled: true },
-        { id: 'favorites' as ModalType, icon: Star, label: t('conversationMenu.favorites'), enabled: true },
-        { id: 'media' as ModalType, icon: Image, label: t('conversationMenu.media'), enabled: true },
-        { id: 'background' as ModalType, icon: Palette, label: t('conversationMenu.background'), enabled: true },
-        { id: 'letters' as ModalType, icon: Mail, label: t('conversationMenu.sentLetters'), enabled: !isGroupChat },
+        { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), blockedReason: undefined },
+        { id: 'favorites' as ModalType, icon: Star, label: t('conversationMenu.favorites'), blockedReason: undefined },
+        { id: 'media' as ModalType, icon: Image, label: t('conversationMenu.media'), blockedReason: undefined },
+        { id: 'background' as ModalType, icon: Palette, label: t('conversationMenu.background'), blockedReason: undefined },
+        {
+            id: 'letters' as ModalType, icon: Mail, label: t('conversationMenu.sentLetters'),
+            blockedReason: isGroupChat ? t('conversationMenu.sentLettersGroupChat') : undefined,
+        },
     ];
 
     const handleMenuItemClick = (modalType: ModalType) => {
@@ -102,9 +105,11 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                         {menuItems.map((item) => (
                             <MenuItem
                                 key={item.id}
-                                icon={<item.icon className="h-4 w-4" />}
-                                disabled={!item.enabled}
-                                onClick={() => item.enabled && handleMenuItemClick(item.id)}
+                                // Pre-D2: the menu's icons carry the group accent.
+                                icon={<item.icon className="h-4 w-4 text-accent" />}
+                                disabledReason={item.blockedReason}
+                                logTarget={item.id === 'letters' ? 'sent_letters' : undefined}
+                                onClick={() => handleMenuItemClick(item.id)}
                             >
                                 {item.label}
                             </MenuItem>

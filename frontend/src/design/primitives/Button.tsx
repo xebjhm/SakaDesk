@@ -2,7 +2,9 @@ import React, { useId } from 'react';
 import { cn } from '../../utils/classnames';
 
 export type ButtonVariant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger' | 'overlay';
-export type IconButtonVariant = 'secondary' | 'ghost' | 'overlay' | 'accent';
+export type IconButtonVariant = 'secondary' | 'ghost' | 'overlay' | 'accent' | 'soft';
+/** `circle` for floating buttons (over content or the viewer), `rounded` (12 px) for inline ones. */
+export type IconButtonShape = 'rounded' | 'circle';
 export type ButtonSize = 'sm' | 'md';
 
 /** States per spec §8: hover brighten + lift + glow, pressed shrink, focus ring, disabled keeps colour. */
@@ -41,7 +43,13 @@ const ICON_VARIANT: Record<IconButtonVariant, string> = {
     overlay: VARIANT.overlay,
     /** Floating accent button (the chat's unread arrows). */
     accent: cn('bg-accent-gradient text-inverse', GLOW, LIFT),
+    /** The accent on its subtle tint, filled on hover (the group rail's actions, in brand ink). */
+    soft: 'bg-accent-subtle text-accent hover:bg-accent hover:text-inverse',
 };
+
+/** Floating variants default to a circle; the rest keep the button radius. */
+const FLOATING: ReadonlySet<IconButtonVariant> = new Set<IconButtonVariant>(['overlay', 'accent']);
+const SHAPE: Record<IconButtonShape, string> = { rounded: 'rounded-md', circle: 'rounded-full' };
 
 const SIZE: Record<ButtonSize, string> = {
     sm: 'h-8 px-3 text-small',
@@ -108,13 +116,24 @@ export interface IconButtonProps
     icon: React.ReactNode;
     variant?: IconButtonVariant;
     size?: ButtonSize;
+    /** Defaults to `circle` for `overlay` / `accent` (floating) and `rounded` otherwise (inline). */
+    shape?: IconButtonShape;
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
-    ({ icon, variant = 'ghost', size = 'md', type = 'button', className, ...rest }, ref) => (
-        <button {...rest} ref={ref} type={type} className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], className)}>
-            <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
-        </button>
-    ),
+    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, ...rest }, ref) => {
+        const resolved: IconButtonShape = shape ?? (FLOATING.has(variant) ? 'circle' : 'rounded');
+        return (
+            <button
+                {...rest}
+                ref={ref}
+                type={type}
+                data-shape={resolved}
+                className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], SHAPE[resolved], className)}
+            >
+                <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
+            </button>
+        );
+    },
 );
 IconButton.displayName = 'IconButton';

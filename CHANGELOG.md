@@ -48,12 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Chats have their group colours back.** The member list, the chat
+  header, menus, links, favourites and the feature buttons show each
+  group's own colour again, and Japanese names and messages always use
+  Japanese letter shapes, whatever language the app is in.
 - **Yodel now uses its own periwinkle colours.** The old green came from one
   member's page; Yodel screens now follow the Yodel logo colour.
-- **A cleaner main window.** The group list on the left is now neutral, the
-  feature list shows names under its icons and shares the group's background
-  with the member list, and chats and blogs sit on one rounded page. The
-  member list widens on large windows to show four or five members per row.
+- **A cleaner main window.** The add, search and settings buttons on the left
+  now use SakaDesk's own soft colour, the feature list shows names under its
+  icons and shares the group's background with the member list, and chats and
+  blogs sit on one rounded page. The member list widens on large windows to
+  show four or five members per row.
 - **Chats are easier to read.** Messages sent in a row show the name, photo
   and time only once (hover a message to see its time), and the chat title
   shows the member's photo and how many days you have been subscribed.

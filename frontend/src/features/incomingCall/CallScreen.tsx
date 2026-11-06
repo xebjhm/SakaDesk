@@ -45,7 +45,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                     <div className="sd-call-ring">
                         <div className="sd-call-who">
                             <div className="sd-call-eyebrow"><span className="sd-call-dot" aria-hidden />{groupLabel}</div>
-                            <div className="sd-call-name">{name}</div>
+                            <div className="sd-call-name" lang="ja">{name}</div>
                             <div className="sd-call-status">{t('call.incoming')}</div>
                         </div>
                         <div className="sd-call-actions">
@@ -76,7 +76,7 @@ export const CallScreen: React.FC<CallScreenProps> = ({
                     </div>
                     <div className="sd-call-shade-bottom" aria-hidden />
                     <div className="sd-call-talk">
-                        <div className="sd-call-name">{name}</div>
+                        <div className="sd-call-name" lang="ja">{name}</div>
                         <div className="sd-call-timer"><span className="sd-call-live" aria-hidden />{formatTalkTime(talkSeconds)}</div>
                     </div>
                     <div className="sd-call-dock">

@@ -16,12 +16,16 @@ const FILES = [
     'modals/ReportIssueModal.tsx',
     'modals/DiagnosticsModal.tsx',
     'layout/AddServiceModal.tsx',
+    'layout/FeatureRail.tsx',
     '../shell/components/ConfirmDialog.tsx',
     'media/PhotoDetailModal.tsx',
     'media/MediaGalleryModal.tsx',
     'media/LazyVideo.tsx',
     'media/PhotoPlayer.tsx',
     '../features/messages/components/ProfileImageViewer.tsx',
+    '../features/messages/components/MessageBubble.tsx',
+    '../features/messages/components/MessageList.tsx',
+    '../features/messages/components/LetterRow.tsx',
     '../features/blogs/components/MemberSelectModal.tsx',
     '../features/blogs/components/MemberTimelineModal.tsx',
     '../features/blogs/components/BlogPhotoGalleryModal.tsx',
@@ -30,6 +34,8 @@ const FILES = [
     '../features/messages/components/MemberContextMenu.tsx',
     '../features/messages/components/MemberProfilePopup.tsx',
     '../features/messages/components/ProfileImagePills.tsx',
+    '../features/callPopup/PopupCall.tsx',
+    '../features/incomingCall/CallScreen.tsx',
     'common/SettingsMenu.tsx',
     '../features/search/SearchModal.tsx',
     '../features/search/components/SearchInput.tsx',
@@ -39,6 +45,7 @@ const FILES = [
     '../shell/components/SettingsModal.tsx',
     '../shell/components/SettingRow.tsx',
     'layout/ServiceRail.tsx',
+    'layout/UpgradeIcon.tsx',
     'common/DialogStatus.tsx',
     // D2d
     'common/SyncProgressPanel.tsx',
@@ -50,13 +57,21 @@ const FILES = [
     '../pages/LandingPage.tsx',
     '../shell/App.tsx',
     '../features/incomingCall/CallOverlay.tsx',
+    '../features/messages/components/MemberList.tsx',
+    '../features/messages/components/ChatHeaderPill.tsx',
+    '../features/messages/MessagesFeature.tsx',
 ];
 
 const PALETTE = /(?<![\w-])(?:bg|text|border(?:-[trblxy])?|ring|from|via|to|fill|stroke|decoration|outline|divide|placeholder)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})(?:\/\d{1,3})?(?![\w-])/g;
 const COLOUR_STYLE = /\b(?:color|background|backgroundColor|borderColor|boxShadow)\s*:/g;
 /** Files whose inline colour is user or member data (decision 26: the background presets and preview). */
 /** SearchFilterBar: `color` is the group logo colour carried by a filter chip (data, drawn through groupMarkerStyle). */
-const DATA_COLOUR = new Set(['modals/BackgroundModal.tsx', '../features/search/components/SearchFilterBar.tsx']);
+/** MessagesFeature: the chat background colour/image is the user's own setting (data). */
+const DATA_COLOUR = new Set([
+    'modals/BackgroundModal.tsx',
+    '../features/search/components/SearchFilterBar.tsx',
+    '../features/messages/MessagesFeature.tsx',
+]);
 
 describe.each(FILES)('%s', (file) => {
     const source = readFileSync(path.resolve(__dirname, file), 'utf-8');

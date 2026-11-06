@@ -2,8 +2,8 @@
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for compact variant 1`] = `
 <div
-  class="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
-  style="--ring-color: #4b556380;"
+  class="bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
+  style="--ring-color: color-mix(in srgb, var(--ds-accent) 50%, transparent);"
   tabindex="0"
 >
   <audio
@@ -18,7 +18,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(75, 85, 99);"
+        style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -74,7 +74,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: var(--ds-accent); background: linear-gradient(to right, var(--ds-accent) 50%, var(--ds-border-strong) 50%);"
             type="range"
             value="0.5"
           />
@@ -83,7 +83,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     </div>
     <button
       class="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
-      style="background-color: rgb(75, 85, 99);"
+      style="background-color: var(--ds-accent);"
       type="button"
     >
       <svg
@@ -156,8 +156,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
-  style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
+  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
+  style="--tw-ring-color: color-mix(in srgb, var(--ds-accent) 50%, transparent); border-width: 1px; border-color: color-mix(in srgb, var(--ds-accent) 20%, transparent);"
   tabindex="0"
 >
   <audio
@@ -169,7 +169,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   >
     <div
       class="w-10 h-10 rounded-full p-0.5 shrink-0"
-      style="background: linear-gradient(right, rgb(75, 85, 99), rgba(75, 85, 99, 0.8));"
+      style="background: linear-gradient(to bottom right, var(--ds-accent), color-mix(in srgb, var(--ds-accent) 80%, transparent));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -186,6 +186,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <p
         class="text-sm font-semibold text-gray-800 truncate"
+        lang="ja"
       >
         Test User
       </p>
@@ -248,7 +249,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(75, 85, 99);"
+        style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -318,7 +319,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: var(--ds-accent); background: linear-gradient(to right, var(--ds-accent) 50%, var(--ds-border-strong) 50%);"
             type="range"
             value="0.5"
           />
@@ -360,7 +361,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </button>
       <button
         class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
-        style="background-color: rgb(75, 85, 99);"
+        style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg
@@ -420,8 +421,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
 
 exports[`VoicePlayer component > Snapshots > should match snapshot for premium variant without avatar 1`] = `
 <div
-  class="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
-  style="--tw-ring-color: #4b556380; border-width: 1px; border-color: rgba(75, 85, 99, 0.2);"
+  class="backdrop-blur-xl bg-white/90 rounded-lg p-3 outline-none focus:ring-2 shadow-lg"
+  style="--tw-ring-color: color-mix(in srgb, var(--ds-accent) 50%, transparent); border-width: 1px; border-color: color-mix(in srgb, var(--ds-accent) 20%, transparent);"
   tabindex="0"
 >
   <audio
@@ -433,7 +434,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
   >
     <div
       class="w-10 h-10 rounded-full p-0.5 shrink-0"
-      style="background: linear-gradient(right, rgb(75, 85, 99), rgba(75, 85, 99, 0.8));"
+      style="background: linear-gradient(to bottom right, var(--ds-accent), color-mix(in srgb, var(--ds-accent) 80%, transparent));"
     >
       <div
         class="w-full h-full rounded-full overflow-hidden bg-white"
@@ -450,6 +451,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <p
         class="text-sm font-semibold text-gray-800 truncate"
+        lang="ja"
       >
         Test User
       </p>
@@ -506,7 +508,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
-        style="width: 0%; background-color: rgb(75, 85, 99);"
+        style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -576,7 +578,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
             max="1"
             min="0"
             step="0.01"
-            style="accent-color: #4b5563; background: linear-gradient(to right, rgb(75, 85, 99) 50%, rgb(209, 213, 219) 50%);"
+            style="accent-color: var(--ds-accent); background: linear-gradient(to right, var(--ds-accent) 50%, var(--ds-border-strong) 50%);"
             type="range"
             value="0.5"
           />
@@ -618,7 +620,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       </button>
       <button
         class="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
-        style="background-color: rgb(75, 85, 99);"
+        style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg

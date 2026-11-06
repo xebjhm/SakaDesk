@@ -298,7 +298,8 @@
     "favorites": "Favorites",
     "media": "Media",
     "background": "Background",
-    "sentLetters": "Sent Letters"
+    "sentLetters": "Sent Letters",
+    "sentLettersGroupChat": "Group chats have no sent letters"
   },
   "messageList": {
     "noMessages": "No messages",

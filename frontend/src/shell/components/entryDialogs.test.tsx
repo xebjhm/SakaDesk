@@ -61,7 +61,9 @@ describe('login (D2d)', () => {
         expect(scope.style.getPropertyValue('--ds-group-accent')).toBe(groupRoles(group).action);
         expect(document.getElementById('login-title')).toBeNull();
         expect(screen.getByRole('button', { name: 'Connect Account' })).toHaveClass('bg-accent-gradient');
-        await userEvent.click(within(banner).getByRole('button', { name: 'Close' }));
+        const close = within(banner).getByRole('button', { name: 'Close' });
+        expect(close).toHaveAttribute('data-shape', 'rounded'); // dialog close stays an inline 12px radius, never a circle
+        await userEvent.click(close);
         expect(onClose).toHaveBeenCalledOnce();
     });
 

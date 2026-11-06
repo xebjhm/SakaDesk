@@ -184,7 +184,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <button
                     type="button"
                     onClick={item.onSourceJump}
-                    className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate rounded-pill px-2 text-small text-viewer-muted underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                    className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate rounded-pill px-2 text-small text-viewer-muted underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     {item.sourceLabel}
                 </button>

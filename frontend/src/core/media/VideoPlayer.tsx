@@ -553,7 +553,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Menu portal */}
             {/* Clipboard toast (inline fullscreen only) */}
             {clipboardToast && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg z-50">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-sm z-50">
                     {clipboardToast}
                 </div>
             )}

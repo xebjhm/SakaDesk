@@ -298,7 +298,8 @@
     "favorites": "我的最愛",
     "media": "媒體",
     "background": "背景",
-    "sentLetters": "已傳送的信件"
+    "sentLetters": "已傳送的信件",
+    "sentLettersGroupChat": "群組聊天沒有已傳送的信件"
   },
   "messageList": {
     "noMessages": "沒有訊息",

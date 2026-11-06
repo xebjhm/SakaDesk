@@ -341,4 +341,9 @@ describe('CallOverlay', () => {
             expect(gains[gains.length - 1]?.value).toBeCloseTo(1.6);
         });
     });
+
+    it('takes the context accent when no colour is passed', () => {
+        render(<CallOverlay call={call()} answerStyle="solid" groupLabel="日向坂46" />);
+        expect(screen.getByTestId('call-overlay').style.getPropertyValue('--sd-accent')).toBe('var(--ds-accent)');
+    });
 });

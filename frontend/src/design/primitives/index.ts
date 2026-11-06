@@ -5,7 +5,7 @@ export { Avatar, type AvatarProps, type AvatarSize } from './Avatar';
 export { DatePill, type DatePillProps } from './DatePill';
 export {
     Button, IconButton,
-    type ButtonProps, type IconButtonProps, type ButtonVariant, type IconButtonVariant, type ButtonSize,
+    type ButtonProps, type IconButtonProps, type ButtonVariant, type IconButtonVariant, type IconButtonShape, type ButtonSize,
 } from './Button';
 export { RailItem, type RailItemProps } from './RailItem';
 export { Modal, type ModalProps } from './Modal';

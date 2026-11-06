@@ -22,16 +22,29 @@ const renderRail = () => render(
 );
 
 describe('ServiceRail', () => {
-    it('is a neutral rail; the active group gets a white ring and the group glow', () => {
+    it('is a neutral rail; the active group gets the logo ring and the group halo', () => {
         useAppStore.setState({ activeService: 'hinatazaka46' });
         const { container } = renderRail();
         const rail = container.firstChild as HTMLElement;
         expect(rail).toHaveClass('bg-elevated');
         expect(rail.className).not.toMatch(/border-r/);
         const logos = container.querySelectorAll('.rounded-pill.bg-card');
-        expect(logos[0]).toHaveClass('ring-2', 'ring-group-logo', 'ring-offset-2', 'shadow-group-glow');
-        expect(logos[1]).not.toHaveClass('shadow-group-glow');
-        expect(container.querySelector('[style]')).toBeNull();
+        expect(logos[0]).toHaveClass('ring-2', 'ring-group-logo', 'ring-offset-2', 'shadow-accent-halo');
+        expect(logos[1]).not.toHaveClass('shadow-accent-halo');
+        // Only the brand scope around the bottom actions carries inline (custom property) styles.
+        const styled = [...container.querySelectorAll('[style]')];
+        expect(styled.length).toBe(1);
+        expect(styled[0]).toHaveAttribute('data-scope', 'brand');
+    });
+
+    it('puts add and search in the brand scope as soft ink circles', () => {
+        const { container } = renderRail();
+        const scope = container.querySelector('[data-scope="brand"]') as HTMLElement;
+        for (const name of [/^Search/, 'Add Service']) {
+            const b = screen.getByRole('button', { name });
+            expect(scope).toContainElement(b);
+            expect(b).toHaveClass('bg-accent-subtle', 'text-accent', 'rounded-full');
+        }
     });
 
     it('has no group-coloured hovers and no divider line', () => {

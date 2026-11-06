@@ -46,13 +46,13 @@ export const LetterRow: React.FC<LetterRowProps> = ({ letter, avatarUrl, userNam
                         onClick={() => onOpenImage(letter)}
                         aria-label={t('letters.openImageAt', { date: sentLabel })}
                         title={t('letters.openImage')}
-                        className="cursor-zoom-in overflow-hidden rounded-card bg-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                        className="cursor-zoom-in overflow-hidden rounded-card bg-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         style={{ width: LETTER_WIDTH, height: letterImageHeight(letter) }}
                     >
                         <img src={imageUrl} alt="" draggable={false} className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
                     </button>
                 ) : (
-                    <Card className="max-w-xs whitespace-pre-wrap p-3 text-body text-primary">
+                    <Card lang={letter.text ? 'ja' : undefined} className="max-w-xs whitespace-pre-wrap p-3 text-body text-primary">
                         {letter.text || t('sentLetters.noTextContent')}
                     </Card>
                 )}

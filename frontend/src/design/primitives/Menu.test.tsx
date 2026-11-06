@@ -8,6 +8,9 @@ import { Z_INDEX } from '../../constants/zIndex';
 import { Modal } from './Modal';
 import { resetDialogStack } from '../dialog/dialogStack';
 
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../utils/clientLog';
+
 const realSize = { w: window.innerWidth, h: window.innerHeight };
 afterEach(() => {
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: realSize.w });
@@ -32,6 +35,20 @@ describe('Menu', () => {
         expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveClass('text-accent-strong');
         expect(screen.getByRole('menuitem', { name: '削除 🗑️' })).toHaveClass('text-status-danger');
         expect(screen.getByRole('separator')).not.toHaveClass('border-t');
+    });
+
+    it('Enter and Space on an item with a disabledReason do not call its onClick', async () => {
+        const onClick = vi.fn();
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem disabledReason="使えません" onClick={onClick}>一</MenuItem>
+            </Menu>,
+        );
+        await userEvent.keyboard('{ArrowDown}');
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        await userEvent.keyboard(' ');
+        expect(onClick).not.toHaveBeenCalled();
     });
 
     it('arrow keys, Home and End move between enabled items', async () => {
@@ -259,5 +276,41 @@ describe('Menu key propagation', () => {
         expect(outer).not.toHaveBeenCalled();
         fireEvent.keyDown(screen.getByRole('menu'), { key: 'a' });
         expect(outer).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('MenuItem v2', () => {
+    it('is a small-radius row (spec §7: menu items sm)', () => {
+        render(<Menu aria-label="m" onClose={vi.fn()}><MenuItem>一</MenuItem></Menu>);
+        const item = screen.getByRole('menuitem', { name: '一' });
+        expect(item).toHaveClass('rounded-sm');
+        expect(item).not.toHaveClass('rounded-pill');
+    });
+
+    it('a disabled item keeps its colour at 40 % instead of greying out', () => {
+        render(<Menu aria-label="m" onClose={vi.fn()}><MenuItem disabled>二</MenuItem></Menu>);
+        const item = screen.getByRole('menuitem', { name: '二' });
+        expect(item).toHaveClass('disabled:opacity-40');
+        expect(item.className).not.toMatch(/disabled:text-muted/);
+    });
+
+    it('with a reason it stays focusable, explains itself and logs a blocked click', async () => {
+        const onClick = vi.fn();
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem>一</MenuItem>
+                <MenuItem disabledReason="グループには無い" logTarget="sent_letters" onClick={onClick}>二</MenuItem>
+            </Menu>,
+        );
+        const item = screen.getByRole('menuitem', { name: '二' });
+        expect(item).toHaveAttribute('aria-disabled', 'true');
+        expect(item).toHaveAttribute('title', 'グループには無い');
+        expect(item).toHaveAccessibleDescription('グループには無い');
+        expect(item).toHaveClass('aria-disabled:opacity-40', 'aria-disabled:cursor-not-allowed');
+        await userEvent.keyboard('{End}');
+        expect(item).toHaveFocus();
+        await userEvent.click(item);
+        expect(onClick).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('menu_item_blocked', { target: 'sent_letters' });
     });
 });

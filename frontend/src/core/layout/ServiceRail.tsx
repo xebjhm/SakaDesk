@@ -10,6 +10,7 @@ import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
 import { IconButton, Menu, MenuItem } from '../../design/primitives';
+import { BrandScope } from '../../design/brandScope';
 
 export interface ServiceRailProps {
     services: string[];
@@ -147,7 +148,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             <button
                                 onClick={() => setActiveService(service)}
                                 onContextMenu={(e) => handleContextMenu(e, service)}
-                                className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                                className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                 title={getServiceDisplayName(service)}
                                 aria-label={getServiceDisplayName(service)}
                                 aria-current={isActive ? 'page' : undefined}
@@ -157,7 +158,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                     className={cn(
                                         'flex h-11 w-11 items-center justify-center overflow-hidden rounded-pill bg-card',
                                         'transition duration-fast ease-standard hover:scale-105',
-                                        isActive ? 'ring-2 ring-group-logo ring-offset-2 shadow-group-glow' : 'shadow-pill hover:shadow-card',
+                                        isActive ? 'ring-2 ring-group-logo ring-offset-2 shadow-accent-halo' : 'shadow-pill hover:shadow-card',
                                     )}
                                 >
                                     {getServiceLogoUrl(service) ? (
@@ -208,12 +209,13 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                 </Menu>
             )}
 
-            {/* Bottom actions */}
-            <div className="mt-4 flex flex-col items-center gap-2">
+            {/* Bottom actions: brand context (spec §4: the rail frame's icons use the brand ink) */}
+            <BrandScope className="mt-4 flex flex-col items-center gap-2">
                 {/* Add Service Button - only show if not all services selected */}
                 {!allServicesSelected && (
                     <IconButton
-                        variant="secondary"
+                        variant="soft"
+                        shape="circle"
                         className="h-11 w-11"
                         aria-label={t('serviceRail.addService')}
                         title={t('serviceRail.addService')}
@@ -227,7 +229,8 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
                 {/* Search Button */}
                 <IconButton
-                    variant="secondary"
+                    variant="soft"
+                    shape="circle"
                     className="h-11 w-11"
                     aria-label={t('search.placeholder')}
                     title={`${t('search.placeholder')} (${navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl+'}K)`}
@@ -241,7 +244,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     onReportIssue={onReportIssue}
                     onOpenAbout={onOpenAbout}
                 />
-            </div>
+            </BrandScope>
 
             {/* Add Service Modal */}
             {showAddModal && (

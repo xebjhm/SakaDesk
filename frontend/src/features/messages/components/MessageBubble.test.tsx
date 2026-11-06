@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../../__tests__/mocks/server'
 import { MessageBubble } from './MessageBubble'
-import { FALLBACK_ACTION_COLOR } from '../../../design/tokens'
 import type { Message } from '../../../types'
 
 // The translation and transcription hooks read their backend caches on mount: both are empty.
@@ -69,12 +68,12 @@ describe('MessageBubble component', () => {
     const { rerender } = render(<MessageBubble {...defaultProps} />)
     const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
     expect(button.className).not.toContain('cursor-pointer')
-    expect(button.className).not.toContain('hover:shadow-card')
+    expect(button.className).not.toContain('hover:ring-accent-border')
 
     const onAvatarClick = vi.fn()
     rerender(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
     expect(button.className).toContain('cursor-pointer')
-    expect(button.className).toContain('hover:shadow-card')
+    expect(button.className).toContain('hover:ring-accent-border')
     await userEvent.click(button)
     expect(onAvatarClick).toHaveBeenCalledTimes(1)
   })
@@ -164,7 +163,7 @@ describe('MessageBubble component', () => {
 
     // VoicePlayer component should be rendered
     // It contains playback controls
-    const voiceContainer = container.querySelector('.rounded-2xl')
+    const voiceContainer = container.querySelector('.rounded-lg')
     expect(voiceContainer).toBeInTheDocument()
   })
 
@@ -195,21 +194,39 @@ describe('MessageBubble component', () => {
     expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-tl-tail')
   })
 
-  it('without a theme, the favourite star uses the neutral action colour', () => {
+  it('draws the favourite star in the accent colour', () => {
     const { container } = render(<MessageBubble {...defaultProps} message={createMessage({ is_favorite: true })} />)
-    const star = container.querySelector('svg.h-3\\.5') as SVGElement
-    expect(star).not.toBeNull()
-    // jsdom normalises some colour properties: compare against the same normalisation.
-    const probe = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    probe.style.setProperty('color', FALLBACK_ACTION_COLOR)
-    probe.style.setProperty('fill', FALLBACK_ACTION_COLOR)
-    expect(star.style.color).toBe(probe.style.color)
-    expect(star.style.fill).toBe(probe.style.fill)
+    expect(container.querySelector('svg.h-3\\.5')).toHaveClass('fill-current', 'text-accent')
   })
 
-  it('names the sender with the strong group role', () => {
+  it('marks the text and the member name as Japanese content', () => {
+    render(<MessageBubble {...defaultProps} message={createMessage({ content: 'おはよう🌸' })} />)
+    expect(screen.getByText('おはよう🌸').closest('[lang="ja"]')).not.toBeNull()
+    expect(screen.getByText('Test User')).toHaveAttribute('lang', 'ja')
+  })
+
+  it('links use the accent colour', () => {
+    render(<MessageBubble {...defaultProps} message={createMessage({ content: 'see https://example.com' })} />)
+    expect(screen.getByRole('link', { name: 'https://example.com' })).toHaveClass('text-accent')
+  })
+
+  it('the unread shelter uses the official shelter colour of the message type', () => {
+    render(<MessageBubble {...defaultProps} isUnread message={createMessage({ type: 'voice', content: null })} />)
+    const shelter = screen.getByTestId('unread-shelter')
+    expect(shelter).toHaveClass('bg-group-shelter-voice', 'text-inverse')
+    expect(shelter.getAttribute('style')).toBeNull()
+  })
+
+  it('a light-shelter group (Sakurazaka) shows the unread shelter as a bordered white card', () => {
+    render(<MessageBubble {...defaultProps} service="sakurazaka46" isUnread message={createMessage({ type: 'voice', content: null })} />)
+    expect(screen.getByTestId('unread-shelter')).toHaveClass(
+      'border-2', 'border-group-shelter-voice', 'bg-card', 'text-group-shelter-voice',
+    )
+  })
+
+  it('names the sender with the strong accent role', () => {
     render(<MessageBubble {...defaultProps} />)
-    expect(screen.getByText('Test User')).toHaveClass('text-group-strong')
+    expect(screen.getByText('Test User')).toHaveClass('text-accent-strong')
   })
 
   describe('Snapshots', () => {

@@ -7,7 +7,7 @@ export interface BadgeProps {
     className?: string;
 }
 
-/** Level 3 — unread count in the group badge colour. Hidden at 0, capped at 99+. */
+/** Level 3 — unread count in the accent colour with the unread glow. Hidden at 0, capped at 99+. */
 export const Badge: React.FC<BadgeProps> = ({ count, className }) => {
     const { t } = useTranslation();
     if (count <= 0) return null;
@@ -16,7 +16,7 @@ export const Badge: React.FC<BadgeProps> = ({ count, className }) => {
             aria-label={t('common.unreadCount', { count })}
             className={cn(
                 'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-accent px-1.5',
-                'text-caption font-semibold text-inverse shadow-pill',
+                'text-caption font-semibold text-inverse shadow-accent-unread',
                 className,
             )}
         >

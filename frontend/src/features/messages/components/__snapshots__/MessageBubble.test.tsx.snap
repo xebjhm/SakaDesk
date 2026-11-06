@@ -30,7 +30,8 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
       class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-small font-semibold text-group-strong"
+        class="text-small font-semibold text-accent-strong"
+        lang="ja"
       >
         Test User
       </span>
@@ -48,7 +49,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="rounded-lg overflow-hidden mb-2 flex items-center justify-center bg-gray-50"
+          class="rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-elevated"
           style="width: 320px; height: 240px;"
         >
           <img
@@ -60,6 +61,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         </div>
         <div
           class="whitespace-pre-wrap text-body text-primary"
+          lang="ja"
         >
           <span>
             Hello world
@@ -101,7 +103,8 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
       class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-small font-semibold text-group-strong"
+        class="text-small font-semibold text-accent-strong"
+        lang="ja"
       >
         Test User
       </span>
@@ -120,6 +123,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
       >
         <div
           class="whitespace-pre-wrap text-body text-primary"
+          lang="ja"
         >
           <span>
             Hello world
@@ -161,7 +165,8 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
       class="mb-1 flex items-center gap-2"
     >
       <span
-        class="text-small font-semibold text-group-strong"
+        class="text-small font-semibold text-accent-strong"
+        lang="ja"
       >
         Test User
       </span>
@@ -176,19 +181,17 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
       class="relative"
     >
       <div
-        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail"
+        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail bg-group-shelter-text text-inverse"
         data-testid="unread-shelter"
-        style="background-color: rgb(139, 184, 214); border: medium;"
       >
         <svg
-          class="w-8 h-8"
+          class="h-8 w-8 opacity-90"
           fill="none"
           height="24"
           stroke="currentColor"
           stroke-linecap="round"
           stroke-linejoin="round"
           stroke-width="2"
-          style="color: rgba(255, 255, 255, 0.9);"
           viewBox="0 0 24 24"
           width="24"
           xmlns="http://www.w3.org/2000/svg"
@@ -203,6 +206,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
       >
         <div
           class="whitespace-pre-wrap text-body text-primary"
+          lang="ja"
         >
           <span>
             Hello world

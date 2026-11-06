@@ -81,6 +81,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
             >
                 <IconButton
                     variant={isLightHeader ? 'ghost' : 'overlay'}
+                    shape="rounded"
                     size="sm"
                     className="absolute right-4 top-4 z-10"
                     aria-label={t('common.close')}
@@ -99,7 +100,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                         aria-label={memberName}
                         className={cn(
                             'h-48 w-48 overflow-hidden rounded-pill bg-sunken shadow-sheet ring-4 ring-surface',
-                            'focus-visible:outline-none focus-visible:ring-group',
+                            'focus-visible:outline-none focus-visible:ring-accent',
                             images.thumbnail?.length ? 'cursor-zoom-in' : 'cursor-default',
                         )}
                     >
@@ -112,7 +113,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                 </div>
 
                 <div className="flex flex-col items-center gap-4 px-6 pb-8 pt-4 text-center">
-                    <h2 id="profile-title" className="text-heading font-semibold text-primary">{memberName}</h2>
+                    <h2 id="profile-title" lang="ja" className="text-heading font-semibold text-primary">{memberName}</h2>
                     <ProfileImagePills images={images} onOpen={setViewerKind} />
                     {streak.status === 'loading' ? (
                         <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted motion-reduce:animate-none" />
@@ -126,7 +127,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                             <Trans
                                 i18nKey="memberProfile.subscribedDays"
                                 values={{ days: streak.days }}
-                                components={{ num: <span className="text-heading font-semibold text-primary" /> }}
+                                components={{ num: <span className="text-heading font-semibold tabular-nums text-primary" /> }}
                             />
                         </p>
                     ) : streak.status === 'ready' ? (

@@ -14,7 +14,7 @@ const CONFETTI_FILL = ['bg-accent', 'bg-accent-subtle', 'bg-accent-border', 'bg-
 
 export interface CelebrationToastProps { title: string; description?: string; icon?: React.ReactNode }
 
-/** Tier B celebration (spec §9): glass toast + one aurora shimmer + sparkles. Never blocks input. */
+/** Tier B celebration (spec §9): solid sheet toast + one aurora shimmer + sparkles. Never blocks input. */
 export const CelebrationToast: React.FC<CelebrationToastProps> = ({ title, description, icon }) => (
     <div role="status" aria-live="polite" className="relative flex items-center gap-3 rounded-lg bg-sheet px-4 py-3 shadow-sheet animate-toast-in motion-reduce:animate-none">
         <span aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">

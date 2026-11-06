@@ -85,6 +85,11 @@ export function groupTokenVars(groupId: GroupId): Record<string, string> {
         '--ds-group-title-to': o.title.gradient.to,
         '--ds-group-title-bar': o.title.bar,
         '--ds-group-title-text': o.title.text,
+        // Official unread-shelter colours (per message type).
+        '--ds-group-shelter-picture': o.shelter.picture,
+        '--ds-group-shelter-video': o.shelter.video,
+        '--ds-group-shelter-voice': o.shelter.voice,
+        '--ds-group-shelter-text': o.shelter.text,
         '--ds-group-ring': r.ring,
         '--ds-group-glow': r.glow,
         '--ds-shadow-group-glow': `0 0 12px 2px ${r.glow}`,

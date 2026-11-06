@@ -17,7 +17,7 @@ export const MessageContextMenu: React.FC<MessageContextMenuProps> = ({ x, y, is
     return (
         <Menu aria-label={t('messageList.messageActions')} onClose={onClose} point={{ x, y }} estimatedSize={{ width: 200, height: 48 }}>
             <MenuItem
-                icon={<Star className={cn('h-4 w-4', isFavorite ? 'fill-current text-group-strong' : 'text-muted')} />}
+                icon={<Star className={cn('h-4 w-4', isFavorite ? 'fill-current text-accent' : 'text-muted')} />}
                 onClick={() => { onToggleFavorite(); onClose(); }}
             >
                 {isFavorite ? t('favorites.removeFromFavorites') : t('favorites.addToFavorites')}

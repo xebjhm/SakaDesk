@@ -35,6 +35,10 @@ export const color = {
         scrim: 'rgba(0, 0, 0, 0.4)',
         /** Toasts (viewer clipboard, About). The pre-D2c `bg-black/80`. */
         toast: 'rgba(0, 0, 0, 0.8)',
+        /** Unread pill on a gradient chat header: the pre-D2 white glass. */
+        glass: 'rgba(255, 255, 255, 0.2)',
+        /** Sync pill on a gradient chat header: the pre-D2 dark shade. */
+        shade: 'rgba(0, 0, 0, 0.2)',
     },
     /**
      * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow

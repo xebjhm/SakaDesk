@@ -20,6 +20,7 @@ describe('countViolations', () => {
         ["const s = '// not a comment #abc';", 1],
         ["const t = `a /* b */ #123456`;", 1],
         ["x = 'a' // #fff\n", 0],
+        ['className="rounded-2xl rounded-t-3xl hover:rounded-bl-2xl"', 3],
     ])('counts %s as %i', (source, count) => {
         expect(countViolations(source)).toBe(count);
     });
@@ -31,6 +32,7 @@ describe('countViolations', () => {
         '{/* rounded-[4px] */}',
         "const url = 'https://example.com/a';",
         "const label = '日向坂 🌸';",
+        'className="rounded-xl rounded-lg rounded-b-md rounded-tl-xs rounded-full"',
     ])('ignores %s', (source) => {
         expect(countViolations(source)).toBe(0);
     });

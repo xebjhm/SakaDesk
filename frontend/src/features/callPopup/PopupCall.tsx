@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { getServiceTheme } from '../../config/serviceThemes';
-import { groupRoles } from '../../design/tokens';
+import { groupTokens } from '../../design/tokens';
+import { serviceGroupId } from '../../config/serviceGroup';
+import { groupScopeStyle } from '../../design/groupScope';
+import { ACCENT } from '../../design/colorMix';
 import { getServiceDisplayName } from '../../data/services';
 import { formatName } from '../../utils';
 import type { MemberInfo, Message } from '../../types';
@@ -76,10 +78,11 @@ export const PopupCall: React.FC<PopupCallProps> = ({
         return () => clearInterval(id);
     }, [call.phase]);
 
-    const theme = getServiceTheme(info.service);
-    const light = theme.messages.headerStyle === 'light';
-    // The accent is the group action colour (step 600): readable on the white answer button of light groups.
-    const accent = groupRoles(theme.id).action;
+    // The popup window has no active group: it carries the member's group scope itself (spec §4),
+    // and the call accent reads that scope's accent (step 600, readable on light groups' white answer button).
+    const groupId = serviceGroupId(info.service);
+    const light = groupTokens[groupId].official.headerStyle === 'light';
+    const scope = useMemo(() => groupScopeStyle(groupId), [groupId]);
 
     // One always-mounted live region, as in CallOverlay. No Esc/Enter handler:
     // the window never receives keyboard focus.
@@ -94,7 +97,7 @@ export const PopupCall: React.FC<PopupCallProps> = ({
     return (
         <>
             {liveRegion}
-            <div className="sd-call-popup" style={{ '--sd-accent': accent, '--sd-rad': '0px' } as React.CSSProperties}>
+            <div className="sd-call-popup" style={{ ...scope, '--sd-accent': ACCENT, '--sd-rad': '0px' } as React.CSSProperties}>
                 <CallScreen
                     phase={call.phase}
                     name={call.name}
