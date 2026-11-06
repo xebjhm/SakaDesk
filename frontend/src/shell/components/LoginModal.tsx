@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n';
 import { Button, IconButton, Modal } from '../../design/primitives';
 import { groupTokens } from '../../design/tokens';
 import { groupScopeStyle } from '../../design/groupScope';
+import { ScopeContext } from '../../design/scopeContext';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { serviceIdToGroupId } from '../../config/colors';
 import { getServiceById } from '../../data/services';
@@ -173,10 +174,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 service: service?.name ?? serviceId,
             });
 
+    const scopeStyle = groupScopeStyle(groupId);
+
     return (
         <>
             <Modal isOpen onClose={onClose} dismissible={!isLoading} layout="bare" labelledBy={titleId} logId="login" className="max-w-md">
-                <div className="flex min-h-0 flex-col" style={groupScopeStyle(groupId)}>
+                <div className="flex min-h-0 flex-col" style={scopeStyle}>
                     {/* The service's official banner, drawn like its chat header. */}
                     <div
                         data-testid="login-banner"
@@ -234,16 +237,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     </div>
                 </div>
             </Modal>
-            <ConfirmDialog
-                open={showGeoWarning}
-                title={t('login.yodelJpOnlyTitle')}
-                message={t('login.yodelJpOnlyMessage')}
-                confirmLabel={t('login.loginAnyway')}
-                cancelLabel={t('common.close')}
-                variant="warning"
-                onConfirm={confirmGeoWarning}
-                onCancel={() => { logDialogLoad('login', 'cancelled'); setShowGeoWarning(false); }}
-            />
+            {/* The warning is its own portal: hand it this login's group so it does not inherit the screen behind (spec §4). */}
+            <ScopeContext.Provider value={{ scope: 'group', style: scopeStyle }}>
+                <ConfirmDialog
+                    open={showGeoWarning}
+                    title={t('login.yodelJpOnlyTitle')}
+                    message={t('login.yodelJpOnlyMessage')}
+                    confirmLabel={t('login.loginAnyway')}
+                    cancelLabel={t('common.close')}
+                    variant="warning"
+                    onConfirm={confirmGeoWarning}
+                    onCancel={() => { logDialogLoad('login', 'cancelled'); setShowGeoWarning(false); }}
+                />
+            </ScopeContext.Provider>
         </>
     );
 };

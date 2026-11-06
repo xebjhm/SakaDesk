@@ -6,6 +6,7 @@ import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
 import { groupRoles } from '../../design/tokens';
+import { BrandScope } from '../../design/brandScope';
 import { TosDialog } from './TosDialog';
 import { SetupWizard } from './SetupWizard';
 import { LoginModal } from './LoginModal';
@@ -437,5 +438,21 @@ describe('setup (R-d)', () => {
         expect(screen.queryByRole('alert')).toBeNull();
         await userEvent.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
         expect(onComplete).toHaveBeenCalledOnce();
+    });
+});
+
+describe('login geo warning scope (R-d)', () => {
+    it('takes the Yodel login’s colours, even over a brand screen', async () => {
+        server.use(http.get('/api/auth/geo-availability', () => HttpResponse.json({ blocked: true })));
+        render(
+            <BrandScope>
+                <LoginModal serviceId="yodel" featureId="messages" onClose={vi.fn()} onSuccess={vi.fn()} isFreshPrompt />
+            </BrandScope>,
+        );
+        await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
+        const warning = await screen.findByRole('dialog', { name: 'Yodel is available in Japan only' });
+        expect(warning).toHaveAttribute('data-scope', 'group');
+        expect(warning.style.getPropertyValue('--ds-accent')).toBe(groupRoles('yodel').action);
+        expect(within(warning).getByTestId('modal-header')).toHaveClass('bg-expressive-header');
     });
 });
