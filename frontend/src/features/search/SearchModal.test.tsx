@@ -111,15 +111,15 @@ describe('SearchModal message result', () => {
     fireEvent.change(input, { target: { value: 'おはよう' } });
     await screen.findByText('ブログ');
     const rows = () => Array.from(document.querySelectorAll('.search-snippet')).map((n) => n.parentElement!.parentElement!);
-    await waitFor(() => expect(rows()[0]).toHaveClass('bg-group-subtle'));
+    await waitFor(() => expect(rows()[0]).toHaveClass('bg-accent-subtle'));
     fireEvent.keyDown(input, { key: 'ArrowDown' });
-    expect(rows()[1]).toHaveClass('bg-group-subtle');
+    expect(rows()[1]).toHaveClass('bg-accent-subtle');
     fireEvent.keyDown(input, { key: 'Tab' });
-    expect(rows()[0]).toHaveClass('bg-group-subtle');
+    expect(rows()[0]).toHaveClass('bg-accent-subtle');
     fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
-    expect(rows()[1]).toHaveClass('bg-group-subtle');
+    expect(rows()[1]).toHaveClass('bg-accent-subtle');
     fireEvent.keyDown(input, { key: 'ArrowUp' });
-    expect(rows()[0]).toHaveClass('bg-group-subtle');
+    expect(rows()[0]).toHaveClass('bg-accent-subtle');
     fireEvent.keyDown(input, { key: 'ArrowDown' });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(useAppStore.getState().targetBlog).toMatchObject({

@@ -398,6 +398,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   return (
     <Modal
       isOpen={isOpen}
+      scope="brand"
       onClose={close}
       layout="bare"
       placement="top"
