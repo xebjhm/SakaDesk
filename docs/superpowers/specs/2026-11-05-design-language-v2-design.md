@@ -104,6 +104,7 @@ the aurora.
 - Icons: a 100 background with a 200 outline and a 700 glyph. Solid 600 is only for destructive
   buttons.
 - Info uses the brand ink. There is no separate blue, because it would be confused with Hinatazaka.
+- **Semantic over context.** An element with a fixed meaning keeps its meaning colour in every context. 推 (oshi) hearts and the Favorite filter use the global oshi pink `color.semantic.oshi` (50 `#fff0f8`, 200 `#ffcbe1`, solid `#de5f99`, text `#aa376f`; text 6.0:1 on white). The chat favourite star uses the original yellow `color.semantic.star` `#facc15`. Not oshi: About's "made with love" heart (`decor.heart`) and anything merely pink.
 - Clean-up: the duplicate `color.feedback` (`#10B981/#F59E0B/#EF4444`) and `color.status` sets merge
   into this one `semantic` set. `status.attention` (rail disconnected badge) maps to warning 600.
 
@@ -288,6 +289,7 @@ Two separate plans:
 - **Hinatazaka 600 `#389DD1`** (white 3.0:1) stays the badge and action colour (D1.5 decision).
 - Sakurazaka keeps its white `light` header (official layer).
 - **Chat header pills** keep the pre-D2 white glass / title-text tint: on light parts of the title gradient and on Sakurazaka's white header their caption text is below 4.5:1 (about 2.4–3.4:1), like the official title beside them (user decision D8, 2026-11-05).
+- **Blog feed title** keeps the official title colour on the white sheet (Sakurazaka 2.4:1), like the chat header title (user decision D5, R-b).
 
 ## 13. Out of scope / TODO
 

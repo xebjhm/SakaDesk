@@ -75,8 +75,9 @@ How a context is set:
   that mix groups. A primitive never takes a group id.
 
 Status: the frame and chat screens (group rail, feature rail, member list, chat,
-letters, profile card, chat menus, call popup) apply this table. Blogs, the other
-dialogs and the entry screens follow in the next parts of the re-apply (see
+letters, profile card, chat menus, call popup) and the blog screens (feed, reader,
+rail, member select, member timeline) apply this table. The other dialogs and the
+entry screens follow in the next parts of the re-apply (see
 [Migration note](#14-migration-note)).
 
 ## 4. Colour
@@ -140,7 +141,8 @@ dark.
 Neutral utilities: the level-0 background (`Canvas`, `bg-group-canvas`) is the
 official sidebar gradient; everything else is `bg-sheet`, `bg-card`, `bg-pill`,
 `bg-elevated`, `bg-sunken`, `bg-window` (the window base behind the app, the
-colour of pywebview's `background_color`), `bg-scrim` (the modal backdrop,
+colour of pywebview's `background_color`), `bg-frost` (the frosted bar over the blog
+feed's orbs: `--ds-overlay-frost`, white at 72 %, paired with `backdrop-blur-lg`), `bg-scrim` (the modal backdrop,
 carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
 `text-muted`, `text-inverse`, `border-subtle`, `border-strong`. Search matches
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
@@ -185,6 +187,24 @@ colours) so they sit with the aurora. `color.semantic` has five steps per set:
   Sakurazaka pink. Info uses the brand ink; there is no separate blue (it
   would be confused with Hinatazaka).
 - Danger text is 4.8:1 on white only. Never put danger text on `bg-sunken`.
+
+### Semantic over context
+
+An element with a fixed meaning keeps its meaning colour in every context. The
+group accent says where you are; a meaning colour says what a thing is.
+
+- **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
+  `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
+  (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
+  subtle). Utilities: `text-semantic-oshi`, `bg-semantic-oshi-subtle`,
+  `bg-semantic-oshi-solid`, `border-semantic-oshi`, `ring-semantic-oshi`,
+  `fill-semantic-oshi`. `Pill tone="oshi"` is the Favorite filter.
+- **The favourite star** on a bookmarked chat message is the original yellow,
+  `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
+  shadow for definition on white), the same in every group.
+- Danger and success stay semantic as above.
+- Not oshi: About's "made with love" heart (`text-heart`, `decor.heart`) and
+  anything else that is merely pink.
 
 ### Accent roles (the context mechanism)
 
@@ -234,7 +254,7 @@ The restore inventory: the expressive elements of the pre-D2 look, as tokens.
 | Dialog gradient header (and the bar under a light header) | `Modal` expressive header: `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
 | Modal accents (selected row, border, tint) | `bg-accent-subtle`, `border-accent-border`, `text-accent-strong` |
 | Unread shadow | `shadow-accent-unread` |
-| Ambient orbs | `Atmosphere` (`bg-expressive-orb-*`); the blog feed's `DynamicBackground` keeps `bg-group-ambient-*` with the per-group size and opacity from `design/tokens/ambient.ts` |
+| Ambient orbs | `Atmosphere` (`bg-expressive-orb-*`); the blog feed's `DynamicBackground` draws `bg-expressive-orb-*` with the per-group size and opacity from `design/tokens/ambient.ts` (orb 1 at its pre-D2 strength under the frosted header) |
 | Soft panels (empty-state circle, milestone card) | `bg-expressive-soft` |
 | Landing per-group cards, ToS gradient button | group markers + the primary `Button` |
 
@@ -301,7 +321,8 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   scoped to marked content, not `<html>`, so the UI's stacks keep working.
   Marked so far: message text, member names (member list, chat header,
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
-  content is marked in the blog part of the re-apply. UI chrome is never marked.
+  content (post titles, bodies, member names on cards, in the reader, in the member
+  select and the timeline) is marked too. UI chrome is never marked.
 - `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
@@ -358,7 +379,8 @@ Brand moments are for waiting, starting, finishing and looking back
   sentence and one action.
 - **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
-  Low-density screens only.
+  Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
+  (L2: orbs + frosted glass); the reader is L0 and has no glass.
 - **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
@@ -425,7 +447,7 @@ aurora hero with a serif wordmark and tabular-numeral stats.
 | Group background behind everything | `Canvas` |
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
-| Tab or filter | `Pill` (`selected` is neutral, never group colour) |
+| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for the 推 filter) |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
 | Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
@@ -481,7 +503,10 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 - **Motion:** a sheet dialog enters with `animate-reveal` (`motion-reduce:animate-none`).
 - **Content:** a dialog has at most one `primary` or `danger` Button, confirms are
   `ConfirmDialog` (focus starts on Cancel) and never `window.confirm`, and loading, empty and
-  error states are `DialogStatus`.
+  error states are `DialogStatus` (spinner `text-accent`; the error tile is
+  `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
+  `secondary` by default and `primary` for the gradient retry the blog dialogs use).
+  `BlogStatus`'s retry is always `primary`.
 
 ### Menus
 
@@ -524,7 +549,13 @@ The blog reader's corner wash uses the current member's two penlight colours fro
 (`getMemberPenlightHex`), never a literal. `memberWashStyle()` (`features/blogs/memberWash.ts`)
 sets `--ds-member-wash-1/2` on the wash element, and the `bg-member-wash` utility mixes them at
 `--ds-member-wash-alpha` (`memberWash.alpha`, 10 %). Both default to `transparent` (no wash for
-the mascot or an unknown member). No other element uses member colours.
+the mascot or an unknown member). `resolveWash` also reports why there is none
+(`mascot`, `no_member_data`), logged as `blog_fallback` (`target`: `card_thumb` or
+`wash`; `reason`: `image_error`, `mascot`, `no_member_data`). No other element uses
+member colours.
+
+The blog timeline rail's hover ring is `border-accent` when zoomed (`border-strong`
+otherwise) and its tooltip glows with `shadow-accent-glow`.
 
 ### The group rail and the profile card
 
@@ -635,12 +666,15 @@ Do not "fix" these.
 - **Chat header pills** keep the pre-D2 white glass / title-text tint: on light
   parts of the title gradient and on Sakurazaka's white header their caption text
   is below 4.5:1, like the official title beside them.
+- **Blog feed title** keeps the official title colour on the white sheet
+  (Sakurazaka 2.4:1), like the chat header title (user decision D5, R-b).
 
 ## 13. Do / Don't
 
 | Do | Don't |
 |---|---|
 | Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
+| Give a fixed-meaning element its meaning colour in every context (推 hearts `text-semantic-oshi`, the favourite star `text-semantic-star`) | Recolour it with the group accent, or use oshi pink for a heart that is not 推 (About's `text-heart`) or for anything just because it is pink |
 | Use token classes (`rounded-lg`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
 | Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
 | Ask for a role (`bg-accent`, `text-accent-strong`, `bg-expressive-soft`) so the component follows its context | Hard-code a colour, or use group colour in brand screens |
@@ -654,8 +688,8 @@ Do not "fix" these.
 
 ## 14. Migration note
 
-R-a (frame and chat) is done; the list below applies to blogs, the remaining
-dialogs and the entry screens.
+R-a (frame and chat) and R-b (blogs) are done; the list below applies to the
+remaining dialogs and the entry screens.
 
 The `*-group-accent`, `*-group-strong`, `*-group-subtle` and `*-group-badge`
 utilities (`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`,

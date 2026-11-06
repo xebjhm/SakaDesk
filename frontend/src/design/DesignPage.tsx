@@ -198,6 +198,12 @@ export const DesignPage: React.FC = () => {
                             </div>
                         </div>
                     ))}
+                    <div className="flex flex-wrap gap-3">
+                        {(['subtle', 'border', 'solid', 'text'] as const).map((step) => (
+                            <Swatch key={step} name={`oshi ${step}`} value={color.semantic.oshi[step]} />
+                        ))}
+                        <Swatch name="star" value={color.semantic.star} />
+                    </div>
                 </Section>
 
                 <Section title={t('designPage.buttons')}>
