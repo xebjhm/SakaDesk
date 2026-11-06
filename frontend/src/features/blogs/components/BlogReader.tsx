@@ -23,7 +23,8 @@ import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
 import { persisted } from '../../../core/persistence/persisted';
 import { formatBlogDate } from '../../../utils/dateFormatters';
-import { memberWashStyle } from '../memberWash';
+import { resolveWash } from '../memberWash';
+import { clientLog } from '../../../utils/clientLog';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -87,7 +88,10 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     const groupId = toGroupId(serviceId);
 
     // Member penlight wash (data-driven, DESIGN_SYSTEM.md): CSS variables, or none.
-    const washStyle = memberWashStyle(member, groupId);
+    const { style: washStyle, fallback: washFallback } = resolveWash(member, groupId);
+    useEffect(() => {
+        if (washFallback) clientLog('blog_fallback', { target: 'wash', reason: washFallback });
+    }, [washFallback, blog.id]);
 
     /**
      * Split the blog content DOM into logical paragraph segments.
@@ -340,12 +344,13 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                 <button
                     type="button"
                     onClick={onMemberClick}
-                    className="rounded-pill px-2 py-1 font-semibold text-group-strong transition-colors duration-fast ease-standard hover:bg-group-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                    lang="ja"
+                    className="rounded-pill px-2 py-1 font-semibold text-accent-strong transition-colors duration-fast ease-standard hover:bg-accent-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     {getMemberNameKanji(member.name, groupId)}
                 </button>
                 <span aria-hidden="true" className="text-muted">/</span>
-                <span className="min-w-0 truncate px-1 text-secondary">{blog.title}</span>
+                <span lang="ja" className="min-w-0 truncate px-1 text-secondary">{blog.title}</span>
             </div>
 
             <div className="relative flex min-h-0 flex-1">
@@ -367,12 +372,13 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                         {!loading && !error && content && (
                             <article className="mx-auto w-full max-w-2xl px-8 pb-24 pt-6">
                                 <header className="mb-8 flex flex-col gap-2">
-                                    <h1 className="font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
+                                    <h1 lang="ja" className="font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted">
                                         <button
                                             type="button"
                                             onClick={onMemberClick}
-                                            className="rounded-pill font-semibold text-group-strong decoration-group underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+                                            lang="ja"
+                                            className="rounded-pill font-semibold text-accent-strong decoration-group underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                         >
                                             {getMemberNameKanji(content.meta.member_name, groupId)}
                                         </button>
@@ -404,6 +410,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                 {/* Sanitized with DOMPurify, then search highlights injected */}
                                 <div
                                     ref={blogContentRef}
+                                    lang="ja"
                                     className={BLOG_PROSE}
                                     dangerouslySetInnerHTML={{ __html: processedHtml }}
                                 />

@@ -270,7 +270,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
 
             {/* Current post */}
             <div
-                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-group-accent shadow-group-glow transition-[top] duration-base ease-standard motion-reduce:transition-none"
+                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-accent shadow-accent-glow transition-[top] duration-base ease-standard motion-reduce:transition-none"
                 style={{ top: getYFromIndex(currentIndex, railRef.current) }}
             />
 
@@ -279,7 +279,8 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 <>
                     <div
                         className={cn(
-                            'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2 border-strong',
+                            'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2',
+                            isZoomed ? 'border-accent' : 'border-strong',
                             'transition-opacity duration-base ease-standard motion-reduce:transition-none',
                             isZoomed ? 'opacity-90' : 'opacity-60',
                         )}
@@ -287,7 +288,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                     />
 
                     <Card
-                        className="pointer-events-none absolute right-full z-50 mr-4 min-w-[180px] max-w-[240px] -translate-y-1/2 overflow-hidden"
+                        className="pointer-events-none absolute right-full z-50 mr-4 min-w-[180px] max-w-[240px] -translate-y-1/2 overflow-hidden shadow-accent-glow"
                         style={{
                             top: Math.min(
                                 Math.max(hoverInfo.y, 180),
@@ -302,7 +303,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                             />
                         )}
                         <div className="flex flex-col gap-1 p-3">
-                            <div className="line-clamp-2 font-reading text-small font-semibold text-primary">{hovered.title}</div>
+                            <div lang="ja" className="line-clamp-2 font-reading text-small font-semibold text-primary">{hovered.title}</div>
                             <div className="flex items-center justify-between gap-2 text-caption tabular-nums text-muted">
                                 <span>{formatBlogDate(new Date(hovered.published_at), i18n.language, 'medium')}</span>
                                 <span>#{blogs.length - hoverInfo.index}</span>

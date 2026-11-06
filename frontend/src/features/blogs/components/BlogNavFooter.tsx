@@ -19,10 +19,10 @@ interface BlogNavFooterProps {
 
 const SIDE = cn(
     'pointer-events-auto group flex max-w-[45%] items-center gap-2 rounded-pill bg-pill py-2 shadow-pill',
-    'transition-colors duration-fast ease-standard hover:bg-sunken',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group',
+    'transition duration-fast ease-standard hover:bg-accent-subtle hover:shadow-accent-glow',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
 );
-const CHEVRON = 'h-4 w-4 shrink-0 text-muted transition-colors duration-fast ease-standard group-hover:text-primary';
+const CHEVRON = 'h-4 w-4 shrink-0 text-muted transition-colors duration-fast ease-standard group-hover:text-accent-strong';
 
 const truncateTitle = (title: string, maxLen: number = 18) =>
     title.length <= maxLen ? title : title.slice(0, maxLen) + '...';
@@ -58,7 +58,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
         <span className="min-w-0">
             <span className="block max-w-[160px] truncate text-small font-semibold text-primary">
                 <span className="sr-only">{prefix}:</span>{' '}
-                {truncateTitle(blog.title)}
+                <span lang="ja">{truncateTitle(blog.title)}</span>
             </span>
             <span className="block text-caption text-muted">
                 {formatBlogDate(new Date(blog.published_at), i18n.language, 'short')}

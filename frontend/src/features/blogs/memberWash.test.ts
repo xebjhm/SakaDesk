@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { memberWashStyle } from './memberWash';
+import { memberWashStyle, resolveWash } from './memberWash';
 import { getMemberPenlightHex } from '../../data/memberData';
 
 vi.mock('../../data/memberData', () => ({
@@ -32,5 +32,23 @@ describe('memberWashStyle', () => {
             '--ds-member-wash-1': 'transparent',
             '--ds-member-wash-2': 'transparent',
         });
+    });
+});
+
+describe('resolveWash', () => {
+    beforeEach(() => {
+        vi.mocked(getMemberPenlightHex).mockReturnValue(['#5bbee4', '#f2a0c0']);
+    });
+
+    it('returns the style and no fallback for a known member', () => {
+        expect(resolveWash({ id: '9901', name: '春野 ひなた' }, 'hinatazaka')).toEqual({
+            style: { '--ds-member-wash-1': '#5bbee4', '--ds-member-wash-2': '#f2a0c0' },
+            fallback: null,
+        });
+    });
+
+    it('names why there is no wash', () => {
+        expect(resolveWash({ id: '000', name: 'ポカ' }, 'hinatazaka')).toEqual({ style: undefined, fallback: 'mascot' });
+        expect(resolveWash({ id: '1', name: '誰か' }, 'hinatazaka')).toEqual({ style: undefined, fallback: 'no_member_data' });
     });
 });
