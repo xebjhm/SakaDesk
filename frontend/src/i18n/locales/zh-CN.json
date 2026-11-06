@@ -191,6 +191,7 @@
     "outputFolderPath": "输出文件夹路径",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
+    "folderRequired": "请先输入或选择文件夹",
     "downloadBlogsOffline": "下载 Blog 以供搜索",
     "downloadBlogsHint": "下载所有 Blog 文章以启用全文搜索。每个服务约使用 5-15 GB。",
     "startUsing": "开始使用 SakaDesk"

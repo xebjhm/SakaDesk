@@ -191,6 +191,7 @@
     "outputFolderPath": "Output Folder Path",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "Enter the full path where messages will be stored. You can copy this from Windows Explorer.",
+    "folderRequired": "Enter or choose a folder first",
     "downloadBlogsOffline": "Download blogs for search",
     "downloadBlogsHint": "Downloads all blog posts to enable full-text search. Uses approximately 5–15 GB per service.",
     "startUsing": "Start Using SakaDesk"

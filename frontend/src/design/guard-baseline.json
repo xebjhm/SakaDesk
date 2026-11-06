@@ -9,7 +9,6 @@
   "core/media/VideoPlayer.tsx": 1,
   "core/media/VoicePlayer.tsx": 3,
   "data/memberData.ts": 2,
-  "shell/components/SetupWizard.tsx": 1,
   "shell/components/SyncModal.tsx": 2,
   "utils/backgroundSettings.ts": 1
 }

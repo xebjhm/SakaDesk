@@ -1,6 +1,8 @@
-import React, { useId } from 'react';
+import React, { useId, useRef, useState } from 'react';
+import { FolderOpen } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button, Input, Modal } from '../../design/primitives';
+import { clientLog } from '../../utils/clientLog';
 
 interface SetupWizardProps {
     outputDirInput: string;
@@ -12,7 +14,11 @@ interface SetupWizardProps {
     isValid: boolean;
 }
 
-/** First-launch output folder (spec D2d decisions 4, 17, 18): not dismissible; one primary. */
+/**
+ * First-launch output folder: a brand dialog (spec §4), not dismissible, one primary (D2d
+ * decisions 4, 17, 18). A form never disables its submit (spec §8): Start validates on click,
+ * says what is missing and focuses the field.
+ */
 export const SetupWizard: React.FC<SetupWizardProps> = ({
     outputDirInput,
     setOutputDirInput,
@@ -24,18 +30,35 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
 }) => {
     const { t } = useTranslation();
     const inputId = useId();
+    const errorId = useId();
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [triedEmpty, setTriedEmpty] = useState(false);
+    // A folder chosen with Browse (or typed) clears the message without another click.
+    const missing = triedEmpty && !isValid;
+
+    const handleStart = () => {
+        if (!isValid) {
+            setTriedEmpty(true);
+            clientLog('entry_validation', { surface: 'setup', reason: 'missing_folder' });
+            inputRef.current?.focus();
+            return;
+        }
+        onComplete();
+    };
 
     return (
         <Modal
             isOpen
             onClose={() => {}}
+            scope="brand"
             title={t('setup.welcome')}
+            icon={<FolderOpen />}
             dismissible={false}
             logId="setup"
             className="max-w-md"
             bodyClassName="flex flex-col gap-4"
             footer={
-                <Button variant="primary" className="w-full" onClick={onComplete} disabled={!isValid}>
+                <Button variant="primary" className="w-full" onClick={handleStart}>
                     {t('setup.startUsing')}
                 </Button>
             }
@@ -48,24 +71,30 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                 </label>
                 <div className="flex gap-2">
                     <Input
+                        ref={inputRef}
                         id={inputId}
                         value={outputDirInput}
                         onChange={(e) => setOutputDirInput(e.target.value)}
                         placeholder={t('setup.outputFolderPlaceholder')}
+                        aria-invalid={missing || undefined}
+                        aria-describedby={missing ? errorId : undefined}
                         className="flex-1"
                     />
                     <Button variant="secondary" onClick={onSelectFolder}>{t('common.browse')}</Button>
                 </div>
                 <p className="text-caption text-muted">{t('setup.outputFolderHint')}</p>
+                {missing && (
+                    <p id={errorId} role="alert" className="text-caption text-status-danger">{t('setup.folderRequired')}</p>
+                )}
             </div>
 
-            {/* Blog Sync Mode Option */}
-            <label className="flex cursor-pointer items-start gap-3 rounded-card bg-sunken p-4">
+            {/* Blog sync option (e4e4118: near-white gray box, blue checkbox; now elevated fill, ink checkbox) */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg bg-elevated p-4">
                 <input
                     type="checkbox"
                     checked={setupBlogFullBackup}
                     onChange={(e) => setSetupBlogFullBackup(e.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-group"
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-accent"
                 />
                 <span className="flex flex-col gap-1">
                     <span className="text-small font-semibold text-primary">{t('setup.downloadBlogsOffline')}</span>

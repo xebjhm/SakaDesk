@@ -75,7 +75,9 @@ describe('setup wizard', () => {
         expect(p.onSelectFolder).toHaveBeenCalledOnce();
         await userEvent.click(screen.getByRole('checkbox', { name: /Download blogs for search/ }));
         expect(p.setSetupBlogFullBackup).toHaveBeenCalledWith(true);
-        expect(screen.getByRole('button', { name: 'Start Using SakaDesk' })).toBeDisabled();
+        await userEvent.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
+        expect(p.onComplete).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setup.folderRequired'));
     });
 
     it('Start completes the setup when the folder is valid', async () => {

@@ -407,3 +407,35 @@ describe('one login per app (D2d review)', () => {
         }
     });
 });
+
+describe('setup (R-d)', () => {
+    const props = { outputDirInput: '', setOutputDirInput: vi.fn(), setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(), onSelectFolder: vi.fn(), onComplete: vi.fn() };
+
+    it('is a brand dialog with the folder icon, the ink checkbox and the e4e4118 near-white option box (pending decision D1)', () => {
+        render(<SetupWizard {...props} isValid={false} />);
+        expect(screen.getByRole('dialog', { name: 'Welcome to SakaDesk' })).toHaveAttribute('data-scope', 'brand');
+        expect(screen.getByTestId('modal-header-icon').querySelector('svg.lucide-folder-open')).not.toBeNull();
+        const checkbox = screen.getByRole('checkbox', { name: /Download blogs for search/ });
+        expect(checkbox).toHaveClass('accent-accent');
+        expect(checkbox.closest('label')).toHaveClass('bg-elevated');
+    });
+
+    it('validates on click: says what is missing, focuses the field and logs it', async () => {
+        const onComplete = vi.fn();
+        const { rerender } = render(<SetupWizard {...props} onComplete={onComplete} isValid={false} />);
+        const start = screen.getByRole('button', { name: 'Start Using SakaDesk' });
+        expect(start).not.toBeDisabled();
+        expect(start).not.toHaveAttribute('aria-disabled');
+        await userEvent.click(start);
+        expect(onComplete).not.toHaveBeenCalled();
+        expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setup.folderRequired'));
+        const field = screen.getByLabelText('Output Folder Path');
+        expect(field).toHaveFocus();
+        expect(field).toHaveAttribute('aria-invalid', 'true');
+        expect(clientLog).toHaveBeenCalledWith('entry_validation', { surface: 'setup', reason: 'missing_folder' });
+        rerender(<SetupWizard {...props} outputDirInput="C:\\データ" onComplete={onComplete} isValid />);
+        expect(screen.queryByRole('alert')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
+        expect(onComplete).toHaveBeenCalledOnce();
+    });
+});

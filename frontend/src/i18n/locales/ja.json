@@ -191,6 +191,7 @@
     "outputFolderPath": "データ出力先パス",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
+    "folderRequired": "先にフォルダを入力するか選択してください",
     "downloadBlogsOffline": "ブログの検索用ダウンロード",
     "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
     "startUsing": "SakaDeskを始める"
