@@ -149,3 +149,25 @@ def test_endpoint_on_an_empty_archive(tmp_path):
     with patch("backend.api.content.get_output_dir", return_value=tmp_path):
         res = client.get("/api/archive/stats")
     assert res.json() == {"messages": 0, "photos": 0, "first_message_at": None}
+
+
+def test_endpoint_in_test_mode_returns_fixture_totals_without_reading_the_archive(
+    tmp_path,
+):
+    _write(tmp_path, HINATA, [_msg(1, "2020-01-01T00:00:00Z")])
+    with (
+        patch("backend.api.archive.is_test_mode", return_value=True),
+        patch("backend.api.content.get_output_dir", return_value=tmp_path) as out,
+        capture_logs() as logs,
+    ):
+        res = client.get("/api/archive/stats")
+    assert res.status_code == 200
+    # backend.fixtures.test_data.TEST_MESSAGES: four shown messages, one picture.
+    assert res.json() == {
+        "messages": 4,
+        "photos": 1,
+        "first_message_at": "2024-01-15T09:00:00Z",
+    }
+    out.assert_not_called()
+    (entry,) = [e for e in logs if e["event"] == "archive_stats"]
+    assert (entry["source"], entry["messages"], entry["photos"]) == ("fixture", 4, 1)
