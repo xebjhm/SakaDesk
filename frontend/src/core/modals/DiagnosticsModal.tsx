@@ -217,6 +217,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
         <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" icon={<Terminal />} closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
             headerExtra={<span className="rounded-pill bg-sheet px-2 py-1 text-caption text-secondary">Hidden Panel</span>}
             bodyClassName="flex flex-col gap-4"
+            footerDivider
             footer={
                 <>
                     <Button variant="ghost" className="mr-auto" onClick={fetchDiagnostics}>

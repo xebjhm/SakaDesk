@@ -61,3 +61,12 @@ describe('EmptyState icon (R-d, pending decision D6)', () => {
         expect(circle.firstElementChild).toHaveClass('[&>svg]:h-7', '[&>svg]:w-7');
     });
 });
+
+describe('Modal footer divider (R-d, pending decision D12)', () => {
+    it('separates a scrolling body from its footer only when asked', () => {
+        const { rerender } = render(<Modal isOpen onClose={vi.fn()} title="t" footer={<button>OK</button>}>x</Modal>);
+        expect(screen.getByTestId('modal-footer')).not.toHaveClass('border-t');
+        rerender(<Modal isOpen onClose={vi.fn()} title="t" footer={<button>OK</button>} footerDivider>x</Modal>);
+        expect(screen.getByTestId('modal-footer')).toHaveClass('border-t', 'border-subtle', 'pt-4');
+    });
+});
