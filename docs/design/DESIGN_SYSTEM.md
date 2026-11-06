@@ -714,9 +714,8 @@ Do not "fix" these.
 - **Dialog header titles** keep the header text colour: white on the title
   gradients (about 1.8:1 at Hinatazaka's light end) and the official `#d892aa` on
   Sakurazaka's white header (2.4:1), as the pre-D2 dialogs and the chat header
-    beside them (user decision D1, R-c).
+  beside them (user decision D1, R-c).
 - **Sync progress fill** is the aurora (brand) or the official title gradient (inline sync) on a grey track, about 1.0–1.2:1, as the pre-D2 pastel bar; the count and percent above it carry the value (user decision D5, R-d).
-
 
 ## 13. Do / Don't
 

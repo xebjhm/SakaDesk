@@ -124,16 +124,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
-  downloads your groups for the first time used to skip only the running
-  group, so the rest of the first sync never ran and your blog backup choice
-  was lost. It now stops the sync and closes the dialog, and your blog backup
-  choice is kept.
+  downloads your groups for the first time used to leave the first sync
+  hanging on the group it was running, so the other groups never started and
+  your blog backup choice was never saved. It now stops the sync, closes the
+  dialog, and still saves your blog backup choice.
 - **Yodel's location warning uses Yodel's colours** instead of those of the
   screen behind it.
 - **The member count in the search filter is translated** into your app
   language.
-- **The Diagnostics buttons no longer look overlapped.** A line now separates
-  the buttons from the report scrolling beneath them.
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
   goes straight there instead of scrolling through every message in between,
   then glides the last stretch into place and gently highlights the message you
