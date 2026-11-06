@@ -76,13 +76,17 @@ for (const service of SERVICES) {
     await page.goto('/')
     await settled(page, page.getByRole('button', { name: /春の日記 42/ }))
     await page.getByRole('button', { name: 'Select Member' }).click()
-    // The member cell is a button on dev and a div on e4e4118: match by text. The feed card
-    // behind the modal also shows the name, but it comes first in the DOM, so take the last match.
-    const cell = page.getByText(/春野/).last()
+    // The member cell is a button on dev and a div on e4e4118: match by text, scoped to the dialog
+    // so the feed card behind it (which also shows the name) cannot match.
+    const dialog = page.getByRole('dialog')
+    const cell = dialog.getByText(/春野/).first()
     await settled(page, cell)
     await shot(page, `${service}-member-select`)
     await cell.click()
-    await settled(page, page.getByText(/春の日記 42/).first())
+    // The select dialog closes, then the timeline dialog opens with the member name as its title.
+    await expect(page.getByRole('dialog').getByRole('heading', { name: /春野/ })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByRole('dialog')).toHaveCount(1)
+    await settled(page, page.getByRole('dialog').getByRole('heading', { name: /春野/ }))
     await shot(page, `${service}-member-timeline`)
   })
 }
