@@ -111,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync repair rows in Settings say which group they act on.
 
 ### Fixed
+- **Cancel works during the first sync.** Pressing Cancel while SakaDesk
+  downloads your groups for the first time now stops the sync and closes the
+  dialog, instead of leaving it stuck; your blog backup choice is still kept.
 - **Jumping to an old date is quick.** Picking a day in the chat calendar now
   goes straight there instead of scrolling through every message in between,
   then glides the last stretch into place and gently highlights the message you

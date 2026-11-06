@@ -60,6 +60,7 @@ ClientEvent = Literal[
     "entry_validation",
     "archive_stats_load",
     "celebration",
+    "sync_sequence",
 ]
 
 ALLOWED_FIELDS = frozenset(

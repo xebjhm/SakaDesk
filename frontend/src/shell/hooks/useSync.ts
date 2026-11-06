@@ -73,13 +73,19 @@ export function friendlySyncDetail(detail: unknown, fallback: string): string | 
     return detail;
 }
 
-/** Info about an ongoing sequential (multi-service) sync */
-/** How a sequential sync ended: services that reached `complete`, and the rest (error, idle, failed start). */
+/**
+ * How a sequential sync ended. `completed` counts services that reached `complete`;
+ * `failed` counts the rest (error, idle, failed start, and, after a cancel, the
+ * cancelled service plus every service the cancel skipped). `cancelled` is true
+ * when the user's Cancel ended the sequence early.
+ */
 export interface SequentialSyncOutcome {
     completed: number;
     failed: number;
+    cancelled: boolean;
 }
 
+/** Info about an ongoing sequential (multi-service) sync */
 export interface SequentialSyncInfo {
     /** Total number of services being synced */
     total: number;
@@ -107,7 +113,11 @@ export interface UseSyncReturn {
     startSync: (blocking: boolean, service?: string, forceResync?: boolean) => Promise<void>;
     /** Verify downloaded media and re-download any missing files (or active service if not specified) */
     verifyAndFix: (service?: string) => Promise<void>;
-    /** Cancel a running sync/verify and make the modal dismissible (SD-FE-GAP-B-08) */
+    /**
+     * Cancel a running sync/verify and make the modal dismissible (SD-FE-GAP-B-08).
+     * Without a service it targets the sequential sync's current service, else the
+     * active service. During a sequential sync it also ends the whole sequence.
+     */
     cancelSync: (service?: string) => Promise<void>;
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
@@ -184,6 +194,8 @@ export function useSync({
     // Sequential sync state (for onboarding multi-service sync)
     const [sequentialSyncInfo, setSequentialSyncInfo] = useState<SequentialSyncInfo | null>(null);
     const sequentialSyncServiceRef = useRef<string | null>(null);
+    // Set by cancelSync during a sequential sync: the loop stops before the next service.
+    const sequenceCancelledRef = useRef(false);
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
     const syncCompleteCallbacks = useRef<Record<string, (completed: boolean) => void>>({});
 
@@ -441,6 +453,9 @@ export function useSync({
                 blockingRef.current[targetService] = true;
                 if (targetService === activeServiceRef.current) setShowSyncModal(true);
             }
+            // A pending sequential callback is not settled here: the owner settles it. A live
+            // poller resolves it on its terminal state, and an in-flight start resolves it on a
+            // refused or failed start, or hands it to the poller it attaches.
             clientLog('sync_start_skipped', { reason: isPollingRef.current[targetService] ? 'polling' : 'starting' });
             log(`${targetService}: already polling or starting, skipping startSync`);
             return;
@@ -561,8 +576,17 @@ export function useSync({
     // state so the user can always leave the modal even if the cancel request
     // fails or races the poller, rather than being locked to a spinner.
     const cancelSync = useCallback(async (service?: string) => {
-        const targetService = service || activeServiceRef.current;
+        const sequenceService = sequentialSyncServiceRef.current;
+        const targetService = service || sequenceService || activeServiceRef.current;
         if (!targetService) return;
+
+        // Cancel during a sequential (first-launch) sync ends the whole sequence:
+        // settle the waiting step now so the loop stops and the remaining services
+        // never start.
+        if (sequenceService !== null && targetService === sequenceService) {
+            sequenceCancelledRef.current = true;
+            resolveSyncCallback(targetService, false);
+        }
 
         // Stop the local poller so it can't overwrite the terminal state below.
         isPollingRef.current[targetService] = false;
@@ -573,7 +597,7 @@ export function useSync({
         // button even if the cancel request fails or races the poller.
         const cancelledProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.cancelled') };
         setSyncProgressByService(prev => ({ ...prev, [targetService]: cancelledProgress }));
-        if (targetService === activeServiceRef.current) setSyncProgress(cancelledProgress);
+        if (targetService === activeServiceRef.current || targetService === sequenceService) setSyncProgress(cancelledProgress);
 
         // Fire-and-forget the real cancel; failures don't block dismissal.
         try {
@@ -581,7 +605,7 @@ export function useSync({
         } catch {
             /* the modal is already dismissible; a failed cancel is non-fatal */
         }
-    }, []);
+    }, [resolveSyncCallback]);
 
     const startSyncAllServices = useCallback(async (blocking: boolean) => {
         if (connectedServices.length === 0) return;
@@ -596,13 +620,14 @@ export function useSync({
     }, [connectedServices, startSync]);
 
     const startSequentialSync = useCallback(async (services: string[]): Promise<SequentialSyncOutcome> => {
-        if (services.length === 0) return { completed: 0, failed: 0 };
+        if (services.length === 0) return { completed: 0, failed: 0, cancelled: false };
 
         // Prevent startup sync effect from also triggering these services
         services.forEach(s => syncedServicesRef.current.add(s));
         hasStartedSyncRef.current = true;
 
         setShowSyncModal(true);
+        sequenceCancelledRef.current = false;
 
         let completed = 0;
         for (let i = 0; i < services.length; i++) {
@@ -628,12 +653,22 @@ export function useSync({
                 startSync(false, service);
             });
             if (ok) completed += 1;
+            if (sequenceCancelledRef.current) break;
         }
 
+        const cancelled = sequenceCancelledRef.current;
+        sequenceCancelledRef.current = false;
         sequentialSyncServiceRef.current = null;
         setSequentialSyncInfo(null);
-        setTimeout(() => setShowSyncModal(false), 2000);
-        return { completed, failed: services.length - completed };
+        // The user asked to stop: leave the dialog now. Otherwise show the result briefly.
+        if (cancelled) setShowSyncModal(false);
+        else setTimeout(() => setShowSyncModal(false), 2000);
+        const failed = services.length - completed;
+        clientLog('sync_sequence', {
+            outcome: cancelled ? 'cancelled' : failed === 0 ? 'all_complete' : completed === 0 ? 'none' : 'partial',
+            count: completed,
+        });
+        return { completed, failed, cancelled };
     }, [startSync]);
 
     // Stable ref for startSync so effects can call it without depending on it.

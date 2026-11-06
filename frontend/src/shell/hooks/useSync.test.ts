@@ -526,6 +526,96 @@ describe('useSync', () => {
         await act(async () => {
             outcome = await result.current.startSequentialSync(['hinatazaka46', 'sakurazaka46', 'nogizaka46'])
         })
-        expect(outcome).toEqual({ completed: 1, failed: 2 })
+        expect(outcome).toEqual({ completed: 1, failed: 2, cancelled: false })
+        expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'partial', count: 1 })
+    })
+
+    describe('cancelling a sequential (first-launch) sync', () => {
+        function stubRunningSequence() {
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                const reply = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+                if (url.includes('/api/sync/start')) return reply({ status: 'started' })
+                if (url.includes('/api/sync/progress')) return reply({ state: 'running', phase: 'messages', completed: 1, total: 4 })
+                return reply({})
+            }))
+        }
+        const startCalls = () => vi.mocked(fetch).mock.calls
+            .map(([url]) => String(url)).filter(url => url.includes('/api/sync/start'))
+
+        it('settles with a cancelled outcome, never starts the later groups and closes the dialog', async () => {
+            stubRunningSequence()
+            const { result } = renderHook(() => useSync({ ...defaultOptions, appSettings: { ...defaultOptions.appSettings, is_configured: false } }))
+            let pending: Promise<unknown> = Promise.resolve()
+            act(() => { pending = result.current.startSequentialSync(['sakurazaka46', 'hinatazaka46']) })
+            await waitFor(() => expect(result.current.syncProgressByService['sakurazaka46']?.phase).toBe('messages'))
+
+            // The dialog's Cancel button calls cancelSync() with no service.
+            let outcome: unknown
+            await act(async () => {
+                await result.current.cancelSync()
+                outcome = await pending
+            })
+            expect(outcome).toEqual({ completed: 0, failed: 2, cancelled: true })
+            // The running group is the one cancelled (not the landing page's first group).
+            const cancels = vi.mocked(fetch).mock.calls.map(([url]) => String(url)).filter(url => url.includes('/api/sync/cancel'))
+            expect(cancels).toEqual(['/api/sync/cancel?service=sakurazaka46'])
+            expect(startCalls()).toEqual(['/api/sync/start?service=sakurazaka46'])
+            expect(result.current.sequentialSyncInfo).toBeNull()
+            expect(result.current.showSyncModal).toBe(false)
+            expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'cancelled', count: 0 })
+        })
+
+        it('cancels the group that is syncing now when the sequence is past the first group', async () => {
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                const reply = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+                if (url.includes('/api/sync/start')) return reply({ status: 'started' })
+                if (url.includes('/api/sync/progress')) {
+                    return url.includes('hinatazaka46')
+                        ? reply({ state: 'complete', completed: 3, total: 3 })
+                        : reply({ state: 'running', phase: 'messages', completed: 1, total: 4 })
+                }
+                return reply({})
+            }))
+            const { result } = renderHook(() => useSync({ ...defaultOptions, appSettings: { ...defaultOptions.appSettings, is_configured: false } }))
+            let pending: Promise<unknown> = Promise.resolve()
+            act(() => { pending = result.current.startSequentialSync(['hinatazaka46', 'sakurazaka46', 'nogizaka46']) })
+            await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('sakurazaka46'))
+            await waitFor(() => expect(result.current.syncProgressByService['sakurazaka46']?.phase).toBe('messages'))
+
+            let outcome: unknown
+            await act(async () => {
+                await result.current.cancelSync()
+                outcome = await pending
+            })
+            expect(outcome).toEqual({ completed: 1, failed: 2, cancelled: true })
+            const cancels = vi.mocked(fetch).mock.calls.map(([url]) => String(url)).filter(url => url.includes('/api/sync/cancel'))
+            expect(cancels).toEqual(['/api/sync/cancel?service=sakurazaka46'])
+            expect(startCalls()).not.toContain('/api/sync/start?service=nogizaka46')
+            expect(result.current.syncProgressByService['sakurazaka46']?.state).toBe('error')
+        })
+    })
+
+    it('a sequence whose start is skipped behind an in-flight start still settles', async () => {
+        let resolvePost: (r: unknown) => void = () => {}
+        vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+            const url = String(input)
+            if (url.includes('/api/sync/start')) return new Promise(resolve => { resolvePost = resolve })
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ state: 'complete', completed: 3, total: 3 }) })
+        }))
+        const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+        // An inline start is in flight when the sequence asks for the same group.
+        act(() => { void result.current.startSync(false, 'hinatazaka46') })
+        let pending: Promise<unknown> = Promise.resolve()
+        act(() => { pending = result.current.startSequentialSync(['hinatazaka46']) })
+        expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting' })
+
+        let outcome: unknown
+        await act(async () => {
+            resolvePost({ ok: true, status: 200, json: () => Promise.resolve({ status: 'started' }) })
+            outcome = await pending
+        })
+        expect(outcome).toEqual({ completed: 1, failed: 0, cancelled: false })
     })
 })

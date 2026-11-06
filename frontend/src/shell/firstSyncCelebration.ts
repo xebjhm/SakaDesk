@@ -5,11 +5,12 @@ import type { SequentialSyncOutcome } from './hooks/useSync';
 /** Set once the first-sync toast has been shown (spec §9: "once ever"). */
 export const FIRST_SYNC_PREF = 'first_sync_celebrated_at';
 
-export type FirstSyncDecision = 'show' | 'already_celebrated' | 'sync_failed';
+export type FirstSyncDecision = 'show' | 'already_celebrated' | 'sync_cancelled' | 'sync_failed';
 
-/** Whether the first-launch sync earns the tier-B toast (decision D11): every service finished, never shown before. */
+/** Whether the first-launch sync earns the tier-B toast (decision D11): every service finished, not cancelled, never shown before. */
 export function decideFirstSync(outcome: SequentialSyncOutcome, celebratedAt: string | null): FirstSyncDecision {
     if (celebratedAt) return 'already_celebrated';
+    if (outcome.cancelled) return 'sync_cancelled';
     if (outcome.failed > 0 || outcome.completed === 0) return 'sync_failed';
     return 'show';
 }

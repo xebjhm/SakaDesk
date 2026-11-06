@@ -329,7 +329,9 @@ function App() {
                     if (celebrateFirstSync(outcome)) setShowFirstSyncToast(true);
                 }
                 // Now save blogs_full_backup — the useSettings hook will
-                // auto-start blog backup via /api/blogs/backup/start.
+                // auto-start blog backup via /api/blogs/backup/start. Saved after a
+                // cancelled sync too: Cancel stops the message sync, it does not undo
+                // the blog backup the user chose in the wizard.
                 if (setupBlogFullBackup) {
                     await saveSettings({ blogs_full_backup: true });
                 }

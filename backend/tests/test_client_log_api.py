@@ -513,3 +513,17 @@ def test_login_after_login_error_breadcrumb_is_accepted():
     events = _client_events(logs)
     assert events[0]["surface"] == "login"
     assert events[0]["reason"] == "after_login"
+
+
+@pytest.mark.parametrize("outcome", ["all_complete", "partial", "none", "cancelled"])
+def test_sync_sequence_breadcrumb_is_accepted(outcome):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "sync_sequence", "fields": {"outcome": outcome, "count": 1}},
+        )
+    assert res.status_code == 204
+    events = _client_events(logs)
+    assert events[0]["event"] == "sync_sequence"
+    assert events[0]["outcome"] == outcome
+    assert events[0]["count"] == 1

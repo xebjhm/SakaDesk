@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../__tests__/mocks/server';
 import App from './App';
@@ -48,6 +49,60 @@ describe('first launch on the brand atmosphere (R-d)', () => {
         const backdrop = screen.getByTestId('entry-backdrop');
         expect(backdrop.querySelector('[data-scope="brand"]')).not.toBeNull();
         expect(backdrop.querySelectorAll('[data-testid="atmosphere-orb"]')).toHaveLength(3);
+        unmount();
+    });
+});
+
+describe('cancelling the first-launch sync (R-d)', () => {
+    it('leaves the sync dialog, starts no later group, shows no toast and keeps the blog backup choice', async () => {
+        pinPrefs(true);
+        useAppStore.setState({ selectedServices: ['sakurazaka46', 'hinatazaka46'], activeService: 'sakurazaka46' });
+        const starts: string[] = [];
+        const saves: unknown[] = [];
+        server.use(
+            http.get('*/api/app-state/prefs', () => HttpResponse.json({})),
+            http.patch('*/api/app-state/prefs', () => HttpResponse.json({ ok: true })),
+            http.get('*/api/app-state/migrate', () => HttpResponse.json({ migrated: true })),
+            http.get('*/api/app-state/conversation-all', () => HttpResponse.json({})),
+            http.get('*/api/auth/status', () => HttpResponse.json({
+                services: {
+                    sakurazaka46: { authenticated: true, app_id: 'a', storage_type: 'test' },
+                    hinatazaka46: { authenticated: true, app_id: 'b', storage_type: 'test' },
+                },
+            })),
+            http.get('*/api/settings', () => HttpResponse.json({
+                output_dir: '', auto_sync_enabled: false, sync_interval_minutes: 30,
+                adaptive_sync_enabled: false, blogs_full_backup: false, is_configured: false,
+            })),
+            http.post('*/api/settings', async ({ request }) => {
+                const body = await request.json() as Record<string, unknown>;
+                saves.push(body);
+                return HttpResponse.json({
+                    output_dir: 'C:\\SakaDesk-データ', auto_sync_enabled: false, sync_interval_minutes: 30,
+                    adaptive_sync_enabled: false, blogs_full_backup: !!body.blogs_full_backup, is_configured: true,
+                });
+            }),
+            http.post('*/api/sync/start', ({ request }) => {
+                starts.push(new URL(request.url).searchParams.get('service') ?? '');
+                return HttpResponse.json({ status: 'started' });
+            }),
+            http.get('*/api/sync/progress', () => HttpResponse.json({ state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 })),
+            http.post('*/api/sync/cancel', () => HttpResponse.json({ ok: true })),
+            http.post('*/api/blogs/backup/start', () => HttpResponse.json({ ok: true })),
+        );
+        const user = userEvent.setup();
+        const { unmount } = render(<AuthProvider><App /></AuthProvider>);
+
+        await user.type(await screen.findByPlaceholderText('C:\\Users\\YourName\\SakaDesk-data'), 'C:\\SakaDesk-データ');
+        await user.click(screen.getByRole('checkbox'));
+        await user.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
+        await user.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 5000 }));
+
+        // The blog backup the user opted into is still saved once the cancelled sync ends.
+        await waitFor(() => expect(saves).toContainEqual({ blogs_full_backup: true }));
+        expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+        expect(screen.queryByText('Your archive is ready')).toBeNull();
+        expect(starts).toEqual(['sakurazaka46']);
         unmount();
     });
 });
