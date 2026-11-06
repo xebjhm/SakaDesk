@@ -506,4 +506,26 @@ describe('useSync', () => {
         )
         expect(result.current.showSyncModal).toBe(true)
     })
+
+    it('reports how many services of a sequential sync finished, and goes on after a failed start', async () => {
+        vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+            const url = String(input)
+            const reply = (body: unknown, ok = true, status = 200) => ({ ok, status, json: async () => body })
+            if (url.includes('/api/sync/start')) {
+                return url.includes('nogizaka46') ? reply({ detail: 'invalid service' }, false, 400) : reply({ status: 'started' })
+            }
+            if (url.includes('/api/sync/progress')) {
+                return url.includes('sakurazaka46')
+                    ? reply({ state: 'error', detail: 'failed' })
+                    : reply({ state: 'complete', completed: 3, total: 3 })
+            }
+            return reply({})
+        }))
+        const { result } = renderHook(() => useSync({ ...defaultOptions, appSettings: { ...defaultOptions.appSettings, is_configured: false } }))
+        let outcome: unknown
+        await act(async () => {
+            outcome = await result.current.startSequentialSync(['hinatazaka46', 'sakurazaka46', 'nogizaka46'])
+        })
+        expect(outcome).toEqual({ completed: 1, failed: 2 })
+    })
 })

@@ -697,5 +697,9 @@
     "openImage": "レターを開く",
     "you": "あなた",
     "openImageAt": "{{date}}に送信したレターを開く"
+  },
+  "celebration": {
+    "firstSyncTitle": "アーカイブの準備ができました",
+    "firstSyncBody": "{{value}}件のメッセージを保存しました"
   }
 }

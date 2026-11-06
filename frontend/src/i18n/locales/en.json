@@ -698,5 +698,10 @@
     "openImage": "Open letter",
     "you": "You",
     "openImageAt": "Open letter sent {{date}}"
+  },
+  "celebration": {
+    "firstSyncTitle": "Your archive is ready",
+    "firstSyncBody": "{{value}} message saved",
+    "firstSyncBody_other": "{{value}} messages saved"
   }
 }

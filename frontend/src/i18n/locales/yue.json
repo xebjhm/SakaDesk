@@ -697,5 +697,9 @@
     "openImage": "打開信",
     "you": "你",
     "openImageAt": "打開 {{date}} 寄嘅信"
+  },
+  "celebration": {
+    "firstSyncTitle": "你嘅存檔準備好喇",
+    "firstSyncBody": "已經儲存咗 {{value}} 條訊息"
   }
 }

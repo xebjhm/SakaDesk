@@ -74,6 +74,12 @@ export function friendlySyncDetail(detail: unknown, fallback: string): string | 
 }
 
 /** Info about an ongoing sequential (multi-service) sync */
+/** How a sequential sync ended: services that reached `complete`, and the rest (error, idle, failed start). */
+export interface SequentialSyncOutcome {
+    completed: number;
+    failed: number;
+}
+
 export interface SequentialSyncInfo {
     /** Total number of services being synced */
     total: number;
@@ -106,7 +112,7 @@ export interface UseSyncReturn {
     /** Start sync for all connected services */
     startSyncAllServices: (blocking: boolean) => Promise<void>;
     /** Start sequential sync for a list of services (one at a time, with blocking modal) */
-    startSequentialSync: (services: string[]) => Promise<void>;
+    startSequentialSync: (services: string[]) => Promise<SequentialSyncOutcome>;
     /** Info about the current sequential sync (null if not running) */
     sequentialSyncInfo: SequentialSyncInfo | null;
     /** Ref tracking whether initial sync has started */
@@ -179,7 +185,7 @@ export function useSync({
     const [sequentialSyncInfo, setSequentialSyncInfo] = useState<SequentialSyncInfo | null>(null);
     const sequentialSyncServiceRef = useRef<string | null>(null);
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
-    const syncCompleteCallbacks = useRef<Record<string, () => void>>({});
+    const syncCompleteCallbacks = useRef<Record<string, (completed: boolean) => void>>({});
 
     const isPollingRef = useRef<Record<string, boolean>>({});
     // Per-service "a blocking modal owns this poll": set (never cleared) by any
@@ -247,9 +253,9 @@ export function useSync({
     }, [onSyncComplete]);
 
     // Helper: resolve any pending sequential-sync callback for a service
-    const resolveSyncCallback = useCallback((service: string) => {
+    const resolveSyncCallback = useCallback((service: string, completed: boolean) => {
         if (syncCompleteCallbacks.current[service]) {
-            syncCompleteCallbacks.current[service]();
+            syncCompleteCallbacks.current[service](completed);
             delete syncCompleteCallbacks.current[service];
         }
     }, []);
@@ -285,7 +291,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
@@ -308,7 +314,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, true);
                     setSyncVersion(v => v + 1);
                     if (service === currentActiveService) refreshUserProfile(service);
                     // Auto-close only normal syncs. A verify/validation carries a
@@ -382,14 +388,14 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 } else {
                     updateProgress({ state: 'error', detail: data.detail || i18n.t('sync.unknownError') });
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             } catch {
@@ -409,7 +415,7 @@ export function useSync({
                     isPollingRef.current[service] = false;
                     blockingRef.current[service] = false;
                     useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service);
+                    resolveSyncCallback(service, false);
                     if (blocking && service === currentActiveService) setShowSyncModal(false);
                 }
             }
@@ -476,6 +482,7 @@ export function useSync({
                     pollSyncProgress(targetService, blocking);
                 } else {
                     log(`${targetService}: failed to start`, data.detail);
+                    resolveSyncCallback(targetService, false);
                     // No poller owns this start: a modal request from a skipped start ends here.
                     blockingRef.current[targetService] = false;
                     if (currentProgress?.state !== 'running') {
@@ -489,6 +496,7 @@ export function useSync({
             }
         } catch {
             blockingRef.current[targetService] = false;
+            resolveSyncCallback(targetService, false);
             if (currentProgress?.state !== 'running') {
                 const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
                 setSyncProgressByService(prev => ({ ...prev, [targetService]: errorProgress }));
@@ -499,7 +507,7 @@ export function useSync({
         } finally {
             startingRef.current[targetService] = false;
         }
-    }, [pollSyncProgress]);
+    }, [pollSyncProgress, resolveSyncCallback]);
 
     // verifyAndFix: scans downloaded messages for missing media and re-downloads
     // any gaps. Reuses the same sync progress modal + poller as startSync.
@@ -587,8 +595,8 @@ export function useSync({
         );
     }, [connectedServices, startSync]);
 
-    const startSequentialSync = useCallback(async (services: string[]) => {
-        if (services.length === 0) return;
+    const startSequentialSync = useCallback(async (services: string[]): Promise<SequentialSyncOutcome> => {
+        if (services.length === 0) return { completed: 0, failed: 0 };
 
         // Prevent startup sync effect from also triggering these services
         services.forEach(s => syncedServicesRef.current.add(s));
@@ -596,6 +604,7 @@ export function useSync({
 
         setShowSyncModal(true);
 
+        let completed = 0;
         for (let i = 0; i < services.length; i++) {
             const service = services[i];
             sequentialSyncServiceRef.current = service;
@@ -614,15 +623,17 @@ export function useSync({
             setSyncProgressByService(prev => ({ ...prev, [service]: initialProgress }));
             setSyncProgress(initialProgress);
 
-            await new Promise<void>((resolve) => {
+            const ok = await new Promise<boolean>((resolve) => {
                 syncCompleteCallbacks.current[service] = resolve;
                 startSync(false, service);
             });
+            if (ok) completed += 1;
         }
 
         sequentialSyncServiceRef.current = null;
         setSequentialSyncInfo(null);
         setTimeout(() => setShowSyncModal(false), 2000);
+        return { completed, failed: services.length - completed };
     }, [startSync]);
 
     // Stable ref for startSync so effects can call it without depending on it.

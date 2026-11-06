@@ -25,8 +25,9 @@ import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
 import { BrandScope } from '../design/brandScope'
+import { celebrateFirstSync } from './firstSyncCelebration'
 
 function App() {
     const { t } = useTranslation()
@@ -174,6 +175,8 @@ function App() {
     const [showReportModal, setShowReportModal] = useState(false);
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
+    const [showFirstSyncToast, setShowFirstSyncToast] = useState(false);
+    const hideFirstSyncToast = useCallback(() => setShowFirstSyncToast(false), []);
 
     // Search modal
     const searchModalRef = useRef<SearchModalHandle>(null);
@@ -321,7 +324,9 @@ function App() {
                     ? connectedServices
                     : [];
                 if (servicesToSync.length > 0) {
-                    await startSequentialSync(servicesToSync);
+                    const outcome = await startSequentialSync(servicesToSync);
+                    // Tier-B celebration of the first complete sync (spec §9, decision D11).
+                    if (celebrateFirstSync(outcome)) setShowFirstSyncToast(true);
                 }
                 // Now save blogs_full_backup — the useSettings hook will
                 // auto-start blog backup via /api/blogs/backup/start.
@@ -418,6 +423,7 @@ function App() {
                         />
                     </div>
                 )}
+                {showFirstSyncToast && <FirstSyncToast onDone={hideFirstSyncToast} />}
 
                 {/* Settings Modal */}
                 {showSettingsModal && appSettings && (

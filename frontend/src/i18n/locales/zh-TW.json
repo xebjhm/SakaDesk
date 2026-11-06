@@ -697,5 +697,9 @@
     "openImage": "開啟信件",
     "you": "你",
     "openImageAt": "開啟 {{date}} 傳送的信件"
+  },
+  "celebration": {
+    "firstSyncTitle": "你的存檔已準備就緒",
+    "firstSyncBody": "已儲存 {{value}} 則訊息"
   }
 }
