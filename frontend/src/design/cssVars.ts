@@ -21,6 +21,10 @@ export function staticTokenVars(): Record<string, string> {
         for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
     }
     for (const [kind, steps] of Object.entries(color.semantic)) {
+        if (typeof steps === 'string') {
+            vars[`--ds-semantic-${kind}`] = steps;
+            continue;
+        }
         for (const [step, value] of Object.entries(steps)) vars[`--ds-semantic-${kind}-${step}`] = value;
     }
     // Cross-group search dots: set per element by groupMarkerStyle(); none by default.

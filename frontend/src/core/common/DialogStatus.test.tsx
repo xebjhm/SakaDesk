@@ -34,4 +34,15 @@ describe('DialogStatus', () => {
         await userEvent.click(screen.getByRole('button', { name: '再試行' }));
         expect(onRetry).toHaveBeenCalled();
     });
+
+    it('tints the spinner and tiles, and the retry is secondary unless retryVariant is primary', () => {
+        const { container, rerender } = render(<DialogStatus kind="loading" />);
+        expect(container.querySelector('.animate-spin')).toHaveClass('text-accent');
+        rerender(<DialogStatus kind="error" icon={<Star />} onRetry={vi.fn()} retryLabel="Retry" />);
+        expect(container.querySelector('span[aria-hidden]')).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
+        expect(screen.getByRole('button', { name: 'Retry' })).not.toHaveClass('bg-accent-gradient');
+        rerender(<DialogStatus kind="empty" icon={<Star />} onRetry={vi.fn()} retryLabel="Retry" retryVariant="primary" />);
+        expect(container.querySelector('span[aria-hidden]')).toHaveClass('bg-expressive-soft', 'text-accent-strong');
+        expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('bg-accent-gradient');
+    });
 });

@@ -196,7 +196,7 @@ describe('MessageBubble component', () => {
 
   it('draws the favourite star in the accent colour', () => {
     const { container } = render(<MessageBubble {...defaultProps} message={createMessage({ is_favorite: true })} />)
-    expect(container.querySelector('svg.h-3\\.5')).toHaveClass('fill-current', 'text-accent')
+    expect(container.querySelector('svg.h-3\\.5')).toHaveClass('fill-current', 'text-semantic-star', 'drop-shadow-sm')
   })
 
   it('marks the text and the member name as Japanese content', () => {
