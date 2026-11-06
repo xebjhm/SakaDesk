@@ -15,8 +15,6 @@
   "core/modals/SentLettersModal.tsx": 1,
   "data/memberData.ts": 2,
   "pages/LandingPage.tsx": 4,
-  "shell/components/LoginModal.tsx": 1,
-  "shell/components/SettingsModal.tsx": 4,
   "shell/components/SetupWizard.tsx": 1,
   "shell/components/SyncModal.tsx": 2,
   "shell/components/TosDialog.tsx": 3,
