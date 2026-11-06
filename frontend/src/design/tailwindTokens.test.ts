@@ -113,4 +113,9 @@ describe('accent and expressive utilities', () => {
     it('defines the 0.97 press scale', () => {
         expect(config).toMatch(/scale: \{\s*97: '0\.97',/);
     });
+
+    it('defines the mask-fade-y utility as an alpha-only vertical fade', () => {
+        expect(config).toContain("'.mask-fade-y': { maskImage: fadeY, WebkitMaskImage: fadeY }");
+        expect(config).toContain("const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';");
+    });
 });

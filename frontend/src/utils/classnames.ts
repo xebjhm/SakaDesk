@@ -4,7 +4,8 @@ import { extendTailwindMerge } from "tailwind-merge"
 // Teach tailwind-merge the design-system classes (tailwind.config.js) so a token
 // text size and a token text colour are not treated as conflicting `text-*` classes,
 // and the group gradient (a background-image) is not treated as a `bg-` colour.
-const twMerge = extendTailwindMerge({
+// `mask-image` is a design-system group tailwind-merge does not know (the `mask-fade-y` utility).
+const twMerge = extendTailwindMerge<'mask-image'>({
     extend: {
         classGroups: {
             'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'display', 'reading'] }],
@@ -21,6 +22,7 @@ const twMerge = extendTailwindMerge({
             duration: [{ duration: ['fast', 'base', 'glide'] }],
             animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
             ease: [{ ease: ['standard'] }],
+            'mask-image': [{ mask: ['fade-y'] }],
         },
     },
 })

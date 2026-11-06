@@ -302,5 +302,12 @@ export default {
             },
         },
     },
-    plugins: [],
+    plugins: [
+        // Vertical edge fade for a decorative layer (Atmosphere `fade`, docs/design/DESIGN_SYSTEM.md):
+        // transparent at the top and bottom edges, opaque through the middle. Alpha only, no colour.
+        ({ addUtilities }) => {
+            const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';
+            addUtilities({ '.mask-fade-y': { maskImage: fadeY, WebkitMaskImage: fadeY } });
+        },
+    ],
 }

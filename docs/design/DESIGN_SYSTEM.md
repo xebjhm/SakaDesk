@@ -397,8 +397,13 @@ Brand moments are for waiting, starting, finishing and looking back
   pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
   100 in group context) holding a line icon in `text-muted` (the pre-D2 grey), a `font-display` title, one
   sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too. A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
-- **`Atmosphere`**: L2. Three drifting orbs (`bg-expressive-orb-*`,
+- **`Atmosphere`** (`fade`): L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
+  Each orb is a square box (a width plus `aspect-square`, never a separate height),
+  so the circular gradient ends inside its `rounded-full` box and never shows a
+  straight edge. `fade` wraps only the orb layer in `mask-fade-y` (transparent at
+  the top and bottom edges, a `tailwind.config.js` utility) for a short box that
+  would otherwise cut the orbs flat; About's hero uses it.
   Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
   (L2: orbs + frosted glass); the reader is L0 and has no glass. The feed's
   All / Favorite pills sit on a grey track (`rounded-full bg-sunken p-0.5`).

@@ -134,8 +134,9 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
         >
             <div className="flex flex-col items-center text-center">
                 {/* Hero (spec §9, decision D8): the brand orbs behind the logo and the display
-                    wordmark, bled to the dialog edges under the aurora header. */}
-                <Atmosphere className="-mx-6 -mt-4 self-stretch">
+                    wordmark, bled to the dialog edges under the aurora header; `fade` lets the orbs
+                    fade out at the hero edges instead of being cut flat. */}
+                <Atmosphere fade className="-mx-6 -mt-4 self-stretch">
                     <div data-testid="about-hero" className="flex flex-col items-center px-6 pb-6 pt-8">
                         <div className="mb-4 h-20 w-20 overflow-hidden rounded-xl shadow-card">
                             <img src="/logo-192.png" alt="SakaDesk" className="h-full w-full select-none" />

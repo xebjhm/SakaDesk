@@ -22,6 +22,23 @@ describe('brand-moment primitives', () => {
             expect(o.className).toContain('pointer-events-none');
         });
         expect(screen.getByText('content')).toBeInTheDocument();
+        expect(screen.queryByTestId('atmosphere-fade')).toBeNull();
+    });
+    it('Atmosphere orbs are square boxes so the circular gradient never meets a flat edge', () => {
+        render(<Atmosphere><p>content</p></Atmosphere>);
+        screen.getAllByTestId('atmosphere-orb').forEach((o) => {
+            expect(o.className).toContain('aspect-square');
+            expect(o.className).toContain('rounded-full');
+            expect(o.className.split(/\s+/).filter((c) => /^h-/.test(c))).toEqual([]);
+        });
+    });
+    it('Atmosphere fade masks only the orb layer, never the children', () => {
+        render(<Atmosphere fade><p>content</p></Atmosphere>);
+        const layer = screen.getByTestId('atmosphere-fade');
+        expect(layer.className).toContain('mask-fade-y');
+        expect(layer.className).toContain('absolute inset-0');
+        expect(layer.querySelectorAll('[data-testid="atmosphere-orb"]')).toHaveLength(3);
+        expect(layer.contains(screen.getByText('content'))).toBe(false);
     });
     it('CelebrationToast is a polite status with sparkles hidden under reduced motion', () => {
         render(<CelebrationToast title="Sync complete" description="12,846 messages" />);
