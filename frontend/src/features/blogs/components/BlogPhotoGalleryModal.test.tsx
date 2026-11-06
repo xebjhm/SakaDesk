@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogPhotoGalleryModal } from './BlogPhotoGalleryModal';
 import type { BlogMeta } from '../../../types';
@@ -29,5 +29,20 @@ describe('BlogPhotoGalleryModal', () => {
         expect(screen.queryByText(i18n.t('blogGallery.count', { count: 0 }))).toBeNull();
         release();
         await waitFor(() => expect(screen.getByText(i18n.t('blogGallery.count', { count: 2 }))).toBeInTheDocument());
+    });
+
+    it('draws the viewer controls as circles on the dark chrome', async () => {
+        render(<BlogPhotoGalleryModal isOpen onClose={vi.fn()} blogs={[BLOG]} serviceId="hinatazaka46" backupEnabled onJumpToBlog={vi.fn()} />);
+        release();
+        await waitFor(() => expect(screen.getByText(i18n.t('blogGallery.count', { count: 2 }))).toBeInTheDocument());
+        const thumb = document.querySelector('img')!.closest('button')!;
+        fireEvent.click(thumb);
+        const viewer = await screen.findByRole('dialog', { name: i18n.t('common.mediaViewer') });
+        const close = Array.from(viewer.querySelectorAll('button')).find((b) => b.getAttribute('aria-label') === i18n.t('common.close'))!;
+        expect(close).toHaveAttribute('data-shape', 'circle');
+        for (const name of [/next/i, /previous/i]) {
+            const control = screen.queryByRole('button', { name });
+            if (control) expect(control).toHaveAttribute('data-shape', 'circle');
+        }
     });
 });

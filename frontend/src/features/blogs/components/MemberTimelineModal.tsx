@@ -90,7 +90,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
         <Modal
             isOpen={isOpen}
             onClose={onClose}
-            title={memberNameJp}
+            title={<span lang="ja">{memberNameJp}</span>}
             closeLabel={t('common.close')}
             logId="member_timeline"
             className="max-h-[85vh] max-w-3xl"
@@ -108,7 +108,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             }
         >
             {loading && <DialogStatus kind="loading" title={t('blogs.loadingTimeline')} />}
-            {error && !loading && <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} />}
+            {error && !loading && <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />}
             {!loading && !error && monthGroups.length > 0 && (
                 <div className="flex flex-col gap-3">
                     {monthGroups.map((group, index) => (
@@ -160,15 +160,15 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                 type="button"
                 aria-expanded={expanded}
                 onClick={() => setExpanded(!expanded)}
-                className="flex w-full items-center justify-between px-4 py-3 transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-group"
+                className="flex w-full items-center justify-between px-4 py-3 transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
                 <span className="flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-pill bg-sunken text-secondary">
+                    <span className={cn('flex h-6 w-6 items-center justify-center rounded-pill transition-colors duration-base ease-standard', expanded ? 'bg-accent text-inverse' : 'bg-sunken text-secondary')}>
                         <ChevronRight className={cn('h-3 w-3 transition-transform duration-base ease-standard motion-reduce:transition-none', expanded && 'rotate-90')} />
                     </span>
-                    <span className={cn('text-body font-semibold', expanded ? 'text-group-strong' : 'text-secondary')}>{monthLabel}</span>
+                    <span className={cn('text-body font-semibold', expanded ? 'text-accent-strong' : 'text-secondary')}>{monthLabel}</span>
                 </span>
-                <span className="rounded-pill bg-sunken px-3 py-1 text-small text-secondary">{t('blogs.post', { count: postCount })}</span>
+                <span className={cn('rounded-pill px-3 py-1 text-small transition-colors duration-base ease-standard', expanded ? 'bg-accent-subtle text-accent-strong' : 'bg-sunken text-secondary')}>{t('blogs.post', { count: postCount })}</span>
             </button>
             {expanded && (
                 <div className="flex flex-col gap-1 px-2 pb-2">
@@ -205,9 +205,9 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick }) =>
         <button
             type="button"
             onClick={onClick}
-            className="group flex w-full items-start gap-4 rounded-card p-3 text-left transition-colors duration-fast ease-standard hover:bg-group-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-group"
+            className="group flex w-full items-start gap-4 rounded-card p-3 text-left transition-colors duration-fast ease-standard hover:bg-accent-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-            <span className="block h-[75px] w-[100px] shrink-0 overflow-hidden rounded-card bg-sunken shadow-card">
+            <span className="block h-[75px] w-[100px] shrink-0 overflow-hidden rounded-card bg-sunken shadow-card transition-shadow duration-base ease-standard group-hover:shadow-accent-glow">
                 {blog.thumbnail && !imageError ? (
                     <img
                         src={blog.thumbnail}
@@ -221,12 +221,12 @@ const TimelineBlogItem: React.FC<TimelineBlogItemProps> = ({ blog, onClick }) =>
                 )}
             </span>
             <span className="flex min-w-0 flex-1 flex-col gap-1 py-1">
-                <span className="line-clamp-2 font-reading text-body font-semibold text-primary group-hover:text-group-strong">{blog.title}</span>
+                <span lang="ja" className="line-clamp-2 font-reading text-body font-semibold text-primary group-hover:text-accent-strong">{blog.title}</span>
                 <span className="text-small text-muted">{dayLabel}</span>
             </span>
             <span className="mt-2 flex shrink-0 items-center gap-2">
-                {isRecent && <span className="h-2 w-2 rounded-pill bg-group-accent" title={t('blogs.publishedRecently')} />}
-                <ChevronRight className="h-4 w-4 text-group-strong opacity-0 transition-opacity duration-fast ease-standard group-hover:opacity-100" />
+                {isRecent && <span className="h-2 w-2 rounded-pill bg-accent" title={t('blogs.publishedRecently')} />}
+                <ChevronRight className="h-4 w-4 text-accent-strong opacity-0 transition-opacity duration-fast ease-standard group-hover:opacity-100" />
             </span>
         </button>
     );

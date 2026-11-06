@@ -52,4 +52,26 @@ describe('MemberTimelineModal', () => {
         const open = screen.getAllByRole('button', { expanded: true });
         expect(open.length).toBeGreaterThan(0);
     });
+
+    it('shows the expanded month in the accent, rows hover in accent-subtle and marks titles as Japanese', () => {
+        renderModal();
+        const month = screen.getAllByRole('button', { expanded: true })[0];
+        expect(month.querySelector('.text-accent-strong')).not.toBeNull();
+        expect(month.querySelector('.bg-accent')).not.toBeNull();
+        const row = screen.getByRole('button', { name: /今日の日記/ });
+        expect(row).toHaveClass('hover:bg-accent-subtle', 'focus-visible:ring-accent');
+        expect(screen.getByText('今日の日記 🌸')).toHaveAttribute('lang', 'ja');
+    });
+
+    it('titles the dialog with the Japanese member name', () => {
+        renderModal();
+        const heading = screen.getByRole('heading', { name: /春野/ });
+        expect(heading.querySelector('[lang="ja"]')).not.toBeNull();
+    });
+
+    it('lets the post count inherit the header colour', () => {
+        renderModal();
+        const count = screen.getAllByText('2 posts')[0];
+        expect(count).not.toHaveClass('text-muted');
+    });
 });
