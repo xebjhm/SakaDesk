@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Sent letters open in a viewer.** It shows the letter image, the full text
+  and a date link that jumps back to it in the chat. Click the image for the
+  large view with zoom.
 - **Small celebrations.** Your first complete sync ends with a short
   celebration, and a chat shows a card when a member passes 1,000, 5,000 or
   10,000 messages, or when your subscription reaches day 100 and each full
@@ -52,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Lighter grey text is darker and easier to read.** Hinatazaka's unread
+  covers now use the official app colours, and the translate button is
+  neutral instead of using the group colour.
 - **Calmer colours.** The group colour now marks only where you are, what is
   selected and the main action. Secondary buttons, counts and tool panels are
   neutral.
@@ -97,7 +103,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **One consistent colour design per group.** Badges, buttons, member
   names, links, dialogs and the voice player now follow each group's logo
   colours, so every group looks equally clear. The official title bars,
-  sidebars and unread covers stay exactly as before.
+  sidebars and unread covers keep their official look.
 - **Hovering a group in the left rail shows its Japanese name** (乃木坂46,
   櫻坂46, 日向坂46) instead of an internal id.
 - **The sidebar no longer re-reads your whole archive every two seconds**, and
@@ -134,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync repair rows in Settings say which group they act on.
 
 ### Fixed
+- **Incoming-call card corners are clean.** They no longer show square patches,
+  and the card edge is a single line.
+- **Gallery photos no longer slide above the tabs** when you scroll.
+- **Member photos are sharper**, and the selected member's ring stays clean.
+- **The chat date label stays on top of unread covers** and no longer hides
+  the translate button.
+- **The avatar no longer shows a dark outline** after you close a profile.
+- **Favourites and member lists show placeholders while loading.**
 - **Yodel's unread covers have their original colours back**, which are
   easier to tell apart.
 - **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
