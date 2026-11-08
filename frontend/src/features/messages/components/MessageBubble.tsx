@@ -222,6 +222,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     // Feature toggles
     const translationEnabled = useAppStore(s => s.translationEnabled);
     const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    const hasTranscriptFooter = transcriptionEnabled && isTranscribable && !isUnread;
 
     // Translation — active for messages with text content
     const hasTextContent = !!message.content && message.content.trim().length > 0;
@@ -368,6 +369,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         className={cn(
                             'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
                             bubbleCorners,
+                            // The footer carries the bottom radius so bubble and footer read as one shape
+                            hasTranscriptFooter && 'rounded-b-none',
                             message.type === 'voice' ? 'overflow-visible p-0' : 'overflow-hidden p-3',
                             isUnread && 'pointer-events-none opacity-0', // Hide content but keep layout
                         )}
@@ -442,9 +445,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 </div>
 
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
-                {transcriptionEnabled && isTranscribable && !isUnread && (
+                {hasTranscriptFooter && (
                     <div
-                        className="-mt-1 rounded-b-md border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
+                        className="rounded-b-card border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (
                             <TranscribeButton
