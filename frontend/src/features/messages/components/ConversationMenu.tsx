@@ -9,6 +9,7 @@ import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
+import { cn } from '../../../utils/classnames';
 import { IconButton, Menu, MenuItem } from '../../../design/primitives';
 
 // Re-export for backward compatibility
@@ -30,6 +31,8 @@ interface ChatHeaderMenuProps {
     lettersStatus: LettersStatus;
     /** Jumps the chat to a letter chosen in the overview. */
     onJumpToLetter: (id: number) => void;
+    /** True on a light header (Sakurazaka): neutral hover on the sheet; otherwise the glass over the gradient. */
+    light?: boolean;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -46,6 +49,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     activeService,
     onOpenCalendar,
     onBackgroundChange,
+    light = false,
 }) => {
     const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
@@ -86,7 +90,10 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <div className="relative">
                 <IconButton
                     ref={triggerRef}
-                    className="h-9 w-9 text-current hover:bg-sunken hover:text-current focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0"
+                    className={cn(
+                        'h-9 w-9 text-current hover:text-current focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0',
+                        light ? 'hover:bg-sunken aria-expanded:bg-sunken' : 'hover:bg-header-glass aria-expanded:bg-header-glass',
+                    )}
                     aria-label={t('common.moreOptions')}
                     title={t('common.moreOptions')}
                     aria-haspopup="menu"
