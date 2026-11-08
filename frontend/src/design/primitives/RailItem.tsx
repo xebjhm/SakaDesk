@@ -13,7 +13,7 @@ export interface RailItemProps {
 
 /**
  * Feature-rail entry: a 40 px icon-only tile. `label` is the accessible name (`aria-label`) and the
- * text of a neutral tooltip (viewer control tokens, never the group colour) that appears to the right
+ * text of a neutral dark tooltip (`bg-toast text-viewer`, never the group colour) that appears to the right
  * on hover and keyboard focus after a short delay; the tooltip is `aria-hidden` because the name is
  * already on the button. Selected: a white card with the accent icon and left bar.
  */
@@ -41,7 +41,7 @@ export const RailItem: React.FC<RailItemProps> = ({ icon, label, selected = fals
             style={{ zIndex: Z_INDEX.DROPDOWN }}
             className={cn(
                 'pointer-events-none absolute left-full top-1/2 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md px-2 py-1',
-                'bg-viewer-control text-caption text-viewer shadow-card',
+                'bg-toast text-caption text-viewer shadow-card',
                 'opacity-0 transition-opacity delay-300 duration-fast ease-standard',
                 'group-hover:opacity-100 group-focus-visible:opacity-100',
                 'motion-reduce:transition-none motion-reduce:delay-0',

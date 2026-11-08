@@ -64,7 +64,7 @@ describe('RailItem', () => {
         const tip = screen.getByText('トーク');
         expect(tip).toHaveAttribute('role', 'tooltip');
         expect(tip).toHaveAttribute('aria-hidden', 'true');
-        expect(tip).toHaveClass('bg-viewer-control', 'text-viewer', 'pointer-events-none', 'left-full');
+        expect(tip).toHaveClass('bg-toast', 'text-viewer', 'pointer-events-none', 'left-full', 'opacity-0', 'group-hover:opacity-100', 'group-focus-visible:opacity-100');
         expect(tip.className).not.toMatch(/accent/);
         expect(b).toHaveClass('h-10', 'w-10');
     });

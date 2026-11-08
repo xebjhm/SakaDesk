@@ -36,7 +36,7 @@ export const ProfileImagePills: React.FC<ProfileImagePillsProps> = ({ images, on
                         <Icon className="h-3 w-3" />
                         {t(`profileImages.${KIND_I18N_KEY[k]}`)}
                         {count > 1 && (
-                            <span className="rounded-pill bg-sunken px-1 tabular-nums text-secondary" title={t('profileImages.versions', { count })}>{count}</span>
+                            <span className="rounded-pill bg-sunken px-1 tabular-nums text-secondary ring-1 ring-strong" title={t('profileImages.versions', { count })}>{count}</span>
                         )}
                     </button>
                 );

@@ -67,11 +67,10 @@ describe('MemberTimelineModal', () => {
 
     it('draws the month disclosure disc in the light logo colour when open and neutral when closed', () => {
         renderModal();
-        const [open, closed] = screen.getAllByRole('button').filter((b) => b.hasAttribute('aria-expanded'));
-        const openDisc = open.querySelector('span > span')!;
+        const [openDisc, closedDisc] = screen.getAllByTestId('month-disc');
         expect(openDisc).toHaveClass('bg-accent-logo', 'text-inverse');
         expect(openDisc.className).not.toMatch(/(^| )bg-accent( |$)/);
-        expect(closed.querySelector('span > span')).toHaveClass('bg-sunken', 'text-secondary');
+        expect(closedDisc).toHaveClass('bg-sunken', 'text-secondary');
     });
 
     it('breadcrumbs a broken row thumbnail', () => {

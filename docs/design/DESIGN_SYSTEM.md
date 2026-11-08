@@ -170,6 +170,10 @@ Viewer chrome (dark photo and video viewer): `bg-viewer-scrim`,
 `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`,
 `text-viewer-muted`, `decoration-viewer`.
 
+Developer console (the hidden Diagnostics panel only): `bg-console`, `bg-console-badge`,
+`text-console`, `text-console-muted`, `text-console-prompt`, `text-console-error`,
+`text-console-warning`, `text-console-badge`.
+
 ### Semantic colours
 
 Global: they never follow context. Danger is always the same brick red, in
@@ -230,7 +234,7 @@ Components ask for a role; the context decides the value
 | `strong` (700) | ink 700 | group 700 | `text-accent-strong` |
 | `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle`, `ring-accent-subtle` (the running sync step's halo) |
 | `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border`, `ring-accent-border` |
-| `logo` | ink 400 | group logo | the light end of the gradient; `ring-accent-logo` (the landing card selection ring) |
+| `logo` | ink 400 | group logo | the light end of the gradient; `bg-accent-logo` (the member-timeline expanded month disc); `ring-accent-logo` (the landing card selection ring) |
 | `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
 | `wash` / `wash-border` | logo 8 % → accent 6 % at 135°; logo 19 % hairline | same | `bg-accent-wash` / `border-accent-wash` (a quiet accent control at rest: Select Member, Photo Album; hover fills with the gradient or `bg-accent-subtle`) |
@@ -267,7 +271,8 @@ The group colour does exactly three jobs: **A. identity** (whose space this is: 
 Pre-existing accents from the original design stay until the owner revisits
 them: the ⋯ conversation-menu icons, the transcript "Show text" control, the
 member-timeline row hover tint and expanded month count pill, the sent-letters
-hover, the blog nav footer glow, and the ToS per-group links.
+hover, the blog-feed "Select member" pill (pastel tint with a gradient hover), the
+blog nav footer glow, and the ToS per-group links.
 
 ## 5. Expression tiers
 
@@ -381,7 +386,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | Variant | Look | Rule |
 |---|---|---|
 | `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary`, `warning` or `danger` per screen and one per dialog (each dialog counts on its own) |
-| `tonal` | `bg-accent-tonal`, dark accent text | secondary emphasis (e.g. "mark all read"); never competes with primary |
+| `tonal` | `bg-accent-tonal`, dark accent text | reserved: no production call site. Do not use it for secondary actions under the colour rule (those are `secondary` or `ghost`); never competes with primary |
 | `secondary` | white, neutral border, neutral text | cancel and so on |
 | `ghost` | text only, `text-secondary`, `hover:bg-sunken` | neutral secondary / tertiary action; never the group colour (matches `IconButton` ghost) |
 | `warning` | `bg-status-attention`, white text | a cautionary confirm; takes the place of the primary |
@@ -549,7 +554,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
-| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
+| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile), `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
 | `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
@@ -590,8 +595,8 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 
 ### Developer surfaces
 
-The hidden Developer Diagnostics panel is outside brand and group contexts on purpose, so it is
-unmistakable next to user screens: a dark ink `Modal` `header="console"`, a terminal icon in
+The hidden Developer Diagnostics panel uses no brand or group colour in its chrome, on purpose, so it
+is unmistakable next to user screens (it still sits in brand scope for any nested dialog): a dark ink `Modal` `header="console"`, a terminal icon in
 `text-console-prompt`, a monospace uppercase "Hidden Panel" badge (`bg-console-badge`,
 `text-console-badge`), a solid ink Copy JSON button (`Button variant="secondary"` with a
 `bg-console text-console` override, kept dark on hover and when disabled) and the log block in
@@ -705,7 +710,7 @@ The rail's bottom actions (add service, search, settings, update) sit in a `Bran
 selected logo's halo is `shadow-accent-halo` in the active group's context.
 
 The feature rail is icon-only (a `w-12` column of 40 px `RailItem` tiles, 20 px icons). The
-feature name is the button's `aria-label` and a neutral tooltip (`bg-viewer-control text-viewer`,
+feature name is the button's `aria-label` and a neutral dark tooltip (`bg-toast text-viewer`,
 never the group colour) to the right of the tile, shown on hover and keyboard focus after a short
 delay. The selected `RailItem` is a white card with a `text-accent` icon and a `bg-accent` bar on
 the left.

@@ -24,7 +24,10 @@ describe('D2c tokens', () => {
         expect(v['--ds-viewer-underline']).toBe('rgba(255, 255, 255, 0.3)');
         expect(v['--ds-console-bg']).toBe('#111827');
         expect(v['--ds-console-text']).toBe('#FFFFFF');
+        expect(v['--ds-console-text-muted']).toBe('#CBD5E1');
         expect(v['--ds-console-prompt']).toBe('#4ADE80');
+        expect(v['--ds-console-error']).toBe('#F87171');
+        expect(v['--ds-console-warning']).toBe('#FBBF24');
         expect(v['--ds-console-badge']).toBe('rgba(251, 191, 36, 0.15)');
         expect(v['--ds-console-badge-text']).toBe('#FBBF24');
         expect(v['--ds-decor-sunday']).toBe('#EF4444');

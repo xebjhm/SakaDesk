@@ -181,7 +181,7 @@ Expression is about intensity, not on or off.
 | `primary` | `linear-gradient(135deg, accent-logo, accent)`, white bold text, `glow` shadow | at most one per screen and one per dialog (D1 rule kept) |
 | `tonal` (secondary emphasis) | `linear-gradient(135deg, accent-border, accent-logo mixed 35 % with white)`, text group/ink 800 | e.g. "mark all read"; warmer than the outline button, never competes with primary |
 | `secondary` | white, neutral 300 border, neutral 800 text | cancel and so on |
-| `ghost` | text only, accent-strong | inline actions |
+| `ghost` | text only, `text-secondary`, `hover:bg-sunken` (updated by R-e, 2026-11-08: neutral, never the group colour) | inline actions |
 | `danger` | danger 600 solid, white text | takes the place of the primary |
 
 ## 6. Typography
@@ -254,7 +254,7 @@ allowed.
 | Event | Context | Tier | Form |
 |---|---|---|---|
 | First complete sync | brand | B | bottom-right glass toast + one aurora shimmer + about 10 sparkles; once ever |
-| A member reaches 1,000 / 5,000 / 10,000 messages | group | C | the next time that chat opens, a card in the timeline (serif number, group subtle gradient, glow) + ≤ 1.2 s group-coloured confetti |
+| A member reaches 1,000 / 5,000 / 10,000 messages | group | C | the next time that chat opens, a card in the timeline (serif number, group subtle gradient; the glow was dropped, updated by R-e, 2026-11-08) + ≤ 1.2 s group-coloured confetti |
 | Subscription day 100, then every full year | group | C | same as above (the chat title already shows the day count) |
 | Member birthday | group | C | later, together with Memories #15 |
 

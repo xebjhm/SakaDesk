@@ -101,7 +101,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             headerExtra={
                 <>
                     {onOpenPhotoGallery && (
-                        <Button variant="ghost" size="sm" className="rounded-pill bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
+                        <Button variant="ghost" size="sm" className="rounded-pill bg-accent-wash text-accent-strong hover:bg-accent-subtle hover:text-accent-strong" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
                             <Image className="h-4 w-4" />
                             {t('blogGallery.button')}
                         </Button>
@@ -166,7 +166,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                 className="flex w-full items-center justify-between px-4 py-3 transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
                 <span className="flex items-center gap-3">
-                    <span className={cn('flex h-6 w-6 items-center justify-center rounded-pill transition-colors duration-base ease-standard', expanded ? 'bg-accent-logo text-inverse' : 'bg-sunken text-secondary')}>
+                    <span data-testid="month-disc" className={cn('flex h-6 w-6 items-center justify-center rounded-pill transition-colors duration-base ease-standard', expanded ? 'bg-accent-logo text-inverse' : 'bg-sunken text-secondary')}>
                         <ChevronRight className={cn('h-3 w-3 transition-transform duration-base ease-standard motion-reduce:transition-none', expanded && 'rotate-90')} />
                     </span>
                     <span className={cn('text-body font-semibold', expanded ? 'text-accent-strong' : 'text-secondary')}>{monthLabel}</span>

@@ -42,7 +42,7 @@ describe('ProfileImagePills', () => {
         expect(pill.className).not.toContain('hover:bg-accent');
         expect(pill.className).not.toContain('hover:text-accent');
         const badge = screen.getByText('2');
-        expect(badge).toHaveClass('bg-sunken', 'text-secondary');
+        expect(badge).toHaveClass('bg-sunken', 'text-secondary', 'ring-1', 'ring-strong');
         expect(badge.className).not.toContain('bg-accent');
     });
 });
