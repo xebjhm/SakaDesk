@@ -83,7 +83,7 @@ interface SyncState {
 }
 
 /**
- * Output-folder disk usage, computed by the backend in the background: the
+ * Output-folder disk usage, computed by the backend off the request path. The
  * walk can take minutes on a large archive, so it starts `pending` and the
  * panel polls until it is `ready` or `failed`.
  */
