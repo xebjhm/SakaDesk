@@ -25,6 +25,13 @@ describe('Button', () => {
         expect(screen.getByRole('button', { name: 'later' }).className).not.toMatch(/accent-gradient/);
     });
 
+    it('ghost is neutral: secondary text, sunken hover, never the group colour', () => {
+        render(<Button variant="ghost">cancel</Button>);
+        const b = screen.getByRole('button', { name: 'cancel' });
+        expect(b).toHaveClass('text-secondary', 'hover:bg-sunken', 'hover:text-primary');
+        expect(b.className).not.toMatch(/(^|\s)(hover:)?(bg|text|border)-accent/);
+    });
+
     it('does not fire when disabled', async () => {
         const onClick = vi.fn();
         render(<Button disabled onClick={onClick}>x</Button>);

@@ -30,7 +30,7 @@ export const DatePill: React.FC<DatePillProps> = ({ date, sticky = false, onClic
                     title={actionLabel}
                     className={cn(
                         PILL,
-                        'transition-colors duration-fast ease-standard hover:text-accent-strong',
+                        'transition-colors duration-fast ease-standard hover:text-primary',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                     )}
                 >

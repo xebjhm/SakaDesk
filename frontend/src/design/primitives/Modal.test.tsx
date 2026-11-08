@@ -1019,7 +1019,8 @@ describe('Modal v2 header and scope', () => {
     });
     it('the expressive close button takes the header text colour', () => {
         render(<Modal isOpen onClose={() => {}} title="X" closeLabel="Close">body</Modal>);
-        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header');
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header', 'hover:bg-header-glass');
+        expect(screen.getByRole('button', { name: 'Close' }).className).not.toMatch(/(^|\s)(hover:)?(bg|text|border)-accent/);
     });
     it('frame uses the xl radius', () => {
         render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);

@@ -249,6 +249,23 @@ buttons) mix their accent in inline styles: they default to `ACCENT`
 player's `bg-sunken` card, the mute and menu buttons hover one step darker
 (`hover:bg-sunken hover:brightness-94`), never lighter.
 
+### When to use the group colour
+
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged.
+
+| Job | Examples |
+|---|---|
+| A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
+| B. state | active tab, selected rail item, slider fill |
+| C. primary | Done, Save |
+| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts |
+| Pastel decoration | empty-state soft circle, milestone card surface |
+
+Pre-existing accents from the original design stay until the owner revisits
+them: the ⋯ conversation-menu icons, the transcript "Show text" control, the
+member-timeline row hover tint and expanded month count pill, the sent-letters
+hover, the blog nav footer glow, and the ToS per-group links.
+
 ## 5. Expression tiers
 
 Expression is about intensity, not on or off.
@@ -363,7 +380,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary`, `warning` or `danger` per screen and one per dialog (each dialog counts on its own) |
 | `tonal` | `bg-accent-tonal`, dark accent text | secondary emphasis (e.g. "mark all read"); never competes with primary |
 | `secondary` | white, neutral border, neutral text | cancel and so on |
-| `ghost` | text only, `text-accent-strong` | inline actions |
+| `ghost` | text only, `text-secondary`, `hover:bg-sunken` | neutral secondary / tertiary action; never the group colour (matches `IconButton` ghost) |
 | `warning` | `bg-status-attention`, white text | a cautionary confirm; takes the place of the primary |
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
@@ -781,6 +798,7 @@ Do not "fix" these.
 |---|---|
 | Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
 | Give a fixed-meaning element its meaning colour in every context (推 hearts `text-semantic-oshi`, the favourite star `text-semantic-star`) | Recolour it with the group accent, or use oshi pink for a heart that is not 推 (About's `text-heart`) or for anything just because it is pink |
+| Keep secondary and tertiary actions neutral (`ghost`, `secondary`); spend the group colour on identity, current state and the one primary action | Tint a utility, disclosure or Cancel-style control with `text-accent-strong` or an accent wash |
 | Use token classes (`rounded-lg`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
 | Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
 | Ask for a role (`bg-accent`, `text-accent-strong`, `bg-expressive-soft`) so the component follows its context | Hard-code a colour, or use group colour in brand screens |

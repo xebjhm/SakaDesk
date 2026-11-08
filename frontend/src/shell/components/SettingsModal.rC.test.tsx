@@ -6,6 +6,8 @@ import { SettingsModal } from './SettingsModal';
 import { groupRoles } from '../../design/tokens';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
 
+const NO_ACCENT = /(^|\s)(hover:)?(bg|text|border)-accent/;
+
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
@@ -43,14 +45,16 @@ describe('SettingsModal (R-c)', () => {
         expect(chips).toHaveLength(2);
         expect(chips[0]).toHaveTextContent('櫻坂46');
         expect(chips[0]).toHaveAttribute('lang', 'ja');
-        expect(within(rows).getByRole('button', { name: 'Verify now' })).toHaveClass('text-accent-strong');
+        expect(within(rows).getByRole('button', { name: 'Verify now' })).toHaveClass('text-secondary');
+        expect(within(rows).getByRole('button', { name: 'Verify now' }).className).not.toMatch(NO_ACCENT);
         expect(within(rows).getByRole('button', { name: 'Re-sync all' })).toHaveClass('text-semantic-warning');
         for (const radio of screen.getAllByRole('radio')) expect(radio).toHaveClass('accent-accent');
     });
 
-    it('draws Check Now as a quiet accent wash', async () => {
+    it('draws Check Now as a neutral secondary button', async () => {
         renderModal();
         await userEvent.click(screen.getByRole('button', { name: 'Updates' }));
-        expect(screen.getByRole('button', { name: 'Check Now' })).toHaveClass('bg-accent-wash', 'border-accent-wash', 'text-accent-strong');
+        expect(screen.getByRole('button', { name: 'Check Now' })).toHaveClass('bg-pill', 'text-primary', 'border-strong');
+        expect(screen.getByRole('button', { name: 'Check Now' }).className).not.toMatch(NO_ACCENT);
     });
 });

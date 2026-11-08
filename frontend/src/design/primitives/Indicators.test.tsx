@@ -93,7 +93,7 @@ describe('DatePill', () => {
         const button = screen.getByRole('button', { name: 'Today' });
         expect(button).toHaveAttribute('title', 'Jump to a date');
         expect(button).toHaveClass('rounded-pill', 'focus-visible:ring-accent');
-        expect(button).toHaveClass('hover:text-accent-strong');
+        expect(button).toHaveClass('hover:text-primary');
         expect(screen.getByText('Today').tagName).toBe('TIME');
         fireEvent.click(button);
         expect(onClick).toHaveBeenCalledOnce();

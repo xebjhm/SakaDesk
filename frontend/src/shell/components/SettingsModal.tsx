@@ -504,7 +504,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="text-accent-strong"
                                     onClick={() => {
                                         // Close settings so the verify progress/result
                                         // (shown in the sync modal) is in focus.
@@ -622,7 +621,7 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
             error={saveError}
         >
             <div className="mt-2 flex items-center gap-3">
-                <Button variant="secondary" size="sm" className="border-accent-wash bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={handleCheckNow} disabled={checking}>
+                <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>
                     {checking
                         ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                         : <RefreshCw className="h-4 w-4" />
