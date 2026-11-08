@@ -18,7 +18,6 @@ import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { ACCENT_LOGO } from '../../../design/colorMix';
 import { Avatar } from '../../../design/primitives';
 
 interface MessageBubbleProps {
@@ -285,7 +284,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <Icon className={cn('h-8 w-8', look === 'classic' && 'opacity-90')} />
+                <Icon className="h-8 w-8" />
             </div>
         );
     };
@@ -302,7 +301,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 state={translationState}
                 onClick={triggerTranslation}
                 error={translationError}
-                accentColor={ACCENT_LOGO}
             />
         </div>
     );
@@ -445,7 +443,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
                 {transcriptionEnabled && isTranscribable && !isUnread && (
                     <div
-                        className="-mt-1 rounded-b-md border border-t-0 border-accent-border bg-accent-subtle px-3 py-1.5"
+                        className="-mt-1 rounded-b-md border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (
                             <TranscribeButton

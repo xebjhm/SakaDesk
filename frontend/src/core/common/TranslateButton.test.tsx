@@ -25,3 +25,13 @@ describe('TranslateButton done state', () => {
         expect(screen.getByRole('button', { name: /translated/ })).toHaveAttribute('aria-expanded', 'false');
     });
 });
+
+describe('TranslateButton neutral look', () => {
+    it('idle button is neutral: secondary text, primary on hover, no inline accent colour', () => {
+        render(<TranslateButton state="idle" onClick={vi.fn()} />);
+        const button = screen.getByRole('button');
+        expect(button.className).toContain('text-secondary');
+        expect(button.className).toContain('hover:text-primary');
+        expect(button.getAttribute('style') ?? '').not.toMatch(/color|background/);
+    });
+});

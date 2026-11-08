@@ -74,7 +74,8 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
                 text: '#5d95ae',
             },
             canvas: ['#c8d8ec', '#dde6f0', '#f0f4f8'],
-            shelter: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
+            // Taken from the official app screenshots, 2026-11-08.
+            shelter: { picture: '#b2caed', video: '#ceadec', voice: '#b7acec', text: '#85badd' },
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },
@@ -114,6 +115,8 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
                 text: '#7e1083',
             },
             canvas: ['#ede4f2', '#f3eef6', '#f8f5fa'],
+            // Approximation from the first theme commit (67fa58a), NOT verified against the official app;
+            // re-take from official-app screenshots later (owner decision 2026-11-08).
             shelter: { picture: '#c4a8d8', video: '#9B59B6', voice: '#b8a8d8', text: '#d8c8e8' },
             shelterStyle: 'classic',
             headerStyle: 'gradient',
@@ -138,6 +141,8 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
                 text: '#4c4bbb',
             },
             canvas: ['#e7ecff', '#f3f6ff', '#f8f9ff'],
+            // Approximation from the first theme commit (67fa58a), NOT verified against the official app;
+            // re-take from official-app screenshots later (owner decision 2026-11-08).
             shelter: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
             shelterStyle: 'classic',
             headerStyle: 'gradient',

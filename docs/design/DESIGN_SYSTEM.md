@@ -112,7 +112,13 @@ one of two layers:
   title text, the canvas (sidebar) gradient, unread-shelter colours and the
   `shelterStyle` / `headerStyle` switches. For Hinatazaka, Sakurazaka and
   Nogizaka these were copied from the official apps and are kept verbatim;
-  tests pin them. Do not "fix" them to match the scale.
+  tests pin them. Do not "fix" them to match the scale. Hinatazaka's unread
+  shelters were re-taken from the official app screenshots on 2026-11-08
+  (picture `#b2caed`, video `#ceadec`, voice `#b7acec`, text `#85badd`, style
+  `classic`). Nogizaka's and Yodel's shelter values are approximations from the
+  first theme commit, not yet verified against the official apps (code comments
+  mark them; to be re-taken from screenshots later). Shelter icons are drawn at
+  full opacity.
 - **System layer:** each group has its logo colour and a 10-step scale (50
   lightest to 900 darkest, logo colour snapped into its step).
 
@@ -152,7 +158,8 @@ colour of pywebview's `background_color`), `bg-frost` (the frosted bar over the 
 feed's orbs: `--ds-overlay-frost`, white at 72 %, paired with `backdrop-blur-frost` (20 px), `backdrop-saturate-180` and
 `border-b border-frost`, the white hairline at 40 %: `--ds-overlay-frost-border`), `bg-scrim` (the modal backdrop,
 carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
-`text-muted`, `text-inverse`, `border-subtle`, `border-strong`. Search matches
+`text-muted` (`#6b7280` since 2026-11-08, darker than the old `#9ca3af` for readable metadata),
+`text-inverse`, `border-subtle`, `border-strong`. Search matches
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
 gap around avatars and selection rings is `ring-surface` / `border-surface` /
 `ring-offset-surface` (there is no `bg-surface`: use `bg-sheet`). Toasts use
@@ -249,7 +256,7 @@ The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
 (`design/cssVars.ts`). The `--ds-group-*` variables stay for the official layer
 (title, canvas, shelters) and the legacy group utilities.
 
-**Pre-token media parts** (voice player, transcript, translate and transcribe
+**Pre-token media parts** (voice player, transcript and transcribe
 buttons) mix their accent in inline styles: they default to `ACCENT`
 (`var(--ds-accent)`) and mix through `withAlpha(colour, percent)`
 (`design/colorMix.ts`). New components use utilities. On the compact voice
@@ -258,7 +265,7 @@ player's `bg-sunken` card, the mute and menu buttons hover one step darker
 
 ### When to use the group colour
 
-The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged.
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `border-subtle text-secondary hover:text-primary`, no accent.
 
 | Job | Examples |
 |---|---|

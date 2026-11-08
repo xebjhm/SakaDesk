@@ -257,4 +257,9 @@ describe('MessageBubble component', () => {
       expect(container.firstChild).toMatchSnapshot()
     })
   })
+
+  it('draws the unread shelter icon at full opacity', () => {
+    render(<MessageBubble {...defaultProps} isUnread={true} />)
+    expect(screen.getByTestId('unread-shelter').querySelector('svg')?.getAttribute('class')).not.toMatch(/opacity/)
+  })
 })

@@ -18,7 +18,6 @@ import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { IconButton } from '../../../design/primitives';
-import { color } from '../../../design/tokens';
 import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
 import { persisted } from '../../../core/persistence/persisted';
@@ -397,7 +396,6 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                                     }
                                                     onClick={handleTranslateAll}
                                                     error={translationError}
-                                                    accentColor={color.text.secondary}
                                                     doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
                                                     expanded={translationsExpanded}
                                                     onToggleExpanded={toggleTranslations}

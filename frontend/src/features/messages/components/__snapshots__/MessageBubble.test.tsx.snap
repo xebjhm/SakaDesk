@@ -185,7 +185,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         data-testid="unread-shelter"
       >
         <svg
-          class="h-8 w-8 opacity-90"
+          class="h-8 w-8"
           fill="none"
           height="24"
           stroke="currentColor"
