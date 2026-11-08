@@ -69,6 +69,17 @@ export const color = {
         reading: '#DBEAFE',
         underline: '#60A5FA',
     },
+    /**
+     * Scrollbar thumbs (index.css): a translucent ink on light surfaces, a translucent white on the
+     * dark viewer and call screen. The track is always transparent; `*Hover` is the thumb while the
+     * pointer is over the scrollbar.
+     */
+    scrollbar: {
+        thumb: 'rgba(31, 41, 55, 0.28)',
+        thumbHover: 'rgba(31, 41, 55, 0.5)',
+        thumbOnDark: 'rgba(255, 255, 255, 0.35)',
+        thumbOnDarkHover: 'rgba(255, 255, 255, 0.6)',
+    },
     /** The dark photo/video viewer's chrome (D2c). Values are the pre-D2c viewer's. */
     viewer: {
         scrim: 'rgba(0, 0, 0, 0.9)',

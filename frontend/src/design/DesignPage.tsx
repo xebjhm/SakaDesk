@@ -205,6 +205,8 @@ export const DesignPage: React.FC = () => {
                         <Swatch name="star" value={color.semantic.star} />
                         <Swatch name="console" value={color.console.bg} />
                         <Swatch name="console prompt" value={color.console.prompt} />
+                        <Swatch name="scrollbar thumb" value={color.scrollbar.thumb} />
+                        <Swatch name="scrollbar thumb (dark)" value={color.scrollbar.thumbOnDark} />
                     </div>
                 </Section>
 

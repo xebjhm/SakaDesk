@@ -116,6 +116,7 @@ const OpenModal: React.FC<ModalProps> = ({
     return createPortal(
         <div
             data-testid="modal-backdrop"
+            data-surface={tone === 'viewer' ? 'dark' : undefined}
             className={cn(
                 'fixed inset-0 flex justify-center p-4',
                 placement === 'top' ? 'items-start' : 'items-center',
