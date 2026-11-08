@@ -94,10 +94,19 @@ else {
     Write-Host "[1/2] Building frontend..." -ForegroundColor Cyan
     Push-Location (Join-Path $Root 'frontend')
     try {
-        if ($Clean -or -not (Test-Path 'node_modules')) {
+        # Reinstall when node_modules is missing or older than the lockfile (a new or
+        # bumped dependency would otherwise make `npm run build` fail).
+        $installedLock = 'node_modules\.package-lock.json'
+        $lockIsNewer = (-not (Test-Path $installedLock)) -or
+            ((Get-Item 'package-lock.json').LastWriteTimeUtc -gt (Get-Item $installedLock).LastWriteTimeUtc)
+        if ($Clean -or -not (Test-Path 'node_modules') -or $lockIsNewer) {
             npm ci
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed (exit $LASTEXITCODE)" }
         }
         npm run build
+        # A failed build would otherwise leave the previous frontend\dist in place and
+        # package a stale UI.
+        if ($LASTEXITCODE -ne 0) { throw "Frontend build failed (exit $LASTEXITCODE); not packaging a stale frontend\dist" }
     }
     finally { Pop-Location }
     if (-not (Test-Path (Join-Path $Root 'frontend\dist\index.html'))) {
