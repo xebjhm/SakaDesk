@@ -130,7 +130,7 @@ const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
                             href={part}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="break-all text-accent hover:underline"
+                            className="break-all text-accent-strong hover:underline"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {part}

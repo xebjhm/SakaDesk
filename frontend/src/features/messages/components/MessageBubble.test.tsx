@@ -226,9 +226,11 @@ describe('MessageBubble component', () => {
     expect(screen.getByText('Test User')).toHaveAttribute('lang', 'ja')
   })
 
-  it('links use the accent colour', () => {
+  it('links use the strong accent role (4.5:1) and underline on hover', () => {
     render(<MessageBubble {...defaultProps} message={createMessage({ content: 'see https://example.com' })} />)
-    expect(screen.getByRole('link', { name: 'https://example.com' })).toHaveClass('text-accent')
+    const link = screen.getByRole('link', { name: 'https://example.com' })
+    expect(link).toHaveClass('text-accent-strong', 'hover:underline')
+    expect(link).not.toHaveClass('text-accent')
   })
 
   describe('voice transcript footer', () => {
