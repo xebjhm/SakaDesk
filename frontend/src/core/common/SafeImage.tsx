@@ -17,8 +17,9 @@ interface SafeImageProps {
     fallbackText?: string;
     /**
      * Size/shape classes for a neutral pulsing placeholder (e.g. `h-48 w-64 rounded-card`).
-     * When set, the placeholder is shown until the image has loaded and the
-     * image is hidden meanwhile; a failed image still shows the fallback.
+     * When set, the placeholder is shown until the image has loaded. The image
+     * stays laid out but invisible meanwhile (never `display:none`, which would
+     * stop a lazy image from ever loading); a failed image still shows the fallback.
      */
     skeletonClassName?: string;
 }
@@ -27,7 +28,12 @@ interface SafeImageProps {
  * SafeImage component that gracefully handles image loading errors.
  * Displays a fallback UI when the image fails to load.
  */
-export const SafeImage: React.FC<SafeImageProps> = ({
+export const SafeImage: React.FC<SafeImageProps> = (props) => (
+    // Keyed on src so loaded/failed state never leaks to a different image.
+    <SafeImageInner key={props.src} {...props} />
+);
+
+const SafeImageInner: React.FC<SafeImageProps> = ({
     src,
     alt = '',
     className,
@@ -69,7 +75,7 @@ export const SafeImage: React.FC<SafeImageProps> = ({
             <img
                 src={src}
                 alt={alt}
-                className={cn(className, showSkeleton && 'hidden')}
+                className={cn(className, showSkeleton && 'pointer-events-none absolute opacity-0')}
                 loading={loading}
                 onLoad={() => setLoaded(true)}
                 onError={() => setHasError(true)}

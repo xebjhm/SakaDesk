@@ -2,10 +2,13 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { useAppStore } from '../../../store/appStore';
-import { MemberSelectModal } from './MemberSelectModal';
+import { MemberSelectModal, MemberThumb } from './MemberSelectModal';
+import { clientLog } from '../../../utils/clientLog';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-beforeEach(() => useAppStore.setState({ favorites: {} }));
+beforeEach(() => { useAppStore.setState({ favorites: {} }); vi.mocked(clientLog).mockClear(); });
 
 const members = [
     { id: '9901', name: '春野 ひなた', thumbnail: null },
@@ -38,6 +41,31 @@ describe('MemberSelectModal thumbnails', () => {
         fireEvent.error(document.querySelector('img[src*="9901"]')!);
         expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
         expect(document.querySelector('img[src*="9901"]')).toBeNull();
+        expect(clientLog).toHaveBeenCalledWith('avatar_fallback', { surface: 'member_select' });
+    });
+
+    it('keeps the loading image laid out (never display:none) so lazy loading can fire', () => {
+        renderModal({ members: withThumb as never });
+        const img = document.querySelector('img[src*="9901"]') as HTMLImageElement;
+        expect(screen.getByTestId('thumb-skeleton')).toBeTruthy();
+        expect(img.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+        expect(img.className).toContain('opacity-0');
+        fireEvent.load(img);
+        expect(img.className).not.toContain('opacity-0');
+    });
+
+    it('resets loaded/failed state when the url changes', () => {
+        const { rerender } = render(<MemberThumb url="/a.jpg" initial="A" />);
+        fireEvent.error(document.querySelector('img')!);
+        expect(document.querySelector('img')).toBeNull();
+        rerender(<MemberThumb url="/b.jpg" initial="A" />);
+        expect(document.querySelector('img')).not.toBeNull();
+        expect(screen.getByTestId('thumb-skeleton')).toBeTruthy();
+    });
+
+    it('uses the first code point (not a surrogate half) as initial', () => {
+        renderModal({ members: [{ id: '9903', name: '𠮷野 さん', thumbnail: null }] as never });
+        expect(screen.getAllByText('𠮷')[0]).toBeTruthy();
     });
 });
 

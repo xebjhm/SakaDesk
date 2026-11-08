@@ -544,6 +544,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Text field / choice | `Input` / `Select` |
 | Loading, empty, error inside a dialog | `DialogStatus` |
 | Empty list or screen | `EmptyState` |
+| Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
 

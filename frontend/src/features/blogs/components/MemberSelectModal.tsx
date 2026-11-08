@@ -9,6 +9,7 @@ import { useTranslation } from '../../../i18n';
 import { Modal } from '../../../design/primitives';
 import { DialogStatus } from '../../../core/common/DialogStatus';
 import { cn } from '../../../utils/classnames';
+import { clientLog } from '../../../utils/clientLog';
 import { isMascot, MASCOT_THUMBNAIL_URL } from '../mascot';
 
 interface MemberSelectModalProps {
@@ -37,7 +38,12 @@ const EMPTY_FAVORITES: string[] = [];
  * Member avatar circle: a neutral pulsing placeholder while the thumbnail
  * loads; a missing or failed thumbnail shows the name's first character.
  */
-const MemberThumb: React.FC<{ url: string | null; initial: string }> = ({ url, initial }) => {
+export const MemberThumb: React.FC<{ url: string | null; initial: string }> = ({ url, initial }) => (
+    // Keyed on url so loaded/failed state never leaks to a different thumbnail.
+    <MemberThumbInner key={url ?? ''} url={url} initial={initial} />
+);
+
+const MemberThumbInner: React.FC<{ url: string | null; initial: string }> = ({ url, initial }) => {
     const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
     if (!url || state === 'failed') {
         return (
@@ -46,20 +52,25 @@ const MemberThumb: React.FC<{ url: string | null; initial: string }> = ({ url, i
             </span>
         );
     }
+    // The image stays laid out (opacity-0) while loading: a display:none lazy
+    // image never intersects the viewport, so it would never load.
     return (
-        <>
+        <span className="relative block h-full w-full">
             {state === 'loading' && (
-                <span data-testid="thumb-skeleton" aria-hidden="true" className="block h-full w-full animate-pulse bg-sunken motion-reduce:animate-none" />
+                <span data-testid="thumb-skeleton" aria-hidden="true" className="absolute inset-0 animate-pulse bg-sunken motion-reduce:animate-none" />
             )}
             <img
                 src={url}
                 alt=""
                 loading="lazy"
                 onLoad={() => setState('loaded')}
-                onError={() => setState('failed')}
-                className={cn('h-full w-full scale-[1.15] object-cover object-top', state === 'loading' && 'hidden')}
+                onError={() => {
+                    setState('failed');
+                    clientLog('avatar_fallback', { surface: 'member_select' });
+                }}
+                className={cn('h-full w-full scale-[1.15] object-cover object-top', state === 'loading' && 'opacity-0')}
             />
-        </>
+        </span>
     );
 };
 
@@ -244,7 +255,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                                     className="group flex flex-col items-center gap-3 rounded-card p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                                 >
                                                     <span className="block h-20 w-20 overflow-hidden rounded-pill bg-accent-subtle transition duration-base ease-standard group-hover:scale-105 group-hover:shadow-accent-glow motion-reduce:transform-none">
-                                                        <MemberThumb url={thumbnailUrl} initial={member.nameJp.substring(0, 1)} />
+                                                        <MemberThumb url={thumbnailUrl} initial={Array.from(member.nameJp)[0] ?? ''} />
                                                     </span>
                                                     <span lang="ja" className="text-center text-small tracking-wide text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">
                                                         {formatName(member.nameJp)}
