@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor, cleanup } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { CalendarModal, type DateCount } from './CalendarModal';
@@ -84,6 +84,34 @@ describe('CalendarModal, Japanese style', () => {
         expect(within(day(4)).queryByRole('tooltip', { hidden: true })).toBeNull();
     });
 
+    it('opens the tooltip below the cell in the first row so it never covers the weekday header', () => {
+        open();
+        const firstRow = within(day(3)).getByRole('tooltip', { hidden: true }); // 文化の日, row 1
+        expect(firstRow).toHaveClass('top-full', 'mt-1');
+        expect(firstRow).not.toHaveClass('bottom-full');
+        const later = within(day(23)).getByRole('tooltip', { hidden: true }); // 勤労感謝の日, row 4
+        expect(later).toHaveClass('bottom-full', 'mb-1');
+        expect(later).not.toHaveClass('top-full');
+    });
+
+    it.each([
+        ['ja', '2026年11月'],
+        ['zh-TW', '2026年11月'],
+        ['zh-CN', '2026年11月'],
+        ['yue', '2026年11月'],
+        ['en', 'November 2026'],
+    ])('titles the month numerically in CJK locales (%s → %s)', async (lng, expected) => {
+        await i18n.changeLanguage(lng);
+        try {
+            open();
+            const title = screen.getByRole('button', { expanded: false, name: new RegExp(`^${expected}`) });
+            expect(title.querySelector('span')).toHaveTextContent(new RegExp(`^${expected}$`));
+        } finally {
+            cleanup(); // unmount first, so switching back is not a stray update
+            await i18n.changeLanguage('en');
+        }
+    });
+
     describe('year / month picker', () => {
         const dates = [
             { date: '2024-06-15', count: 5 },
@@ -136,6 +164,38 @@ describe('CalendarModal, Japanese style', () => {
             expect(screen.getByRole('button', { name: /June 2024/ })).toBeInTheDocument();
             expect(day(15)).toBeEnabled();
             expect(clientLog).toHaveBeenCalledWith('calendar_picker', { phase: 'select', has_target: true });
+        });
+
+        it('scrolls the selected year into view and focuses the shown month when it opens', async () => {
+            const user = userEvent.setup();
+            const scrolled: Element[] = [];
+            Element.prototype.scrollIntoView = vi.fn(function (this: Element) { scrolled.push(this); });
+            open([{ date: '2010-01-05', count: 1 }, ...dates]);
+            await user.click(screen.getByRole('button', { name: /November 2026/ }));
+            const selectedYear = within(screen.getByRole('group', { name: 'Year' })).getByRole('button', { name: '2026' });
+            expect(selectedYear).toHaveAttribute('aria-pressed', 'true');
+            expect(scrolled).toContain(selectedYear);
+            const shownMonth = within(screen.getByRole('group', { name: 'Month' })).getByRole('button', { name: 'November' });
+            expect(shownMonth).toHaveFocus();
+        });
+
+        it('opened while the dates load, keeps focus on the title, then moves it into the picker', async () => {
+            const user = userEvent.setup();
+            let resolve!: (r: unknown) => void;
+            vi.stubGlobal('fetch', vi.fn(() => new Promise(r => { resolve = r; })));
+            try {
+                render(<CalendarModal isOpen onClose={vi.fn()} conversationPath="hinatazaka46/messages/a" onSelectDate={vi.fn()} />);
+                const title = screen.getByRole('button', { name: /November 2026/ });
+                await user.click(title);
+                expect(title).toHaveAttribute('aria-expanded', 'true');
+                expect(screen.queryByRole('group', { name: 'Month' })).toBeNull();
+                expect(title).toHaveFocus();
+                resolve({ ok: true, json: async () => ({ dates: dates }) });
+                const shownMonth = await within(await screen.findByRole('group', { name: 'Month' })).findByRole('button', { name: 'November' });
+                await waitFor(() => expect(shownMonth).toHaveFocus());
+            } finally {
+                vi.unstubAllGlobals();
+            }
         });
 
         it('Escape returns to the day grid without closing the dialog', async () => {

@@ -66,14 +66,17 @@ interface Drag {
 }
 
 /**
- * Zoom and pan for the dark viewer's photo.
+ * Zoom and pan for a photo in a viewer. Two consumers share it: the dark viewer
+ * (`MediaViewerModal` in `PhotoDetailModal.tsx`) and the media gallery's own detail view
+ * (`MediaGalleryModal`, photos only).
  *
  * `stageRef` is the box the photo is laid out in (its rect is the photo's untransformed box);
  * the wheel listener goes on the whole viewer frame around it (`[role="dialog"]`), non-passive,
  * and calls `preventDefault` so the wheel never scrolls the page behind. Drag pans only when
- * zoomed and uses pointer capture, so the pan follows the pointer even off the photo; losing the capture (for any reason) ends the drag.
- * The view resets to fit whenever `resetKey` changes (a new item). Disabled (video, voice),
- * nothing listens and the view stays at fit.
+ * zoomed and uses pointer capture, so the pan follows the pointer even off the photo; losing
+ * the capture (for any reason) ends the drag. The view resets to fit whenever `resetKey`
+ * changes (a new item). Disabled (video, voice, or the viewer closed), the wheel listener is
+ * removed and the view stays at fit.
  */
 export function useZoomPan(stageRef: React.RefObject<HTMLElement | null>, enabled: boolean, resetKey: unknown) {
     const [view, setView] = useState<ZoomView>(FIT);

@@ -350,18 +350,18 @@
       "sat": "六"
     },
     "months": {
-      "jan": "一月",
-      "feb": "二月",
-      "mar": "三月",
-      "apr": "四月",
-      "may": "五月",
-      "jun": "六月",
-      "jul": "七月",
-      "aug": "八月",
-      "sep": "九月",
-      "oct": "十月",
-      "nov": "十一月",
-      "dec": "十二月"
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
     }
   },
   "favorites": {
@@ -507,8 +507,8 @@
     "feedLoadFailed": "无法加载博文",
     "postLoadFailed": "无法加载这篇博文",
     "loadingPost": "正在加载博文...",
-    "olderPost": "上一篇",
-    "newerPost": "下一篇",
+    "olderPost": "较早的文章",
+    "newerPost": "较新的文章",
     "postNavigation": "文章导航",
     "addFavorite": "将{{name}}加入收藏",
     "removeFavorite": "将{{name}}移出收藏"

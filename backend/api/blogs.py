@@ -310,6 +310,10 @@ async def get_members_with_thumbnails(service: str = Query(...)):
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
+_THUMBNAIL_CACHE_CONTROL = "public, max-age=86400"
+"""One day, for member thumbnails whether resized or served as archived."""
+
+
 @router.get("/member-thumbnail/{service}/{member_id}")
 async def get_member_thumbnail(
     service: str, member_id: str, w: Optional[int] = Query(default=None)
@@ -324,7 +328,8 @@ async def get_member_thumbnail(
             cropped from the top (portrait photos keep the head).
 
     Returns:
-        The thumbnail image file.
+        The thumbnail image file. Resized or not, it carries the same
+        ``Cache-Control`` (``_THUMBNAIL_CACHE_CONTROL``).
     """
     try:
         validate_service(service)
@@ -348,7 +353,7 @@ async def get_member_thumbnail(
                 return FileResponse(
                     served,
                     media_type="image/webp",
-                    headers={"Cache-Control": "public, max-age=86400"},
+                    headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
                 )
 
         # Determine media type from extension
@@ -364,9 +369,7 @@ async def get_member_thumbnail(
         return FileResponse(
             thumbnail_path,
             media_type=media_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",  # Cache for 1 day
-            },
+            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

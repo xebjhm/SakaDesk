@@ -180,6 +180,34 @@ describe('MediaGalleryModal detail view zoom', () => {
         expect(scale()).toBe(1);
     });
 
+    it('does not close the detail view or change photo on a click at fit', async () => {
+        const { viewer } = await openDetail();
+        await userEvent.click(img());
+        expect(viewer).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Media viewer' })).toBe(viewer);
+        expect(img().getAttribute('src')).toMatch(/\/2\.jpg/);
+        expect(scale()).toBe(1);
+    });
+
+    it('removes the wheel listener when the detail view closes, then leaves a video viewer\'s wheel alone', async () => {
+        window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+        window.HTMLMediaElement.prototype.pause = vi.fn();
+        window.HTMLMediaElement.prototype.load = vi.fn();
+        vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
+        const video = { id: 9, content: null, timestamp: '2026-10-05T04:00:00Z', type: 'video', is_favorite: false, media_file: 'messages/a/video/9.mp4' } as unknown as Message;
+        const { viewer } = await openDetail([...messages, video]);
+        const removed = vi.spyOn(viewer, 'removeEventListener');
+        await userEvent.click(within(viewer).getByRole('button', { name: 'Close' }));
+        expect(screen.queryByRole('dialog', { name: 'Media viewer' })).toBeNull();
+        expect(removed).toHaveBeenCalledWith('wheel', expect.any(Function));
+        // Photo → video: the video detail view gets no zoom and the wheel is not taken.
+        await userEvent.click(screen.getByRole('tab', { name: 'Videos' }));
+        await userEvent.click(screen.getByTestId('modal-body').querySelector('button') as HTMLElement);
+        const videoViewer = await screen.findByRole('dialog', { name: 'Media viewer' });
+        expect(screen.queryByRole('button', { name: 'Zoom in' })).toBeNull();
+        expect(fireEvent.wheel(videoViewer, { deltaY: -100 })).toBe(true);
+    });
+
     it('gives videos no zoom controls and leaves the wheel alone', async () => {
         window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
         window.HTMLMediaElement.prototype.pause = vi.fn();

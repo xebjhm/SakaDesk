@@ -23,15 +23,19 @@ COLOR_TS = (
 
 
 class FakeDwm:
-    def __init__(self, hr: int = 0):
+    def __init__(self, hr: int = 0, fail_at: int = 0, raise_at: int | None = None):
         self.hr = hr
+        self.fail_at = fail_at
+        self.raise_at = raise_at
         self.calls: list[tuple[int, int, int]] = []
 
     def DwmSetWindowAttribute(self, hwnd, attr, ref, size):  # noqa: N802
+        if self.raise_at is not None and len(self.calls) == self.raise_at:
+            raise OSError("dwm call failed")
         self.calls.append(
             (hwnd, attr, ctypes.cast(ref, ctypes.POINTER(ctypes.c_uint32))[0])
         )
-        return self.hr
+        return self.hr if len(self.calls) > self.fail_at else 0
 
 
 def _apply(hwnd=42, build=22631, dwm=None, is_windows=True):
@@ -91,6 +95,26 @@ def test_dwm_failure_is_logged_and_not_raised():
     assert not ok
     assert logs[0]["reason"] == "dwm_rejected"
     assert logs[0]["hresult"] == 0x80070057
+    assert (logs[0]["applied"], logs[0]["total"]) == (0, 4)
+
+
+def test_partial_dwm_failure_logs_how_many_applied():
+    with capture_logs() as logs:
+        ok, dwm = _apply(dwm=FakeDwm(hr=-2147024809, fail_at=2))
+    assert not ok
+    assert len(dwm.calls) == 3
+    assert logs[0]["reason"] == "dwm_rejected"
+    assert logs[0]["attribute"] == wc.DWMWA_TEXT_COLOR
+    assert (logs[0]["applied"], logs[0]["total"]) == (2, 4)
+
+
+def test_exception_mid_way_logs_how_many_applied():
+    with capture_logs() as logs:
+        ok, _ = _apply(dwm=FakeDwm(raise_at=1))
+    assert not ok
+    assert logs[0]["reason"] == "error"
+    assert logs[0]["error_type"] == "OSError"
+    assert (logs[0]["applied"], logs[0]["total"]) == (1, 4)
 
 
 def test_loader_exception_is_swallowed():

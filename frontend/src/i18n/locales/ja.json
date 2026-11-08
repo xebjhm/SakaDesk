@@ -507,8 +507,8 @@
     "feedLoadFailed": "記事を読み込めませんでした",
     "postLoadFailed": "この記事を読み込めませんでした",
     "loadingPost": "記事を読み込み中...",
-    "olderPost": "前の記事",
-    "newerPost": "次の記事",
+    "olderPost": "古い記事",
+    "newerPost": "新しい記事",
     "postNavigation": "記事ナビゲーション",
     "addFavorite": "{{name}}をお気に入りに追加",
     "removeFavorite": "{{name}}をお気に入りから削除"

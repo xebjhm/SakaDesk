@@ -196,11 +196,38 @@ describe('VideoPlayer media lifecycle', () => {
         expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'play_rejected', error_type: 'notsupportederror' }));
     });
 
-    it('does not log a play() superseded by a release as a failure', async () => {
+    it('does not log a play() superseded by a release as a failure, but counts it in the summary', async () => {
         play.mockImplementation(() => Promise.reject(new DOMException('aborted', 'AbortError')));
-        const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+        const { container, unmount } = render(<VideoPlayer src="/api/media/v.mp4" />);
         await act(async () => { fireEvent.click(container.querySelector('button.absolute.inset-0')!); });
         expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'play_rejected')).toHaveLength(0);
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'summary')).toHaveLength(0);
+        unmount();
+        expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({
+            phase: 'summary', surface: 'video', count: 0, aborted: 1,
+        }));
+    });
+
+    it('counts a play aborted by the release itself, after the source changes', async () => {
+        let rejectPlay!: (e: unknown) => void;
+        play.mockImplementation(() => new Promise((_, reject) => { rejectPlay = reject; }));
+        const { container, rerender } = render(<VideoPlayer src="/api/media/a.mp4" />);
+        await act(async () => { fireEvent.click(container.querySelector('button.absolute.inset-0')!); });
+        rerender(<VideoPlayer src="/api/media/b.mp4" />);
+        // The old source's summary waits for its pending play.
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'summary')).toHaveLength(0);
+        await act(async () => { rejectPlay(new DOMException('aborted', 'AbortError')); });
+        const summaries = vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'summary');
+        expect(summaries).toHaveLength(1);
+        expect(summaries[0][1]).toEqual(expect.objectContaining({ count: 0, aborted: 1 }));
+    });
+
+    it('logs no summary for a source with no aborts and few episodes', async () => {
+        const { container, unmount } = render(<VideoPlayer src="/api/media/v.mp4" />);
+        await act(async () => { fireEvent.click(container.querySelector('button.absolute.inset-0')!); });
+        unmount();
+        await act(async () => { await Promise.resolve(); });
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'summary')).toHaveLength(0);
     });
 
     describe('buffering accuracy', () => {
@@ -227,6 +254,34 @@ describe('VideoPlayer media lifecycle', () => {
             act(() => { el.dispatchEvent(new Event('progress')); });
             expect(screen.queryByTestId('video-buffering')).toBeNull();
             expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'recovered', reason: 'stalled' }));
+        });
+
+        it('a stall on a paused element does not hide a later real waiting', () => {
+            const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            state(el, 1, true);
+            act(() => { el.dispatchEvent(new Event('stalled')); });
+            expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'stalled', outcome: 'paused' }));
+            state(el, 1, false);
+            act(() => { el.dispatchEvent(new Event('waiting')); });
+            expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'waiting' }));
+            expect(screen.getByTestId('video-buffering')).toBeInTheDocument();
+        });
+
+        it('pausing closes a waiting episode, so the next waiting is logged again', () => {
+            const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            state(el, 1, false);
+            act(() => { el.dispatchEvent(new Event('waiting')); });
+            state(el, 1, true);
+            act(() => { el.dispatchEvent(new Event('pause')); });
+            expect(screen.queryByTestId('video-buffering')).toBeNull();
+            state(el, 1, false);
+            act(() => { el.dispatchEvent(new Event('waiting')); });
+            const waits = vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'waiting');
+            expect(waits).toHaveLength(2);
+            // Closed by the pause, not recovered.
+            expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'recovered')).toHaveLength(0);
         });
 
         it('emptied does not clear a visible error', () => {

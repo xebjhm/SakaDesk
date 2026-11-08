@@ -164,6 +164,25 @@ describe('MessageBubble component', () => {
     expect(video?.getAttribute('src')).toContain('video.mp4')
   })
 
+  it.each([
+    ['video', 'video'],
+    ['voice', 'audio'],
+  ] as const)('keys the %s player by media URL, so its state resets when the source changes', (type, tag) => {
+    const msg = (file: string) => createMessage({ type, media_file: file, content: null })
+    const { container, rerender } = render(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    const first = container.querySelector(tag)!
+    expect(first.getAttribute('src')).toContain('a.mp4')
+    // Same URL: the same player (and element) stays mounted.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    expect(container.querySelector(tag)).toBe(first)
+    // A new URL mounts a fresh player: a new element, not the old one re-pointed.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/b.mp4')} />)
+    const second = container.querySelector(tag)!
+    expect(second).not.toBe(first)
+    expect(second.getAttribute('src')).toContain('b.mp4')
+    expect(first.isConnected).toBe(false)
+  })
+
   it('should render fallback when no content or media', () => {
     const emptyMessage = createMessage({
       content: undefined,

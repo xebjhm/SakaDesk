@@ -7,8 +7,9 @@ WebP at one of a few fixed widths instead. The frontend asks for the smallest
 width that covers the drawn size in device pixels, so the browser has little or
 nothing left to scale.
 
-The blog member picker reuses it through ``/api/blogs/member-thumbnail?w=``
-with ``TOP`` centering, so the portrait photos keep the head in the crop.
+The blog member picker reuses it through
+``/api/blogs/member-thumbnail/{service}/{member_id}?w=`` with ``TOP``
+centering, so the portrait photos keep the head in the crop.
 
 Variants live under ``<app data dir>/cache/avatars/`` and are named by a hash
 of the source's resolved path, its mtime and the width, so a re-archived image

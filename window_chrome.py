@@ -85,7 +85,10 @@ def apply_title_bar_colors(
 
     Skips (logging ``title_bar_color_skipped`` with a ``reason``: ``not_windows``,
     ``no_hwnd``, ``old_windows`` with ``build``, ``dwm_rejected`` with
-    ``attribute``/``hresult``) and never raises.
+    ``attribute``/``hresult``, ``error`` with ``error_type``) and never raises.
+    ``dwm_rejected`` and ``error`` also carry ``applied`` (how many of the
+    ``total`` attributes DWM accepted before the failure), since earlier ones
+    stay in effect.
     """
     if is_windows is None:
         is_windows = sys.platform == "win32"
@@ -95,18 +98,20 @@ def apply_title_bar_colors(
     if not hwnd:
         logger.info("title_bar_color_skipped", reason="no_hwnd")
         return False
+    attributes = (
+        (DWMWA_USE_IMMERSIVE_DARK_MODE, 0),
+        (DWMWA_CAPTION_COLOR, colorref(WINDOW_SURFACE)),
+        (DWMWA_TEXT_COLOR, colorref(PRIMARY_INK)),
+        (DWMWA_BORDER_COLOR, colorref(WINDOW_SURFACE)),
+    )
+    applied = 0
     try:
         build = get_build()
         if build < MIN_BUILD:
             logger.info("title_bar_color_skipped", reason="old_windows", build=build)
             return False
         dwmapi = load_dwmapi()
-        for attribute, value in (
-            (DWMWA_USE_IMMERSIVE_DARK_MODE, 0),
-            (DWMWA_CAPTION_COLOR, colorref(WINDOW_SURFACE)),
-            (DWMWA_TEXT_COLOR, colorref(PRIMARY_INK)),
-            (DWMWA_BORDER_COLOR, colorref(WINDOW_SURFACE)),
-        ):
+        for attribute, value in attributes:
             data = ctypes.c_uint32(value)
             hr = dwmapi.DwmSetWindowAttribute(
                 hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data)
@@ -117,11 +122,18 @@ def apply_title_bar_colors(
                     reason="dwm_rejected",
                     attribute=attribute,
                     hresult=int(hr) & 0xFFFFFFFF,
+                    applied=applied,
+                    total=len(attributes),
                 )
                 return False
+            applied += 1
     except Exception as e:
         logger.warning(
-            "title_bar_color_skipped", reason="error", error_type=type(e).__name__
+            "title_bar_color_skipped",
+            reason="error",
+            error_type=type(e).__name__,
+            applied=applied,
+            total=len(attributes),
         )
         return False
     logger.info("title_bar_color_applied", build=build)

@@ -52,5 +52,4 @@ describe('chat layering (H6)', () => {
         const trailing = container.querySelector('[data-testid="message-trailing"]') as HTMLElement;
         expect(within(trailing).getByRole('button', { name: /Translate/ })).toBeInTheDocument();
     });
-
 });

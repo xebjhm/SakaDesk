@@ -699,6 +699,16 @@ def test_calendar_picker_rejects_holiday_text():
             "network_state": 1,
             "error_code": 0,
             "count": 7,
+            "aborted": 0,
+        },
+        {
+            "phase": "summary",
+            "surface": "voice",
+            "ready_state": 0,
+            "network_state": 0,
+            "error_code": 0,
+            "count": 1,
+            "aborted": 2,
         },
     ],
 )

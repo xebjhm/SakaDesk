@@ -188,7 +188,8 @@ the photo always covers its own box), and a double-click toggles fit ↔ 2× at 
 ← / → always step older / newer, never pan. The transform eases with `duration-fast`, not while
 dragging and not with reduced motion. Zoom and pan reset when the item changes. Video and voice
 have no zoom and leave the wheel and ↑ / ↓ to the player.
-The media gallery's own detail view (`MediaGalleryModal`, photos only) uses the same hook and the same three controls, with ↑ / ↓ zoom and ← / → still older / newer.
+The media gallery's own detail view (`MediaGalleryModal`, photos only) uses the same hook and
+the same three controls, with ↑ / ↓ zoom and ← / → still older / newer.
 
 Developer console (the hidden Diagnostics panel only): `bg-console`, `bg-console-badge`,
 `text-console`, `text-console-muted`, `text-console-prompt`, `text-console-error`,
@@ -231,8 +232,9 @@ group accent says where you are; a meaning colour says what a thing is.
   caption, caption text and window border are recoloured to `color.surface.window` (#F0F2F5) and
   `color.text.primary` (#1F2937) through DWM (`window_chrome.py`, which mirrors these two values; a test
   cross-checks them against `design/tokens/color.ts`). Older Windows keeps the default bar.
-- **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px rounded thumb
-  drawn inside a transparent border, which grows to 8 px and darkens on hover (no layout change). Thumb colours are the `--ds-scrollbar-thumb*`
+- **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px
+  rounded thumb drawn inside a transparent border, which grows to 8 px and darkens on hover (no
+  layout change). Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
   `[data-surface="dark"]`, which `Modal tone="viewer"` sets, and the call overlay). Firefox gets
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
@@ -655,15 +657,21 @@ pre-D2 panel's values; use them for developer tooling only.
   accent. Out-of-month days are uniformly `text-muted opacity-80` (3.3:1), without weekend colour.
 - **Day tooltip:** a day's holiday name (in Japanese, `lang="ja"`) and its item count show in the
   dark app tooltip (`bg-toast text-viewer`, as the feature rail's) above the cell on hover and
-  keyboard focus; edge columns align it to their edge. The holiday is part of the day's
-  accessible name ("3, 文化の日") and the count is its accessible description.
+  keyboard focus (below it in the first row, so it never covers the weekday header or gets
+  clipped); edge columns align it to their edge. The holiday is part of the day's accessible
+  name ("3, 文化の日") and the count is its accessible description.
+- **Month title:** numeric in Chinese, Cantonese and Japanese (`2026年11月`), "November 2026" in
+  English (`calendar.monthYear` with `calendar.months.*`; the picker's month grid uses the same
+  month names).
 - **Year / month picker:** the month title is a button (`aria-expanded`) that swaps the day grid
   for a year list (the first dated year, or the last ten years when there are no dates, up to
-  this year) and a 12-month grid. Years and months with dates are `text-primary` (months with
+  this year; the selected year is scrolled into view) and a 12-month grid. Years and months with dates are `text-primary` (months with
   the accent dot), the others `text-muted` but still selectable; the selected year and the
   month on screen are the state (`bg-accent-subtle text-accent-strong`). Picking a month, the
   back button or Escape (claimed, so the dialog stays open) returns to the day grid, and
-  focus goes back to the title. `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
+  focus goes back to the title. Opening the picker moves focus to the month on screen; opened
+  while the dates are still loading, focus stays on the title and moves into the picker once it
+  renders (unless the user has moved focus elsewhere). `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
   `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
 
 ### Menus
@@ -787,6 +795,9 @@ visible counter counts the oldest item as 1. Buttons that step carry older / new
 (`letterViewer.older` / `letterViewer.newer`), not previous / next. `utils/timeOrder.ts`
 (`timeNeighbours`) is the one helper; `MediaViewerModal` takes `order` (`oldest_first` by default,
 `newest_first` for a newest-first list).
+
+The rule is for time-ordered items only. Images inside one blog post are not a timeline: the blog
+reader's photo viewer keeps the post's reading order (← / ‹ the image above, → / › the one below).
 
 ### Layering
 

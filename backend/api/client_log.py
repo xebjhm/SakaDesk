@@ -101,6 +101,7 @@ ALLOWED_FIELDS = frozenset(
         "ready_state",
         "network_state",
         "error_code",
+        "aborted",
     }
 )
 WARNING_EVENTS = frozenset(

@@ -20,11 +20,13 @@ export interface DateCount {
  * Japanese-style calendar (owner decision R-h): the week starts on Sunday; Sundays and Japanese
  * public holidays (祝日) are red (`text-calendar-holiday`), Saturdays blue
  * (`text-calendar-saturday`). A day's holiday name (Japanese, `lang="ja"`) and its item count show
- * in a dark tooltip on hover and keyboard focus; the holiday is also part of the day's accessible
- * name and the count its description. The month title is a button that swaps the day grid for a
- * year / month picker (years from the first dated year to this year; years and months without
- * dates are dimmed but selectable); Escape or the back button returns to the day grid. Opening,
- * picking and leaving the picker log `calendar_picker` breadcrumbs.
+ * in a dark tooltip on hover and keyboard focus (above the cell, below it in the first row); the
+ * holiday is also part of the day's accessible name and the count its description. The month
+ * title (`calendar.monthYear`: numeric `2026年11月` in Chinese / Cantonese / Japanese) is a button
+ * that swaps the day grid for a year / month picker (years from the first dated year to this
+ * year, the selected one scrolled into view; years and months without dates are dimmed but
+ * selectable); Escape or the back button returns to the day grid. Opening, picking and leaving
+ * the picker log `calendar_picker` breadcrumbs.
  *
  * CalendarModal supports three modes:
  * 1. API mode: Pass `conversationPath` to fetch dates from the server
@@ -77,9 +79,16 @@ const FALLBACK_PICKER_YEARS = 10;
 const weekendTone = (weekday: number, isHoliday: boolean): string | null =>
     weekday === 0 || isHoliday ? 'text-calendar-holiday' : weekday === 6 ? 'text-calendar-saturday' : null;
 
-/** Day tooltip placement: edge columns align to their edge so long holiday names stay in the dialog. */
-const tooltipAnchor = (column: number): string =>
-    column === 0 ? 'left-0' : column === 6 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+/**
+ * Day tooltip placement: edge columns align to their edge so long holiday names stay in the
+ * dialog; the first row opens below the cell so the tooltip never covers the weekday header or
+ * gets clipped by the body's top edge.
+ */
+const tooltipAnchor = (index: number): string => {
+    const column = index % 7;
+    const horizontal = column === 0 ? 'left-0' : column === 6 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+    return cn(horizontal, index < 7 ? 'top-full mt-1' : 'bottom-full mb-1');
+};
 
 // Format a Date to YYYY-MM-DD using LOCAL timezone (not UTC).
 // SD-FE-CORE-02: shared with scrollToDate / backend `_local_date` so the
@@ -106,7 +115,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
     const titleButtonRef = useRef<HTMLButtonElement>(null);
     const pickerFocusRef = useRef<HTMLButtonElement>(null);
+    const pickerYearRef = useRef<HTMLButtonElement>(null);
     const previousView = useRef(view);
+    // Set when the picker opens; cleared once focus has moved into the rendered picker (which
+    // waits while the dates are still loading).
+    const pickerFocusPending = useRef(false);
     const tooltipIdBase = useId();
 
     // Determine mode
@@ -190,18 +203,33 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         if (!isOpen) setView('days');
     }, [isOpen]);
 
-    // Move focus with the view: into the picker (the shown month) and back to the title button.
+    // Move focus with the view: into the picker (the shown month, with the shown year scrolled
+    // into view) and back to the title button. A picker opened while the dates are loading keeps
+    // focus on the title button and takes it once the picker renders, unless the user has moved
+    // focus elsewhere meanwhile.
+    const pickerShown = view === 'picker' && !loading && !loadFailed;
     useEffect(() => {
-        if (previousView.current === view) return;
+        const viewChanged = previousView.current !== view;
         previousView.current = view;
-        if (!isOpen) return; // closing resets the view; the dialog layer restores focus itself
-        if (view === 'picker') {
+        if (!isOpen) { // closing resets the view; the dialog layer restores focus itself
+            pickerFocusPending.current = false;
+            return;
+        }
+        if (viewChanged && view === 'days') {
+            pickerFocusPending.current = false;
+            titleButtonRef.current?.focus();
+            return;
+        }
+        if (viewChanged && view === 'picker') pickerFocusPending.current = true;
+        if (!pickerShown || !pickerFocusPending.current) return;
+        pickerFocusPending.current = false;
+        pickerYearRef.current?.scrollIntoView?.({ block: 'nearest' });
+        const active = document.activeElement;
+        if (viewChanged || active === titleButtonRef.current || active === document.body || active === null) {
             pickerFocusRef.current?.focus();
             pickerFocusRef.current?.scrollIntoView?.({ block: 'nearest' });
-        } else {
-            titleButtonRef.current?.focus();
         }
-    }, [view, isOpen]);
+    }, [view, isOpen, pickerShown]);
 
     // Get message count for a date
     const getMessageCount = (dateStr: string): number => {
@@ -383,6 +411,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                             return (
                                 <button
                                     key={year}
+                                    ref={selected ? pickerYearRef : undefined}
                                     type="button"
                                     aria-pressed={selected}
                                     onClick={() => setPickerYear(year)}
@@ -477,8 +506,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                             role="tooltip"
                                             aria-hidden="true"
                                             className={cn(
-                                                'pointer-events-none absolute bottom-full mb-1 flex flex-col items-center whitespace-nowrap rounded-md px-2 py-1',
-                                                tooltipAnchor(index % 7),
+                                                'pointer-events-none absolute z-10 flex flex-col items-center whitespace-nowrap rounded-md px-2 py-1',
+                                                tooltipAnchor(index),
                                                 'bg-toast text-caption font-normal text-viewer shadow-card',
                                                 'opacity-0 transition-opacity delay-300 duration-fast ease-standard',
                                                 'group-hover/day:opacity-100 group-focus-visible/day:opacity-100',
