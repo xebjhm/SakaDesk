@@ -121,6 +121,8 @@ export default {
                 'group-shelter-text': 'var(--ds-group-shelter-text)',
                 // Blog feed tile caption card (e4e4118 frosted white).
                 'tile-glass': 'var(--ds-blog-glass)',
+                // The feed's All / Favorite segmented control track (e4e4118 black at 5 %).
+                'segment-track': 'var(--ds-blog-segment-track)',
             },
             textColor: {
                 accent: 'var(--ds-accent)',
@@ -226,6 +228,7 @@ export default {
                 'tile-hover': 'var(--ds-shadow-accent-tile)',
                 caption: 'var(--ds-blog-shadow-caption)',
                 'caption-hover': 'var(--ds-shadow-accent-caption)',
+                segment: 'var(--ds-blog-shadow-segment)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
@@ -242,6 +245,7 @@ export default {
                 'tile-title-lg': 'var(--ds-blog-font-tile-title-lg)',
                 'tile-name': 'var(--ds-blog-font-tile-name)',
                 'tile-name-lg': 'var(--ds-blog-font-tile-name-lg)',
+                segment: 'var(--ds-blog-font-segment)',
             },
             keyframes: {
                 landing: {

@@ -204,7 +204,9 @@ group accent says where you are; a meaning colour says what a thing is.
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
   subtle). Utilities: `text-semantic-oshi`, `bg-semantic-oshi-subtle`,
   `bg-semantic-oshi-solid`, `border-semantic-oshi`, `ring-semantic-oshi`,
-  `fill-semantic-oshi`. `Pill tone="oshi"` is the Favorite filter. An unselected
+  `fill-semantic-oshi`. The blog feed's All / Favorite control shows its selected
+  segment in `text-semantic-oshi` (the heart `text-semantic-oshi-solid`), and
+  `Pill tone="oshi"` gives any other 推 filter the oshi roles. An unselected
   heart outline uses `text-semantic-oshi-solid` (the vivid pink, 3:1 for an icon).
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
@@ -408,7 +410,7 @@ Brand moments are for waiting, starting, finishing and looking back
   would otherwise cut the orbs flat; About's hero uses it.
   Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
   (L2: orbs + frosted glass); the reader is L0 and has no glass. The feed's
-  All / Favorite pills sit on a grey track (`rounded-full bg-sunken p-0.5`).
+  All / Favorite filter is one segmented control (see "The blog feed").
 - **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
@@ -495,7 +497,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Group background behind everything | `Canvas` |
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
-| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for the 推 filter) |
+| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
 | Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
@@ -629,6 +631,13 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   (`duration-zoom`, 700 ms) and the caption nudges 4 px up-left on `ease-spring`
   (`duration-glide`) with `shadow-caption-hover`. Reduced motion keeps the hover look but
   drops the transitions. Focus shows a `ring-2 ring-inset ring-accent` over the photo.
+- **All / Favorite filter** (`RecentPostsFeed`): one segmented control, not two pills. A grey
+  track (`role="group"`, `rounded-full bg-segment-track`, black at 5 %; `p-0.5` plus a
+  transparent 1 px border for the original 3 px inset, `gap-0.5`) holds two `aria-pressed`
+  segments (`rounded-full px-3.5 py-1.5 text-segment font-medium`, 12 px). The unselected one
+  is `text-muted` on the track (`hover:text-secondary`); the selected one is a raised white pill
+  (`bg-pill shadow-segment`) in the oshi colour (`text-semantic-oshi`; the Favorite heart
+  `text-semantic-oshi-solid`), for All as well, as in the original: the control is the 推 filter.
 
 The blog timeline rail's hover ring is `border-accent` when zoomed (`border-strong`
 otherwise) and its tooltip glows with `shadow-accent-glow`.

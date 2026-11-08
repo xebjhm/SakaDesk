@@ -18,6 +18,14 @@ describe('blog feed tile tokens (e4e4118)', () => {
         expect(blogFeed.motion.duration).toEqual({ lift: 500, zoom: 700 });
     });
 
+    it('keeps the e4e4118 All / Favorite segmented control values', () => {
+        expect(blogFeed.segment).toEqual({ track: 'rgba(0, 0, 0, 0.05)', shadow: '0 1px 3px rgba(0, 0, 0, 0.1)', size: '0.75rem' });
+        const v = staticTokenVars();
+        expect(v['--ds-blog-segment-track']).toBe(blogFeed.segment.track);
+        expect(v['--ds-blog-shadow-segment']).toBe(blogFeed.segment.shadow);
+        expect(v['--ds-blog-font-segment']).toBe('0.75rem');
+    });
+
     it('writes the static variables', () => {
         const v = staticTokenVars();
         expect(v['--ds-blog-font-tile-title-lg']).toBe('0.9rem');

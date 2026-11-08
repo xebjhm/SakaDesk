@@ -53,6 +53,9 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-blog-glass'] = blogFeed.glass;
     vars['--ds-blog-glass-border'] = blogFeed.glassBorder;
     vars['--ds-blog-vignette'] = blogFeed.vignette;
+    vars['--ds-blog-segment-track'] = blogFeed.segment.track;
+    vars['--ds-blog-shadow-segment'] = blogFeed.segment.shadow;
+    vars['--ds-blog-font-segment'] = blogFeed.segment.size;
     for (const [name, ms] of Object.entries(blogFeed.motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-spring'] = easingCss(blogFeed.motion.spring);
     return vars;

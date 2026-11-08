@@ -29,6 +29,12 @@ export const blogFeed = {
     glassBorder: 'rgba(255, 255, 255, 0.6)',
     /** The soft dark fade along the tile's bottom edge. */
     vignette: 'rgba(0, 0, 0, 0.05)',
+    /** The feed header's All / Favorite segmented control: grey track, raised white selected segment. */
+    segment: {
+        track: 'rgba(0, 0, 0, 0.05)',
+        shadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+        size: '0.75rem',
+    },
     motion: {
         /** Milliseconds: the tile lift and its glow (`lift`), the photo zoom and fade-in (`zoom`). */
         duration: { lift: 500, zoom: 700 },

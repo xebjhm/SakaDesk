@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The blog feed looks like it used to again.** Each post is a full photo
   tile with a small floating caption card at its bottom-right corner, and
   hovering a post lifts it with a soft glow in your group's colour.
+- **All / Favorite is one switch again.** The blog feed's filter is back to a
+  single grey track with the chosen option raised in pink.
 - **First launch has its colours back.** The welcome, terms, group picker,
   folder setup and first sync use SakaDesk's soft aurora again, each group
   card and terms link in its own group colour, and the disclaimer in its

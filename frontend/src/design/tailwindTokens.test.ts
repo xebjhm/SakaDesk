@@ -105,6 +105,9 @@ describe('accent and expressive utilities', () => {
         ['transitionDuration', 'lift', '--ds-duration-lift'],
         ['transitionDuration', 'zoom', '--ds-duration-zoom'],
         ['transitionTimingFunction', 'spring', '--ds-ease-spring'],
+        ['backgroundColor', "'segment-track'", '--ds-blog-segment-track'],
+        ['boxShadow', 'segment', '--ds-blog-shadow-segment'],
+        ['fontSize', 'segment', '--ds-blog-font-segment'],
     ];
     const sectionBody = (name: string) => {
         const start = config.indexOf(`${name}: {`);
