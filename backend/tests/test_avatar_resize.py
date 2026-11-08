@@ -86,6 +86,15 @@ class TestResizedAvatar:
         assert second == first
         assert second.stat().st_mtime_ns == stamp
 
+    def test_centering_is_part_of_the_key(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (800, 1000))
+        centred = avatar_resize.resized_avatar(src, 128, tmp_path / "cache")
+        top = avatar_resize.resized_avatar(
+            src, 128, tmp_path / "cache", avatar_resize.TOP
+        )
+        assert centred != top
+        assert top.exists()
+
     def test_key_changes_with_width_and_mtime(self, tmp_path):
         src = _jpeg(tmp_path / "a.jpg", (1000, 1000))
         a = avatar_resize.resized_avatar(src, 128, tmp_path / "cache")

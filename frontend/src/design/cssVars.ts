@@ -17,7 +17,7 @@ export function staticTokenVars(): Record<string, string> {
     for (const [name, value] of Object.entries(color.border)) vars[`--ds-border-${name}`] = value;
     for (const [name, value] of Object.entries(color.overlay)) vars[`--ds-overlay-${kebab(name)}`] = value;
     for (const [name, value] of Object.entries(color.mark)) vars[`--ds-mark-${name}`] = value;
-    for (const group of ['viewer', 'console', 'decor'] as const) {
+    for (const group of ['viewer', 'console', 'decor', 'calendar', 'scrollbar'] as const) {
         for (const [name, value] of Object.entries(color[group])) vars[`--ds-${group}-${kebab(name)}`] = value;
     }
     for (const [kind, steps] of Object.entries(color.semantic)) {

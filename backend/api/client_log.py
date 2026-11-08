@@ -65,7 +65,10 @@ ClientEvent = Literal[
     "letter_jump",
     "display_density_change",
     "favorite_video_error",
+    "favorite_video_lazy_unsupported",
     "diagnostics_disk_usage",
+    "calendar_picker",
+    "media_playback",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -95,6 +98,10 @@ ALLOWED_FIELDS = frozenset(
         "history",
         "fallback",
         "dppx_pct",
+        "ready_state",
+        "network_state",
+        "error_code",
+        "aborted",
     }
 )
 WARNING_EVENTS = frozenset(

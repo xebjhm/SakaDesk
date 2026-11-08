@@ -42,16 +42,14 @@ describe('chat layering (H6)', () => {
         }
     });
 
-    it('keeps the translate button on the left beside the time, away from the centred date pill', () => {
+    it('puts the translate icon in the trailing column at the bubble edge, not in the header', () => {
         useAppStore.setState({ translationEnabled: true });
         const { container } = render(
             <MessageBubble message={msg(1)} member_name="N" isUnread={false} onReveal={vi.fn()} onLongPress={vi.fn()} service="日向坂46" runStart />,
         );
-        const time = container.querySelector('time')!;
-        const header = time.parentElement!;
-        expect(header.querySelector('[class*="ml-auto"]')).toBeNull();
-        const translate = within(header).getByRole('button', { name: /Translate/ });
-        // After the time in DOM order (and so beside it), not before it or at the far edge.
-        expect(time.compareDocumentPosition(translate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const header = container.querySelector('time')!.parentElement!;
+        expect(within(header).queryByRole('button', { name: /Translate/ })).toBeNull();
+        const trailing = container.querySelector('[data-testid="message-trailing"]') as HTMLElement;
+        expect(within(trailing).getByRole('button', { name: /Translate/ })).toBeInTheDocument();
     });
 });

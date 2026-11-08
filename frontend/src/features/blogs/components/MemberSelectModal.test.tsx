@@ -36,6 +36,19 @@ describe('MemberSelectModal thumbnails', () => {
         expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
     });
 
+    it('requests a density-matched resized thumbnail', () => {
+        // 92 CSS px at DPR 1 -> 96; at DPR 2 -> 192
+        const dpr = window.devicePixelRatio;
+        try {
+            Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+            renderModal({ members: withThumb as never });
+            const img = document.querySelector('img[src*="9901"]') as HTMLImageElement;
+            expect(img.getAttribute('src')).toBe('/api/blogs/member-thumbnail/hinatazaka46/9901?w=192');
+        } finally {
+            Object.defineProperty(window, 'devicePixelRatio', { value: dpr, configurable: true });
+        }
+    });
+
     it('falls back to the initial when the thumbnail fails', () => {
         renderModal({ members: withThumb as never });
         fireEvent.error(document.querySelector('img[src*="9901"]')!);

@@ -43,6 +43,9 @@
     "retry": "Retry",
     "confirm": "Confirm",
     "mediaViewer": "Media viewer",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomFit": "Fit to screen",
     "debug": "Debug"
   },
   "settings": {
@@ -331,6 +334,13 @@
     "itemCount": "{{count}} item",
     "itemCount_other": "{{count}} items",
     "tapToJump": "Tap a date to jump",
+    "monthYear": "{{month}} {{year}}",
+    "pickMonth": "Choose year and month",
+    "backToDays": "Back to the days",
+    "yearList": "Year",
+    "monthGrid": "Month",
+    "yearValue": "{{year}}",
+    "noMessages": "No messages",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -510,11 +520,13 @@
     "skipBack": "Back 5 seconds (←)",
     "skipForward": "Forward 5 seconds (→)",
     "mute": "Mute (M)",
-    "unmute": "Unmute (M)"
+    "unmute": "Unmute (M)",
+    "playbackError": "This voice message couldn't be played."
   },
   "videoPlayer": {
     "noAudio": "No audio",
-    "loop": "Loop"
+    "loop": "Loop",
+    "playbackError": "This video couldn't be played."
   },
   "generations": {
     "1st": "1ST GEN",
@@ -699,8 +711,8 @@
   },
   "letterViewer": {
     "title": "Sent letter",
-    "previous": "Previous letter",
-    "next": "Next letter",
+    "older": "Older letter",
+    "newer": "Newer letter",
     "jumpToLetter": "Jump to letter in chat",
     "jumpToLetterAt": "Show letter sent {{date}} in the chat",
     "imageMissing": "Letter image unavailable",

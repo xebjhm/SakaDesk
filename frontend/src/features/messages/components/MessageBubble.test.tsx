@@ -164,6 +164,25 @@ describe('MessageBubble component', () => {
     expect(video?.getAttribute('src')).toContain('video.mp4')
   })
 
+  it.each([
+    ['video', 'video'],
+    ['voice', 'audio'],
+  ] as const)('keys the %s player by media URL, so its state resets when the source changes', (type, tag) => {
+    const msg = (file: string) => createMessage({ type, media_file: file, content: null })
+    const { container, rerender } = render(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    const first = container.querySelector(tag)!
+    expect(first.getAttribute('src')).toContain('a.mp4')
+    // Same URL: the same player (and element) stays mounted.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    expect(container.querySelector(tag)).toBe(first)
+    // A new URL mounts a fresh player: a new element, not the old one re-pointed.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/b.mp4')} />)
+    const second = container.querySelector(tag)!
+    expect(second).not.toBe(first)
+    expect(second.getAttribute('src')).toContain('b.mp4')
+    expect(first.isConnected).toBe(false)
+  })
+
   it('should render fallback when no content or media', () => {
     const emptyMessage = createMessage({
       content: undefined,
@@ -233,6 +252,52 @@ describe('MessageBubble component', () => {
     expect(link).not.toHaveClass('text-accent')
   })
 
+  describe('translate icon', () => {
+    afterEach(() => { useAppStore.setState({ translationEnabled: false }) })
+    const trailing = (c: HTMLElement) => c.querySelector('[data-testid="message-trailing"]') as HTMLElement
+
+    it('run start: one icon-only neutral button in the trailing column, not in the header', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      const buttons = screen.getAllByRole('button', { name: 'Translate' })
+      expect(buttons).toHaveLength(1)
+      expect(trailing(container)).toContainElement(buttons[0])
+      expect(buttons[0].textContent).toBe('')
+      expect(buttons[0]).toHaveClass('text-secondary', 'hover:text-primary')
+      expect(buttons[0]).toHaveAttribute('title', 'Translate')
+      expect(screen.getByText('10:30').parentElement).not.toContainElement(buttons[0])
+    })
+
+    it('continuation: the same button sits in the trailing column with the time', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} runStart={false} />)
+      const button = screen.getByRole('button', { name: 'Translate' })
+      expect(trailing(container)).toContainElement(button)
+      expect(trailing(container)).toContainElement(screen.getByText('10:30'))
+    })
+
+    it('reveals on row hover and on keyboard focus, not hover alone', () => {
+      useAppStore.setState({ translationEnabled: true })
+      render(<MessageBubble {...defaultProps} />)
+      const wrapper = screen.getByRole('button', { name: 'Translate' }).parentElement!.parentElement as HTMLElement
+      expect(wrapper).toHaveClass('opacity-0', 'group-hover/row:opacity-100', 'focus-within:opacity-100', 'group-focus-within/row:opacity-100')
+    })
+
+    it('the trailing column is out of flow so the bubble never reflows or loses width', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toHaveClass('absolute', 'left-full', 'bottom-0')
+      expect(trailing(container)).not.toHaveClass('shrink-0')
+      // Anchored to the bubble column, which keeps its max width regardless of the icon
+      expect(trailing(container).parentElement).toHaveClass('relative', 'max-w-[80%]')
+    })
+
+    it('renders no trailing column when there is nothing to put in it', () => {
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toBeNull()
+    })
+  })
+
   describe('voice transcript footer', () => {
     const voice = createMessage({ type: 'voice', content: null, media_file: 'v.m4a' })
     const footerOf = (c: HTMLElement) => c.querySelector('[data-testid="transcript-footer"]') as HTMLElement
@@ -253,6 +318,19 @@ describe('MessageBubble component', () => {
       const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
       const player = container.querySelector('.min-w-\\[300px\\]') as HTMLElement
       expect(player).toHaveClass('rounded-lg', 'rounded-b-none')
+    })
+
+    it('a run-start voice player carries the bubble tail corner; a later one does not', () => {
+      const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail')
+      rerender(<MessageBubble {...defaultProps} message={voice} runStart={false} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-tl-tail')
+    })
+
+    it('a run-start voice player with a footer has tail corner, square bottom and rounded-lg together', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail', 'rounded-b-none', 'rounded-lg')
     })
 
     it('keeps the voice player fully rounded without a footer', () => {

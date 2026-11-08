@@ -6,6 +6,7 @@ import type { Letter } from '../../features/messages/letters';
 import { useAppStore } from '../../store/appStore';
 import { PhotoFallback, PhotoPlayer } from '../media/PhotoPlayer';
 import { MediaViewerModal } from '../media/PhotoDetailModal';
+import { timeNeighbours } from '../../utils/timeOrder';
 import { clientLog } from '../../utils/clientLog';
 import { downloadMedia } from '../../utils/download';
 import { formatDateTime, formatDownloadFilename } from '../../utils/classnames';
@@ -42,8 +43,8 @@ export interface LetterViewerModalProps {
  * finger Ctrl+C copy and Download, as before); Escape returns to the letter. With golden finger
  * the footer offers Download too. Ctrl+C on the letter itself copies the selected text as usual.
  * The footer is the photo viewer's: the send date and time as a link that closes the viewer
- * and jumps to the letter in the chat, the "n / total" counter (oldest = 1), and previous /
- * next buttons; ← / → move too. › / → always show the newer letter and ‹ / ← the older one,
+ * and jumps to the letter in the chat, the "n / total" counter (oldest = 1), and older /
+ * newer buttons; ← / → move too. › / → always show the newer letter and ‹ / ← the older one,
  * for the chat and the newest-first Sent letters list alike (not while focus is in the letter
  * text, where they move the caret / selection).
  * Breadcrumbs: `letter_viewer` (`open`; `fallback` with `no_image` / `image_error`; `skip` with
@@ -70,12 +71,9 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
     const letter = letters[index];
     const total = letters.length;
     // ‹ / ← always step to the older letter and › / → to the newer one, whichever way the list is sorted.
-    const step = order === 'newest_first' ? -1 : 1;
-    const olderIndex = index - step;
-    const newerIndex = index + step;
-    const hasPrev = olderIndex >= 0 && olderIndex < total;
-    const hasNext = newerIndex >= 0 && newerIndex < total;
-    const ordinal = order === 'newest_first' ? total - index : index + 1;
+    const { older: olderIndex, newer: newerIndex, ordinal } = timeNeighbours(index, total, order);
+    const hasPrev = olderIndex !== null;
+    const hasNext = newerIndex !== null;
     const sent = toValidDate(letter.created_at);
     const sentLabel = sent ? formatDateTime(sent) : '';
     const stageRef = useRef<HTMLDivElement>(null);
@@ -102,9 +100,9 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
         if (frame && !frame.contains(document.activeElement)) frame.focus({ preventScroll: true });
     }, [index]);
 
-    const go = useCallback((to: number) => {
-        if (to >= 0 && to < total) onNavigate(letters[to].id);
-    }, [letters, total, onNavigate]);
+    const go = useCallback((to: number | null) => {
+        if (to !== null) onNavigate(letters[to].id);
+    }, [letters, onNavigate]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         // In the letter text ← / → move the caret / selection.
@@ -157,8 +155,8 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                     )}
                     {total > 1 && (
                         <>
-                            <IconButton size="sm" aria-label={t('letterViewer.previous')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(olderIndex)} />
-                            <IconButton size="sm" aria-label={t('letterViewer.next')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(newerIndex)} />
+                            <IconButton size="sm" aria-label={t('letterViewer.older')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(olderIndex)} />
+                            <IconButton size="sm" aria-label={t('letterViewer.newer')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(newerIndex)} />
                         </>
                     )}
                 </div>

@@ -144,9 +144,9 @@ describe('LetterViewerModal', () => {
     it('moves between letters with the buttons, in list order', async () => {
         const { props } = renderViewer();
         const dialog = await screen.findByRole('dialog');
-        await userEvent.click(within(dialog).getByRole('button', { name: 'Previous letter' }));
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Older letter' }));
         expect(props.onNavigate).toHaveBeenLastCalledWith(1);
-        await userEvent.click(within(dialog).getByRole('button', { name: 'Next letter' }));
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Newer letter' }));
         expect(props.onNavigate).toHaveBeenLastCalledWith(3);
     });
 
@@ -160,10 +160,10 @@ describe('LetterViewerModal', () => {
 
         vi.mocked(props.onNavigate).mockClear();
         rerender(<LetterViewerModal {...props} letterId={1} />);
-        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Previous letter' })).toBeDisabled();
+        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Older letter' })).toBeDisabled();
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowLeft' });
         rerender(<LetterViewerModal {...props} letterId={3} />);
-        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Next letter' })).toBeDisabled();
+        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Newer letter' })).toBeDisabled();
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowRight' });
         expect(props.onNavigate).not.toHaveBeenCalled();
     });
@@ -176,18 +176,18 @@ describe('LetterViewerModal', () => {
         expect(props.onNavigate).toHaveBeenLastCalledWith(3);
         fireEvent.keyDown(dialog, { key: 'ArrowLeft' });
         expect(props.onNavigate).toHaveBeenLastCalledWith(1);
-        await userEvent.click(within(dialog).getByRole('button', { name: 'Next letter' }));
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Newer letter' }));
         expect(props.onNavigate).toHaveBeenLastCalledWith(3);
-        await userEvent.click(within(dialog).getByRole('button', { name: 'Previous letter' }));
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Older letter' }));
         expect(props.onNavigate).toHaveBeenLastCalledWith(1);
     });
 
     it('disables the arrows at the oldest and newest ends of a newest-first list', async () => {
         const newestFirst = [...letters].reverse();
         const { props, rerender } = renderViewer({ letters: newestFirst, order: 'newest_first', letterId: 3 });
-        expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Next letter' })).toBeDisabled();
+        expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Newer letter' })).toBeDisabled();
         rerender(<LetterViewerModal {...props} letters={newestFirst} order="newest_first" letterId={1} />);
-        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Previous letter' })).toBeDisabled();
+        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Older letter' })).toBeDisabled();
     });
 
     it('counts letters oldest = 1, like the photo viewer, whatever the list order', async () => {
@@ -221,7 +221,7 @@ describe('LetterViewerModal', () => {
         expect(screen.getByRole('dialog', { name: 'Sent letter' })).toBeInTheDocument();
         // ↑ zooms the image as before; ← / → in the media viewer do not move the letter viewer.
         fireEvent.keyDown(media, { key: 'ArrowUp' });
-        expect(img).toHaveStyle({ transform: 'scale(1.25)' });
+        expect(img).toHaveStyle({ transform: 'translate(0px, 0px) scale(1.25)' });
         fireEvent.keyDown(media, { key: 'ArrowLeft' });
         fireEvent.keyDown(media, { key: 'ArrowRight' });
         expect(props.onNavigate).not.toHaveBeenCalled();
@@ -281,7 +281,7 @@ describe('LetterViewerModal', () => {
     it('hides the counter and the arrows for a single letter', async () => {
         renderViewer({ letters: [letters[0]], letterId: 1 });
         const dialog = await screen.findByRole('dialog');
-        expect(within(dialog).queryByRole('button', { name: 'Previous letter' })).toBeNull();
+        expect(within(dialog).queryByRole('button', { name: 'Older letter' })).toBeNull();
         expect(within(dialog).queryByText('1 / 1')).toBeNull();
     });
 });
@@ -319,7 +319,7 @@ describe('LetterViewerModal from the chat timeline', () => {
 
 describe('letter viewer strings', () => {
     const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
-    const KEYS = ['title', 'previous', 'next', 'jumpToLetter', 'jumpToLetterAt', 'imageMissing', 'openImage', 'fullText'] as const;
+    const KEYS = ['title', 'older', 'newer', 'jumpToLetter', 'jumpToLetterAt', 'imageMissing', 'openImage', 'fullText'] as const;
 
     it.each(Object.entries(locales))('%s has every letterViewer key', (_code, data) => {
         const section = (data as unknown as Record<string, Record<string, string> | undefined>).letterViewer;

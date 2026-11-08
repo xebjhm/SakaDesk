@@ -3,6 +3,7 @@ Blogs API for SakaDesk.
 Provides endpoints for blog browsing, content fetching, and cache management.
 """
 
+import asyncio
 from html.parser import HTMLParser
 from html import escape as _html_escape
 from fastapi import APIRouter, HTTPException, Query
@@ -12,6 +13,7 @@ from typing import List, Optional
 
 import structlog
 
+from backend.services import avatar_resize
 from backend.services.blog_service import BlogService, get_blog_backup_manager
 from backend.services.service_utils import validate_service
 
@@ -308,23 +310,51 @@ async def get_members_with_thumbnails(service: str = Query(...)):
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
+_THUMBNAIL_CACHE_CONTROL = "public, max-age=86400"
+"""One day, for member thumbnails whether resized or served as archived."""
+
+
 @router.get("/member-thumbnail/{service}/{member_id}")
-async def get_member_thumbnail(service: str, member_id: str):
+async def get_member_thumbnail(
+    service: str, member_id: str, w: Optional[int] = Query(default=None)
+):
     """Serve a member's cached thumbnail image.
 
     Args:
         service: Service name (e.g., 'hinatazaka46').
         member_id: Member ID.
+        w: Optional width; one of ``avatar_resize.ALLOWED_WIDTHS`` (400
+            otherwise). Serves a cached square WebP downscaled to ``w`` px,
+            cropped from the top (portrait photos keep the head).
 
     Returns:
-        The thumbnail image file.
+        The thumbnail image file. Resized or not, it carries the same
+        ``Cache-Control`` (``_THUMBNAIL_CACHE_CONTROL``).
     """
     try:
         validate_service(service)
+        if w is not None and w not in avatar_resize.ALLOWED_WIDTHS:
+            logger.info("member_thumbnail_rejected", reason="width", width=w)
+            raise HTTPException(status_code=400, detail="Unsupported width")
         thumbnail_path = blog_service.get_member_thumbnail_path(service, member_id)
 
         if not thumbnail_path or not thumbnail_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
+
+        if w is not None:
+            served = await asyncio.to_thread(
+                avatar_resize.resized_avatar,
+                thumbnail_path,
+                w,
+                None,
+                avatar_resize.TOP,
+            )
+            if served != thumbnail_path:
+                return FileResponse(
+                    served,
+                    media_type="image/webp",
+                    headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
+                )
 
         # Determine media type from extension
         ext = thumbnail_path.suffix.lower()
@@ -339,9 +369,7 @@ async def get_member_thumbnail(service: str, member_id: str):
         return FileResponse(
             thumbnail_path,
             media_type=media_type,
-            headers={
-                "Cache-Control": "public, max-age=86400",  # Cache for 1 day
-            },
+            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

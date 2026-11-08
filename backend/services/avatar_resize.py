@@ -7,6 +7,10 @@ WebP at one of a few fixed widths instead. The frontend asks for the smallest
 width that covers the drawn size in device pixels, so the browser has little or
 nothing left to scale.
 
+The blog member picker reuses it through
+``/api/blogs/member-thumbnail/{service}/{member_id}?w=`` with ``TOP``
+centering, so the portrait photos keep the head in the crop.
+
 Variants live under ``<app data dir>/cache/avatars/`` and are named by a hash
 of the source's resolved path, its mtime and the width, so a re-archived image
 gets a fresh variant and an unchanged one is resized only once. A source whose
@@ -57,16 +61,34 @@ def cache_dir() -> Path:
     return get_app_data_dir() / "cache" / "avatars"
 
 
-def _variant_path(source: Path, mtime_ns: int, width: int, root: Path) -> Path:
-    key = f"{source.resolve()}|{mtime_ns}|{width}".encode("utf-8")
-    return root / f"{hashlib.sha256(key).hexdigest()}-{width}.webp"
+Centering = tuple[float, float]
+
+CENTER: Centering = (0.5, 0.5)
+"""Default crop centre; ``TOP`` keeps the head of a portrait photo."""
+
+TOP: Centering = (0.5, 0.0)
+
+
+def _variant_path(
+    source: Path, mtime_ns: int, width: int, root: Path, centering: Centering = CENTER
+) -> Path:
+    key = f"{source.resolve()}|{mtime_ns}|{width}"
+    if centering != CENTER:  # default keeps existing cache keys valid
+        key += f"|{centering[0]}|{centering[1]}"
+    key_bytes = key.encode("utf-8")
+    return root / f"{hashlib.sha256(key_bytes).hexdigest()}-{width}.webp"
 
 
 def _has_alpha(img: Image.Image) -> bool:
     return img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
 
 
-def resized_avatar(source: Path, width: int, root: Path | None = None) -> Path:
+def resized_avatar(
+    source: Path,
+    width: int,
+    root: Path | None = None,
+    centering: Centering = CENTER,
+) -> Path:
     """Return the file to serve for ``source`` at ``width`` px.
 
     That is the cached square WebP variant under ``root`` (default
@@ -77,6 +99,9 @@ def resized_avatar(source: Path, width: int, root: Path | None = None) -> Path:
     last three; no path is included). If another reader holds the variant
     open when it is moved into place (``PermissionError`` on Windows) and it
     already exists, the existing variant is served.
+
+    ``centering`` picks which part of a non-square source the square crop
+    keeps (``CENTER`` by default, ``TOP`` for portrait photos).
 
     Raises ``ValueError`` for a width outside ``ALLOWED_WIDTHS``.
     """
@@ -97,7 +122,7 @@ def resized_avatar(source: Path, width: int, root: Path | None = None) -> Path:
         )
         return source
 
-    target = _variant_path(source, mtime_ns, width, root)
+    target = _variant_path(source, mtime_ns, width, root, centering)
     if target.exists():
         logger.debug("avatar_resize_cache_hit", width=width)
         return target
@@ -121,7 +146,12 @@ def resized_avatar(source: Path, width: int, root: Path | None = None) -> Path:
                 opened.draft("RGB", (2 * width, 2 * width))
             img = ImageOps.exif_transpose(opened)
             img = img.convert("RGBA" if _has_alpha(img) else "RGB")
-            img = ImageOps.fit(img, (width, width), method=Image.Resampling.LANCZOS)
+            img = ImageOps.fit(
+                img,
+                (width, width),
+                method=Image.Resampling.LANCZOS,
+                centering=centering,
+            )
         root.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(dir=root, suffix=".tmp")
         with os.fdopen(fd, "wb") as out:

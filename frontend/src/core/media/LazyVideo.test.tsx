@@ -265,6 +265,26 @@ describe('LazyVideo component', () => {
     })
   })
 
+  describe('Media release', () => {
+    it('does not request anything before it is visible', () => {
+      const { container, unmount } = render(<LazyVideo {...defaultProps} />)
+      expect(container.querySelector('video')).toBeNull()
+      unmount()
+      expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled()
+    })
+
+    it('releases the video (pause, drop src, load) when unmounted', () => {
+      const { container, unmount } = render(<LazyVideo {...defaultProps} />)
+      simulateIntersection(true)
+      const video = container.querySelector('video') as HTMLVideoElement
+      expect(video).toHaveAttribute('preload', 'metadata')
+      unmount()
+      expect(video.getAttribute('src')).toBeNull()
+      expect(video.pause).toHaveBeenCalled()
+      expect(video.load).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe('Snapshots', () => {
     it('should match snapshot before intersection', () => {
       const { container } = render(<LazyVideo {...defaultProps} />)

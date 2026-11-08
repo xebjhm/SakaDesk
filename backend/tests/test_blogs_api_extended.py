@@ -1,5 +1,6 @@
 """Extended tests for blogs API endpoints beyond basic coverage."""
 
+import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -159,6 +160,82 @@ class TestGetMemberThumbnail:
         response = client.get("/api/blogs/member-thumbnail/hinatazaka46/100")
         assert response.status_code == 200
         assert "image/png" in response.headers.get("content-type", "")
+
+    @patch("backend.api.blogs.blog_service")
+    def test_thumbnail_resized(self, mock_svc, tmp_path, monkeypatch):
+        """w serves a cached square WebP cropped from the top."""
+        from PIL import Image
+
+        from backend.services import avatar_resize
+
+        monkeypatch.setattr(avatar_resize, "cache_dir", lambda: tmp_path / "cache")
+        thumb = tmp_path / "thumb.jpg"
+        img = Image.new("RGB", (400, 600), (255, 0, 0))
+        img.paste((0, 0, 255), (0, 300, 400, 600))  # bottom half blue
+        img.save(thumb)
+        mock_svc.get_member_thumbnail_path = MagicMock(return_value=thumb)
+        response = client.get("/api/blogs/member-thumbnail/hinatazaka46/100?w=64")
+        assert response.status_code == 200
+        assert "image/webp" in response.headers["content-type"]
+        out = Image.open(io.BytesIO(response.content))
+        assert out.size == (64, 64)
+        # top crop = rows 0-400: red down to row 300 (y=48); a centred crop
+        # (rows 100-500) would already be blue at y=40
+        rgb = out.convert("RGB")
+        assert rgb.getpixel((32, 40))[0] > 200
+        assert rgb.getpixel((32, 60))[2] > 200
+
+    @patch("backend.api.blogs.blog_service")
+    def test_thumbnail_resized_small_source_unchanged(self, mock_svc, tmp_path):
+        """A source not larger than w is served as-is."""
+        from PIL import Image
+
+        thumb = tmp_path / "thumb.png"
+        Image.new("RGB", (32, 32)).save(thumb)
+        mock_svc.get_member_thumbnail_path = MagicMock(return_value=thumb)
+        response = client.get("/api/blogs/member-thumbnail/hinatazaka46/100?w=64")
+        assert response.status_code == 200
+        assert "image/png" in response.headers["content-type"]
+
+    @patch("backend.api.blogs.blog_service")
+    def test_thumbnail_cache_control_same_resized_or_not(
+        self, mock_svc, tmp_path, monkeypatch
+    ):
+        """Resized and as-archived thumbnails send the same Cache-Control."""
+        from PIL import Image
+
+        from backend.services import avatar_resize
+
+        monkeypatch.setattr(avatar_resize, "cache_dir", lambda: tmp_path / "cache")
+        thumb = tmp_path / "thumb.jpg"
+        Image.new("RGB", (400, 600), (255, 0, 0)).save(thumb)
+        mock_svc.get_member_thumbnail_path = MagicMock(return_value=thumb)
+        url = "/api/blogs/member-thumbnail/hinatazaka46/100"
+        resized = client.get(f"{url}?w=64")
+        original = client.get(url)
+        assert "image/webp" in resized.headers["content-type"]
+        assert "image/jpeg" in original.headers["content-type"]
+        assert resized.headers["cache-control"] == "public, max-age=86400"
+        assert original.headers["cache-control"] == resized.headers["cache-control"]
+
+    @patch("backend.api.blogs.blog_service")
+    def test_thumbnail_bad_width(self, mock_svc):
+        """A width outside the allow-list is rejected."""
+        mock_svc.get_member_thumbnail_path = MagicMock(return_value=None)
+        response = client.get("/api/blogs/member-thumbnail/hinatazaka46/100?w=65")
+        assert response.status_code == 400
+
+    def test_thumbnail_resized_invalid_service(self):
+        """Service validation still applies with w."""
+        response = client.get("/api/blogs/member-thumbnail/invalid_service/100?w=64")
+        assert response.status_code == 400
+
+    @patch("backend.api.blogs.blog_service")
+    def test_thumbnail_resized_missing(self, mock_svc):
+        """A missing thumbnail is still 404 with w."""
+        mock_svc.get_member_thumbnail_path = MagicMock(return_value=None)
+        response = client.get("/api/blogs/member-thumbnail/hinatazaka46/100?w=64")
+        assert response.status_code == 404
 
 
 class TestGetBlogList:

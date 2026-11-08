@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Download } from 'lucide-react';
+import React, { useEffect, useCallback, useRef } from 'react';
+import { X, Download, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
+import { timeNeighbours, type ListOrder } from '../../utils/timeOrder';
 import { Modal, IconButton, Button } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
+import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -40,15 +42,22 @@ interface MediaViewerModalProps {
     onNavigate: (index: number) => void;
     /** Optional content shown top-centre (e.g. tabs); clicks on it don't close the viewer. */
     headerSlot?: React.ReactNode;
+    /** How `mediaItems` is sorted (default `oldest_first`); ← / → always step older / newer and the counter counts the oldest as 1. */
+    order?: ListOrder;
 }
 
 /**
  * Unified media viewer modal for photos, videos, and voice.
  *
  * Keyboard controls:
- * - Left/Right: Navigate to previous/next media
+ * - Left/Right: Older/newer media, whichever way `order` sorts the list (never pan, even zoomed)
  * - Up/Down: Zoom in/out (photos) or volume up/down (video/voice)
  * - Escape: Close (handled by the dialog layer, which respects fullscreen)
+ *
+ * Photo zoom (1–4×, see `useZoomPan`): the mouse wheel zooms around the cursor anywhere in the
+ * viewer (and never scrolls the page behind); the top-left − / fit / + buttons step out, back to
+ * fit and in; when zoomed, dragging pans (clamped so the photo stays on screen); a double-click
+ * toggles fit ↔ 2× at the click point. Zoom and pan reset when the item changes.
  */
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     mediaItems,
@@ -56,26 +65,23 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     onClose,
     onNavigate,
     headerSlot,
+    order = 'oldest_first',
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
 
-    const [zoom, setZoom] = useState(1);
     const stageRef = useRef<HTMLDivElement>(null);
 
     const item = mediaItems[currentIndex];
+    const isPicture = item?.type === 'picture';
+    // Zoom and pan reset when navigating to a new item. (Video/voice transcription
+    // state is owned by the player components themselves via messageId.)
+    const { view, dragging, step, reset, stageHandlers } = useZoomPan(stageRef, isPicture, `${currentIndex}:${item?.src}`);
 
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
 
-    const hasPrev = currentIndex > 0;
-    const hasNext = currentIndex < mediaItems.length - 1;
-
-    // Reset zoom when navigating to a new item. (Video/voice transcription
-    // state is owned by the player components themselves via messageId.)
-    useEffect(() => {
-        setZoom(1);
-    }, [currentIndex]);
+    const { older, newer, ordinal } = timeNeighbours(currentIndex, mediaItems.length, order);
 
     // Navigating can unmount the focused control (Download, a play button), which drops focus to
     // the body and silences ← / →: put it back on the dialog frame.
@@ -93,27 +99,27 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
-                if (hasPrev) onNavigate(currentIndex - 1);
+                if (older !== null) onNavigate(older);
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (hasNext) onNavigate(currentIndex + 1);
+                if (newer !== null) onNavigate(newer);
                 break;
             // ↑ / ↓ zoom a photo; for video and voice they stay unclaimed: the player owns volume.
             case 'ArrowUp':
-                if (item?.type === 'picture') {
+                if (isPicture) {
                     e.preventDefault();
-                    setZoom(z => Math.min(z + 0.25, 4));
+                    step(1);
                 }
                 break;
             case 'ArrowDown':
-                if (item?.type === 'picture') {
+                if (isPicture) {
                     e.preventDefault();
-                    setZoom(z => Math.max(z - 0.25, 1));
+                    step(-1);
                 }
                 break;
         }
-    }, [hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
+    }, [older, newer, onNavigate, isPicture, step]);
 
     if (!item) return null;
     const lifted = item.sourceLabel && item.onSourceJump ? 'bottom-14' : 'bottom-6';
@@ -130,13 +136,42 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         >
             <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
 
+            {isPicture && (
+                // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
+                <div className="absolute left-4 top-4 z-10 flex gap-2">
+                    <IconButton variant="overlay" aria-label={t('common.zoomOut')} icon={<ZoomOut />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={() => step(-1)} />
+                    <IconButton variant="overlay" aria-label={t('common.zoomFit')} icon={<Shrink />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={reset} />
+                    <IconButton variant="overlay" aria-label={t('common.zoomIn')} icon={<ZoomIn />} aria-disabled={view.scale >= MAX_ZOOM || undefined} onClick={() => step(1)} />
+                </div>
+            )}
+
             {headerSlot && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2">{headerSlot}</div>}
 
-            <div ref={stageRef} className="relative flex max-h-[90vh] max-w-[90vw] items-center justify-center">
-                {item.type === 'picture' && <PhotoPlayer variant="fullscreen" src={item.src} alt={t('common.mediaViewer')} zoom={zoom} />}
+            <div
+                ref={stageRef}
+                data-testid="viewer-stage"
+                className={cn(
+                    'relative flex max-h-[90vh] max-w-[90vw] items-center justify-center',
+                    isPicture && 'touch-none select-none',
+                    isPicture && view.scale > MIN_ZOOM && (dragging ? 'cursor-grabbing' : 'cursor-grab'),
+                )}
+                {...(isPicture ? stageHandlers : {})}
+            >
+                {isPicture && (
+                    <PhotoPlayer
+                        variant="fullscreen"
+                        src={item.src}
+                        alt={t('common.mediaViewer')}
+                        zoom={view.scale}
+                        pan={view}
+                        className={dragging ? 'transition-none' : undefined}
+                    />
+                )}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
+                        {/* Keyed by source: each item gets a fresh player (no carried-over state) */}
                         <VideoPlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             autoPlay
@@ -152,6 +187,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 {item.type === 'voice' && (
                     <div className="flex w-96 flex-col gap-3">
                         <VoicePlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             avatarUrl={item.avatarUrl}
@@ -176,7 +212,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
             {mediaItems.length > 1 && (
                 <div className={cn('absolute left-6 text-small tabular-nums text-viewer-muted', lifted)}>
-                    {currentIndex + 1} / {mediaItems.length}
+                    {ordinal} / {mediaItems.length}
                 </div>
             )}
 

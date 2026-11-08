@@ -4,6 +4,7 @@ import { AlertTriangle, Heart, Users } from 'lucide-react';
 import type { BlogMemberWithThumbnail } from '../../../types';
 import { getMembers, toGroupId } from '../../../data/memberData';
 import { getMemberThumbnailUrl } from '../api';
+import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
 import { Modal } from '../../../design/primitives';
@@ -88,6 +89,8 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     const favorites = useAppStore((state) => state.favorites[serviceId] || EMPTY_FAVORITES);
     const toggleFavorite = useAppStore((state) => state.toggleFavorite);
     const { t } = useTranslation();
+    // Drawn at 80 CSS px, scaled 1.15x by MemberThumb.
+    const thumbWidth = useAvatarWidth(92);
 
     // Enrich members with generation and name data using service-specific member data
     const enrichedMembers = useMemo(() => {
@@ -246,7 +249,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                                         const isFavorited = favorites.includes(member.id);
                                         const thumbnailUrl = isMascot(member)
                                             ? MASCOT_THUMBNAIL_URL
-                                            : member.thumbnail ? getMemberThumbnailUrl(serviceId, member.id) : null;
+                                            : member.thumbnail ? getMemberThumbnailUrl(serviceId, member.id, thumbWidth) : null;
                                         return (
                                             <div key={member.id} className="relative flex flex-col items-center">
                                                 <button

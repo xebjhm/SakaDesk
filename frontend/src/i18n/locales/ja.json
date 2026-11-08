@@ -43,6 +43,9 @@
     "retry": "再試行",
     "confirm": "確認",
     "mediaViewer": "メディアビューア",
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "zoomFit": "画面に合わせる",
     "debug": "デバッグ"
   },
   "settings": {
@@ -330,6 +333,13 @@
     "availableOnDays": "{{count}}日分利用可能",
     "itemCount": "{{count}}件",
     "tapToJump": "日付を選択して移動",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "年と月を選択",
+    "backToDays": "日付に戻る",
+    "yearList": "年",
+    "monthGrid": "月",
+    "yearValue": "{{year}}年",
+    "noMessages": "メッセージなし",
     "weekdays": {
       "sun": "日",
       "mon": "月",
@@ -497,8 +507,8 @@
     "feedLoadFailed": "記事を読み込めませんでした",
     "postLoadFailed": "この記事を読み込めませんでした",
     "loadingPost": "記事を読み込み中...",
-    "olderPost": "前の記事",
-    "newerPost": "次の記事",
+    "olderPost": "古い記事",
+    "newerPost": "新しい記事",
     "postNavigation": "記事ナビゲーション",
     "addFavorite": "{{name}}をお気に入りに追加",
     "removeFavorite": "{{name}}をお気に入りから削除"
@@ -508,11 +518,13 @@
     "skipBack": "5秒戻る (←)",
     "skipForward": "5秒進む (→)",
     "mute": "ミュート (M)",
-    "unmute": "ミュート解除 (M)"
+    "unmute": "ミュート解除 (M)",
+    "playbackError": "このボイスを再生できませんでした。"
   },
   "videoPlayer": {
     "noAudio": "音声なし",
-    "loop": "リピート"
+    "loop": "リピート",
+    "playbackError": "この動画を再生できませんでした。"
   },
   "generations": {
     "1st": "一期生",
@@ -697,8 +709,8 @@
   },
   "letterViewer": {
     "title": "送信したレター",
-    "previous": "前のレター",
-    "next": "次のレター",
+    "older": "古いレター",
+    "newer": "新しいレター",
     "jumpToLetter": "トークでこのレターへ移動",
     "jumpToLetterAt": "{{date}}に送信したレターをトークで表示",
     "imageMissing": "レター画像がありません",

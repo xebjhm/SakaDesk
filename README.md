@@ -190,6 +190,7 @@ SakaDesk/
 │   ├── verify_build.py      # Build verification
 │   └── build_windows.bat    # Windows build script
 ├── call_popup_window.py     # Bottom-right call popup window (Windows)
+├── window_chrome.py         # Windows 11 title bar colours (DWM)
 ├── desktop.py               # Desktop app entry point
 └── pyproject.toml           # Python project configuration
 ```

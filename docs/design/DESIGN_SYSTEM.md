@@ -163,8 +163,10 @@ carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
 gap around avatars and selection rings is `ring-surface` / `border-surface` /
 `ring-offset-surface` (there is no `bg-surface`: use `bg-sheet`). Toasts use
-`bg-toast` with `text-viewer`. The calendar's Sundays use `text-sunday` and
-About's heart `text-heart`. `bg-control-off` is an off switch.
+`bg-toast` with `text-viewer`. The calendar's Sundays and public holidays use
+`text-calendar-holiday` (`#DC2626`) and its Saturdays `text-calendar-saturday` (`#2563EB`)
+(`color.calendar`, `--ds-calendar-*`; see "Date-search calendar"), and About's heart
+`text-heart`. `bg-control-off` is an off switch.
 
 Chat header pills: `bg-header-glass` (unread) and `bg-header-shade` (sync) on a
 title gradient; on a light header `bg-group-title-tint` / `bg-group-title-wash`
@@ -176,6 +178,18 @@ Unread shelters: `bg-` / `border-` / `text-group-shelter-{picture,video,voice,te
 Viewer chrome (dark photo and video viewer): `bg-viewer-scrim`,
 `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`,
 `text-viewer-muted`, `decoration-viewer`.
+
+Photo zoom in the dark viewer (`core/media/useZoomPan.ts`, 1–4×): the mouse wheel zooms around
+the cursor anywhere in the viewer (a non-passive listener that never scrolls the page behind);
+↑ / ↓ step 0.25× around the centre; the top-left zoom out / fit / zoom in controls are `overlay`
+`IconButton`s (full circles, `aria-disabled` at the limits so focus and ← / → survive); when
+zoomed the photo pans by dragging (`cursor-grab` / `cursor-grabbing`, pointer capture, clamped so
+the photo always covers its own box), and a double-click toggles fit ↔ 2× at the click point.
+← / → always step older / newer, never pan. The transform eases with `duration-fast`, not while
+dragging and not with reduced motion. Zoom and pan reset when the item changes. Video and voice
+have no zoom and leave the wheel and ↑ / ↓ to the player.
+The media gallery's own detail view (`MediaGalleryModal`, photos only) uses the same hook and
+the same three controls, with ↑ / ↓ zoom and ← / → still older / newer.
 
 Developer console (the hidden Diagnostics panel only): `bg-console`, `bg-console-badge`,
 `text-console`, `text-console-muted`, `text-console-prompt`, `text-console-error`,
@@ -212,6 +226,20 @@ colours) so they sit with the aurora. `color.semantic` has five steps per set:
 An element with a fixed meaning keeps its meaning colour in every context. The
 group accent says where you are; a meaning colour says what a thing is.
 
+- **Muted text on grey.** `text-muted` (#6b7280) is for white and near-white surfaces only. On a grey fill
+  (`bg-sunken`, the segment track, the Background preview) use `text-secondary` (#4b5563, at least 4.5:1).
+- **Windows title bar.** The main window keeps the native frame; on Windows 11 (build ≥ 22000) the
+  caption, caption text and window border are recoloured to `color.surface.window` (#F0F2F5) and
+  `color.text.primary` (#1F2937) through DWM (`window_chrome.py`, which mirrors these two values; a test
+  cross-checks them against `design/tokens/color.ts`). Older Windows keeps the default bar.
+- **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px
+  rounded thumb drawn inside a transparent border, which grows to 8 px and darkens on hover (no
+  layout change). Thumb colours are the `--ds-scrollbar-thumb*`
+  tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
+  `[data-surface="dark"]`, which `Modal tone="viewer"` sets, the call overlay and the Diagnostics console). Firefox gets
+  `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
+- **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-skeleton`
+  (`--ds-border-strong`) and mount the `<video>` only when the card nears the dialog body's visible area.
 - **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
   `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
@@ -266,18 +294,18 @@ player's `bg-sunken` card, the mute and menu buttons hover one step darker
 
 ### When to use the group colour
 
-The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `border-subtle text-secondary hover:text-primary`, no accent.
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `text-secondary hover:text-primary`, no accent. In chat it is one icon-only "文A" button (`iconOnly`, lucide `Languages`; the label is its `aria-label` and `title`; spinner while loading, alert icon on error) in the trailing column at the bubble's bottom-right of every message, run start and continuation alike (never in the run-start header); the blog reader keeps the text-label form. The voice/video transcript 「顯示文字」 control (`TranscribeButton`, dark variant) is neutral in the same way: `border-subtle text-secondary hover:text-primary`.
 
 | Job | Examples |
 |---|---|
 | A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
 | B. state | active tab, selected rail item, slider fill |
 | C. primary | Done, Save |
-| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and previous / next |
+| Neutral | the transcript "Show text" control, Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and older / newer buttons |
 | Pastel decoration | empty-state soft circle, milestone card surface |
 
 Pre-existing accents from the original design stay until the owner revisits
-them: the ⋯ conversation-menu icons, the transcript "Show text" control, the
+them: the ⋯ conversation-menu icons, the
 member-timeline row hover tint and expanded month count pill, the sent-letters
 hover, the blog-feed "Select member" pill (pastel tint with a gradient hover), the
 blog nav footer glow, and the ToS per-group links.
@@ -501,7 +529,8 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   the ambient orbs' 22-34 s drift (`animate-orb-drift-1/2`,
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
-  (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
+  (the toast entrance), `animate-shimmer` 1.2 s, `animate-shimmer-sweep` 1.4 s (the looping
+  loading sweep on a Favourites video placeholder; hidden under reduced motion), `animate-pop` 500 ms,
   `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
   original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
   caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
@@ -539,13 +568,14 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, always in time order (› / → newer, from the chat and from the newest-first Sent letters list alike), and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, older / newer buttons and ← / →, always in time order (› / → newer, from the chat and from the newest-first Sent letters list alike), and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for zoom and golden-finger copy / download; Escape returns to the letter |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
 | Loading, empty, error inside a dialog | `DialogStatus` |
 | Empty list or screen | `EmptyState` |
 | Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
+| Video or voice buffering / failed | `useMediaPlayback` (`core/media/useMediaPlayback.ts`). Buffering (waiting for data while playing): a `Loader2` spinner with `animate-spin motion-reduce:animate-none`, centred over the video in `text-viewer` (`role="status"`, `common.loading`), or in place of the voice player's play icon (`aria-busy`). Failed: a neutral message (`videoPlayer.playbackError` / `voicePlayer.playbackError`, never danger red) with a Retry (`common.retry`) that reloads the element at the same position and plays: on the video a `bg-viewer-scrim` panel with an `overlay` Button, on the voice player a `text-secondary` caption with a `ghost` Button. Every `<video>` / `<audio>` element gets its source through `useMediaSource` (`core/media/mediaElement.ts`), which releases it (pause, drop `src`, `load()`) before the source changes and on unmount; viewers key the player by source. The one detached preload `Audio()` in `preloadAudio.ts` has no element to hook, so it is released manually |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
 
@@ -614,6 +644,35 @@ is unmistakable next to user screens (it still sits in brand scope for any neste
 `bg-console text-console-muted font-mono` (errors `text-console-error`, warnings
 `text-console-warning`). The `console` tokens (`color.console`, `--ds-console-*`) hold the
 pre-D2 panel's values; use them for developer tooling only.
+
+### Date-search calendar
+
+`CalendarModal` follows the Japanese wall-calendar convention (owner decision, R-h):
+
+- **Week** starts on Sunday. Sundays and Japanese public holidays (祝日, from the offline
+  `@holiday-jp/holiday_jp` dataset through `utils/jpHolidays.ts` `holidayName()`) are
+  `text-calendar-holiday` (`#DC2626`, 4.8:1 on white), Saturdays `text-calendar-saturday`
+  (`#2563EB`, 5.2:1); the weekday header labels use the same colours, the other labels
+  `text-muted`. These are fixed meanings ("semantic over context"): they never follow the group
+  accent. Out-of-month days are uniformly `text-muted opacity-80` (3.3:1), without weekend colour.
+- **Day tooltip:** a day's holiday name (in Japanese, `lang="ja"`) and its item count show in the
+  dark app tooltip (`bg-toast text-viewer`, as the feature rail's) above the cell on hover and
+  keyboard focus (below it in the first row, so it never covers the weekday header or gets
+  clipped); edge columns align it to their edge. The holiday is part of the day's accessible
+  name ("3, 文化の日") and the count is its accessible description.
+- **Month title:** numeric in Chinese, Cantonese and Japanese (`2026年11月`), "November 2026" in
+  English (`calendar.monthYear` with `calendar.months.*`; the picker's month grid uses the same
+  month names).
+- **Year / month picker:** the month title is a button (`aria-expanded`) that swaps the day grid
+  for a year list (the first dated year, or the last ten years when there are no dates, up to
+  this year; the selected year is scrolled into view) and a 12-month grid. Years and months with dates are `text-primary` (months with
+  the accent dot), the others `text-muted` but still selectable; the selected year and the
+  month on screen are the state (`bg-accent-subtle text-accent-strong`). Picking a month, the
+  back button or Escape (claimed, so the dialog stays open) returns to the day grid, and
+  focus goes back to the title. Opening the picker moves focus to the month on screen; opened
+  while the dates are still loading, focus stays on the title and moves into the picker once it
+  renders (unless the user has moved focus elsewhere). `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
+  `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
 
 ### Menus
 
@@ -725,6 +784,20 @@ feature name is the button's `aria-label` and a neutral dark tooltip (`bg-toast 
 never the group colour) to the right of the tile, shown on hover and keyboard focus after a short
 delay. The selected `RailItem` is a white card with a `text-accent` icon and a `bg-accent` bar on
 the left.
+
+### Left is older, right is newer
+
+Everywhere something steps through items in time (the photo / video / voice viewer, the media
+gallery detail, the blog photo gallery, member image history, the sent-letter viewer, blog posts,
+the calendar), ← / ‹ goes to the **older** item and → / › to the **newer** one, whichever way the
+list is sorted on screen. A newest-first grid therefore steps with its index reversed, and a
+visible counter counts the oldest item as 1. Buttons that step carry older / newer labels
+(`letterViewer.older` / `letterViewer.newer`), not previous / next. `utils/timeOrder.ts`
+(`timeNeighbours`) is the one helper; `MediaViewerModal` takes `order` (`oldest_first` by default,
+`newest_first` for a newest-first list).
+
+The rule is for time-ordered items only. Images inside one blog post are not a timeline: the blog
+reader's photo viewer keeps the post's reading order (← / ‹ the image above, → / › the one below).
 
 ### Layering
 

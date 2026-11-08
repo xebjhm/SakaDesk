@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a date link that jumps back to it in the chat. Click the image for the
   large view with zoom; the arrows always go in time order, and narrow windows
   give the letter more room.
+- **Zoom photos with the mouse wheel.** In the photo viewer and the media
+  gallery, scroll to zoom in where you point, or use the zoom buttons or a
+  double-click; drag to move around a zoomed photo.
+- **A Japanese-style calendar.** The date calendar marks Japanese public
+  holidays (point at a day to see its name), shows Sundays and holidays in red
+  and Saturdays in blue, and lets you click the month title to pick any year
+  and month.
 - **Small celebrations.** Your first complete sync ends with a short
   celebration, and a chat shows a card when a member passes 1,000, 5,000 or
   10,000 messages, or when your subscription reaches day 100 and each full
@@ -56,9 +63,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
-- **Grey text is darker** and easier to read. Hinatazaka's unread covers now
-  use the official app colours, and the translate button is neutral instead
-  of using the group colour.
+- **Grey text is darker** and easier to read, also on grey backgrounds such as
+  the search footer and the background preview. Hinatazaka's unread covers now
+  use the official app colours.
+- **Arrows go older and newer.** In the photo, video and voice viewers and
+  galleries, left goes to the older item and right to the newer one, whichever
+  way the list is sorted. Images inside a blog post keep their reading order.
+- **One tidy translate icon.** Every message has the same small, neutral
+  translate icon at its bottom-right corner, next to the time. The Show text
+  button under a voice message is neutral too.
+- **Slim scrollbars.** Scrollbars are thin and rounded, and grow a little when
+  you point at them.
+- **The title bar matches the app on Windows 11** instead of the standard
+  window colour.
 - **Calmer colours.** The group colour now marks only where you are, what is
   selected and the main action. Secondary buttons, counts and tool panels are
   neutral.
@@ -141,20 +158,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync repair rows in Settings say which group they act on.
 
 ### Fixed
+- **Videos no longer get stuck loading or freeze mid-play.** Opening many
+  videos or voice messages no longer blocks the next ones from loading. Players
+  now show a spinner while they wait for data, and a message with Retry if
+  playback fails.
 - **Incoming-call card corners are clean.** They no longer show square patches,
   and the card edge is a single line.
 - **Gallery photos no longer slide above the tabs** when you scroll.
-- **Member photos are sharper** in chats and member lists, and the selected
-  member's ring stays clean.
+- **Member photos are sharper** in chats, member lists and the blog member
+  picker, and the selected member's ring stays clean.
 - **The chat date label stays on top of unread covers** and no longer hides
   the translate button.
 - **The avatar no longer shows a dark outline** after you close a profile.
-- **Favourites and member lists show placeholders while loading**, video
-  favourites included.
+- **Favourites and member lists show placeholders while loading.** Video
+  favourites show a clear loading shimmer and load as you scroll to them, so
+  Favourites opens quickly.
 - **Diagnostics opens immediately.** Disk usage fills in once it has been
   calculated, instead of the whole panel waiting for it on a large archive.
-- **The voice transcript joins its message neatly**, without a step at the
-  corners.
+- **Voice messages fit their bubble neatly.** The player follows the bubble's
+  corner, and the transcript joins the message without a step at the corners.
 - **Tabs and blog filters start at the top.** Switching media gallery tabs or
   the blog feed's All / Favorite filter shows the new list from its start.
 - **Links in messages are easier to read.** They are darker and underline when

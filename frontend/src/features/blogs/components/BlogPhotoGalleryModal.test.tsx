@@ -54,4 +54,26 @@ describe('BlogPhotoGalleryModal', () => {
         const header = screen.getByTestId('modal-body').querySelector('.sticky')!;
         expect(header).toHaveClass('top-0');
     });
+
+    it('left is older and right is newer in the viewer, although the grid is newest first', async () => {
+        const OLDER: BlogMeta = { ...BLOG, id: 'b0', published_at: '2026-10-01T10:00:00Z' };
+        vi.mocked(getBlogContent).mockImplementation(async (_s, id) => {
+            await Promise.resolve();
+            return { images: [{ local_url: id === 'b0' ? '/old.jpg' : '/new.jpg' }] } as unknown as Awaited<ReturnType<typeof getBlogContent>>;
+        });
+        render(<BlogPhotoGalleryModal isOpen onClose={vi.fn()} blogs={[BLOG, OLDER]} serviceId="hinatazaka46" backupEnabled onJumpToBlog={vi.fn()} />);
+        release();
+        await waitFor(() => expect(screen.getByText(i18n.t('blogGallery.count', { count: 2 }))).toBeInTheDocument());
+        const thumbs = Array.from(document.querySelectorAll('img')).map((i) => i.closest('button')!);
+        fireEvent.click(thumbs[0]);
+        const viewer = await screen.findByRole('dialog', { name: i18n.t('common.mediaViewer') });
+        const shown = () => viewer.querySelector('img')?.getAttribute('src');
+        expect(shown()).toBe('/new.jpg');
+        expect(screen.getByText('2 / 2')).toBeInTheDocument();
+        fireEvent.keyDown(viewer, { key: 'ArrowLeft' });
+        expect(shown()).toBe('/old.jpg');
+        expect(screen.getByText('1 / 2')).toBeInTheDocument();
+        fireEvent.keyDown(viewer, { key: 'ArrowRight' });
+        expect(shown()).toBe('/new.jpg');
+    });
 });

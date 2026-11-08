@@ -76,7 +76,17 @@ describe('preloadAudio', () => {
         expect(FakeAudio.last).toBeNull();
     });
 
-    it('aborting after it already resolved does nothing', async () => {
+    it('releases the detached element once it can play (no lingering download)', async () => {
+        vi.stubGlobal('Audio', FakeAudio);
+        const p = preloadAudio('/a.m4a');
+        const audio = FakeAudio.last!;
+        audio.dispatchEvent(new Event('canplay'));
+        await expect(p).resolves.toBeUndefined();
+        expect(audio.src).toBe('');
+        expect(audio.loadCalls).toBe(1);
+    });
+
+    it('aborting after it already resolved does nothing more', async () => {
         vi.stubGlobal('Audio', FakeAudio);
         const ctrl = new AbortController();
         const p = preloadAudio('/a.m4a', ctrl.signal);
@@ -84,7 +94,7 @@ describe('preloadAudio', () => {
         audio.dispatchEvent(new Event('canplay'));
         await p;
         ctrl.abort();
-        expect(audio.src).toBe('/a.m4a');
-        expect(audio.loadCalls).toBe(0);
+        expect(audio.src).toBe('');
+        expect(audio.loadCalls).toBe(1);
     });
 });

@@ -69,6 +69,17 @@ export const color = {
         reading: '#DBEAFE',
         underline: '#60A5FA',
     },
+    /**
+     * Scrollbar thumbs (index.css): a translucent ink on light surfaces, a translucent white on the
+     * dark viewer and call screen. The track is always transparent; `*Hover` is the thumb while the
+     * pointer is over the scrollbar.
+     */
+    scrollbar: {
+        thumb: 'rgba(31, 41, 55, 0.28)',
+        thumbHover: 'rgba(31, 41, 55, 0.5)',
+        thumbOnDark: 'rgba(255, 255, 255, 0.35)',
+        thumbOnDarkHover: 'rgba(255, 255, 255, 0.6)',
+    },
     /** The dark photo/video viewer's chrome (D2c). Values are the pre-D2c viewer's. */
     viewer: {
         scrim: 'rgba(0, 0, 0, 0.9)',
@@ -94,9 +105,17 @@ export const color = {
         badge: 'rgba(251, 191, 36, 0.15)',
         badgeText: '#FBBF24',
     },
-    /** Decorations kept from the pre-D2c look: calendar Sundays, About's heart. */
+    /** Decorations kept from the pre-D2c look: About's heart. */
     decor: {
-        sunday: '#EF4444',
         heart: '#F87171',
+    },
+    /**
+     * The date-search calendar, Japanese convention (owner decision R-h): Sundays and public
+     * holidays (祝日) red, Saturdays blue. Fixed meanings, so they never follow the group accent;
+     * both are >= 4.5:1 on white.
+     */
+    calendar: {
+        holiday: '#DC2626',
+        saturday: '#2563EB',
     },
 } as const;

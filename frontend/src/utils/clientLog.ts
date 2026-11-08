@@ -15,14 +15,16 @@ export type ClientLogEvent =
     | 'blog_load' | 'dialog' | 'dialog_load' | 'call_layer' | 'sync_start_skipped'
     | 'menu_item_blocked' | 'blog_fallback' | 'group_marker_fallback' | 'entry_validation' | 'archive_stats_load' | 'celebration' | 'sync_sequence'
     | 'letter_viewer' | 'letter_jump' | 'display_density_change'
-    | 'favorite_video_error' | 'diagnostics_disk_usage';
+    | 'favorite_video_error' | 'favorite_video_lazy_unsupported' | 'diagnostics_disk_usage' | 'calendar_picker'
+    | 'media_playback';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
     | 'surface' | 'call_id' | 'changed' | 'has_target'
     | 'theme' | 'size'
-    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct';
+    | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
+    | 'ready_state' | 'network_state' | 'error_code' | 'aborted';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

@@ -43,6 +43,9 @@
     "retry": "重试",
     "confirm": "确认",
     "mediaViewer": "媒体查看器",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomFit": "适应屏幕",
     "debug": "调试"
   },
   "settings": {
@@ -330,6 +333,13 @@
     "availableOnDays": "有 {{count}} 天可用",
     "itemCount": "{{count}} 项",
     "tapToJump": "点击日期跳转",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "选择年份和月份",
+    "backToDays": "返回日期",
+    "yearList": "年份",
+    "monthGrid": "月份",
+    "yearValue": "{{year}}年",
+    "noMessages": "没有消息",
     "weekdays": {
       "sun": "日",
       "mon": "一",
@@ -340,18 +350,18 @@
       "sat": "六"
     },
     "months": {
-      "jan": "一月",
-      "feb": "二月",
-      "mar": "三月",
-      "apr": "四月",
-      "may": "五月",
-      "jun": "六月",
-      "jul": "七月",
-      "aug": "八月",
-      "sep": "九月",
-      "oct": "十月",
-      "nov": "十一月",
-      "dec": "十二月"
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
     }
   },
   "favorites": {
@@ -497,8 +507,8 @@
     "feedLoadFailed": "无法加载博文",
     "postLoadFailed": "无法加载这篇博文",
     "loadingPost": "正在加载博文...",
-    "olderPost": "上一篇",
-    "newerPost": "下一篇",
+    "olderPost": "较早的文章",
+    "newerPost": "较新的文章",
     "postNavigation": "文章导航",
     "addFavorite": "将{{name}}加入收藏",
     "removeFavorite": "将{{name}}移出收藏"
@@ -508,11 +518,13 @@
     "skipBack": "后退 5 秒 (←)",
     "skipForward": "快进 5 秒 (→)",
     "mute": "静音 (M)",
-    "unmute": "取消静音 (M)"
+    "unmute": "取消静音 (M)",
+    "playbackError": "无法播放这条语音。"
   },
   "videoPlayer": {
     "noAudio": "无音频",
-    "loop": "循环播放"
+    "loop": "循环播放",
+    "playbackError": "无法播放这个视频。"
   },
   "generations": {
     "1st": "１期生",
@@ -697,8 +709,8 @@
   },
   "letterViewer": {
     "title": "已发送的信件",
-    "previous": "上一封信件",
-    "next": "下一封信件",
+    "older": "较早的信件",
+    "newer": "较新的信件",
     "jumpToLetter": "跳转到聊天中的这封信件",
     "jumpToLetterAt": "在聊天中显示 {{date}} 发送的信件",
     "imageMissing": "没有信件图片",

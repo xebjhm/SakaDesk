@@ -24,6 +24,13 @@ describe('DesignPage', () => {
         }
     });
 
+    it('shows the calendar weekend and holiday swatches and no Sunday decor swatch', () => {
+        render(<DesignPage />);
+        expect(screen.getByText('calendar.holiday')).toBeInTheDocument();
+        expect(screen.getByText('calendar.saturday')).toBeInTheDocument();
+        expect(screen.queryByText('decor.sunday')).not.toBeInTheDocument();
+    });
+
     it('shows the Hinatazaka logo colour and action colour contrast', () => {
         render(<DesignPage />);
         expect(screen.getAllByText('White text 1.9:1').length).toBeGreaterThan(0);

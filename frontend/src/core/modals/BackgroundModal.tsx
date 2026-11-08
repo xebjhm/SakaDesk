@@ -131,16 +131,22 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
         >
             {/* Preview: the user's chosen colour or image is data (spec decision 26). */}
             <div
-                className="flex h-32 w-full items-center justify-center overflow-hidden rounded-card shadow-card"
-                style={{
-                    backgroundColor: settings.type === 'color' ? settings.color : DEFAULT_BACKGROUND.color,
-                    backgroundImage: preview ? `url(${preview})` : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    opacity: settings.opacity / 100,
-                }}
+                data-testid="background-preview"
+                className="relative flex h-32 w-full items-center justify-center overflow-hidden rounded-card shadow-card"
             >
-                {!preview && settings.type === 'default' && <span className="text-small text-muted">{t('common.preview')}</span>}
+                {/* The fill carries the opacity setting; the label sits above it so it is never dimmed. */}
+                <div
+                    data-testid="background-preview-fill"
+                    className="absolute inset-0"
+                    style={{
+                        backgroundColor: settings.type === 'color' ? settings.color : DEFAULT_BACKGROUND.color,
+                        backgroundImage: preview ? `url(${preview})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        opacity: settings.opacity / 100,
+                    }}
+                />
+                {!preview && settings.type === 'default' && <span className="relative text-small text-secondary">{t('common.preview')}</span>}
             </div>
 
             <section className="flex flex-col gap-2">

@@ -1,15 +1,12 @@
 import React from 'react';
 import { Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranscribeButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
     onClick: () => void;
     /** Error message to display when state is 'error' */
     error?: string | null;
-    /** Accent color for button border/text (service theme) */
-    accentColor?: string;
     /** 'light' for dark backgrounds (media viewer), 'dark' for light backgrounds (chat bubble) */
     variant?: 'light' | 'dark';
 }
@@ -22,7 +19,6 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = ACCENT,
     variant = 'dark',
 }) => {
     const { t } = useTranslation();
@@ -33,28 +29,35 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
 
     if (state === 'loading') {
         return (
-            <div className="flex items-center gap-2 text-xs py-1" style={{ color: isLight ? 'rgba(255,255,255,0.6)' : accentColor }}>
+            <div
+                className={`flex items-center gap-2 text-xs py-1 ${isLight ? '' : 'text-secondary'}`}
+                style={isLight ? { color: 'rgba(255,255,255,0.6)' } : undefined}
+            >
                 <Loader2 className="w-3 h-3 animate-spin" />
                 {t('transcription.transcribing')}
             </div>
         );
     }
 
+    const neutral = state !== 'error' && !isLight;
+
     return (
         <div>
             <button
                 onClick={onClick}
-                className="text-xs py-1 px-2 rounded-sm border transition-colors flex items-center gap-1"
-                style={{
+                className={`text-xs py-1 px-2 rounded-sm border transition-colors flex items-center gap-1 ${
+                    neutral ? 'border-subtle text-secondary hover:text-primary' : ''
+                }`}
+                style={neutral ? undefined : {
                     color: state === 'error'
                         ? (isLight ? '#fca5a5' : '#ef4444')
-                        : (isLight ? 'rgba(255,255,255,0.7)' : accentColor),
+                        : 'rgba(255,255,255,0.7)',
                     borderColor: state === 'error'
                         ? (isLight ? 'rgba(239,68,68,0.3)' : '#fca5a540')
-                        : (isLight ? 'rgba(255,255,255,0.15)' : withAlpha(accentColor, 25)),
+                        : 'rgba(255,255,255,0.15)',
                     background: state === 'error'
                         ? (isLight ? 'rgba(239,68,68,0.08)' : '#fef2f208')
-                        : (isLight ? 'rgba(255,255,255,0.06)' : withAlpha(accentColor, 3)),
+                        : 'rgba(255,255,255,0.06)',
                 }}
                 type="button"
             >

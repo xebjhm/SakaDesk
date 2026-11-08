@@ -19,7 +19,7 @@ interface ProfileImageViewerProps {
 
 /**
  * Member image history: one tab per kind (list icon / chat icon / call screen),
- * Left/Right through that kind's versions newest first. Copy/save follow the
+ * the kind's versions are listed newest first, but Left is always the older version and Right the newer (counter: oldest = 1). Copy/save follow the
  * existing 金手指 rule inside MediaViewerModal.
  */
 export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, initialKind, onClose }) => {
@@ -57,7 +57,7 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
                     )}
                 >
                     {t(`profileImages.${KIND_I18N_KEY[k]}`)}
-                    {k === kind && (images[k]?.length ?? 0) > 1 && ` ${index + 1}/${images[k]!.length}`}
+                    {k === kind && (images[k]?.length ?? 0) > 1 && ` ${images[k]!.length - index}/${images[k]!.length}`}
                 </button>
             ))}
         </div>
@@ -70,6 +70,7 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
             onClose={onClose}
             onNavigate={setIndex}
             headerSlot={tabs}
+            order="newest_first"
         />
     );
 };

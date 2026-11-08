@@ -20,10 +20,17 @@ describe('ProfileImageViewer', () => {
         expect(screen.getByText(/– Now$/)).toBeInTheDocument();
     });
 
-    it('arrow keys move within the kind; a tab click switches kind and resets to newest', () => {
+    it('← goes to the older version and → back to the newer, with oldest = 1 in the tab counter; a tab click switches kind and resets to newest', () => {
         render(<ProfileImageViewer images={images} initialKind="thumbnail" onClose={vi.fn()} />);
         fireEvent.keyDown(document.querySelector('[tabindex="-1"]')!, { key: 'ArrowRight' });
+        expect(document.querySelector('img')?.getAttribute('src')).toBe('/t-new.jpg');
+        fireEvent.keyDown(document.querySelector('[tabindex="-1"]')!, { key: 'ArrowLeft' });
         expect(document.querySelector('img')?.getAttribute('src')).toBe('/t-old.jpg');
+        expect(screen.getByRole('tab', { name: /Chat icon 1\/2/ })).toBeInTheDocument();
+        fireEvent.keyDown(document.querySelector('[tabindex="-1"]')!, { key: 'ArrowRight' });
+        expect(document.querySelector('img')?.getAttribute('src')).toBe('/t-new.jpg');
+        expect(screen.getByRole('tab', { name: /Chat icon 2\/2/ })).toBeInTheDocument();
+        fireEvent.keyDown(document.querySelector('[tabindex="-1"]')!, { key: 'ArrowLeft' });
         fireEvent.click(screen.getByRole('tab', { name: /Call screen/ }));
         expect(document.querySelector('img')?.getAttribute('src')).toBe('/p.jpg');
     });

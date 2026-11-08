@@ -311,6 +311,7 @@ def test_notify_open_chat_accepts_has_target():
         ("celebration", {"target": "milestone_days", "outcome": "seeded"}, "info"),
         ("favorite_video_error", {}, "info"),
         ("favorite_video_error", {"phase": "load"}, "info"),
+        ("favorite_video_lazy_unsupported", {}, "info"),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):
@@ -607,5 +608,132 @@ def test_diagnostics_disk_usage_rejects_paths():
             "event": "diagnostics_disk_usage",
             "fields": {"outcome": "D:\\SakaDesk Output"},
         },
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"phase": "open", "count": 7},
+        {"phase": "select", "has_target": True},
+        {"phase": "select", "has_target": False},
+        {"phase": "back", "reason": "escape"},
+        {"phase": "back", "reason": "button"},
+    ],
+)
+def test_calendar_picker_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "calendar_picker", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "calendar_picker"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_calendar_picker_rejects_holiday_text():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "calendar_picker", "fields": {"reason": "文化の日"}},
+    )
+    assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {
+            "phase": "waiting",
+            "surface": "video",
+            "ready_state": 2,
+            "network_state": 2,
+            "error_code": 0,
+        },
+        {
+            "phase": "stalled",
+            "surface": "voice",
+            "ready_state": 1,
+            "network_state": 2,
+            "error_code": 0,
+            "outcome": "paused",
+        },
+        {
+            "phase": "error",
+            "surface": "video",
+            "ready_state": 0,
+            "network_state": 3,
+            "error_code": 2,
+        },
+        {
+            "phase": "play_rejected",
+            "surface": "voice",
+            "ready_state": 4,
+            "network_state": 1,
+            "error_code": 0,
+            "error_type": "notallowederror",
+        },
+        {
+            "phase": "recovered",
+            "surface": "video",
+            "ready_state": 3,
+            "network_state": 2,
+            "error_code": 0,
+            "reason": "waiting",
+        },
+        {
+            "phase": "retry",
+            "surface": "video",
+            "ready_state": 0,
+            "network_state": 3,
+            "error_code": 4,
+        },
+        {"phase": "amp_connect_failed", "error_type": "invalidstateerror"},
+        {"phase": "amp_resume_failed", "error_type": "notallowederror"},
+        {
+            "phase": "summary",
+            "surface": "video",
+            "ready_state": 4,
+            "network_state": 1,
+            "error_code": 0,
+            "count": 7,
+            "aborted": 0,
+        },
+        {
+            "phase": "summary",
+            "surface": "voice",
+            "ready_state": 0,
+            "network_state": 0,
+            "error_code": 0,
+            "count": 1,
+            "aborted": 2,
+        },
+    ],
+)
+def test_media_playback_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "media_playback", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "media_playback"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"phase": "error", "path": "/api/content/media/hinatazaka46/v.mp4"},
+        {"phase": "error", "surface": "https://example.com/v.mp4"},
+        {"phase": "error", "src": "v.mp4"},
+    ],
+)
+def test_media_playback_rejects_urls_and_unknown_keys(fields):
+    res = client.post(
+        "/api/client-log", json={"event": "media_playback", "fields": fields}
     )
     assert res.status_code == 422
