@@ -59,7 +59,7 @@ const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = 
                 <span
                     data-testid="video-skeleton"
                     aria-hidden="true"
-                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-[var(--ds-border-strong)]"
+                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-skeleton"
                 >
                     <span
                         data-testid="video-shimmer"

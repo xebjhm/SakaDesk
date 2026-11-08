@@ -48,7 +48,7 @@ describe('FavoritesModal video cards', () => {
     it('shows a shimmer sweep and a centred Film icon, static under reduced motion', () => {
         renderModal();
         const skeleton = screen.getByTestId('video-skeleton');
-        expect(skeleton).toHaveClass('bg-[var(--ds-border-strong)]', 'flex', 'items-center', 'justify-center', 'overflow-hidden');
+        expect(skeleton).toHaveClass('bg-skeleton', 'flex', 'items-center', 'justify-center', 'overflow-hidden');
         expect(skeleton).not.toHaveClass('animate-pulse');
         expect(screen.getByTestId('video-shimmer')).toHaveClass('animate-shimmer-sweep', 'via-pill', 'motion-reduce:hidden');
         expect(skeleton.querySelector('svg')).toHaveClass('text-secondary');

@@ -114,6 +114,8 @@ export default {
                 console: 'var(--ds-console-bg)',
                 'console-badge': 'var(--ds-console-badge)',
                 'control-off': 'var(--ds-border-strong)',
+                // Loading skeleton base (Favourites video placeholder).
+                skeleton: 'var(--ds-border-strong)',
                 'group-marker': 'var(--ds-group-marker)',
                 // Chat header pills (pre-D2 look): glass / shade on the title gradient, title-text tints on a light header.
                 'header-glass': 'var(--ds-overlay-glass)',

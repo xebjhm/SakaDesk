@@ -227,13 +227,13 @@ group accent says where you are; a meaning colour says what a thing is.
 
 - **Muted text on grey.** `text-muted` (#6b7280) is for white and near-white surfaces only. On a grey fill
   (`bg-sunken`, the segment track, the Background preview) use `text-secondary` (#4b5563, at least 4.5:1).
-- **Scrollbars** are slim and app-wide (`index.css`): a 6 px rounded thumb on a transparent track that grows
-  to 10 px and darkens while the pointer is over the scrollbar. Thumb colours are the `--ds-scrollbar-thumb*`
+- **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px rounded thumb
+  drawn inside a transparent border, which grows to 8 px and darkens on hover (no layout change). Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
   `[data-surface="dark"]`, which `Modal tone="viewer"` sets, and the call overlay). Firefox gets
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
-- **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-sunken`
-  and mount the `<video>` only when the card nears the viewport.
+- **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-skeleton`
+  (`--ds-border-strong`) and mount the `<video>` only when the card nears the dialog body's visible area.
 - **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
   `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
