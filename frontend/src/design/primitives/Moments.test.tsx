@@ -67,4 +67,13 @@ describe('brand-moment primitives', () => {
         });
         expect(confetti[0].parentElement!.className).toContain('motion-reduce:animate-none');
     });
+    it('MilestoneCard keeps the pastel surface but a neutral numeral and no glow', () => {
+        render(<MilestoneCard value="365" label="days" />);
+        const n = screen.getByText('365');
+        expect(n).toHaveClass('text-primary');
+        expect(n.className).not.toContain('accent');
+        const card = n.parentElement!;
+        expect(card).toHaveClass('bg-expressive-soft', 'border-accent-border');
+        expect(card.className).not.toContain('shadow-accent-glow');
+    });
 });

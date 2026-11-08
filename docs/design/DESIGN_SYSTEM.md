@@ -211,7 +211,8 @@ group accent says where you are; a meaning colour says what a thing is.
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
   shadow for definition on white), the same in every group. Favourites shows the
-  same yellow star on each bookmarked message.
+  same yellow star on each bookmarked message, and so does the favourite icon in
+  the message context menu.
 - Danger and success stay semantic as above.
 - Not oshi: About's "made with love" heart (`text-heart`, `decor.heart`) and
   anything else that is merely pink.
@@ -432,8 +433,8 @@ Brand moments are for waiting, starting, finishing and looking back
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
 - **`MilestoneCard`** (`value`, `label`): tier C. A card in the timeline
-  (`font-display` number with `tabular-nums`, `bg-expressive-soft`, glow,
-  `animate-pop`) with 26 pieces of short confetti (`animate-confetti`) in the
+  (`font-display` number with `tabular-nums` in `text-primary`, `bg-expressive-soft`
+  surface with an accent border, no glow, `animate-pop`) with 26 pieces of short confetti (`animate-confetti`) in the
   context accent colours.
 
 Celebration events (tiers B and C only; there is no full-screen tier):

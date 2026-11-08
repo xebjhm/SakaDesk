@@ -30,7 +30,7 @@ describe('ProfileImagePills', () => {
         expect(container).toBeEmptyDOMElement();
     });
 
-    it('hovers in the accent and shows the version count on the accent', () => {
+    it('hovers neutral and shows the version count as neutral metadata', () => {
         render(
             <ProfileImagePills
                 images={{ thumbnail: [{ url: 'a', first_seen: null, current: true }, { url: 'b', first_seen: null, current: false }] }}
@@ -38,7 +38,11 @@ describe('ProfileImagePills', () => {
             />,
         );
         const pill = screen.getByRole('button', { name: /Chat icon/ });
-        expect(pill).toHaveClass('hover:bg-accent-subtle', 'hover:text-accent-strong', 'focus-visible:ring-accent');
-        expect(screen.getByText('2')).toHaveClass('bg-accent', 'text-inverse');
+        expect(pill).toHaveClass('hover:bg-sunken', 'hover:text-primary', 'focus-visible:ring-accent');
+        expect(pill.className).not.toContain('hover:bg-accent');
+        expect(pill.className).not.toContain('hover:text-accent');
+        const badge = screen.getByText('2');
+        expect(badge).toHaveClass('bg-sunken', 'text-secondary');
+        expect(badge.className).not.toContain('bg-accent');
     });
 });

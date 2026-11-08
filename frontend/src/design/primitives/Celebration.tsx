@@ -36,10 +36,10 @@ export const CelebrationToast: React.FC<CelebrationToastProps> = ({ title, descr
 
 export interface MilestoneCardProps { value: string; label: string }
 
-/** Tier C celebration (spec §9): in-timeline card in the context accent + short confetti. */
+/** Tier C celebration (spec §9): in-timeline card on the pastel context surface (neutral numeral, no glow) + short confetti. */
 export const MilestoneCard: React.FC<MilestoneCardProps> = ({ value, label }) => (
-    <div className="relative mx-auto flex w-fit flex-col items-center rounded-lg border border-accent-border bg-expressive-soft px-7 py-3 text-center shadow-accent-glow animate-pop motion-reduce:animate-none">
-        <span className="font-display text-display font-semibold tabular-nums text-accent-strong">{value}</span>
+    <div className="relative mx-auto flex w-fit flex-col items-center rounded-lg border border-accent-border bg-expressive-soft px-7 py-3 text-center animate-pop motion-reduce:animate-none">
+        <span className="font-display text-display font-semibold tabular-nums text-primary">{value}</span>
         <span className="text-small text-secondary">{label}</span>
         {Array.from({ length: 26 }, (_, i) => (
             <span key={i} data-confetti aria-hidden="true" style={burstStyle(i, 1.6)}
