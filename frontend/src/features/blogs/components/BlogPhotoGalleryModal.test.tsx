@@ -45,4 +45,13 @@ describe('BlogPhotoGalleryModal', () => {
             if (control) expect(control).toHaveAttribute('data-shape', 'circle');
         }
     });
+
+    it('has no top padding on the scroller, so photos do not show above the sticky month header', async () => {
+        render(<BlogPhotoGalleryModal isOpen onClose={vi.fn()} blogs={[BLOG]} serviceId="hinatazaka46" backupEnabled onJumpToBlog={vi.fn()} />);
+        release();
+        await waitFor(() => expect(screen.getByText(i18n.t('blogGallery.count', { count: 2 }))).toBeInTheDocument());
+        expect(screen.getByTestId('modal-body')).toHaveClass('pt-0');
+        const header = screen.getByTestId('modal-body').querySelector('.sticky')!;
+        expect(header).toHaveClass('top-0');
+    });
 });

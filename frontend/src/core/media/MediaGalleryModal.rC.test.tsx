@@ -59,4 +59,20 @@ describe('MediaGalleryModal (R-c)', () => {
         expect(newer).not.toHaveClass('bg-accent-subtle');
         expect(within(newer).getByText('春野 ひなた')).toHaveClass('text-primary');
     });
+
+    it('keeps the tab bar out of the scrolling body; month headers stick to its top edge', () => {
+        render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={[voice]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+        const tablist = screen.getByRole('tablist');
+        expect(screen.getByTestId('modal-body')).not.toContainElement(tablist);
+        expect(screen.getByTestId('modal-toolbar')).toContainElement(tablist);
+        expect(screen.getByTestId('modal-body')).toHaveClass('pt-0');
+    });
+
+    it('month headers are sticky top-0 in the voice list', async () => {
+        render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={[voice]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+        await userEvent.click(screen.getByRole('tab', { name: 'Voice messages' }));
+        const header = screen.getByTestId('modal-body').querySelector('.sticky.z-10')!;
+        expect(header).toHaveClass('top-0');
+        expect(header).not.toHaveClass('top-12');
+    });
 });

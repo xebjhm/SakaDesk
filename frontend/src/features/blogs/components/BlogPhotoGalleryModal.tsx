@@ -200,7 +200,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 closeLabel={t('common.close')}
                 logId="blog_gallery"
                 className="h-[80vh] max-w-4xl"
-                bodyClassName="px-0 pb-0"
+                bodyClassName="px-0 pb-0 pt-0"
                 footer={
                     <>
                         {/* An empty spacer while loading keeps the Jump to date button on the right. */}

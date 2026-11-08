@@ -561,6 +561,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
 | `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
+| `toolbar` | A non-scrolling strip between the header and the body (the media gallery's tab bar): opaque `bg-sheet`, outside the scroller so the scrollbar starts below it; a body with sticky headers under it takes `pt-0` and the headers stick at `top-0` |
 | `titleClassName` | Extra classes for the title (the member timeline sets `text-accent-strong` on its plain header) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 

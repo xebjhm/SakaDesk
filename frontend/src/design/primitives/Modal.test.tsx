@@ -1039,4 +1039,19 @@ describe('Modal v2 header and scope', () => {
         render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
         expect(screen.getByRole('dialog').className).toContain('rounded-xl');
     });
+    it('renders the toolbar between the header and the scrolling body, outside the scroller', () => {
+        render(<Modal isOpen onClose={() => {}} title="X" toolbar={<div role="tablist" aria-label="bar" />}>body</Modal>);
+        const toolbar = screen.getByTestId('modal-toolbar');
+        const body = screen.getByTestId('modal-body');
+        expect(toolbar).toContainElement(screen.getByRole('tablist'));
+        expect(body).not.toContainElement(toolbar);
+        expect(toolbar).toHaveClass('shrink-0', 'bg-sheet');
+        expect(body).toHaveClass('overflow-y-auto');
+        expect(screen.getByTestId('modal-header').compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(toolbar.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    it('draws no toolbar element without a toolbar', () => {
+        render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);
+        expect(screen.queryByTestId('modal-toolbar')).toBeNull();
+    });
 });
