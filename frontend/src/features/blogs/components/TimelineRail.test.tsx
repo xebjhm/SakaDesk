@@ -93,7 +93,7 @@ describe('TimelineRail look (D2b)', () => {
         const { rail } = setup();
         const lens = screen.getByTestId('timeline-rail-lens');
         const track = screen.getByTestId('timeline-rail-track');
-        expect(lens).toHaveClass('bg-accent-lens', 'w-5', 'pointer-events-none', 'opacity-0', 'transition-opacity', 'duration-lens', 'motion-reduce:transition-none');
+        expect(lens).toHaveClass('bg-accent-lens', 'w-5', 'pointer-events-none', 'opacity-0', 'transition-opacity', 'duration-lens', 'ease-out', 'motion-reduce:transition-none');
         expect(track).toHaveClass('border-l-2', 'border-subtle');
         fireEvent.mouseMove(rail, { clientY: 230 });
         act(() => { vi.advanceTimersByTime(800); });
@@ -102,6 +102,8 @@ describe('TimelineRail look (D2b)', () => {
         expect(track).toHaveClass('border-l-[3px]', 'transition-[border-width]', 'duration-lens');
         fireEvent.mouseLeave(rail);
         expect(lens).toHaveClass('opacity-0');
+        // It fades out where it was, not from the default centre.
+        expect(lens.style.getPropertyValue('--ds-rail-lens-y')).toBe(`${(21 / 41) * 100}%`);
         expect(track).toHaveClass('border-l-2');
     });
 

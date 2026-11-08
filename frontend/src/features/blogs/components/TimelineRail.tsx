@@ -49,7 +49,8 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
     const [zoomCenter, setZoomCenter] = useState<number | null>(null);
     const dwellTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastHoverIndexRef = useRef<number | null>(null);
-    const lensYRef = useRef<string | null>(null);
+    // The lens centre outlives the zoom so the glow fades out where it was (zoomCenter turns null on leave).
+    const [lensCenter, setLensCenter] = useState<number | null>(null);
 
     // Group blogs by year
     const yearGroups = useMemo((): YearGroup[] => {
@@ -193,12 +194,14 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
 
                 dwellTimerRef.current = setTimeout(() => {
                     setZoomCenter(clampedIndex);
+                    setLensCenter(clampedIndex);
                     setIsZoomed(true);
                 }, ZOOM_CONFIG.dwellTime);
             }
         } else {
             if (zoomCenter !== null && Math.abs(clampedIndex - zoomCenter) > ZOOM_CONFIG.dwellTolerance * 2) {
                 setZoomCenter(clampedIndex);
+                setLensCenter(clampedIndex);
             }
         }
     };
@@ -230,9 +233,9 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
     };
 
     const hovered = hoverInfo ? blogs[hoverInfo.index] : undefined;
-    // The lens keeps its last centre while it fades out after the zoom ends.
-    if (zoomCenter !== null) lensYRef.current = `${(zoomCenter / Math.max(blogs.length - 1, 1)) * 100}%`;
-    const lensStyle = lensYRef.current ? ({ '--ds-rail-lens-y': lensYRef.current } as React.CSSProperties) : {};
+    const lensStyle = lensCenter !== null
+        ? ({ '--ds-rail-lens-y': `${(lensCenter / Math.max(blogs.length - 1, 1)) * 100}%` } as React.CSSProperties)
+        : {};
 
     return (
         <div
@@ -261,7 +264,8 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 data-testid="timeline-rail-lens"
                 className={cn(
                     'pointer-events-none absolute left-1/2 w-5 -translate-x-1/2 bg-accent-lens',
-                    'transition-opacity duration-lens ease-in-out motion-reduce:transition-none',
+                    // e4e4118: "opacity 300ms ease-out" (it mounted on zoom; this one also fades out on leave).
+                    'transition-opacity duration-lens ease-out motion-reduce:transition-none',
                     isZoomed && zoomCenter !== null ? 'opacity-100' : 'opacity-0',
                 )}
                 style={{ top: RAIL_PADDING, bottom: RAIL_PADDING, ...lensStyle }}
