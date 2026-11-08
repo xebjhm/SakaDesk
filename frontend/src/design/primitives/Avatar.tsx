@@ -20,10 +20,22 @@ export interface AvatarProps {
     selected?: boolean;
     /** Hidden from assistive tech (empty alt) when a visible label with the name follows. */
     decorative?: boolean;
+    /** Classes for the outer circle (which also carries the selection ring). */
     className?: string;
+    /**
+     * Classes for the `<img>` only, e.g. a muted (filter) look or a hover zoom.
+     * Use this instead of filtering / scaling a wrapper, so the selection ring
+     * and its white gap stay sharp, unfiltered and in place. Not applied to the
+     * initial fallback.
+     */
+    imgClassName?: string;
+    /** Inline style for the `<img>` only (same purpose as `imgClassName`). */
+    imgStyle?: React.CSSProperties;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected = false, decorative = false, className }) => {
+export const Avatar: React.FC<AvatarProps> = ({
+    src, name, size = 'md', selected = false, decorative = false, className, imgClassName, imgStyle,
+}) => {
     const [failed, setFailed] = useState(false);
     useEffect(() => setFailed(false), [src]);
 
@@ -46,7 +58,8 @@ export const Avatar: React.FC<AvatarProps> = ({ src, name, size = 'md', selected
                     src={src}
                     alt={decorative ? '' : name}
                     draggable={false}
-                    className="h-full w-full object-cover"
+                    className={cn('h-full w-full object-cover', imgClassName)}
+                    style={imgStyle}
                     onError={() => {
                         setFailed(true);
                         clientLog('avatar_fallback', { size });

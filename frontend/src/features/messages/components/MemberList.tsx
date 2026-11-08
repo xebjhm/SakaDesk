@@ -10,6 +10,7 @@ import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
+import { resizedAvatarUrl, type AvatarWidth } from '../mediaUrl';
 import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { Portal } from '../../../core/common/Portal';
 import { MemberContextMenu } from './MemberContextMenu';
@@ -52,6 +53,13 @@ function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<stri
     const days = Math.floor(hours / 24);
     return t('time.daysAgo', { count: days });
 }
+
+/** Resized avatar width: the 64 CSS px tile at up to 3x device pixel ratio, rounded to an allowed width. */
+const AVATAR_PX: AvatarWidth = 192;
+/** Inactive (offline) members: softened, no contrast cut. Image only, never the ring. */
+const INACTIVE_IMG = 'opacity-75 saturate-50';
+/** Graduated members: light sepia. Image only, never the ring. */
+const GRADUATED_IMG_STYLE: React.CSSProperties = { filter: 'sepia(0.3) saturate(0.6) contrast(0.9)' };
 
 /** Sticky section heading (online / offline / graduated), styled as a small pill. */
 const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -249,32 +257,32 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                         className="group relative flex flex-col items-center gap-1 rounded-card py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         title={isGraduated ? t('memberList.graduatedTooltip') : undefined}
                     >
-                        {/* Hover: the avatar lifts slightly. Graduated / inactive members keep their muted look. */}
-                        <span
-                            className="transition-transform duration-fast ease-standard group-hover:scale-105"
-                            style={isGraduated
-                                ? { filter: 'sepia(0.3) saturate(0.6) contrast(0.9)' }
-                                : !info.isActive ? { filter: 'saturate(0.5) contrast(0.8)' } : undefined}
-                        >
-                            {info.isGroupChat && !info.avatar ? (
-                                <span className={cn(
-                                    'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
-                                    'transition-shadow duration-fast ease-standard',
-                                    isSelected ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface shadow-accent-halo' : 'group-hover:shadow-card',
-                                )}>
-                                    <Users className="h-6 w-6" />
-                                </span>
-                            ) : (
-                                <Avatar
-                                    src={info.avatar ?? undefined}
-                                    name={info.displayName}
-                                    decorative
-                                    size="lg"
-                                    selected={isSelected}
-                                    className={cn('h-16 w-16', !isSelected && 'group-hover:shadow-card')}
-                                />
-                            )}
-                        </span>
+                        {/* Muted look (graduated / inactive) and the hover zoom sit on the image only,
+                            so the selection ring and its white gap are never filtered or scaled.
+                            The selected avatar does not zoom. */}
+                        {info.isGroupChat && !info.avatar ? (
+                            <span className={cn(
+                                'flex h-16 w-16 items-center justify-center rounded-pill bg-sunken text-secondary',
+                                'transition-shadow duration-fast ease-standard',
+                                isSelected ? 'ring-2 ring-accent ring-offset-2 ring-offset-surface shadow-accent-halo' : 'group-hover:shadow-card',
+                            )}>
+                                <Users className={cn('h-6 w-6', !info.isActive && INACTIVE_IMG)} />
+                            </span>
+                        ) : (
+                            <Avatar
+                                src={resizedAvatarUrl(info.avatar, AVATAR_PX)}
+                                name={info.displayName}
+                                decorative
+                                size="lg"
+                                selected={isSelected}
+                                className={cn('h-16 w-16', !isSelected && 'group-hover:shadow-card')}
+                                imgClassName={cn(
+                                    !isGraduated && !info.isActive && INACTIVE_IMG,
+                                    !isSelected && 'transition-transform duration-fast ease-standard group-hover:scale-105',
+                                )}
+                                imgStyle={isGraduated ? GRADUATED_IMG_STYLE : undefined}
+                            />
+                        )}
 
                         <Badge count={unreadCount} className="absolute right-1 top-0 z-10" />
 

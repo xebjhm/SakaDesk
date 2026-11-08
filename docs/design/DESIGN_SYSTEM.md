@@ -526,7 +526,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | A boxed item on a sheet | `Card` |
 | Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
-| Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
+| Person or member | `Avatar` (`selected`: accent ring with a white gap + halo; a muted look or hover zoom goes on the image via `imgClassName` / `imgStyle`, never on a wrapper, so the ring stays sharp and in place) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |

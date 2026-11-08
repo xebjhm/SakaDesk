@@ -65,6 +65,19 @@ describe('Avatar', () => {
         const { container } = render(<Avatar name="A" selected />);
         expect(container.firstChild).toHaveClass('ring-2', 'ring-accent', 'ring-offset-2', 'ring-offset-surface', 'shadow-accent-halo');
     });
+
+    it('puts imgClassName / imgStyle on the image only, never on the ring', () => {
+        const { container } = render(
+            <Avatar src="/a.jpg" name="A" selected imgClassName="opacity-75 saturate-50" imgStyle={{ filter: 'sepia(0.3)' }} />,
+        );
+        const ring = container.firstChild as HTMLElement;
+        const img = container.querySelector('img')!;
+        expect(img).toHaveClass('h-full', 'w-full', 'object-cover', 'opacity-75', 'saturate-50');
+        expect(img.style.filter).toBe('sepia(0.3)');
+        expect(ring).not.toHaveClass('opacity-75');
+        expect(ring).not.toHaveClass('saturate-50');
+        expect(ring.style.filter).toBe('');
+    });
 });
 
 describe('DatePill', () => {
