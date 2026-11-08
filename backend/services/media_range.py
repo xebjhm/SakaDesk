@@ -23,17 +23,26 @@ semantics follow RFC 9110 §14: an unknown unit or an invalid range set is
 ignored (full ``200``); for several ranges only the first satisfiable one is
 sent as a single-part ``206`` (clients must read ``Content-Range``); no
 satisfiable range gives ``416`` with ``Content-Range: bytes */size``.
-``If-Range`` is not evaluated.
 
-Every response logs one ``media_request`` breadcrumb (status, range header,
-whether it was ignored or capped, bytes sent, size, elapsed ms, media kind and
+``If-Range`` is evaluated first, as Starlette's ``FileResponse`` did (RFC 9110
+§13.1.5): when it matches neither the ``ETag`` (strong comparison, so a weak
+``W/`` tag never matches) nor the exact ``Last-Modified`` HTTP-date, the
+``Range`` is ignored and the full body is sent with ``200``; when it matches,
+the bounded ``206`` is served.
+
+A file that vanished between path validation and ``stat``/``open`` gets
+``404``. ``HEAD`` is not handled (a body is always sent); the media routes are
+GET-only.
+
+Every response logs one ``media_request`` breadcrumb (status, range header
+capped to ``LOGGED_RANGE_MAX`` characters, whether it was ignored or capped,
+the ``If-Range`` outcome, bytes sent, size, elapsed ms, media kind and
 ``client_disconnected``) — never the path or file name.
 """
 
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import re
 import time
@@ -45,7 +54,7 @@ from typing import BinaryIO
 
 import structlog
 from starlette.datastructures import Headers
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import Message, Receive, Scope, Send
 
 logger = structlog.get_logger(__name__)
@@ -55,6 +64,9 @@ MEDIA_RANGE_CAP = 2 * 1024 * 1024
 
 CHUNK_SIZE = 64 * 1024
 """Bytes read from disk and sent per ASGI body message."""
+
+LOGGED_RANGE_MAX = 64
+"""Longest raw ``Range`` header value written to the ``media_request`` log."""
 
 _RANGE_SPEC = re.compile(r"^(\d*)-(\d*)$")
 
@@ -156,9 +168,9 @@ def _open_at(path: Path, offset: int) -> BinaryIO:
 class MediaFileResponse(Response):
     """Serve ``path`` honouring the request's ``Range`` with bounded bodies.
 
-    See the module docstring for the exact semantics. The file is stat'ed,
-    opened, read and closed in worker threads so the event loop never blocks
-    on disk.
+    See the module docstring for the exact semantics (``If-Range``, ``404`` on a
+    vanished file, no ``HEAD`` support). The file is stat'ed, opened, read and
+    closed in worker threads so the event loop never blocks on disk.
     """
 
     def __init__(
@@ -180,24 +192,39 @@ class MediaFileResponse(Response):
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         started = time.perf_counter()
-        stat = await asyncio.to_thread(self.path.stat)
-        size = stat.st_size
-        range_header = Headers(scope=scope).get("range")
-
-        stats = _ServeStats(range_header=range_header, size=size)
+        request_headers = Headers(scope=scope)
+        range_header = request_headers.get("range")
+        stats = _ServeStats(range_header=range_header)
         try:
-            byte_range = resolve_range(range_header, size, self.cap)
-        except RangeNotSatisfiable:
-            stats.status = 416
-            await Response(
-                status_code=416,
-                headers={"content-range": f"bytes */{size}", "accept-ranges": "bytes"},
-            )(scope, receive, send)
-            self._log(stats, started)
+            stat = await asyncio.to_thread(self.path.stat)
+        except FileNotFoundError:
+            await self._not_found(scope, receive, send, stats, started, "stat")
             return
+        size = stat.st_size
+        stats.size = size
+        self._set_validators(stat.st_mtime, size)
+
+        if_range = request_headers.get("if-range")
+        if range_header is not None and if_range is not None:
+            stats.if_range_matched = self._if_range_matches(if_range)
+        if stats.if_range_matched is False:
+            byte_range = None  # stale validator: ignore Range, send it all
+        else:
+            try:
+                byte_range = resolve_range(range_header, size, self.cap)
+            except RangeNotSatisfiable:
+                stats.status = 416
+                await Response(
+                    status_code=416,
+                    headers={
+                        "content-range": f"bytes */{size}",
+                        "accept-ranges": "bytes",
+                    },
+                )(scope, receive, send)
+                self._log(stats, started)
+                return
 
         stats.range_ignored = range_header is not None and byte_range is None
-        self._set_validators(stat.st_mtime, size)
         if byte_range is None:
             start, length = 0, size
         else:
@@ -209,8 +236,42 @@ class MediaFileResponse(Response):
             )
         self.headers["content-length"] = str(length)
 
-        await self._stream(receive, send, start, length, stats)
+        # Open before the disconnect watcher exists, so a vanished file can
+        # still be answered with 404 and nothing is left running.
+        try:
+            fh = await asyncio.to_thread(_open_at, self.path, start)
+        except FileNotFoundError:
+            await self._not_found(scope, receive, send, stats, started, "open")
+            return
+        try:
+            await self._stream(fh, receive, send, length, stats)
+        finally:
+            await asyncio.to_thread(fh.close)
         self._log(stats, started)
+
+    async def _not_found(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        stats: _ServeStats,
+        started: float,
+        stage: str,
+    ) -> None:
+        """Answer ``404`` for a file removed after the route validated it."""
+        logger.info("media_file_missing", stage=stage)
+        stats.status = 404
+        await JSONResponse({"detail": "File not found"}, status_code=404)(
+            scope, receive, send
+        )
+        self._log(stats, started)
+
+    def _if_range_matches(self, if_range: str) -> bool:
+        """RFC 9110 §13.1.5: strong ETag comparison or exact Last-Modified."""
+        value = if_range.strip()
+        if value.startswith("W/"):
+            return False  # a weak entity tag never matches strongly
+        return value in (self.headers["etag"], self.headers["last-modified"])
 
     def _set_validators(self, mtime: float, size: int) -> None:
         # Same recipe as Starlette's FileResponse so cached entries stay valid.
@@ -222,9 +283,9 @@ class MediaFileResponse(Response):
 
     async def _stream(
         self,
+        fh: BinaryIO,
         receive: Receive,
         send: Send,
-        start: int,
         length: int,
         stats: _ServeStats,
     ) -> None:
@@ -247,7 +308,6 @@ class MediaFileResponse(Response):
             return True
 
         watcher = asyncio.create_task(watch_disconnect())
-        fh = await asyncio.to_thread(_open_at, self.path, start)
         try:
             headers_sent = await send_or_flag(
                 {
@@ -286,16 +346,26 @@ class MediaFileResponse(Response):
         finally:
             stats.client_disconnected = disconnected.is_set()
             watcher.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
+            try:
                 await watcher
-            await asyncio.to_thread(fh.close)
+            except asyncio.CancelledError:
+                # Only the watcher's own cancellation is expected here; if this
+                # request task is itself being cancelled, keep that going.
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
 
     def _log(self, stats: _ServeStats, started: float) -> None:
         logger.debug(
             "media_request",
             status=stats.status,
-            range=stats.range_header,
+            range=(
+                None
+                if stats.range_header is None
+                else stats.range_header[:LOGGED_RANGE_MAX]
+            ),
             range_ignored=stats.range_ignored,
+            if_range_matched=stats.if_range_matched,
             capped=stats.capped,
             bytes_sent=stats.bytes_sent,
             size=stats.size,
@@ -311,8 +381,9 @@ class _ServeStats:
     """Mutable per-response facts collected for the ``media_request`` log."""
 
     range_header: str | None
-    size: int
+    size: int | None = None
     status: int = 200
+    if_range_matched: bool | None = None
     range_ignored: bool = False
     capped: bool = False
     bytes_sent: int = 0

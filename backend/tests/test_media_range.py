@@ -272,15 +272,131 @@ class TestMediaRoute:
 
     def test_avatar_route_still_uses_file_response(self, tmp_path):
         # Untouched: the avatar route keeps Starlette's FileResponse.
+        from fastapi.responses import FileResponse
+
         src = tmp_path / "a.png"
         src.write_bytes(b"\x89PNG")
         with (
             patch("backend.api.content._resolve_media_path", return_value=src),
             patch("backend.services.avatar_resize.resized_avatar", return_value=src),
+            patch(
+                "backend.api.content.FileResponse", wraps=FileResponse
+            ) as file_response,
+            patch(
+                "backend.api.content.MediaFileResponse", wraps=MediaFileResponse
+            ) as media_response,
         ):
             resp = client.get("/api/content/avatar/svc/a.png?w=64")
         assert resp.status_code == 200
         assert resp.content == b"\x89PNG"
+        file_response.assert_called_once_with(src)
+        media_response.assert_not_called()
+
+    # -- If-Range (RFC 9110 §13.1.5) ---------------------------------------
+
+    def test_if_range_matching_etag_serves_206(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 5000)
+        etag = _get(video).headers["etag"]
+        resp = _get(video, {"Range": "bytes=10-19", "If-Range": etag})
+        assert resp.status_code == 206
+        assert resp.headers["content-range"] == "bytes 10-19/5000"
+        assert resp.content == video.read_bytes()[10:20]
+
+    def test_if_range_matching_date_serves_206(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 5000)
+        date = _get(video).headers["last-modified"]
+        with capture_logs() as logs:
+            resp = _get(video, {"Range": "bytes=10-19", "If-Range": date})
+        assert resp.status_code == 206
+        assert resp.content == video.read_bytes()[10:20]
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["if_range_matched"] is True
+        assert e["range_ignored"] is False
+
+    @pytest.mark.parametrize(
+        "if_range",
+        [
+            '"stale-etag"',
+            "Mon, 01 Jan 2001 00:00:00 GMT",
+            "garbage",
+        ],
+    )
+    def test_stale_if_range_sends_full_200(self, tmp_path, if_range):
+        video = _make_file(tmp_path, "clip.mp4", 5000)
+        with capture_logs() as logs:
+            resp = _get(video, {"Range": "bytes=10-19", "If-Range": if_range})
+        assert resp.status_code == 200
+        assert resp.headers["content-length"] == "5000"
+        assert "content-range" not in resp.headers
+        assert resp.content == video.read_bytes()
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["range_ignored"] is True
+        assert e["if_range_matched"] is False
+
+    def test_weak_etag_in_if_range_never_matches(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 5000)
+        etag = _get(video).headers["etag"]
+        resp = _get(video, {"Range": "bytes=10-19", "If-Range": f"W/{etag}"})
+        assert resp.status_code == 200
+        assert resp.content == video.read_bytes()
+
+    def test_stale_if_range_beats_unsatisfiable_range(self, tmp_path):
+        # If-Range is evaluated before Range, so a stale one gives 200, not 416.
+        video = _make_file(tmp_path, "clip.mp4", 50)
+        resp = _get(video, {"Range": "bytes=999-", "If-Range": '"old"'})
+        assert resp.status_code == 200
+        assert resp.content == video.read_bytes()
+
+    def test_if_range_without_range_is_plain_200(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 50)
+        with capture_logs() as logs:
+            resp = _get(video, {"If-Range": '"old"'})
+        assert resp.status_code == 200
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["if_range_matched"] is None
+        assert e["range_ignored"] is False
+
+    # -- vanished file / log hygiene ---------------------------------------
+
+    def test_file_removed_before_stat_is_404(self, tmp_path):
+        gone = tmp_path / "gone.mp4"
+        with capture_logs() as logs:
+            resp = _get(gone, {"Range": "bytes=0-"})
+        assert resp.status_code == 404
+        assert resp.json() == {"detail": "File not found"}
+        (missing,) = [e for e in logs if e["event"] == "media_file_missing"]
+        assert missing["stage"] == "stat"
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["status"] == 404
+        assert e["size"] is None
+        assert all("gone" not in str(v) for v in e.values())
+
+    def test_file_removed_before_open_is_404(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 100)
+
+        def vanished(path, offset):
+            raise FileNotFoundError(path)
+
+        with (
+            patch.object(media_range, "_open_at", vanished),
+            capture_logs() as logs,
+        ):
+            resp = _get(video, {"Range": "bytes=0-"})
+        assert resp.status_code == 404
+        (missing,) = [e for e in logs if e["event"] == "media_file_missing"]
+        assert missing["stage"] == "open"
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["status"] == 404
+        assert e["bytes_sent"] == 0
+
+    def test_logged_range_header_is_capped(self, tmp_path):
+        video = _make_file(tmp_path, "clip.mp4", 100)
+        header = "bytes=0-9," + ",".join(["20-29"] * 50)
+        with capture_logs() as logs:
+            _get(video, {"Range": header})
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["range"] == header[: media_range.LOGGED_RANGE_MAX]
+        assert len(e["range"]) == media_range.LOGGED_RANGE_MAX
 
 
 # ---------------------------------------------------------------------------
@@ -393,3 +509,29 @@ async def test_file_shrinking_mid_stream_ends_response(tmp_path):
     (e,) = [e for e in logs if e["event"] == "media_request"]
     assert e["bytes_sent"] == 0
     assert e["truncated"] is True
+
+
+@pytest.mark.asyncio
+async def test_request_cancellation_is_not_swallowed(tmp_path):
+    # The request task is cancelled while it awaits the cancelled watcher; that
+    # cancellation must propagate instead of being suppressed with the watcher's.
+    video = _make_file(tmp_path, "clip.mp4", 100)
+    watcher_cancelling = asyncio.Event()
+
+    async def receive() -> dict[str, Any]:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            watcher_cancelling.set()
+            await asyncio.sleep(10)  # slow teardown; outer cancel lands here
+            raise
+        return {}  # pragma: no cover
+
+    async def send(message: dict[str, Any]) -> None:
+        return None
+
+    task = asyncio.create_task(MediaFileResponse(video)(_scope(), receive, send))
+    await asyncio.wait_for(watcher_cancelling.wait(), timeout=5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task

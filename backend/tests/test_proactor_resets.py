@@ -99,7 +99,7 @@ def test_normal_close_passes_through():
     t._sock.close.assert_not_called()
 
 
-def test_install_is_noop_off_windows(monkeypatch):
+def test_install_is_noop_off_windows():
     before = proactor_events._ProactorBasePipeTransport._call_connection_lost
     with capture_logs() as logs:
         assert install_proactor_reset_guard(platform="linux") is False
@@ -162,3 +162,70 @@ def test_detach_with_uninspectable_callable(monkeypatch):
     )
     proactor_resets._detach(server, object())
     server._detach.assert_called_once_with()
+
+
+def test_reset_log_names_the_context_exception():
+    t = _transport()
+
+    def original(self, exc):
+        try:
+            raise ConnectionAbortedError(10053, "aborted")
+        except ConnectionAbortedError:
+            raise OSError(10022, "An invalid argument was supplied")
+
+    with capture_logs() as logs:
+        tolerate_reset_on_close(original)(t, None)
+    (e,) = [e for e in logs if e["event"] == "proactor_reset_on_close"]
+    assert e["context_type"] == "ConnectionAbortedError"
+
+
+def test_reset_log_without_context():
+    t = _transport()
+
+    def original(self, exc):
+        raise OSError(10054, "reset")
+
+    with capture_logs() as logs:
+        tolerate_reset_on_close(original)(t, None)
+    (e,) = [e for e in logs if e["event"] == "proactor_reset_on_close"]
+    assert e["context_type"] is None
+
+
+@pytest.mark.parametrize("missing", ["class", "method"])
+def test_install_on_unsupported_python_is_a_logged_noop(monkeypatch, missing):
+    if missing == "class":
+        monkeypatch.delattr(proactor_events, "_ProactorBasePipeTransport")
+    else:
+        monkeypatch.setattr(
+            proactor_events, "_ProactorBasePipeTransport", type("Bare", (), {})
+        )
+    with capture_logs() as logs:
+        assert install_proactor_reset_guard(platform="win32") is False
+    (e,) = [e for e in logs if e["event"] == "proactor_reset_guard"]
+    assert e["installed"] is False and e["reason"] == "unsupported"
+
+
+@pytest.fixture
+def _reset_lifespan_state():
+    from backend.services import desktop_bridge, shutdown_state
+
+    yield
+    desktop_bridge.set_server_loop(None)
+    shutdown_state.reset_for_tests()
+
+
+@pytest.mark.usefixtures("_reset_lifespan_state")
+def test_lifespan_survives_a_failing_guard_install(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+
+    def boom() -> bool:
+        raise RuntimeError("private API changed")
+
+    monkeypatch.setattr(proactor_resets, "install_proactor_reset_guard", boom)
+    with capture_logs() as logs:
+        with TestClient(app) as client:
+            assert client.get("/health").status_code == 200
+    (e,) = [e for e in logs if e["event"] == "proactor_reset_guard_failed"]
+    assert e["error_type"] == "RuntimeError"

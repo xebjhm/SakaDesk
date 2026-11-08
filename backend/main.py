@@ -157,9 +157,13 @@ async def lifespan(app: FastAPI):
     # Windows only: finish closing sockets the browser reset (aborted media
     # downloads) instead of leaving them half-open. Keeps the Proactor loop,
     # which login's Playwright subprocess needs. See proactor_resets.
+    # Best effort: a failure here must never stop the server from starting.
     from backend.services.proactor_resets import install_proactor_reset_guard
 
-    install_proactor_reset_guard()
+    try:
+        install_proactor_reset_guard()
+    except Exception as exc:
+        logger.warning("proactor_reset_guard_failed", error_type=type(exc).__name__)
 
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
