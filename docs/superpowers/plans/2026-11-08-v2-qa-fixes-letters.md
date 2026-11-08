@@ -74,6 +74,7 @@
 ### Task 6: Small visual fixes and owner colour decisions (M3, M7, L1, L7, Hinatazaka shelters)
 
 **Files:** `design/tokens/color.ts` (`text.muted` → `#6b7280`), `design/tokens/groups.ts` (hinatazaka `official.shelter` → `{ picture: '#b2caed', video: '#ceadec', voice: '#b7acec', text: '#85badd' }`, comment "taken from the official app screenshots, 2026-11-08"), `features/messages/components/MessageBubble.tsx` (~288 classic shelter icon opacity → 100%; ~447 transcript footer: no second border colour — reuse the bubble border colour or drop the footer's own border so one edge line remains), the translate control (find with `grep -rn "translate" features/messages/components/*.tsx`) → neutral (`text-secondary hover:text-primary`, no accent), token/unit tests that pin these values, DESIGN_SYSTEM.md (muted value, shelter note, translate under neutral examples), the v2 spec shelter table if it lists Hinatazaka values.
+- Nogizaka and Yodel `official.shelter` values are approximations from the first theme commit (67fa58a), not verified against the official apps. Leave the values unchanged and add a code comment above each saying so and that they are to be re-taken from official-app screenshots later (owner decision 2026-11-08).
 - Commit: `fix(ui): darker muted text, official Hina covers, neutral translate`
 
 ### Task 7: Loading placeholders (L4, L5)
